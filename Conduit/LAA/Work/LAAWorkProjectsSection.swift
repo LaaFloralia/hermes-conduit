@@ -90,6 +90,7 @@ struct LAAWorkProjectsSection: View {
 /// One project: start a session, the instructions, the files and its sessions.
 struct LAAWorkProjectHome: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var drafts: ComposerDraftStore
     @State private var project: LAAWorkProject
     @State private var sessions: [LAAWorkSession] = []
@@ -122,8 +123,8 @@ struct LAAWorkProjectHome: View {
                     sessionList
                 }
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
                 .laaTextStyle(.body).foregroundStyle(LAAColor.text)
             }
             .refreshable { await load() }

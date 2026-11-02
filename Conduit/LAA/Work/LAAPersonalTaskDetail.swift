@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LAAPersonalTaskDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
     @State private var task: LAAPersonalTask?
@@ -24,6 +25,7 @@ struct LAAPersonalTaskDetailView: View {
                     }
                     if let task {
                         Text(verbatim: task.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                            .accessibilityIdentifier("work.task.detail.title")
                         Text(verbatim: task.sourceId).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
                             Text(verbatim: "状態: \(task.status?.name ?? "未確認")")
@@ -57,7 +59,8 @@ struct LAAPersonalTaskDetailView: View {
                         }
                     } else if error == nil { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
-                    .frame(maxWidth: 720, alignment: .leading)
+                    .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
             }
         }
         .navigationTitle(Text(verbatim: LAACopy.WorkTab.task))

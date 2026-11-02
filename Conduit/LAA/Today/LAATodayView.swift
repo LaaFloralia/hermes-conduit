@@ -4,10 +4,12 @@ import SwiftUI
 struct LAATodayView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.laaDesktop) private var laaDesktop
     @StateObject private var calendar: LAATodayCalendar
     @State private var showPairing = false
     @State private var showNewEvent = false
     @State private var selectedEvent: LAACalendarEvent?
+    @State private var selectedEventID: String?
     private let initialEventID: String?
     private let initialCalendarID: String?
     @State private var deepLinkError: String?
@@ -28,6 +30,34 @@ struct LAATodayView: View {
     }
     #endif
     var body: some View {
+        Group {
+            if laaDesktop { desktopBody } else { phoneBody }
+        }
+        .background(LAAColor.background)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showNewEvent = true } label: { Image(systemName: "plus") }
+                    .disabled(!calendar.calendars.contains(where: \.writable))
+                    .accessibilityLabel(Text(verbatim: "予定を作成"))
+                    .accessibilityIdentifier("laa.calendar.create")
+            }
+            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+        }
+        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+        .sheet(isPresented: $showNewEvent) {
+            LAACalendarEditor(event: nil, calendars: calendar.calendars, date: calendar.selectedDate) { Task { await refresh() } }.environmentObject(bridge)
+        }
+        .sheet(item: $selectedEvent) { event in
+            LAACalendarDetail(event: event, calendars: calendar.calendars) { Task { await refresh() } }.environmentObject(bridge)
+        }
+        .task(id: "\(initialCalendarID ?? ""): dedupe:\(initialEventID ?? ""): rev:\(bridge.revision)") { await openLinkedEvent() }
+        .refreshable { await refresh() }
+        .task(id: bridge.revision) { await refresh() }
+        .task(id: "\(calendar.mode.rawValue):\(Calendar.current.startOfDay(for: calendar.selectedDate).timeIntervalSince1970):\(calendar.selectedCalendarIDs.sorted().joined())") { await refresh() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
+    }
+
+    private var phoneBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 LAATabHeading(title: "Today", identifier: "laa.today.title")
@@ -74,36 +104,35 @@ struct LAATodayView: View {
             }.frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(LAASpacing.horizontal)
         }
-        .background(LAAColor.background)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { showNewEvent = true } label: { Image(systemName: "plus") }
-                    .disabled(!calendar.calendars.contains(where: \.writable))
-                    .accessibilityLabel(Text(verbatim: "予定を作成"))
-                    .accessibilityIdentifier("laa.calendar.create")
+    }
+
+    @ViewBuilder private var desktopBody: some View {
+        if bridge.status != .paired {
+            VStack(spacing: LAASpacing.x4) {
+                Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "Macに接続してください").fontWeight(.semibold)
+                Text(verbatim: "接続すると予定を確認・編集できます。")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("work.connect")
             }
-            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            .padding(LAASpacing.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            LAATodayDesktopView(calendar: calendar, selectedEventID: $selectedEventID,
+                                showNewEvent: $showNewEvent, openBrain: openBrain)
+                .environmentObject(bridge)
         }
-        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .sheet(isPresented: $showNewEvent) {
-            LAACalendarEditor(event: nil, calendars: calendar.calendars, date: calendar.selectedDate) { Task { await refresh() } }.environmentObject(bridge)
-        }
-        .sheet(item: $selectedEvent) { event in
-            LAACalendarDetail(event: event, calendars: calendar.calendars) { Task { await refresh() } }.environmentObject(bridge)
-        }
-        .task(id: "\(initialCalendarID ?? ""): dedupe:\(initialEventID ?? ""): rev:\(bridge.revision)") { await openLinkedEvent() }
-        .refreshable { await refresh() }
-        .task(id: bridge.revision) { await refresh() }
-        .task(id: "\(calendar.mode.rawValue):\(Calendar.current.startOfDay(for: calendar.selectedDate).timeIntervalSince1970):\(calendar.selectedCalendarIDs.sorted().joined())") { await refresh() }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
     }
     private func openLinkedEvent() async {
         guard let id = initialEventID, let calendarId = initialCalendarID, bridge.status == .paired else { return }
         selectedEvent = calendar.events.first { $0.googleID == id && $0.calendarId == calendarId }
+        selectedEventID = selectedEvent?.id
         do {
             let path = try LAACalendarRequest.eventPath(id: id, calendarID: calendarId)
             let response: LAABridgeResponse<LAACalendarResponse.Event> = try await bridge.request(method: "GET", path: path)
-            selectedEvent = try response.data.value(); deepLinkError = nil
+            selectedEvent = try response.data.value(); selectedEventID = selectedEvent?.id; deepLinkError = nil
         } catch { deepLinkError = LAATodayCalendar.message(for: error) }
     }
     private func refresh() async { if automaticallyRefresh { await calendar.refresh(bridge: bridge) } }

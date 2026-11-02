@@ -647,7 +647,11 @@ store · the session and project API · the owner-task API · Console job observ
 **Code**
 - Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
-  `Conduit/LAA/Work/LAAWorkCopy.swift`
+  `Conduit/LAA/Work/LAAWorkCopy.swift`, `Conduit/LAA/Work/LAAWorkToolRuns.swift`
+- Mac Catalyst list/detail columns: `Conduit/LAA/Mac/LAADesktopLayout.swift`,
+  `Conduit/LAA/Work/LAAWorkDesktop.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`,
+  `Conduit/LAA/Work/LAAWorkHub.swift`; tests: `ConduitTests/LAAWorkDesktopTests.swift`,
+  `ConduitUITests/LAAWorkDesktopUITests.swift`
 - Legacy local owner tasks (retained without automatic migration): `Conduit/LAA/Work/LAAOwnerTasksView.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskAPI.swift`, `Conduit/LAA/Work/LAAOwnerTaskOutbox.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskLocalDrafts.swift`
@@ -658,7 +662,7 @@ store · the session and project API · the owner-task API · Console job observ
 - Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/src/routes/skill-metadata.mjs`, `bridge/src/routes/routines.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`, `bridge/test/routines.test.mjs`
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
-- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkToolRunTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
 - Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
@@ -703,6 +707,19 @@ store · the session and project API · the owner-task API · Console job observ
   keep their original description under Other. SKILL.md bodies are never sent.
   Skills do not execute from this list.
 - A project detail lists its sessions and passes the project to session creation.
+- Session transcripts show user and assistant messages by default. Each
+  consecutive run of tool calls becomes one collapsed `実行 N件` row, with
+  `うち失敗 M件` when any status is failed/error/timeout/cancelled/denied;
+  opening it lists each tool name and status, and each row opens its detail.
+  Tool rows never carry the `回答` label. The same view is used on iPhone and
+  the Mac detail column; grouping is display-only and leaves Bridge data intact.
+- On Mac Catalyst (`laaDesktop` only) Work keeps the section switcher above a
+  list column and a detail column. Sessions, projects, tasks, routines and
+  skills select into the right column without a push; rows keep a persistent
+  selection, hover and context menus. The detail scrolls independently, long
+  session/task/project text uses the readable width, and the phone layout is
+  unchanged. Empty, loading, error, offline and unpaired states stay inside the
+  same split without collapsing the list.
 
 - Tasks also opens the full searchable client: owner/all/active/backlog, paginated projects,
   cycles and saved views; description editing, comments/replies, history, children,
@@ -741,6 +758,13 @@ against the official Linear schema. The 2,000-issue latency fixture measured
 23 calls / 11,797 ms before, 2 / 1,014 ms cold and 0 / 0.07 ms warm.
 Swift/UI tests and light/dark screenshots are delegated to the parent's single
 integrated build; no new simulator verification is claimed here.
+Mac desktop checked 2026-11-03 on laa/mac-work after merging laa/mac-shell
+3e44ed1c: the Catalyst Debug build-for-testing passed, LAAWorkDesktopTests and
+LAAWorkToolRunTests ran 5/5, and fixture captures covered Work at 900×600,
+1280×820 and the display's 1280×1050 cap in light/dark. A 1680×1050 window
+could not be set on the 1440-pt-wide display; the parent's larger-display run
+remains the wide-window check. iPhone classes are delegated to the integrated
+gate.
 
 
 ## Voice beside the tabs
@@ -3958,6 +3982,10 @@ and rollback instructions · the upstream App Store build
 
 **Code**
 - Today, calendar selection, day/week/month/agenda, detail and editor: `Conduit/LAA/Today/`.
+- Mac Catalyst agenda beside the selected event, with a wide month grid and
+  inline detail: `Conduit/LAA/Today/LAATodayDesktop.swift`,
+  `Conduit/LAA/Today/LAACalendarDetail.swift`, `Conduit/LAA/Mac/LAADesktopLayout.swift`;
+  tests: `ConduitUITests/LAAWorkDesktopUITests.swift`.
 - Protected pairing-specific metadata: `Conduit/LAA/Google/LAAGoogleCache.swift`.
 - Widget snapshot: `Shared/Widgets/LAACalendarSnapshot.swift`, `ConduitWidgets/LAA/LAANextEventWidget.swift`.
 - Bridge: `bridge/src/google/connection.mjs`, `bridge/src/calendar/`, `bridge/src/routes/calendar.mjs`, `bridge/test/calendar.test.mjs`, `bridge/test/google.test.mjs`.
@@ -3970,6 +3998,11 @@ and rollback instructions · the upstream App Store build
   Opaque event and calendar IDs are strictly encoded before requests; imported
   IDs containing `@`, `#`, `+` and `_` retain their exact value. Details include location/map, meeting link, attendees, notes and attachments. The widget retains its one-hour freshness limit and is refreshed only for a range containing today.
 - Google credentials use one runtime helper and in-memory token for Drive and Calendar. The helper format is unchanged; OAuth tokens never reach the phone, URLs or logs. Consent and device grants remain operator actions.
+- On Mac Catalyst (`laaDesktop` only) Today puts the mode, date, calendars and
+  agenda in a persistent left column and the selected event in the right. Month
+  mode uses the wide detail column for a 42-day grid, while the left agenda
+  shows the selected day. Selecting an event does not push; Close/Esc returns
+  to the empty or month detail. The phone layout and its sheets are unchanged.
 - Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; the previous 24 hours of undelivered popup reminders are caught up after
   startup/recovery using persisted delivery dedupe. Google email reminders remain
   with Google. Links use `laa://today/events/<eventID>?calendar=<calendarID>`.
@@ -3979,3 +4012,9 @@ and rollback instructions · the upstream App Store build
 
 **Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
 Debug build exited 0 before review fixes, updated build pending. Owner-size visual verification is pending. Real-device acceptance remains pending.
+Mac desktop Today checked 2026-11-03 on laa/mac-work with the merged
+laa/mac-shell: the agenda/list selection opened the event detail beside it,
+the empty day showed its empty detail, and the month mode used the wide detail
+grid. Captures cover 900×600, 1280×820 and the 1280×1050 display cap in
+light/dark; a 1680×1050 window is left to the parent's larger display. Real
+Google data remains a signed-build gate.

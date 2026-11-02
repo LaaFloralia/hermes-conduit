@@ -7,6 +7,7 @@ struct LAACalendarDetail: View {
     let event: LAACalendarEvent
     let calendars: [LAAGoogleCalendar]
     let changed: () -> Void
+    var onClose: (() -> Void)? = nil
     @State private var editing = false
     @State private var confirmDelete = false
     @State private var busy = false
@@ -17,6 +18,7 @@ struct LAACalendarDetail: View {
         NavigationStack {
             List {
                 Text(verbatim: event.title).font(.title2).textSelection(.enabled)
+                    .accessibilityIdentifier("laa.calendar.detail.title")
                 Text(verbatim: event.start.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened) + " – " + event.end.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened))
                 if let location = event.location, !location.isEmpty {
                     Text(verbatim: location).textSelection(.enabled)
@@ -42,8 +44,22 @@ struct LAACalendarDetail: View {
                 }
                 if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "閉じる") } } }
-            .sheet(isPresented: $editing) { LAACalendarEditor(event: event, calendars: calendars, date: event.start) { changed(); dismiss() }.environmentObject(bridge) }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(LAAColor.surface)
+            .toolbar {
+                if onClose == nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: { Text(verbatim: "閉じる") }
+                    }
+                }
+            }
+            .sheet(isPresented: $editing) {
+                LAACalendarEditor(event: event, calendars: calendars, date: event.start) {
+                    changed()
+                    if onClose == nil { dismiss() }
+                }.environmentObject(bridge)
+            }
             .sheet(item: $series) { value in LAACalendarDetail(event: value, calendars: calendars) { changed(); dismiss() }.environmentObject(bridge) }
             .confirmationDialog(Text(verbatim: event.recurrence?.isEmpty == false ? "繰り返し全体を削除しますか？" : "この予定を削除しますか？"), isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button(role: .destructive) { Task { await remove() } } label: { Text(verbatim: "削除") }
@@ -69,7 +85,8 @@ struct LAACalendarDetail: View {
             struct Result: Decodable { let deleted: Bool }
             let body = try JSONSerialization.data(withJSONObject: ["calendarId": calendarId, "etag": etag])
             let _: LAABridgeResponse<Result> = try await bridge.request(method: "DELETE", path: try LAACalendarRequest.eventPath(id: id), jsonBody: body, idempotencyKey: LAABridgeIdempotencyKey())
-            changed(); dismiss()
+            changed()
+            if let onClose { onClose() } else { dismiss() }
         } catch { message = LAATodayCalendar.message(for: error) }
     }
 }

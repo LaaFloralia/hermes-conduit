@@ -141,9 +141,9 @@ struct LAAWorkSessionsSection: View {
         do {
             let rows: [LAAWorkSession] = try await LAAWorkPaging.all(bridge, "/v1/sessions", query: [URLQueryItem(name: "scope", value: "all")])
             guard !Task.isCancelled, linkRequest.sessionTarget == target else { return }
-            guard let row = rows.first(where: { $0.delegateSessionId == target }) else { failure = "リンク先のPaseo会話を確認できません。"; return }
+            guard let row = rows.first(where: { $0.delegateSessionId == target }) else { failure = "リンク先の会話を確認できません。"; return }
             linkedSessionID = row.id
-        } catch { if !Task.isCancelled { failure = "リンク先のPaseo会話を読み取れません。再接続して確認してください。" } }
+        } catch { if !Task.isCancelled { failure = "リンク先の会話を読み取れません。再接続して確認してください。" } }
     }
 
     @MainActor private func load() async {
