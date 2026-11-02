@@ -647,7 +647,7 @@ store · the session and project API · the owner-task API · Console job observ
   parent's integrated gate. Live list/detail reads are verified separately;
   simulator CRUD uses synthetic data.
 
-**Checked:** 2026-11-02, laa/work-tab. Debug build and 34 related Swift/UI tests
+**Checked:** 2026-11-02, f5633702 (laa/work-tab). Debug build and 34 related Swift/UI tests
 passed (33 in the full run and the corrected CRUD test in its targeted rerun).
 Bridge tests: 381 passed. Six Work sections and the AI usage settings destination
 were captured in light/dark at 440 × 956 pt. Linear list (63 items) and one detail
