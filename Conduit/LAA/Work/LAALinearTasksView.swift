@@ -42,6 +42,9 @@ struct LAALinearTasksView: View {
         List {
             if !archivedOnly {
                 Section {
+                    NavigationLink { LAAPersonalInboxEntry(drafts: drafts) } label: {
+                        Label { Text(verbatim: "受信箱") } icon: { Image(systemName: "tray") }
+                    }.accessibilityIdentifier("work.linear.inbox")
                     NavigationLink {
                         ScrollView {
                             LAAPersonalTaskList(drafts: drafts, refreshID: 0)

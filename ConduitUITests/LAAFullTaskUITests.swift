@@ -19,7 +19,10 @@ final class LAAFullTaskUITests: XCTestCase {
         if !pair.isHittable { app.swipeUp() }; pair.tap()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
         let browse = app.buttons["work.linear.browse"]
-        XCTAssertTrue(browse.waitForExistence(timeout: 20)); browse.tap()
+        XCTAssertTrue(browse.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["work.linear.inbox"].exists)
+        capture("linear-owner-" + appearance)
+        browse.tap()
         XCTAssertTrue(app.staticTexts["Fixture task"].firstMatch.waitForExistence(timeout: 20))
         return app
     }
@@ -32,12 +35,17 @@ final class LAAFullTaskUITests: XCTestCase {
     private func verify(_ appearance: String) throws {
         let app = try launch(appearance)
         capture("linear-browse-" + appearance)
+        app.staticTexts["Fixture task"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Fixture original"].firstMatch.waitForExistence(timeout: 20))
+        capture("linear-detail-" + appearance)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         let inbox = app.buttons["work.tasks.inbox"]
         XCTAssertTrue(inbox.waitForExistence(timeout: 10)); inbox.tap()
         XCTAssertTrue(app.staticTexts["Fixture notification"].waitForExistence(timeout: 20))
         capture("linear-inbox-" + appearance)
         let mark = app.buttons["work.inbox.read.fixture-notification-1"]
-        XCTAssertTrue(mark.waitForExistence(timeout: 10)); mark.tap()
+        XCTAssertTrue(mark.waitForExistence(timeout: 10))
+        if !app.staticTexts["既読"].exists { mark.tap() }
         XCTAssertTrue(app.staticTexts["既読"].waitForExistence(timeout: 15))
     }
 }

@@ -9,6 +9,31 @@ private enum LAAPersonalInboxPath {
     }
 }
 
+struct LAAPersonalInboxEntry: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject var drafts: ComposerDraftStore
+    @State private var viewer: String?
+    @State private var error: String?
+    var body: some View {
+        Group {
+            if let viewer { LAAPersonalInboxView(drafts: drafts, viewerId: viewer, onExit: {}) }
+            else if let error { VStack { Text(verbatim: error); Button { Task { await load() } } label: { Text(verbatim: "読み直す") } } }
+            else { ProgressView() }
+        }
+        .navigationTitle(Text(verbatim: "受信箱"))
+        .task(id: bridge.revision) { viewer = nil; await load() }
+    }
+    @MainActor private func load() async {
+        error = nil
+        do {
+            let page: LAAPersonalPage<LAAPersonalNotification> = try await bridge.read("/v1/task-inbox?limit=1")
+            guard !Task.isCancelled else { return }
+            viewer = page.viewerId
+        } catch is CancellationError {
+        } catch { self.error = "受信箱を読み取れませんでした。" }
+    }
+}
+
 struct LAAPersonalInboxView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
