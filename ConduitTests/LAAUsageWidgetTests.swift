@@ -97,6 +97,24 @@ final class LAAUsageWidgetTests: XCTestCase {
                        ["Claude " + "Weekly"])
     }
 
+    func testLastKnownValuesSurviveMissingRowsWithoutChangingTheirTime() throws {
+        let original = LAAWidgetUsageBuilder.make(items: [
+            try item("claude", windows: [weekly(42)]),
+            try item("magnific", kind: "credits", value: 236025, unit: "credits")
+        ], receivedAt: now)
+        let later = now.addingTimeInterval(3600)
+        let retained = LAAWidgetUsageBuilder.make(items: [try unavailable("claude")], receivedAt: later, previous: original)
+        XCTAssertEqual(retained.meters.map(\.amount), [42, 236025])
+        XCTAssertEqual(retained.meters.map(\.observedAt), [now, now])
+        XCTAssertTrue(retained.meters.allSatisfy { $0.hasRecordedValue(at: later) && $0.isPast(at: later) })
+        XCTAssertEqual(retained.checkedAt, now)
+        let replaced = LAAWidgetUsageBuilder.make(items: [try item("claude", windows: [weekly(0)])], receivedAt: now, previous: retained)
+        XCTAssertEqual(replaced.meters.first?.amount, 0)
+        XCTAssertEqual(replaced.meters.first?.retained, false)
+        let missing = WidgetUsageMeter.missing(id: "provider.claude.quota", label: "Claude Weekly")
+        XCTAssertFalse(missing.hasRecordedValue(at: later))
+    }
+
     func testSnapshotCacheSurvivesOtherPublicationsAndCanBeCleared() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

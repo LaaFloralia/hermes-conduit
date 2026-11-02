@@ -138,7 +138,7 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(calls, 3)
     }
 
-    func testFailedRefreshClearsWidgetSnapshotAndReloads() async throws {
+    func testFailedRefreshKeepsWidgetObservationUntilUnpaired() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = WidgetSnapshotStore(directory: directory)
@@ -152,11 +152,33 @@ final class LAAUsageStateTests: XCTestCase {
         })
         await state.refreshAndPublish(bridge: bridge)
         XCTAssertEqual(store.read()?.usage?.meters.first?.remainingPercent, 62)
+        let original = store.read()?.usage
         fail = true
         await state.refreshAndPublish(bridge: bridge)
         XCTAssertNil(state.usage.value)
+        XCTAssertEqual(store.read()?.usage, original)
+        XCTAssertEqual(reloads, 1)
+        let unavailableState = LAAUsageState(widgetStore: store, loader: { _ in [try self.unavailable()] })
+        await unavailableState.refreshAndPublish(bridge: bridge)
+        XCTAssertEqual(store.read()?.usage?.meters.first?.amount, 62)
+        XCTAssertEqual(store.read()?.usage?.meters.first?.observedAt, original?.meters.first?.observedAt)
+        XCTAssertEqual(store.read()?.usage?.meters.first?.retained, true)
+        await unavailableState.refreshAndPublish(bridge: LAABridgeSession(statusForTesting: .unpaired))
         XCTAssertNil(store.read()?.usage)
-        XCTAssertEqual(reloads, 2)
+    }
+
+    func testAccessDeniedClearsHistoricalWidgetValues() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = WidgetSnapshotStore(directory: directory)
+        let reading = try quota()
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        for error in [LAABridgeError.revoked, .unauthorized, .forbidden] {
+            try store.writeUsage(LAAWidgetUsageBuilder.make(items: [reading]))
+            let state = LAAUsageState(widgetStore: store, loader: { _ in throw error })
+            await state.refreshAndPublish(bridge: bridge)
+            XCTAssertNil(store.read()?.usage)
+        }
     }
 
     func testOpeningUsageThrottlesAttemptsButManualRefreshBypassesInterval() async {

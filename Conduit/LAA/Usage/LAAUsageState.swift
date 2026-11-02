@@ -105,6 +105,7 @@ final class LAAUsageState: ObservableObject {
     }
 
     func refreshAndPublish(bridge: LAABridgeSession, attemptedAt: Date? = nil) async {
+        if selectScope(bridgeRevision: bridge.revision) { publish(nil) }
         guard bridge.status == .paired else { publish(nil); return }
         guard !isRefreshing else { return }
         lastRefreshAttempt = attemptedAt ?? Date()
@@ -113,10 +114,13 @@ final class LAAUsageState: ObservableObject {
         guard bridge.status == .paired else { publish(nil); return }
         guard !Task.isCancelled, bridge.revision == revision else { return }
         if let items = usage.value {
-            publish(LAAWidgetUsageBuilder.make(items: items, receivedAt: usage.fetchedAt ?? Date()))
-        } else {
+            publish(LAAWidgetUsageBuilder.make(items: items, receivedAt: usage.fetchedAt ?? Date(),
+                                              previous: widgetStore?.read()?.usage))
+        } else if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
             publish(nil)
         }
+        // A transport failure must not erase the widget's last observation.
+        // Scope changes and unpairing still explicitly publish nil.
     }
 
     private func publish(_ snapshot: WidgetUsageSnapshot?) {
@@ -266,9 +270,16 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage),
     ]
 
-    static func make(items: [LAAUsageItem], receivedAt: Date = Date()) -> WidgetUsageSnapshot {
+    static func make(items: [LAAUsageItem], receivedAt: Date = Date(), previous: WidgetUsageSnapshot? = nil) -> WidgetUsageSnapshot {
         let feed = items.filter { $0.source == "codexbar-usage-proxy" }
-        let meters = slots.compactMap { meter(for: $0, feed: feed, receivedAt: receivedAt) }
+        let meters = slots.compactMap { slot -> WidgetUsageMeter? in
+            let current = meter(for: slot, feed: feed, receivedAt: receivedAt)
+            if current?.hasRecordedValue(at: receivedAt) == true { return current }
+            if let prior = previous?.displayableMeters.first(where: {
+                $0.id.hasPrefix("provider.\(slot.provider).") && $0.hasRecordedValue(at: receivedAt)
+            }) { return prior.lastKnown(label: slot.label) }
+            return current
+        }
         // The feed can be cached even when the app has just contacted Bridge.
         // Only show a confirmation time if all displayed readings have one.
         let observations = meters.filter(\.available).compactMap(\.observedAt)
@@ -376,7 +387,7 @@ enum LAAUsageLabel {
 
 
 /// The OS decides when a background refresh runs; the widget timeline still
-/// removes numbers at their own expiry if a refresh is delayed.
+/// labels the last observation when a refresh is delayed.
 @MainActor
 enum LAAUsageBackground {
     private static let identifier = "com.laa-inc.laa.usage-refresh"

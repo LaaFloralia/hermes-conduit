@@ -140,6 +140,11 @@ struct LAAEmployeeWidgetView: View {
                     iconAction(entry.mediumCall.url, symbol: "phone.fill", label: LAACopy.widgetCall, primary: true)
                     iconAction(entry.mediumChat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat, primary: false)
                 }
+                if let caption = Self.observationText(entry.usage, at: renderedAt) {
+                    Text(verbatim: caption).font(.system(size: 10)).monospacedDigit()
+                        .foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
             }
             .frame(maxWidth: .infinity)
             Rectangle().fill(LAAColor.separator).frame(width: 1)
@@ -154,7 +159,7 @@ struct LAAEmployeeWidgetView: View {
     private var usageSummary: some View {
         let meters = entry.usage?.meters ?? []
         // The rows are already in the owner's priority order: show as many as
-        // fit, from the top, and drop the time and notice lines entirely.
+        // fit, from the top. The observation time lives below the action buttons.
         ViewThatFits(in: .vertical) {
             usageList(meters: meters, limit: 8)
             usageList(meters: meters, limit: 7)
@@ -186,16 +191,34 @@ struct LAAEmployeeWidgetView: View {
 
     private func usageRow(_ meter: WidgetUsageMeter) -> some View {
         let past = Self.isPast(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor)
+        let hasValue = meter.hasRecordedValue(at: renderedAt)
         return HStack(spacing: LAASpacing.x1) {
             Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: LAASpacing.x1)
-            Text(verbatim: past ? "未取得" : Self.valueText(meter))
+            Text(verbatim: hasValue ? Self.valueText(meter) : "未取得")
                 .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
         }
         .laaTextStyle(.section)
-        .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
+        .foregroundStyle(!hasValue ? LAAColor.attention : (past ? LAAColor.secondaryText : LAAColor.text))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(past ? "\(meter.label), 取得できません" : "\(meter.label), \(Self.valueText(meter))")
+        .accessibilityLabel(hasValue ? "\(meter.label), \(Self.valueText(meter)), \(Self.timeText(meter.observedAt!, at: renderedAt))" : "\(meter.label), 未取得")
+    }
+
+    static func observationText(_ usage: WidgetUsageSnapshot?, at date: Date) -> String? {
+        let times = (usage?.meters ?? []).filter { $0.hasRecordedValue(at: date) }.compactMap(\.observedAt)
+        guard let oldest = times.min() else { return nil }
+        let mixed = times.max().map { $0.timeIntervalSince(oldest) >= 60 } ?? false
+        return (mixed ? "最古 " : "") + timeText(oldest, at: date)
+    }
+
+    static func timeText(_ observation: Date, at date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = Calendar.current.isDate(observation, inSameDayAs: date) ? "HH:mm" : "M/d HH:mm"
+        if Calendar.current.component(.year, from: observation) != Calendar.current.component(.year, from: date) {
+            formatter.dateFormat = "yyyy/M/d HH:mm"
+        }
+        return formatter.string(from: observation) + "時点"
     }
 
     static func valueText(_ meter: WidgetUsageMeter) -> String {
@@ -222,10 +245,12 @@ struct LAAEmployeeWidgetView: View {
                         RoundedRectangle(cornerRadius: LAARadius.control)
                             .fill(primary ? LAAColor.filledButton : LAAColor.subtleSurface)
                     } else {
-                        RoundedRectangle(cornerRadius: LAARadius.control).strokeBorder(LAAColor.text, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: LAARadius.control)
+                            .fill(LAAColor.text.opacity(primary ? 0.24 : 0.14))
                     }
                 }
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Ciel, \(label)")
     }
 
@@ -321,17 +346,18 @@ struct LAAEmployeeWidgetView: View {
                 .fontWeight(.semibold)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
-                .foregroundStyle(renderingMode == .fullColor && primary ? LAAColor.filledButtonText : LAAColor.link)
+                .foregroundStyle(effectiveRenderingMode == .fullColor && primary ? LAAColor.filledButtonText : LAAColor.link)
                 .background {
-                    if renderingMode == .fullColor {
+                    if effectiveRenderingMode == .fullColor {
                         RoundedRectangle(cornerRadius: LAARadius.control)
                             .fill(primary ? LAAColor.filledButton : LAAColor.subtleSurface)
                     } else {
                         RoundedRectangle(cornerRadius: LAARadius.control)
-                            .strokeBorder(LAAColor.text, lineWidth: 1)
+                            .fill(LAAColor.text.opacity(primary ? 0.24 : 0.14))
                     }
                 }
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("\(entry.employee.name), \(title)")
     }
 }

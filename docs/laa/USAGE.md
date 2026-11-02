@@ -46,8 +46,8 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットは取得時刻などの脚注を出さず、この順で入る分だけを上から並べ、取れない項目は数値なしの状態行にする。
-- アプリは開いた時と明示更新で取得する。表示中はshellの自動取得を抑止し、鮮度・期限の判定も最終取得時点に固定する。ウィジェットは従来どおり期限到来時に数値を消す。Magnificの単位はAI creditsで、USDに換算しない。
+- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットはこの順で入る分を並べ、最後に取得できた値と「HH:mm時点」を表示する。行ごとの取得時刻が異なる場合は最古の時刻、別日は日付も示す。保存値のない項目だけを未取得にする。
+- アプリは開いた時と明示更新で取得する。表示中はshellの自動取得を抑止し、鮮度・期限の判定も最終取得時点に固定する。ウィジェットはApp Groupのlauncher-v1.jsonを読み、Bridgeへ直接通信しない。アプリが/v1/usageを取得して保存する。期限超過・通信失敗・一部行の欠測では、保存済みの値と元の取得時刻を保持する。接続解除・接続先変更・アクセス拒否では消去する。Magnificの単位はAI creditsで、USDに換算しない。
 - Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。
 
 `GET /v1/mac/status` は従来どおり `host.cpu`・`host.memory`・`host.disk` を返す。usageと別のホスト状態であり、diskの26時間判定を変更しない。
@@ -65,7 +65,7 @@ Tailscaleは輸送であり認証の代替ではない。
 
 ## 6. 統合時の確認事項
 
-各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット（`results` が空で返るか、バケット自体が無いか）、最終ページの `has_more: false` と `next_page`（値または欠落）、UTC日付と金額を照合する。OpenAIは§1の期間で確認済み。Anthropic従来Cost APIの空バケットは未確認で、鍵の保存後に同じ観測を行う。WidgetKitのタイムラインは期限に数値なしへ切り替えるよう指定し、遅れて再描画された場合も描画時刻で判定する。ただしOSが期限エントリーの表示や再描画を遅らせ、既存の描画を画面に残している間は数値が残りうる。アプリ配信・実機での切替は別途確認する。
+各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット（`results` が空で返るか、バケット自体が無いか）、最終ページの `has_more: false` と `next_page`（値または欠落）、UTC日付と金額を照合する。OpenAIは§1の期間で確認済み。Anthropic従来Cost APIの空バケットは未確認で、鍵の保存後に同じ観測を行う。WidgetKitのタイムラインは期限を過ぎた値を過去の取得値として表示し、数値と取得時刻を残す。iOSの背景更新は実行時刻を保証しないため、現在値への更新にはアプリでの再取得が必要になる場合がある。アプリ配信・実機での切替は別途確認する。
 
 SwiftBarは毎分feedの期限を判定するが、MacのスリープやSwiftBar停止中は最後の描画が残りうる。ウィジェットは、更新前に置いた上流Workspaceの2種が更新後も古い表示のままタップしても開かず、旧ウィジェットの削除とLAA Employeeへの置き換えが必要。systemSmallはChatとCall、systemMediumはUsageを開く経路を確認し、ロック画面用の円形・長方形は通知センターの画面からLAAを開いて未接続案内まで確認した。実際にロックされた状態での遷移は未確認。
 

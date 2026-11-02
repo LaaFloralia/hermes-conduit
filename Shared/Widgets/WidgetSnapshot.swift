@@ -163,7 +163,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     let freshUntil: Date?
     let resetsAt: Date?
     let stale: Bool
-    // Decode compatibility only; previously retained values must remain stale.
+    // A last-known reading remains historical, with its original observation time.
     let retained: Bool
     // Optional so snapshots written by the previous app remain readable.
     let verified: Bool?
@@ -209,6 +209,19 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     }
 
     var remainingPercent: Double? { available && unit == .percent ? amount : nil }
+
+    func hasRecordedValue(at date: Date) -> Bool {
+        guard available, amount.isFinite, amount >= 0, verified != true,
+              let observedAt, observedAt <= date.addingTimeInterval(120) else { return false }
+        return unit != .percent || amount <= 100
+    }
+
+    func lastKnown(label: String) -> Self {
+        Self(id: id, label: label, unit: unit, amount: amount, available: available,
+             observedAt: observedAt, freshUntil: freshUntil, resetsAt: resetsAt,
+             stale: true, retained: true, verified: verified ?? false,
+             legacyFreshness: legacyFreshness ?? false)
+    }
 
     /// Written by hand: `remainingPercent` is read-only, only decoded from
     /// snapshots the previous build saved.

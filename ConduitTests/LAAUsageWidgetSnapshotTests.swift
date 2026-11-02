@@ -19,16 +19,21 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
     }
 
-    func testLateRenderingOfEarlierEntryNeverShowsItsExpiredNumber() {
+    func testLateRenderingKeepsHistoricalNumberAndObservationTime() {
         let observed = Date(timeIntervalSince1970: 1_000)
         let meter = WidgetUsageMeter(id: "late", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
         XCTAssertFalse(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)))
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)))
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
+        XCTAssertTrue(meter.hasRecordedValue(at: observed.addingTimeInterval(86400)))
+        XCTAssertEqual(LAAEmployeeWidgetView.valueText(meter), "42%")
+        let usage = WidgetUsageSnapshot(meters: [meter], checkedAt: observed)
+        XCTAssertTrue(LAAEmployeeWidgetView.observationText(usage, at: observed.addingTimeInterval(86400))!.contains("時点"))
         let future = WidgetUsageMeter(id: "future", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(future, entryDate: observed, renderedAt: observed.addingTimeInterval(2)))
+        XCTAssertFalse(future.hasRecordedValue(at: observed))
     }
 
     func testLateEntryRendersLikeExpiredTimelineEntry() throws {
@@ -83,6 +88,24 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try capture(style: .light, mode: .accented, name: "medium-no-quota-older-accessibility5-tinted", otherOnly: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
     }
 
+    func testHistoricalWidgetOnWallpaperLightDarkAndTinted() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for mode in [WidgetRenderingMode.fullColor, .accented] {
+                let name = "wallpaper-\(style == .dark ? "dark" : "light")-\(mode == .fullColor ? "color" : "tinted")"
+                try capture(style: style, mode: mode, name: name, expired: true, wallpaper: true)
+            }
+        }
+    }
+
+    func testSmallActionsOnWallpaperLightDarkAndTinted() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for mode in [WidgetRenderingMode.fullColor, .accented] {
+                let name = "small-wallpaper-\(style == .dark ? "dark" : "light")-\(mode == .fullColor ? "color" : "tinted")"
+                try capture(style: style, mode: mode, name: name, wallpaper: true, small: true)
+            }
+        }
+    }
+
     func testAccessibility5MatchesAccessibility3() throws {
         let now = Date(timeIntervalSince1970: 1_793_456_040)
         let appearances: [(String, UIUserInterfaceStyle, WidgetRenderingMode)] = [
@@ -104,7 +127,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
                          dynamicTypeSize: DynamicTypeSize = .large,
-                         checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0) throws -> Data {
+                         checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0, wallpaper: Bool = false, small: Bool = false) throws -> Data {
         let rows: [(String, String, WidgetUsageMeter.Unit, Double)] = [
             ("codex.quota.weekly", "Codex Weekly", .percent, 35),
             ("opencode-go.quota.weekly", "OpenCode Weekly", .percent, 72),
@@ -125,18 +148,27 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(unset ? nil : usage)
         let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot,
                                                 date: expired ? now.addingTimeInterval(600) : now)
-        let screen = LAAEmployeeWidgetView(entry: entry, familyOverride: .systemMedium, renderingModeOverride: mode, renderedAtOverride: now.addingTimeInterval(renderedAtOffset))
-            .frame(width: 360, height: 169)
+        let widget = LAAEmployeeWidgetView(entry: entry, familyOverride: small ? .systemSmall : .systemMedium, renderingModeOverride: mode, renderedAtOverride: now.addingTimeInterval(renderedAtOffset))
+            .frame(width: small ? 169 : 360, height: 169)
             .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
             .preferredColorScheme(style == .dark ? .dark : .light)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
             .ignoresSafeArea()
+        let screen = ZStack {
+            if wallpaper {
+                LinearGradient(colors: [.indigo, .teal, .orange.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Circle().fill(.white.opacity(0.18)).frame(width: 280).offset(x: -140, y: 100)
+                Capsule().fill(.black.opacity(0.2)).rotationEffect(.degrees(-35)).offset(x: 180)
+            }
+            widget.background(style == .dark ? Color.black.opacity(0.88) : Color.white.opacity(0.88))
+                .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
+        }.frame(width: wallpaper ? 440 : 360, height: wallpaper ? 300 : 169)
         let host = UIHostingController(rootView: screen)
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
         let scene = try XCTUnwrap(previous?.windowScene ?? scenes.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: 360, height: 169)
+        window.frame = CGRect(x: 0, y: 0, width: wallpaper ? 440 : 360, height: wallpaper ? 300 : 169)
         window.traitOverrides.userInterfaceStyle = style
         window.rootViewController = host
         window.makeKeyAndVisible()
