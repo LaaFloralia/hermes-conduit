@@ -96,13 +96,26 @@ struct LAAPairingView: View {
         }
     }
 
+    /// UIKit reports "iPad" on Mac Catalyst; name the Mac the enrollment came
+    /// from instead, and keep the device name iOS has always sent.
+    private static var deviceName: String {
+        #if targetEnvironment(macCatalyst)
+        let host = ProcessInfo.processInfo.hostName
+        let trimmed = (host.hasSuffix(".local") ? String(host.dropLast(6)) : host)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Mac" : String(trimmed.prefix(64))
+        #else
+        return UIDevice.current.name
+        #endif
+    }
+
     private func pair() async {
         isPairing = true
         failure = nil
         defer { isPairing = false }
         let submitted = submittedCode
         do {
-            try await bridge.pair(address: address, code: submitted, name: UIDevice.current.name)
+            try await bridge.pair(address: address, code: submitted, name: Self.deviceName)
             code = ""
             dismiss()
         } catch let error as LAABridgeError {

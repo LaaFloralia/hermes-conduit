@@ -180,7 +180,7 @@ struct LAABridgeClient {
     }
 
     func enroll(baseURL: URL, code: String, name: String) async throws -> LAABridgeEnrollment {
-        let body = try JSONEncoder().encode(EnrollmentRequest(code: code, name: name, platform: "ios"))
+        let body = try JSONEncoder().encode(EnrollmentRequest(code: code, name: name, platform: Self.enrollmentPlatform))
         do {
             let result: LAABridgeResponse<LAABridgeEnrollment> = try await send(
                 baseURL: baseURL, path: "/v1/devices/enroll", method: "POST", body: body)
@@ -213,6 +213,16 @@ struct LAABridgeClient {
         try await send(baseURL: credentials.baseURL, path: path, method: method, body: jsonBody,
                        token: credentials.token, key: idempotencyKey, ifMatch: ifMatch,
                        ifNoneMatch: ifNoneMatch, timeout: timeout)
+    }
+
+    /// Mac Catalyst enrolls as a Mac; every other build keeps the value the
+    /// Bridge has always received.
+    static var enrollmentPlatform: String {
+        #if targetEnvironment(macCatalyst)
+        return "macos"
+        #else
+        return "ios"
+        #endif
     }
 
     private struct EnrollmentRequest: Encodable { let code: String; let name: String; let platform: String }
