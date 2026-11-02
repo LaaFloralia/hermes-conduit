@@ -113,7 +113,7 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(state.usage.value?.first?.value, 62)
     }
 
-    func testVisibleUsageIgnoresAutomaticRefreshButAllowsManualRefresh() async throws {
+    func testVisibleUsageRefreshesAutomaticallyAndAllowsManualRefresh() async throws {
         let bridge = LAABridgeSession(statusForTesting: .paired)
         let first = try quota(62)
         let next = try quota(25)
@@ -127,15 +127,16 @@ final class LAAUsageStateTests: XCTestCase {
         let displayedAt = state.usage.fetchedAt
         await state.refreshAutomatically(bridge: bridge)
         await state.synchronize(bridge: bridge, active: true)
-        XCTAssertEqual(calls, 1)
-        XCTAssertEqual(state.usage.value?.first?.value, 62)
-        XCTAssertEqual(state.usage.fetchedAt, displayedAt)
-        await state.refreshAndPublish(bridge: bridge)
         XCTAssertEqual(calls, 2)
+        XCTAssertEqual(state.usage.value?.first?.value, 25)
+        XCTAssertNotNil(state.usage.fetchedAt)
+        XCTAssertNotNil(displayedAt)
+        await state.refreshAndPublish(bridge: bridge)
+        XCTAssertEqual(calls, 3)
         XCTAssertEqual(state.usage.value?.first?.value, 25)
         state.setPresented(false)
         await state.refreshAutomatically(bridge: bridge)
-        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(calls, 4)
     }
 
     func testFailedRefreshKeepsWidgetObservationUntilUnpaired() async throws {
@@ -156,8 +157,9 @@ final class LAAUsageStateTests: XCTestCase {
         fail = true
         await state.refreshAndPublish(bridge: bridge)
         XCTAssertNil(state.usage.value)
-        XCTAssertEqual(store.read()?.usage, original)
-        XCTAssertEqual(reloads, 1)
+        XCTAssertEqual(store.read()?.usage?.meters.first?.observedAt, original?.meters.first?.observedAt)
+        XCTAssertTrue(try XCTUnwrap(store.read()?.usage?.meters.first).isPast(at: Date()))
+        XCTAssertEqual(reloads, 2)
         let unavailableState = LAAUsageState(widgetStore: store, loader: { _ in [try self.unavailable()] })
         await unavailableState.refreshAndPublish(bridge: bridge)
         XCTAssertEqual(store.read()?.usage?.meters.first?.amount, 62)

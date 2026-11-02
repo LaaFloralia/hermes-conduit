@@ -39,7 +39,7 @@ final class LAAChromeUITests: XCTestCase {
         for appearance in ["light", "dark"] {
             let app = launch(appearance)
             var firstFrame: CGRect?
-            for tab in ["Chats", "Today", "Brain", "Studio", "Work"] {
+            for tab in ["Chat", "Today", "Brain", "Studio", "Work"] {
                 let tabButton = app.buttons[tab]
                 XCTAssertTrue(tabButton.waitForExistence(timeout: 30), tab)
                 tabButton.tap()
@@ -58,7 +58,7 @@ final class LAAChromeUITests: XCTestCase {
                 } else {
                     firstFrame = settings.frame
                 }
-                if tab == "Chats" {
+                if tab == "Chat" {
                     // The screen's own "Chats" heading is the only one: the
                     // bar above it stays empty (BUS-331).
                     XCTAssertFalse(app.navigationBars["Chats"].exists, "no navigation title over Chats")

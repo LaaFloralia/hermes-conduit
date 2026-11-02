@@ -48,6 +48,7 @@ struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
     #if LAA_BUILD
     @EnvironmentObject private var employeeCalls: LAAEmployeeCallCoordinator
+    @Environment(\.dismiss) private var laaDismiss
     @EnvironmentObject private var laaBridge: LAABridgeSession
     #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -146,6 +147,7 @@ struct V2ConversationScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
 #if LAA_BUILD
+        .navigationBarBackButtonHidden(!shell.isSplit)
         .modifier(LAAInCallBarModifier())
 #endif
         .laaConversationFeatures()
@@ -230,6 +232,19 @@ struct V2ConversationScreen: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
+        #if LAA_BUILD
+        if !shell.isSplit {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { laaDismiss() } label: {
+                    Label { Text(verbatim: LAACopy.back) } icon: { Image(systemName: "chevron.left") }
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+                }
+                .accessibilityLabel(Text(verbatim: LAACopy.back))
+                .accessibilityIdentifier("laa.conversation.back")
+            }
+        }
+        #endif
         // Beside the list on a wide window there is no Back: this
         // closes the chat, as Back does on a phone, and the column goes
         // back to offering a new one.

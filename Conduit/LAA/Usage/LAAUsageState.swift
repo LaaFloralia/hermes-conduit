@@ -81,9 +81,8 @@ final class LAAUsageState: ObservableObject {
 
     func setPresented(_ presented: Bool) { isPresented = presented }
 
-    /// Background widget maintenance must not replace the screen being read.
+    /// Refresh the shared feed even while Usage is visible.
     func refreshAutomatically(bridge: LAABridgeSession) async {
-        guard !isPresented else { return }
         await refreshAndPublish(bridge: bridge)
     }
 
@@ -119,8 +118,12 @@ final class LAAUsageState: ObservableObject {
         } else if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
             publish(nil)
         }
-        // A transport failure must not erase the widget's last observation.
-        // Scope changes and unpairing still explicitly publish nil.
+        else if let previous = widgetStore?.read()?.usage {
+            // Preserve the observation for recovery, but immediately mark it
+            // stale so a failed fetch can never leave a fresh-looking number.
+            publish(WidgetUsageSnapshot(meters: previous.meters.map { $0.lastKnown(label: $0.label) },
+                                        checkedAt: previous.checkedAt))
+        }
     }
 
     private func publish(_ snapshot: WidgetUsageSnapshot?) {
@@ -209,6 +212,22 @@ struct LAAUsageGroup: Identifiable {
     let id: String
     let label: String
     var items: [LAAUsageItem]
+
+    /// The same code-owned destinations used by Console; feed payloads never
+    /// supply a URL that the app can open.
+    var serviceURL: URL? {
+        let links = [
+            "provider.codex": "https://chatgpt.com/codex/cloud/settings/usage",
+            "provider.opencode-go": "https://opencode.ai/console",
+            "provider.claude": "https://claude.ai/settings/usage",
+            "provider.venice": "https://venice.ai/settings/api",
+            "provider.magnific": "https://www.magnific.com/user/my-subscriptions",
+            "provider.openai-api": "https://platform.openai.com/usage",
+            "provider.claude-api": "https://platform.claude.com/settings/billing",
+            "provider.liquid": "https://console.liquid.ai/",
+        ]
+        return links[id].flatMap(URL.init(string:))
+    }
 
     static func groups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         var result: [LAAUsageGroup] = []
