@@ -22,9 +22,8 @@ const STATES = [
 ];
 const DOCUMENT_NAMES = new Set([
   'BridgeOwnerViewer',
-  'BridgeOwnerTeam',
-  'BridgeOwnerStates',
   'BridgeOwnerTasks',
+  'BridgeOwnerArchivedTasks',
   'BridgeOwnerTask',
   'BridgeOwnerTaskCreate',
   'BridgeOwnerTaskUpdate',
@@ -104,13 +103,12 @@ function fakeLinear({
     }
     const reply = (data) => ({ ok: true, status: 200, json: async () => ({ data }) });
 
-    if (name === 'BridgeOwnerViewer') return reply({ viewer });
-    if (name === 'BridgeOwnerTeam') return reply({ teams: { nodes: teams } });
-    if (name === 'BridgeOwnerStates') return reply({ team: { states: { nodes: states } } });
+    if (name === 'BridgeOwnerViewer') return reply({ viewer, teams: { nodes: teams.map(t => ({ ...t, states: { nodes: states } })) } });
 
-    if (name === 'BridgeOwnerTasks') {
+    if (name === 'BridgeOwnerTasks' || name === 'BridgeOwnerArchivedTasks') {
       const offset = variables.after === null ? 0 : Number(variables.after);
-      const all = visible();
+      const all = visible().filter(item => !item.delegate).filter(item => name === 'BridgeOwnerArchivedTasks'
+        ? Boolean(item.archivedAt) : !item.archivedAt && !['completed', 'canceled'].includes(item.state?.type));
       const page = all.slice(offset, offset + pageSize);
       const hasNextPage = offset + pageSize < all.length;
       return reply({
@@ -254,12 +252,12 @@ test('the list is only the owner\'s open tasks, across every page', async () => 
 
     // Two pages were read, and every read carried the fixed filter.
     const lists = fetchImpl.calls.filter((call) => call.name === 'BridgeOwnerTasks');
-    assert.equal(lists.length, 4);
+    assert.equal(lists.length, 2);
     for (const call of lists) {
       assert.deepEqual(call.variables, { team: 'BUS', owner: OWNER, after: call.variables.after });
       assert.match(call.query, /assignee: \{ id: \{ eq: \$owner \} \}/);
     }
-    assert.deepEqual(lists.map((call) => call.variables.after), [null, '2', '4', '6']);
+    assert.deepEqual(lists.map((call) => call.variables.after), [null, '2']);
   } finally {
     await bridge.close();
   }
@@ -269,7 +267,7 @@ test('a row the filter should not have returned is still excluded', async () => 
   const config = async () => ({
     ok: true,
     status: 200,
-    json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [TEAM] }, team: { states: { nodes: STATES } } } }),
+    json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [{ ...TEAM, states: { nodes: STATES } }] } } }),
   });
   const rows = [
     issue({ id: uuid(1) }),
@@ -303,7 +301,7 @@ test('page information must be a boolean and cursors must not repeat', async () 
   const settings = async () => ({
     ok: true,
     status: 200,
-    json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [TEAM] }, team: { states: { nodes: STATES } } } }),
+    json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [{ ...TEAM, states: { nodes: STATES } }] } } }),
   });
   const page = (pageInfo) => async (url, init) => {
     const { query } = JSON.parse(init.body);
@@ -382,7 +380,7 @@ test('a page that cannot be read is a 503, never a short list', async () => {
     if (/BridgeOwnerTasks/.test(query)) {
       return { ok: true, status: 200, json: async () => ({ data: { issues: { nodes: [issue()] } } }) };
     }
-    return { ok: true, status: 200, json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [TEAM] }, team: { states: { nodes: STATES } } } }) };
+    return { ok: true, status: 200, json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [{ ...TEAM, states: { nodes: STATES } }] } } }) };
   });
   {
     const { bridge, token } = await bridgeWith(null, { source: noPageInfo });
@@ -412,7 +410,7 @@ test('a page that cannot be read is a 503, never a short list', async () => {
         }),
       };
     }
-    return { ok: true, status: 200, json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [TEAM] }, team: { states: { nodes: STATES } } } }) };
+    return { ok: true, status: 200, json: async () => ({ data: { viewer: { id: OWNER }, teams: { nodes: [{ ...TEAM, states: { nodes: STATES } }] } } }) };
   });
   {
     const { bridge, token } = await bridgeWith(null, { source: endless });
@@ -895,7 +893,8 @@ test('archive and restore retain the owner and workflow state, exclude trash, an
     assert.deepEqual((await bridge.request('/v1/linear-owner-tasks', { token })).body.data.items, []);
     const list = await bridge.request('/v1/linear-owner-tasks?archived=only', { token });
     assert.deepEqual(list.body.data.items.map(t => t.id), [uuid(61)]);
-    assert.ok(fake.calls.filter(c => c.name === 'BridgeOwnerTasks').every(c => c.query.includes('includeArchived: true')));
+    assert.ok(fake.calls.filter(c => c.name === 'BridgeOwnerTasks').every(c => !c.query.includes('includeArchived')));
+    assert.ok(fake.calls.some(c => c.name === 'BridgeOwnerArchivedTasks' && c.query.includes('archivedAt: { null: false }')));
     assert.equal((await bridge.request(url, { method: 'PATCH', token, key: 'edit-archived', headers: { 'if-match': list.body.data.items[0].updatedAt }, body: { title: 'bad' } })).status, 409);
     const restoreHeaders = { 'if-match': list.body.data.items[0].updatedAt };
     const restored = await bridge.request(`${url}/restore`, { method: 'POST', token, key: 'restore-1', headers: restoreHeaders });
@@ -973,8 +972,6 @@ test('the source sends only its own fixed documents', async () => {
   const names = fetchImpl.calls.map((call) => call.name);
   assert.deepEqual(names, [
     'BridgeOwnerViewer',
-    'BridgeOwnerTeam',
-    'BridgeOwnerStates',
     'BridgeOwnerTasks',
     'BridgeOwnerTask',
     'BridgeOwnerTaskCreate',
@@ -984,6 +981,23 @@ test('the source sends only its own fixed documents', async () => {
   ]);
   for (const call of fetchImpl.calls) {
     assert.match(call.query, /^(query|mutation) BridgeOwner/);
+  }
+});
+
+test('create, update, archive and restore invalidate warm owner and archive snapshots', async () => {
+  const fake = fakeLinear({ issues: [issue()] });
+  const source = sourceFor(fake);
+  const lists = () => fake.calls.filter(c => ['BridgeOwnerTasks', 'BridgeOwnerArchivedTasks'].includes(c.name)).length;
+  const warm = async () => { await source.listOwnerTasks(); await source.listOwnerTasks({ archived: true }); };
+  await warm(); assert.equal(lists(), 2);
+  await warm(); assert.equal(lists(), 2);
+  for (const mutate of [
+    () => source.createOwnerTask({ id: uuid(99), title: 'new', priority: 0 }),
+    () => source.patchOwnerTask(uuid(99), { title: 'updated' }),
+    () => source.archiveOwnerTask(uuid(99)),
+    () => source.restoreOwnerTask(uuid(99)),
+  ]) {
+    const before = lists(); await mutate(); await warm(); assert.equal(lists(), before + 2);
   }
 });
 

@@ -38,6 +38,44 @@ const LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
 const ENROLL_FAILURE_WINDOW_MS = 60 * 1000;
 const ENROLL_FAILURE_LIMIT = 10;
 
+// Consume rejected upload bytes without buffering so a client still writing can
+// receive the HTTP error. Bound both time and traffic from a dishonest peer.
+function drainRejectedUpload(req, { timeoutMs, maxBytes }) {
+  if (req.readableEnded) return Promise.resolve('complete');
+  if (req.destroyed) return Promise.resolve('closed');
+  return new Promise((resolve) => {
+    let bytes = 0, done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      req.off('data', onData); req.off('end', onEnd); req.off('error', onClose); req.off('aborted', onClose);
+      resolve(ok);
+    };
+    const onEnd = () => finish('complete');
+    const onClose = () => finish('closed');
+    const onLimit = () => { req.pause(); finish('limit'); };
+    const onData = (chunk) => { bytes += chunk.length; if (bytes > maxBytes) onLimit(); };
+    const timer = setTimeout(onLimit, timeoutMs);
+    timer.unref();
+    req.on('data', onData); req.once('end', onEnd); req.once('error', onClose); req.once('aborted', onClose);
+    req.resume();
+  });
+}
+
+// A rejected request still occupies a connection while it drains. Bound those
+// connections separately from the slots used by valid uploads.
+export function createRejectedUploadDrainer({ timeoutMs = 5 * 60_000, maxBytes = 32 * 1024 * 1024, maxConcurrent = 4 } = {}) {
+  let draining = 0;
+  return async (req) => {
+    if (req.readableEnded) return 'complete';
+    if (req.destroyed) return 'closed';
+    if (draining >= maxConcurrent) { req.pause(); return 'limit'; }
+    draining += 1;
+    try { return await drainRejectedUpload(req, { timeoutMs, maxBytes }); }
+    finally { draining -= 1; }
+  };
+}
+
 function parseJsonBody(raw) {
   if (raw.length === 0) return undefined;
   try {
@@ -64,6 +102,7 @@ export function createBridge({
   now = () => Date.now(),
   log = defaultLog(),
   routeOptions = {},
+  rejectedUploadDrainer = createRejectedUploadDrainer(),
 } = {}) {
   const startedAt = now();
   const enrollFailures = [];
@@ -86,7 +125,7 @@ export function createBridge({
     sendJson(res, status, { data, requestId }, requestId, headers);
   }
 
-  function fail(res, requestId, error) {
+  function fail(res, requestId, error, headers = {}) {
     sendJson(
       res,
       error.status,
@@ -100,6 +139,7 @@ export function createBridge({
         requestId,
       },
       requestId,
+      headers,
     );
   }
 
@@ -223,7 +263,8 @@ export function createBridge({
     ...businessRoutes({ store, now, options: { ...routeOptions,
       sessions: { ...routeOptions.sessions, registerCleanup: (fn) => cleanup.push(fn) },
       calendar: { ...routeOptions.calendar, registerCleanup: (fn) => cleanup.push(fn) },
-      usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) } } }),
+      usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) },
+      tasks: { ...routeOptions.tasks, registerCleanup: (fn) => cleanup.push(fn) } } }),
   ];
 
   // --- request pipeline -----------------------------------------------------
@@ -239,6 +280,7 @@ export function createBridge({
     let errorCode = null;
     let route = null;
     let reservation = null;
+    let streamingUpload = false;
 
     try {
       checkOrigin(req);
@@ -256,7 +298,9 @@ export function createBridge({
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
 
-      const rawBody = await readBody(req, route.bodyLimit ?? BODY_LIMIT_BYTES);
+      streamingUpload = route.streamBody === true;
+      const rawBody = route.streamBody ? Buffer.alloc(0) : await readBody(req, route.bodyLimit ?? BODY_LIMIT_BYTES);
+      if (route.streamBody) res.shouldKeepAlive = false;
 
       let device = null;
       if (route.auth) {
@@ -339,7 +383,16 @@ export function createBridge({
       if (!(err instanceof BridgeError) && log) {
         log({ level: 'error', requestId, error: err?.message ?? String(err) });
       }
-      if (!res.headersSent) fail(res, requestId, error);
+      if (!res.headersSent) {
+        const drain = streamingUpload ? await rejectedUploadDrainer(req) : 'complete';
+        if (drain === 'complete') fail(res, requestId, error);
+        else if (drain === 'limit' && !req.destroyed) {
+          // Deliver the original refusal before closing an oversized, slow or
+          // excess stream. Never keep that connection alive for another request.
+          res.shouldKeepAlive = false;
+          fail(res, requestId, error, { connection: 'close' });
+        }
+      }
     } finally {
       if (log) {
         log({

@@ -642,8 +642,21 @@ store · the session and project API · the owner-task API · Console job observ
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
 - Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/src/routes/skill-metadata.mjs`, `bridge/src/routes/routines.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`, `bridge/test/routines.test.mjs`
+  List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
+  `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
 - Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
+
+- Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
+  `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`,
+  `Conduit/LAA/Work/LAAPersonalInbox.swift`, `Conduit/LAA/Work/LAAPersonalTaskQueue.swift`,
+  `Conduit/LAA/Work/LAALinearTaskCache.swift`, `Conduit/LAA/Work/LAALinearTaskRoute.swift`,
+  `Conduit/LAA/Work/LAATaskSessionReferences.swift`; contract: `bridge/docs/personal-tasks.md`.
+  Bridge: `bridge/src/tasks/personal.mjs`, `bridge/src/tasks/agent-inbox.mjs`,
+  `bridge/src/tasks/owner-notifications.mjs`, `bridge/src/tasks/operation-ledger.mjs`,
+  `bridge/src/routes/personal-tasks.mjs`. Tests: `ConduitTests/LAAPersonalTaskTests.swift`,
+  `ConduitTests/LAAPersonalTaskQueueTests.swift`, `ConduitTests/LAALinearTaskIntegrationTests.swift`,
+  `ConduitUITests/LAAFullTaskUITests.swift`, `bridge/test/agent-inbox.test.mjs`, `bridge/test/linear-actor.test.mjs`.
 
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
@@ -677,6 +690,23 @@ store · the session and project API · the owner-task API · Console job observ
   Skills do not execute from this list.
 - A project detail lists its sessions and passes the project to session creation.
 
+- Tasks also opens the full searchable client: owner/all/active/backlog, paginated projects,
+  cycles and saved views; description editing, comments/replies, history, children,
+  relations, links and private files. Writes use the protected draft store and a
+  viewer/device-bound operation ledger; uncertain outcomes require readback before retry.
+- Agent mode supplies an app-owned inbox for owner-assigned/created/subscribed issues
+  and mentions; local read/archive state is separate from Linear. Native personal
+  inbox access is an explicit later configuration switch. New activity calls the
+  common notifyOwner path; real delivery belongs to the parent integration gate.
+- Protected device/filter caches precede network reads. Task links use
+  laa://work/tasks/<UUID or identifier>. Session hints come from issue text/comments
+  and current session-list data, always labeled as inferred.
+- Owner lists filter open states on Linear; archives use a separate query.
+  Bridge owner/legacy lists use 45-second stale-while-revalidate snapshots.
+  All Linear write transports invalidate both snapshots and fence in-flight refreshes.
+  Agent inbox synchronization runs in the background, retains its last complete
+  snapshot and reports retryable synchronization status before the first snapshot.
+
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
@@ -691,6 +721,12 @@ were captured in light/dark at 440 × 956 pt. Linear list (63 items) and one det
 returned 200 with the real credential; live mutations were not run. Simulator
 CRUD uses the synthetic fixture; the AI usage fixture exercises its unavailable
 state. Production integration and the owner's device remain separate gates.
+Linear full-client extension checked 2026-11-02 at c441450c: 504 Bridge tests passed,
+plus 30 focused checks after the final cache fence; 47 fixed documents validate
+against the official Linear schema. The 2,000-issue latency fixture measured
+23 calls / 11,797 ms before, 2 / 1,014 ms cold and 0 / 0.07 ms warm.
+Swift/UI tests and light/dark screenshots are delegated to the parent's single
+integrated build; no new simulator verification is claimed here.
 
 
 ## Voice beside the tabs

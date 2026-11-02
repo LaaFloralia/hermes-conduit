@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LAALinearTasksView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject private var taskRoute = LAALinearTaskRoute.shared
     @ObservedObject var drafts: ComposerDraftStore
     let priorityOnly: Bool
     var archivedOnly = false
@@ -15,6 +16,7 @@ struct LAALinearTasksView: View {
     @State private var loadID = UUID()
     @State private var loadedDevice: String?
     @State private var editor: Editor?
+    @State private var detail: LAALinearTask?
     @State private var deleting: LAALinearTask?
     @State private var acknowledge = false
     private struct Editor: Identifiable {
@@ -38,6 +40,22 @@ struct LAALinearTasksView: View {
 
     var body: some View {
         List {
+            if !archivedOnly {
+                Section {
+                    NavigationLink { LAAPersonalInboxEntry(drafts: drafts) } label: {
+                        Label { Text(verbatim: "受信箱") } icon: { Image(systemName: "tray") }
+                    }.accessibilityIdentifier("work.linear.inbox")
+                    NavigationLink {
+                        ScrollView {
+                            LAAPersonalTaskList(drafts: drafts, refreshID: 0)
+                                .padding(LAASpacing.horizontal)
+                        }
+                        .background(LAAColor.background)
+                        .navigationTitle(Text(verbatim: "課題を探す"))
+                    } label: { Label { Text(verbatim: "全課題・検索・プロジェクト") } icon: { Image(systemName: "magnifyingglass") } }
+                    .accessibilityIdentifier("work.linear.browse")
+                }
+            }
             if let failure {
                 Section {
                     Text(verbatim: failure).foregroundStyle(LAAColor.attention)
@@ -72,6 +90,9 @@ struct LAALinearTasksView: View {
                                 }.laaTextStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
                         }.buttonStyle(.borderless).disabled(archivedOnly)
+                    }
+                    .contextMenu {
+                        if !archivedOnly { Button { detail = task } label: { Text(verbatim: "詳細・コメント") } }
                     }
                     .disabled(busy || pending != nil)
                     .listRowBackground(LAAColor.surface)
@@ -132,6 +153,22 @@ struct LAALinearTasksView: View {
             }
         }
         .task(id: bridge.revision) { await load() }
+        .sheet(item: $taskRoute.target) { target in
+            NavigationStack {
+                LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button { taskRoute.target = nil } label: { Text(verbatim: "閉じる") }
+                    } }
+            }
+        }
+        .sheet(item: $detail) { task in
+            NavigationStack {
+                LAAPersonalTaskDetailView(id: task.identifier.isEmpty ? task.id : "linear:\(task.identifier)", drafts: drafts)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button { detail = nil } label: { Text(verbatim: "閉じる") }
+                    } }
+            }
+        }
         .sheet(item: $editor) { value in
             LAALinearTaskEditor(id: value.id, task: value.task, busy: busy || pending != nil, failure: failure) { body in
                 submit(method: value.task == nil ? "POST" : "PATCH", id: value.id,
@@ -226,7 +263,12 @@ struct LAALinearTasksView: View {
 
     private func load() async {
         let device = bridge.deviceID
-        if loadedDevice != device { items = []; loaded = false; loadedDevice = device; editor = nil }
+        if loadedDevice != device {
+            items = []; loaded = false; loadedDevice = device; editor = nil
+            if let device, let snapshot: LAALinearTaskCache.OwnerSnapshot = LAALinearTaskCache.read(device: device, scope: archivedOnly ? "archive" : "owner") {
+                items = snapshot.items; loaded = true
+            }
+        }
         guard bridge.status == .paired else { return }
         let epoch = UUID(); loadID = epoch
         loading = true
@@ -236,6 +278,7 @@ struct LAALinearTasksView: View {
             guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
             guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
             items = page.items; loaded = true; failure = nil
+            if let device { LAALinearTaskCache.save(LAALinearTaskCache.OwnerSnapshot(items: items), device: device, scope: archivedOnly ? "archive" : "owner") }
             if !busy, let pending, let (bytes, _) = LAAWorkDrafts.request(pending),
                let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes), mutation.isValid {
                 // A restarted app may have missed a successful reply. Read only;

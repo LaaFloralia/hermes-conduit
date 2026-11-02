@@ -45,6 +45,8 @@ final class ComposerDraftStore: ObservableObject {
         var screenshotID: String? = nil
         var groupEventID: String? = nil
         var groupOutboundText: String? = nil
+        // Work-only: the original device/viewer key stays bound to its ledger.
+        var personalOrigin: ComposerDraftKey? = nil
     }
 
     private struct Entry: Codable {
@@ -266,7 +268,8 @@ final class ComposerDraftStore: ObservableObject {
         }
         let submission = Submission(id: submission.id, key: submission.key, dashboardID: submission.dashboardID,
                                     draft: durable, pendingSendID: submission.pendingSendID, screenshotID: submission.screenshotID,
-                                    groupEventID: submission.groupEventID, groupOutboundText: submission.groupOutboundText)
+                                    groupEventID: submission.groupEventID, groupOutboundText: submission.groupOutboundText,
+                                    personalOrigin: submission.personalOrigin)
         let oldDrafts = drafts, oldOrder = order, oldGenerations = generations
         submissions.append(submission)
         if clearingDraft {
@@ -310,6 +313,23 @@ final class ComposerDraftStore: ObservableObject {
             submissions[index].groupOutboundText = oldOutboundText
             return false
         }
+        return true
+    }
+
+    /// Move only the local protected envelope. Never change its request or key;
+    /// the original device/viewer remains the authority for reconciliation.
+    @discardableResult
+    func movePersonalSubmission(_ id: UUID, to destination: ComposerDraftKey) -> Bool {
+        guard let index = submissions.firstIndex(where: { $0.id == id }),
+              submissions[index].dashboardID == destination.dashboardID,
+              submissions[index].key != destination,
+              !submissions.contains(where: { $0.id != id && $0.key == destination }),
+              !hasDraft(for: destination) else { return false }
+        let previous = submissions[index]
+        submissions[index].personalOrigin = previous.personalOrigin ?? previous.key
+        submissions[index].key = destination
+        guard persist() else { submissions[index] = previous; return false }
+        activeSubmissions.remove(id)
         return true
     }
 

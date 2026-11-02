@@ -171,6 +171,7 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     let id: String
     let name: String
     let nameSource: String?
+    let delegateSessionId: String?
     let requestId: String
     let parentId: String?
     let projectId: String?
