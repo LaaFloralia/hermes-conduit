@@ -45,6 +45,5 @@ AGENTS.md
 .zcode/
 /workflows/
 .test-runs/
-.deriveddata/
-.deriveddata-release/
+.deriveddata*/
 *.xcresult

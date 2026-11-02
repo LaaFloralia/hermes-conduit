@@ -249,9 +249,9 @@ final class LAABrainUITests: XCTestCase {
     }
 
     func testUnpairedStateOffersPairing() {
+        // An unpaired Bridge opens straight on the connection view, which
+        // carries the pairing button itself.
         let app = launch()
-        XCTAssertTrue(app.buttons["laa.brain.openMac"].waitForExistence(timeout: 30))
-        app.buttons["laa.brain.openMac"].tap()
         XCTAssertTrue(app.buttons["laa.bridge.openPairing"].waitForExistence(timeout: 30))
     }
 

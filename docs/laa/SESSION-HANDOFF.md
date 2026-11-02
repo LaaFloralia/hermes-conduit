@@ -2,7 +2,7 @@
 
 最初に読む入口。社長の呼び名は「AIアプリ」「LAAアプリ」。ここには現行の進め方と状態だけを置き、経緯はgit logとLinearに任せる。古くなった記述は書き足さずに置き換える。
 
-最終更新: 2026-11-01（ゲートはmaster `638a2af6` と比較。UI試験は `LAA 16 Pro Max` で実施）
+最終更新: 2026-11-03（統合1102のゲート。master `156c096d` と同一smokeクラスで比較し、UI試験は `LAA 16 Pro Max` で実施）
 
 ## 位置づけ
 
@@ -57,17 +57,19 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
   2. `python3 scripts/plan-tests.py smoke --repo-root . --suite scripts/smoke-suite.json --changed-from <mergeしたmasterのSHA> --out <file>` で選ばれたunit・UIクラスを、既定のConduit scheme（`project.yml`。LAA版ではない）で流す。端末は言語と地域を英語（米国）に設定して読み戻したものを使う（`-AppleLanguages` だけでは効かなかった）。同じクラスをmasterでも流し、候補だけの失敗が0であること。
   3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
   4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
-- 既知の失敗: `LAA 16 Pro Max`（master `638a2af6`、英語（米国））は `ConnectionSetupUITests` 5件のみ。`ProfilePickerUITests` は3件とも成功した。
+- 既知の失敗: `LAA 16 Pro Max`（英語（米国））の `ConnectionSetupUITests` 5件。master `156c096d` と候補の同一smokeで両方同じ5件だけが失敗し、`ProfilePickerUITests` は候補・masterとも3件成功（統合1102で確認）。
 - Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
 - TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2611020818（2026-11-02、master 628b4c93、統合1102b：Liquid Glassの全体調整と横長ウィジェットの簡素化、Workのタスク（チェックボックス廃止・確認付き削除＝Linearアーカイブ・戻す）、スキルの分類と日本語説明・詳細、定期実行のtriggerKind表示、LAA Internal）。終わったら `build/laa/DerivedData` を消す。
 
-## 現在の状態（2026-10-31）
+## 現在の状態（2026-11-03）
 
-- 完了: ROADMAP 01–14・24・25・28、デザインv2、W3の仕上げ（プラグイン更新表示の撤去、社員呼出しボタンの表示条件）。
-- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリ・Bridge実装済み。BridgeはLAA Studioの契約v1ローカル受付へ中継し、依頼・進行・回答・停止・成果物プレビューまで。実機確認と契約v2の成果物確認・審美眼はこれから）。
-- Driveのマウント方式とネイティブ再生は `laa/drive-viewer` の候補。稼働中の `com.laa.bridge` は両Driveルートの読取が `EPERM` で、macOS権限と実機での検証が残る。
-- Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
+- 統合1102で Google（Drive/Calendar）・Brain・Paseo・Linear・fixes・bridge-speed を master へ統合した（`laa/integrate-1102`）。Bridgeは全521試験、翻訳6546箇所、FEATURE_MAP 104節/1616パスが通る。
+- Workのタスクは Linear の一覧・受信箱・作成/変更・コメント・添付・アーカイブ復元までをアプリで行える。受信箱の既読は端末側で保持する。
+- Driveは Studio タブの「Drive」から既存の Assets 画面（Drive/Studio切替）へ入る。5タブは変えていない。設定は全タブで右上の同じ位置（作成系は左上）。
+- Bridgeの遅い読み取り（routines/Studio/usage）は前回成功値と `fetchedAt` を返し、期限切れはアプリが「最新ではない可能性」を表示する。Googleのカレンダー通知は初回有効化時刻を台帳に残し、有効化前の過去分をまとめて送らない（以後の失敗・再起動の追送と重複抑止は維持）。
+- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（`laa/mac-catalyst` 系で進行）、34 Studio依頼の仕上げ。
+- 実機確認は未了（TestFlight後）。Drive/Calendarの実データ、Linearの実書き込み、Paseoの通知・IME/音声、WidgetKitの表示は親と社長が実機で確かめる。
 
 ## 判断待ちと未解決（Linear「LAAアプリ」）
 
