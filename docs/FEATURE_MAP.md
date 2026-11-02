@@ -694,6 +694,12 @@ were captured in light/dark at 440 × 956 pt. Linear list (63 items) and one det
 returned 200 with the real credential; live mutations were not run. Simulator
 CRUD uses the synthetic fixture; the AI usage fixture exercises its unavailable
 state. Production integration and the owner's device remain separate gates.
+Linear full-client extension checked 2026-11-02 at c441450c: 504 Bridge tests passed,
+plus 30 focused checks after the final cache fence; 47 fixed documents validate
+against the official Linear schema. The 2,000-issue latency fixture measured
+23 calls / 11,797 ms before, 2 / 1,014 ms cold and 0 / 0.07 ms warm.
+Swift/UI tests and light/dark screenshots are delegated to the parent's single
+integrated build; no new simulator verification is claimed here.
 
 
 ## Voice beside the tabs
