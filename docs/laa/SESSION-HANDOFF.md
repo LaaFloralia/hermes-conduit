@@ -65,7 +65,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 - 既知の失敗: `LAA 16 Pro Max`（master `638a2af6`、英語（米国））は `ConnectionSetupUITests` 5件のみ。`ProfilePickerUITests` は3件とも成功した。
 - Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
-- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2611011514（2026-11-02、master 54aa9768、統合1101：Drive・Brain・社長タスク・AI usage・セッション・Today・チャット入力・Ciel（無検閲）・Conduit名残り削除、LAA Internal）。chat-headerは未統合。終わったら `build/laa/DerivedData` を消す。
+- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2611020224（2026-11-02、master 51dd4ec5、統合1102：AI usage・ウィジェットの保持表示、会話画面・チャット一覧、Workの6タブとLinear社長タスク、セッション・プロジェクト、TodayのGoogleカレンダー、Bridgeの権限grant、LAA Internal）。終わったら `build/laa/DerivedData` を消す。
 
 ## 現在の状態（2026-10-31）
 
