@@ -305,11 +305,11 @@ def run_fixture(root, *, retention):
         subprocess.run([str(swift_fixture), "fallback", str(phone.notes), str(root / "fallback-private"),
                         "swift-fallback.md", "FALLBACK_DRAFT"], check=True, timeout=30, capture_output=True)
         phone.scan()
-        wait_for("Swift fallback draft to sync", lambda: file_is(mac.notes / "swift-fallback.md", b"FALLBACK_DRAFT"), (phone, mac))
-        remaining_temp = list(temporary_dir.iterdir())
+        wait_for("unsupported exchange leaves original", lambda: file_is(mac.notes / "swift-fallback.md", b"FALLBACK_BASE"), (phone, mac))
+        remaining_temp = list(temporary_dir.iterdir()) if temporary_dir.exists() else []
         peer_temp = mac.notes / ".laa-tmp"
         assert not remaining_temp and not peer_temp.exists(), (remaining_temp, peer_temp.exists())
-        print("PASS: ignored fallback staging stays local; checked replacement syncs and leaves no temporary draft")
+        print("PASS: unsupported exchange leaves synced original unchanged; draft stays private")
 
         for name, content, mode in (("created", "NEW_NOTE_BODY", "private"),
                                     ("created-fallback", "FALLBACK_NEW_BODY", "fallback")):

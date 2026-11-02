@@ -21,6 +21,8 @@ struct LAABrainNoteView: View {
     @State private var loading = true
     @State private var raw = false
     @State private var showQuickSwitch = false
+    @State private var showManage = false
+    @State private var managedNote: LAABrainNote?
     @State private var editorRoot: URL?
     @State private var editorAutoFocus = false
 
@@ -51,7 +53,7 @@ struct LAABrainNoteView: View {
                             Text(verbatim: localError).foregroundStyle(LAAColor.attention)
                             Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
                         } else if let error {
-                            Text(verbatim: error.japaneseText).foregroundStyle(LAAColor.attention)
+                            Text(verbatim: error == .forbidden ? LAACopy.Brain.ownerPermissionRequired : error.japaneseText).foregroundStyle(LAAColor.attention)
                             Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
                         } else if let note {
                             if raw {
@@ -99,6 +101,13 @@ struct LAABrainNoteView: View {
                             .accessibilityIdentifier("laa.brain.edit")
                     }
                 }
+                if isLocal && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { managedNote = note; editorIsOpen = true; showManage = true } label: { Image(systemName: "ellipsis.circle") }
+                            .accessibilityLabel(Text(verbatim: "ノートの管理"))
+                            .accessibilityIdentifier("laa.brain.manage")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: togglePin) { Image(systemName: isPinned ? "pin.fill" : "pin") }
                         .accessibilityLabel(Text(verbatim: isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin))
@@ -136,6 +145,17 @@ struct LAABrainNoteView: View {
             .onChange(of: loading) { _, isLoading in
                 if !isLoading, let anchor = reference.anchor, !anchor.isEmpty {
                     DispatchQueue.main.async { proxy.scrollTo(LAABrainDocument.anchorID(path: reference.path, title: anchor), anchor: .top) }
+                }
+            }
+            .sheet(isPresented: $showManage, onDismiss: { editorIsOpen = false; managedNote = nil }) {
+                if let managedNote, let root = try? local.snapshot() {
+                    LAABrainManageNoteView(root: root, note: managedNote) { destination in
+                        showManage = false; editorIsOpen = false
+                        if !path.isEmpty { path.removeLast() }
+                        if !destination.hasPrefix(".trash/") {
+                            path.append(.note(LAABrainReference(path: destination, includeInbox: true)))
+                        }
+                    }
                 }
             }
             .sheet(isPresented: $showQuickSwitch) {

@@ -66,7 +66,7 @@ final class LAABrainTests: XCTestCase {
         let components = try XCTUnwrap(URLComponents(string: route))
         XCTAssertEqual(components.queryItems?.first(where: { $0.name == "q" })?.value, "色 & 形 C++")
         XCTAssertTrue(route.contains("C%2B%2B"))
-        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "area" })?.value, "inbox")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "audience" })?.value, "owner")
         XCTAssertEqual(LAABrainReference(path: "é.md", includeInbox: false).id,
                        LAABrainReference(path: "e\u{301}.md", includeInbox: false).id)
     }

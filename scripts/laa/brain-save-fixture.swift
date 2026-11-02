@@ -46,8 +46,14 @@ import Darwin
             var coordinator = LAABrainSaveCoordinator(journal: journal)
             coordinator.fixtureForceFallback = true
             let snapshot = try coordinator.begin(root: root, path: args[4])
-            guard case .saved(.checkedReplacement) = try coordinator.save(root: root, snapshot: snapshot, draft: Data(args[5].utf8)) else { throw FixtureFailure() }
-            print("PASS: checked fallback")
+            do {
+                _ = try coordinator.save(root: root, snapshot: snapshot, draft: Data(args[5].utf8))
+                throw FixtureFailure()
+            } catch LAABrainSaveCoordinator.SaveError.recoveryExportRequired { }
+            try check(tryData(root.appendingPathComponent(args[4])) == snapshot.base, "unsupported exchange changed original")
+            let versions = try journal.versions(vault: snapshot.vault, path: snapshot.path)
+            try check(versions.contains { $0.bytes == Data(args[5].utf8) }, "unsupported exchange lost draft")
+            print("PASS: unsupported exchange retains draft and original")
             return
         }
         guard args[1] == "race", args.count == 7 || args.count == 8 else { throw FixtureFailure() }

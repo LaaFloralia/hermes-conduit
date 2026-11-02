@@ -64,7 +64,7 @@ export function grantStudio(store, { target, reason, now = Date.now(), operatorU
   });
 }
 
-// The operator's narrow grant for the two opt-in scopes. Every requested scope
+// The operator's narrow grant for opt-in scopes. Every requested scope
 // is checked against the allowlist before the store is touched, so a mixed
 // request such as `calendar:read,brain:write` grants neither. The audit record
 // is append-only per device: a later grant of the other scope keeps the earlier

@@ -13,7 +13,7 @@
 |---|---|---|
 | 認証 | 端末ごとの 256bit ランダムトークン（`Authorization: Bearer`）。保存は SHA-256 hash のみ | §9。要求ごとの署名・nonce 台帳は採らない |
 | ペアリング | Mac の CLI が10分有効・1回限りのコードを発行。state には hash のみ保存し、コードは端末に一度だけ表示 | §9。コードはログ・引数・チャットへ出さない |
-| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read`・`calendar:write`・`media:write`・`brain:create` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|calendar:write|media:write|brain:create> --reason <理由>` で付与する。この4つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
+| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read`・`calendar:write`・`media:write`・`brain:create`・`brain:owner` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|calendar:write|media:write|brain:create|brain:owner> --reason <理由>` で付与する。この5つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
 | idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は原則として保存応答を再返却（Studioの作成・操作は現在の状態を取得）、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
@@ -112,7 +112,7 @@ laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner
 | `POST /v1/sessions/{id}/resume` | Bearer + `sessions:write` + `Idempotency-Key` | `{message,profile?,requestId?}` → 201 後継 session（`resumedFrom`）。停止確認済みのみ |
 | `GET /v1/brain/files?area=&limit=&cursor=` | Bearer + `brain:read` | 許可領域の Markdown ノート一覧（`id,path,area,size,modifiedAt,contentHash,title,status,checked`）。`area` は既定外の領域を明示的に足す |
 | `GET /v1/brain/files/{id}?area=` | Bearer + `brain:read` | `{id,path,text,contentHash,etag,size,status,checked}`。領域外・symlink・不存在は 404 |
-| `GET /v1/brain/search?q=&k=&area=&adopted=&rerank=` | Bearer + `brain:read` | `laa-brain search` の結果を `{found,matchBasis,results[{path,section,lines,status,relevance,text}]}` で返す。既定はローカルのみ（`rerank=1` で Jev 再判定） |
+| `GET /v1/brain/search?q=&k=&area=&adopted=&rerank=` | Bearer + `brain:read` | `laa-brain search` の結果を `{found,matchBasis,results[{path,section,lines,status,relevance,text}]}` で返す。常にローカルのみ。本人の全ノート閲覧には `audience=owner` と専用scope `brain:owner` が必要 |
 | `POST /v1/brain/files` | Bearer + `brain:create` + `Idempotency-Key` | `{path,content,onConflict?}` → 201 新規ノート（`id,path,contentHash,size,suffixApplied`）。既存内容は変更しない |
 | `GET /v1/brain/gates` | Bearer + `brain:read` | vault・git・Syncthing・空き容量の事前条件（`ok`／`code`） |
 | `GET /v1/usage` | Bearer + `usage:read` | CodexBar proxy の利用枠・残高を `{items,nextCursor}` で返す。欠測は `unavailable`＋`value:null`、proxy が5秒を超えたら直前の成功値を元の `observedAt` で返す |
@@ -328,12 +328,14 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 
 ## Brain（`/v1/brain`）
 
+本人UIの `audience=owner` は、認証済み端末にoperatorがopt-in付与した `brain:owner` が必須。値だけを指定した通常トークンは403で拒否する。本人一覧は全領域の非隠しMarkdownと競合コピーを含み、`.trash`・`.obsidian`・隠し項目・symlinkを除く。検索はモデルを使わない字句検索。通常要求の領域制限は以下のとおり維持する。
+
 ROADMAP 25。タスク24の決定（`docs/laa/BRAIN-WRITE.md`）どおり、**既存内容の置換（`brain:write`）は提供しない**。提供するのは一覧・取得・検索と、**新規パスの作成だけ**（`brain:create`、O_EXCL、上書き経路なし）。実装は `src/routes/brain.mjs` と `src/brain/`（policy / vault / gates / journal / search）。
 
 | 項目 | 決定 | 理由 |
 |---|---|---|
 | 領域 | 領域判定は `laa-brain` が読む `policy.json` をそのまま使う（既定 `/Users/laa/.local/share/laa-plugins/dev-main/laa-jev/brain/policy.json`、`LAA_BRIDGE_BRAIN_POLICY` で変更可）。既定は policy の default 領域のみで、`old`・`Inbox`・`Sources`・`Journal`・`Trading/研究資料`・`Trading/Reviews`・`Attachments`・`Templates`・未分類は `?area=` で明示した時だけ足す | 検索CLIと別の一覧を持つと、CLIが検索しないノートがアプリに出る。取り違えを二重実装しない |
-| 検索 | `laa-brain search --json` を1検索1プロセスで呼び、結果を封筒へ写す。**既定は `--no-jev`**（ローカルのみ）。`rerank=1` の時だけCLI本来のJev再判定を通す | 既存の検索経路を再利用する。電話からの検索が既定でBrain抜粋を外部モデルへ送る新しい経路にならないようにする（Jev経由はCLI単体では承認済みだが、Bridgeからの自動送信は社長の明示時だけ）。応答は `matchBasis` と `relevanceStatus` を保持し、未判定を根拠にしない |
+| 検索 | `laa-brain search --json` を1検索1プロセスで呼び、結果を封筒へ写す。**常に `--no-jev`**（ローカルのみ）。`rerank=1` でもモデルへ送らない | 既存の検索経路を再利用する。電話からの検索が既定でBrain抜粋を外部モデルへ送る新しい経路にならないようにする。応答は `matchBasis` と `relevanceStatus` を保持し、未判定を根拠にしない |
 | 取得 | `id` は `bf_` + base64url(vault相対パス)。使う時に再検証する（NFC・`..`なし・`.md`・隠し/予約名/競合コピー拒否・realpath一致）。symlinkは辿らず404 | パスを不透明IDにしても検証を省かない |
 | 作成 | 本文はそのまま書き、書いたバイト列の SHA-256 を返す。`path` は作成許可prefix（既定 `Inbox/`、`LAA_BRIDGE_BRAIN_CREATE_PREFIXES`）内のみ、親フォルダは既存のみ。名前衝突は既定 `onConflict:"suffix"`（`Note 2.md` を O_EXCL で確保）で、`"reject"` なら 409 `path_exists`。rename・上書き・切詰め・削除の経路は無い | BRAIN-WRITE §7「新規pathのみ・unique name・RENAME_EXCL・journal付き」 |
 | 事前条件 | 空き容量64MB以上、gitが `master` かつ `index.lock`/rebase/merge/cherry-pick 無し（423）、Syncthing folder が paused でなく `errors`/`pullErrors` が0（503）。判定は `GET /v1/brain/gates` で見える | §4-2・§5。`state` 語彙は未確定（§8）なので、新規作成では scan 中を理由に拒否しない（CAS窓が無いため） |
@@ -345,7 +347,7 @@ ROADMAP 25。タスク24の決定（`docs/laa/BRAIN-WRITE.md`）どおり、**�
 curl -sS -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:9137/v1/brain/files?limit=20'
 curl -sS -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:9137/v1/brain/files?area=inbox'
 
-# 検索（ローカルのみ。Jev再判定は rerank=1）
+# 検索（常にローカルのみ）
 curl -sS -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:9137/v1/brain/search?q=デザイン&k=3'
 
 # 新規作成（上書きしない。衝突時は "Note 2.md" になる）

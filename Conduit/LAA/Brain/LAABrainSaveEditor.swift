@@ -10,11 +10,13 @@ private struct BrainSaveConflict {
 
 struct LAABrainSaveEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let root: URL
     let path: String
     let autoFocus: Bool
     let didSave: () -> Void
     private let coordinator = LAABrainSaveCoordinator()
+    private let drafts = LAABrainDraftStore()
     @State private var snapshot: LAABrainSaveCoordinator.Snapshot?
     @State private var draft = ""
     @State private var conflict: BrainSaveConflict?
@@ -26,7 +28,6 @@ struct LAABrainSaveEditor: View {
     @State private var historyUnreadable = false
     @State private var message: String?
     @State private var showHistory = false
-    @State private var showFallbackWarning = false
     @State private var showHistoryWarning = false
     @State private var newlyCorruptHistory = false
     @State private var missingStageID: UUID?
@@ -80,6 +81,14 @@ struct LAABrainSaveEditor: View {
                                 .accessibilityIdentifier("laa.brain.edit.exportDraft")
                         }
                     }
+                } else if canExportDraft {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                            versionPanel("自分の下書き", text: draft)
+                            Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
+                                .accessibilityIdentifier("laa.brain.edit.exportDraft")
+                        }.padding(LAASpacing.horizontal)
+                    }
                 } else {
                     ContentUnavailableView("編集画面を開けません", systemImage: "exclamationmark.triangle", description: Text("フォルダの接続を確認してください。"))
                 }
@@ -114,6 +123,12 @@ struct LAABrainSaveEditor: View {
             await open()
             if autoFocus && snapshot != nil && pending.isEmpty { draftFocused = true }
         }
+        .task(id: draft) {
+            guard !busy, snapshot != nil else { return }
+            do { try await Task.sleep(for: .milliseconds(400)); try Task.checkCancellation(); if !busy { preserveDraft() } }
+            catch { }
+        }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { preserveDraft() } }
         .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .data,
                       defaultFilename: exportName) { result in
             switch result {
@@ -135,13 +150,6 @@ struct LAABrainSaveEditor: View {
                     Task { await resolve(using: text) }
                 }
             }
-        }
-        .alert("一部の保護が使えない状態で保存しました", isPresented: $showFallbackWarning) {
-            Button("OK") {
-                if newlyCorruptHistory { showHistoryWarning = true } else { didSave(); dismiss() }
-            }
-        } message: {
-            Text("この保存先では原子的に入れ替えられません。最後の確認直後に別の変更があると、その変更が残らない場合があります。")
         }
         .alert("履歴が壊れています", isPresented: $showHistoryWarning) {
             Button("OK") { didSave(); dismiss() }
@@ -227,12 +235,21 @@ struct LAABrainSaveEditor: View {
             versions = stored; pending = unfinished
             if unfinished.isEmpty {
                 readingNote = true
-                let entry = try await Task.detached(priority: .userInitiated) {
-                    try coordinator.begin(root: root, path: path)
+                let opening = try await Task.detached(priority: .userInitiated) {
+                    try coordinator.openEditor(root: root, path: path, drafts: drafts)
                 }.value
                 readingNote = false
-                snapshot = entry
-                draft = String(decoding: entry.base, as: UTF8.self)
+                switch opening {
+                case let .note(entry, bytes, conflicted):
+                    snapshot = entry
+                    draft = String(decoding: bytes, as: UTF8.self)
+                    if conflicted {
+                        conflict = BrainSaveConflict(other: String(data: entry.base, encoding: .utf8), draft: draft, afterExchange: false)
+                    }
+                case let .detachedDraft(bytes):
+                    snapshot = nil; draft = String(decoding: bytes, as: UTF8.self); canExportDraft = true
+                    message = "ノートを読めません。保管庫へのアクセスを確認してください。"
+                }
                 versions = try await Task.detached(priority: .userInitiated) {
                     try coordinator.journal.summaries(vault: vault, path: path)
                 }.value
@@ -249,6 +266,9 @@ struct LAABrainSaveEditor: View {
         } catch {
             message = readingNote ? "ノートを読めません。保管庫へのアクセスを確認してください。" : "履歴を読めません。端末内の保存領域を確認してください。"
         }
+        if snapshot == nil, let retained = try? drafts.load(vault: LAABrainSaveJournal.vaultID(root), path: path) {
+            draft = String(decoding: retained.bytes, as: UTF8.self); canExportDraft = true
+        }
         busy = false
     }
 
@@ -263,6 +283,7 @@ struct LAABrainSaveEditor: View {
         injectFixtureMissingStage = false
         #endif
         do {
+            try drafts.save(.init(vault: snapshot.vault, path: path, base: snapshot.base, bytes: data))
             let outcome = try await Task.detached(priority: .userInitiated) {
                 var worker = coordinator
                 #if DEBUG
@@ -283,6 +304,9 @@ struct LAABrainSaveEditor: View {
             versions = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.summaries(vault: snapshot.vault, path: path)
             }.value
+            pending = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.pending(vault: snapshot.vault, path: path)
+            }.value
             let foundCorruption = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.corruptCount(vault: snapshot.vault, path: path) > 0
             }.value
@@ -290,9 +314,8 @@ struct LAABrainSaveEditor: View {
             historyCorrupt = foundCorruption
             switch outcome {
             case .saved(.exchange):
+                try drafts.clear(vault: snapshot.vault, path: path)
                 if newlyCorruptHistory { showHistoryWarning = true } else { didSave(); dismiss() }
-            case .saved(.checkedReplacement):
-                showFallbackWarning = true
             case let .conflict(current, mine):
                 conflict = BrainSaveConflict(other: String(data: current, encoding: .utf8),
                                              draft: String(decoding: mine, as: UTF8.self), afterExchange: false)
@@ -402,7 +425,16 @@ struct LAABrainSaveEditor: View {
         } catch { message = "中断した保存の記録を消せませんでした。"; busy = false }
     }
 
+    @MainActor private func preserveDraft() {
+        guard let snapshot else { return }
+        do {
+            if Data(draft.utf8) == snapshot.base { try drafts.clear(vault: snapshot.vault, path: path); return }
+            try drafts.save(.init(vault: snapshot.vault, path: path, base: snapshot.base, bytes: Data(draft.utf8)))
+        } catch { message = "下書きを端末に保管できません。画面を開いたまま保存領域を確認してください。" }
+    }
+
     @MainActor private func close() async {
+        preserveDraft()
         if let snapshot, Data(draft.utf8) != snapshot.base {
             busy = true
             let bytes = Data(draft.utf8)

@@ -41,6 +41,7 @@ extension LAACopy {
         static let openNote = "Open note"
         static let checkInbox = "Check Inbox and start again"
         static let checkPermission = "Check permission"
+        static var ownerPermissionRequired: String { AppLocalization.string("Grant this device Brain viewing access on your Mac.") }
     }
 }
 #endif

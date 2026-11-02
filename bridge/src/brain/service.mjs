@@ -86,9 +86,9 @@ export function createBrainService({
     policyFile,
     vaultRoot,
 
-    list({ areas = [], limit, offset }) {
+    list({ areas = [], limit, offset, owner = false }) {
       const resolved = areasFor(areas);
-      const items = vault().list({ allowedAreas: resolved.allowed });
+      const items = vault().list({ allowedAreas: owner ? null : resolved.allowed, owner });
       const page = items.slice(offset, offset + limit);
       return {
         items: page,
@@ -99,20 +99,40 @@ export function createBrainService({
       };
     },
 
-    read({ id, areas = [] }) {
+    read({ id, areas = [], owner = false }) {
       const resolved = areasFor(areas);
-      const path = pathFromId(id);
-      assertArea(path, resolved.allowed);
-      const entry = vault().read({ path, allowedAreas: resolved.allowed });
+      const path = pathFromId(id, { owner });
+      if (!owner) assertArea(path, resolved.allowed);
+      const entry = vault().read({ path, allowedAreas: owner ? null : resolved.allowed });
       return { ...entry, etag: entry.contentHash };
     },
 
-    async search({ query, k, areas = [], adopted = false, rerank = false }) {
+    async search({ query, k, areas = [], adopted = false, owner = false }) {
       const text = typeof query === 'string' ? query.trim() : '';
       if (text.length === 0 || text.length > MAX_QUERY_CHARS) {
         throw badRequest('query_invalid', `q must be 1-${MAX_QUERY_CHARS} characters`);
       }
       const resolved = areasFor(areas);
+      // Owner UI is a direct, literal vault search. It never invokes a model
+      // or inherits the narrower policy for agent/automatic processing.
+      if (owner) {
+        const source = vault();
+        const needle = text.toLocaleLowerCase();
+        const results = [];
+        for (const file of source.list({ allowedAreas: null, owner: true })) {
+          if (file.unreadable) continue;
+          let note;
+          try { note = source.read({ path: file.path, allowedAreas: null }); } catch { continue; }
+          const index = note.text.toLocaleLowerCase().indexOf(needle);
+          if (index < 0 && !note.path.toLocaleLowerCase().includes(needle)) continue;
+          results.push({ path: note.path, section: '', lines: null, zone: note.area,
+            status: note.status, checked: note.checked, relevance: null,
+            relevanceStatus: 'unjudged', text: note.text.slice(Math.max(0, index - 100), Math.max(0, index - 100) + 4000) });
+          if (results.length >= k) break;
+        }
+        return { query: text, found: results.length > 0, matchBasis: 'lexical_only',
+          areas: [], optionalAreas: [], rerank: false, results, nextCursor: null };
+      }
       const defaults = defaultAreas(policy());
       const result = await runSearch({
         query: text,
@@ -121,7 +141,7 @@ export function createBrainService({
         // defaults and validates the names again.
         areas: resolved.allowed.filter((area) => !defaults.includes(area)),
         adopted,
-        rerank,
+        rerank: false,
       });
       const allowed = resolved.allowed;
       const results = (result.results ?? [])
@@ -145,7 +165,7 @@ export function createBrainService({
         matchBasis: result.match_basis ?? 'unknown',
         areas: allowed,
         optionalAreas: resolved.optional,
-        rerank,
+        rerank: false,
         results,
         nextCursor: null,
       };

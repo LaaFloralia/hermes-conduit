@@ -75,6 +75,49 @@ struct LAABrainRenderedDocument: View {
     }
 }
 
+/// Reuses the same attachment policy and renderer as the note, so thumbnail
+/// browsing cannot read a different part of the selected vault.
+struct LAABrainGalleryView: View {
+    let index: LAABrainIndex
+    let files: [LAABrainFile]
+    @ObservedObject var local: LAABrainLocalVault
+    let open: (LAABrainReference) -> Void
+
+    private var items: [(file: LAABrainFile, source: String)] {
+        index.entries.compactMap { entry in
+            let images = LAABrainDocument(entry.text).parts(currentPath: entry.file.path, files: files)
+            for part in images {
+                guard case .image(let source) = part, let spec = LAABrainEmbedSpec.parse(source) else { continue }
+                let name = spec.target.split(separator: "#").first.map(String.init) ?? ""
+                if ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"].contains(URL(fileURLWithPath: name).pathExtension.lowercased()) {
+                    return (entry.file, source)
+                }
+            }
+            return nil
+        }
+    }
+
+    var body: some View {
+        if items.isEmpty {
+            Text(verbatim: "画像を含むノートはありません。").foregroundStyle(LAAColor.secondaryText)
+        } else {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: LAASpacing.x3) {
+                ForEach(items, id: \.file.id) { item in
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        LAABrainEmbedView(source: item.source, currentPath: item.file.path, files: files, local: local,
+                                          isLocal: true, visited: [item.file.path], depth: 0, maxPixelSize: 512, open: open)
+                            .frame(height: 150).clipped()
+                        Button { open(LAABrainReference(file: item.file, includeInbox: true)) } label: {
+                            Text(verbatim: item.file.title).lineLimit(2)
+                        }.accessibilityIdentifier("laa.brain.gallery.note")
+                    }
+                    .padding(LAASpacing.x3).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                }
+            }
+        }
+    }
+}
+
 private struct LAABrainHighlight: View {
     let source: String
     var heading = false

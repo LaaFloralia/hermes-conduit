@@ -16,7 +16,76 @@ struct BrainSaveFixture {
 
     static func tryData(_ url: URL) -> Data? { try? Data(contentsOf: url) }
 
+    static func relocationTest(_ work: URL) throws {
+        let manager = FileManager.default
+        let root = work.appendingPathComponent("vault")
+        try manager.createDirectory(at: root.appendingPathComponent("Folder"), withIntermediateDirectories: true)
+        let journal = LAABrainSaveJournal(directory: work.appendingPathComponent("history"))
+        let drafts = LAABrainDraftStore(directory: work.appendingPathComponent("drafts"))
+        let savedDraft = LAABrainDraftStore.Draft(vault: "fixture", path: "Start.md", base: Data("BASE".utf8), bytes: Data("DRAFT".utf8))
+        try drafts.save(savedDraft)
+        let reloadedDraft = try drafts.load(vault: "fixture", path: "Start.md")
+        try check(reloadedDraft == savedDraft, "offline draft did not survive reopen")
+        let otherVault = try drafts.load(vault: "other", path: "Start.md")
+        try check(otherVault == nil, "draft leaked between vaults")
+        try drafts.clear(vault: "fixture", path: "Start.md")
+        let clearedDraft = try drafts.load(vault: "fixture", path: "Start.md")
+        try check(clearedDraft == nil, "committed draft was not cleared")
+        let coordinator = LAABrainSaveCoordinator(journal: journal)
+        let bytes = Data("---\r\ntags: [fixture]\r\n---\r\n![](../Assets/a.png)\r\n%% unknown %%\r\n".utf8)
+        try bytes.write(to: root.appendingPathComponent("Start.md"))
+        let snapshot = try coordinator.begin(root: root, path: "Start.md")
+        _ = try coordinator.relocate(root: root, snapshot: snapshot, destination: "Folder/Renamed.md")
+        try check(tryData(root.appendingPathComponent("Folder/Renamed.md")) == bytes, "move changed source bytes")
+        try check(!manager.fileExists(atPath: root.appendingPathComponent("Start.md").path), "move left original path")
+        let moved = try coordinator.begin(root: root, path: "Folder/Renamed.md")
+        try Data("EXISTING".utf8).write(to: root.appendingPathComponent("Existing.md"))
+        do {
+            _ = try coordinator.relocate(root: root, snapshot: moved, destination: "Existing.md")
+            throw FixtureFailure()
+        } catch LAABrainSaveCoordinator.SaveError.destinationExists { }
+        try check(tryData(root.appendingPathComponent("Existing.md")) == Data("EXISTING".utf8), "collision overwrote destination")
+        for invalid in ["../Escaped.md", ".git/Note.md", "Folder/../../Escaped.md", ".trash/Note.md"] {
+            do {
+                _ = try coordinator.relocate(root: root, snapshot: moved, destination: invalid)
+                throw FixtureFailure()
+            } catch is FixtureFailure { throw FixtureFailure() }
+            catch { }
+        }
+        let outside = work.appendingPathComponent("outside")
+        try manager.createDirectory(at: outside, withIntermediateDirectories: true)
+        try manager.createSymbolicLink(at: root.appendingPathComponent("Linked"), withDestinationURL: outside)
+        do {
+            _ = try coordinator.relocate(root: root, snapshot: moved, destination: "Linked/Escaped.md")
+            throw FixtureFailure()
+        } catch is FixtureFailure { throw FixtureFailure() }
+        catch { }
+        let changed = Data("EXTERNAL CHANGE".utf8)
+        try changed.write(to: root.appendingPathComponent(moved.path))
+        do {
+            _ = try coordinator.relocate(root: root, snapshot: moved, destination: "Other.md")
+            throw FixtureFailure()
+        } catch LAABrainSaveCoordinator.SaveError.sourceChanged { }
+        let versions = try journal.versions(vault: moved.vault, path: moved.path)
+        try check(versions.contains { $0.bytes == bytes } && versions.contains { $0.bytes == changed }, "conflict did not preserve both versions")
+        // Non-cooperating atomic writer in the compare-to-rename gap: its
+        // latest inode must travel to the destination, not be overwritten.
+        var racing = coordinator
+        let fresh = try coordinator.begin(root: root, path: moved.path)
+        let raced = Data("RACE VERSION".utf8)
+        racing.fixtureAfterComparison = { try raced.write(to: root.appendingPathComponent(moved.path), options: .atomic) }
+        _ = try racing.relocate(root: root, snapshot: fresh, destination: "Race.md")
+        try check(tryData(root.appendingPathComponent("Race.md")) == raced, "rename race lost external version")
+        let trashed = try coordinator.begin(root: root, path: "Race.md")
+        _ = try coordinator.relocate(root: root, snapshot: trashed, destination: ".trash/fixture-Race.md", toTrash: true)
+        try check(tryData(root.appendingPathComponent(".trash/fixture-Race.md")) == raced, "trash lost contents")
+        try check(!manager.fileExists(atPath: root.appendingPathComponent("Race.md").path), "trash retained original")
+        let trashVersions = try journal.versions(vault: trashed.vault, path: "Race.md")
+        try check(trashVersions.contains { $0.bytes == raced }, "trash recovery missing")
+    }
+
     static func selftest(_ work: URL) throws {
+        try relocationTest(work.appendingPathComponent("relocation"))
         let manager = FileManager.default
         let root = work.appendingPathComponent("notes", isDirectory: true)
         let privateDir = work.appendingPathComponent("private", isDirectory: true)
@@ -61,27 +130,58 @@ struct BrainSaveFixture {
         try check(current == Data("OTHER".utf8) && draft == Data("MINE".utf8) && conflictText == "OTHER", "conflict modified original")
         try check(conflictHistory.contains { $0.kind == .conflict && $0.bytes == current }, "conflict history missing")
 
+        // An external atomic save after our exchange must not be acknowledged.
+        try put("after-exchange.md", "BASE")
+        var afterExchange = LAABrainSaveCoordinator(journal: journal)
+        let afterSnapshot = try afterExchange.begin(root: root, path: "after-exchange.md")
+        afterExchange.fixtureAfterExchange = {
+            try Data("EXTERNAL".utf8).write(to: root.appendingPathComponent("after-exchange.md"), options: .atomic)
+        }
+        guard case let .intervening(latest, afterDraft) = try afterExchange.save(root: root, snapshot: afterSnapshot, draft: Data("MINE".utf8)) else { throw FixtureFailure() }
+        let afterText = try read("after-exchange.md")
+        let afterPending = try journal.pending(vault: afterSnapshot.vault, path: afterSnapshot.path)
+        let afterHistory = try journal.versions(vault: afterSnapshot.vault, path: afterSnapshot.path)
+        try check(latest == Data("EXTERNAL".utf8) && afterDraft == Data("MINE".utf8) && afterText == "EXTERNAL", "post-exchange replacement was acknowledged as saved")
+        try check(afterPending.count == 1 && afterHistory.contains { $0.kind == .draft && $0.bytes == afterDraft } && afterHistory.contains { $0.kind == .conflict && $0.bytes == latest }, "post-exchange replacement lost recovery data")
+        _ = try coordinator.preservePending(afterPending[0])
+
+        let draftStore = LAABrainDraftStore(directory: work.appendingPathComponent("drafts"))
+        try put("reopened.md", "BASE")
+        let reopened = try coordinator.begin(root: root, path: "reopened.md")
+        try draftStore.save(.init(vault: reopened.vault, path: reopened.path, base: reopened.base, bytes: Data("RECOVERED-DRAFT".utf8)))
+        try put("reopened.md", "EXTERNAL")
+        guard case let .note(reopenedSnapshot, recoveredDraft, conflicted) = try coordinator.openEditor(root: root, path: reopened.path, drafts: draftStore) else { throw FixtureFailure() }
+        try check(conflicted && reopenedSnapshot.base == Data("EXTERNAL".utf8) && recoveredDraft == Data("RECOVERED-DRAFT".utf8), "reopened draft conflict not offered")
+        // Choosing the external text lets autosave clear the latest-buffer file.
+        try draftStore.clear(vault: reopened.vault, path: reopened.path)
+        let reopenedHistory = try journal.versions(vault: reopened.vault, path: reopened.path)
+        try check(reopenedHistory.contains { $0.kind == .draft && $0.bytes == recoveredDraft } && reopenedHistory.contains { $0.kind == .original && $0.bytes == reopenedSnapshot.base }, "choosing external text lost the recovered draft")
+
+        for missing in ["deleted-draft.md", "renamed-draft.md"] {
+            try put(missing, "BASE")
+            let entry = try coordinator.begin(root: root, path: missing)
+            try draftStore.save(.init(vault: entry.vault, path: missing, base: entry.base, bytes: Data("ORPHAN-DRAFT".utf8)))
+            if missing.hasPrefix("deleted") { try manager.removeItem(at: root.appendingPathComponent(missing)) }
+            else { try manager.moveItem(at: root.appendingPathComponent(missing), to: root.appendingPathComponent("moved-draft.md")) }
+            guard case let .detachedDraft(bytes) = try coordinator.openEditor(root: root, path: missing, drafts: draftStore) else { throw FixtureFailure() }
+            let retainedDraft = try draftStore.load(vault: entry.vault, path: missing)
+            try check(bytes == Data("ORPHAN-DRAFT".utf8) && retainedDraft?.bytes == bytes && !manager.fileExists(atPath: root.appendingPathComponent(missing).path), "missing note hid or cleared its exportable draft")
+        }
+
         try put("fallback.md", "BASE")
         var fallback = LAABrainSaveCoordinator(journal: journal)
         fallback.fixtureForceFallback = true
         let fallbackSnapshot = try fallback.begin(root: root, path: "fallback.md")
         try check(!manager.fileExists(atPath: root.appendingPathComponent(".laa-tmp").path), "opening created the fallback folder")
-        guard case .saved(.checkedReplacement) = try fallback.save(root: root, snapshot: fallbackSnapshot, draft: Data("FALLBACK".utf8)) else { throw FixtureFailure() }
-        let temporaryDirectory = root.appendingPathComponent(".laa-tmp", isDirectory: true)
-        let temporaryFiles = try manager.contentsOfDirectory(atPath: temporaryDirectory.path)
-        try check(temporaryFiles.isEmpty, "fallback temporary draft was left in vault")
-        let oldTemp = temporaryDirectory.appendingPathComponent(UUID().uuidString + ".tmp")
-        let freshTemp = temporaryDirectory.appendingPathComponent(UUID().uuidString + ".tmp")
-        let unrelatedTemp = temporaryDirectory.appendingPathComponent("other.tmp")
-        for file in [oldTemp, freshTemp, unrelatedTemp] { try Data("TEMP".utf8).write(to: file) }
-        try manager.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -48 * 60 * 60)], ofItemAtPath: oldTemp.path)
-        let cleanupSnapshot = try fallback.begin(root: root, path: "fallback.md")
-        _ = try fallback.save(root: root, snapshot: cleanupSnapshot, draft: Data("FALLBACK".utf8))
-        try check(!manager.fileExists(atPath: oldTemp.path) && manager.fileExists(atPath: freshTemp.path) && manager.fileExists(atPath: unrelatedTemp.path), "fallback cleanup removed the wrong files")
+        do {
+            _ = try fallback.save(root: root, snapshot: fallbackSnapshot, draft: Data("FALLBACK".utf8))
+            throw FixtureFailure()
+        } catch LAABrainSaveCoordinator.SaveError.recoveryExportRequired { }
         let fallbackText = try read("fallback.md")
         let fallbackHistory = try journal.versions(vault: fallbackSnapshot.vault, path: fallbackSnapshot.path)
-        try check(fallbackText == "FALLBACK", "fallback did not save")
-        try check(fallbackHistory.contains { $0.kind == .draft && $0.bytes == Data("FALLBACK".utf8) }, "fallback draft not retained")
+        try check(fallbackText == "BASE", "unsupported exchange replaced the original")
+        try check(fallbackHistory.contains { $0.kind == .draft && $0.bytes == Data("FALLBACK".utf8) }, "unsupported exchange lost draft")
+        try check(!manager.fileExists(atPath: root.appendingPathComponent(".laa-tmp").path), "unsupported exchange made synced staging")
 
         try put("fallback-conflict.md", "BASE")
         let fallbackConflict = try fallback.begin(root: root, path: "fallback-conflict.md")
@@ -207,11 +307,12 @@ struct BrainSaveFixture {
         try check(!unrelatedVersions.isEmpty, "retention removed another note")
 
         // Reopening and saving unchanged text must not consume history slots,
-        // and unique displaced/interrupted records are outside the 30 slots.
+        // and conflict/displaced/interrupted records are outside the 30 slots.
         try put("noop.md", "UNCHANGED")
         let noop = try coordinator.begin(root: root, path: "noop.md")
         _ = try journal.record(vault: noop.vault, path: noop.path, kind: .displaced, bytes: Data("UNIQUE-DISPLACED".utf8))
         _ = try journal.record(vault: noop.vault, path: noop.path, kind: .interrupted, bytes: Data("UNIQUE-INTERRUPTED".utf8))
+        _ = try journal.record(vault: noop.vault, path: noop.path, kind: .conflict, bytes: Data("UNIQUE-CONFLICT".utf8))
         for index in 0..<35 {
             _ = try journal.record(vault: noop.vault, path: noop.path, kind: .draft, bytes: Data("change-\(index)".utf8))
         }
@@ -220,10 +321,11 @@ struct BrainSaveFixture {
             _ = try coordinator.save(root: root, snapshot: snapshot, draft: snapshot.base)
         }
         let noopHistory = try journal.versions(vault: noop.vault, path: noop.path)
-        try check(noopHistory.filter { $0.kind == .original || $0.kind == .draft || $0.kind == .conflict }.count == 30,
+        try check(noopHistory.filter { $0.kind == .original || $0.kind == .draft }.count == 30,
                   "no-op consumed retention slots")
         try check(noopHistory.contains { $0.bytes == Data("UNIQUE-DISPLACED".utf8) } &&
                   noopHistory.contains { $0.bytes == Data("UNIQUE-INTERRUPTED".utf8) } &&
+                  noopHistory.contains { $0.kind == .conflict && $0.bytes == Data("UNIQUE-CONFLICT".utf8) } &&
                   noopHistory.filter { $0.bytes == Data("UNCHANGED".utf8) }.count == 1,
                   "no-op removed protected versions or duplicated the unchanged version")
 
@@ -356,7 +458,7 @@ struct BrainSaveFixture {
                   LAABrainSaveCoordinator.conflictOriginalPath("ノート（GitHub競合 2026）.md") == "ノート.md", "conflict original link incorrect")
 
         // A successful rename with a failed directory sync leaves recovery pending.
-        for forceFallback in [false, true] {
+        for forceFallback in [false] {
             let name = forceFallback ? "durability-fallback.md" : "durability-swap.md"
             try put(name, "BASE")
             var failedSync = LAABrainSaveCoordinator(journal: journal)

@@ -43,9 +43,12 @@ export const DEFAULT_SCOPES = Object.freeze([
 export const STUDIO_SCOPES = Object.freeze(['studio:read', 'studio:request']);
 
 // The only scopes an operator may add to an enrolled device with
-// `laa-bridge grant`. All are opt-in and independent of the default set.
-// Calendar read/write, Drive uploads and new Brain notes are separate grants.
-export const OPERATOR_GRANT_SCOPES = Object.freeze(['brain:create', 'calendar:read', 'calendar:write', 'media:write']);
+// `laa-bridge grant`. All are opt-in and independent of the default set:
+// `calendar:read`/`calendar:write` and `media:write` reach the owner's Google
+// account, `brain:create` creates new Brain notes without touching existing
+// ones, and `brain:owner` permits the owner's UI to browse all non-hidden notes
+// without invoking models.
+export const OPERATOR_GRANT_SCOPES = Object.freeze(['brain:create', 'brain:owner', 'calendar:read', 'calendar:write', 'media:write']);
 
 // `brain:create` (new files only) is deliberately NOT in DEFAULT_SCOPES: BRIDGE
 // §9 fixes the initial grant set, and docs/laa/BRAIN-WRITE.md §7 only establishes
@@ -58,6 +61,7 @@ export const ALL_SCOPES = Object.freeze([
   'calendar:write',
   'media:write',
   'brain:create',
+  'brain:owner',
   'instructions:read',
   'instructions:write',
   'brain:write',

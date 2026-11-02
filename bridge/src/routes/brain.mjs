@@ -10,7 +10,8 @@
 import { join } from 'node:path';
 import { createBrainService } from '../brain/service.mjs';
 import { createGitGate, createDiskGate, createSyncthingGate } from '../brain/gates.mjs';
-import { badRequest } from '../errors.mjs';
+import { badRequest, BridgeError } from '../errors.mjs';
+import { hasScope } from '../auth.mjs';
 import {
   resolveBrainCreatePrefixes, resolveBrainFolderId, resolveBrainPolicyPath, resolveBrainRoot,
   resolveBrainSearchBin, resolveSyncthingConfigPath, resolveSyncthingUrl,
@@ -18,7 +19,8 @@ import {
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { parseObjectBody } from './state-file.mjs';
 
-const FILE_ID = /^\/v1\/brain\/files\/(bf_[A-Za-z0-9_-]{1,400})$/;
+// A 400-character Japanese path can occupy 1,200 UTF-8 bytes before base64.
+const FILE_ID = /^\/v1\/brain\/files\/(bf_[A-Za-z0-9_-]{1,1600})$/;
 
 function parseAreas(url) {
   const values = [...url.searchParams.getAll('area')];
@@ -64,11 +66,21 @@ export function createBrainRoutes({
     return new URL(req.url ?? '/', 'http://127.0.0.1');
   }
 
-  function list({ req }) {
+  function ownerAudience(query, device) {
+    if (query.searchParams.get('audience') !== 'owner') return false;
+    // The client-supplied audience is only a request. The server's persisted
+    // grant on the authenticated, non-revoked device is the authority.
+    if (!hasScope(device, 'brain:owner')) {
+      throw new BridgeError(403, 'scope_required', 'owner Brain access requires an operator grant');
+    }
+    return true;
+  }
+
+  function list({ req, device }) {
     const q = url(req);
     const limit = parseLimit(q.searchParams.get('limit'), { max: 200, fallback: 50 });
     const offset = parseCursor(q.searchParams.get('cursor'));
-    const page = brain.list({ areas: parseAreas(q), limit, offset });
+    const page = brain.list({ areas: parseAreas(q), limit, offset, owner: ownerAudience(q, device) });
     return {
       status: 200,
       data: {
@@ -81,16 +93,16 @@ export function createBrainRoutes({
     };
   }
 
-  function get({ req, params }) {
+  function get({ req, params, device }) {
     const q = url(req);
-    const note = brain.read({ id: params[0], areas: parseAreas(q) });
+    const note = brain.read({ id: params[0], areas: parseAreas(q), owner: ownerAudience(q, device) });
     return { status: 200, data: note, headers: { etag: `"${note.contentHash}"` } };
   }
 
   // Named apart from the `search` adapter parameter: a function declaration has
   // no effect on a destructured binding, so reusing the name would register the
   // adapter as the route handler.
-  async function searchNotes({ req }) {
+  async function searchNotes({ req, device }) {
     const q = url(req);
     const rawK = q.searchParams.get('k');
     const k = rawK === null || rawK === '' ? 5 : Number(rawK);
@@ -101,6 +113,7 @@ export function createBrainRoutes({
       areas: parseAreas(q),
       adopted: parseFlag(q.searchParams.get('adopted')),
       rerank: parseFlag(q.searchParams.get('rerank')),
+      owner: ownerAudience(q, device),
     });
     return { status: 200, data };
   }

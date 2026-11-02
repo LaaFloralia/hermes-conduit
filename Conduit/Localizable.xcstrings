@@ -373133,166 +373133,330 @@
         }
       }
     },
-    "Weekly" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+    "Weekly": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weekly"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
           }
         }
       }
     },
-    "Monthly" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Monatlich"
+    "Monthly": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monatlich"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mensual"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensual"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mensuel"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensuel"
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bulanan"
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bulanan"
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mensile"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensile"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "マンスリー"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マンスリー"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "월간"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "월간"
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Miesięczny"
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Miesięczny"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mensal"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensal"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Месячный"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Месячный"
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aylık"
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aylık"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每月"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每月"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月"
+          }
+        }
+      }
+    },
+    "Grant this device Brain viewing access on your Mac.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erteile diesem Gerät auf deinem Mac Zugriff auf Brain."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concede a este dispositivo acceso de lectura a Brain desde tu Mac."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisez cet appareil à consulter Brain sur votre Mac."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berikan perangkat ini akses untuk melihat Brain melalui Mac Anda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorizza questo dispositivo a consultare Brain dal Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macでこの端末にBrainの閲覧権限を付けてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 이 기기에 Brain 열람 권한을 부여해 주세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nadaj temu urządzeniu dostęp do przeglądania Brain na Macu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conceda a este dispositivo acesso de leitura ao Brain pelo Mac."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите этому устройству просмотр Brain на Mac."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’inizde bu cihaza Brain görüntüleme izni verin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在 Mac 上为此设备授予 Brain 查看权限。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在 Mac 上授予此裝置 Brain 檢視權限。"
+          }
+        }
+      }
+    },
+    "Gallery": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galerie"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galería"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galerie"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galeri"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galleria"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ギャラリー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "갤러리"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galeria"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galeria"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Галерея"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galeri"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图库"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖庫"
           }
         }
       }

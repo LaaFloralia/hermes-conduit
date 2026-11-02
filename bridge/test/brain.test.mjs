@@ -63,6 +63,11 @@ function makeVault() {
     'Attachments/reference.md': '# 参考\n',
     'Loose.md': '# 直下のメモ\n',
     'Unclassified/odd.md': '# 未分類\n',
+    'AGENTS.md': '# Owner-visible instructions\n',
+    'node_modules/owner.md': '# Owner-visible note\n',
+    '.obsidian/config.md': '# Hidden configuration\n',
+    '.trash/deleted.md': '# Deleted note\n',
+    '.hidden.md': '# Hidden note\n',
   };
   for (const [rel, body] of Object.entries(files)) {
     const absolute = join(root, rel);
@@ -117,6 +122,7 @@ async function startBrain(t, overrides = {}) {
       gates,
       ...(overrides.brain ?? {}),
     },
+    ...(overrides.log ? { log: overrides.log } : {}),
   });
   t.after(async () => {
     await api.close();
@@ -253,7 +259,7 @@ test('search reuses the CLI shape, is local-only by default and filters restrict
 
   const rerank = await api.request('/v1/brain/search?q=色&rerank=1&area=old', { token });
   assert.equal(rerank.status, 200);
-  assert.equal(calls[1].rerank, true);
+  assert.equal(calls[1].rerank, false, 'even an explicit rerank request must not transmit Brain bodies');
   assert.deepEqual(calls[1].areas, ['old']);
   assert.equal(rerank.body.data.results.length, 2, 'the requested area is allowed for this request');
 
@@ -263,6 +269,79 @@ test('search reuses the CLI shape, is local-only by default and filters restrict
 
   const bigK = await api.request('/v1/brain/search?q=x&k=11', { token });
   assert.equal(bigK.status, 400);
+});
+
+test('owner UI lists and reads restricted and conflict notes without exposing hidden paths', async (t) => {
+  const { api, root } = await startBrain(t);
+  const longPath = 'Company/' + '長'.repeat(100) + '.md';
+  writeFileSync(join(root, longPath), '# Long Japanese path\n');
+  const token = await api.token([...DEFAULT_SCOPES, 'brain:owner']);
+  const res = await api.request('/v1/brain/files?audience=owner&limit=200', { token });
+  assert.equal(res.status, 200);
+  const paths = res.body.data.items.map((item) => item.path);
+  for (const path of ['Inbox/Draft.md', 'old/Legacy.md', 'Trading/研究資料/raw.md', 'Journal/2026-10-29.md',
+    'Sources/raw.md', 'Attachments/reference.md', 'Unclassified/odd.md',
+    'Company/note.sync-conflict-20261020-201228-ABCD.md', 'AGENTS.md', 'node_modules/owner.md']) assert.ok(paths.includes(path), path);
+  assert.ok(paths.every((path) => !path.split('/').some((part) => part.startsWith('.'))));
+  const read = await api.request(`/v1/brain/files/${fileId('Inbox/Draft.md')}?audience=owner`, { token });
+  assert.equal(read.status, 200);
+  assert.equal(read.body.data.text, DRAFT);
+  const longRead = await api.request(`/v1/brain/files/${fileId(longPath)}?audience=owner`, { token });
+  assert.equal(longRead.status, 200);
+  assert.equal(longRead.body.data.path, longPath);
+  for (const path of ['.obsidian/config.md', '.trash/deleted.md', '.hidden.md']) {
+    const denied = await api.request(`/v1/brain/files/${fileId(path)}?audience=owner`, { token });
+    assert.equal(denied.status, 400);
+  }
+});
+
+test('owner full text search stays local even when rerank is requested', async (t) => {
+  const logs = [];
+  const { api, calls } = await startBrain(t, { log: (entry) => logs.push(entry) });
+  const token = await api.token([...DEFAULT_SCOPES, 'brain:owner']);
+  const res = await api.request('/v1/brain/search?audience=owner&q=あとで&k=10&rerank=1', { token });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.data.results.map((hit) => hit.path), ['Inbox/Draft.md']);
+  assert.equal(res.body.data.rerank, false);
+  assert.equal(calls.length, 0, 'owner search must not invoke the agent search adapter');
+  await api.request(`/v1/brain/files/${fileId('Inbox/Draft.md')}?audience=owner`, { token });
+  assert.ok(!JSON.stringify(logs).includes('あとで確認'), 'note body must never appear in Bridge request logs');
+});
+
+test('revoking or removing the owner grant invalidates full-vault access', async (t) => {
+  const { api } = await startBrain(t);
+  const owner = await api.token([...DEFAULT_SCOPES, 'brain:owner']);
+  const other = await api.token();
+  const me = await api.request('/v1/me', { token: owner });
+  const id = me.body.data.deviceId;
+  assert.equal((await api.request('/v1/brain/files?audience=owner', { token: other })).status, 403);
+  api.store.mutate((state) => { state.devices[id].scopes = [...DEFAULT_SCOPES]; });
+  assert.equal((await api.request('/v1/brain/files?audience=owner', { token: owner })).status, 403);
+  api.store.mutate((state) => {
+    state.devices[id].scopes.push('brain:owner');
+    state.devices[id].revokedAt = new Date().toISOString();
+  });
+  assert.equal((await api.request('/v1/brain/files?audience=owner', { token: owner })).status, 401);
+});
+
+test('audience cannot elevate an ordinary paired device, agent or CLI token', async (t) => {
+  const { api, calls } = await startBrain(t);
+  assert.ok(!DEFAULT_SCOPES.includes('brain:owner'));
+  for (const scopes of [DEFAULT_SCOPES, ['brain:read'], [...DEFAULT_SCOPES, 'brain:create']]) {
+    const token = await api.token(scopes);
+    for (const route of ['/v1/brain/files?audience=owner',
+      `/v1/brain/files/${fileId('Inbox/Draft.md')}?audience=owner`,
+      '/v1/brain/search?audience=owner&q=あとで']) {
+      const res = await api.request(route, { token });
+      assert.equal(res.status, 403, route);
+      assert.equal(res.body.error.code, 'scope_required');
+      assert.ok(!JSON.stringify(res.body).includes(DRAFT));
+    }
+    const ordinary = await api.request(`/v1/brain/files/${fileId('Inbox/Draft.md')}`, { token });
+    assert.equal(ordinary.status, 404);
+  }
+  assert.equal(calls.length, 0);
+  assert.equal((await api.request('/v1/brain/files?audience=owner')).status, 401);
 });
 
 test('a failing search adapter becomes 503, not an empty result', async (t) => {

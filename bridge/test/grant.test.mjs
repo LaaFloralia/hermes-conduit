@@ -12,7 +12,7 @@ async function device(api) {
   return { token, id: me.body.data.deviceId, scopes: me.body.data.scopes };
 }
 
-test('grant allows only calendar:read and brain:create, and rejects a mixed request atomically', async (t) => {
+test('grant allows only the opt-in calendar and Brain scopes, and rejects a mixed request atomically', async (t) => {
   const api = await startBridge();
   t.after(() => api.close());
   const target = await device(api);
@@ -54,6 +54,11 @@ test('grant allows only calendar:read and brain:create, and rejects a mixed requ
   assert.ok(brain.device.scopes.includes('brain:create'));
   assert.equal(api.store.read().devices[target.id].scopeGrants.length, 2);
 
+  const owner = grantScopes(api.store, { target: target.id, scopes: ['brain:owner'], reason: 'Owner Brain UI', now: 3500 });
+  assert.equal(owner.error, undefined);
+  assert.ok(owner.device.scopes.includes('brain:owner'));
+  assert.equal(api.store.read().devices[target.id].scopeGrants.length, 3);
+
   const prefix = grantScopes(api.store, { target: target.id.slice(0, 4), scopes: ['calendar:read'], reason: 'prefix', now: 4000 });
   assert.equal(prefix.device.id, target.id);
   assert.equal(prefix.alreadyGranted, true);
@@ -61,6 +66,8 @@ test('grant allows only calendar:read and brain:create, and rejects a mixed requ
   api.store.mutate((state) => { state.devices[target.id].revokedAt = new Date(5000).toISOString(); });
   const revoked = grantScopes(api.store, { target: target.id, scopes: ['calendar:read'], reason: 'revoked', now: 5000 });
   assert.match(revoked.error, /revoked/);
+  const revokedOwner = grantScopes(api.store, { target: target.id, scopes: ['brain:owner'], reason: 'revoked', now: 5000 });
+  assert.match(revokedOwner.error, /revoked/);
 });
 
 test('grant rejects an ambiguous prefix without changing either device', async (t) => {

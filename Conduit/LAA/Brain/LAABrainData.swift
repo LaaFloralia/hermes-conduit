@@ -65,6 +65,7 @@ enum LAABrainData {
     private static func fixtureRead<T: Decodable>(_ route: String, mode: String) throws -> T {
         if mode == "offline" { throw LAABridgeError.networkUnreachable }
         if mode == "failed" { throw LAABridgeError.other(status: 500, code: "fixture") }
+        if mode == "ownerDenied", route.hasPrefix("/v1/brain/") { throw LAABridgeError.forbidden }
         guard let url = URLComponents(string: route) else { throw LAABridgeError.invalidResponse }
         let first = "Company/Start.md", second = "Company/Other.md"
         let firstID = LAABrainReference(path: first, includeInbox: false).id

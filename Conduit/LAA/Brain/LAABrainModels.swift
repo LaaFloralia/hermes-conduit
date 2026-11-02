@@ -88,7 +88,7 @@ enum LAABrainPaths {
     static func request(_ path: String, items: [URLQueryItem] = [], includeInbox: Bool = false) -> String? {
         var parts = URLComponents()
         parts.path = path
-        parts.queryItems = items + (includeInbox ? [URLQueryItem(name: "area", value: "inbox")] : [])
+        parts.queryItems = items + [URLQueryItem(name: "audience", value: "owner")]
         // URLSearchParams on the Bridge treats a literal + as a space.
         parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         return parts.string

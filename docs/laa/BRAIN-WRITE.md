@@ -100,7 +100,7 @@ atomic_write(path, data + b'BRIDGE\n')  # 4 古い読み取りを元に rename
 - 作成の順序: 空き容量64MB以上 → git（`master`・`index.lock`/rebase/merge/cherry-pick無し）→ Syncthing（paused・`errors`・`pullErrors`）→ journal `intent`（fsync）→ 親フォルダ検証 → `O_EXCL` で作成 → 本文fsync・ディレクトリfsync → 読戻しで長さとhashを照合 → journal `committed`。どこかで止まれば vault は不変か、作成済みなら `brain_create_unverified`／`brain_journal_incomplete` として人へ渡す。
 - 名前衝突: 既定は `onConflict:"suffix"`（`Note 2.md` を `O_EXCL` で確保）。`"reject"` は 409 `path_exists`。上書き・rename・切詰め・削除の経路は持たない。
 - `brain:create` は**既定scopeに加えない**。§9の初期集合を変えず、端末ごとに `laa-bridge pair --scopes brain:read,brain:create` で付与する。§7が「安全」とするのは新規作成経路だけで、全端末へ広げる根拠にはならないため。
-- 領域は `laa-brain` の `policy.json` をそのまま読み、既定は default 領域のみ。旧資料・Inbox・Sources・`Journal/`（日記）・研究/振り返り・添付・Templates・未分類は `?area=` で明示した時だけ足す。`daily journal/`・`Tasks/`・`Context/`・`Guide/` は policy どおり既定で含み、Jevへは送らない（`--no-jev`）。タスク指示の「daily journals を既定で除外」は現行 policy／BRAIN-SEARCH.md と食い違うため、検索CLIの実挙動（`Journal/` のみ除外）に合わせた。検索は `laa-brain search --json` を再利用し、既定は `--no-jev`（ローカル順位のみ）、`rerank=1` の時だけJev再判定を通す。電話からの検索を、既定でBrain抜粋を外部モデルへ送る新しい経路にしないため。
+- 領域は `laa-brain` の `policy.json` をそのまま読み、既定は default 領域のみ。旧資料・Inbox・Sources・`Journal/`（日記）・研究/振り返り・添付・Templates・未分類は `?area=` で明示した時だけ足す。`daily journal/`・`Tasks/`・`Context/`・`Guide/` は policy どおり既定で含み、Jevへは送らない（`--no-jev`）。タスク指示の「daily journals を既定で除外」は現行 policy／BRAIN-SEARCH.md と食い違うため、検索CLIの実挙動（`Journal/` のみ除外）に合わせた。検索は `laa-brain search --json` を再利用し、既定は `--no-jev`（ローカル順位のみ）、現在は `rerank=1` でも再判定せず、Bridgeからモデルへ本文を送らない。電話からの検索を、既定でBrain抜粋を外部モデルへ送る新しい経路にしないため。
 
 §5との差分（意図的）:
 
@@ -121,3 +121,39 @@ atomic_write(path, data + b'BRIDGE\n')  # 4 古い読み取りを元に rename
 - Syncthingの `state` 語彙の全集合（`idle` 以外を拒否する判定に使う値の確定）。
 - 実vaultへの `.bridge-tmp` 除外追加（設定変更は未実施）。
 - `maxConflicts` の削除単位がファイル単位かブロック単位か（同一pathのみ確認）。
+
+
+## 10. iPhoneローカルのノート管理と下書き（2026-11-02）
+
+Bridgeの既存ノートへの `brain:write` は無効のまま。ユーザーが選んだ
+SyncTrainフォルダのローカル操作だけを対象とする。
+
+- 名前変更・移動は本文を変換せず、取得時の本文digestを検査してから
+  `NSFileCoordinator` と `renameatx_np(RENAME_EXCL)` で行う。
+  同名の保存先を置換しない。移動前の本文と移動後の本文を端末内の
+  復元履歴へ残す。競合を検知した時は取得時と現在の両版を保管して止める。
+- 削除は一意な名前でvault内 `.trash` へ移動する。消去は行わず、
+  元パスの復元履歴も残す。移動先・復元履歴はエラー時も自動削除しない。
+- 相対画像・frontmatter・未知の構文を含め、バイト列は保持する。
+  移動による相対リンクと被リンクの書換えは未実装で、操作画面に表示する。
+- 既存ノートの保存は `RENAME_SWAP` に限る。非対応時の通常renameへの
+  フォールバックは比較直後の外部保存を失うため撤去した。原本を変更せず、
+  下書きを履歴と端末内へ残して書出しへ進める。新規作成の排他的renameは維持する。
+  交換・fsync後もノート位置を開き直しdigestを照合する。外部保存を検知したら
+  成功扱いにせず、現在版・下書き・manifestと交換時のinodeを保持する。
+- 未保存の編集内容とbaseは、入力停止400ms後とバックグラウンド移行時に
+  アプリ内へ原子的に保管する。再表示時に原本がbaseと異なれば、保管した下書きを
+  履歴へ記録してから両版を提示する。別の内容を選んで最新下書きが解除されても
+  元の下書きは履歴に残る。ノートが削除・改名されて読めなくても下書きを書き出せる。
+  競合・交換時・中断時の履歴は通常30件のローテーションから除外する。
+- 試験は使い捨てfixtureのみ。実SyncTrainのFile Provider、ブックマーク再起動、
+  双方向同期、外部writerが古いFDを保持したまま書く場合の保全、
+  1秒以内の表示は実機未確認。§3の競合窓を一般に解消したとの保証はしない。
+
+本人UIのBridge要求は `audience=owner` を指定する。Bridgeは認証済み端末の
+保存済み `brain:owner` scopeを検査し、ない要求は403で拒否する。既定scopeには
+含めず、社長の端末を特定してoperatorがopt-in付与する。権限がない端末では
+Macで閲覧権限を付ける案内を表示する。通常のCLI・エージェント用
+要求の領域制限は維持する。本人用一覧は非隠しMarkdownと競合コピーを含み、
+`.trash`・`.obsidian`・隠し項目とsymlinkは除く。本人検索はローカル字句検索で、
+CLI・モデル・通知へ本文を渡さない。Bridgeの既存ノート編集は引き続き未対応。
