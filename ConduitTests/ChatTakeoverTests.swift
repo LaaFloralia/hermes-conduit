@@ -32,6 +32,18 @@ extension HermesClientTests {
         XCTAssertEqual(ChatTakeoverState.owner(nil), .otherWindow)
     }
 
+    /// The LAA build rebrands the catalogs (scripts/laa/brand-bundle.py), so
+    /// each flavour is checked against its own exact sentence.
+    #if LAA_BUILD
+    private let brand = "Ciel"
+    private let product = "LAA"
+    private let desktopOwner = "desktop app"
+    #else
+    private let brand = "Hermes"
+    private let product = "Conduit"
+    private let desktopOwner = "Hermes Desktop"
+    #endif
+
     /// Each owner has its own whole sentences, read in the source language.
     func testOwnerSentences() {
         let defaults = UserDefaults.standard
@@ -47,13 +59,13 @@ extension HermesClientTests {
         func state(_ surface: String?) -> ChatTakeoverState {
             ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: surface, phase: .offered)
         }
-        XCTAssertEqual(state("desktop").stillReplyingMessage, "Hermes Desktop is still replying in this chat. Try again when it finishes.")
-        XCTAssertEqual(state("cli").stillReplyingMessage, "A Hermes terminal is still replying in this chat. Try again when it finishes.")
-        XCTAssertEqual(state(nil).stillReplyingMessage, "Another Hermes window is still replying in this chat. Try again when it finishes.")
-        XCTAssertEqual(state("desktop").openElsewhereMessage, "This chat is open in Hermes Desktop. Take it over to send from here.")
-        XCTAssertEqual(state("bot").takingOverMessage, "This bot is answering a message from another bot. Conduit sends yours when it finishes.")
+        XCTAssertEqual(state("desktop").stillReplyingMessage, "\(desktopOwner) is still replying in this chat. Try again when it finishes.")
+        XCTAssertEqual(state("cli").stillReplyingMessage, "A \(brand) terminal is still replying in this chat. Try again when it finishes.")
+        XCTAssertEqual(state(nil).stillReplyingMessage, "Another \(brand) window is still replying in this chat. Try again when it finishes.")
+        XCTAssertEqual(state("desktop").openElsewhereMessage, "This chat is open in \(desktopOwner). Take it over to send from here.")
+        XCTAssertEqual(state("bot").takingOverMessage, "This bot is answering a message from another bot. \(product) sends yours when it finishes.")
         XCTAssertEqual(state("bot").stillReplyingMessage, "This bot is still answering a message from another bot. Try again when it finishes.")
-        XCTAssertEqual(state("tui").takingOverMessage, "Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.")
+        XCTAssertEqual(state("tui").takingOverMessage, "Taking this chat over from a \(brand) terminal. If it's replying, \(product) waits for the reply to finish.")
     }
 
     func testRpcErrorDecodesTheRefusalReason() throws {
