@@ -657,7 +657,7 @@ store · the session and project API · the owner-task API · Console job observ
   `Conduit/LAA/Work/LAAWorkCopy.swift`, `Conduit/LAA/Work/LAAWorkToolRuns.swift`
 - Mac Catalyst list/detail columns: `Conduit/LAA/Mac/LAADesktopLayout.swift`,
   `Conduit/LAA/Work/LAAWorkDesktop.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`,
-  `Conduit/LAA/Work/LAAWorkHub.swift`; tests: `ConduitTests/LAAWorkDesktopTests.swift`,
+  `Conduit/LAA/Today/LAAWorkHub.swift`; tests: `ConduitTests/LAAWorkDesktopTests.swift`,
   `ConduitUITests/LAAWorkDesktopUITests.swift`
 - Legacy local owner tasks (retained without automatic migration): `Conduit/LAA/Work/LAAOwnerTasksView.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskAPI.swift`, `Conduit/LAA/Work/LAAOwnerTaskOutbox.swift`,
