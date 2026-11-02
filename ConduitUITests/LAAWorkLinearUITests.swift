@@ -108,6 +108,9 @@ final class LAAWorkLinearUITests: XCTestCase {
         app.navigationBars.buttons.firstMatch.tap()
         selectSection(app, "routines")
         XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["前回"].exists)
+        XCTAssertTrue(app.staticTexts["11月2日 7:30・完了"].exists)
+        for label in ["最終実行", "業務結果", "配信", "最終結果", "次回"] { XCTAssertFalse(app.staticTexts[label].exists) }
         XCTAssertFalse(app.staticTexts["常駐の確認用"].exists)
         app.buttons["work.routines.services"].tap()
         XCTAssertTrue(app.staticTexts["常駐の確認用"].exists)

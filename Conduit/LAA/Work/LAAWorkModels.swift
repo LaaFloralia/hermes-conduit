@@ -27,6 +27,35 @@ struct LAAWorkRoutine: Decodable, Identifiable {
     var state: String? = nil
     var businessStatus: String? = nil
     var notificationStatus: String? = nil
+
+    func previousRunSummary(timeZone: TimeZone = .current) -> String {
+        let status = businessStatus == nil || businessStatus == "unknown" ? result : businessStatus
+        let outcome: String
+        switch status {
+        case "success", "ok", "succeeded", "completed": outcome = "完了"
+        case "running": outcome = "実行中"
+        case "pending": outcome = "待機中"
+        case "failed", "error": outcome = "業務エラー"
+        case "partial": outcome = "業務一部未完了"
+        case "timeout": outcome = "業務時間切れ"
+        default: outcome = "未確認"
+        }
+        var results = [outcome]
+        if ["failed", "error", "partial", "timeout"].contains(notificationStatus ?? "") { results.append("配信失敗") }
+        guard let lastRunAt else { return results == ["未確認"] ? "未確認" : "時刻未確認・" + results.joined(separator: "・") }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        let time: String
+        if let date = fractional.date(from: lastRunAt) ?? plain.date(from: lastRunAt) {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "ja_JP")
+            formatter.timeZone = timeZone
+            formatter.dateFormat = "M月d日 H:mm"
+            time = formatter.string(from: date)
+        } else { time = "時刻未確認" }
+        return ([time] + results).joined(separator: "・")
+    }
 }
 
 struct LAAWorkSource: Decodable {

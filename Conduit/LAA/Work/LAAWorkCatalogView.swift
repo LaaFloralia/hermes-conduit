@@ -100,11 +100,7 @@ struct LAAWorkCatalogView: View {
             Text(verbatim: routine.schedule ?? "時刻未確認").foregroundStyle(LAAColor.link)
             detail("配信先チャット", routine.destination ?? "設定なし・未確認")
             detail("状態", stateLabel(routine.state))
-            detail("最終実行", routine.lastRunAt.map(LAAWorkPresentation.date) ?? "未確認")
-            detail("業務結果", observationLabel(routine.businessStatus))
-            detail("配信", observationLabel(routine.notificationStatus))
-            if let result = routine.result { detail("最終結果", observationLabel(result)) }
-            if let next = routine.nextRunAt { detail("次回", LAAWorkPresentation.date(next)) }
+            detail("前回", routine.previousRunSummary(), singleLine: true)
         }.padding(.vertical, LAASpacing.x2).listRowBackground(LAAColor.surface)
     }
 
@@ -119,26 +115,12 @@ struct LAAWorkCatalogView: View {
         }
     }
 
-    private func observationLabel(_ value: String?) -> String {
-        switch value {
-        case "success", "ok", "succeeded": "成功"
-        case "completed": "完了"
-        case "running": "実行中"
-        case "failed", "error": "失敗"
-        case "partial": "一部未完了"
-        case "pending": "待機中"
-        case "sent", "delivered": "配信済み"
-        case "timeout": "時間切れ"
-        case "unknown", nil: "未確認"
-        default: value ?? "未確認"
-        }
-    }
-
-    private func detail(_ label: String, _ value: String) -> some View {
+    private func detail(_ label: String, _ value: String, singleLine: Bool = false) -> some View {
         HStack(alignment: .top) {
             Text(verbatim: label).foregroundStyle(LAAColor.secondaryText)
             Spacer()
             Text(verbatim: value).multilineTextAlignment(.trailing)
+                .lineLimit(singleLine ? 1 : nil).minimumScaleFactor(singleLine ? 0.75 : 1)
         }.laaTextStyle(.secondary)
     }
 

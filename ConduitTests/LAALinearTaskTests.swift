@@ -71,5 +71,19 @@ final class LAALinearTaskTests: XCTestCase {
         XCTAssertEqual(row.businessStatus, "success")
         XCTAssertEqual(row.destination, "Cielの定期実行チャット")
     }
+    func testPreviousRoutineRunCombinesTimeAndOutcomeWithoutDeliveryNoise() throws {
+        let data = Data(#"{"id":"daily","name":"朝","lastRunAt":"2026-11-01T22:30:00.000Z","businessStatus":"completed","notificationStatus":"sent"}"#.utf8)
+        var row = try JSONDecoder().decode(LAAWorkRoutine.self, from: data)
+        let japan = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・完了")
+        row.notificationStatus = "failed"
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・完了・配信失敗")
+        row.businessStatus = "error"
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・業務エラー・配信失敗")
+        row.notificationStatus = "pending"; row.businessStatus = "success"
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・完了")
+        let missing = try JSONDecoder().decode(LAAWorkRoutine.self, from: Data(#"{"id":"missing","name":"未確認"}"#.utf8))
+        XCTAssertEqual(missing.previousRunSummary(timeZone: japan), "未確認")
+    }
 }
 #endif
