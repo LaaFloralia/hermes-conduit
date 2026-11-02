@@ -14,6 +14,54 @@ struct LAAWorkSkill: Decodable, Identifiable {
     var explanation: String { summary ?? description }
 }
 
+/// One chat the routines deliver to. The owner asks what arrives where and at
+/// what time, so the list is grouped by destination and each row names its
+/// next delivery.
+struct LAAWorkRoutineGroup: Identifiable {
+    let destination: String
+    let routines: [LAAWorkRoutine]
+    var id: String { destination }
+}
+
+enum LAAWorkRoutineGrouping {
+    /// Scheduled routines by destination: earliest next delivery first, a
+    /// routine without a destination last so it is still visible.
+    static func groups(_ routines: [LAAWorkRoutine], now: Date = Date()) -> [LAAWorkRoutineGroup] {
+        let byDestination = Dictionary(grouping: routines) { $0.destination ?? "配信先なし" }
+        return byDestination.map { LAAWorkRoutineGroup(destination: $0.key, routines: $0.value.sorted { left, right in
+            let l = LAAWorkRoutineTime.date(left.nextRunAt) ?? .distantFuture
+            let r = LAAWorkRoutineTime.date(right.nextRunAt) ?? .distantFuture
+            return l == r ? left.name < right.name : l < r
+        }) }.sorted { left, right in
+            if (left.destination == "配信先なし") != (right.destination == "配信先なし") { return right.destination == "配信先なし" }
+            let l = left.routines.compactMap { LAAWorkRoutineTime.date($0.nextRunAt) }.min() ?? .distantFuture
+            let r = right.routines.compactMap { LAAWorkRoutineTime.date($0.nextRunAt) }.min() ?? .distantFuture
+            return l == r ? left.destination < right.destination : l < r
+        }
+    }
+}
+
+enum LAAWorkRoutineTime {
+    static func date(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: text) { return date }
+        let plain = ISO8601DateFormatter(); plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: text)
+    }
+
+    /// "09:00" today, "11/4 09:00" later, "時刻未確認" when the Bridge has none.
+    static func next(_ text: String?, now: Date = Date()) -> String {
+        guard let date = date(text) else { return "時刻未確認" }
+        let calendar = Calendar.autoupdatingCurrent
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        let clock = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        guard !calendar.isDate(date, inSameDayAs: now) else { return clock }
+        let day = calendar.dateComponents([.month, .day], from: date)
+        return "\(day.month ?? 0)/\(day.day ?? 0) " + clock
+    }
+}
+
 struct LAAWorkCatalogView: View {
     enum Kind { case routines, skills }
     let kind: Kind
@@ -40,7 +88,13 @@ struct LAAWorkCatalogView: View {
                     .accessibilityIdentifier("work.routines.fetchedAt")
             }
             if kind == .routines {
-                ForEach(routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }) { routine in routineRow(routine) }
+                ForEach(LAAWorkRoutineGrouping.groups(routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" })) { group in
+                    Section {
+                        ForEach(group.routines) { routine in routineRow(routine) }
+                    } header: {
+                        Text(verbatim: group.destination).accessibilityIdentifier("work.routines.group")
+                    }
+                }
                 let services = routines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
                 if !services.isEmpty {
                     DisclosureGroup {
@@ -104,6 +158,7 @@ struct LAAWorkCatalogView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: routine.name).fontWeight(.semibold)
             Text(verbatim: routine.schedule ?? "時刻未確認").foregroundStyle(LAAColor.link)
+            detail("次回", LAAWorkRoutineTime.next(routine.nextRunAt))
             detail("配信先チャット", routine.destination ?? "設定なし・未確認")
             detail("状態", stateLabel(routine.state))
             detail("前回", routine.previousRunSummary(), singleLine: true)
