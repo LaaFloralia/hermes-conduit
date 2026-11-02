@@ -11,6 +11,8 @@
 // groups arrive as the handler's `params` array (same shape as drive.mjs).
 // Handlers return `{status, data, headers?}` or throw a BridgeError.
 
+import { flushOwnerNotifications } from '../notify/index.mjs';
+import { daemonAdapter } from '../sessions/daemon.mjs';
 import { personalAgentAdapter } from '../sessions/adapter.mjs';
 import { createSessionService } from '../sessions/service.mjs';
 import { createSessionStore } from '../sessions/store.mjs';
@@ -48,6 +50,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   const sessionService = sessionOptions.service ?? createSessionService({
     ...sessionOptions,
     sessionStore,
+    daemon: sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null),
     retentionMs: sessionOptions.eventRetentionMs,
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
@@ -57,6 +60,16 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     resolveProjectFiles: sessionOptions.resolveProjectFiles ?? ((project) => projectStore.filesFor(project)),
     now,
   });
+
+  if (!sessionOptions.service && sessionOptions.live) {
+    const timer = setInterval(() => { sessionService.syncDaemon().catch(() => {}); }, 5000);
+    timer.unref();
+    sessionOptions.registerCleanup?.(() => clearInterval(timer));
+    sessionService.syncDaemon().catch(() => {});
+    const delivery = setInterval(() => { flushOwnerNotifications().catch(() => {}); }, 30_000);
+    delivery.unref();
+    sessionOptions.registerCleanup?.(() => clearInterval(delivery));
+  }
 
   const ownerTasks = options.ownerTasks ?? {};
   const ownerTaskStore = ownerTasks.store

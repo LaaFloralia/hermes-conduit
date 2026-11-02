@@ -221,6 +221,7 @@ export function createBridge({
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
     ...driveRoutes({ adapter: drive === undefined ? createDriveMountAdapter() : drive, now, log }),
     ...businessRoutes({ store, now, options: { ...routeOptions,
+      sessions: { ...routeOptions.sessions, registerCleanup: (fn) => cleanup.push(fn) },
       usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) } } }),
   ];
 

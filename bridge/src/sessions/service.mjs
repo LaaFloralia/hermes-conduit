@@ -25,10 +25,14 @@
 
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { sessionImageStore } from './images.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
 import { readConversation } from './history.mjs';
+import { daemonSessionID, snapshot } from './daemon.mjs';
+import { notifyOwner } from '../notify/index.mjs';
 
 export const CHILD_NAME_PREFIX = '子｜';
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
@@ -50,6 +54,10 @@ const count = (text) => [...text].length;
 export function createSessionService({
   sessionStore,
   adapter,
+  daemon = null,
+  notify = notifyOwner,
+  history = readConversation,
+  images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
   findWorkspace,
   findProject = () => null,
   resolveProjectInstructions = () => null,
@@ -264,7 +272,57 @@ export function createSessionService({
     return { session: sessionStore.get(stored.record.id) ?? stored.record, created: stored.created };
   }
 
+  let syncInFlight;
+  async function syncDaemon() {
+    if (!daemon) return;
+    if (syncInFlight) return syncInFlight;
+    syncInFlight = (async () => {
+      const agents = await daemon.list();
+      const known = new Map(sessionStore.all().map((r) => [r.delegate?.sessionId, r]));
+      const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
+      const rows = agents.map((a) => {
+        const state = snapshot(a, now());
+        const previous = known.get(a.id);
+        const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
+        return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
+          parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? null,
+          projectId: null, workspaceId: a.workspaceId ?? HOME_WORKSPACE_ID, cwd: a.cwd,
+          name: a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
+          requested: model, observed: state.modelCheck.observed, phase: state.phase,
+          pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
+          daemonStatus: a.status, favorite: false, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
+          version: previous?.version ?? 1, delegate: { sessionId: a.id },
+          createdAt: a.createdAt, updatedAt: a.updatedAt, sourceUpdatedAt: a.updatedAt,
+          observedAt: new Date(now()).toISOString(), attentionTimestamp: a.attentionTimestamp ?? a.updatedAt, attentionReason: a.attentionReason, requiresAttention: a.requiresAttention };
+      });
+      const transitions = sessionStore.importDirectory(rows);
+      for (const { previous, current } of transitions) {
+        const phase = current.phase;
+        const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
+          : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
+        if (kind && !current.archivedAt && !current.daemonArchivedAt) {
+          void notify({ kind: `session.${kind}`, title: current.name,
+            body: { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
+            deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
+        }
+      }
+    })().finally(() => { syncInFlight = null; });
+    return syncInFlight;
+  }
+
+  async function decision(id) {
+    if (!daemon) throw new BridgeError(503, 'paseo_unavailable', 'Paseo decision support is unavailable');
+    return daemon.decision(requireSession(id).delegate.sessionId);
+  }
+  async function reply({ id, body }) {
+    if (!daemon) throw new BridgeError(503, 'paseo_unavailable', 'Paseo decision support is unavailable');
+    await daemon.reply(requireSession(id).delegate.sessionId, body);
+    await observe(id, { force: true });
+    return { session: requireSession(id) };
+  }
+
   async function listSessions(query = {}) {
+    await syncDaemon();
     const limit = parseLimit(query.limit);
     const offset = parseOffset(query.cursor);
     const projectId = query.projectId ?? null;
@@ -287,8 +345,8 @@ export function createSessionService({
       .filter((record) => (requestId ? record.requestId === requestId : true))
       .filter((record) => (phase ? record.phase === phase : true))
       .filter((record) => (parentId === undefined ? true : (record.parentId ?? null) === parentId))
-      .filter((record) => scopeAll || (!isWorktree(record) && Boolean(record.archivedAt) === archivedOnly))
-      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || a.id.localeCompare(b.id));
+      .filter((record) => scopeAll || ((daemon || !isWorktree(record)) && Boolean(record.archivedAt || record.daemonArchivedAt) === archivedOnly))
+      .sort((a, b) => (b.sourceUpdatedAt ?? b.updatedAt ?? '').localeCompare(a.sourceUpdatedAt ?? a.updatedAt ?? '') || a.id.localeCompare(b.id));
 
     const page = filtered.slice(offset, offset + limit);
     return {
@@ -312,7 +370,9 @@ export function createSessionService({
 
   async function conversation(id) {
     const record = requireSession(id);
-    return readConversation(record.delegate.sessionId);
+    const messages = await history(record.delegate.sessionId);
+    const references = images.references(id);
+    return messages.map((message) => ({ ...message, images: references[message.id] ?? [] }));
   }
 
   async function sendMessage({ id, body = {}, key }) {
@@ -325,8 +385,11 @@ export function createSessionService({
       ? `msg_${sha(`${id}|${key ?? ''}`).slice(0, 24)}`
       : asText(body.messageId, 'messageId', { max: 200 });
 
+    const attachments = parseImages(body.images);
+    images.stage(id, messageId, attachments);
     try {
-      await adapter.send({ requestId: record.delegate.requestId, messageId, text });
+      if (daemon) await daemon.send(record.delegate.sessionId, { text, messageId, images: attachments });
+      else await adapter.send({ requestId: record.delegate.requestId, messageId, text });
     } catch (err) {
       // The client needs the waiting question in the same breath as the 409.
       if (err instanceof BridgeError && err.code === 'pending_decision_requires_reply') {
@@ -377,11 +440,24 @@ export function createSessionService({
     return { session: updated?.record ?? requireSession(id) };
   }
 
+  async function interruptSession(id) {
+    const record = requireSession(id);
+    if (!daemon) throw new BridgeError(503, 'paseo_unavailable', 'Paseo interruption is unavailable');
+    const result = await daemon.stop(record.delegate.sessionId);
+    const updated = sessionStore.update(id, (current) => {
+      current.daemonStatus = result.daemonStatus;
+      current.phase = 'awaiting_review';
+      return [{ type: 'session.interrupted', payload: { daemonStatus: result.daemonStatus } }];
+    });
+    observations.delete(id);
+    return { session: updated.record };
+  }
+
   async function stopSession(id) {
     const record = requireSession(id);
     let result;
     try {
-      result = await adapter.stop({ requestId: record.delegate.requestId });
+      result = record.source === 'paseo' && daemon ? await daemon.stop(record.delegate.sessionId) : await adapter.stop({ requestId: record.delegate.requestId });
     } catch (err) {
       if (err instanceof BridgeError && err.code === 'stop_unconfirmed') {
         sessionStore.update(id, (current) => {
@@ -532,7 +608,7 @@ export function createSessionService({
 
     let status;
     try {
-      status = await adapter.status({ requestId: record.delegate.requestId });
+      status = daemon ? await daemon.status(record.delegate.sessionId) : await adapter.status({ requestId: record.delegate.requestId });
     } catch (err) {
       const result = { available: false, code: err instanceof BridgeError ? err.code : 'delegation_failed' };
       observations.set(id, { at: Date.now(), result });
@@ -548,7 +624,8 @@ export function createSessionService({
   function applyObservation(id, status) {
     const pending = summarizePending(status.pending);
     const result = summarizeResult(status.result);
-    const phase = mapPhase(status);
+    const stored = sessionStore.get(id);
+    const phase = stored?.stopRequestedAt ? stored.phase : mapPhase(status);
     sessionStore.update(id, (record) => {
       const events = [];
       if (status.modelCheck) record.modelCheck = status.modelCheck;
@@ -578,6 +655,7 @@ export function createSessionService({
         events.push({ type: 'session.result', payload: { messageId: result.messageId, timestamp: result.timestamp, chars: result.chars, textHash: result.textHash } });
         record.result = result;
       }
+      if (status.updatedAt) record.sourceUpdatedAt = status.updatedAt;
       record.observedAt = new Date(now()).toISOString();
       return events;
     });
@@ -600,7 +678,7 @@ export function createSessionService({
       mode: MODES.has(record.mode) ? record.mode : 'default',
       fast: record.fast === true,
       favorite: record.favorite === true,
-      archivedAt: record.archivedAt ?? null,
+      archivedAt: record.archivedAt ?? record.daemonArchivedAt ?? null,
       worktree: isWorktree(record),
       instructionVersion: record.instructionVersion ?? null,
       instructionHash: record.instructionHash ?? null,
@@ -619,7 +697,7 @@ export function createSessionService({
       result: record.result ?? null,
       stopRequestedAt: record.stopRequestedAt ?? null,
       createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
+      updatedAt: record.sourceUpdatedAt ?? record.updatedAt,
       observedAt: record.observedAt ?? null,
       events: {
         lastSeq,
@@ -637,12 +715,17 @@ export function createSessionService({
 
   return {
     createSession,
+    syncDaemon,
+    decision,
+    reply,
     listSessions,
     getSession,
     conversation,
+    image: (id, imageID) => { requireSession(id); return images.read(id, imageID); },
     sendMessage,
     updateSession,
     stopSession,
+    interruptSession,
     resumeSession,
     readEventPage,
     listArtifacts,
@@ -898,3 +981,16 @@ function artifact(id, name, type, text, updatedAt) {
   };
 }
 
+
+function parseImages(images) {
+  if (images === undefined) return undefined;
+  if (!Array.isArray(images) || images.length > 4) throw badRequest('payload_invalid', 'at most four images are supported');
+  let bytes = 0;
+  return images.map((image) => {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(image?.mimeType)
+      || typeof image.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) throw badRequest('payload_invalid', 'invalid image');
+    bytes += Buffer.byteLength(image.data, 'base64');
+    if (bytes > 4 * 1024 * 1024) throw badRequest('payload_too_large', 'images must fit in four MiB');
+    return { data: image.data, mimeType: image.mimeType };
+  });
+}

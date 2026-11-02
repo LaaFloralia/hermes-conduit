@@ -127,3 +127,11 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 - 予定・スキル・定期実行（2026-11-02）：`GET /v1/calendar/events` は `calendar:read`、`GET /v1/skills` と `GET /v1/routines` は `sessions:read` を要求する読取専用の端点。Calendarの範囲は8日以内で、設定・認可・APIの失敗は空の予定にせず503を返す。Skillsはfrontmatterの `name`・`description` に、名前別の分類・日本語要約・詳細を加える。未登録は「その他」と元の説明。SKILL.md本文は返さず保存しない。RoutinesはConsoleの観測値と構造化された `triggerKind` を投影する。定期実行を通常一覧、常駐・手動・未確認を折りたたみに表示し、未観測はnull、読取失敗は503とする。
 - 未決の3（GUI）と4（Brain書込み）は本書の案どおり、実証まで提供しない。5（Usage）はタスク05の結果で決める。
 
+
+Paseoセッションのアプリ置換（2026-11-02）:
+
+- 実稼働起動はdaemonの全メタデータを取り込み、Bridge由来でない会話にも安定したses IDを付ける。`delegateSessionId`はPaseoのagent IDを保持する。アプリは`scope=all`でアーカイブを含めてリンク先を解決する。
+- 会話は要求時だけprojected timelineから取得する。reasoning・ツール入出力は返さず、ツール名と実行状態を要約する。
+- `POST /v1/sessions/{id}/interrupt`は現在の手番を中断し、同じ会話への追加指示を許す。従来の`stop`の契約は保つ。`GET .../decision`が発行した5分ticketとpending hashを`POST .../reply`で照合し、回答の消化を再読取する。
+- 追加指示は安定したmessage IDとsteerを使う。画像は最大4枚・合計4 MiBをstate内の0600ファイルへ保存する。既存Paseo画像の参照は公開履歴にないため、表示はLAAから送った分に限る。
+- `notifyOwner`は既存Hermesプラグインの暗号化配送を使う。未達は永続化して30秒ごとに再試行し、同時配送は2件までとする。実通知・実会話書込・実機性能は親が最終確認する。

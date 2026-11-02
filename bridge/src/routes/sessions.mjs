@@ -59,7 +59,13 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
   }
 
   async function update({ params, rawBody }) {
-    const result = sessions.updateSession({ id: params[0], body: parseObjectBody(rawBody) });
+    const result = await sessions.updateSession({ id: params[0], body: parseObjectBody(rawBody) });
+    return { status: 200, data: sessions.view(result.session) };
+  }
+
+  async function decision({ params }) { return { status: 200, data: await sessions.decision(params[0]) }; }
+  async function reply({ params, rawBody }) {
+    const result = await sessions.reply({ id: params[0], body: parseObjectBody(rawBody) });
     return { status: 200, data: sessions.view(result.session) };
   }
 
@@ -123,6 +129,10 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
   }
 
   return [
+    { method: "POST", pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/interrupt$/, auth: true, scope: "sessions:write", idempotent: true, handler: async ({ params }) => { const result = await sessions.interruptSession(params[0]); return { status: 200, data: sessions.view(result.session) }; } },
+    { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/images\/([0-9a-f]{64})$/, auth: true, scope: 'sessions:read', handler: async ({ params }) => ({ status: 200, data: sessions.image(params[0], params[1]) }) },
+    { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/decision$/, auth: true, scope: 'sessions:read', handler: decision },
+    { method: 'POST', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/reply$/, auth: true, scope: 'sessions:write', idempotent: true, handler: reply },
     { method: 'GET', path: '/v1/sessions', auth: true, scope: 'sessions:read', handler: list },
     { method: 'POST', path: '/v1/sessions', auth: true, scope: 'sessions:write', idempotent: true, handler: create },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:read', handler: detail },
@@ -149,6 +159,7 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
       auth: true,
       scope: 'sessions:write',
       idempotent: true,
+      bodyLimit: 6 * 1024 * 1024,
       handler: send,
     },
     {

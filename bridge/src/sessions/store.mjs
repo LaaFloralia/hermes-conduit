@@ -115,6 +115,39 @@ export function createSessionStore({
         return { record, events: appended };
       });
     },
+    // One atomic directory snapshot, rather than rewriting the complete file
+    // once per agent. Directory input contains metadata only.
+    importDirectory(rows) {
+      return state.mutate((doc) => {
+        prune(doc);
+        const transitions = [];
+        for (const row of rows) {
+          const previous = doc.sessions[row.id];
+          const current = previous ? { ...previous, ...row,
+            favorite: previous.favorite === true, archivedAt: previous.archivedAt,
+            name: previous.nameSource === 'owner' ? previous.name : row.name,
+            nameSource: previous.nameSource === 'owner' ? 'owner' : 'agent',
+            requested: previous.requested ?? row.requested,
+            delegate: previous.delegate ?? row.delegate,
+            requestId: previous.requestId ?? row.requestId,
+            source: previous.source ?? row.source,
+            projectId: previous.projectId ?? row.projectId,
+          } : row;
+          if (previous?.stopRequestedAt) current.phase = previous.phase;
+          const changed = previous && (previous.phase !== current.phase || previous.pending?.hash !== current.pending?.hash || (current.requiresAttention && previous.attentionTimestamp !== current.attentionTimestamp));
+          const stream = (doc.streams[row.id] ??= { lastSeq: 0, events: [] });
+          if (changed) {
+            current.version = (previous.version ?? 1) + 1;
+            stream.events.push({ seq: ++stream.lastSeq, type: 'session.phase', version: current.version,
+              occurredAt: new Date(now()).toISOString(), payload: { phase: current.phase, previous: previous.phase } });
+            transitions.push({ previous: previous.phase, current });
+          }
+          if (!previous && ['awaiting_decision', 'error'].includes(current.phase)) transitions.push({ previous: null, current });
+          doc.sessions[row.id] = current;
+        }
+        return transitions;
+      });
+    },
     readEvents(id, options) {
       const doc = state.read();
       return readEvents(doc, id, options);

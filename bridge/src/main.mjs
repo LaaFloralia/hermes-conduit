@@ -15,7 +15,7 @@ try {
   // Fail before listening if the state file is unreadable or corrupt: serving
   // with a lost device or ledger row would be worse than being down.
   store.read();
-  bridge = createBridge({ store, version: VERSION, testEndpoints: testEndpointsEnabled() });
+  bridge = createBridge({ store, version: VERSION, testEndpoints: testEndpointsEnabled(), routeOptions: { sessions: { live: true } } });
   const address = await bridge.listen({ port, host: HOST });
   process.stdout.write(`${JSON.stringify({
     event: 'listening',
