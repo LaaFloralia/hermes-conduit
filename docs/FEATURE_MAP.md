@@ -505,7 +505,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   existing Settings report remains available.
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
-  area access by naming that audience. Owner search stays local and Bridge
+  area access by naming that audience. A denied device sees a localized Mac
+  grant instruction. Owner search stays local and Bridge
   searches never re-rank with a model. Hidden paths and trash remain excluded.
 - Brain opens the Mac Bridge when no security-scoped folder is selected;
   choosing the SyncTrain folder enables local, offline browsing. The local
@@ -518,8 +519,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   exact request and key in ThisDeviceOnly Keychain for reconciliation.
 - Existing local notes can be edited with a pre-write recovery journal and
   digest comparison; a detected concurrent change keeps both versions for
-  review. The journal reserves 30 ordinary versions and at most 128 MiB per note; unique
-  displaced and interrupted versions are never automatically evicted. If those
+  review. After exchange and fsync, the note is reopened and hashed before
+  acknowledging success; a newer external save retains the draft and pending
+  recovery. Recovered conflicting drafts enter the journal before choices appear,
+  and a missing or renamed note still offers its retained draft for export.
+  The journal reserves 30 ordinary versions and at most 128 MiB per note; unique
+  conflict, displaced and interrupted versions are never automatically evicted. If those
   versions fill the limit, the pending stage remains available for export.
   The local vault appends `.laa-tmp` to its device-local `.stignore` on connect
   unless its final `*` indicates SyncTrain selective sync, which it leaves intact;

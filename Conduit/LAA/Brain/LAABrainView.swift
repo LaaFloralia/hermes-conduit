@@ -587,8 +587,9 @@ struct LAABrainView: View {
 
     private func failure(_ error: LAABridgeError) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Label { Text(verbatim: error.japaneseText) } icon: { Image(systemName: "exclamationmark.triangle") }
+            Label { Text(verbatim: error == .forbidden ? LAACopy.Brain.ownerPermissionRequired : error.japaneseText) } icon: { Image(systemName: "exclamationmark.triangle") }
                 .foregroundStyle(LAAColor.attention)
+                .accessibilityIdentifier(error == .forbidden ? "laa.brain.ownerPermission" : "laa.brain.readError")
             Button { Task { if query.isEmpty { await load() } else { await search() } } } label: { Text(verbatim: LAACopy.Brain.retry) }
         }
     }

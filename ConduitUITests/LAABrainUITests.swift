@@ -48,6 +48,11 @@ final class LAABrainUITests: XCTestCase {
     func testManageRenameTrashAndGalleryLight() { manageRenameTrashAndGallery(style: "Light") }
     func testManageRenameTrashAndGalleryDark() { manageRenameTrashAndGallery(style: "Dark") }
 
+    func testOwnerScopeDenialExplainsTheMacGrant() {
+        let app = launch("ownerDenied")
+        XCTAssertTrue(app.descendants(matching: .any)["laa.brain.ownerPermission"].firstMatch.waitForExistence(timeout: 15))
+    }
+
     private func manageRenameTrashAndGallery(style: String) {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-AppleInterfaceStyle", style]

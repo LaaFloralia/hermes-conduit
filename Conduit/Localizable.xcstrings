@@ -1,6 +1,88 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Grant this device Brain viewing access on your Mac.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erteile diesem Gerät auf deinem Mac Zugriff auf Brain."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concede a este dispositivo acceso de lectura a Brain desde tu Mac."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisez cet appareil à consulter Brain sur votre Mac."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berikan perangkat ini akses untuk melihat Brain melalui Mac Anda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorizza questo dispositivo a consultare Brain dal Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macでこの端末にBrainの閲覧権限を付けてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 이 기기에 Brain 열람 권한을 부여해 주세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nadaj temu urządzeniu dostęp do przeglądania Brain na Macu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conceda a este dispositivo acesso de leitura ao Brain pelo Mac."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите этому устройству просмотр Brain на Mac."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’inizde bu cihaza Brain görüntüleme izni verin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在 Mac 上为此设备授予 Brain 查看权限。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在 Mac 上授予此裝置 Brain 檢視權限。"
+          }
+        }
+      }
+    },
     "Gallery": {
       "localizations": {
         "de": {

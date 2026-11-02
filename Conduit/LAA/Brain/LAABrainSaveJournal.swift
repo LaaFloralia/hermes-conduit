@@ -130,7 +130,7 @@ struct LAABrainSaveJournal {
         let summary = VersionSummary(id: version.id, vault: vault, path: path, kind: kind,
                                      created: version.created, digest: version.digest, byteCount: bytes.count)
         let metadata = try JSONEncoder().encode(summary)
-        // Reserve room before writing, but never evict unique displaced or interrupted versions.
+        // Reserve room before writing, but never evict conflict, displaced or interrupted versions.
         try prune(folder: folder, records: existing, reserveBytes: Int64(bytes.count + metadata.count),
                   reserveCount: Self.isProtected(kind) ? 0 : 1)
         // Publish metadata only after the bytes and their directory entry are durable.
@@ -167,7 +167,7 @@ struct LAABrainSaveJournal {
         return result.filter { !removed.contains($0.id) }
     }
 
-    private static func isProtected(_ kind: Kind) -> Bool { kind == .displaced || kind == .interrupted }
+    private static func isProtected(_ kind: Kind) -> Bool { kind == .displaced || kind == .interrupted || kind == .conflict }
 
     /// The 30 slots are for ordinary versions. The 128 MiB cap includes
     /// protected, unknown, quarantined and orphan files until they are cleaned.

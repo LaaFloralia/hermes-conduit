@@ -130,6 +130,44 @@ struct BrainSaveFixture {
         try check(current == Data("OTHER".utf8) && draft == Data("MINE".utf8) && conflictText == "OTHER", "conflict modified original")
         try check(conflictHistory.contains { $0.kind == .conflict && $0.bytes == current }, "conflict history missing")
 
+        // An external atomic save after our exchange must not be acknowledged.
+        try put("after-exchange.md", "BASE")
+        var afterExchange = LAABrainSaveCoordinator(journal: journal)
+        let afterSnapshot = try afterExchange.begin(root: root, path: "after-exchange.md")
+        afterExchange.fixtureAfterExchange = {
+            try Data("EXTERNAL".utf8).write(to: root.appendingPathComponent("after-exchange.md"), options: .atomic)
+        }
+        guard case let .intervening(latest, afterDraft) = try afterExchange.save(root: root, snapshot: afterSnapshot, draft: Data("MINE".utf8)) else { throw FixtureFailure() }
+        let afterText = try read("after-exchange.md")
+        let afterPending = try journal.pending(vault: afterSnapshot.vault, path: afterSnapshot.path)
+        let afterHistory = try journal.versions(vault: afterSnapshot.vault, path: afterSnapshot.path)
+        try check(latest == Data("EXTERNAL".utf8) && afterDraft == Data("MINE".utf8) && afterText == "EXTERNAL", "post-exchange replacement was acknowledged as saved")
+        try check(afterPending.count == 1 && afterHistory.contains { $0.kind == .draft && $0.bytes == afterDraft } && afterHistory.contains { $0.kind == .conflict && $0.bytes == latest }, "post-exchange replacement lost recovery data")
+        _ = try coordinator.preservePending(afterPending[0])
+
+        let draftStore = LAABrainDraftStore(directory: work.appendingPathComponent("drafts"))
+        try put("reopened.md", "BASE")
+        let reopened = try coordinator.begin(root: root, path: "reopened.md")
+        try draftStore.save(.init(vault: reopened.vault, path: reopened.path, base: reopened.base, bytes: Data("RECOVERED-DRAFT".utf8)))
+        try put("reopened.md", "EXTERNAL")
+        guard case let .note(reopenedSnapshot, recoveredDraft, conflicted) = try coordinator.openEditor(root: root, path: reopened.path, drafts: draftStore) else { throw FixtureFailure() }
+        try check(conflicted && reopenedSnapshot.base == Data("EXTERNAL".utf8) && recoveredDraft == Data("RECOVERED-DRAFT".utf8), "reopened draft conflict not offered")
+        // Choosing the external text lets autosave clear the latest-buffer file.
+        try draftStore.clear(vault: reopened.vault, path: reopened.path)
+        let reopenedHistory = try journal.versions(vault: reopened.vault, path: reopened.path)
+        try check(reopenedHistory.contains { $0.kind == .draft && $0.bytes == recoveredDraft } && reopenedHistory.contains { $0.kind == .original && $0.bytes == reopenedSnapshot.base }, "choosing external text lost the recovered draft")
+
+        for missing in ["deleted-draft.md", "renamed-draft.md"] {
+            try put(missing, "BASE")
+            let entry = try coordinator.begin(root: root, path: missing)
+            try draftStore.save(.init(vault: entry.vault, path: missing, base: entry.base, bytes: Data("ORPHAN-DRAFT".utf8)))
+            if missing.hasPrefix("deleted") { try manager.removeItem(at: root.appendingPathComponent(missing)) }
+            else { try manager.moveItem(at: root.appendingPathComponent(missing), to: root.appendingPathComponent("moved-draft.md")) }
+            guard case let .detachedDraft(bytes) = try coordinator.openEditor(root: root, path: missing, drafts: draftStore) else { throw FixtureFailure() }
+            let retainedDraft = try draftStore.load(vault: entry.vault, path: missing)
+            try check(bytes == Data("ORPHAN-DRAFT".utf8) && retainedDraft?.bytes == bytes && !manager.fileExists(atPath: root.appendingPathComponent(missing).path), "missing note hid or cleared its exportable draft")
+        }
+
         try put("fallback.md", "BASE")
         var fallback = LAABrainSaveCoordinator(journal: journal)
         fallback.fixtureForceFallback = true
@@ -269,11 +307,12 @@ struct BrainSaveFixture {
         try check(!unrelatedVersions.isEmpty, "retention removed another note")
 
         // Reopening and saving unchanged text must not consume history slots,
-        // and unique displaced/interrupted records are outside the 30 slots.
+        // and conflict/displaced/interrupted records are outside the 30 slots.
         try put("noop.md", "UNCHANGED")
         let noop = try coordinator.begin(root: root, path: "noop.md")
         _ = try journal.record(vault: noop.vault, path: noop.path, kind: .displaced, bytes: Data("UNIQUE-DISPLACED".utf8))
         _ = try journal.record(vault: noop.vault, path: noop.path, kind: .interrupted, bytes: Data("UNIQUE-INTERRUPTED".utf8))
+        _ = try journal.record(vault: noop.vault, path: noop.path, kind: .conflict, bytes: Data("UNIQUE-CONFLICT".utf8))
         for index in 0..<35 {
             _ = try journal.record(vault: noop.vault, path: noop.path, kind: .draft, bytes: Data("change-\(index)".utf8))
         }
@@ -282,10 +321,11 @@ struct BrainSaveFixture {
             _ = try coordinator.save(root: root, snapshot: snapshot, draft: snapshot.base)
         }
         let noopHistory = try journal.versions(vault: noop.vault, path: noop.path)
-        try check(noopHistory.filter { $0.kind == .original || $0.kind == .draft || $0.kind == .conflict }.count == 30,
+        try check(noopHistory.filter { $0.kind == .original || $0.kind == .draft }.count == 30,
                   "no-op consumed retention slots")
         try check(noopHistory.contains { $0.bytes == Data("UNIQUE-DISPLACED".utf8) } &&
                   noopHistory.contains { $0.bytes == Data("UNIQUE-INTERRUPTED".utf8) } &&
+                  noopHistory.contains { $0.kind == .conflict && $0.bytes == Data("UNIQUE-CONFLICT".utf8) } &&
                   noopHistory.filter { $0.bytes == Data("UNCHANGED".utf8) }.count == 1,
                   "no-op removed protected versions or duplicated the unchanged version")
 

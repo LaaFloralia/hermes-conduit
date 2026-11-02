@@ -53,7 +53,7 @@ struct LAABrainNoteView: View {
                             Text(verbatim: localError).foregroundStyle(LAAColor.attention)
                             Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
                         } else if let error {
-                            Text(verbatim: error.japaneseText).foregroundStyle(LAAColor.attention)
+                            Text(verbatim: error == .forbidden ? LAACopy.Brain.ownerPermissionRequired : error.japaneseText).foregroundStyle(LAAColor.attention)
                             Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
                         } else if let note {
                             if raw {

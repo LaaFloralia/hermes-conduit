@@ -81,6 +81,14 @@ struct LAABrainSaveEditor: View {
                                 .accessibilityIdentifier("laa.brain.edit.exportDraft")
                         }
                     }
+                } else if canExportDraft {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                            versionPanel("自分の下書き", text: draft)
+                            Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
+                                .accessibilityIdentifier("laa.brain.edit.exportDraft")
+                        }.padding(LAASpacing.horizontal)
+                    }
                 } else {
                     ContentUnavailableView("編集画面を開けません", systemImage: "exclamationmark.triangle", description: Text("フォルダの接続を確認してください。"))
                 }
@@ -227,17 +235,20 @@ struct LAABrainSaveEditor: View {
             versions = stored; pending = unfinished
             if unfinished.isEmpty {
                 readingNote = true
-                let entry = try await Task.detached(priority: .userInitiated) {
-                    try coordinator.begin(root: root, path: path)
+                let opening = try await Task.detached(priority: .userInitiated) {
+                    try coordinator.openEditor(root: root, path: path, drafts: drafts)
                 }.value
                 readingNote = false
-                snapshot = entry
-                draft = String(decoding: entry.base, as: UTF8.self)
-                if let storedDraft = try drafts.load(vault: vault, path: path), storedDraft.bytes != entry.base {
-                    draft = String(decoding: storedDraft.bytes, as: UTF8.self)
-                    if storedDraft.base != entry.base {
+                switch opening {
+                case let .note(entry, bytes, conflicted):
+                    snapshot = entry
+                    draft = String(decoding: bytes, as: UTF8.self)
+                    if conflicted {
                         conflict = BrainSaveConflict(other: String(data: entry.base, encoding: .utf8), draft: draft, afterExchange: false)
                     }
+                case let .detachedDraft(bytes):
+                    snapshot = nil; draft = String(decoding: bytes, as: UTF8.self); canExportDraft = true
+                    message = "ノートを読めません。保管庫へのアクセスを確認してください。"
                 }
                 versions = try await Task.detached(priority: .userInitiated) {
                     try coordinator.journal.summaries(vault: vault, path: path)
@@ -255,6 +266,9 @@ struct LAABrainSaveEditor: View {
         } catch {
             message = readingNote ? "ノートを読めません。保管庫へのアクセスを確認してください。" : "履歴を読めません。端末内の保存領域を確認してください。"
         }
+        if snapshot == nil, let retained = try? drafts.load(vault: LAABrainSaveJournal.vaultID(root), path: path) {
+            draft = String(decoding: retained.bytes, as: UTF8.self); canExportDraft = true
+        }
         busy = false
     }
 
@@ -269,6 +283,7 @@ struct LAABrainSaveEditor: View {
         injectFixtureMissingStage = false
         #endif
         do {
+            try drafts.save(.init(vault: snapshot.vault, path: path, base: snapshot.base, bytes: data))
             let outcome = try await Task.detached(priority: .userInitiated) {
                 var worker = coordinator
                 #if DEBUG
@@ -288,6 +303,9 @@ struct LAABrainSaveEditor: View {
             }.value
             versions = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.summaries(vault: snapshot.vault, path: path)
+            }.value
+            pending = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.pending(vault: snapshot.vault, path: path)
             }.value
             let foundCorruption = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.corruptCount(vault: snapshot.vault, path: path) > 0

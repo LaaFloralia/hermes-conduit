@@ -21,6 +21,10 @@ struct LAABrainSaveCoordinator {
         case restored(path: String)
         case uncertain(path: String)
     }
+    enum EditorOpening {
+        case note(Snapshot, draft: Data, conflicted: Bool)
+        case detachedDraft(Data)
+    }
     enum SaveError: Error {
         case invalidPath, notRegularFile, tooLarge, invalidText, pendingRecovery, unsafeStage, missingStage, storage, coordination
         case recoveryExportRequired, recoveryDestinationExists, conflictCopy, historyUnavailable
@@ -44,7 +48,21 @@ struct LAABrainSaveCoordinator {
 
     init(journal: LAABrainSaveJournal = LAABrainSaveJournal()) { self.journal = journal }
 
-    func begin(root: URL, path: String) throws -> Snapshot {
+    func openEditor(root: URL, path: String, drafts: LAABrainDraftStore) throws -> EditorOpening {
+        let recovered = try drafts.load(vault: LAABrainSaveJournal.vaultID(root), path: path)
+        do {
+            let entry = try begin(root: root, path: path, recovering: drafts)
+            return .note(entry, draft: recovered?.bytes ?? entry.base,
+                         conflicted: recovered.map { $0.bytes != entry.base && $0.base != entry.base } ?? false)
+        } catch {
+            guard let recovered else { throw error }
+            // A missing/renamed note or unavailable history must not hide a
+            // protected app-private draft. It can still be exported as bytes.
+            return .detachedDraft(recovered.bytes)
+        }
+    }
+
+    func begin(root: URL, path: String, recovering drafts: LAABrainDraftStore? = nil) throws -> Snapshot {
         guard !Self.isConflictCopy(path) else { throw SaveError.conflictCopy }
         let file = try Self.noteURL(root: root, path: path)
         let vault = LAABrainSaveJournal.vaultID(root)
@@ -65,6 +83,11 @@ struct LAABrainSaveCoordinator {
         let base = try result.get()
         do { try journal.record(vault: vault, path: path, kind: .original, bytes: base) }
         catch { throw SaveError.historyUnavailable }
+        if let recovered = try drafts?.load(vault: vault, path: path), recovered.base != base, recovered.bytes != base {
+            // Selecting the external version may clear the latest-buffer store.
+            // Preserve the recovered draft before offering either choice.
+            try journal.record(vault: vault, path: path, kind: .draft, bytes: recovered.bytes)
+        }
         return Snapshot(vault: vault, path: path, base: base)
     }
 
@@ -185,6 +208,13 @@ struct LAABrainSaveCoordinator {
                         if fixtureDirectorySyncFails { throw SaveError.durabilityUncertain }
                         #endif
                         guard fsync(noteFD) == 0, fsync(stageFD) == 0 else { throw SaveError.durabilityUncertain }
+                        let latest = try Self.readNote(fd: noteFD, name: noteName)
+                        if LAABrainSaveJournal.digest(latest) != LAABrainSaveJournal.digest(draft) {
+                            try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .conflict, bytes: latest)
+                            // Keep the manifest and displaced inode for recovery;
+                            // the editor must not acknowledge this as a save.
+                            return .intervening(displaced: latest, draft: draft)
+                        }
                         try journal.finish(transaction)
                         return changed ? .intervening(displaced: displaced, draft: draft) : .saved(.exchange)
                     }
