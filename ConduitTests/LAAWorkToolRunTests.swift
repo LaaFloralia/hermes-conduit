@@ -1,3 +1,4 @@
+#if LAA_BUILD
 import XCTest
 @testable import Conduit
 
@@ -40,3 +41,4 @@ final class LAAWorkToolRunTests: XCTestCase {
         XCTAssertTrue(groups.allSatisfy { $0.kind == .message })
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if LAA_BUILD
 import XCTest
 @testable import Conduit
 
@@ -18,3 +19,4 @@ final class LAAWorkDesktopTests: XCTestCase {
         XCTAssertFalse(LAAWorkDesktopList.matches("Review the launch brief", query: "invoice"))
     }
 }
+#endif
