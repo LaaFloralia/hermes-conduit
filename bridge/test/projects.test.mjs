@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createProjectStore } from '../src/routes/projects.mjs';
+import { createProjectStore, storedFileName } from '../src/routes/projects.mjs';
 import { startBridge } from './helpers.mjs';
 
 const BODY = 'Always answer in Japanese.\nKeep it under five lines.';
@@ -463,6 +463,68 @@ test('projects survive a restart and paginate with an opaque cursor', async (t) 
   const afterRestart = await api.request('/v1/projects', { token });
   assert.equal(afterRestart.status, 200);
   assert.equal(afterRestart.body.data.items.length, 3);
+});
+
+test('a long Japanese file name is shortened on disk but kept as the display name', async (t) => {
+  const { api, token } = await boot(t);
+  const project = (await createProject(api, token, { name: '資料つき' }, 'k-long-project')).body.data;
+  const name = `${'資'.repeat(117)}.md`; // 120 code points, 354 UTF-8 bytes
+  const body = { name, contentBase64: Buffer.from('# 参考').toString('base64'), mimeType: 'text/markdown' };
+
+  const added = await api.request(`/v1/projects/${project.id}/files`, { method: 'POST', token, key: 'k-long-file', body });
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  assert.equal(added.body.data.files[0].name, name, 'the API keeps the display name');
+  assert.equal(added.body.data.files[0].path, undefined, 'the Mac path stays private');
+
+  const stored = readdirSync(join(api.stateDir, 'project-files', project.id));
+  assert.equal(stored.length, 1);
+  assert.ok(Buffer.byteLength(stored[0], 'utf8') <= 255, `${Buffer.byteLength(stored[0], 'utf8')} bytes`);
+  assert.ok(stored[0].endsWith('.md'), 'the extension survives the shortening');
+  assert.equal(stored[0], stored[0].normalize('NFC'));
+
+  const replay = await api.request(`/v1/projects/${project.id}/files`, { method: 'POST', token, key: 'k-long-file', body });
+  assert.equal(replay.status, 201);
+  assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+  assert.equal(replay.body.data.files.length, 1);
+  assert.equal(readdirSync(join(api.stateDir, 'project-files', project.id)).length, 1);
+});
+
+test('storedFileName normalises and cuts on code-point boundaries', () => {
+  const id = 'file_0123456789ab';
+  for (const name of [
+    `${'が'.repeat(120)}.txt`,
+    `${'📄'.repeat(60)}.pdf`,
+    `${'か\u3099'.repeat(60)}.md`,
+  ]) {
+    const stored = storedFileName(id, name);
+    assert.ok(Buffer.byteLength(stored, 'utf8') <= 255, `${Buffer.byteLength(stored, 'utf8')} bytes`);
+    assert.equal(stored, stored.normalize('NFC'));
+    assert.equal(Buffer.from(stored, 'utf8').toString('utf8'), stored, 'no broken code point');
+  }
+  assert.ok(storedFileName(id, `${'が'.repeat(120)}.txt`).endsWith('.txt'));
+  assert.ok(storedFileName(id, `${'📄'.repeat(60)}.pdf`).endsWith('.pdf'));
+});
+
+test('a rejected file name releases its key so the corrected retry can run', async (t) => {
+  const { api, token } = await boot(t);
+  const project = (await createProject(api, token, { name: '資料つき' }, 'k-retry-project')).body.data;
+  const invalid = await api.request(`/v1/projects/${project.id}/files`, {
+    method: 'POST',
+    token,
+    key: 'k-file-retry',
+    body: { name: 'x'.repeat(121), contentBase64: Buffer.from('a').toString('base64') },
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error.code, 'payload_invalid');
+
+  const corrected = await api.request(`/v1/projects/${project.id}/files`, {
+    method: 'POST',
+    token,
+    key: 'k-file-retry',
+    body: { name: '短い名前.md', contentBase64: Buffer.from('a').toString('base64') },
+  });
+  assert.equal(corrected.status, 201, JSON.stringify(corrected.body));
+  assert.equal(corrected.body.data.files[0].name, '短い名前.md');
 });
 
 test('a schema-1 project file is converted once without inventing a body', async (t) => {

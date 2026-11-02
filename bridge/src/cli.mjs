@@ -19,7 +19,7 @@ import {
   expandScopes,
 } from './config.mjs';
 import { createStore } from './store.mjs';
-import { grantInstructions, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
+import { grantInstructions, grantScopes, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +35,8 @@ Usage:
       --json              machine-readable output
   laa-bridge devices [--json]              list paired devices
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
+  laa-bridge grant <device-id|prefix> --scopes <list> --reason <text>
+                                            add calendar:read and/or brain:create
   laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
   laa-bridge grant-instructions <device-id|prefix> --reason <text>  grant instruction scopes
   laa-bridge status [--json]               local health check of the running service
@@ -133,6 +135,8 @@ function commandDevices(flags) {
       status: d.revokedAt ? 'revoked' : 'active',
       revokedAt: d.revokedAt,
       studioGrant: d.studioGrant ?? null,
+      instructionsGrant: d.instructionsGrant ?? null,
+      scopeGrants: d.scopeGrants ?? [],
     })))}\n`);
     return;
   }
@@ -146,6 +150,8 @@ function commandDevices(flags) {
       `  created ${device.createdAt}${device.revokedAt ? `  revoked ${device.revokedAt}` : ''}`,
       `  scopes  ${device.scopes.join(', ')}`,
       ...(device.studioGrant ? [`  studio grant ${device.studioGrant.grantedAt} uid=${device.studioGrant.operatorUid} reason=${device.studioGrant.reason}`] : []),
+      ...(device.instructionsGrant ? [`  instructions grant ${device.instructionsGrant.grantedAt} uid=${device.instructionsGrant.operatorUid} reason=${device.instructionsGrant.reason}`] : []),
+      ...(device.scopeGrants ?? []).map((grant) => `  scope grant ${grant.grantedAt} uid=${grant.operatorUid} scopes=${grant.scopes.join(',')} reason=${grant.reason}`),
     ].join('\n') + '\n');
   }
 }
@@ -214,6 +220,28 @@ switch (command) {
   case 'revoke':
     commandRevoke(positional, flags);
     break;
+  case 'grant': {
+    const target = positional[0];
+    if (!target || positional.length !== 1) fail('grant needs one device id or unambiguous prefix', 2);
+    if (!flags.scopes) fail('grant needs --scopes', 2);
+    if (!flags.reason) fail('grant needs --reason', 2);
+    const requested = flags.scopes.split(',').map((scope) => scope.trim()).filter(Boolean);
+    const result = grantScopes(openStore(), { target, scopes: requested, reason: flags.reason });
+    if (result.error) fail(result.error);
+    const { id, name, scopes } = result.device;
+    process.stdout.write(flags.json
+      ? `${JSON.stringify({
+        deviceId: id,
+        name,
+        requested: result.requested,
+        previousScopes: result.previousScopes,
+        scopes,
+        alreadyGranted: result.alreadyGranted,
+        scopeGrants: result.device.scopeGrants ?? [],
+      })}\n`
+      : `${result.alreadyGranted ? 'Scopes already granted to' : 'Granted scopes to'} ${id} (${name}).\n  before: ${result.previousScopes.join(', ')}\n  after:  ${scopes.join(', ')}\n`);
+    break;
+  }
   case 'grant-instructions': {
     const target = positional[0];
     if (!target || positional.length !== 1 || !flags.reason) fail('grant-instructions needs a device id and --reason', 2);

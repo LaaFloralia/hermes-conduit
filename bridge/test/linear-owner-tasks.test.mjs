@@ -46,6 +46,7 @@ function issue(overrides = {}) {
     url: 'https://linear.app/laa/issue/BUS-201',
     updatedAt: '2026-11-02T00:00:00.000Z',
     archivedAt: null,
+    trashed: false,
     completedAt: null,
     canceledAt: null,
     state: { name: 'Todo', type: 'unstarted' },
@@ -64,6 +65,10 @@ function fakeLinear({
   pageSize = 100,
   failOn = null,
   deleteKeepsIssue = false,
+  deleteOutcome = null,
+  deleteRemovesIssue = false,
+  deleteMarks = null,
+  malformedIssueRead = null,
 } = {}) {
   const store = new Map(issues.map((item) => [item.id, { ...item }]));
   const calls = [];
@@ -117,6 +122,8 @@ function fakeLinear({
     }
 
     if (name === 'BridgeOwnerTask') {
+      if (malformedIssueRead === 'missing') return reply({});
+      if (malformedIssueRead === 'string') return reply({ issue: 'not-an-issue' });
       const found = store.get(variables.id);
       if (!found) {
         return {
@@ -170,8 +177,25 @@ function fakeLinear({
     }
 
     if (name === 'BridgeOwnerTaskDelete') {
-      if (!deleteKeepsIssue) store.delete(variables.id);
-      return reply({ issueDelete: { __typename: 'IssuePayload' } });
+      if (deleteOutcome === 'graphql-error') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: null,
+            errors: [{ message: 'delete rejected', path: ['issueDelete'], extensions: { code: 'INPUT_ERROR', userError: true } }],
+          }),
+        };
+      }
+      if (deleteOutcome === 'missing') return reply({});
+      const success = deleteOutcome !== 'success-false';
+      if (success && !deleteKeepsIssue) store.delete(variables.id);
+      if (!success && deleteRemovesIssue) store.delete(variables.id);
+      if (deleteKeepsIssue && deleteMarks) {
+        const found = store.get(variables.id);
+        if (found) store.set(found.id, { ...found, ...deleteMarks });
+      }
+      return reply({ issueDelete: { success } });
     }
 
     return { ok: false, status: 500, json: async () => ({ errors: [{ message: 'unhandled' }] }) };
@@ -196,7 +220,7 @@ function sourceFor(fetchImpl, overrides = {}) {
 
 async function bridgeWith(fetchImpl, options = {}) {
   const source = options.source ?? sourceFor(fetchImpl, options.sourceOptions ?? {});
-  const bridge = await startBridge({ linearOwnerTasks: { source } });
+  const bridge = await startBridge({ linearOwnerTasks: { source }, now: options.now });
   const token = await bridge.token();
   const readOnly = await bridge.token(['sessions:read', 'tasks:read']);
   const writeOnly = await bridge.token(['sessions:read', 'tasks:write']);
@@ -675,6 +699,115 @@ test('a validation failure releases its key so the corrected retry can run', asy
   }
 });
 
+test('a settings 503 before the mutation releases its key for the same retry', async () => {
+  const base = fakeLinear();
+  let failures = 1;
+  const flaky = async (url, init) => {
+    const { query } = JSON.parse(init.body);
+    if (/BridgeOwnerViewer/.test(query) && failures > 0) {
+      failures -= 1;
+      return { ok: false, status: 500, json: async () => ({ errors: [{ message: 'down with lin_api_secret' }] }) };
+    }
+    return base(url, init);
+  };
+  const { bridge, token } = await bridgeWith(null, { source: sourceFor(flaky) });
+  try {
+    const body = { id: uuid(32), title: '設定失敗のあと' };
+    const first = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'settings-1', body });
+    assert.equal(first.status, 503);
+    assert.equal(first.body.error.code, 'linear_unavailable');
+    assert.equal(base.calls.filter((call) => call.name === 'BridgeOwnerTaskCreate').length, 0);
+
+    // The failure was 503 but happened while resolving settings, before any
+    // mutation; the same key must be usable.
+    const retried = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'settings-1', body });
+    assert.equal(retried.status, 201);
+    assert.equal(retried.body.data.title, '設定失敗のあと');
+    assert.equal(base.calls.filter((call) => call.name === 'BridgeOwnerTaskCreate').length, 1);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('a plain credential-helper error before the mutation keeps its marker through the route', async () => {
+  const base = fakeLinear();
+  let failures = 1;
+  const source = sourceFor(base, {
+    readToken: async () => {
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('helper exploded with a secret');
+      }
+      return 'test-token';
+    },
+  });
+  const { bridge, token } = await bridgeWith(null, { source });
+  try {
+    const body = { id: uuid(33), title: '資格情報の再試行' };
+    const first = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'credential-1', body });
+    assert.equal(first.status, 503);
+    assert.doesNotMatch(JSON.stringify(first.body), /helper exploded|secret/);
+
+    const retried = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'credential-1', body });
+    assert.equal(retried.status, 201);
+    assert.equal(retried.body.data.title, '資格情報の再試行');
+    assert.equal(base.calls.filter((call) => call.name === 'BridgeOwnerTaskCreate').length, 1);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('a 503 after the mutation keeps the key unresolved and never repeats the write', async () => {
+  let clock = Date.parse('2026-11-02T00:00:00.000Z');
+  const base = fakeLinear({ failOn: 'BridgeOwnerTaskCreate' });
+  const { bridge, token } = await bridgeWith(null, { source: sourceFor(base), now: () => clock });
+  try {
+    const body = { id: uuid(34), title: '書込み後の503' };
+    const first = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'after-503', body });
+    assert.equal(first.status, 503);
+    assert.equal(base.calls.filter((call) => call.name === 'BridgeOwnerTaskCreate').length, 1);
+
+    const during = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'after-503', body });
+    assert.equal(during.status, 409);
+    assert.equal(during.body.error.code, 'idempotency_key_in_flight');
+
+    clock += 61_000;
+    const later = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'after-503', body });
+    assert.equal(later.status, 409);
+    assert.equal(later.body.error.code, 'idempotency_outcome_unknown');
+    assert.equal(base.calls.filter((call) => call.name === 'BridgeOwnerTaskCreate').length, 1);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('a 400 or 404 after the mutation is not released either', async () => {
+  for (const status of [400, 404]) {
+    let clock = Date.parse('2026-11-02T00:00:00.000Z');
+    let calls = 0;
+    const source = {
+      async createOwnerTask() {
+        calls += 1;
+        throw new TaskSourceError('linear_write_rejected', `write failed with ${status}`, { status, writeStarted: true });
+      },
+    };
+    const { bridge, token } = await bridgeWith(null, { source, now: () => clock });
+    try {
+      const body = { id: uuid(35), title: `書込み後の${status}` };
+      const key = `after-${status}`;
+      const first = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key, body });
+      assert.equal(first.status, status);
+      clock += 61_000;
+      const later = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key, body });
+      assert.equal(later.status, 409);
+      assert.equal(later.body.error.code, 'idempotency_outcome_unknown');
+      assert.equal(calls, 1);
+    } finally {
+      await bridge.close();
+    }
+  }
+});
+
 test('patch requires If-Match, refuses a stale one, and only touches the owner\'s task', async () => {
   const fetchImpl = fakeLinear({
     issues: [
@@ -857,7 +990,7 @@ test('delete removes the owner\'s issue only, once, and reports an unconfirmed d
       headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
     });
     assert.equal(deleted.status, 200);
-    assert.deepEqual(deleted.body.data, { id: uuid(61), deleted: true });
+    assert.deepEqual(deleted.body.data, { id: uuid(61), deleted: true, alreadyDeleted: false });
     assert.equal(fetchImpl.issues.has(uuid(61)), false);
 
     const replay = await bridge.request(url, {
@@ -890,7 +1023,7 @@ test('delete removes the owner\'s issue only, once, and reports an unconfirmed d
     await bridge.close();
   }
 
-  const stubborn = fakeLinear({ issues: [issue({ id: uuid(63) })], deleteKeepsIssue: true });
+  const stubborn = fakeLinear({ issues: [issue({ id: uuid(63) })], deleteKeepsIssue: true, deleteOutcome: 'success-false' });
   const second = await bridgeWith(stubborn);
   try {
     const response = await second.bridge.request(`/v1/linear-owner-tasks/${uuid(63)}`, {
@@ -903,6 +1036,77 @@ test('delete removes the owner\'s issue only, once, and reports an unconfirmed d
     assert.equal(response.body.error.code, 'linear_delete_unconfirmed');
   } finally {
     await second.bridge.close();
+  }
+});
+
+test('delete reports success, already deleted and failure without turning failure into success', async () => {
+  const cases = [
+    { name: 'success with a readable node', options: { deleteKeepsIssue: true }, status: 200, alreadyDeleted: false },
+    { name: 'success false but the issue is gone', options: { deleteOutcome: 'success-false', deleteRemovesIssue: true }, status: 200, alreadyDeleted: true },
+    { name: 'success false and the node is trashed', options: { deleteOutcome: 'success-false', deleteKeepsIssue: true, deleteMarks: { trashed: true } }, status: 200, alreadyDeleted: true },
+    { name: 'success false and the node is only archived', options: { deleteOutcome: 'success-false', deleteKeepsIssue: true, deleteMarks: { trashed: false, archivedAt: '2026-11-02T00:00:00.000Z' } }, status: 503, code: 'linear_delete_unconfirmed' },
+    { name: 'success false and the issue is still active', options: { deleteOutcome: 'success-false', deleteKeepsIssue: true }, status: 503, code: 'linear_delete_unconfirmed' },
+    { name: 'missing payload and the issue is still active', options: { deleteOutcome: 'missing', deleteKeepsIssue: true }, status: 503, code: 'linear_delete_unconfirmed' },
+    { name: 'GraphQL error and the issue is still active', options: { deleteOutcome: 'graphql-error', deleteKeepsIssue: true }, status: 503, code: 'linear_request_rejected' },
+  ];
+  for (const item of cases) {
+    const fake = fakeLinear({ issues: [issue({ id: uuid(80) })], ...item.options });
+    const { bridge, token } = await bridgeWith(fake);
+    try {
+      const response = await bridge.request(`/v1/linear-owner-tasks/${uuid(80)}`, {
+        method: 'DELETE',
+        token,
+        key: 'delete-case',
+        headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
+      });
+      assert.equal(response.status, item.status, item.name);
+      if (item.status === 200) {
+        assert.deepEqual(response.body.data, { id: uuid(80), deleted: true, alreadyDeleted: item.alreadyDeleted }, item.name);
+      } else {
+        assert.equal(response.body.error.code, item.code, item.name);
+        assert.equal(response.body.data, undefined, item.name);
+      }
+    } finally {
+      await bridge.close();
+    }
+  }
+});
+
+test('a broken issue read after a failed delete is a 503, never already-deleted success', async () => {
+  for (const mode of ['missing', 'string']) {
+    let deleted = false;
+    const base = fakeLinear({
+      issues: [issue({ id: uuid(81) })],
+      deleteOutcome: 'success-false',
+      deleteKeepsIssue: true,
+    });
+    const flaky = async (url, init) => {
+      const { query } = JSON.parse(init.body);
+      const name = /(?:query|mutation)\s+([A-Za-z_]+)/.exec(query)?.[1];
+      if (name === 'BridgeOwnerTaskDelete') deleted = true;
+      if (deleted && name === 'BridgeOwnerTask') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (mode === 'missing' ? { data: {} } : { data: { issue: 'not-an-issue' } }),
+        };
+      }
+      return base(url, init);
+    };
+    const { bridge, token } = await bridgeWith(null, { source: sourceFor(flaky) });
+    try {
+      const response = await bridge.request(`/v1/linear-owner-tasks/${uuid(81)}`, {
+        method: 'DELETE',
+        token,
+        key: 'delete-broken',
+        headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
+      });
+      assert.equal(response.status, 503, mode);
+      assert.equal(response.body.error.code, 'linear_delete_unconfirmed', mode);
+      assert.equal(response.body.data, undefined, mode);
+    } finally {
+      await bridge.close();
+    }
   }
 });
 
@@ -943,7 +1147,6 @@ test('the source sends only its own fixed documents', async () => {
     'BridgeOwnerTaskCreate',
     'BridgeOwnerTaskUpdate',
     'BridgeOwnerTaskDelete',
-    'BridgeOwnerTask',
   ]);
   for (const call of fetchImpl.calls) {
     assert.match(call.query, /^(query|mutation) BridgeOwner/);
