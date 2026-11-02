@@ -3,6 +3,21 @@ import Combine
 import Foundation
 import WidgetKit
 
+enum LAACalendarRequest {
+    static func eventPath(id: String, calendarID: String? = nil) throws -> String {
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard !id.isEmpty, id.utf8.count <= 1024,
+              let segment = id.addingPercentEncoding(withAllowedCharacters: unreserved) else { throw LAABridgeError.invalidResponse }
+        var path = "/v1/calendar/events/" + segment
+        if let calendarID {
+            guard !calendarID.isEmpty, calendarID.utf8.count <= 1024,
+                  let query = calendarID.addingPercentEncoding(withAllowedCharacters: unreserved) else { throw LAABridgeError.invalidResponse }
+            path += "?calendarId=" + query
+        }
+        return path
+    }
+}
+
 struct LAACalendarResponse: Codable {
     struct Event: Codable {
         let id: String

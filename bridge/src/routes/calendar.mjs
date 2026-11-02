@@ -13,7 +13,7 @@ function calendarId(value) {
 }
 function eventId(value) {
   let id; try { id = decodeURIComponent(value); } catch { }
-  if (typeof id !== 'string' || !/^[A-Za-z0-9_.@+-]{1,1024}$/.test(id)) throw badRequest('event_id_invalid', 'Invalid event ID');
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_.@#+-]{1,1024}$/.test(id)) throw badRequest('event_id_invalid', 'Invalid event ID');
   return id;
 }
 const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;

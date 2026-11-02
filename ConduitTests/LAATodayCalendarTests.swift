@@ -4,6 +4,23 @@ import SwiftUI
 @testable import Conduit
 
 final class LAATodayCalendarTests: XCTestCase {
+    func testCalendarEventPathStrictlyEncodesOpaqueIDs() throws {
+        for id in ["invite@host", "part#name", "a+b", "a_b", "all@#+_/?%"] {
+            let path = try LAACalendarRequest.eventPath(id: id, calendarID: id)
+            let parts = try XCTUnwrap(URLComponents(string: path))
+            let segment = String(parts.percentEncodedPath.dropFirst("/v1/calendar/events/".count))
+            XCTAssertEqual(segment.removingPercentEncoding, id)
+            XCTAssertFalse(segment.contains(where: { "/?# +@".contains($0) }))
+            XCTAssertEqual(parts.queryItems?.first?.value, id)
+            XCTAssertNil(parts.fragment)
+            XCTAssertEqual(try LAACalendarRequest.eventPath(id: id), "/v1/calendar/events/" + segment)
+        }
+        for id in ["", String(repeating: "a", count: 1025)] {
+            XCTAssertThrowsError(try LAACalendarRequest.eventPath(id: id))
+            XCTAssertThrowsError(try LAACalendarRequest.eventPath(id: "valid", calendarID: id))
+        }
+    }
+
     func testEventsOverlappingMidnightAppearOnBothDays() {
         let day = Date(timeIntervalSince1970: 1_800_000_000)
         let event = LAACalendarEvent(id: "night", title: "Night", start: day.addingTimeInterval(-3600),

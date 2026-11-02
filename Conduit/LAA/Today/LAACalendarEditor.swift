@@ -107,7 +107,7 @@ struct LAACalendarEditor: View {
             // Existing reminders stay unchanged until the user changes this control.
             if event == nil || reminder != -1 { body["reminderMinutes"] = reminder < 0 ? NSNull() : reminder as Any }
             if let etag = event?.etag { body["etag"] = etag }
-            let path = "/v1/calendar/events" + (event?.googleID.map { "/" + $0 } ?? "")
+            let path = try event?.googleID.map { try LAACalendarRequest.eventPath(id: $0) } ?? "/v1/calendar/events"
             let _: LAABridgeResponse<LAACalendarResponse.Event> = try await bridge.request(method: event == nil ? "POST" : "PATCH", path: path,
                 jsonBody: JSONSerialization.data(withJSONObject: body), idempotencyKey: key)
             saved(); dismiss()

@@ -241,9 +241,9 @@ test('calendar excludes only invalid events, reports their count, and safely acc
   const calls = [];
   const bridge = await startBridge({ calendar: { service: { get: async p => (calls.push(p), p), save: async p => (calls.push(p), p), remove: async p => (calls.push(p), { deleted: true }) } } }); t.after(() => bridge.close());
   const token = await bridge.token(['calendar:read','calendar:write']);
-  const path = '/v1/calendar/events/imported%40example.com';
-  assert.equal((await bridge.request(path + '?calendarId=work%2Bteam%40example.com', { token })).status, 200);
-  assert.equal(calls[0].id, 'imported@example.com'); assert.equal(calls[0].calendarId, 'work+team@example.com');
+  const path = '/v1/calendar/events/imported%40example.com%23part%2B_';
+  assert.equal((await bridge.request(path + '?calendarId=work%2Bteam%40example.com%23_' , { token })).status, 200);
+  assert.equal(calls[0].id, 'imported@example.com#part+_'); assert.equal(calls[0].calendarId, 'work+team@example.com#_');
   for (const method of ['PATCH','DELETE']) assert.equal((await bridge.request(path, { token, method, body: { ...draft, etag: 'version' }, key: method })).status, 200);
   assert.equal((await bridge.request('/v1/calendar/events/a%2Fb?calendarId=primary', { token })).status, 400);
   assert.equal(calls.length, 3);

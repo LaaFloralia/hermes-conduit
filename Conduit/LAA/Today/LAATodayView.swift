@@ -98,14 +98,11 @@ struct LAATodayView: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
     }
     private func openLinkedEvent() async {
-        guard let id = initialEventID, let calendarId = initialCalendarID, bridge.status == .paired,
-              id.range(of: #"^[A-Za-z0-9_.@+-]{1,1024}$"#, options: .regularExpression) != nil else { return }
+        guard let id = initialEventID, let calendarId = initialCalendarID, bridge.status == .paired else { return }
         selectedEvent = calendar.events.first { $0.googleID == id && $0.calendarId == calendarId }
         do {
-            var parts = URLComponents(); parts.path = "/v1/calendar/events/" + id
-            parts.queryItems = [URLQueryItem(name: "calendarId", value: calendarId)]
-            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-            let response: LAABridgeResponse<LAACalendarResponse.Event> = try await bridge.request(method: "GET", path: parts.string!)
+            let path = try LAACalendarRequest.eventPath(id: id, calendarID: calendarId)
+            let response: LAABridgeResponse<LAACalendarResponse.Event> = try await bridge.request(method: "GET", path: path)
             selectedEvent = try response.data.value(); deepLinkError = nil
         } catch { deepLinkError = LAATodayCalendar.message(for: error) }
     }
