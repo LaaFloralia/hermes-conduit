@@ -433,10 +433,18 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     /// Sound for approval.needed / input.needed pushes. Those wait on the
     /// user (approvals time out and fail closed), so they chime by default.
     var attentionSound = true
+    #if LAA_BUILD
+    var showPreviews = true
+    #else
     var showPreviews = false
+    #endif
     /// The chat's title and the profile without the reply's words, when
     /// `showPreviews` is off (#1415). See `detail`.
+    #if LAA_BUILD
+    var showChatNames = true
+    #else
     var showChatNames = false
+    #endif
     /// Independent of `showPreviews`: controls whether pushes carry structured
     /// decision content (answerable approval cards). Defaults on because the
     /// feature's audience is exactly the approval-gate crowd; privacy-focused
@@ -475,8 +483,8 @@ extension ConduitNotificationPreferences {
         backgroundTaskFinished = try container.decodeIfPresent(Bool.self, forKey: .backgroundTaskFinished) ?? true
         completionSound = try container.decodeIfPresent(Bool.self, forKey: .completionSound) ?? true
         attentionSound = try container.decodeIfPresent(Bool.self, forKey: .attentionSound) ?? true
-        showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
-        showChatNames = try container.decodeIfPresent(Bool.self, forKey: .showChatNames) ?? false
+        showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? ConduitNotificationPreferences().showPreviews
+        showChatNames = try container.decodeIfPresent(Bool.self, forKey: .showChatNames) ?? ConduitNotificationPreferences().showChatNames
         decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
     }
 }
@@ -857,6 +865,17 @@ final class PushNotificationService: ObservableObject {
             preferences = saved.preferences
             if needsRelayStamp { persistRegistration() }
         }
+        #if LAA_BUILD
+        // The owner requested identifiable notifications. Migrate the old
+        // generic setting once; later choices in Settings remain authoritative.
+        let detailMigrationKey = "laa.notifications.contextEnabled.20261103"
+        if !UserDefaults.standard.bool(forKey: detailMigrationKey) {
+            preferences.detail = .previews
+            registration?.preferences = preferences
+            if registration != nil { persistRegistration() }
+            UserDefaults.standard.set(true, forKey: detailMigrationKey)
+        }
+        #endif
         NotificationSharedSettings.mirror(preferences)
         NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
         refreshEncryptionState()
