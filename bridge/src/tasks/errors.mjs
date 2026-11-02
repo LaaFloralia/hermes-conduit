@@ -5,11 +5,12 @@
 // a GraphQL echo or a filesystem path into a response.
 
 export class TaskSourceError extends Error {
-  constructor(code, message, { status = 503, retryable = false } = {}) {
+  constructor(code, message, { status = 503, retryable = false, writeStarted = undefined } = {}) {
     super(message);
     this.name = 'TaskSourceError';
     this.code = code;
     this.status = status;
     this.retryable = retryable;
+    if (writeStarted !== undefined) this.writeStarted = writeStarted;
   }
 }

@@ -29,7 +29,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { badRequest, BridgeError, conflict, notFound } from '../errors.mjs';
+import { badRequest, BridgeError, conflict, markBeforeWrite, notFound } from '../errors.mjs';
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
 
@@ -42,6 +42,8 @@ const NAME_SOURCES = new Set(['owner', 'auto']);
 const FILE_NAME_MAX = 120;
 const FILE_MAX_BYTES = 5 * 1024 * 1024;
 const FILES_PER_PROJECT = 20;
+// APFS allows 255 UTF-8 bytes per path component. `storedFileName` keeps the
+// stored basename within that; the display name itself keeps its length.
 
 // --- store ------------------------------------------------------------------
 
@@ -130,6 +132,8 @@ function migrateLegacyProjects(file) {
 // --- routes -----------------------------------------------------------------
 
 export function createProjectRoutes({ projects, now = () => Date.now() }) {
+  const releasesReservation = (error) => error?.writeStarted === false;
+
   function requireProject(id) {
     const project = projects.get(id);
     if (!project) throw notFound('project not found');
@@ -190,12 +194,20 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
   }
 
   function create({ device, rawBody }) {
-    const body = parseObjectBody(rawBody);
-    const name = parseName(body.name, { required: true });
-    const nameSource = parseNameSource(body.nameSource);
-    rejectInstructionRef(body);
-    const instructions = parseInstructions(body.instructions);
-    const instructionHash = instructions === null ? null : hashBody(instructions);
+    let name;
+    let nameSource;
+    let instructions;
+    let instructionHash;
+    try {
+      const body = parseObjectBody(rawBody);
+      name = parseName(body.name, { required: true });
+      nameSource = parseNameSource(body.nameSource);
+      rejectInstructionRef(body);
+      instructions = parseInstructions(body.instructions);
+      instructionHash = instructions === null ? null : hashBody(instructions);
+    } catch (error) {
+      throw markBeforeWrite(error);
+    }
     const t = now();
     const iso = new Date(t).toISOString();
 
@@ -228,91 +240,126 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
   }
 
   function patch({ device, rawBody, params, req }) {
-    const current = requireProject(params[0]);
-    const expected = requireIfMatch(req.headers['if-match'], current, mismatch);
-    const body = parseObjectBody(rawBody);
-    const t = now();
-    const iso = new Date(t).toISOString();
+    let current;
+    let expected;
+    let name;
+    let nameSource;
+    let nextInstructions;
+    let refCleared;
+    let instructionsChanged;
+    let nextHash;
+    let changed;
+    let iso;
+    try {
+      current = requireProject(params[0]);
+      expected = requireIfMatch(req.headers['if-match'], current, mismatch);
+      const body = parseObjectBody(rawBody);
+      iso = new Date(now()).toISOString();
 
-    const requested = body.name !== undefined || body.nameSource !== undefined
-      || body.instructionRef !== undefined || body.instructions !== undefined;
-    if (!requested) throw badRequest('payload_invalid', 'no supported change was requested');
+      const requested = body.name !== undefined || body.nameSource !== undefined
+        || body.instructionRef !== undefined || body.instructions !== undefined;
+      if (!requested) throw badRequest('payload_invalid', 'no supported change was requested');
 
-    const name = body.name === undefined ? undefined : parseName(body.name, { required: true });
-    if (body.nameSource !== undefined && name === undefined) {
-      throw badRequest('payload_invalid', 'nameSource is only meaningful together with name');
-    }
-    const nameSource = body.nameSource === undefined ? undefined : parseNameSource(body.nameSource);
-    if (name !== undefined && current.nameSource === 'owner' && nameSource === 'auto') {
-      // Owner-given names always win: an automatic rename is refused, not
-      // silently ignored, so the caller cannot believe it succeeded.
-      throw conflict('name_source_locked', 'the project name was chosen by the owner and cannot be replaced automatically');
-    }
-
-    // `instructionRef: null` is the only accepted ref value: it clears legacy
-    // metadata written before refs were refused. Any other value is refused.
-    // Saving a body also drops the legacy ref, so a record never shows both.
-    rejectInstructionRef(body);
-    const nextInstructions = body.instructions === undefined
-      ? (current.instructions ?? null)
-      : parseInstructions(body.instructions);
-    const refCleared = (current.instructionRef ?? null) !== null
-      && (body.instructionRef === null || nextInstructions !== null);
-
-    const instructionsChanged = nextInstructions !== (current.instructions ?? null);
-    const nextHash = instructionsChanged
-      ? (nextInstructions === null ? null : hashBody(nextInstructions))
-      : (current.instructionHash ?? null);
-    const identityChanged = name !== undefined && name !== current.name;
-
-    // A PATCH that names fields identical to the stored state is accepted as a
-    // no-op: the caller read the current version, and nothing is bumped.
-    const changed = identityChanged || instructionsChanged || refCleared;
-
-    const updated = projects.mutate((all) => {
-      const record = all[current.id];
-      if (!record || record.version !== expected) throw mismatch(record ?? current);
-      if (!changed) return record;
-      if (name !== undefined) {
-        record.name = name;
-        record.nameSource = nameSource ?? 'owner';
+      name = body.name === undefined ? undefined : parseName(body.name, { required: true });
+      if (body.nameSource !== undefined && name === undefined) {
+        throw badRequest('payload_invalid', 'nameSource is only meaningful together with name');
       }
-      if (refCleared) record.instructionRef = null;
-      record.instructions = nextInstructions;
-      if (instructionsChanged) {
-        record.instructionVersion = (record.instructionVersion ?? 0) + 1;
-        record.instructionHash = nextHash;
-        record.instructionHistory = [
-          ...(record.instructionHistory ?? []),
-          {
-            version: record.instructionVersion,
-            hash: nextHash,
-            body: nextInstructions,
-            updatedAt: iso,
-          },
-        ].slice(-INSTRUCTION_HISTORY_LIMIT);
+      nameSource = body.nameSource === undefined ? undefined : parseNameSource(body.nameSource);
+      if (name !== undefined && current.nameSource === 'owner' && nameSource === 'auto') {
+        // Owner-given names always win: an automatic rename is refused, not
+        // silently ignored, so the caller cannot believe it succeeded.
+        throw conflict('name_source_locked', 'the project name was chosen by the owner and cannot be replaced automatically');
       }
-      record.version += 1;
-      record.updatedAt = iso;
-      record.updatedBy = device?.id ?? null;
-      return record;
-    });
+
+      // `instructionRef: null` is the only accepted ref value: it clears legacy
+      // metadata written before refs were refused. Any other value is refused.
+      // Saving a body also drops the legacy ref, so a record never shows both.
+      rejectInstructionRef(body);
+      nextInstructions = body.instructions === undefined
+        ? (current.instructions ?? null)
+        : parseInstructions(body.instructions);
+      refCleared = (current.instructionRef ?? null) !== null
+        && (body.instructionRef === null || nextInstructions !== null);
+
+      instructionsChanged = nextInstructions !== (current.instructions ?? null);
+      nextHash = instructionsChanged
+        ? (nextInstructions === null ? null : hashBody(nextInstructions))
+        : (current.instructionHash ?? null);
+      const identityChanged = name !== undefined && name !== current.name;
+
+      // A PATCH that names fields identical to the stored state is accepted as a
+      // no-op: the caller read the current version, and nothing is bumped.
+      changed = identityChanged || instructionsChanged || refCleared;
+    } catch (error) {
+      throw markBeforeWrite(error);
+    }
+
+    let updated;
+    try {
+      updated = projects.mutate((all) => {
+        const record = all[current.id];
+        if (!record || record.version !== expected) throw mismatch(record ?? current);
+        if (!changed) return record;
+        if (name !== undefined) {
+          record.name = name;
+          record.nameSource = nameSource ?? 'owner';
+        }
+        if (refCleared) record.instructionRef = null;
+        record.instructions = nextInstructions;
+        if (instructionsChanged) {
+          record.instructionVersion = (record.instructionVersion ?? 0) + 1;
+          record.instructionHash = nextHash;
+          record.instructionHistory = [
+            ...(record.instructionHistory ?? []),
+            {
+              version: record.instructionVersion,
+              hash: nextHash,
+              body: nextInstructions,
+              updatedAt: iso,
+            },
+          ].slice(-INSTRUCTION_HISTORY_LIMIT);
+        }
+        record.version += 1;
+        record.updatedAt = iso;
+        record.updatedBy = device?.id ?? null;
+        return record;
+      });
+    } catch (error) {
+      // The callback throws before the state file is replaced, so a version
+      // mismatch wrote nothing.
+      if (error?.status === 412) throw markBeforeWrite(error);
+      throw error;
+    }
 
     return { status: 200, data: detail(updated), headers: { etag: etagFor(updated.version) } };
   }
 
   function addFile({ device, rawBody, params }) {
-    const current = requireProject(params[0]);
-    const body = parseObjectBody(rawBody);
-    const name = parseFileName(body.name);
-    const bytes = parseFileContent(body.contentBase64);
-    const mimeType = body.mimeType === undefined || body.mimeType === null ? null : parseMimeType(body.mimeType);
-    if ((current.files ?? []).length >= FILES_PER_PROJECT) {
-      throw conflict('file_limit_reached', `a project holds at most ${FILES_PER_PROJECT} files`);
+    let current;
+    let name;
+    let bytes;
+    let mimeType;
+    try {
+      current = requireProject(params[0]);
+      const body = parseObjectBody(rawBody);
+      name = parseFileName(body.name);
+      bytes = parseFileContent(body.contentBase64);
+      mimeType = body.mimeType === undefined || body.mimeType === null ? null : parseMimeType(body.mimeType);
+      if ((current.files ?? []).length >= FILES_PER_PROJECT) {
+        throw conflict('file_limit_reached', `a project holds at most ${FILES_PER_PROJECT} files`);
+      }
+    } catch (error) {
+      throw markBeforeWrite(error);
     }
     const id = `file_${randomBytes(6).toString('hex')}`;
     const dir = join(projects.filesDir, current.id);
-    const path = join(dir, `${id}-${name}`);
+    const stored = storedFileName(id, name);
+    if (stored === `${id}-` || Buffer.byteLength(stored, 'utf8') > 255) {
+      // A defensive 4xx: the shortener above makes this unreachable, but a
+      // filesystem limit must never become an unexplained 500.
+      throw markBeforeWrite(badRequest('file_name_too_long', 'name is too long to store on this Mac'));
+    }
+    const path = join(dir, stored);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     chmodSync(projects.filesDir, 0o700);
     chmodSync(dir, 0o700);
@@ -348,9 +395,15 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
   }
 
   function removeFile({ device, params }) {
-    const current = requireProject(params[0]);
-    const entry = (current.files ?? []).find((item) => item.id === params[1]);
-    if (!entry) throw notFound('file not found');
+    let current;
+    let entry;
+    try {
+      current = requireProject(params[0]);
+      entry = (current.files ?? []).find((item) => item.id === params[1]);
+      if (!entry) throw notFound('file not found');
+    } catch (error) {
+      throw markBeforeWrite(error);
+    }
     const iso = new Date(now()).toISOString();
     const updated = projects.mutate((all) => {
       const record = all[current.id];
@@ -375,6 +428,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       idempotent: true,
       bodyLimit: 8 * 1024 * 1024,
       handler: addFile,
+      releaseOnError: releasesReservation,
     },
     {
       method: 'DELETE',
@@ -383,8 +437,9 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       scope: 'sessions:write',
       idempotent: true,
       handler: removeFile,
+      releaseOnError: releasesReservation,
     },
-    { method: 'POST', path: '/v1/projects', auth: true, scope: 'sessions:write', idempotent: true, handler: create },
+    { method: 'POST', path: '/v1/projects', auth: true, scope: 'sessions:write', idempotent: true, handler: create, releaseOnError: releasesReservation },
     { method: 'GET', pattern: /^\/v1\/projects\/(prj_[0-9a-f]{12})$/, auth: true, scope: 'sessions:read', handler: get },
     {
       method: 'GET',
@@ -393,7 +448,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       scope: 'sessions:read',
       handler: versions,
     },
-    { method: 'PATCH', pattern: /^\/v1\/projects\/(prj_[0-9a-f]{12})$/, auth: true, scope: 'sessions:write', idempotent: true, handler: patch },
+    { method: 'PATCH', pattern: /^\/v1\/projects\/(prj_[0-9a-f]{12})$/, auth: true, scope: 'sessions:write', idempotent: true, handler: patch, releaseOnError: releasesReservation },
   ];
 }
 
@@ -472,6 +527,38 @@ function parseInstructions(raw) {
     throw badRequest('payload_invalid', `instructions must not contain the </${INSTRUCTION_TAG}> delimiter`);
   }
   return raw;
+}
+
+function truncateUtf8(text, maxBytes) {
+  if (maxBytes <= 0) return '';
+  let out = '';
+  let used = 0;
+  for (const char of text) {
+    const size = Buffer.byteLength(char, 'utf8');
+    if (used + size > maxBytes) break;
+    out += char;
+    used += size;
+  }
+  return out;
+}
+
+// The on-disk basename, not the display name. It is NFC-normalised and cut on
+// code-point boundaries so a 120-character Japanese name cannot exceed APFS's
+// 255-byte component limit (`ENAMETOOLONG` -> 500). The extension is kept when
+// it is small enough to be useful; `name` in the project record is unchanged.
+export function storedFileName(id, name) {
+  const prefix = `${id}-`;
+  const budget = 255 - Buffer.byteLength(prefix, 'utf8');
+  const normalized = name.normalize('NFC');
+  if (Buffer.byteLength(normalized, 'utf8') <= budget) return `${prefix}${normalized}`;
+
+  const dot = normalized.lastIndexOf('.');
+  const extension = dot > 0 ? normalized.slice(dot) : '';
+  const extensionBytes = Buffer.byteLength(extension, 'utf8');
+  const keepExtension = extensionBytes > 0 && extensionBytes <= 32 && extensionBytes < budget;
+  const base = keepExtension ? normalized.slice(0, dot) : normalized;
+  const tail = keepExtension ? extension : '';
+  return `${prefix}${truncateUtf8(base, budget - Buffer.byteLength(tail, 'utf8'))}${tail}`;
 }
 
 function parseFileName(raw) {

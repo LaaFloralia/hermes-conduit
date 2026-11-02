@@ -1,6 +1,6 @@
 # LAA Bridge（Mac側サービスの骨格）
 
-`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）・社長タスク（`/v1/owner-tasks`。保存・操作台帳・CLI・Linear からの一度限りの取込み）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
+`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・社長のLinearタスク（`/v1/linear-owner-tasks` の一覧／作成／更新／完了／削除）・Skills・routines・Calendar予定（`/v1/calendar/events`）・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）・社長タスク（`/v1/owner-tasks`。保存・操作台帳・CLI・Linear からの一度限りの取込み）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
@@ -13,7 +13,7 @@
 |---|---|---|
 | 認証 | 端末ごとの 256bit ランダムトークン（`Authorization: Bearer`）。保存は SHA-256 hash のみ | §9。要求ごとの署名・nonce 台帳は採らない |
 | ペアリング | Mac の CLI が10分有効・1回限りのコードを発行。state には hash のみ保存し、コードは端末に一度だけ表示 | §9。コードはログ・引数・チャットへ出さない |
-| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`brain:create` `brain:write` `gui:operate` `archives:restore` `devices:admin` は付与しない。`brain:create` は端末ごとの opt-in（`laa-bridge pair --scopes brain:read,brain:create`） | §9・BRAIN-WRITE §7 |
+| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read` と `brain:create` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|brain:create> --reason <理由>` で付与する。この2つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
 | idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は原則として保存応答を再返却（Studioの作成・操作は現在の状態を取得）、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
@@ -56,6 +56,7 @@ laa-bridge devices              # id・状態・scope
 laa-bridge revoke dev_ab12…     # 失効（4文字以上の一意な接頭辞でよい）
 laa-bridge revoke dev_ab12… --reason "lost phone"
 laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済みの有効な端末にStudioの2 scopeだけ追加
+laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner phone' # この2 scopeだけ追加
 ```
 
 失効後、そのトークンの要求は `401 token_revoked`。実行中の下流処理は自動停止しないので、必要なら既存の停止制御で別途止める。再登録は新しいコードと新しい端末IDになる。
@@ -80,13 +81,21 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 | `GET|HEAD /v1/studio/media/{projectId}/{mediaKey}.{ext}` | Bearer + `studio:read` | 64桁のキーは不透明な識別子として転送する。Range 206・範囲外416。mp4・mp3は最大256 MiB、他の許可形式は最大128 MiB |
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
+| `GET /v1/linear-owner-tasks` | Bearer + `tasks:read` | 社長本人の未完了Linear課題だけ（team BUS・owner・Todo/Doneはアカウントから解決）。`{items,nextCursor}` |
+| `POST /v1/linear-owner-tasks` | Bearer + `tasks:write` + `Idempotency-Key` | `{id,title,description?,dueDate?,priority?}` → 201。`id` はクライアント生成のUUID v4。同じUUID・同じ内容の再送は既存課題を返す |
+| `GET /v1/linear-owner-tasks/{id}` | Bearer + `tasks:read` | 1件。他人・他team・委譲済みは404 |
+| `PATCH /v1/linear-owner-tasks/{id}` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{title?,description?,dueDate?,priority?,completed?}`。`If-Match` 欠落428、不一致412。`completed:true` はDoneへ移して担当を外す |
+| `DELETE /v1/linear-owner-tasks/{id}` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{id,deleted:true,alreadyDeleted}`。Linearの `success:true` を主根拠にし、失敗・payload欠落・GraphQLエラーでは再読取が `null` または `trashed:true` の時だけ削除済みとする |
+| `GET /v1/skills` | Bearer + `sessions:read` | `{items:[{id,name,description,source}]}`。SKILL.mdのfrontmatter2項目だけを読み、本文は返さない。読取失敗は503 |
+| `GET /v1/routines` | Bearer + `sessions:read` | Console `jobs` の名前・予定・直近実行・結果。未観測はnull、読取失敗は503 |
+| `GET /v1/calendar/events?start=&end=` | Bearer + `calendar:read` | RFC3339の8日以内 → `{items:[{id,title,start,end,allDay,location}],source,start,end}`。設定・認可・API失敗は503で、空の予定にしない |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
 | `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。本文は含めない。`limit`（1–100、既定50）と `cursor` |
 | `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructions?}` → `{id,version,etag,instructions,instructionHash,instructionVersion,…}`（201）。`instructionRef` は 400 `instruction_ref_unsupported` |
 | `GET /v1/projects/{id}` | Bearer + `sessions:read` | Project と `ETag`。`instructions`（保存済み本文）・`instructionVersion`・`instructionHash`。`instructionRef` は旧レコードのメタデータのみ。範囲外・不存在は 404 |
 | `PATCH /v1/projects/{id}` | Bearer + `sessions:write` + `Idempotency-Key` + `If-Match` | 部分更新。`If-Match` 欠落 428、版不一致 412（`error.details.current` に現在の版・hash・ETag・本文）、owner 名への自動改名 409、`instructionRef` 400（`null` は旧メタデータの消去のみ） |
 | `GET /v1/projects/{id}/instructions/versions` | Bearer + `sessions:read` | 直近10版の `{items:[{version,hash,body,updatedAt}]}`（新しい順） |
-| `POST /v1/projects/{id}/files` | Bearer + `sessions:write` + `Idempotency-Key` | 資料 `{name,contentBase64,mimeType?}`（5 MiBまで、1件20個まで）を `project-files/` へ0600で保存（201）。詳細の `files` には名前・大きさ・hashだけを返し、Macのパスは返さない |
+| `POST /v1/projects/{id}/files` | Bearer + `sessions:write` + `Idempotency-Key` | 資料 `{name,contentBase64,mimeType?}`（5 MiBまで、1件20個まで）を `project-files/` へ0600で保存（201）。表示名はそのまま、保存名だけをNFC・UTF-8バイト境界で255バイト以内に短縮する。詳細の `files` には名前・大きさ・hashだけを返し、Macのパスは返さない |
 | `DELETE /v1/projects/{id}/files/{fileId}` | Bearer + `sessions:write` + `Idempotency-Key` | 資料を削除して詳細を返す |
 | `GET /v1/workspaces` | Bearer + `sessions:read` | 許可 root 配下の repo / worktree。`{path,displayPath,kind,branch,head,status,projectId}` |
 | `POST /v1/workspaces` | Bearer + `sessions:write` + `Idempotency-Key` | `{repoId,worktreeName,branch?,base?,projectId?}` → `paseo worktree create`（branch-off）で作成（201）、既存 branch は 409 |
@@ -111,7 +120,7 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 
 エラーは `{"error":{"code","message","retryable"},"requestId"}`（412 のみ `error.details.current` に現在の Project を返す）。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
 
-失敗した要求は原則 idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になる。保存されていないと確実なStudio依頼作成の `409 studio_work_busy` と、Bridgeが送信前に検出した講評の `400 studio_payload_invalid` は予約を解除する。
+失敗した要求は原則 idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になる。例外は、外部mutationの前に失敗したと実装が明示した場合（入力検証、所有・`If-Match`、Projectの版不一致、Linearの設定解決や資格情報取得など）。この場合は予約を解除し、同じkeyで修正後の再試行を許す。外部mutationを送った後の503・400・404は解除せず、二重実行を防ぐ。保存されていないと確実なStudio依頼作成の `409 studio_work_busy` と、Bridgeが送信前に検出した講評の `400 studio_payload_invalid` も解除する。
 
 ## Studio受付（タスク34）
 
@@ -206,6 +215,14 @@ ROADMAP 19。**読取専用**で、担当の設定も worker の起動もしな�
 - **Kanban** は `source: "kanban"` の別ソース。Conduit は Hermes dashboard の `/api/plugins/kanban/*` を読むが、その API は loopback でも 401 で、Bridge が使える認証済みラッパーがまだ無い。よって現在は `sources[].state = "unavailable"`（`kanban_wrapper_not_authorized`）を返し、項目は 0 件。Linear の identifier を持つ Kanban 項目は重複として落とし、`suppressedDuplicates.kanban` に数える（社長タスクを複製しない）。ラッパーが用意できたら `createKanbanTaskSource({ baseUrl, request })` を差し込むだけで有効になる。
 - 読み取り専用の担保: Linear アダプターは `query` 以外の GraphQL 文書を拒否し（`linear_read_only_guard`）、mutation を定義しない。Kanban アダプターは `/dispatch` や reassign を呼ばない。ルートは GET のみ。
 - 照合: 2026-10-25 に Linear を直接読んだ結果と 57 件を突き合わせ、件数・title・状態・owner/executor・依存・project・updatedAt が一致（差分 0）。詳細 3 件もコメント・添付・依存が一致。再実行は `node scripts/verify-tasks.mjs`。
+
+### 社長のLinearタスク（`/v1/linear-owner-tasks`）
+
+Workタブの「自分のタスク」は `/v1/tasks` の読取専用一覧とは別に、社長本人のLinear課題だけを扱う。team（key BUS、name LAA）、owner id、Todo/Doneの状態はアカウントから解決し、クライアントからteam・担当・状態を受け取らない。一覧は未完了かつ本人担当・委譲なしに限り、完了済みの未担当課題は詳細GETだけで読める。
+
+作成はクライアント生成のUUID v4を `id` に使い、同じUUID・同じ内容の再送は既存課題を返す。PATCHは `If-Match` に最後に読んだ `updatedAt` を要求し、欠落は428、不一致は412で現在値を返す。`completed:true` はDoneへ移して担当を外す。DELETEも `If-Match` を要求する。
+
+削除の成功判定はLinearの `issueDelete { success }` を主根拠にする。`success:true` は成功。`success:false`、payload欠落、GraphQLエラーでは課題を再読取し、`issue:null` または `trashed:true` の時だけ「既に削除済み」として200を返す。アーカイブ済みでも `trashed` でない課題は失敗（503 `linear_delete_unconfirmed` または元のエラー）とし、壊れた再読取（`issue` 欠落・非object）を削除成功にしない。
 
 ## 社長タスク（`/v1/owner-tasks`）
 
@@ -389,7 +406,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（286 tests、約5秒。Drive・sessions・brain・usage・社長タスクはfakeアダプタで検証）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（405 tests、約18秒。Drive・sessions・brain・usage・Linear owner tasks・社長タスクはfakeアダプタで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。
@@ -406,7 +423,7 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 
 ## 未対応（後続タスク）
 
-iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、Linear への書込み。Kanban の読取は親が認証済みラッパーを承認するまで無効。社長タスクの日次バックアップの定刻実行と Mac 外の保管は親が決める。
+iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、Linearの一般課題への書込み（実装済みは社長本人の `/v1/linear-owner-tasks` の作成・更新・完了・削除だけ）。Kanban の読取は親が認証済みラッパーを承認するまで無効。社長タスクの日次バックアップの定刻実行と Mac 外の保管は親が決める。
 
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示は本文の保存・版管理・適用まで実装済みで、外部ファイル参照は持たない。
 

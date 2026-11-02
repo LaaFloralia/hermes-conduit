@@ -1,6 +1,6 @@
 # LAA Bridge 契約・脅威・復旧設計
 
-2026-10-29。実装・接続・権限変更は未実施。仕様の提案であり、採用や安全性の実証ではない。根拠は [ROADMAP.md](ROADMAP.md) と [BASELINE.md](BASELINE.md)。依存先の機能をBridgeで再実装せず、未確認の接続・権限は実装ゲートとする。
+2026-11-02更新。§9の決定に沿って実装した端点は `bridge/README.md` のAPI表に列挙する。本書は設計・脅威・未決事項を残し、実装済みの範囲でも実接続と実機確認は別に扱う。根拠は [ROADMAP.md](ROADMAP.md) と [BASELINE.md](BASELINE.md)。依存先の機能をBridgeで再実装せず、未確認の接続・権限は実装ゲートとする。
 
 ## 1. 責務と配置
 
@@ -35,6 +35,8 @@
 | `sessions:read`, `sessions:write`, `sessions:reply` | 自分に許されたproject/workspace/sessionのみ。replyは対象質問と本人判断に束縛。停止は対象sessionのみ、非常停止の代替ではない |
 | `tasks:read`, `tasks:write` | Linearの許可対象のみ。ownerとexecutorを区別し、担当設定ではworkerを起動しない |
 | `brain:read`, `brain:write` | 許可vault・対象範囲のみ。現行のBrain検索・禁止領域とdailyの制約を守る。writeは調停実証まで無効 |
+| `brain:create` | Brainへの新規ノート作成のみ。既存ノートの変更・削除は含めない。既定付与に含めず、端末ごとに付与する |
+| `calendar:read` | 既存のGoogle Calendar認可で予定を読むだけ。書き込み・参加者・説明・OAuthトークンは返さない。既定付与に含めない |
 | `media:read`, `photos:select` | Driveの既存権限内の読取、Pickerで本人が選択した写真のみ。Google資格情報を渡さない |
 | `usage:read` | 選定済み集計とMac状態のみ。認証情報・生の請求データを返さない |
 | `archives:read`, `archives:create`, `archives:restore` | 許可対象のsnapshot／確認／隔離復元。runtime上書きや削除は別判断、初版は自動削除しない |
@@ -53,15 +55,17 @@ JSONはUTF-8、時刻はUTC ISO 8601。成功は `{"data":...,"requestId":"..."}
 | `GET /v1/health` | → `{state,dependencies:{name,state,observedAt}}`、機微情報なし | Bridge生存と各依存の障害・停止を区別 |
 | `POST /v1/devices/enroll` | 登録チャレンジ・公開鍵・要求scope → `{deviceId,grantedScopes}`、管理経路 | 期限切れ・再使用・scope拒否・端末鍵保持 |
 | `GET /v1/devices`; `POST /v1/devices/{id}/revoke` | → device状態／失効結果、管理経路 | 他端末維持・接続中stream切断・再登録は新ID |
-| `GET/POST /v1/projects`; `GET/PATCH /v1/projects/{id}`; `GET /v1/projects/{id}/instructions/versions` | `{name,instructions,instructionVersion,instructionHash}` → `{id,version,etag,...}`、Bridge管理（§9） | 本文のみ。`instructionRef`は400。古いversionは現在版を返す。Projectとworkspace分離 |
+| `GET/POST /v1/projects`; `GET/PATCH /v1/projects/{id}`; `GET /v1/projects/{id}/instructions/versions`; `POST /v1/projects/{id}/files`; `DELETE /v1/projects/{id}/files/{fileId}` | `{name,instructions,instructionVersion,instructionHash}`／資料 `{name,contentBase64,mimeType?}` → `{id,version,etag,...}`、Bridge管理（§9） | 本文のみ。`instructionRef`は400。古いversionは現在版を返す。資料は5 MiB・20件まで。表示名は保持し、保存名だけをNFC・UTF-8バイト境界で255バイト以内に短縮する |
 | `GET/POST /v1/workspaces`; `GET /v1/workspaces/{id}` | `{projectId,repoId,worktreeName}` → `{id,path,status}`、既存Paseo/worktree | 正規化・symlink・許可外repo拒否、既存worktree非破壊 |
-| `GET /v1/routines` | Console `jobs` の名前、予定、直近実行と結果を読み取り専用で返す | 未観測はnull、読取失敗は503。既存 `sessions:read` を使用 |
 | `GET/POST /v1/sessions`; `GET/PATCH /v1/sessions/{id}`; `GET /v1/session-options` | `{projectId,workspaceId?,parentId,requestId,profile,prompt,mode?,fast?}` → `{id,requestId,status,requested,observed,favorite,archivedAt}`、personal-agent/Paseo。`workspaceId` 省略はホーム（`/Users/laa`）、`mode` は省略時 `default`、アプリが既定で `bypass` を送る。PATCHはお気に入り・アーカイブ・改名（Bridge側の整理だけ）。選択肢はHQ `models.json` から | 同じrequest ID、親子・名称、実provider/model/effortと認証経路、作成不明の回収。bypassはagent以外の呼出し元（launchdのBridge）だけ |
 | `POST /v1/sessions/{id}/messages`; `POST /v1/sessions/{id}/stop`; `POST /v1/sessions/{id}/resume` | `{message}`／`{}`／`{message}` → `{operationId,status}`、同上 | 送信不明、停止未確認、停止中再開拒否。resumeは既存のsend相当と確認できる場合のみ |
 | `POST /v1/sessions/{id}/reply` | `{requestId,requestHash,answer,expiresAt}` → `{status}`、同上 | 改変・期限切れ・別session・workerの回答拒否。実際の承認消化を照合 |
 | `GET /v1/sessions/{id}/events`; `GET /v1/sessions/{id}/artifacts` | cursor → event一覧／`{items:[{id,name,type}]}`、同上 | 認可・重複・欠落・ファイル範囲外・再接続を確認 |
-| `GET /v1/tasks`; `POST /v1/tasks`; `GET/PATCH /v1/tasks/{id}` | `{title,owner,executor,status,dependencies,sourceId,version}` → task、Linear | 版競合・担当変更で自動起動しない・Linearに読戻し |
-| `GET /v1/routines?date=...`; `POST /v1/routines/{id}/check` | `{date,checked,operationId,baseHash}` → `{status,hash}`、Brain daily | 日付切替・再送・同時編集、調停未実証時は書込拒否 |
+| `GET /v1/tasks`; `GET /v1/tasks/{id}` | `{title,owner,executor,status,dependencies,sourceId,version}` → task、Linear。読取専用 | 版競合・担当変更で自動起動しない・Linearに読戻し |
+| `GET/POST /v1/linear-owner-tasks`; `GET/PATCH/DELETE /v1/linear-owner-tasks/{id}` | `{id,title,description,dueDate,priority}` → `{id,identifier,title,status,updatedAt}`、社長本人のLinear課題だけ。PATCH/DELETEは `If-Match` 必須 | team・owner・状態はアカウントから解決。他人・他teamは404。削除は `success` と再読取で成功・削除済み・失敗を区別 |
+| `GET /v1/calendar/events?start=&end=` | RFC3339の8日以内 → `{items:[{id,title,start,end,allDay,location}],source,start,end}`、Google Calendar | `calendar:read` 必須。設定・認可・API失敗は503で、空の予定にしない |
+| `GET /v1/skills` | → `{items:[{id,name,description,source}]}`、Macのスキル定義 | frontmatterの2項目だけ。本文は返さない。読取失敗は503で、空一覧にしない |
+| `GET /v1/routines` | Console `jobs` の名前、予定、直近実行と結果を読み取り専用で返す | 未観測はnull、読取失敗は503。既存 `sessions:read` を使用 |
 | `GET /v1/brain/files`; `GET /v1/brain/files/{id}`; `GET /v1/brain/search?q=...` | → `{id,content,contentHash,version}` または一覧、Brain | 許可領域・未知Markdown・画像参照保持、path traversal拒否 |
 | `PUT /v1/brain/files/{id}` | `{baseHash,content}` → `{contentHash}`、Brain | 同時writerの両版保全・中断・409。調停未実証時は拒否 |
 | `GET /v1/drive/files`; `GET /v1/drive/files/{id}`; `GET /v1/drive/files/{id}/content` | 検索／metadata／`Range` → metadataまたはbytes、Drive | 206・Content-Range・MIME・長さ・seek・cancel・権限切れ・非対応、Workspace exportと区別 |
@@ -114,9 +118,12 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 - 端末認証：要求ごとの署名・nonce台帳は採らない。Tailscale Serve のTLS、tailnetのACL（社長の端末のみ）、端末ごとの256bitランダムトークン（iOS Keychain、ThisDeviceOnly）、変更系の `Idempotency-Key` で足りる。単一利用者の閉じたtailnetで、署名の追加コストに見合う脅威がないため。トークンはBridgeにhashだけを保存する。
 - 登録と失効：Mac側のCLI（`laa-bridge pair` / `revoke`）が10分有効・1回限りのペアリングコードを出し、アプリで入力またはQR読取する。CLIはエージェントも実行してよく、コードはチャット・ログへ出さず、Mac画面かアプリへの直接表示だけにする。
 - 初期scope：社長の端末には `sessions:*`、`tasks:*`、`brain:read`、`media:read`、`photos:select`、`usage:read`、`archives:read`、`archives:create` を付与する。`brain:write`、`gui:operate`、`archives:restore`、`devices:admin` は各ゲートを満たすまで付与しない。
+- 追加付与（2026-11-02）：`calendar:read` と `brain:create` は既定に含めない。有効な端末へ `laa-bridge grant <device-id|prefix> --scopes <comma-list> --reason <理由>` で付与する。付与できるのはこの2つだけで、`brain:write`・`gui:operate`・`archives:restore`・`devices:admin` やscope groupを含む要求は、一部だけを適用せず全体を拒否する。失効端末は拒否し、既に付与済みなら `alreadyGranted` を返して監査記録を重複させない。監査は端末ごとの `scopeGrants` に理由・時刻・実行UID・対象scopeを残す。同一UIDで変更できるため、改ざん不能な監査ではない。
 - Studio受付（2026-10-31、タスク34）：新規ペアリングの初期scopeには含めず、ペアリング済みの有効な端末へ管理者が `laa-bridge grant-studio <device-id> --reason <理由>` で `studio:read`（一覧・1件・資材・v2 catalog）と `studio:request`（依頼作成・回答・停止・v2講評）を付与する。承認も同じ端末権限であり、別の認証要素ではない。既存端末は再ペアリングしない。Bridgeは同じMacのStudio受付契約v1・v2にUnixソケットで接続する。v2はsnapshotの `contract >= 2` のとき表示する。契約と実装の稼働は別に確認する。
 - Studio依頼の `studio_work_busy` は保存なしの契約により台帳の予約を解除し、同じ依頼ID・本文・keyの明示的な再送を許可する。その要求内でStudioを起動した直後だけ、1.5秒後に1回自動再送する。起動間隔は30秒以上。
 - 保持：idempotency台帳は7日、event cursorは24時間。期限切れのcursorは410を返し、アプリは全件を再取得する。
 - Project共通指示（2026-10-29、タスク13b）：Projectごとの指示本文はBridgeのstate（0600、既存state dir配下）に保存する。`instructionVersion`（整数）、`instructionHash`（本文のSHA-256）、ETagを持ち、直近10版（本文・hash・版・時刻）を比較・復元用に保持する。`GET /v1/projects/{id}` は `instructions`（本文）と版・hashを返し、一覧は本文を省略する。`POST` は `instructions` を受け付け、`PATCH` は `If-Match` で置換する（欠落428、不一致412では現在の版・hash・ETag・本文を返し、自動マージしない）。`GET /v1/projects/{id}/instructions/versions` は保持中の版を本文つきで返す。指示は**本文のみ**で、`instructionRef`（外部ファイル参照）は受け付けない（400 `instruction_ref_unsupported`）。Bridgeが任意のファイルを読む経路は作らず、AGENTS.md／PROJECT-RULES.mdは各エージェントが自分で読む。判断前に書かれた旧レコードがrefを持つ場合はメタデータとして返すだけで、読まず・適用せず、`PATCH {instructionRef:null}`または本文の保存で消える。`POST /v1/sessions` に `projectId` を渡すと、委譲プロンプトを区切った指示ブロック（版とhashをヘッダ行に含む）＋利用者のプロンプトとして構成し、セッションに `projectId`・`instructionVersion`・`instructionHash` を記録、requestIdの束縛にも含める（指示が変わった再送は409）。作成時に `instructions: null` または `applyProjectInstructions: false` を明示すれば適用しない（社長の明示指定を優先）。イベントは版とhashのみで本文を含めない。委譲先には会話名として `title`（Project名｜セッション名、Projectなしはセッション名）を渡し、requestIdの同一性判定には含めない。旧来の「本文を保存せずhashだけ」「指示は外部ファイル参照でよい」の記述はこの項で置き換える。Projectの資料（2026-11-02）：`POST /v1/projects/{id}/files` で受け取ったファイル（5 MiB・20件まで）をstate dir配下の `project-files/` に0600で保存し、そのProjectのセッションには資料のパスだけを区切ったブロックで渡す（本文はプロンプトへ入れず、エージェントが必要な時に読む）。端末へはMacのパスを返さない。
+- 社長のLinearタスク（2026-11-02）：`/v1/linear-owner-tasks` は社長本人の課題だけを扱い、team（BUS）・owner・Todo/Doneの状態はアカウントから解決する。作成はクライアント生成UUID、PATCHとDELETEは `If-Match` 必須。削除は `issueDelete` の `success:true` を主根拠とし、成功・既に削除済み・失敗を区別する。`success:false`、payload欠落、GraphQLエラーでは課題を再読取し、`null` または `trashed:true` の時だけ「既に削除済み」とする。アーカイブ済みでも `trashed` でない課題は失敗のままとし、壊れた再読取を削除成功にしない。
+- 予定・スキル・定期実行（2026-11-02）：`GET /v1/calendar/events` は `calendar:read`、`GET /v1/skills` と `GET /v1/routines` は `sessions:read` を要求する読取専用の端点。Calendarの範囲は8日以内で、設定・認可・APIの失敗は空の予定にせず503を返す。Skillsはfrontmatterの `name` と `description` だけを返し、本文は読まない。RoutinesはConsoleの観測値を投影し、未観測はnull、読取失敗は503とする。
 - 未決の3（GUI）と4（Brain書込み）は本書の案どおり、実証まで提供しない。5（Usage）はタスク05の結果で決める。
 

@@ -19,6 +19,7 @@
 // Errors carry no upstream body: a GraphQL echo can contain the query, values
 // or a token, so only the fact of a rejection is surfaced.
 
+import { markBeforeWrite, markWriteStarted } from '../errors.mjs';
 import { TaskSourceError } from './errors.mjs';
 import { authorizationHeader, readTokenViaHelper } from './linear.mjs';
 
@@ -47,6 +48,7 @@ const ISSUE_FIELDS = `
   url
   updatedAt
   archivedAt
+  trashed
   completedAt
   canceledAt
   state { name type }
@@ -99,11 +101,12 @@ const UPDATE_MUTATION = `mutation BridgeOwnerTaskUpdate($id: String!, $input: Is
   }
 }`;
 
-// `__typename` only: the delete payload type differs between Linear schema
-// versions, and the deletion is confirmed by re-reading the issue instead of
-// trusting a payload field that may not exist.
+// Linear's IssueArchivePayload has a non-null `success`. It is the primary
+// evidence of a delete; a node that is still readable after a failed mutation
+// is checked for `trashed` so a trashed issue is not reported as a failure
+// forever. An archived but not trashed issue is not proof of deletion.
 const DELETE_MUTATION = `mutation BridgeOwnerTaskDelete($id: String!) {
-  issueDelete(id: $id) { __typename }
+  issueDelete(id: $id) { success }
 }`;
 
 const DOCUMENTS = new Set([
@@ -195,7 +198,18 @@ export function createLinearOwnerTaskSource({
     return response;
   }
 
-  async function gql(document, variables = {}, { notFoundIsNull = false } = {}) {
+  // Every error from a mutation document is marked as "a write may have
+  // started", whatever its HTTP status becomes. Read documents stay unmarked.
+  async function gql(document, variables = {}, options = {}) {
+    try {
+      return await gqlUnmarked(document, variables, options);
+    } catch (error) {
+      if (options.write === true) markWriteStarted(error);
+      throw error;
+    }
+  }
+
+  async function gqlUnmarked(document, variables = {}, { notFoundIsNull = false } = {}) {
     if (!DOCUMENTS.has(document)) {
       throw new TaskSourceError('linear_document_rejected', 'only the fixed Linear documents may be sent', {
         status: 500,
@@ -239,8 +253,18 @@ export function createLinearOwnerTaskSource({
 
   // The team, the two states and the signed-in user are configuration, not
   // request input: resolve them from the account and keep them for a few
-  // minutes. A missing team or state is a 503, never an empty list.
-  async function config({ refresh = false } = {}) {
+  // minutes. A missing team or state is a 503, never an empty list. This path
+  // only reads, so its failures are safe to release from the idempotency
+  // ledger even though many of them are 503.
+  async function config(options = {}) {
+    try {
+      return await resolveConfig(options);
+    } catch (error) {
+      throw markBeforeWrite(error);
+    }
+  }
+
+  async function resolveConfig({ refresh = false } = {}) {
     if (!refresh && cachedConfig && now() - cachedConfig.at < configTtlMs) return cachedConfig.value;
 
     const viewerData = await gql(VIEWER_QUERY);
@@ -298,8 +322,16 @@ export function createLinearOwnerTaskSource({
 
   async function getIssue(id) {
     const data = await gql(ISSUE_QUERY, { id }, { notFoundIsNull: true });
+    // Only a present `issue: null` means "no such issue". A missing key or a
+    // non-object value is a broken response, not evidence of deletion.
+    if (!Object.hasOwn(data, 'issue')) {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned no issue field');
+    }
     const issue = data.issue;
-    if (!issue || typeof issue !== 'object') return null;
+    if (issue === null) return null;
+    if (typeof issue !== 'object' || Array.isArray(issue)) {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned an invalid issue');
+    }
     return issue;
   }
 
@@ -307,6 +339,7 @@ export function createLinearOwnerTaskSource({
   // closed issue (what this module leaves behind after a completion).
   function owned(issue) {
     if (!issue) return false;
+    if (issue.trashed === true) return false;
     if (issue.team?.key !== teamKey) return false;
     if (issue.delegate) return false;
     if (issue.assignee) return issue.assignee.id === ownerUserId;
@@ -333,7 +366,7 @@ export function createLinearOwnerTaskSource({
         // The query already filters by team and assignee; the same rule is
         // applied to the rows themselves so a filter change or an unexpected
         // row can never put an agent's or another team's task in this list.
-        if (issue.archivedAt || isClosed(issue) || !owned(issue)) continue;
+        if (issue.archivedAt || issue.trashed === true || isClosed(issue) || !owned(issue)) continue;
         items.push(toTask(issue));
       }
       const pageInfo = connection.pageInfo;
@@ -389,7 +422,7 @@ export function createLinearOwnerTaskSource({
     let payload = null;
     let rejection = null;
     try {
-      const data = await gql(CREATE_MUTATION, { input });
+      const data = await gql(CREATE_MUTATION, { input }, { write: true });
       payload = data.issueCreate;
     } catch (error) {
       // Only a refused document may be re-read; an outage or a credential
@@ -399,19 +432,27 @@ export function createLinearOwnerTaskSource({
     }
     if (payload && payload.success !== false && payload.issue) return toTask(payload.issue);
 
-    const existing = await getIssue(id);
-    if (existing && owned(existing)) {
-      if (!sameContent(existing, input)) {
-        throw new TaskSourceError(
-          'linear_owner_task_conflict',
-          'a task with this id already exists with different content',
-          { status: 409 },
-        );
+    // From here on a write was attempted. Every failure keeps the reservation,
+    // even when the reconciliation read itself fails or returns 404.
+    try {
+      const existing = await getIssue(id);
+      if (existing && owned(existing)) {
+        if (!sameContent(existing, input)) {
+          // The duplicate id proves this create did not add a new issue, so a
+          // retry may replay the same conflict instead of staying in flight.
+          throw new TaskSourceError(
+            'linear_owner_task_conflict',
+            'a task with this id already exists with different content',
+            { status: 409, writeStarted: false },
+          );
+        }
+        return toTask(existing);
       }
-      return toTask(existing);
+      if (rejection) throw rejection;
+      throw new TaskSourceError('linear_write_rejected', 'Linear did not create the issue', { status: 502, writeStarted: true });
+    } catch (error) {
+      throw markWriteStarted(error);
     }
-    if (rejection) throw rejection;
-    throw new TaskSourceError('linear_write_rejected', 'Linear did not create the issue', { status: 502 });
   }
 
   async function patchOwnerTask(id, patch) {
@@ -427,22 +468,50 @@ export function createLinearOwnerTaskSource({
       input.assigneeId = null;
     }
 
-    const data = await gql(UPDATE_MUTATION, { id, input });
+    const data = await gql(UPDATE_MUTATION, { id, input }, { write: true });
     const payload = data.issueUpdate;
     if (payload?.success === false || !payload?.issue) {
-      throw new TaskSourceError('linear_write_rejected', 'Linear did not update the issue', { status: 502 });
+      throw new TaskSourceError('linear_write_rejected', 'Linear did not update the issue', { status: 502, writeStarted: true });
     }
     return toTask(payload.issue);
   }
 
-  async function deleteOwnerTask(id) {
-    await gql(DELETE_MUTATION, { id });
-    // Linear has no portable success field across schema versions: confirm the
-    // effect by reading the issue back. Anything still readable is a failure.
-    const after = await getIssue(id);
-    if (after && !after.archivedAt) {
-      throw new TaskSourceError('linear_delete_unconfirmed', 'Linear did not remove the issue');
+  // The effect, not the payload alone, distinguishes "deleted" from "already
+  // deleted". A read failure is unknown, never evidence of deletion.
+  async function issueGone(id) {
+    let issue;
+    try {
+      issue = await getIssue(id);
+    } catch {
+      return 'unknown';
     }
+    if (issue === null) return 'gone';
+    // An archived issue is not necessarily trashed: Linear can archive without
+    // deleting, so only `trashed === true` proves the delete's effect.
+    if (issue.trashed === true) return 'gone';
+    return 'present';
+  }
+
+  async function deleteOwnerTask(id) {
+    let payload = null;
+    let failure = null;
+    try {
+      const data = await gql(DELETE_MUTATION, { id }, { write: true });
+      payload = data.issueDelete;
+    } catch (error) {
+      failure = error;
+    }
+
+    // `success === true` is Linear's own confirmation. Do not turn it into a
+    // failure because a later read still returns the trashed node.
+    if (payload?.success === true) return { alreadyDeleted: false };
+
+    // A failed / missing / ambiguous answer: only a null read or a trashed node
+    // proves the requested state already holds. An issue that is still present
+    // is a failure, never a success.
+    if (await issueGone(id) === 'gone') return { alreadyDeleted: true };
+    if (failure) throw failure;
+    throw new TaskSourceError('linear_delete_unconfirmed', 'Linear did not remove the issue', { writeStarted: true });
   }
 
   return {
