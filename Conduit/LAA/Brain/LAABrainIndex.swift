@@ -13,6 +13,11 @@ struct LAABrainIndex {
     }
     let entries: [Entry]
     let unreadableCount: Int
+    /// The file list these rows were built from. Rows describe that list only.
+    private let indexedFiles: [LAABrainFile]
+    private let lookup: LAABrainPathLookup
+    private let outgoingRows: [String: [LAABrainFile]]
+    private let backlinkRows: [String: [LAABrainFile]]
 
     init(files: [LAABrainFile], read: (String) throws -> String) {
         var entries: [Entry] = []
@@ -29,6 +34,28 @@ struct LAABrainIndex {
         }
         self.entries = entries
         unreadableCount = unreadable
+        indexedFiles = files
+        let lookup = LAABrainPathLookup(files: files)
+        self.lookup = lookup
+        // Both link rows are resolved once, against the indexed list. The note
+        // screen asked for them on every redraw and each answer used to walk
+        // every entry × target × file.
+        var outgoing: [String: [LAABrainFile]] = [:]
+        var backlinks: [String: [LAABrainFile]] = [:]
+        for entry in entries {
+            var resolved: [LAABrainFile] = []
+            for target in entry.wikiTargets {
+                guard let file = lookup.resolve(target, currentPath: entry.file.path) else { continue }
+                // A note that links to itself is neither its own backlink nor
+                // one of its outgoing links.
+                guard file.path != entry.file.path else { continue }
+                backlinks[file.path, default: []].append(entry.file)
+                resolved.append(file)
+            }
+            outgoing[entry.file.path] = Self.uniqueSorted(resolved)
+        }
+        outgoingRows = outgoing
+        backlinkRows = backlinks.mapValues(Self.uniqueSorted)
     }
 
     var tags: [String] {
@@ -56,21 +83,39 @@ struct LAABrainIndex {
     }
 
     func outgoing(from path: String, files: [LAABrainFile]) -> [LAABrainFile] {
-        guard let entry = entries.first(where: { $0.file.path == path }) else { return [] }
-        let resolved = entry.wikiTargets.compactMap { LAABrainPaths.resolve($0, currentPath: path, files: files) }
-        return uniqueSorted(resolved.filter { $0.path != path })
+        guard isIndexed(files) else { return Self.outgoing(from: path, entries: entries, files: files) }
+        return outgoingRows[path] ?? []
     }
 
     func backlinks(to path: String, files: [LAABrainFile]) -> [LAABrainFile] {
-        uniqueSorted(entries.compactMap { entry in
+        guard isIndexed(files) else { return Self.backlinks(to: path, entries: entries, files: files) }
+        return backlinkRows[path] ?? []
+    }
+
+    /// A caller can hold a refreshed folder list while this index still
+    /// describes the previous one. The stored rows are then not an answer to
+    /// that question, so the caller gets a fresh resolution instead.
+    private func isIndexed(_ files: [LAABrainFile]) -> Bool {
+        files.count == indexedFiles.count && files == indexedFiles
+    }
+
+    private static func outgoing(from path: String, entries: [Entry], files: [LAABrainFile]) -> [LAABrainFile] {
+        guard let entry = entries.first(where: { $0.file.path == path }) else { return [] }
+        let lookup = LAABrainPathLookup(files: files)
+        return uniqueSorted(entry.wikiTargets.compactMap { lookup.resolve($0, currentPath: path) }.filter { $0.path != path })
+    }
+
+    private static func backlinks(to path: String, entries: [Entry], files: [LAABrainFile]) -> [LAABrainFile] {
+        let lookup = LAABrainPathLookup(files: files)
+        return uniqueSorted(entries.compactMap { entry in
             guard entry.file.path != path,
-                  entry.wikiTargets.contains(where: { LAABrainPaths.resolve($0, currentPath: entry.file.path, files: files)?.path == path })
+                  entry.wikiTargets.contains(where: { lookup.resolve($0, currentPath: entry.file.path)?.path == path })
             else { return nil }
             return entry.file
         })
     }
 
-    private func uniqueSorted(_ files: [LAABrainFile]) -> [LAABrainFile] {
+    private static func uniqueSorted(_ files: [LAABrainFile]) -> [LAABrainFile] {
         var seen = Set<String>()
         return files.filter { seen.insert($0.path).inserted }
             .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }

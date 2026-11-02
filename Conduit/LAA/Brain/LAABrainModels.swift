@@ -84,6 +84,62 @@ enum LAABrainRoute: Hashable {
     case note(LAABrainReference)
 }
 
+/// One pass over the file list, then a lookup per link. `resolve` rescanned
+/// every file (and re-normalised each path) for every link, which is the scan
+/// that froze the note screen on a large Brain folder; the rules are unchanged.
+struct LAABrainPathLookup {
+    let files: [LAABrainFile]
+    private let byPath: [String: LAABrainFile]
+    private let byName: [String: [LAABrainFile]]
+
+    init(files: [LAABrainFile]) {
+        self.files = files
+        var byPath: [String: LAABrainFile] = [:]
+        var byName: [String: [LAABrainFile]] = [:]
+        byPath.reserveCapacity(files.count)
+        byName.reserveCapacity(files.count)
+        for file in files {
+            let normalized = file.path.precomposedStringWithCanonicalMapping
+            // The first file wins, as `files.first(where:)` did.
+            if byPath[normalized] == nil { byPath[normalized] = file }
+            byName[file.path.split(separator: "/").last.map(String.init) ?? file.path, default: []].append(file)
+        }
+        self.byPath = byPath
+        self.byName = byName
+    }
+
+    /// `#anchor` → this note, relative path → root path → one unique file name.
+    /// Aliases (`|`), percent escapes, NFC and the refused forms keep the
+    /// behaviour of `LAABrainPaths.resolve`.
+    func resolve(_ target: String, currentPath: String) -> LAABrainFile? {
+        let targetPath = target.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        let reference = targetPath
+            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            .trimmingCharacters(in: .whitespacesAndNewlines).removingPercentEncoding ?? ""
+        if reference.isEmpty, targetPath.contains("#") { return files.first { $0.path == currentPath } }
+        guard !reference.isEmpty, !reference.hasPrefix("/"), !reference.contains(":") else { return nil }
+        let named = reference.lowercased().hasSuffix(".md") ? reference : reference + ".md"
+        let directory = currentPath.split(separator: "/").dropLast().joined(separator: "/")
+        if let relative = Self.normalized(directory.isEmpty ? named : directory + "/" + named),
+           let exact = byPath[relative] { return exact }
+        if let absolute = Self.normalized(named), let exact = byPath[absolute] { return exact }
+        guard !named.contains("/") else { return nil }
+        guard let matches = byName[named], matches.count == 1 else { return nil }
+        return matches[0]
+    }
+
+    private static func normalized(_ raw: String) -> String? {
+        var components: [String] = []
+        for part in raw.split(separator: "/", omittingEmptySubsequences: false) {
+            if part == "." { continue }
+            if part == ".." { guard !components.isEmpty else { return nil }; components.removeLast() }
+            else if part.isEmpty { return nil }
+            else { components.append(String(part)) }
+        }
+        return components.joined(separator: "/").precomposedStringWithCanonicalMapping
+    }
+}
+
 enum LAABrainPaths {
     static func request(_ path: String, items: [URLQueryItem] = [], includeInbox: Bool = false) -> String? {
         var parts = URLComponents()
@@ -106,31 +162,7 @@ enum LAABrainPaths {
     }
 
     static func resolve(_ target: String, currentPath: String, files: [LAABrainFile]) -> LAABrainFile? {
-        let targetPath = target.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)[0]
-        let reference = targetPath
-            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
-            .trimmingCharacters(in: .whitespacesAndNewlines).removingPercentEncoding ?? ""
-        if reference.isEmpty, targetPath.contains("#") { return files.first { $0.path == currentPath } }
-        guard !reference.isEmpty, !reference.hasPrefix("/"), !reference.contains(":") else { return nil }
-        let named = reference.lowercased().hasSuffix(".md") ? reference : reference + ".md"
-        func normalized(_ raw: String) -> String? {
-            var components: [String] = []
-            for part in raw.split(separator: "/", omittingEmptySubsequences: false) {
-                if part == "." { continue }
-                if part == ".." { guard !components.isEmpty else { return nil }; components.removeLast() }
-                else if part.isEmpty { return nil }
-                else { components.append(String(part)) }
-            }
-            return components.joined(separator: "/").precomposedStringWithCanonicalMapping
-        }
-        let directory = currentPath.split(separator: "/").dropLast().joined(separator: "/")
-        let relative = normalized(directory.isEmpty ? named : directory + "/" + named)
-        let absolute = normalized(named)
-        if let exact = files.first(where: { $0.path.precomposedStringWithCanonicalMapping == relative }) { return exact }
-        if let exact = files.first(where: { $0.path.precomposedStringWithCanonicalMapping == absolute }) { return exact }
-        guard !named.contains("/") else { return nil }
-        let matches = files.filter { $0.path.split(separator: "/").last.map(String.init) == named }
-        return matches.count == 1 ? matches[0] : nil
+        LAABrainPathLookup(files: files).resolve(target, currentPath: currentPath)
     }
 }
 
@@ -208,6 +240,9 @@ struct LAABrainDocument {
     }
 
     func parts(currentPath: String, files: [LAABrainFile]) -> [Part] {
+        // A note without wiki links needs no file lookup; building one would
+        // cost a pass over every file on each redraw of such a note.
+        let lookup = body.contains("[[") ? LAABrainPathLookup(files: files) : nil
         var result: [Part] = []
         var markdown: [String] = []
         var fence: (character: Character, length: Int)?
@@ -226,10 +261,10 @@ struct LAABrainDocument {
                 if count >= 3 { fence = (marker, count); markdown.append(line); continue }
             }
             if let heading = Self.capture(#"^#{1,6}\s+(.+?)\s*#*\s*$"#, in: trimmed) {
-                flush(); result.append(.heading(source: Self.linkWikis(line, currentPath: currentPath, files: files), title: heading)); continue
+                flush(); result.append(.heading(source: Self.linkWikis(line, currentPath: currentPath, lookup: lookup), title: heading)); continue
             }
             if let pair = Self.captures(#"^\[\^([^\]]+)\]:\s*(.*)$"#, in: trimmed), pair.count == 2 {
-                flush(); result.append(.footnote(id: pair[0], text: Self.linkWikis(pair[1], currentPath: currentPath, files: files))); continue
+                flush(); result.append(.footnote(id: pair[0], text: Self.linkWikis(pair[1], currentPath: currentPath, lookup: lookup))); continue
             }
             if let regex = try? NSRegularExpression(pattern: #"!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\)"#) {
                 let pieces = Self.inlineSegments(line)
@@ -245,12 +280,12 @@ struct LAABrainDocument {
                         for embed in embeds {
                             guard let range = Range(embed.range, in: piece.text) else { continue }
                             pending += String(piece.text[position..<range.lowerBound])
-                            if !pending.isEmpty { markdown.append(Self.linkWikis(pending, currentPath: currentPath, files: files)) }
+                            if !pending.isEmpty { markdown.append(Self.linkWikis(pending, currentPath: currentPath, lookup: lookup)) }
                             flush(); result.append(.image(String(piece.text[range]))); pending = ""; position = range.upperBound
                         }
                         pending += String(piece.text[position...])
                     }
-                    if !pending.isEmpty { markdown.append(Self.linkWikis(pending, currentPath: currentPath, files: files)) }
+                    if !pending.isEmpty { markdown.append(Self.linkWikis(pending, currentPath: currentPath, lookup: lookup)) }
                     continue
                 }
             }
@@ -260,7 +295,7 @@ struct LAABrainDocument {
                 trimmed.range(of: #"^\[[^\]]+\]:"#, options: .regularExpression) != nil {
                 flush(); result.append(.raw(line)); continue
             }
-            let linked = Self.linkWikis(line, currentPath: currentPath, files: files)
+            let linked = Self.linkWikis(line, currentPath: currentPath, lookup: lookup)
             if linked.range(of: #"==[^=\n]+=="#, options: .regularExpression) != nil, !linked.contains("`"),
                !trimmed.contains("|") {
                 flush(); result.append(.highlight(linked)); continue
@@ -271,7 +306,7 @@ struct LAABrainDocument {
         return result
     }
 
-    private static func linkWikis(_ line: String, currentPath: String, files: [LAABrainFile]) -> String {
+    private static func linkWikis(_ line: String, currentPath: String, lookup: LAABrainPathLookup?) -> String {
         // Do not rewrite inside inline code. Unknown or ambiguous links stay
         // exactly as written; links are limited to the already allowed list.
         return inlineSegments(line).map { segment in
@@ -284,7 +319,7 @@ struct LAABrainDocument {
             for match in matches.reversed() {
                 guard let whole = Range(match.range(at: 0), in: output), let inner = Range(match.range(at: 1), in: output) else { continue }
                 let target = String(output[inner])
-                guard let file = LAABrainPaths.resolve(target, currentPath: currentPath, files: files) else { continue }
+                guard let lookup, let file = lookup.resolve(target, currentPath: currentPath) else { continue }
                 let label = target.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).last.map(String.init) ?? target
                 let safeLabel = label.replacingOccurrences(of: "]", with: "\\]")
                 let targetPath = target.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)[0]
