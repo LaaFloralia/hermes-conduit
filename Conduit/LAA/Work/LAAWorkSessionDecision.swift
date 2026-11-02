@@ -26,6 +26,11 @@ struct LAAWorkSessionDecision: View {
             if let snapshot {
                 ForEach(snapshot.requests) { request in
                     Text(verbatim: request.name).fontWeight(.semibold)
+                    if let pending = pendingSubmission(request.id) {
+                        Text(verbatim: "前の回答の結果は未確認です。同じ要求IDで再照合できます。")
+                            .foregroundStyle(LAAColor.attention)
+                        Button { Task { await perform(pending) } } label: { Text(verbatim: "前の回答を再照合") }
+                    }
                     if request.kind == "question" && !request.questions.isEmpty {
                         ForEach(Array(request.questions.enumerated()), id: \.offset) { index, question in
                             Text(verbatim: question.question)
@@ -42,14 +47,14 @@ struct LAAWorkSessionDecision: View {
                                 .textFieldStyle(.roundedBorder)
                         }
                         Button { reply(request, decision: "answer") } label: { Text(verbatim: "回答を送信") }
-                            .disabled(!request.questions.indices.allSatisfy { !(answers["\(request.id):\($0)"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                            .disabled(pendingSubmission(request.id) != nil || !request.questions.indices.allSatisfy { !(answers["\(request.id):\($0)"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                     } else {
                         Text(verbatim: request.detail).textSelection(.enabled).font(.system(.caption, design: .monospaced))
                         if request.kind == "tool" {
-                            Button { reply(request, decision: "allow") } label: { Text(verbatim: "この操作を許可") }
+                            Button { reply(request, decision: "allow") } label: { Text(verbatim: "この操作を許可") }.disabled(pendingSubmission(request.id) != nil)
                         }
                     }
-                    Button(role: .destructive) { reply(request, decision: "deny") } label: { Text(verbatim: "拒否") }
+                    Button(role: .destructive) { reply(request, decision: "deny") } label: { Text(verbatim: "拒否") }.disabled(pendingSubmission(request.id) != nil)
                     Divider()
                 }
             } else { ProgressView() }
@@ -63,8 +68,22 @@ struct LAAWorkSessionDecision: View {
     private func answer(_ id: String, _ index: Int) -> Binding<String> {
         Binding(get: { answers["\(id):\(index)"] ?? "" }, set: { answers["\(id):\(index)"] = $0 })
     }
+    private func pendingSubmission(_ requestID: String) -> ComposerDraftStore.Submission? {
+        guard let device = bridge.deviceID else { return nil }
+        return LAAWorkDrafts.pending(drafts, key: LAAWorkDrafts.key(deviceID: device, target: "decision:\(sessionID):\(requestID)"))
+    }
     @MainActor private func load() async {
-        do { snapshot = try await bridge.read("/v1/sessions/\(sessionID)/decision"); failure = nil }
+        do {
+            let fresh: LAAWorkDecision = try await bridge.read("/v1/sessions/\(sessionID)/decision")
+            snapshot = fresh; failure = nil
+            if let device = bridge.deviceID {
+                let prefix = "\(device):decision:\(sessionID):"
+                for item in drafts.submissions where item.key.sessionID.hasPrefix(prefix) {
+                    let requestID = String(item.key.sessionID.dropFirst(prefix.count))
+                    if !fresh.requests.contains(where: { $0.id == requestID }) { _ = drafts.finishSubmission(item.id, restoring: false) }
+                }
+            }
+        }
         catch { snapshot = nil; failure = "確認内容を取得できません。更新して再確認してください。" }
     }
     private func reply(_ request: LAAWorkDecision.Request, decision: String) {
@@ -79,26 +98,29 @@ struct LAAWorkSessionDecision: View {
         guard let data = try? JSONEncoder().encode(payload), let submission = LAAWorkDrafts.reserve(drafts, key: key, text: decision, body: data, idempotency: LAABridgeIdempotencyKey()) else {
             failure = "回答を端末へ保存できません。"; return
         }
+        Task { await perform(submission) }
+    }
+    @MainActor private func perform(_ submission: ComposerDraftStore.Submission) async {
+        guard !sending, LAAWorkDrafts.canRepeat(submission) else { failure = LAAWorkDrafts.expiredMessage; return }
         sending = true
-        Task { @MainActor in
-            defer { sending = false }
-            do {
-                guard let (body, token) = LAAWorkDrafts.request(submission) else {
-                    failure = "保存した回答を読み取れません。"; return
-                }
-                let _: LAAWorkSession = try await LAAWorkHTTP.write(bridge, path: "/v1/sessions/\(sessionID)/reply", body: body, key: token)
-                _ = drafts.finishSubmission(submission.id, restoring: false)
-                self.snapshot = nil
-                onReply()
-            } catch let error as LAABridgeHTTPError {
-                if LAAWorkHTTP.outcomeUnknown(error) { drafts.markSubmissionUnknown(submission.id) }
-                else { _ = drafts.finishSubmission(submission.id, restoring: false) }
-                failure = LAAWorkHTTP.message(error)
-                await load()
-            } catch {
-                drafts.markSubmissionUnknown(submission.id)
-                failure = "回答の結果は未確認です。再送せず、確認内容を更新してください。"
+
+        defer { sending = false }
+        do {
+            guard let (body, token) = LAAWorkDrafts.request(submission) else {
+                failure = "保存した回答を読み取れません。"; return
             }
+            let _: LAAWorkSession = try await LAAWorkHTTP.write(bridge, path: "/v1/sessions/\(sessionID)/reply", body: body, key: token)
+            _ = drafts.finishSubmission(submission.id, restoring: false)
+            self.snapshot = nil
+            onReply()
+        } catch let error as LAABridgeHTTPError {
+            if LAAWorkHTTP.outcomeUnknown(error) { drafts.markSubmissionUnknown(submission.id) }
+            else { _ = drafts.finishSubmission(submission.id, restoring: false) }
+            await load()
+            failure = LAAWorkHTTP.message(error)
+        } catch {
+            drafts.markSubmissionUnknown(submission.id)
+            failure = "回答の結果は未確認です。再送せず、確認内容を更新してください。"
         }
     }
 }

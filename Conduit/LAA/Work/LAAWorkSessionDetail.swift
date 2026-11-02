@@ -36,7 +36,7 @@ struct LAAWorkSessionDetail: View {
             LAAColor.background.ignoresSafeArea()
             ScrollViewReader { scroll in
             ScrollView {
-                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
                     if let session {
                         sessionHeader(session)
                         if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention).workCard() }
@@ -81,7 +81,7 @@ struct LAAWorkSessionDetail: View {
     }
 
     private var conversation: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+        LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
             if conversationUnavailable {
                 Text(verbatim: "会話履歴を取得できません。更新して再確認してください。")
                     .foregroundStyle(LAAColor.attention)
