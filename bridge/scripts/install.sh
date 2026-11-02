@@ -42,6 +42,15 @@ if ! curl -fsS --max-time 2 "http://127.0.0.1:$PORT/v1/health" >/dev/null 2>&1; 
   fi
 fi
 
+# Reinstalling rewrites the plist from the template. Keep the operator's
+# opt-in settings across that rewrite: only the three keys the helper carries,
+# and only when they were already set, so a fresh install never enables them.
+PREVIOUS_PLIST=""
+if [ -f "$PLIST_DST" ]; then
+  PREVIOUS_PLIST=$(mktemp "${TMPDIR:-/tmp}/laa-bridge-plist.XXXXXX")
+  cp "$PLIST_DST" "$PREVIOUS_PLIST"
+fi
+
 python3 - "$PLIST_SRC" "$PLIST_DST" "$NODE" "$BRIDGE_DIR" "$STATE_DIR" "$PORT" "$HOME" <<'PY'
 import sys
 src, dst, node, bridge_dir, state_dir, port, home = sys.argv[1:8]
@@ -60,6 +69,10 @@ if left:
     raise SystemExit(f"unsubstituted placeholders in the plist template: {left}")
 open(dst, "w", encoding="utf-8").write(text)
 PY
+if [ -n "$PREVIOUS_PLIST" ]; then
+  python3 "$BRIDGE_DIR/scripts/preserve-plist-env.py" "$PREVIOUS_PLIST" "$PLIST_DST"
+  rm -f "$PREVIOUS_PLIST"
+fi
 plutil -lint "$PLIST_DST" >/dev/null
 
 # Reinstalling is allowed: unload the old definition before loading the new one.
