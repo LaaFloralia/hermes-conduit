@@ -65,6 +65,10 @@ function parseArgs(argv) {
   const flags = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === '-h') {
+      flags.help = true;
+      continue;
+    }
     if (arg.startsWith('--')) {
       const name = arg.slice(2);
       if (BOOLEAN_FLAGS.has(name)) {
@@ -207,11 +211,15 @@ function commandServe() {
 const { positional, flags } = parseArgs(process.argv.slice(2));
 const command = positional.shift();
 
-switch (command) {
+// Help must exit before any subcommand can issue credentials or mutate state.
+if (flags.help) {
+  process.stdout.write(USAGE);
+} else switch (command) {
   case 'serve':
     commandServe();
     break;
   case 'pair':
+    if (positional.length) fail('pair does not accept positional arguments; use --name', 2);
     commandPair(flags);
     break;
   case 'devices':
