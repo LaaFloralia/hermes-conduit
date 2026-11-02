@@ -136,18 +136,16 @@ struct LAAStudioWorkBody: View {
                     }
                 }
                 Text(verbatim: "ページと素材 · \(items.count)").laaTextStyle(.section).fontWeight(.semibold)
-                TextField(text: $search) { Text(verbatim: "名前を検索") }.studioInputField().accessibilityIdentifier("laa.studio.item.search")
+                TextField(text: $search) { Text(verbatim: "名前を検索") }.studioSearchField().accessibilityIdentifier("laa.studio.item.search")
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: LAASpacing.x2) {
                         ForEach(LAAStudioFilter.allCases) { value in
                             Button { filter = value } label: {
-                                Text(verbatim: value.rawValue).frame(minHeight: LAASpacing.minimumTouchTarget)
-                                    .padding(.horizontal, LAASpacing.x3)
-                                    .background(filter == value ? LAAColor.subtleSurface : .clear, in: Capsule())
-                            }.accessibilityAddTraits(filter == value ? .isSelected : [])
+                                Text(verbatim: value.rawValue).studioFilterChip(selected: filter == value)
+                            }.buttonStyle(.plain).accessibilityAddTraits(filter == value ? .isSelected : [])
                         }
                     }
-                }
+                }.scrollClipDisabled()
                 if items.isEmpty { Text(verbatim: "表示できるページや素材はありません。").foregroundStyle(LAAColor.secondaryText) }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in itemLink(item, index: index, items: items) }
             }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)

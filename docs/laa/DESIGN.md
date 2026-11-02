@@ -48,7 +48,7 @@ Studioブランド「LAA — Company Brand / 2026.10」v6を基準にする。�
 |---|---|
 | タブバー、チャットの戻る・社員情報・電話、通話操作、編集ツールバー、＋・送信 | チャットの吹き出しと入力面、Brain本文、仕事詳細、Usageの数値、ウィジェット本文 |
 
-iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する。独自操作に必要な場合だけ `glassEffect` を `GlassEffectContainer` でまとめる。regularを既定とし、clearは写真・映像の上に限る。明るい写真上のclearには最低35%の暗い下地を敷く。透明度を下げる設定ではLight `#FFFDF8`／Dark `#172627` の不透明面にする。コントラストを上げる設定では文字・境界を強める。
+iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する。Chats・Today・Brain・Studioの見出しは共通（LAAの上にGeorgiaの画面名）とし、ナビゲーションバーのボタンはシステムのガラスにまとめる。検索欄・絞り込みチップ・操作ボタンは標準のガラス（`LAAGlass.swift`）、一覧の行・カード・本文は不透明に保つ。独自操作に必要な場合だけ `glassEffect` を `GlassEffectContainer` でまとめる。regularを既定とし、clearは写真・映像の上に限る。明るい写真上のclearには最低35%の暗い下地を敷く。透明度を下げる設定ではLight `#FFFDF8`／Dark `#172627` の不透明面にする。コントラストを上げる設定では文字・境界を強める。
 
 対象はiOS 17以降。iOS 17–25は標準のナビゲーションと `Material` を使い、不透明設定では同じ代替面にする。iOS 26専用APIとスクロール時のタブ縮小はavailabilityで分岐する。静止画の半透明色をLiquid Glassの実装と見なさない。
 
@@ -120,7 +120,7 @@ CallKitの純正画面には任意の3D・動画を置けない。アプリ内�
 
 ホームは `systemSmall` の正方形。Cielを初期値とし、上段に名前・静止3D、下段に `Call` と `Chat` の2操作を並べる。見本は170×170pt、各ボタンの当たり領域は44pt以上。実寸はWidgetKitが決めるため、縮小時は画像と余白を調整し、文字と2操作を残す。ウィジェット全体の既定遷移はChat、Callは対象社員の通話、Chatはその社員の会話。iOS 17以降の `Link` と1つの `widgetURL` で行き先を区別する（[Appleの遷移仕様](https://developer.apple.com/documentation/widgetkit/linking-to-specific-app-scenes-from-your-widget-or-live-activity)）。ロック解除・権限・既存の通話同意が必要な場合はアプリ側で正規の流れを示す。
 
-横長 `systemMedium` は、左にCiel像と電話・会話のアイコン操作、右にAI Usageを優先順（Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、GPT API、Claude API、Liquid AI）で上から入る分だけ置く。アイコンにはVoiceOver名を付ける。右側のタップはUsageタブを開き、外部URLは開かない。取得時刻などの脚注は置かず、取れない項目は数値なしの状態行にする。
+横長 `systemMedium` は、左上に会社（LAA）のアイコンとCielの名前、その下にCiel像と電話・会話のアイコン操作（アイコンだけを置き、下地や光彩を付けない）、右にAI Usageを優先順（Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、GPT API、Claude API、Liquid AI）で上から入る分だけ置く。アイコンにはVoiceOver名を付ける。右側のタップはUsageタブを開き、外部URLは開かない。取得時刻などの脚注は置かず、取れない項目は数値なしの状態行にする。
 
 ロック画面は `accessoryRectangular`、単色の電話アイコンと `Ciel / Call`。1つの遷移先としてアプリの通話画面を開く。実際の色や形はOSのレンダリングに従うため、Studioの色付き見本と完全一致を要求しない。ロック画面に会話内容や接続状況を表示しない。
 

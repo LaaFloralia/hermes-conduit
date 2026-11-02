@@ -132,8 +132,7 @@ struct LAAStudioRequestView: View {
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         Button { Task { await retryPending() } } label: {
                             Text(verbatim: pending.retryMaterial() == nil || retryNeedsReentry ? LAACopy.Studio.reenter : LAACopy.Studio.retry)
-                                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                        }.buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("laa.studio.action.retry")
+                        }.laaGlassButton().disabled(busy).accessibilityIdentifier("laa.studio.action.retry")
                     }
                 }
                 if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
@@ -146,8 +145,8 @@ struct LAAStudioRequestView: View {
                 }
                 if record.canStop {
                     Button(role: .destructive) { confirmStop = true } label: {
-                        Text(verbatim: LAACopy.Studio.stop).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }.buttonStyle(.bordered).tint(LAAColor.end).disabled(!LAAStudioActionGuard.mayStop(busy: busy, pending: pending))
+                        Text(verbatim: LAACopy.Studio.stop)
+                    }.laaGlassButton().tint(LAAColor.end).disabled(!LAAStudioActionGuard.mayStop(busy: busy, pending: pending))
                         .accessibilityIdentifier("laa.studio.stop")
                 }
                 if record.canRequestAgain {
@@ -268,12 +267,12 @@ private struct LAAStudioApprovalView: View {
                         guard let content = LAAStudioAnswers.content(fields: approval.fields, raw: raw) else { invalid = true; return }
                         invalid = false; answer(true, content, persist)
                     } label: {
-                        Text(verbatim: LAACopy.Studio.allow).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton).foregroundStyle(LAAColor.filledButtonText)
+                        Text(verbatim: LAACopy.Studio.allow)
+                    }.laaGlassButton(prominent: true).foregroundStyle(LAAColor.filledButtonText)
                         .accessibilityIdentifier("laa.studio.approval.allow")
                     Button { answer(false, [:], false) } label: {
-                        Text(verbatim: LAACopy.Studio.deny).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }.buttonStyle(.bordered).tint(LAAColor.secondaryText)
+                        Text(verbatim: LAACopy.Studio.deny)
+                    }.laaGlassButton().tint(LAAColor.secondaryText)
                         .accessibilityIdentifier("laa.studio.approval.deny")
                 }.disabled(disabled)
             }

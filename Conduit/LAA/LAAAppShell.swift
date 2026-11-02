@@ -199,9 +199,16 @@ struct LAAAppShell: View {
                             if tab == .today {
                                 LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
                             } else if tab == .studio {
-                                ScrollView { LAAStudioHomeView().padding(LAASpacing.horizontal) }
-                                    .navigationTitle(Text(verbatim: "Studio"))
-                                    .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: LAASpacing.x6) {
+                                        LAATabHeading(title: LAATab.studio.title)
+                                        LAAStudioHomeView()
+                                    }.padding(LAASpacing.horizontal)
+                                }
+                                .background(LAAColor.background.ignoresSafeArea())
+                                .navigationBarTitleDisplayMode(.inline)
+                                .toolbarBackground(.hidden, for: .navigationBar)
+                                .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
                             } else if tab == .usage {
                                 LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                             } else if tab == .work {

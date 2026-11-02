@@ -79,8 +79,8 @@ struct LAAStudioReviewView: View {
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if state.pending == nil {
                         Button { Task { await submit(retry: false) } } label: {
-                            Text(verbatim: "講評を保存").frame(minHeight: LAASpacing.minimumTouchTarget)
-                        }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton).disabled(!canSubmit)
+                            Text(verbatim: "講評を保存")
+                        }.laaGlassButton(prominent: true).disabled(!canSubmit)
                             .accessibilityIdentifier("laa.studio.review.send")
                     } else {
                         Button { Task { await check() } } label: {

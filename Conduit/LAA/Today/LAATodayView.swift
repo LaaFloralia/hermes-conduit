@@ -27,7 +27,7 @@ struct LAATodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: "Today").font(LAAType.screenTitle).accessibilityIdentifier("laa.today.title")
+                    LAATabHeading(title: "Today", identifier: "laa.today.title")
                     Text(verbatim: "Googleカレンダー · 今日から7日間")
                         .font(.subheadline).foregroundStyle(LAAColor.secondaryText)
                 }
@@ -38,8 +38,10 @@ struct LAATodayView: View {
                         Text(verbatim: message).accessibilityIdentifier("laa.today.error")
                         if bridge.status != .paired {
                             Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
+                                .laaGlassButton(prominent: true)
                         } else {
                             Button { Task { await refresh() } } label: { Text(verbatim: "再読み込み") }
+                                .laaGlassButton()
                         }
                     }
                 } else if calendar.loaded {
@@ -48,6 +50,7 @@ struct LAATodayView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     Text(verbatim: "今日のノート").fontWeight(.semibold)
                     Button(action: openBrain) { Text(verbatim: "Brainを開く") }
+                        .laaGlassButton()
                     Text(verbatim: "今日のノートへの直接移動は準備中です。")
                         .foregroundStyle(LAAColor.secondaryText)
                 }

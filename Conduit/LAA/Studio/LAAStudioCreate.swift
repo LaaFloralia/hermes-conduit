@@ -43,9 +43,9 @@ struct LAAStudioCreateView: View {
                     NavigationLink {
                         LAAStudioRequestView(initial: created, initialProject: snapshot.projects.first { $0.id == created.request.projectId })
                     } label: {
-                        Text(verbatim: LAACopy.Studio.check).frame(minHeight: LAASpacing.minimumTouchTarget)
+                        Text(verbatim: LAACopy.Studio.check)
                     }
-                        .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                        .laaGlassButton(prominent: true)
                     if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                 } else {
                     Text(verbatim: draft.pending ? (draft.workBusy == true ? LAACopy.Studio.workBusy : LAACopy.Studio.uncertain) : LAACopy.Studio.draft)
@@ -228,5 +228,21 @@ private struct LAAStudioInputField: ViewModifier {
 
 extension View {
     func studioInputField() -> some View { modifier(LAAStudioInputField()) }
+
+    /// Search is a control, so it takes glass; typed form fields stay opaque.
+    func studioSearchField() -> some View {
+        textFieldStyle(.plain)
+            .padding(.horizontal, LAASpacing.x4)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .laaGlass(in: Capsule())
+    }
+
+    func studioFilterChip(selected: Bool) -> some View {
+        fontWeight(selected ? .semibold : .regular)
+            .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .padding(.horizontal, LAASpacing.x4)
+            .laaGlass(in: Capsule(), selected: selected)
+    }
 }
 #endif

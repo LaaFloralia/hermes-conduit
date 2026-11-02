@@ -19,41 +19,29 @@ struct LAAStudioHomeView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            HStack(spacing: LAASpacing.x3) {
-                Picker(selection: $section) {
-                    Text(verbatim: LAACopy.Studio.works).tag(0)
-                    Text(verbatim: LAACopy.Studio.requests).tag(1)
-                    if snapshot?.supportsV2 == true { Text(verbatim: "Library").tag(2) }
-                } label: {
-                    Text(verbatim: "Studio")
-                }.pickerStyle(.segmented).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    .accessibilityIdentifier("laa.studio.section")
-                if let snapshot {
-                    NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: {
-                        Image(systemName: "plus").frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-                    }.accessibilityLabel(Text(verbatim: LAACopy.Studio.newRequest)).accessibilityIdentifier("laa.studio.new")
-                }
-                if LAAStudioData.available(bridge) {
-                    Button { Task { await load() } } label: {
-                        Image(systemName: "arrow.clockwise").frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-                    }.disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh)).accessibilityIdentifier("laa.studio.refresh")
-                }
-            }
+            Picker(selection: $section) {
+                Text(verbatim: LAACopy.Studio.works).tag(0)
+                Text(verbatim: LAACopy.Studio.requests).tag(1)
+                if snapshot?.supportsV2 == true { Text(verbatim: "Library").tag(2) }
+            } label: {
+                Text(verbatim: "Studio")
+            }.pickerStyle(.segmented).frame(minHeight: LAASpacing.minimumTouchTarget)
+                .accessibilityIdentifier("laa.studio.section")
             if !LAAStudioData.available(bridge) {
                 Text(verbatim: bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText : LAACopy.bridgeNotPairedBody)
                     .laaTextStyle(.body).foregroundStyle(LAAColor.text)
                 if bridge.status != .keychainError {
                     Button { pairing = true } label: {
-                        Text(verbatim: LAACopy.Brain.connect).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                        Text(verbatim: LAACopy.Brain.connect)
+                    }.laaGlassButton(prominent: true)
                         .accessibilityIdentifier("laa.studio.pair")
                 }
             } else {
                 if let error {
                     Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                     Button { Task { await load() } } label: {
-                        Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }
+                        Text(verbatim: LAACopy.Studio.retry)
+                    }.laaGlassButton()
                 }
                 if loading && snapshot == nil { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
                 if let snapshot {
@@ -71,13 +59,25 @@ struct LAAStudioHomeView: View {
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge).tint(LAAColor.link) }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if let snapshot {
+                    NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(Text(verbatim: LAACopy.Studio.newRequest)).accessibilityIdentifier("laa.studio.new")
+                }
+                if LAAStudioData.available(bridge) {
+                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                        .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh)).accessibilityIdentifier("laa.studio.refresh")
+                }
+            }
+        }
         .task(id: bridge.revision) { await load() }
     }
     private func works(_ snapshot: LAAStudioSnapshot) -> some View {
         let projects = snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
         return VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Text(verbatim: "\(LAACopy.Studio.works.uppercased()) · \(projects.count)").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-            TextField(text: $search) { Text(verbatim: "作品を検索") }.studioInputField().accessibilityIdentifier("laa.studio.work.search")
+            TextField(text: $search) { Text(verbatim: "作品を検索") }.studioSearchField().accessibilityIdentifier("laa.studio.work.search")
             if projects.isEmpty { Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。").foregroundStyle(LAAColor.secondaryText) }
             else {
                 LazyVGrid(columns: columns, spacing: LAASpacing.x2) {

@@ -15,7 +15,6 @@ struct LAAChatsContent: View {
 
     @State private var query = ""
     @FocusState private var searchFocused: Bool
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var ciel: LAAChatsPerson? { snapshot.people.first { LAAStaff(profile: $0.profile) == .ciel } }
@@ -31,7 +30,7 @@ struct LAAChatsContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                header
+                LAATabHeading(title: LAACopy.chatsTitle)
                 if !snapshot.canCreateChat { note(LAACopy.chatsNewUnavailable) }
                 search
                 if searching && !hasResults {
@@ -52,54 +51,20 @@ struct LAAChatsContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            if settingsAvailable {
-                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: openSettings) }
+            // New chat and Settings share one glass in the bar, as in the
+            // system's Messages.
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button(action: newChat) { Image(systemName: "plus") }
+                    .disabled(!snapshot.canCreateChat)
+                    .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
+                    .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
+                    .accessibilityIdentifier("laa.chats.new")
+                if settingsAvailable { LAASettingsButton(action: openSettings) }
             }
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in searchChanged() }
         .accessibilityIdentifier("laa.chats.list")
-    }
-
-    private var header: some View {
-        HStack(alignment: .bottom, spacing: LAASpacing.x3) {
-            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: "LAA")
-                    .laaTextStyle(.section).fontWeight(.bold)
-                    .foregroundStyle(LAAColor.link)
-                Text(verbatim: LAACopy.chatsTitle)
-                    .font(LAAType.screenTitle)
-                    .foregroundStyle(LAAColor.text)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            Spacer()
-            Button(action: newChat) { newChatIcon }
-            .disabled(!snapshot.canCreateChat)
-            .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
-            .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
-            .accessibilityIdentifier("laa.chats.new")
-        }
-    }
-
-    private var newChatSymbol: some View {
-        Image(systemName: "plus")
-            .laaTextStyle(.body).fontWeight(.medium)
-            .foregroundStyle(LAAColor.link)
-            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-    }
-
-    @ViewBuilder private var newChatIcon: some View {
-        if reduceTransparency {
-            newChatSymbol.background(LAAColor.surface, in: Circle())
-                .overlay(Circle().stroke(LAAColor.separator, lineWidth: 1))
-        } else if #available(iOS 26.0, *) {
-            GlassEffectContainer {
-                newChatSymbol.glassEffect(.regular.interactive(), in: .circle)
-            }
-        } else {
-            newChatSymbol.background(.regularMaterial, in: Circle())
-                .overlay(Circle().stroke(LAAColor.separator, lineWidth: 1))
-        }
     }
 
     private var search: some View {
@@ -125,7 +90,7 @@ struct LAAChatsContent: View {
         .padding(.leading, LAASpacing.x4)
         .padding(.trailing, LAASpacing.x1)
         .frame(minHeight: LAASpacing.minimumTouchTarget)
-        .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        .laaGlass(in: Capsule())
     }
 
     private func cielSection(_ ciel: LAAChatsPerson) -> some View {
