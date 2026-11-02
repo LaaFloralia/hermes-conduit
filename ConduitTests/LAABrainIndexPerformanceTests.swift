@@ -1,0 +1,167 @@
+#if LAA_BUILD
+import XCTest
+@testable import Conduit
+
+/// The index's link rows and a single link resolution must not rescan every
+/// file: a Brain folder of ten thousand notes froze the owner's iPhone in
+/// `LAABrainIndex.backlinks` (watchdog SIGKILL, 2026-11-03). These tests keep
+/// the previous implementation as the oracle and as the "before" measurement.
+final class LAABrainIndexPerformanceTests: XCTestCase {
+    private func file(_ path: String) -> LAABrainFile {
+        LAABrainFile(id: LAABrainReference(path: path, includeInbox: true).id, path: path,
+                     title: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent,
+                     modifiedAt: "", area: "local", unreadable: nil)
+    }
+
+    /// `count` notes in 40 folders. Each note links to the next two notes by
+    /// their unique file name and to one note by its root-relative path.
+    private func fixture(count: Int) -> (files: [LAABrainFile], texts: [String: String]) {
+        var files: [LAABrainFile] = []
+        var texts: [String: String] = [:]
+        for index in 0..<count {
+            let folder = "F\(index % 40)"
+            let path = "\(folder)/Note \(index).md"
+            files.append(file(path))
+            let first = (index + 1) % count
+            let second = (index + 7) % count
+            let target = "F\(first % 40)/Note \(first).md"
+            texts[path] = "# Note \(index)\n\n本文 \(index) 行\n[[Note \(first)]] と [[Note \(second)|別名]] と [[\(target)#見出し]]\n"
+        }
+        return (files, texts)
+    }
+
+    private func read(_ texts: [String: String]) -> (String) throws -> String {
+        { path in
+            guard let text = texts[path] else { throw NSError(domain: "fixture", code: 1) }
+            return text
+        }
+    }
+
+    // MARK: - The implementation before this change, kept as the oracle.
+
+    private func legacyResolve(_ target: String, currentPath: String, files: [LAABrainFile]) -> LAABrainFile? {
+        let targetPath = target.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        let reference = targetPath
+            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            .trimmingCharacters(in: .whitespacesAndNewlines).removingPercentEncoding ?? ""
+        if reference.isEmpty, targetPath.contains("#") { return files.first { $0.path == currentPath } }
+        guard !reference.isEmpty, !reference.hasPrefix("/"), !reference.contains(":") else { return nil }
+        let named = reference.lowercased().hasSuffix(".md") ? reference : reference + ".md"
+        func normalized(_ raw: String) -> String? {
+            var components: [String] = []
+            for part in raw.split(separator: "/", omittingEmptySubsequences: false) {
+                if part == "." { continue }
+                if part == ".." { guard !components.isEmpty else { return nil }; components.removeLast() }
+                else if part.isEmpty { return nil }
+                else { components.append(String(part)) }
+            }
+            return components.joined(separator: "/").precomposedStringWithCanonicalMapping
+        }
+        let directory = currentPath.split(separator: "/").dropLast().joined(separator: "/")
+        let relative = normalized(directory.isEmpty ? named : directory + "/" + named)
+        let absolute = normalized(named)
+        if let exact = files.first(where: { $0.path.precomposedStringWithCanonicalMapping == relative }) { return exact }
+        if let exact = files.first(where: { $0.path.precomposedStringWithCanonicalMapping == absolute }) { return exact }
+        guard !named.contains("/") else { return nil }
+        let matches = files.filter { $0.path.split(separator: "/").last.map(String.init) == named }
+        return matches.count == 1 ? matches[0] : nil
+    }
+
+    private func legacyBacklinks(_ index: LAABrainIndex, to path: String, files: [LAABrainFile]) -> [LAABrainFile] {
+        var seen = Set<String>()
+        let result = index.entries.compactMap { entry -> LAABrainFile? in
+            guard entry.file.path != path,
+                  entry.wikiTargets.contains(where: { legacyResolve($0, currentPath: entry.file.path, files: files)?.path == path })
+            else { return nil }
+            return entry.file
+        }
+        return result.filter { seen.insert($0.path).inserted }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    private func duration(_ work: () -> Void) -> TimeInterval {
+        var elapsed: TimeInterval = 0
+        let started = Date()
+        work()
+        elapsed = Date().timeIntervalSince(started)
+        return elapsed
+    }
+
+    // MARK: - Equivalence with the previous rules.
+
+    func testResolveKeepsEveryRuleOfThePreviousImplementation() {
+        let files = [
+            file("A/Start.md"), file("A/Other.md"), file("B/Other.md"),
+            file("Café.md"),                       // NFC on disk
+            file("Caf\u{0065}\u{0301}/Nested.md"), // NFD folder on disk
+            file("Root Only.md"), file("日本 語.md"),
+        ]
+        let targets = ["Other", "Other.md", "A/Other", "/A/Other", "../Other", "..", "./Other", "B/Other.md",
+                       "Other|alias", "Other#見出し", "#見出し", "#", "", "http:Other", "Missing", "Café",
+                       "Caf\u{0065}\u{0301}", "%E6%97%A5%E6%9C%AC%20%E8%AA%9E", "日本 語", "Root Only",
+                       "Nested", "A//Other", "A/./Other", "A/../A/Other"]
+        for target in targets {
+            for currentPath in ["A/Start.md", "B/Other.md", "Start.md"] {
+                XCTAssertEqual(LAABrainPaths.resolve(target, currentPath: currentPath, files: files)?.path,
+                               legacyResolve(target, currentPath: currentPath, files: files)?.path,
+                               "resolve(\"\(target)\") from \(currentPath)")
+            }
+        }
+    }
+
+    func testOutgoingAndBacklinksKeepPreviousResults() throws {
+        let files = [file("A/Start.md"), file("A/Other.md"), file("B/Other.md"), file("Root.md")]
+        let texts = ["A/Start.md": "[[Other]] [[Root]] [[Missing]]",
+                     "A/Other.md": "[[Start#見出し]] [[Other]]",
+                     "B/Other.md": "[[Other]]",
+                     "Root.md": "[[B/Other]]"]
+        let index = LAABrainIndex(files: files, read: read(texts))
+        let links = index.entries.flatMap { entry in
+            entry.wikiTargets.compactMap { legacyResolve($0, currentPath: entry.file.path, files: files)?.path }
+        }
+        for path in files.map(\.path) {
+            XCTAssertEqual(index.backlinks(to: path, files: files).map(\.path),
+                           legacyBacklinks(index, to: path, files: files).map(\.path), path)
+        }
+        XCTAssertEqual(index.outgoing(from: "A/Start.md", files: files).map(\.path), ["A/Other.md", "Root.md"])
+        XCTAssertFalse(links.isEmpty)
+    }
+
+    // MARK: - The hang that took the app down.
+
+    func testBacklinksOverAThousandNotesDoesNotRescanEveryFile() throws {
+        let small = 500
+        let (files, texts) = fixture(count: small)
+        let index = LAABrainIndex(files: files, read: read(texts))
+        let target = "F0/Note 0.md"
+        XCTAssertEqual(index.backlinks(to: target, files: files).count,
+                       legacyBacklinks(index, to: target, files: files).count)
+
+        let legacy = duration { _ = legacyBacklinks(index, to: target, files: files) }
+        let current = duration { _ = index.backlinks(to: target, files: files) }
+        print("backlinks \(small) notes: previous \(String(format: "%.3f", legacy))s, now \(String(format: "%.4f", current))s")
+        XCTAssertLessThan(current, legacy / 10, "backlinks still rescans every file")
+    }
+
+    func testTenThousandNotesRenderTheirLinksQuickly() throws {
+        let large = 10_000
+        let (files, texts) = fixture(count: large)
+        let built = duration { _ = LAABrainIndex(files: files, read: read(texts)) }
+        let index = LAABrainIndex(files: files, read: read(texts))
+        let note = "F0/Note 0.md"
+        let backlinks = duration { _ = index.backlinks(to: note, files: files) }
+        let outgoing = duration { _ = index.outgoing(from: note, files: files) }
+        let resolved = duration {
+            for entry in index.entries.prefix(500) {
+                for target in entry.wikiTargets { _ = LAABrainPaths.resolve(target, currentPath: entry.file.path, files: files) }
+            }
+        }
+        print("10k notes: build \(String(format: "%.3f", built))s, backlinks \(String(format: "%.4f", backlinks))s, "
+              + "outgoing \(String(format: "%.4f", outgoing))s, 1500 resolves \(String(format: "%.3f", resolved))s")
+        XCTAssertLessThan(backlinks, 0.05)
+        XCTAssertLessThan(outgoing, 0.05)
+        XCTAssertLessThan(resolved, 1.0)
+        XCTAssertEqual(index.backlinks(to: note, files: files), legacyBacklinks(index, to: note, files: files))
+    }
+}
+#endif
