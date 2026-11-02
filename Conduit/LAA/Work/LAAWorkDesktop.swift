@@ -394,16 +394,31 @@ struct LAAWorkDesktopCatalogView: View {
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
-    private var rows: [(id: String, title: String, subtitle: String)] {
+    private struct CatalogRow: Identifiable {
+        let id: String
+        let title: String
+        let subtitle: String
+        let group: String
+    }
+
+    private var rows: [CatalogRow] {
         if kind == .routines {
-            return routines.filter { LAAWorkDesktopList.matches($0.name + " " + ($0.schedule ?? ""), query: search) }
-                .map { ($0.id, $0.name, $0.schedule ?? "Schedule unknown") }
+            let scheduled = routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
+                .filter { LAAWorkDesktopList.matches($0.name + " " + ($0.destination ?? "") + " " + ($0.schedule ?? ""), query: search) }
+            return LAAWorkRoutineGrouping.groups(scheduled).flatMap { group in
+                group.routines.map { routine in
+                    CatalogRow(id: routine.id, title: routine.name,
+                               subtitle: "Next \(LAAWorkRoutineTime.next(routine.nextRunAt)) · \(routine.schedule ?? "Schedule unknown")",
+                               group: group.destination)
+                }
+            }
         }
         var seen = Set<String>()
         return skills.filter { seen.insert($0.name).inserted }
             .filter { LAAWorkDesktopList.matches($0.name + " " + $0.explanation, query: search) }
             .sorted { $0.name < $1.name }
-            .map { ($0.id, $0.name, $0.explanation.isEmpty ? "No description" : $0.explanation) }
+            .map { CatalogRow(id: $0.id, title: $0.name,
+                              subtitle: $0.explanation.isEmpty ? "No description" : $0.explanation, group: "") }
     }
 
     var body: some View {
@@ -428,7 +443,15 @@ struct LAAWorkDesktopCatalogView: View {
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(rows, id: \.id) { row in
+                        ForEach(rows) { row in
+                            if !row.group.isEmpty, rows.first(where: { $0.group == row.group })?.id == row.id {
+                                Text(verbatim: row.group).laaTextStyle(.section).fontWeight(.semibold)
+                                    .foregroundStyle(LAAColor.secondaryText)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, LAASpacing.x4)
+                                    .padding(.top, LAASpacing.x3)
+                                    .accessibilityIdentifier("work.desktop.routines.group")
+                            }
                             Button { selectedID = row.id } label: {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.semibold)
@@ -481,6 +504,7 @@ struct LAAWorkDesktopCatalogView: View {
                     Text(verbatim: routine.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     Text(verbatim: routine.schedule ?? "Schedule unknown").foregroundStyle(LAAColor.link)
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        detailLine("Next run", LAAWorkRoutineTime.next(routine.nextRunAt))
                         detailLine("Destination", routine.destination ?? "Not set")
                         detailLine("State", stateLabel(routine.state))
                         detailLine("Last run", routine.previousRunSummary())
