@@ -10,6 +10,7 @@ struct LAAAppShell: View {
     @Environment(\.scenePhase) private var scenePhase
     let onRequestSettings: () -> Void
 
+    @ObservedObject private var workLinkRequest = LAAWorkLinkRequest.shared
     @StateObject private var usageState = LAAUsageState()
     @ObservedObject private var dailyRequest = LAABrainDailyRequest.shared
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
@@ -88,6 +89,17 @@ struct LAAAppShell: View {
             .sheet(isPresented: $showUsage) {
                 NavigationStack { LAAUsageView(state: usageState, onRequestSettings: onRequestSettings) }
                     .environmentObject(bridge)
+            }
+            .onChange(of: workLinkRequest.generation, initial: true) { _, _ in
+                guard let host = workLinkRequest.url?.host else { return }
+                switch host {
+                case "work": selectedTab = .work
+                case "today": selectedTab = .today
+                case "brain": selectedTab = .brain
+                case "assets": selectedTab = .studio
+                default: return
+                }
+                appState.requestSettingsDismissal()
             }
             .onChange(of: dailyRequest.id, initial: true) { _, request in
                 guard request != nil else { return }
@@ -197,7 +209,9 @@ struct LAAAppShell: View {
                     } else {
                         NavigationStack {
                             if tab == .today {
-                                LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
+                                LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings,
+                                             initialEventID: workLinkRequest.calendarEvent?.id, initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
+                                    .id(workLinkRequest.generation)
                             } else if tab == .studio {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: LAASpacing.x6) {

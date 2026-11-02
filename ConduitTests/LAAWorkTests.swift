@@ -177,5 +177,85 @@ final class LAAWorkTests: XCTestCase {
         LAAWorkConflictJournal.clear(rejected, in: folder)
         XCTAssertFalse(LAAWorkConflictJournal.contains(rejected, in: folder))
     }
+    func testSessionTreesKeepChildrenUnderParentsAndHandleCycles() throws {
+        let parent = try session("p", name: "親", updated: "1")
+        let child = try session("c", name: "子", parent: "p", updated: "3")
+        let sibling = try session("s", name: "別", updated: "2")
+        XCTAssertEqual(LAAWorkSessionOrder.rows([child, sibling, parent]).recent.map(\.id), ["s", "p", "c"])
+        XCTAssertEqual(LAAWorkSessionOrder.depth(child, in: [child, parent]), 1)
+        let cycle = try session("p", name: "親", parent: "c", updated: "1")
+        XCTAssertEqual(Set(LAAWorkSessionOrder.rows([cycle, child]).recent.map(\.id)), ["p", "c"])
+    }
+
+    func testDeviceScopedSessionCacheRestoresBeforeAnyNetworkRead() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("cache.json")
+        let row = try session("p", name: "保存済み", updated: "1")
+        let store = ComposerDraftStore(capacity: .max, fileURL: url)
+        LAAWorkSessionCache.save([row], store: store, device: "a", target: "list")
+        let restored = ComposerDraftStore(capacity: .max, fileURL: url)
+        let rows = LAAWorkSessionCache.read([LAAWorkSession].self, store: restored, device: "a", target: "list")
+        XCTAssertEqual(rows?.first?.name, "保存済み")
+        XCTAssertNil(LAAWorkSessionCache.read([LAAWorkSession].self, store: restored, device: "b", target: "list"))
+    }
+
+    func testNotificationLinksPreserveCalendarIdentityAndValidateSessionRoute() throws {
+        let route = LAAWorkLinkRequest()
+        XCTAssertTrue(route.open(try XCTUnwrap(URL(string: "laa://today/events/same-id?calendar=team%40example.com"))))
+        XCTAssertEqual(route.calendarEvent?.id, "same-id")
+        XCTAssertEqual(route.calendarEvent?.calendarID, "team@example.com")
+        XCTAssertTrue(route.open(try XCTUnwrap(URL(string: "laa://today/events/same-id"))))
+        XCTAssertNil(route.calendarEvent)
+        XCTAssertTrue(route.open(try XCTUnwrap(URL(string: "laa://work/sessions/ses_0123456789abcdef"))))
+        XCTAssertEqual(route.sessionID, "ses_0123456789abcdef")
+        XCTAssertTrue(route.open(try XCTUnwrap(URL(string: "laa://work/sessions/agent-from-paseo"))))
+        XCTAssertEqual(route.sessionTarget, "agent-from-paseo")
+        XCTAssertNil(route.sessionID)
+        XCTAssertFalse(route.open(try XCTUnwrap(URL(string: "https://example.com/work"))))
+    }
+
+    func testCalendarDeepLinkRoundTripPreservesGoogleIdentifierCharacters() throws {
+        let route = LAAWorkLinkRequest()
+        let values = [
+            ("invite_123@google.com", "floralia@laa-inc.com"),
+            ("holiday_123", "ja.japanese#holiday@group.v.calendar.google.com"),
+            ("event+with_under_score@google.com", "team+calendar_123@group.calendar.google.com")
+        ]
+        let segmentCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_~."))
+        for (event, calendar) in values {
+            var link = URLComponents()
+            link.scheme = "laa"; link.host = "today"
+            link.percentEncodedPath = "/events/" + (try XCTUnwrap(event.addingPercentEncoding(withAllowedCharacters: segmentCharacters)))
+            link.queryItems = [URLQueryItem(name: "calendar", value: calendar)]
+            let url = try XCTUnwrap(link.url)
+            XCTAssertTrue(route.open(url))
+            XCTAssertEqual(route.calendarEvent?.id, event)
+            XCTAssertEqual(route.calendarEvent?.calendarID, calendar)
+        }
+        XCTAssertTrue(route.open(try XCTUnwrap(URL(string: "laa://today/events/event%2B_uid%40google.com?calendar=team%2Bname%23holiday%40group.calendar.google.com"))))
+        XCTAssertEqual(route.calendarEvent?.id, "event+_uid@google.com")
+        XCTAssertEqual(route.calendarEvent?.calendarID, "team+name#holiday@group.calendar.google.com")
+    }
+
+    func testImageDraftAndExactRequestSurviveUncertainSubmission() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("draft.json")
+        let key = LAAWorkDrafts.key(deviceID: "a", target: "message:p")
+        let image = Attachment(id: "image-1", name: "画像", uri: "data:image/jpeg;base64,YWJj", mimeType: "image/jpeg", kind: .image)
+        let store = ComposerDraftStore(capacity: .max, fileURL: url)
+        let payload = Data(#"{"message":"確認","images":[{"data":"YWJj","mimeType":"image/jpeg"}]}"#.utf8)
+        let item = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: key, text: "確認", body: payload,
+                                                      idempotency: LAABridgeIdempotencyKey(), attachments: [image]))
+        store.markSubmissionUnknown(item.id)
+        let restored = ComposerDraftStore(capacity: .max, fileURL: url)
+        let pending = try XCTUnwrap(LAAWorkDrafts.pending(restored, key: key))
+        XCTAssertEqual(LAAWorkDrafts.request(pending)?.0, payload)
+        XCTAssertEqual(pending.draft.attachments.first?.uri, image.uri)
+        XCTAssertTrue(restored.finishSubmission(pending.id, restoring: true))
+        XCTAssertEqual(restored.draft(for: key).attachments.first?.id, "image-1")
+    }
+
 }
 #endif
