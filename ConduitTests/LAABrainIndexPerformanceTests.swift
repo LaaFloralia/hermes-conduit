@@ -151,16 +151,48 @@ final class LAABrainIndexPerformanceTests: XCTestCase {
         let note = "F0/Note 0.md"
         let backlinks = duration { _ = index.backlinks(to: note, files: files) }
         let outgoing = duration { _ = index.outgoing(from: note, files: files) }
+        // One lookup per rendered note, as `LAABrainDocument.parts` builds it,
+        // then one hit per link: the screen must not pay a pass per link.
+        let lookup = LAABrainPathLookup(files: files)
         let resolved = duration {
             for entry in index.entries.prefix(500) {
-                for target in entry.wikiTargets { _ = LAABrainPaths.resolve(target, currentPath: entry.file.path, files: files) }
+                for target in entry.wikiTargets { _ = lookup.resolve(target, currentPath: entry.file.path) }
             }
         }
+        // The render entry point itself, on a note with 200 links.
+        let manyLinks = (0..<200).map { "[[Note \($0)]]" }.joined(separator: "\n")
+        var parts: [LAABrainDocument.Part] = []
+        let rendered = duration { parts = LAABrainDocument(manyLinks).parts(currentPath: note, files: files) }
+        // The single-shot entry point is one pass over the file list per call;
+        // 1,500 such calls took 16.404 s on the simulator (candidate log,
+        // 2026-11-03). A redraw does not use it, so this is measured and
+        // printed for the record, not asserted.
+        let singleStart = Date()
+        for number in 0..<40 { _ = LAABrainPaths.resolve("Note \(number)", currentPath: note, files: files) }
+        let single = Date().timeIntervalSince(singleStart) / 40
         print("10k notes: build \(String(format: "%.3f", built))s, backlinks \(String(format: "%.4f", backlinks))s, "
-              + "outgoing \(String(format: "%.4f", outgoing))s, 1500 resolves \(String(format: "%.3f", resolved))s")
+              + "outgoing \(String(format: "%.4f", outgoing))s, 1500 lookups \(String(format: "%.4f", resolved))s, "
+              + "render 200 links \(String(format: "%.4f", rendered))s, "
+              + "single-shot \(String(format: "%.1f", single * 1000))ms/call")
         XCTAssertLessThan(backlinks, 0.05)
         XCTAssertLessThan(outgoing, 0.05)
         XCTAssertLessThan(resolved, 1.0)
+        XCTAssertLessThan(rendered, 1.0, "rendering rescans the file list per link")
+        // Every link points where the previous implementation pointed it, with
+        // the label it had: the note screen renders real links, not a no-op.
+        let markdown = parts.compactMap { part -> String? in
+            if case .markdown(let text) = part { return text }
+            return nil
+        }.joined()
+        XCTAssertEqual(markdown.components(separatedBy: "laabrain://note/").count - 1, 200, "links were not rewritten")
+        for number in 0..<200 {
+            let target = "Note \(number)"
+            guard let file = legacyResolve(target, currentPath: note, files: files) else {
+                return XCTFail("fixture link \(target) does not resolve")
+            }
+            XCTAssertTrue(markdown.contains("[\(target)](laabrain://note/\(file.id))"),
+                          "link \(target) does not point at \(file.path)")
+        }
         XCTAssertEqual(index.backlinks(to: note, files: files), legacyBacklinks(index, to: note, files: files))
     }
 }

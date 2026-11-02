@@ -242,7 +242,13 @@ struct LAABrainDocument {
     func parts(currentPath: String, files: [LAABrainFile]) -> [Part] {
         // A note without wiki links needs no file lookup; building one would
         // cost a pass over every file on each redraw of such a note.
-        let lookup = body.contains("[[") ? LAABrainPathLookup(files: files) : nil
+        parts(currentPath: currentPath, lookup: body.contains("[[") ? LAABrainPathLookup(files: files) : nil)
+    }
+
+    /// Callers that render many notes in one pass (the gallery walks every
+    /// entry) build one lookup for the file list and pass it here, so the list
+    /// is read once instead of once per note.
+    func parts(currentPath: String, lookup: LAABrainPathLookup?) -> [Part] {
         var result: [Part] = []
         var markdown: [String] = []
         var fence: (character: Character, length: Int)?
