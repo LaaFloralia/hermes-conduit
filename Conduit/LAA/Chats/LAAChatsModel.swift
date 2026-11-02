@@ -17,8 +17,8 @@ enum LAAChatsLoadState: Equatable {
 /// The Mac's list column: which row stays highlighted, and the keyboard
 /// requests the menu bar sends it. The phone passes none of this.
 struct LAAChatsListSelection: Equatable {
-    var profile: String?
-    var roomID: String?
+    var profile: String? = nil
+    var roomID: String? = nil
     var focusSearch = 0
     var reload = 0
     var newChat = 0

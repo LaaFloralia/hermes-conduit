@@ -39,13 +39,7 @@ struct LAAMacShell: View {
         Binding(get: { section }, set: { storedSection = $0.rawValue })
     }
 
-    private var requiresLogin: Bool {
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
-           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
-        #endif
-        return appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
-    }
+    private var requiresLogin: Bool { LAAMacLogin.isRequired(appState) }
 
     private var conversationVisible: Bool {
         section == .chats && chatConversationShown && !requiresLogin
@@ -126,6 +120,9 @@ struct LAAMacShell: View {
             }
             .onAppear {
                 #if DEBUG
+                // The screenshot script names the section it opens; from then
+                // on the sidebar owns the selection.
+                if let launched = LAAMacSection.launched { storedSection = launched.rawValue }
                 LAAPluginUITestFixture.seedStatusIfEnabled(appState)
                 if !seededDailyFixture && ProcessInfo.processInfo.arguments.contains("-laa-brain-daily-fixture") {
                     seededDailyFixture = true
@@ -149,60 +146,45 @@ struct LAAMacShell: View {
 
     @ViewBuilder
     private var detail: some View {
-        if requiresLogin {
-            // Sign-in replaces every section: the card sits in the middle of
-            // the window at a readable width, not stretched across it.
-            LoginView()
-                .laaReadableWidth(LAADesktopMetrics.documentWidth)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(LAAColor.background.ignoresSafeArea())
-                .environment(\.horizontalSizeClass, .compact)
-        } else {
-            switch section {
-            case .chats:
-                LAAMacChatsSection(commands: commands,
-                                   conversationShown: $chatConversationShown)
-            case .work:
-                NavigationStack { LAAWorkHub(onRequestSettings: onRequestSettings) }
-                    .laaCompactColumn()
-            case .today:
-                NavigationStack {
-                    LAATodayView(openBrain: { storedSection = LAAMacSection.brain.rawValue },
-                                 onRequestSettings: onRequestSettings,
-                                 initialEventID: workLinkRequest.calendarEvent?.id,
-                                 initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
-                        .id(workLinkRequest.generation)
-                }
+        switch section {
+        case .chats:
+            LAAMacChatsSection(commands: commands,
+                               conversationShown: $chatConversationShown)
+        case .work:
+            NavigationStack { LAAWorkHub(onRequestSettings: onRequestSettings) }
                 .laaCompactColumn()
-            case .brain:
-                LAABrainView(onRequestSettings: onRequestSettings)
-                    .laaCompactColumn()
-            case .studio:
-                NavigationStack {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                            LAATabHeading(title: LAAMacSection.studio.title)
-                            LAAStudioHomeView()
-                        }
-                        .padding(LAASpacing.horizontal)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+        case .today:
+            NavigationStack {
+                LAATodayView(openBrain: { storedSection = LAAMacSection.brain.rawValue },
+                             onRequestSettings: onRequestSettings,
+                             initialEventID: workLinkRequest.calendarEvent?.id,
+                             initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
+                    .id(workLinkRequest.generation)
+            }
+            .laaCompactColumn()
+        case .brain:
+            LAABrainView(onRequestSettings: onRequestSettings)
+                .laaCompactColumn()
+        case .studio:
+            // Studio owns its Mac layout (its heading included); the shell
+            // supplies only the window's chrome.
+            NavigationStack {
+                LAAStudioHomeView()
                     .background(LAAColor.background.ignoresSafeArea())
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbarBackground(.hidden, for: .navigationBar)
                     .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
-                }
-                .laaCompactColumn()
-            case .drive:
-                NavigationStack { LAAAssetsView(onRequestSettings: onRequestSettings) }
-                    .laaCompactColumn()
-            case .usage:
-                NavigationStack {
-                    LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
-                        .laaReadableWidth()
-                }
-                .laaCompactColumn()
             }
+            .laaCompactColumn()
+        case .drive:
+            NavigationStack { LAAAssetsView(onRequestSettings: onRequestSettings) }
+                .laaCompactColumn()
+        case .usage:
+            NavigationStack {
+                LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+                    .laaReadableWidth()
+            }
+            .laaCompactColumn()
         }
     }
 }
