@@ -3822,7 +3822,7 @@ and rollback instructions · the upstream App Store build
 **Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · the upstream App Store build
 
 **Code**
-- Chat colours, columns and date separators: `Conduit/LAA/Chat/LAAChatStyle.swift`, `Conduit/LAA/Design/LAATokens.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift`
+- Chat colours, columns, date separators and the composer's Liquid Glass (+, field, send; opaque with Reduce Transparency): `Conduit/LAA/Chat/LAAChatStyle.swift`, `Conduit/LAA/Design/LAATokens.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift`
 - Rich text and media: `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/MarkdownProseRun.swift`
 - Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
 - Compact employee and group toolbar placement: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/GroupChatView.swift`
