@@ -1,0 +1,89 @@
+#if LAA_BUILD
+import SwiftUI
+
+/// Shared layout contract for the Mac window. The shell sets `laaDesktop`;
+/// section views branch on it, never on the size class, because the Mac
+/// shell keeps reused iPhone views in a compact size class inside columns.
+private struct LAADesktopKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var laaDesktop: Bool {
+        get { self[LAADesktopKey.self] }
+        set { self[LAADesktopKey.self] = newValue }
+    }
+}
+
+/// Widths in UIKit points; Catalyst's iPad scaling shows them at about 77%.
+enum LAADesktopMetrics {
+    static let listMinWidth: CGFloat = 320
+    static let listIdealWidth: CGFloat = 380
+    static let listMaxWidth: CGFloat = 460
+    /// Conversation transcripts and composers.
+    static let readingWidth: CGFloat = 880
+    /// Notes, documents and task details.
+    static let documentWidth: CGFloat = 820
+    /// Card grids such as Studio works and Usage providers.
+    static let gridItemMinWidth: CGFloat = 300
+}
+
+/// A list column beside its detail, separated by a hairline. The list keeps
+/// its width as the window grows; the detail takes the rest.
+struct LAAMacListDetail<List: View, Detail: View>: View {
+    var listWidth: CGFloat = LAADesktopMetrics.listIdealWidth
+    @ViewBuilder var list: () -> List
+    @ViewBuilder var detail: () -> Detail
+
+    var body: some View {
+        HStack(spacing: 0) {
+            list()
+                .frame(minWidth: LAADesktopMetrics.listMinWidth, idealWidth: listWidth,
+                       maxWidth: LAADesktopMetrics.listMaxWidth, maxHeight: .infinity)
+                .background(LAAColor.background)
+            Rectangle()
+                .fill(LAAColor.separator)
+                .frame(width: 1)
+                .accessibilityHidden(true)
+            detail()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(LAAColor.surface)
+        }
+    }
+}
+
+/// Shown in a detail column before anything is selected.
+struct LAAMacEmptyDetail: View {
+    let symbol: String
+    let title: String
+    var message: String? = nil
+
+    var body: some View {
+        VStack(spacing: LAASpacing.x3) {
+            Image(systemName: symbol)
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(LAAColor.secondaryText)
+                .accessibilityHidden(true)
+            Text(verbatim: title)
+                .font(LAAType.employeeName)
+                .foregroundStyle(LAAColor.text)
+            if let message {
+                Text(verbatim: message)
+                    .laaTextStyle(.secondary)
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(LAASpacing.x8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension View {
+    /// Centers content at a comfortable line length in a wide column.
+    func laaReadableWidth(_ width: CGFloat = LAADesktopMetrics.documentWidth) -> some View {
+        frame(maxWidth: width).frame(maxWidth: .infinity)
+    }
+}
+#endif
