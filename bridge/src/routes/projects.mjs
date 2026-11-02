@@ -27,7 +27,8 @@
 // can never replace it; `auto` marks a generated name that may be recomputed.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { badRequest, BridgeError, conflict, notFound } from '../errors.mjs';
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
@@ -38,6 +39,9 @@ const INSTRUCTIONS_MAX_BYTES = 32 * 1024;
 const INSTRUCTION_HISTORY_LIMIT = 10;
 const INSTRUCTION_TAG = 'project_instructions';
 const NAME_SOURCES = new Set(['owner', 'auto']);
+const FILE_NAME_MAX = 120;
+const FILE_MAX_BYTES = 5 * 1024 * 1024;
+const FILES_PER_PROJECT = 20;
 
 // --- store ------------------------------------------------------------------
 
@@ -56,6 +60,12 @@ export function createProjectStore({ file, now = () => Date.now() }) {
     },
     list() {
       return Object.values(all());
+    },
+    // Reference files (like Claude Projects knowledge) live next to the state
+    // file; sessions get their paths, never their bytes.
+    filesDir: join(dirname(file), 'project-files'),
+    filesFor(project) {
+      return (project?.files ?? []).map((item) => ({ name: item.name, path: item.path, sha256: item.sha256 }));
     },
     mutate(fn) {
       return state.mutate((doc) => {
@@ -130,6 +140,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
     return {
       ...view(project),
       instructions: project.instructions ?? null,
+      files: (project.files ?? []).map(({ id, name, size, mimeType, sha256, createdAt }) => ({ id, name, size, mimeType, sha256, createdAt })),
     };
   }
 
@@ -290,8 +301,89 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
     return { status: 200, data: detail(updated), headers: { etag: etagFor(updated.version) } };
   }
 
+  function addFile({ device, rawBody, params }) {
+    const current = requireProject(params[0]);
+    const body = parseObjectBody(rawBody);
+    const name = parseFileName(body.name);
+    const bytes = parseFileContent(body.contentBase64);
+    const mimeType = body.mimeType === undefined || body.mimeType === null ? null : parseMimeType(body.mimeType);
+    if ((current.files ?? []).length >= FILES_PER_PROJECT) {
+      throw conflict('file_limit_reached', `a project holds at most ${FILES_PER_PROJECT} files`);
+    }
+    const id = `file_${randomBytes(6).toString('hex')}`;
+    const dir = join(projects.filesDir, current.id);
+    const path = join(dir, `${id}-${name}`);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    chmodSync(projects.filesDir, 0o700);
+    chmodSync(dir, 0o700);
+    writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' });
+    const iso = new Date(now()).toISOString();
+    let updated;
+    try {
+      updated = projects.mutate((all) => {
+        const record = all[current.id];
+        if (!record) throw notFound('project not found');
+        if ((record.files ?? []).length >= FILES_PER_PROJECT) {
+          throw conflict('file_limit_reached', `a project holds at most ${FILES_PER_PROJECT} files`);
+        }
+        record.files = [...(record.files ?? []), {
+          id,
+          name,
+          size: bytes.length,
+          mimeType,
+          sha256: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+          path,
+          createdAt: iso,
+        }];
+        record.version += 1;
+        record.updatedAt = iso;
+        record.updatedBy = device?.id ?? null;
+        return record;
+      });
+    } catch (err) {
+      rmSync(path, { force: true });
+      throw err;
+    }
+    return { status: 201, data: detail(updated), headers: { etag: etagFor(updated.version) } };
+  }
+
+  function removeFile({ device, params }) {
+    const current = requireProject(params[0]);
+    const entry = (current.files ?? []).find((item) => item.id === params[1]);
+    if (!entry) throw notFound('file not found');
+    const iso = new Date(now()).toISOString();
+    const updated = projects.mutate((all) => {
+      const record = all[current.id];
+      if (!record) throw notFound('project not found');
+      record.files = (record.files ?? []).filter((item) => item.id !== entry.id);
+      record.version += 1;
+      record.updatedAt = iso;
+      record.updatedBy = device?.id ?? null;
+      return record;
+    });
+    rmSync(entry.path, { force: true });
+    return { status: 200, data: detail(updated), headers: { etag: etagFor(updated.version) } };
+  }
+
   return [
     { method: 'GET', path: '/v1/projects', auth: true, scope: 'sessions:read', handler: list },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/projects\/(prj_[0-9a-f]{12})\/files$/,
+      auth: true,
+      scope: 'sessions:write',
+      idempotent: true,
+      bodyLimit: 8 * 1024 * 1024,
+      handler: addFile,
+    },
+    {
+      method: 'DELETE',
+      pattern: /^\/v1\/projects\/(prj_[0-9a-f]{12})\/files\/(file_[0-9a-f]{12})$/,
+      auth: true,
+      scope: 'sessions:write',
+      idempotent: true,
+      handler: removeFile,
+    },
     { method: 'POST', path: '/v1/projects', auth: true, scope: 'sessions:write', idempotent: true, handler: create },
     { method: 'GET', pattern: /^\/v1\/projects\/(prj_[0-9a-f]{12})$/, auth: true, scope: 'sessions:read', handler: get },
     {
@@ -319,6 +411,7 @@ function view(project) {
     instructionRef: project.instructionRef ?? null,
     instructionHash: project.instructionHash ?? null,
     instructionVersion: project.instructionVersion ?? 0,
+    fileCount: (project.files ?? []).length,
     version: project.version,
     etag: etagFor(project.version),
     createdAt: project.createdAt,
@@ -379,6 +472,33 @@ function parseInstructions(raw) {
     throw badRequest('payload_invalid', `instructions must not contain the </${INSTRUCTION_TAG}> delimiter`);
   }
   return raw;
+}
+
+function parseFileName(raw) {
+  if (typeof raw !== 'string') throw badRequest('payload_invalid', 'name is required');
+  const name = raw.trim();
+  if (name === '' || [...name].length > FILE_NAME_MAX || name === '.' || name === '..'
+    || /[/\\\u0000-\u001f\u007f]/.test(name)) {
+    throw badRequest('payload_invalid', `name must be 1-${FILE_NAME_MAX} characters without / \\ or control characters`);
+  }
+  return name;
+}
+
+function parseFileContent(raw) {
+  if (typeof raw !== 'string' || raw === '' || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+    throw badRequest('payload_invalid', 'contentBase64 must be non-empty base64');
+  }
+  const bytes = Buffer.from(raw, 'base64');
+  if (bytes.length === 0) throw badRequest('payload_invalid', 'contentBase64 must not be empty');
+  if (bytes.length > FILE_MAX_BYTES) throw badRequest('payload_too_large', `a file must be at most ${FILE_MAX_BYTES} bytes`);
+  return bytes;
+}
+
+function parseMimeType(raw) {
+  if (typeof raw !== 'string' || !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(raw) || raw.length > 100) {
+    throw badRequest('payload_invalid', 'mimeType must look like type/subtype');
+  }
+  return raw.toLowerCase();
 }
 
 export function hashBody(body) {

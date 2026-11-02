@@ -38,8 +38,8 @@ function fakeDelegation() {
     setPending(requestId, pending) {
       records.get(requestId).pending = pending;
     },
-    async create({ requestId, profile, cwd, task, title }) {
-      calls.push({ op: 'create', requestId, profile, cwd, task, title });
+    async create({ requestId, profile, cwd, task, title, mode, fast }) {
+      calls.push({ op: 'create', requestId, profile, cwd, task, title, mode, fast });
       if (adapter.unavailable) throw new BridgeError(503, 'delegation_unavailable', 'down', { retryable: true });
       // Mirrors laa-personal-agent: the title is capped at 200 UTF-8 bytes and
       // must be non-empty. The Bridge has no mapping for `title_invalid`, so an
@@ -103,6 +103,7 @@ function fakeDelegation() {
           matches: true,
         },
         daemonStatus: record.daemonStatus,
+        title: record.title ?? null,
         pending: record.pending,
         result: record.result,
         stopRequestedAt: record.stopRequestedAt ?? undefined,
@@ -774,4 +775,114 @@ test('a retry of a record created before instructions still reconciles', async (
   assert.equal(changed.status, 409);
   assert.equal(changed.body.error.code, 'request_id_conflict');
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
+});
+
+test('a session without a workspace runs in the home folder with bypass by default and a prompt-derived name', async (t) => {
+  const ctx = await boot(t, { sessions: { homeCwd: '/Users/owner' } });
+  const created = await ctx.bridge.request('/v1/sessions', {
+    method: 'POST', token: ctx.token, key: 'k-home',
+    body: { requestId: 'req-home', profile: 'deepseek-flash-high', prompt: '\n  明日の環境認識を  まとめて、要点を三つに絞ってください。\n詳細' },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const session = created.body.data;
+  assert.equal(session.workspaceId, 'home');
+  assert.equal(session.cwd, '/Users/owner');
+  assert.equal(session.mode, 'bypass');
+  assert.equal(session.fast, false);
+  assert.equal(session.worktree, false);
+  assert.equal(session.name, '明日の環境認識を まとめて、要点を三つに絞ってく…');
+  const call = ctx.adapter.calls.find((item) => item.op === 'create');
+  assert.equal(call.cwd, '/Users/owner');
+  assert.equal(call.mode, 'bypass');
+  assert.equal(call.fast, undefined);
+
+  const fast = await ctx.bridge.request('/v1/sessions', {
+    method: 'POST', token: ctx.token, key: 'k-home-2',
+    body: { requestId: 'req-home-2', profile: 'opus-high', prompt: 'ok', mode: 'default', fast: true },
+  });
+  assert.equal(fast.status, 201);
+  assert.equal(fast.body.data.mode, 'default');
+  const second = ctx.adapter.calls.filter((item) => item.op === 'create')[1];
+  assert.equal(second.mode, undefined);
+  assert.equal(second.fast, true);
+
+  const bad = await ctx.bridge.request('/v1/sessions', {
+    method: 'POST', token: ctx.token, key: 'k-home-3',
+    body: { requestId: 'req-home-3', profile: 'opus-high', prompt: 'ok', mode: 'plan' },
+  });
+  assert.equal(bad.status, 400);
+  // The same requestId with a different fast setting is a different request.
+  const conflict = await ctx.bridge.request('/v1/sessions', {
+    method: 'POST', token: ctx.token, key: 'k-home-4',
+    body: { requestId: 'req-home-2', profile: 'opus-high', prompt: 'ok', mode: 'default', fast: false },
+  });
+  assert.equal(conflict.status, 409);
+});
+
+test('the session follows the agent rename unless the owner named it', async (t) => {
+  const ctx = await boot(t, { sessions: { observationTtlMs: 0 } });
+  const created = await createSession(ctx);
+  const id = created.body.data.id;
+  const delegate = ctx.adapter.calls.find((item) => item.op === 'create').requestId;
+  ctx.adapter.agent(delegate).title = '環境認識｜要点の整理';
+  const detail = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+  assert.equal(detail.body.data.name, '環境認識｜要点の整理');
+  assert.equal(detail.body.data.nameSource, 'agent');
+
+  const renamed = await ctx.bridge.request(`/v1/sessions/${id}`, { method: 'PATCH', token: ctx.token, key: 'k-rename', body: { name: '社長の名前' } });
+  assert.equal(renamed.status, 200);
+  ctx.adapter.agent(delegate).title = '別の自動名';
+  const after = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+  assert.equal(after.body.data.name, '社長の名前');
+  assert.equal(after.body.data.nameSource, 'owner');
+});
+
+test('favourite and archive organise the list; worktree sessions stay out of the default list', async (t) => {
+  const ctx = await boot(t, { sessions: { homeCwd: '/Users/owner/.paseo/worktrees/x/y' } });
+  const a = (await createSession(ctx, { requestId: 'req-a' }, 'k-a')).body.data;
+  const b = (await createSession(ctx, { requestId: 'req-b' }, 'k-b')).body.data;
+  const w = (await ctx.bridge.request('/v1/sessions', {
+    method: 'POST', token: ctx.token, key: 'k-w', body: { requestId: 'req-w', profile: 'deepseek-flash-high', prompt: 'ok' },
+  })).body.data;
+  assert.equal(w.worktree, true);
+
+  const ids = async (query = '') => (await ctx.bridge.request(`/v1/sessions${query}`, { token: ctx.token })).body.data.items.map((item) => item.id).sort();
+  assert.deepEqual(await ids(), [a.id, b.id].sort());
+
+  const fav = await ctx.bridge.request(`/v1/sessions/${a.id}`, { method: 'PATCH', token: ctx.token, key: 'k-fav', body: { favorite: true } });
+  assert.equal(fav.body.data.favorite, true);
+  const archived = await ctx.bridge.request(`/v1/sessions/${b.id}`, { method: 'PATCH', token: ctx.token, key: 'k-arc', body: { archived: true } });
+  assert.ok(archived.body.data.archivedAt);
+  assert.deepEqual(await ids(), [a.id]);
+  assert.deepEqual(await ids('?archived=only'), [b.id]);
+  assert.deepEqual(await ids('?scope=all'), [a.id, b.id, w.id].sort());
+  assert.deepEqual(await ids('?requestId=req-w'), [w.id]);
+
+  const restored = await ctx.bridge.request(`/v1/sessions/${b.id}`, { method: 'PATCH', token: ctx.token, key: 'k-unarc', body: { archived: false } });
+  assert.equal(restored.body.data.archivedAt, null);
+  const empty = await ctx.bridge.request(`/v1/sessions/${b.id}`, { method: 'PATCH', token: ctx.token, key: 'k-empty', body: {} });
+  assert.equal(empty.status, 400);
+  const badType = await ctx.bridge.request(`/v1/sessions/${b.id}`, { method: 'PATCH', token: ctx.token, key: 'k-bad', body: { favorite: 'yes' } });
+  assert.equal(badType.status, 400);
+});
+
+test('project files are listed for every session in the project as paths', async (t) => {
+  const ctx = await boot(t);
+  const project = await createProject(ctx, { name: '資料つき' }, 'k-pf');
+  const added = await ctx.bridge.request(`/v1/projects/${project.id}/files`, {
+    method: 'POST', token: ctx.token, key: 'k-file',
+    body: { name: 'メモ.md', contentBase64: Buffer.from('# 参考\n本文').toString('base64'), mimeType: 'text/markdown' },
+  });
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  const file = added.body.data.files[0];
+  assert.equal(file.name, 'メモ.md');
+  assert.equal(file.path, undefined, 'the phone never sees the Mac path');
+
+  const created = await createSession(ctx, { projectId: project.id });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const prompt = ctx.adapter.calls.find((item) => item.op === 'create').task.prompt;
+  assert.match(prompt, new RegExp(`<project_files project="${project.id}">`));
+  assert.match(prompt, /- メモ\.md: \/.+project-files\/prj_[0-9a-f]{12}\/file_[0-9a-f]{12}-メモ\.md/);
+  assert.ok(prompt.trimEnd().endsWith('</user_request>'));
+  assert.ok(!prompt.includes('<project_instructions'), 'no empty instructions block');
 });
