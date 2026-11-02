@@ -88,12 +88,12 @@ struct LAAWorkSessionsSection: View {
             VStack(spacing: 0) {
                 ForEach(rows) { session in
                     LAAWorkSwipeRow(id: session.id, openID: $openRow,
-                                    leading: .init(title: session.isFavorite ? "ピン解除" : "ピン留め",
-                                                   systemImage: session.isFavorite ? "pin.slash" : "pin",
-                                                   tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } },
-                                    trailing: .init(title: session.isArchived ? "戻す" : "アーカイブ",
-                                                    systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox",
-                                                    tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } }) {
+                                    leading: .init(title: session.isArchived ? "戻す" : "アーカイブ",
+                                                   systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox",
+                                                   tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } },
+                                    trailing: .init(title: session.isFavorite ? "ピン解除" : "ピン留め",
+                                                    systemImage: session.isFavorite ? "pin.slash" : "pin",
+                                                    tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } }) {
                         Button { opened = session } label: {
                             LAAWorkSessionRow(session: session, projectName: projectName(session.projectId), options: options)
                                 .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: sessions)) * 16)
@@ -157,7 +157,8 @@ struct LAAWorkSessionsSection: View {
             let (loaded, loadedProjects) = try await (page, projectPage)
             guard !Task.isCancelled else { return }
             // An older Bridge ignores the filters: keep worktree and archived rows out here too.
-            sessions = loaded.filter { $0.isArchived == showArchived }
+            let visible = loaded.filter { $0.isArchived == showArchived }
+            sessions = showArchived ? visible : LAAWorkSessionScope.default(visible, projects: loadedProjects)
             LAAWorkSessionCache.save(sessions, store: drafts, device: bridge.deviceID, target: showArchived ? "archived" : "list")
             projects = loadedProjects
             failure = nil
@@ -188,6 +189,32 @@ struct LAAWorkSessionsSection: View {
         } catch {
             failure = "変更を保存できませんでした。"
         }
+    }
+}
+
+/// Which sessions the Work list starts with: the LAA project (started in
+/// /Users/laa) and their children, plus anything the owner pinned. A session
+/// from another repo's old worktree does not appear until it is pinned or
+/// opened from the archive.
+enum LAAWorkSessionScope {
+    static func `default`(_ sessions: [LAAWorkSession], projects: [LAAWorkProject]) -> [LAAWorkSession] {
+        let laaProjects = Set(projects.filter { $0.name == "LAA" }.map(\.id))
+        var keep = Set<String>()
+        for session in sessions {
+            if session.isFavorite
+                || session.cwd == "/Users/laa"
+                || session.projectId.map(laaProjects.contains) == true { keep.insert(session.id) }
+        }
+        var changed = true
+        while changed {
+            changed = false
+            for session in sessions where !keep.contains(session.id) {
+                guard let parent = session.parentId, keep.contains(parent) else { continue }
+                keep.insert(session.id)
+                changed = true
+            }
+        }
+        return sessions.filter { keep.contains($0.id) }
     }
 }
 

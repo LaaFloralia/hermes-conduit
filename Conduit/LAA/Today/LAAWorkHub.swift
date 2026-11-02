@@ -8,11 +8,14 @@ struct LAAWorkHub: View {
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
+    // The Usage tab keeps its own state: Work opens it rarely, and the screen
+    // refreshes on appear. The shell's instance keeps the main Usage tab.
+    @StateObject private var usageState = LAAUsageState()
     @State private var section: Section = .priority
     @State private var showPairing = false
 
     enum Section: String, CaseIterable, Identifiable {
-        case priority, tasks, sessions, projects, routines, skills
+        case priority, tasks, sessions, projects, routines, skills, usage
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -22,6 +25,7 @@ struct LAAWorkHub: View {
             case .projects: AppLocalization.string("Projects")
             case .routines: AppLocalization.string("Work routines")
             case .skills: AppLocalization.string("Skills")
+            case .usage: AppLocalization.string("AI usage")
             }
         }
         var desktopTitle: String {
@@ -32,6 +36,7 @@ struct LAAWorkHub: View {
             case .projects: AppLocalization.string("Projects")
             case .routines: AppLocalization.string("Routines")
             case .skills: AppLocalization.string("Skills")
+            case .usage: AppLocalization.string("AI usage")
             }
         }
     }
@@ -80,6 +85,7 @@ struct LAAWorkHub: View {
                 case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings)
                 case .routines: LAAWorkCatalogView(kind: .routines).id(section)
                 case .skills: LAAWorkCatalogView(kind: .skills).id(section)
+                case .usage: LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                 }
             }
         }
@@ -145,6 +151,7 @@ struct LAAWorkHub: View {
         case .projects: LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0)
         case .routines: LAAWorkDesktopCatalogView(kind: .routines)
         case .skills: LAAWorkDesktopCatalogView(kind: .skills)
+        case .usage: LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
         }
     }
 
