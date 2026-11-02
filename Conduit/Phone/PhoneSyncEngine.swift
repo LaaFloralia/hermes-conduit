@@ -400,7 +400,7 @@ final class PhoneSyncEngine: ObservableObject {
 
     private func checkTime(_ deadline: Date) throws {
         try Task.checkCancellation()
-        if now() >= deadline { throw DeadlineReached() }
+        if !(now() < deadline) { throw DeadlineReached() }
     }
 
     /// The agreed key, and the changes the host has waiting when its status

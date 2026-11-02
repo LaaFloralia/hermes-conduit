@@ -144,7 +144,7 @@ struct LocationUnsent: Codable, Equatable {
 
     /// Keeps the newer fix and the newest events.
     mutating func keep(fix newFix: LocationFixRecord?, events newEvents: [LocationPlaceEvent]) {
-        if let newFix, newFix.raw.timestamp >= (fix?.raw.timestamp ?? .distantPast) { fix = Fix(newFix) }
+        if let newFix, !(newFix.raw.timestamp < (fix?.raw.timestamp ?? .distantPast)) { fix = Fix(newFix) }
         var merged = events
         for event in newEvents where !merged.contains(where: { $0.id == event.id }) { merged.append(event) }
         merged.sort { $0.at < $1.at }

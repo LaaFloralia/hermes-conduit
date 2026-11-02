@@ -93,7 +93,7 @@ extension AppState {
 
     func logShortcutEvent(_ event: ShortcutEvent, deadline: Date) async throws -> ShortcutLogOutcome {
         guard event.carriesSomething else { throw ShortcutLogError.empty }
-        guard event.at >= Date().addingTimeInterval(-Double(ShortcutInboxQueue.keepDays) * 86_400) else {
+        guard !(event.at < Date().addingTimeInterval(-Double(ShortcutInboxQueue.keepDays) * 86_400)) else {
             throw ShortcutLogError.tooOld
         }
         if ShortcutEventFilter.looksLikeCode(event) { return .skippedCode }

@@ -131,7 +131,7 @@ struct PresentedConfirm: Identifiable, Equatable {
     }
 
     func isExpired(at now: Date = Date()) -> Bool {
-        expiresAt.map { $0 <= now } ?? false
+        expiresAt.map { !(now < $0) } ?? false
     }
 
     /// Whether the user's own words confirm it: a plain yes, or one of the

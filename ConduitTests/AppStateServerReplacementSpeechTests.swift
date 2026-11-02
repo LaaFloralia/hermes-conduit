@@ -501,7 +501,7 @@ final class AppStateServerReplacementSpeechTests: XCTestCase {
         ) async {
             let deadline = Date().addingTimeInterval(timeout)
             while !condition() {
-                if Date() >= deadline {
+                if !(Date() < deadline) {
                     XCTFail("Timed out waiting for \(description)")
                     return
                 }

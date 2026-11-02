@@ -181,7 +181,7 @@ struct ArtifactFeed: Equatable {
             // The newest next row of any store; a tie goes to the earlier one.
             var pick: Int?
             for index in read.indices where heads[index] < read[index].count {
-                if let current = pick, read[current][heads[current]].date >= read[index][heads[index]].date { continue }
+                if let current = pick, !(read[current][heads[current]].date < read[index][heads[index]].date) { continue }
                 pick = index
             }
             guard let index = pick else { break }

@@ -206,7 +206,7 @@ final class WidgetLaunchCoordinator {
         guard let request else {
             if let handedOffTalkGeneration,
                let activeTalkDeadline,
-               now() >= activeTalkDeadline {
+               !(now() < activeTalkDeadline) {
                 expireHandedOffTalk(generation: handedOffTalkGeneration)
             }
             return

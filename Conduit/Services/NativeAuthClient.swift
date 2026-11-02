@@ -568,7 +568,7 @@ enum NativeAuthCookiePolicy {
         let jar = DashboardCookiePersistence.nativeCookieStorage(for: dashboardID)
         let now = Date()
         for cookie in cookies {
-            guard let expires = cookie.expiresDate, expires <= now else {
+            guard let expires = cookie.expiresDate, !(now < expires) else {
                 jar.setCookie(cookie)
                 continue
             }
@@ -612,7 +612,7 @@ enum NativeAuthCookiePolicy {
         let now = Date()
 
         return cookies.filter { cookie in
-            if let expires = cookie.expiresDate, expires <= now { return false }
+            if let expires = cookie.expiresDate, !(now < expires) { return false }
             if cookie.isSecure && !isSecureRequest { return false }
             guard domainMatches(cookie.domain, host: host) else { return false }
 

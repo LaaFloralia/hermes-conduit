@@ -103,7 +103,7 @@ enum DashboardCookiePersistence {
     /// fills a gap only while it is unexpired. A cookie without an expiry (a
     /// session cookie) counts as lasting until the process ends.
     nonisolated static func shouldRestore(_ saved: HTTPCookie, over live: HTTPCookie?, now: Date = Date()) -> Bool {
-        if let expires = saved.expiresDate, expires <= now { return false }
+        if let expires = saved.expiresDate, !(now < expires) { return false }
         guard let live else { return true }
         return (saved.expiresDate ?? .distantFuture) > (live.expiresDate ?? .distantFuture)
     }

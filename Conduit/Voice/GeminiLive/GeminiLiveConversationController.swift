@@ -1501,8 +1501,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Whether the model answered since `date`, out loud or as text. Any
     /// words count; they aren't matched to the result that was sent.
     private func modelSpoke(since date: Date) -> Bool {
-        if let lastModelAudioAt, lastModelAudioAt >= date { return true }
-        if let lastModelTranscriptAt, lastModelTranscriptAt >= date { return true }
+        if let lastModelAudioAt, !(lastModelAudioAt < date) { return true }
+        if let lastModelTranscriptAt, !(lastModelTranscriptAt < date) { return true }
         return false
     }
 

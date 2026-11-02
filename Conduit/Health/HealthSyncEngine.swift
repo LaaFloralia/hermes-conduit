@@ -457,7 +457,7 @@ private struct Session {
 
     func checkTime() throws {
         try Task.checkCancellation()
-        if engine.currentNow >= deadline { throw DeadlineReached() }
+        if !(engine.currentNow < deadline) { throw DeadlineReached() }
     }
 
     func newBatch() -> HealthBatch {

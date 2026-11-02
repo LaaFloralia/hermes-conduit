@@ -93,7 +93,7 @@ extension WidgetLaunchLinkTests {
         var last: State?
         for step in 1...100 {
             let at = start.addingTimeInterval(Double(step) * 0.3)
-            if let due = dueAt, due <= at, let state = throttle.due(for: "a", at: due) {
+            if let due = dueAt, !(at < due), let state = throttle.due(for: "a", at: due) {
                 sends += 1
                 last = state
                 dueAt = nil

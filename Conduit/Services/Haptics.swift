@@ -281,7 +281,7 @@ enum Haptics {
     }
 
     static func toolStarted() {
-        guard Date() >= lifecyclePatternEndsAt, emit(.toolStarted) else { return }
+        guard !(Date() < lifecyclePatternEndsAt), emit(.toolStarted) else { return }
         softGenerator.impactOccurred(intensity: 0.65)
         softGenerator.prepare()
     }

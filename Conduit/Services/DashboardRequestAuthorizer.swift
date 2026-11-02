@@ -154,7 +154,7 @@ final class DashboardRequestAuthorizer: DashboardUpgradeAuthorizing {
         let secure = scheme == "https" || scheme == "wss"
         let requestPath = url.path.isEmpty ? "/" : url.path
         let applicable = cookies.filter { cookie in
-            if let expires = cookie.expiresDate, expires <= now { return false }
+            if let expires = cookie.expiresDate, !(now < expires) { return false }
             if cookie.isSecure && !secure { return false }
             guard NativeAuthCookiePolicy.domainMatches(cookie.domain, host: host) else { return false }
             let cookiePath = cookie.path.isEmpty ? "/" : cookie.path

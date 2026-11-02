@@ -134,7 +134,7 @@ struct LAACalendarResponse: Codable {
             guard current == generation, !Task.isCancelled else { return }
             events = values; skippedCount = response.data.skippedCount ?? 0; loaded = true; saveLocal()
             // Only publish a next-event snapshot when this range contains now.
-            if range.start <= now && range.end > now {
+            if !(now < range.start) && range.end > now {
                 LAACalendarSnapshot.save(.init(updatedAt: now, events: values))
                 WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
             }
