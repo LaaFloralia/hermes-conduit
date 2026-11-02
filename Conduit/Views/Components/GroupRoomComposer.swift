@@ -142,14 +142,20 @@ struct GroupRoomComposer: View {
                 attachmentStrip
             }
 #if LAA_BUILD
-            HStack(alignment: .bottom, spacing: LAASpacing.x2) {
-                attachButton
-                field.laaChatInputSurface()
-                sendSlot()
+            VStack(spacing: 0) {
+                HStack(alignment: .bottom, spacing: LAASpacing.x2) {
+                    attachButton
+                    field
+                        .laaComposerPhotoInk()
+                        .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
+                    sendSlot()
+                }
+                if !rests {
+                    controlsRow.laaComposerPhotoInk(bare: true)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            if !rests {
-                controlsRow.transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            .laaComposerGlassGroup()
 #else
             HStack(alignment: .bottom, spacing: 2) {
                 if rests {
@@ -169,9 +175,7 @@ struct GroupRoomComposer: View {
             }
 #endif
         }
-#if LAA_BUILD
-        .laaComposerSurface(.clear)
-#else
+#if !LAA_BUILD
         .laaComposerSurface(foundation)
 #endif
         .laaComposerGlassScope()
@@ -521,6 +525,7 @@ struct GroupRoomComposer: View {
                 .font(.system(size: 16, weight: .medium))
         #if LAA_BUILD
                 .foregroundStyle(canAttach ? LAAColor.link : LAAColor.secondaryText)
+                .laaComposerPhotoInk()
         #else
                 .foregroundStyle(canAttach ? Color.primary : Color.secondary)
         #endif
@@ -534,7 +539,7 @@ struct GroupRoomComposer: View {
         #endif
         .disabled(isUploading)
 #if LAA_BUILD
-        .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
+        .laaComposerGlass(in: Circle())
 #else
         .conduitGlassControl(cornerRadius: controlSize / 2, tint: .conduitAccent.opacity(0.08))
 #endif
@@ -619,6 +624,7 @@ struct GroupRoomComposer: View {
             }
 #if LAA_BUILD
             .foregroundStyle(canSend || isUploading ? LAAColor.filledButtonText : LAAColor.secondaryText)
+            .laaComposerPhotoInk()
 #else
             .foregroundStyle(canSend || isUploading ? Color.white : Color.secondary.opacity(0.48))
 #endif
@@ -627,7 +633,9 @@ struct GroupRoomComposer: View {
         }
         .disabled(!canSend)
 #if LAA_BUILD
-        .background(canSend || isUploading ? LAAColor.filledButton : LAAColor.subtleSurface, in: Circle())
+        // Glass like + beside it, tinted with the send colour once there
+        // is something to send.
+        .laaComposerGlass(in: Circle(), fill: canSend || isUploading ? LAAColor.filledButton : nil, interactive: canSend)
 #else
         .conduitGlassControl(
             cornerRadius: controlSize / 2,

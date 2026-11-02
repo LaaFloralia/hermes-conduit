@@ -440,6 +440,9 @@ struct ComposerBar: View, Equatable {
     /// Keep the modifier chains short enough for optimized builds to type-check.
     private var composerContainer: some View {
         Group {
+#if LAA_BUILD
+            composerContent.laaComposerGlassGroup()
+#else
             if #available(iOS 26.0, *) {
                 GlassEffectContainer(spacing: 16) {
                     composerContent
@@ -447,6 +450,7 @@ struct ComposerBar: View, Equatable {
             } else {
                 composerContent
             }
+#endif
         }
         // Resting, the voice button keeps its spot on the trailing side.
 #if LAA_BUILD
@@ -758,7 +762,7 @@ struct ComposerBar: View, Equatable {
 #if LAA_BUILD
                 HStack(alignment: .bottom, spacing: LAASpacing.x2) {
                     attachmentButton
-                    composerField.laaChatInputSurface()
+                    composerField
                     trailingSlot
                 }
 #else
@@ -804,13 +808,12 @@ struct ComposerBar: View, Equatable {
             // Keep the same voice button mounted while its held recording
             // replaces the field, so releasing the gesture still ends it.
             if !rests || showsVoiceMessage {
-                controlsRow.transition(.move(edge: .bottom).combined(with: .opacity))
+                controlsRow.laaComposerPhotoInk(bare: true)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 #endif
         }
-#if LAA_BUILD
-        .laaComposerSurface(.clear)
-#else
+#if !LAA_BUILD
         .laaComposerSurface(composerFoundation)
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
@@ -915,6 +918,10 @@ struct ComposerBar: View, Equatable {
                 .transition(.opacity)
             }
         }
+#if LAA_BUILD
+        .laaComposerPhotoInk()
+        .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
+#endif
         .animation(reduceMotion ? nil : ConduitMotion.response, value: showsFullEditorButton)
         .sheet(isPresented: $isShowingFullEditor, onDismiss: {
             // The inline editor only takes programmatic changes, so hand it
@@ -1436,6 +1443,7 @@ struct ComposerBar: View, Equatable {
                 .font(.system(size: 16, weight: .medium))
         #if LAA_BUILD
                 .foregroundStyle(LAAColor.link)
+                .laaComposerPhotoInk()
         #endif
                 .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
                 .contentShape(ComposerShared.controlHitShape)
@@ -1448,7 +1456,7 @@ struct ComposerBar: View, Equatable {
         // Open while Hermes replies: the files go as Queue (#1146).
         .disabled(!appState.composerIsEnabled)
 #if LAA_BUILD
-        .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
+        .laaComposerGlass(in: Circle())
 #else
         .conduitGlassControl(cornerRadius: ComposerShared.controlSize / 2, tint: .conduitAccent.opacity(0.08))
 #endif
@@ -1598,6 +1606,7 @@ struct ComposerBar: View, Equatable {
         }
 #if LAA_BUILD
         .foregroundStyle(action == .unavailable ? LAAColor.secondaryText : LAAColor.filledButtonText)
+        .laaComposerPhotoInk()
 #else
         .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
 #endif
@@ -3073,14 +3082,10 @@ private struct ComposerActionChrome: ViewModifier {
 
     func body(content: Content) -> some View {
 #if LAA_BUILD
-        // Glass like + beside it: clear while there is nothing to send,
+        // Glass like + beside it: plain while there is nothing to send,
         // tinted with the send colour once there is.
-        content.conduitGlassControl(
-            cornerRadius: ComposerShared.controlSize / 2,
-            tint: action == .unavailable ? LAAColor.link.opacity(0.08) : LAAColor.filledButton,
-            prominent: action != .unavailable,
-            interactive: action != .unavailable
-        )
+        content.laaComposerGlass(in: Circle(), fill: action == .unavailable ? nil : LAAColor.filledButton,
+                                 interactive: action != .unavailable)
 #else
         content.conduitGlassControl(
             cornerRadius: ComposerShared.controlSize / 2,
