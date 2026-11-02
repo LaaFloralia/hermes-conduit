@@ -162,15 +162,21 @@ def brand_info(info, kind, source, name=None, bundle_name=None):
 
 
 def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
-    info_path = bundle / "Info.plist"
+    is_mac = (bundle / "Contents/Info.plist").is_file()
+    info_path = bundle / ("Contents/Info.plist" if is_mac else "Info.plist")
+    resources = bundle / "Contents/Resources" if is_mac else bundle
     info, bundle_name = brand_info(read_plist(info_path), kind, source, name, bundle_name)
+    if is_mac and kind == "app":
+        # Catalyst keeps the phone scene configuration, but cannot host CarPlay.
+        configurations = info.get("UIApplicationSceneManifest", {}).get("UISceneConfigurations", {})
+        configurations.pop("CPTemplateApplicationSceneSessionRoleApplication", None)
     if kind in ("app", "watch"):
         catalog_path = source / ("Conduit/InfoPlist.xcstrings" if kind == "app" else "ConduitWatch/InfoPlist.xcstrings")
         catalog = json.loads(catalog_path.read_text())
         # Update the localizations the build already produced, and never
         # create one: a draft language strip-draft-localizations.py removed
         # would come back. English needs no lproj; the base Info.plist has it.
-        for path in bundle.glob("*.lproj/InfoPlist.strings"):
+        for path in resources.glob("*.lproj/InfoPlist.strings"):
             strings = read_plist(path)
             strings.update(permission_strings(catalog, path.parent.stem))
             if "CFBundleDisplayName" in strings:
@@ -181,7 +187,7 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
                 plistlib.dump(strings, stream, fmt=plistlib.FMT_BINARY)
     with info_path.open("wb") as stream:
         plistlib.dump(info, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
-    for directory in bundle.glob("*.lproj"):
+    for directory in resources.glob("*.lproj"):
         for pattern in ("*.strings", "*.stringsdict"):
             for path in directory.glob(pattern):
                 if path.name == "InfoPlist.strings":
@@ -195,8 +201,8 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
     catalog_path = source / ("ConduitWatch/Localizable.xcstrings"
                              if kind in ("watch", "watch-widget") else "Conduit/Localizable.xcstrings")
     catalog = json.loads(catalog_path.read_text())["strings"]
-    english_dir = bundle / "en.lproj"
-    english_dir.mkdir(exist_ok=True)
+    english_dir = resources / "en.lproj"
+    english_dir.mkdir(parents=True, exist_ok=True)
     english_path = english_dir / "Localizable.strings"
     english = read_plist(english_path) if english_path.exists() else {}
     for key in catalog:

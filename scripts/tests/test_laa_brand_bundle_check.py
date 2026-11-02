@@ -44,6 +44,22 @@ class LAABrandCheckTests(unittest.TestCase):
     def test_complete_bundle_passes_and_preserves_internal_identifiers(self):
         self.assertEqual(checker.check_bundle(self.app), [])
 
+    def test_catalyst_checks_nested_resources_and_requires_its_extension(self):
+        mac = Path(self.temp.name) / "Mac.app"
+        extension = mac / "Contents/PlugIns/Notification.appex"
+        for identifier, part in ((checker.APP_ID, mac), (checker.APP_ID + ".NotificationService", extension)):
+            write_plist(part / "Contents/Info.plist", {"CFBundleIdentifier": identifier,
+                        "CFBundleName": "LAA", "CFBundleDisplayName": "LAA"})
+            write_plist(part / "Contents/Resources/en.lproj/Localizable.strings", {"Open Conduit": "Open LAA"})
+        write_plist(mac / "Contents/Resources/Metadata.appintents/extract.actionsdata", {"title": "Open LAA"})
+        shutil.copyfile(checker.NOTICE_SOURCE, mac / "Contents/Resources" / checker.NOTICE_NAME)
+        self.assertEqual(checker.check_bundle(mac), [])
+        write_plist(extension / "Contents/Resources/en.lproj/Localizable.strings", {"title": "Open Conduit"})
+        self.assertTrue(checker.check_bundle(mac))
+        shutil.rmtree(extension)
+        with self.assertRaisesRegex(checker.CheckError, "missing required bundles"):
+            checker.check_bundle(mac)
+
     def test_internal_link_inside_a_sentence_does_not_hide_visible_brand(self):
         resource = self.app / "en.lproj/Localizable.strings"
         write_plist(resource, {"prompt": "Use conduit://connect?url=ADDRESS&username=USERNAME."})

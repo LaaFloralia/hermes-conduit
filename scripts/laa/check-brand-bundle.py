@@ -17,6 +17,7 @@ APP_ID = "com.laa-inc.laa"
 REQUIRED = {APP_ID, APP_ID + ".widgets", APP_ID + ".ShareExtension",
             APP_ID + ".NotificationService", APP_ID + ".watchkitapp",
             APP_ID + ".watchkitapp.widgets"}
+MAC_REQUIRED = {APP_ID, APP_ID + ".NotificationService"}
 INTENTS = {APP_ID, APP_ID + ".watchkitapp", APP_ID + ".watchkitapp.widgets"}
 BRAND = re.compile(r"Conduit|Hermes", re.I)
 NOTICE_NAME = "LAAOpenSourceNotices.txt"
@@ -113,7 +114,7 @@ def scan_shortcuts_yaml(path, issues):
 
 
 def bundle_info(bundle):
-    path = bundle / "Info.plist"
+    path = bundle / ("Contents/Info.plist" if (bundle / "Contents").is_dir() else "Info.plist")
     if not path.is_file():
         raise CheckError(f"missing Info.plist: {bundle}")
     info = load_resource(path)
@@ -129,7 +130,8 @@ def check_bundle(bundle):
     root_info = bundle_info(bundle)
     if root_info.get("CFBundleIdentifier") != APP_ID:
         raise CheckError("the supplied app is not the LAA bundle")
-    notices = bundle / NOTICE_NAME
+    is_mac = (bundle / "Contents").is_dir()
+    notices = (bundle / "Contents/Resources" if is_mac else bundle) / NOTICE_NAME
     if not notices.is_file() or notices.read_bytes() != NOTICE_SOURCE.read_bytes():
         raise CheckError("missing or altered open-source notices in the app")
     found = {APP_ID: bundle}
@@ -145,13 +147,14 @@ def check_bundle(bundle):
         if identifier in found:
             raise CheckError(f"duplicate bundle: {identifier}")
         found[identifier] = part
-    missing = REQUIRED - found.keys()
+    missing = (MAC_REQUIRED if is_mac else REQUIRED) - found.keys()
     if missing:
         raise CheckError("missing required bundles: " + ", ".join(sorted(missing)))
 
     issues = []
     for identifier, part in found.items():
         info = bundle_info(part)
+        resources = part / "Contents/Resources" if (part / "Contents").is_dir() else part
         for key in ("CFBundleDisplayName", "CFBundleName"):
             if not isinstance(info.get(key), str) or not info[key]:
                 raise CheckError(f"missing {key}: {part}")
@@ -159,15 +162,15 @@ def check_bundle(bundle):
         # quick-action UI. Executable names, URL schemes and IDs are excluded.
         for key, value in info.items():
             if key in {"CFBundleDisplayName", "CFBundleName", "UIApplicationShortcutItems"} or (key.startswith("NS") and key.endswith("UsageDescription")):
-                scan_values(value, part / "Info.plist", issues, key)
-        localizations = list(part.glob("*.lproj/Localizable.strings"))
+                scan_values(value, part / ("Contents/Info.plist" if resources != part else "Info.plist"), issues, key)
+        localizations = list(resources.glob("*.lproj/Localizable.strings"))
         if not localizations:
             raise CheckError(f"missing compiled localization: {part}")
-        for folder in part.glob("*.lproj"):
+        for folder in resources.glob("*.lproj"):
             for pattern in ("*.strings", "*.stringsdict"):
                 for resource in folder.glob(pattern):
                     scan_values(load_resource(resource), resource, issues)
-        metadata = part / "Metadata.appintents"
+        metadata = resources / "Metadata.appintents"
         if identifier in INTENTS and not metadata.is_dir():
             raise CheckError(f"missing App Intents metadata: {part}")
         if metadata.is_dir():

@@ -19,6 +19,33 @@ LANGUAGES = {"en", "de", "es", "fr", "id", "it", "ja", "ko", "pl", "pt-BR", "ru"
 
 
 class LAABrandBundleTests(unittest.TestCase):
+    def test_catalyst_brands_contents_resources_and_preserves_phone_scene(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / "Conduit.app"
+            local = bundle / "Contents/Resources/ja.lproj"
+            local.mkdir(parents=True)
+            info_path = bundle / "Contents/Info.plist"
+            info_path.write_bytes(plistlib.dumps({
+                "CFBundleName": "Conduit", "CFBundleExecutable": "Conduit",
+                "UIApplicationSceneManifest": {"UISceneConfigurations": {
+                    "CPTemplateApplicationSceneSessionRoleApplication": [{"UISceneClassName": "CarPlayScene"}],
+                    "UIWindowSceneSessionRoleApplication": [{"UISceneClassName": "MainScene"}]}}
+            }))
+            (local / "Localizable.strings").write_bytes(plistlib.dumps({"Open Conduit": "Conduitを開く"}))
+            (local / "InfoPlist.strings").write_bytes(plistlib.dumps({"CFBundleName": "Conduit"}))
+            brand.brand_bundle(bundle, "app", ROOT, bundle_name="LAA")
+            info = plistlib.loads(info_path.read_bytes())
+            self.assertEqual(info["CFBundleName"], "LAA")
+            self.assertEqual(info["CFBundleDisplayName"], "LAA")
+            self.assertEqual(info["CFBundleExecutable"], "Conduit")
+            self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
+            scenes = info["UIApplicationSceneManifest"]["UISceneConfigurations"]
+            self.assertEqual(scenes, {"UIWindowSceneSessionRoleApplication": [{"UISceneClassName": "MainScene"}]})
+            self.assertEqual(plistlib.loads((local / "Localizable.strings").read_bytes())["Open Conduit"], "LAAを開く")
+            self.assertEqual(plistlib.loads((local / "InfoPlist.strings").read_bytes())["CFBundleName"], "LAA")
+            self.assertTrue((bundle / "Contents/Resources/en.lproj/Localizable.strings").is_file())
+            self.assertFalse((bundle / "en.lproj").exists())
+
     def test_prepared_info_is_branded_before_intent_metadata_is_generated(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "prepared/Info.plist"

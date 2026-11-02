@@ -169,10 +169,11 @@ if ! xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -
 fi
 [ -d "$archive" ] || fail 'archive did not produce an xcarchive'
 archive_complete=1
+app="$archive/Products/Applications/Conduit.app"
+[ -d "$app" ] || app="$archive/Products/Applications/LAA.app"
+[ -d "$app" ] || fail 'archive did not produce LAA.app or Conduit.app'
+python3 "$repo/scripts/laa/check-brand-bundle.py" "$app" || fail 'LAA branding inspection failed'
 if [ "$archive_only" -eq 1 ]; then
-    app="$archive/Products/Applications/Conduit.app"
-    [ -d "$app" ] || app="$archive/Products/Applications/LAA.app"
-    [ -d "$app" ] || fail 'archive did not produce LAA.app or Conduit.app'
     executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
     for architecture in arm64 x86_64; do
         /usr/bin/lipo -verify_arch "$architecture" "$app/Contents/MacOS/$executable" || fail 'application is not universal'
