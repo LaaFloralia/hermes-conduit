@@ -229,7 +229,7 @@ struct LAABrainDocument {
                 let length = trimmed.prefix { $0 == marker }.count
                 if length >= 3 { fence = (marker, length); continue }
             }
-            guard let heading = Self.capture(#"^#{1,6}\s+(.+?)\s*#*\s*$"#, in: trimmed) else { continue }
+            guard let heading = Self.capture(Self.headingPattern, in: trimmed) else { continue }
             let count = trimmed.prefix { $0 == "#" }.count
             if let start, count <= level { return lines[start..<index].joined(separator: "\n") }
             if start == nil && Self.normalizedHeading(heading) == Self.normalizedHeading(title) {
@@ -242,7 +242,13 @@ struct LAABrainDocument {
     func parts(currentPath: String, files: [LAABrainFile]) -> [Part] {
         // A note without wiki links needs no file lookup; building one would
         // cost a pass over every file on each redraw of such a note.
-        let lookup = body.contains("[[") ? LAABrainPathLookup(files: files) : nil
+        parts(currentPath: currentPath, lookup: body.contains("[[") ? LAABrainPathLookup(files: files) : nil)
+    }
+
+    /// Callers that render many notes in one pass (the gallery walks every
+    /// entry) build one lookup for the file list and pass it here, so the list
+    /// is read once instead of once per note.
+    func parts(currentPath: String, lookup: LAABrainPathLookup?) -> [Part] {
         var result: [Part] = []
         var markdown: [String] = []
         var fence: (character: Character, length: Int)?
@@ -260,13 +266,13 @@ struct LAABrainDocument {
                 let count = trimmed.prefix { $0 == marker }.count
                 if count >= 3 { fence = (marker, count); markdown.append(line); continue }
             }
-            if let heading = Self.capture(#"^#{1,6}\s+(.+?)\s*#*\s*$"#, in: trimmed) {
+            if let heading = Self.capture(Self.headingPattern, in: trimmed) {
                 flush(); result.append(.heading(source: Self.linkWikis(line, currentPath: currentPath, lookup: lookup), title: heading)); continue
             }
-            if let pair = Self.captures(#"^\[\^([^\]]+)\]:\s*(.*)$"#, in: trimmed), pair.count == 2 {
+            if let pair = Self.captures(Self.footnoteDefinitionPattern, in: trimmed), pair.count == 2 {
                 flush(); result.append(.footnote(id: pair[0], text: Self.linkWikis(pair[1], currentPath: currentPath, lookup: lookup))); continue
             }
-            if let regex = try? NSRegularExpression(pattern: #"!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\)"#) {
+            if let regex = Self.imagePattern {
                 let pieces = Self.inlineSegments(line)
                 let hasEmbed = pieces.contains { piece in
                     !piece.code && regex.firstMatch(in: piece.text, range: NSRange(piece.text.startIndex..., in: piece.text)) != nil
@@ -312,8 +318,7 @@ struct LAABrainDocument {
         return inlineSegments(line).map { segment in
             let piece = segment.text
             guard !segment.code else { return piece }
-            let pattern = #"(?<!!)\[\[([^\]]+)\]\]"#
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { return piece }
+            guard let regex = Self.wikiLinkPattern else { return piece }
             let matches = regex.matches(in: piece, range: NSRange(piece.startIndex..., in: piece))
             var output = piece
             for match in matches.reversed() {
@@ -329,8 +334,7 @@ struct LAABrainDocument {
                 guard let destination = url.string else { continue }
                 output.replaceSubrange(whole, with: "[\(safeLabel)](\(destination))")
             }
-            let footnotes = #"(?<!!)\[\^([^\]]+)\]"#
-            if let regex = try? NSRegularExpression(pattern: footnotes) {
+            if let regex = Self.footnoteReferencePattern {
                 let matches = regex.matches(in: output, range: NSRange(output.startIndex..., in: output))
                 for match in matches.reversed() {
                     guard let whole = Range(match.range(at: 0), in: output), let inner = Range(match.range(at: 1), in: output) else { continue }
@@ -373,13 +377,20 @@ struct LAABrainDocument {
         return parts
     }
 
-    private static func capture(_ pattern: String, in source: String) -> String? {
-        captures(pattern, in: source)?.first
+    /// Compiled once: `parts` matches these on every line of every note, and
+    /// the gallery renders every note.
+    private static let headingPattern = try? NSRegularExpression(pattern: #"^#{1,6}\s+(.+?)\s*#*\s*$"#)
+    private static let footnoteDefinitionPattern = try? NSRegularExpression(pattern: #"^\[\^([^\]]+)\]:\s*(.*)$"#)
+    private static let imagePattern = try? NSRegularExpression(pattern: #"!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\)"#)
+    private static let wikiLinkPattern = try? NSRegularExpression(pattern: #"(?<!!)\[\[([^\]]+)\]\]"#)
+    private static let footnoteReferencePattern = try? NSRegularExpression(pattern: #"(?<!!)\[\^([^\]]+)\]"#)
+
+    private static func capture(_ regex: NSRegularExpression?, in source: String) -> String? {
+        captures(regex, in: source)?.first
     }
 
-    private static func captures(_ pattern: String, in source: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)) else { return nil }
+    private static func captures(_ regex: NSRegularExpression?, in source: String) -> [String]? {
+        guard let regex, let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)) else { return nil }
         return (1..<match.numberOfRanges).compactMap { index in
             Range(match.range(at: index), in: source).map { String(source[$0]) }
         }
@@ -387,14 +398,16 @@ struct LAABrainDocument {
 }
 
 struct LAABrainEmbedSpec: Equatable {
+    private static let patterns: [NSRegularExpression] = [#"!\[\[([^\]]+)\]\]"#, #"!\[[^\]]*\]\(([^)]+)\)"#]
+        .compactMap { try? NSRegularExpression(pattern: $0) }
+
     let target: String
     let source: String
     let hasSurroundingText: Bool
 
     static func parse(_ line: String) -> LAABrainEmbedSpec? {
-        for pattern in [#"!\[\[([^\]]+)\]\]"#, #"!\[[^\]]*\]\(([^)]+)\)"#] {
-            guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+        for regex in Self.patterns {
+            guard let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
                   let whole = Range(match.range(at: 0), in: line), let value = Range(match.range(at: 1), in: line) else { continue }
             let target = line[value].split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)[0]
                 .trimmingCharacters(in: .whitespacesAndNewlines)
