@@ -4,6 +4,13 @@ import SwiftUI
 struct LAAWorkView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let onRequestSettings: () -> Void
+    let embeddedSection: Int?
+
+    init(embeddedSection: Int? = nil, onRequestSettings: @escaping () -> Void) {
+        self.embeddedSection = embeddedSection
+        self.onRequestSettings = onRequestSettings
+        _section = State(initialValue: embeddedSection ?? 0)
+    }
 
     @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
     @State private var section = 0
@@ -23,8 +30,10 @@ struct LAAWorkView: View {
             LAAColor.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                    header
-                    segmentPicker
+                    if embeddedSection == nil {
+                        header
+                        segmentPicker
+                    }
                     if section == 2 {
                         LAAOwnerTasksView(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
                     } else if bridge.status != .paired {
@@ -44,12 +53,17 @@ struct LAAWorkView: View {
                 if section == 3 { await load() } else { refreshID += 1 }
             }
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(Text(verbatim: embeddedSection == nil ? "" : "Work"))
+        .navigationBarTitleDisplayMode(embeddedSection == nil ? .inline : .large)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                LAASettingsButton(action: onRequestSettings)
+                if embeddedSection == nil { LAASettingsButton(action: onRequestSettings) }
+                else if section == 1 {
+                    Button { showNewProject = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(Text(verbatim: "プロジェクトを追加"))
+                        .disabled(bridge.status != .paired)
+                }
             }
         }
         .tint(LAAColor.link)
@@ -57,6 +71,7 @@ struct LAAWorkView: View {
         .sheet(isPresented: $showNewProject, onDismiss: { refreshID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: projectInstructionsAvailable, drafts: drafts).environmentObject(bridge)
         }
+        .onChange(of: embeddedSection) { _, value in if let value { section = value } }
         .task(id: "\(bridge.revision)-\(section)-\(refreshID)") { await load() }
     }
 

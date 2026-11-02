@@ -1,0 +1,456 @@
+// The owner's own Linear tasks, readable and writable (Work tab).
+//
+// This is the write half of the Linear task source in `linear.mjs`. That module
+// stays read-only on purpose: its GraphQL guard accepts only `query`
+// documents, and `/v1/tasks` must not be able to assign or start anything. The
+// two modules share the credential path (`readTokenViaHelper`,
+// `authorizationHeader`) so the Bridge still holds no key of its own.
+//
+// What keeps this module from becoming a general Linear client:
+//   * every document is a module constant, and the transport refuses anything
+//     that is not one of those constants by identity (no arbitrary GraphQL);
+//   * the team (key BUS), the owner id and the two workflow states are resolved
+//     from the account itself and cached briefly, never taken from the client;
+//   * every write first re-reads the issue and requires it to be in team BUS,
+//     assigned to the owner, with no delegate. A task the Bridge completed is
+//     unassigned, so a closed unassigned issue is still readable by its id: the
+//     client-generated UUID is the only way to name it.
+//
+// Errors carry no upstream body: a GraphQL echo can contain the query, values
+// or a token, so only the fact of a rejection is surfaced.
+
+import { TaskSourceError } from './errors.mjs';
+import { authorizationHeader, readTokenViaHelper } from './linear.mjs';
+
+export { TaskSourceError };
+
+const DEFAULT_ENDPOINT = 'https://api.linear.app/graphql';
+const DEFAULT_TOKEN_HELPER = '/Users/laa/.config/laa/linear-agent-token.sh';
+// Same owner id the laa-agent CLI and linear.mjs use.
+const DEFAULT_OWNER_USER_ID = 'd1f71177-5355-4f4f-b42c-7894c0870112';
+const DEFAULT_TEAM_KEY = 'BUS';
+const DEFAULT_TEAM_NAME = 'LAA';
+const TODO_STATE_NAME = 'Todo';
+const DONE_STATE_NAME = 'Done';
+
+const PAGE_SIZE = 100;
+const MAX_PAGES = 20;
+const CONFIG_TTL_MS = 5 * 60 * 1000;
+
+const ISSUE_FIELDS = `
+  id
+  identifier
+  title
+  description
+  dueDate
+  priority
+  url
+  updatedAt
+  archivedAt
+  completedAt
+  canceledAt
+  state { name type }
+  assignee { id name }
+  delegate { id name }
+  team { id key name }
+`;
+
+const VIEWER_QUERY = `query BridgeOwnerViewer {
+  viewer { id name }
+}`;
+
+const TEAM_QUERY = `query BridgeOwnerTeam($key: String!) {
+  teams(filter: { key: { eq: $key } }) {
+    nodes { id key name }
+  }
+}`;
+
+const STATES_QUERY = `query BridgeOwnerStates($teamId: String!) {
+  team(id: $teamId) {
+    states { nodes { id name type } }
+  }
+}`;
+
+const LIST_QUERY = `query BridgeOwnerTasks($team: String!, $owner: ID!, $after: String) {
+  issues(first: ${PAGE_SIZE}, after: $after, filter: {
+    team: { key: { eq: $team } }
+    assignee: { id: { eq: $owner } }
+  }) {
+    nodes { ${ISSUE_FIELDS} }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+const ISSUE_QUERY = `query BridgeOwnerTask($id: String!) {
+  issue(id: $id) { ${ISSUE_FIELDS} }
+}`;
+
+const CREATE_MUTATION = `mutation BridgeOwnerTaskCreate($input: IssueCreateInput!) {
+  issueCreate(input: $input) {
+    success
+    issue { ${ISSUE_FIELDS} }
+  }
+}`;
+
+const UPDATE_MUTATION = `mutation BridgeOwnerTaskUpdate($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) {
+    success
+    issue { ${ISSUE_FIELDS} }
+  }
+}`;
+
+// `__typename` only: the delete payload type differs between Linear schema
+// versions, and the deletion is confirmed by re-reading the issue instead of
+// trusting a payload field that may not exist.
+const DELETE_MUTATION = `mutation BridgeOwnerTaskDelete($id: String!) {
+  issueDelete(id: $id) { __typename }
+}`;
+
+const DOCUMENTS = new Set([
+  VIEWER_QUERY,
+  TEAM_QUERY,
+  STATES_QUERY,
+  LIST_QUERY,
+  ISSUE_QUERY,
+  CREATE_MUTATION,
+  UPDATE_MUTATION,
+  DELETE_MUTATION,
+]);
+
+// Only an unknown issue id produces this shape; every other rejection stays a
+// dependency error so an outage is never reported as "not found".
+function isMissingIssue(errors) {
+  return errors.length > 0 && errors.every((error) => (
+    error?.path?.[0] === 'issue'
+    && error?.extensions?.userError === true
+    && String(error?.extensions?.code ?? '') === 'INPUT_ERROR'
+  ));
+}
+
+function statusOf(type) {
+  if (type === 'started') return 'doing';
+  if (type === 'completed') return 'done';
+  if (type === 'canceled') return 'canceled';
+  return 'todo';
+}
+
+function isClosed(issue) {
+  const type = issue?.state?.type;
+  return type === 'completed' || type === 'canceled';
+}
+
+function toTask(issue) {
+  const task = {
+    id: issue.id,
+    identifier: typeof issue.identifier === 'string' ? issue.identifier : '',
+    title: typeof issue.title === 'string' ? issue.title : '',
+    description: typeof issue.description === 'string' ? issue.description : '',
+    priority: Number.isInteger(issue.priority) ? issue.priority : 0,
+    status: statusOf(issue.state?.type),
+    stateName: typeof issue.state?.name === 'string' ? issue.state.name : '',
+    updatedAt: typeof issue.updatedAt === 'string' ? issue.updatedAt : '',
+  };
+  if (typeof issue.dueDate === 'string' && issue.dueDate !== '') task.dueDate = issue.dueDate;
+  if (typeof issue.url === 'string' && issue.url !== '') task.url = issue.url;
+  return task;
+}
+
+export function createLinearOwnerTaskSource({
+  endpoint = process.env.LAA_BRIDGE_LINEAR_ENDPOINT ?? DEFAULT_ENDPOINT,
+  tokenHelper = process.env.LAA_BRIDGE_LINEAR_TOKEN_HELPER ?? DEFAULT_TOKEN_HELPER,
+  teamKey = process.env.LAA_BRIDGE_LINEAR_TEAM ?? DEFAULT_TEAM_KEY,
+  teamName = process.env.LAA_BRIDGE_LINEAR_TEAM_NAME ?? DEFAULT_TEAM_NAME,
+  ownerUserId = process.env.LAA_BRIDGE_LINEAR_OWNER_ID ?? DEFAULT_OWNER_USER_ID,
+  fetchImpl = globalThis.fetch,
+  readToken = () => readTokenViaHelper(tokenHelper),
+  requestTimeoutMs = 15_000,
+  configTtlMs = CONFIG_TTL_MS,
+  now = () => Date.now(),
+} = {}) {
+  let cachedToken = null;
+  let cachedConfig = null;
+
+  async function token({ refresh = false } = {}) {
+    if (cachedToken && !refresh) return cachedToken;
+    cachedToken = await readToken();
+    return cachedToken;
+  }
+
+  async function post(tokenValue, document, variables) {
+    let response;
+    try {
+      response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          authorization: authorizationHeader(tokenValue),
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ query: document, variables }),
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+    } catch {
+      throw new TaskSourceError('linear_unreachable', 'Linear could not be reached', { retryable: true });
+    }
+    return response;
+  }
+
+  async function gql(document, variables = {}, { notFoundIsNull = false } = {}) {
+    if (!DOCUMENTS.has(document)) {
+      throw new TaskSourceError('linear_document_rejected', 'only the fixed Linear documents may be sent', {
+        status: 500,
+        retryable: false,
+      });
+    }
+    let response = await post(await token(), document, variables);
+    if (response.status === 401) {
+      response = await post(await token({ refresh: true }), document, variables);
+      if (response.status === 401) {
+        throw new TaskSourceError('linear_unauthorized', 'Linear rejected the stored credential');
+      }
+    }
+    if (!response.ok) {
+      throw new TaskSourceError(
+        'linear_unavailable',
+        `Linear responded with HTTP ${response.status}`,
+        { retryable: response.status === 429 || response.status >= 500 },
+      );
+    }
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned a response that is not JSON', {
+        retryable: true,
+      });
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected response body');
+    }
+    if (Array.isArray(payload.errors) && payload.errors.length > 0) {
+      if (notFoundIsNull && isMissingIssue(payload.errors)) return { issue: null };
+      throw new TaskSourceError('linear_request_rejected', 'Linear rejected the request');
+    }
+    if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned no data object');
+    }
+    return payload.data;
+  }
+
+  // The team, the two states and the signed-in user are configuration, not
+  // request input: resolve them from the account and keep them for a few
+  // minutes. A missing team or state is a 503, never an empty list.
+  async function config({ refresh = false } = {}) {
+    if (!refresh && cachedConfig && now() - cachedConfig.at < configTtlMs) return cachedConfig.value;
+
+    const viewerData = await gql(VIEWER_QUERY);
+    const viewer = viewerData.viewer;
+    if (!viewer || typeof viewer.id !== 'string') {
+      throw new TaskSourceError('linear_owner_config_incomplete', 'Linear did not return the signed-in user');
+    }
+    if (viewer.id !== ownerUserId) {
+      throw new TaskSourceError(
+        'linear_owner_identity_mismatch',
+        'the Linear credential is not the owner',
+        { retryable: false },
+      );
+    }
+
+    const teamData = await gql(TEAM_QUERY, { key: teamKey });
+    const teams = teamData.teams?.nodes;
+    if (!Array.isArray(teams)) {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected team list');
+    }
+    const matches = teams.filter((team) => team?.key === teamKey);
+    if (matches.length !== 1) {
+      throw new TaskSourceError('linear_owner_config_incomplete', `Linear has no single team with key ${teamKey}`);
+    }
+    const team = matches[0];
+    if (typeof team.id !== 'string' || team.id === '') {
+      throw new TaskSourceError('linear_owner_config_incomplete', 'the Linear team has no id');
+    }
+    if (team.name !== teamName) {
+      throw new TaskSourceError(
+        'linear_owner_config_incomplete',
+        `the Linear team ${teamKey} is not named ${teamName}`,
+      );
+    }
+
+    const stateData = await gql(STATES_QUERY, { teamId: team.id });
+    const states = stateData.team?.states?.nodes;
+    if (!Array.isArray(states)) {
+      throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected state list');
+    }
+    const todo = states.find((state) => state?.name === TODO_STATE_NAME && state?.type !== 'completed' && state?.type !== 'canceled');
+    const done = states.find((state) => state?.name === DONE_STATE_NAME && state?.type === 'completed')
+      ?? states.find((state) => state?.type === 'completed');
+    if (!todo || typeof todo.id !== 'string' || todo.id === '') {
+      throw new TaskSourceError('linear_owner_config_incomplete', `the Linear team has no ${TODO_STATE_NAME} state`);
+    }
+    if (!done || typeof done.id !== 'string' || done.id === '') {
+      throw new TaskSourceError('linear_owner_config_incomplete', 'the Linear team has no completed state');
+    }
+
+    const value = { teamId: team.id, todoStateId: todo.id, doneStateId: done.id };
+    cachedConfig = { at: now(), value };
+    return value;
+  }
+
+  async function getIssue(id) {
+    const data = await gql(ISSUE_QUERY, { id }, { notFoundIsNull: true });
+    const issue = data.issue;
+    if (!issue || typeof issue !== 'object') return null;
+    return issue;
+  }
+
+  // Ownership: team BUS, no delegate, and either the owner or an unassigned
+  // closed issue (what this module leaves behind after a completion).
+  function owned(issue) {
+    if (!issue) return false;
+    if (issue.team?.key !== teamKey) return false;
+    if (issue.delegate) return false;
+    if (issue.assignee) return issue.assignee.id === ownerUserId;
+    return isClosed(issue);
+  }
+
+  async function listOwnerTasks() {
+    await config();
+    const items = [];
+    // Every cursor that was used: a cycle (A -> B -> A) would otherwise read
+    // the same page forever and look like a complete list.
+    const seen = new Set();
+    let cursor = null;
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const data = await gql(LIST_QUERY, { team: teamKey, owner: ownerUserId, after: cursor });
+      const connection = data.issues;
+      if (!connection || !Array.isArray(connection.nodes)) {
+        throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected issue list');
+      }
+      for (const issue of connection.nodes) {
+        if (!issue || typeof issue !== 'object') {
+          throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected issue');
+        }
+        // The query already filters by team and assignee; the same rule is
+        // applied to the rows themselves so a filter change or an unexpected
+        // row can never put an agent's or another team's task in this list.
+        if (issue.archivedAt || isClosed(issue) || !owned(issue)) continue;
+        items.push(toTask(issue));
+      }
+      const pageInfo = connection.pageInfo;
+      if (!pageInfo || typeof pageInfo !== 'object' || typeof pageInfo.hasNextPage !== 'boolean') {
+        throw new TaskSourceError('linear_response_invalid', 'Linear returned no usable page information');
+      }
+      if (!pageInfo.hasNextPage) return { items };
+      const next = pageInfo.endCursor;
+      if (typeof next !== 'string' || next === '') {
+        throw new TaskSourceError('linear_pagination_stalled', 'Linear pagination did not advance');
+      }
+      if (seen.has(next)) {
+        throw new TaskSourceError('linear_pagination_stalled', 'Linear pagination repeated a page');
+      }
+      seen.add(next);
+      cursor = next;
+    }
+    // A partial list must never look like the whole list.
+    throw new TaskSourceError('linear_pagination_incomplete', 'the owner task list is larger than the Bridge reads');
+  }
+
+  async function readOwnerTask(id) {
+    const issue = await getIssue(id);
+    return owned(issue) ? toTask(issue) : null;
+  }
+
+  // A retry after a lost response sends the same client UUID; Linear then
+  // refuses the duplicate. Only an issue this endpoint owns and that already
+  // holds exactly this content is the same request; a different title, body,
+  // due date or priority is a conflict, not a success.
+  function sameContent(issue, input) {
+    const description = typeof issue.description === 'string' ? issue.description : '';
+    const dueDate = typeof issue.dueDate === 'string' && issue.dueDate !== '' ? issue.dueDate : null;
+    return issue.title === input.title
+      && description === (typeof input.description === 'string' ? input.description : '')
+      && dueDate === (typeof input.dueDate === 'string' ? input.dueDate : null)
+      && (Number.isInteger(issue.priority) ? issue.priority : 0) === (Number.isInteger(input.priority) ? input.priority : 0);
+  }
+
+  async function createOwnerTask({ id, title, description, dueDate, priority }) {
+    const settings = await config();
+    const input = {
+      id,
+      teamId: settings.teamId,
+      title,
+      stateId: settings.todoStateId,
+      assigneeId: ownerUserId,
+      priority,
+    };
+    if (typeof description === 'string') input.description = description;
+    if (typeof dueDate === 'string') input.dueDate = dueDate;
+
+    let payload = null;
+    let rejection = null;
+    try {
+      const data = await gql(CREATE_MUTATION, { input });
+      payload = data.issueCreate;
+    } catch (error) {
+      // Only a refused document may be re-read; an outage or a credential
+      // failure stays what it is.
+      if (!(error instanceof TaskSourceError) || error.code !== 'linear_request_rejected') throw error;
+      rejection = error;
+    }
+    if (payload && payload.success !== false && payload.issue) return toTask(payload.issue);
+
+    const existing = await getIssue(id);
+    if (existing && owned(existing)) {
+      if (!sameContent(existing, input)) {
+        throw new TaskSourceError(
+          'linear_owner_task_conflict',
+          'a task with this id already exists with different content',
+          { status: 409 },
+        );
+      }
+      return toTask(existing);
+    }
+    if (rejection) throw rejection;
+    throw new TaskSourceError('linear_write_rejected', 'Linear did not create the issue', { status: 502 });
+  }
+
+  async function patchOwnerTask(id, patch) {
+    const input = {};
+    if (Object.hasOwn(patch, 'title')) input.title = patch.title;
+    if (Object.hasOwn(patch, 'description')) input.description = patch.description;
+    if (Object.hasOwn(patch, 'dueDate')) input.dueDate = patch.dueDate;
+    if (Object.hasOwn(patch, 'priority')) input.priority = patch.priority;
+    if (patch.completed === true) {
+      const settings = await config();
+      input.stateId = settings.doneStateId;
+      // The shared rule for a finished owner task: done and unassigned.
+      input.assigneeId = null;
+    }
+
+    const data = await gql(UPDATE_MUTATION, { id, input });
+    const payload = data.issueUpdate;
+    if (payload?.success === false || !payload?.issue) {
+      throw new TaskSourceError('linear_write_rejected', 'Linear did not update the issue', { status: 502 });
+    }
+    return toTask(payload.issue);
+  }
+
+  async function deleteOwnerTask(id) {
+    await gql(DELETE_MUTATION, { id });
+    // Linear has no portable success field across schema versions: confirm the
+    // effect by reading the issue back. Anything still readable is a failure.
+    const after = await getIssue(id);
+    if (after && !after.archivedAt) {
+      throw new TaskSourceError('linear_delete_unconfirmed', 'Linear did not remove the issue');
+    }
+  }
+
+  return {
+    config,
+    listOwnerTasks,
+    readOwnerTask,
+    createOwnerTask,
+    patchOwnerTask,
+    deleteOwnerTask,
+  };
+}

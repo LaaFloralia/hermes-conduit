@@ -13,9 +13,7 @@ final class LAAWorkUITests: XCTestCase {
             app.launchArguments += ["-conduit.themePreference", appearance]
         }
         app.launch()
-        let work = app.buttons["Sessions, projects and tasks"]
-        XCTAssertTrue(work.waitForExistence(timeout: 30))
-        work.tap()
+        XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 30))
         return app
     }
 
@@ -89,69 +87,50 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(enterDedicatedAddress(app.textFields["laa.bridge.address"]))
     }
 
-    func testUnpairedWorkOffersPairing() throws {
-        let app = launchWork()
-        let connect = app.buttons["Connect to Mac"]
-        guard connect.waitForExistence(timeout: 15) else {
-            if waitUntilReady(app.buttons["work.sessions.new"]) {
-                throw XCTSkip("This simulator is already paired; the live flow covers its Work screen.")
-            }
-            XCTFail("Neither the unpaired nor the paired Work screen appeared.")
-            return
-        }
-        XCTAssertTrue(app.staticTexts["未接続"].exists)
+    func testUnpairedWorkOffersPairing() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launch()
+        let connect = app.buttons["work.connect"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 30))
         connect.tap()
-        XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 5) || app.textFields.count > 0)
+        XCTAssertTrue(app.textFields["laa.bridge.address"].waitForExistence(timeout: 10))
     }
 
-    func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() throws {
+    func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
-        let work = app.buttons["Sessions, projects and tasks"]
-        XCTAssertTrue(work.waitForExistence(timeout: 30))
-        work.tap()
-        XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Sessions"].exists)
-        XCTAssertTrue(app.buttons["Projects"].exists)
-        XCTAssertTrue(app.buttons["Tasks"].exists)
-        app.buttons["Routines"].tap()
-        XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["ルーティンはありません。"].exists)
-        app.buttons["Sessions"].tap()
-        XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 5))
-        if app.buttons["work.sessions.new"].exists { XCTAssertFalse(app.buttons["work.sessions.new"].isEnabled) }
+        XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 30))
+        for name in ["priority", "tasks", "sessions", "projects", "routines", "skills"] {
+            let segment = app.buttons["work.section.\(name)"]
+            if !segment.isHittable { app.scrollViews["work.segment"].swipeLeft() }
+            XCTAssertTrue(segment.exists)
+            segment.tap()
+            XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 5))
+        }
+        XCTAssertFalse(app.buttons["AI usage"].exists)
     }
 
-    func testOwnerTasksAndPendingAreAvailableWithoutPairing() {
+    func testOwnerTasksRequirePairingWithoutExposingLegacyLocalTasks() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
-        let work = app.buttons["Sessions, projects and tasks"]
-        XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
-        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 15))
-        app.buttons["Tasks"].tap()
-        let input = app.textFields["タスクを追加"]
-        XCTAssertTrue(input.waitForExistence(timeout: 5))
-        XCTAssertFalse(input.isEnabled)
-        XCTAssertFalse(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].exists)
-        let pending = app.buttons["work.ownerTasks.pending"]
-        XCTAssertTrue(pending.exists)
-        pending.tap()
-        XCTAssertTrue(app.navigationBars["送信待ち・下書き"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
+        app.buttons["work.section.tasks"].tap()
+        XCTAssertTrue(app.buttons["work.connect"].exists)
+        XCTAssertFalse(app.buttons["work.linear.add"].exists)
+        XCTAssertFalse(app.buttons["work.ownerTasks.pending"].exists)
     }
 
     private func captureUnpairedDesign(_ appearance: String) {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
-                                "-conduit.themePreference", appearance]
+        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                               "-conduit.themePreference", appearance]
         app.launch()
-        let work = app.buttons["Sessions, projects and tasks"]
-        XCTAssertTrue(work.waitForExistence(timeout: 30))
-        work.tap()
-        XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        shot.name = "v2-work-unpaired-\(appearance)"
+        shot.name = "work-tabs-\(appearance)"
         shot.lifetime = .keepAlways
         add(shot)
     }

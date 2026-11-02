@@ -976,7 +976,11 @@ struct SettingsView: View {
                 loadSchema: { await appState.loadProfileConfigSchema() }
             )
         case .usage:
+            #if LAA_BUILD
+            LAAUsageSettingsView()
+            #else
             UsageSettingsDetail()
+            #endif
         case .capabilities:
             CapabilitiesView()
         case .gateway:
@@ -1353,6 +1357,9 @@ private struct SettingsHome: View {
     /// in the upstream build, while pairing uses the shared Bridge session.
     @ViewBuilder private var laaSections: some View {
         LAAMacSettingsCard()
+        homeSection("", tint: .conduitAccent) {
+            settingsLink(.usage, icon: "gauge.medium", title: AppLocalization.string("AI usage"), detail: "", identifier: "settings.ai-usage")
+        }
         homeSection(LAACopy.agent, tint: .conduitAura) {
             settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
             settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")

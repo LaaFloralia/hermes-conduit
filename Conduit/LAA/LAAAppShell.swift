@@ -81,10 +81,13 @@ struct LAAAppShell: View {
             }
             .onChange(of: appState.laaWidgetUsagePending, initial: true) { _, pending in
                 guard pending else { return }
-                selectedTab = .work
                 showUsage = true
                 appState.laaWidgetUsagePending = false
                 appState.requestSettingsDismissal()
+            }
+            .sheet(isPresented: $showUsage) {
+                NavigationStack { LAAUsageView(state: usageState, onRequestSettings: onRequestSettings) }
+                    .environmentObject(bridge)
             }
             .onChange(of: dailyRequest.id, initial: true) { _, request in
                 guard request != nil else { return }
@@ -202,7 +205,7 @@ struct LAAAppShell: View {
                             } else if tab == .usage {
                                 LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                             } else if tab == .work {
-                                LAAWorkHub(usageState: usageState, showUsage: $showUsage, onRequestSettings: onRequestSettings)
+                                LAAWorkHub(onRequestSettings: onRequestSettings)
                             } else {
                                 LAAAssetsView(onRequestSettings: onRequestSettings)
                             }

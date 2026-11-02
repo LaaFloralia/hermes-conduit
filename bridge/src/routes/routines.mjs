@@ -4,15 +4,36 @@ import { promisify } from 'node:util';
 import { BridgeError } from '../errors.mjs';
 const exec = promisify(execFile);
 
+const ROLE_NAMES = Object.freeze({ ciel: 'Ciel', cos: 'Merlin', cto: 'Ada', cfo: 'Morgan',
+  cio: 'Sherlock', cmo: 'Monet', cso: 'Talos', argus: 'Argus' });
+const boundedString = (value) => typeof value === 'string' && value.length <= 500 ? value : null;
+
+export function routineState(job, reading) {
+  if (reading.running === true) return 'running';
+  if (reading.enabled === false || job.expected === 'stopped') return 'paused';
+  if (reading.schedulerResult === 'error' || ['failed', 'partial'].includes(reading.businessStatus)) return 'error';
+  if (reading.enabled === true) return 'scheduled';
+  return 'unknown';
+}
+
+export function routineDestination(job) {
+  if (job.notificationMode !== 'chat') return null;
+  const rawRole = job.receiverRole ?? job.ownerRole;
+  const role = typeof rawRole === 'string' ? rawRole.toLowerCase() : null;
+  const name = Object.hasOwn(ROLE_NAMES, role) ? ROLE_NAMES[role] : null;
+  return name ? `${name}の定期実行チャット` : null;
+}
+
 export function projectRoutines(document) {
   if (!Array.isArray(document?.data)) throw new Error('invalid jobs response');
   return document.data.map((job) => {
     if (typeof job?.id !== 'string' || typeof job?.name !== 'string') throw new Error('invalid job');
     const reading = job.reading && typeof job.reading === 'object' ? job.reading : {};
-    const string = (value) => typeof value === 'string' && value.length <= 500 ? value : null;
-    return { id: job.id, name: job.name, schedule: string(job.schedule),
-      nextRunAt: string(reading.nextRunAt), lastRunAt: string(reading.lastRunAt),
-      result: string(reading.result) };
+    return { id: job.id, name: job.name, schedule: boundedString(job.schedule),
+      destination: routineDestination(job), state: routineState(job, reading),
+      nextRunAt: boundedString(reading.nextRunAt), lastRunAt: boundedString(reading.lastRunAt),
+      businessStatus: boundedString(reading.businessStatus), notificationStatus: boundedString(reading.notificationStatus),
+      result: boundedString(reading.result) };
   });
 }
 

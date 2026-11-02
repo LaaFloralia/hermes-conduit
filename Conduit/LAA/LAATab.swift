@@ -11,7 +11,7 @@ enum LAATab: String, CaseIterable, Identifiable {
     case source
     case usage
 
-    static let destinations: [LAATab] = [.chats, .today, .brain, .studio, .work]
+    static let destinations: [LAATab] = [.chats, .work, .today, .brain, .studio]
 
     var id: String { rawValue }
 

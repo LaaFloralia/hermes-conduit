@@ -8,7 +8,7 @@ enum LAACopy {
     /// The tab and navigation titles, in the order the bar shows them.
     static func tabTitle(_ tab: LAATab) -> String {
         switch tab {
-        case .chats: return "Chats"
+        case .chats: return "Chat"
         case .today: return "Today"
         case .studio: return "Studio"
         case .work: return "Work"
