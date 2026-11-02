@@ -53,6 +53,18 @@ enum LAAMacSection: String, CaseIterable, Identifiable {
     /// ⌘1 is the first section, ⌘7 the last.
     var shortcutNumber: Int { (Self.allCases.firstIndex(of: self) ?? 0) + 1 }
 
+    #if DEBUG
+    /// `-laa-mac-section usage` opens that section at launch, so the
+    /// screenshot script doesn't have to drive the sidebar. A release build
+    /// has no such argument.
+    static var launched: LAAMacSection? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-laa-mac-section"),
+              index + 1 < arguments.count else { return nil }
+        return LAAMacSection(rawValue: arguments[index + 1])
+    }
+    #endif
+
     var shortcutKey: KeyEquivalent {
         switch shortcutNumber {
         case 1: return "1"

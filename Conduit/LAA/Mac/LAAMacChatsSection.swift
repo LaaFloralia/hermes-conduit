@@ -9,6 +9,8 @@ struct LAAMacChatsSection: View {
     @ObservedObject var commands: LAAMacCommandsModel
     @Binding var conversationShown: Bool
 
+    private var requiresLogin: Bool { LAAMacLogin.isRequired(appState) }
+
     private var hasConversation: Bool {
         appState.activeRoomSurface != nil || appState.activeSessionId != nil
     }
@@ -27,6 +29,23 @@ struct LAAMacChatsSection: View {
     }
 
     var body: some View {
+        if requiresLogin {
+            // Sign-in, where the phone's Chats tab shows it: a card at a
+            // readable width in the middle of the window, not stretched
+            // across it. The other sections keep their own screens.
+            // The phone's sign-in draws its own backdrop and centres its own
+            // form, so it fills the column rather than sitting in a frame:
+            // framed, the backdrop showed as a floating rectangle with a hard
+            // edge and the form left a wide empty margin beside it.
+            LoginView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environment(\.horizontalSizeClass, .compact)
+        } else {
+            split
+        }
+    }
+
+    private var split: some View {
         LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
             LAAChatsView(appState: appState, selection: selection)
                 // The list polls only while it is the shown tab, exactly as
@@ -74,7 +93,8 @@ struct LAAMacChatsSection: View {
 
     @ViewBuilder
     private var detail: some View {
-        if conversationShown && hasConversation {
+        switch LAAMacChatDetail.resolve(shown: conversationShown, hasConversation: hasConversation) {
+        case .conversation:
             V2ConversationScreen()
                 // Beside the list: no Back, and its close button returns the
                 // column to the list (V2ConversationScreen's split branch).
@@ -88,7 +108,7 @@ struct LAAMacChatsSection: View {
                     appState.showSidebar = true
                     return .handled
                 }
-        } else {
+        case .empty:
             LAAMacEmptyDetail(symbol: "bubble.left.and.bubble.right",
                               title: LAACopy.macNoChatTitle,
                               message: LAACopy.macNoChatBody)
@@ -96,4 +116,30 @@ struct LAAMacChatsSection: View {
         }
     }
 }
+
+/// What the Chat section's detail column shows. A conversation is there only
+/// when one is open and the list hasn't been returned to: the same rule the
+/// phone's pushed screen follows, stated once so it can be tested.
+enum LAAMacChatDetail: Equatable {
+    case conversation
+    case empty
+
+    static func resolve(shown: Bool, hasConversation: Bool) -> LAAMacChatDetail {
+        shown && hasConversation ? .conversation : .empty
+    }
+}
+
+/// The Mac shows sign-in in the Chat section, where the phone's Chats tab
+/// shows it, instead of covering the whole window.
+@MainActor
+enum LAAMacLogin {
+    static func isRequired(_ appState: AppState) -> Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
+        #endif
+        return appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
+    }
+}
+
 #endif

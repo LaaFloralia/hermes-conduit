@@ -2,43 +2,45 @@
 import SwiftUI
 
 /// The Mac window's sidebar: the LAA heading, one row per section, and the
-/// Mac's connection state with Settings beneath it. A `List` with a selection
-/// binding gives click selection, the arrow keys and the system's own sidebar
-/// keyboard behaviour; the colours are LAA's paper and teal rather than the
-/// system sidebar's material.
+/// Mac's connection state with Settings beneath it.
+///
+/// The rows are drawn rather than a `List`'s selection, so the selected row
+/// uses LAA's own colours — `LAAColor.selectionFill` behind `LAAColor.link` —
+/// instead of the system's accent fill. The arrow keys walk the rows and
+/// Return opens the focused one, because each row is a Button.
 struct LAAMacSidebar: View {
     @Binding var section: LAAMacSection
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     let onRequestSettings: () -> Void
 
+    @State private var hovered: LAAMacSection?
+    @FocusState private var focused: LAAMacSection?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             heading
-            List(selection: selectionBinding) {
-                Section {
-                    ForEach(LAAMacSection.allCases) { item in
-                        row(item)
-                            .tag(item)
-                    }
-                } header: {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     Text(verbatim: LAACopy.macSidebarSections.uppercased())
                         .laaTextStyle(.section).fontWeight(.bold).tracking(0.8)
                         .foregroundStyle(LAAColor.secondaryText)
+                        .padding(.horizontal, LAASpacing.x2)
+                        .padding(.bottom, LAASpacing.x1)
+                    ForEach(LAAMacSection.allCases) { item in
+                        row(item)
+                    }
                 }
+                .padding(.horizontal, LAASpacing.x2)
+                .padding(.top, LAASpacing.x2)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, LAASpacing.minimumTouchTarget)
+            .scrollBounceBehavior(.basedOnSize)
+            .onKeyPress(.downArrow) { moveFocus(by: 1) }
+            .onKeyPress(.upArrow) { moveFocus(by: -1) }
             footer
         }
         .background(LAAColor.background)
         .accessibilityIdentifier("laa.mac.sidebar")
-    }
-
-    /// `List` needs an optional selection; the sidebar always has one.
-    private var selectionBinding: Binding<LAAMacSection?> {
-        Binding(get: { section }, set: { if let new = $0 { section = new } })
     }
 
     private var heading: some View {
@@ -58,22 +60,51 @@ struct LAAMacSidebar: View {
     }
 
     private func row(_ item: LAAMacSection) -> some View {
-        HStack(spacing: LAASpacing.x3) {
-            Image(systemName: item.symbol)
-                .font(.system(size: 15, weight: .regular))
-                .frame(width: 22, alignment: .center)
-                .foregroundStyle(section == item ? LAAColor.link : LAAColor.secondaryText)
-                .accessibilityHidden(true)
-            Text(verbatim: item.title)
-                .laaTextStyle(.body)
-                .foregroundStyle(LAAColor.text)
-            Spacer(minLength: 0)
+        let selected = section == item
+        return Button {
+            section = item
+        } label: {
+            HStack(spacing: LAASpacing.x3) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 15, weight: .regular))
+                    .frame(width: 22, alignment: .center)
+                    .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
+                    .accessibilityHidden(true)
+                Text(verbatim: item.title)
+                    .laaTextStyle(.body)
+                    .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, LAASpacing.x2)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: LAARadius.card)
+                    .fill(selected ? LAAColor.selectionFill
+                          : (hovered == item ? LAAColor.subtleSurface : Color.clear))
+            )
+            .contentShape(Rectangle())
         }
-        .frame(minHeight: LAASpacing.minimumTouchTarget)
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .focused($focused, equals: item)
+        .onHover { inside in
+            if inside { hovered = item } else if hovered == item { hovered = nil }
+        }
         .accessibilityLabel(Text(verbatim: item.title))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("laa.mac.section.\(item.rawValue)")
         .help(item.title)
+    }
+
+    private func moveFocus(by delta: Int) -> KeyPress.Result {
+        let sections = LAAMacSection.allCases
+        guard let index = sections.firstIndex(where: { $0 == (focused ?? section) }) else {
+            focused = sections.first
+            return .handled
+        }
+        let next = min(max(index + delta, 0), sections.count - 1)
+        focused = sections[next]
+        section = sections[next]
+        return .handled
     }
 
     private var footer: some View {
@@ -96,10 +127,10 @@ struct LAAMacSidebar: View {
                     Image(systemName: "gearshape")
                         .font(.system(size: 15, weight: .regular))
                         .frame(width: 22)
-                    Text(verbatim: LAACopy.settings).laaTextStyle(.body)
+                        .foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: LAACopy.settings).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(LAAColor.text)
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
                 .contentShape(Rectangle())
             }
