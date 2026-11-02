@@ -29,7 +29,7 @@ test('write invalidation fences in-flight refreshes and both archive variants; f
   invalidateLinearLists();
   assert.equal(await cache('open', async () => 'new'), 'new');
   assert.equal(await cache('archive', async () => 'new archived'), 'new archived');
-  release('old'); await old;
+  release('old'); assert.equal(await old, 'new');
   assert.equal(await cache('open', async () => 'should not load'), 'new');
   await assert.rejects(cache('failure', async () => { throw new Error('offline'); }));
   assert.equal(await cache('failure', async () => 'recovered'), 'recovered');

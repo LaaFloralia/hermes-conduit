@@ -22,8 +22,6 @@ const STATES = [
 ];
 const DOCUMENT_NAMES = new Set([
   'BridgeOwnerViewer',
-  'BridgeOwnerTeam',
-  'BridgeOwnerStates',
   'BridgeOwnerTasks',
   'BridgeOwnerArchivedTasks',
   'BridgeOwnerTask',
@@ -106,8 +104,6 @@ function fakeLinear({
     const reply = (data) => ({ ok: true, status: 200, json: async () => ({ data }) });
 
     if (name === 'BridgeOwnerViewer') return reply({ viewer, teams: { nodes: teams.map(t => ({ ...t, states: { nodes: states } })) } });
-    if (name === 'BridgeOwnerTeam') return reply({ teams: { nodes: teams } });
-    if (name === 'BridgeOwnerStates') return reply({ team: { states: { nodes: states } } });
 
     if (name === 'BridgeOwnerTasks' || name === 'BridgeOwnerArchivedTasks') {
       const offset = variables.after === null ? 0 : Number(variables.after);
