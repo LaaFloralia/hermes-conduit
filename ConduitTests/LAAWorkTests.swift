@@ -17,6 +17,35 @@ final class LAAWorkTests: XCTestCase {
         return try JSONDecoder().decode(LAAWorkSession.self, from: JSONSerialization.data(withJSONObject: json))
     }
 
+    func testWorkListKeepsTheLAAProjectItsChildrenAndPinnedSessions() throws {
+        func row(_ id: String, project: String?, cwd: String?, parent: String? = nil,
+                 favorite: Bool? = nil) throws -> LAAWorkSession {
+            var json: [String: Any] = [
+                "id": id, "name": id, "nameSource": "owner", "requestId": id,
+                "parentId": parent as Any? ?? NSNull(), "workspaceId": "ws_test",
+                "profile": "test", "requested": [:], "observed": NSNull(),
+                "phase": "running", "createdAt": "2026-11-03T00:00:00Z", "updatedAt": "2026-11-03T00:00:00Z",
+                "events": ["lastSeq": 1, "oldestSeq": 1, "cursor": "cursor"]
+            ]
+            if let project { json["projectId"] = project }
+            if let cwd { json["cwd"] = cwd }
+            if let favorite { json["favorite"] = favorite }
+            return try JSONDecoder().decode(LAAWorkSession.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        let projects = try JSONDecoder().decode([LAAWorkProject].self, from: JSONSerialization.data(withJSONObject: [
+            ["id": "proj_laa", "name": "LAA"], ["id": "proj_other", "name": "Hermes"],
+        ]))
+        let sessions = try [
+            row("project", project: "proj_laa", cwd: "/Users/laa"),
+            row("rootcwd", project: "proj_other", cwd: "/Users/laa"),
+            row("child", project: "proj_other", cwd: "/Users/laa/.paseo/worktrees/x", parent: "project"),
+            row("oldworktree", project: "proj_other", cwd: "/Users/laa/work/old-20261018"),
+            row("pinned", project: "proj_other", cwd: "/Users/laa/dev/hp", favorite: true),
+        ]
+        XCTAssertEqual(LAAWorkSessionScope.default(sessions, projects: projects).map(\.id),
+                       ["project", "rootcwd", "child", "pinned"])
+    }
+
     func testRoutineReadsMissingObservationsAsUnknown() throws {
         let data = Data(#"{"items":[{"id":"job:a","name":"Daily","schedule":"daily","nextRunAt":null,"lastRunAt":null,"result":null}],"nextCursor":null}"#.utf8)
         let page = try JSONDecoder().decode(LAAWorkPage<LAAWorkRoutine>.self, from: data)
