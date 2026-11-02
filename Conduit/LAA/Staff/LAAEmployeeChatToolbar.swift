@@ -2,9 +2,11 @@
 import SwiftUI
 
 struct LAAEmployeeChatToolbar: ToolbarContent {
-    var compactMenu: AnyView? = nil
-    var compactWidth: CGFloat = 0
-    var compactLeadingInset: CGFloat = 0
+    /// The screen width, which bounds the name so the bar can keep it on
+    /// the screen's center.
+    var screenWidth: CGFloat = 0
+    /// The conversation menu, after the call button in the same glass.
+    var menu: AnyView? = nil
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
@@ -47,22 +49,19 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         }
     }
 
+    // The system's own slots: it centers the name on the screen and gives
+    // the call button and menu one glass with Back's margin. One item, not
+    // two: two get a capsule too wide to leave the name centered.
     @ToolbarContentBuilder var body: some ToolbarContent {
-        if let compactMenu {
-            ToolbarItem(placement: .principal) {
-                LAACompactConversationToolbar(width: compactWidth, leadingInset: compactLeadingInset) {
-                    header
-                } controls: {
-                    callButton
-                    compactMenu
-                }
-            }
-        } else {
-            ToolbarItem(placement: .principal) {
-                header.frame(height: LAAConversationHeaderLayout.controlHeight)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                callButton.frame(height: LAAConversationHeaderLayout.controlHeight)
+        ToolbarItem(placement: .principal) {
+            header
+                .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
+                .frame(height: LAAConversationHeaderLayout.controlHeight)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            LAAConversationControls {
+                callButton
+                if let menu { menu }
             }
         }
     }
@@ -74,45 +73,31 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 }
 
-/// The conversation bar's one row: the name stays on the screen's center and
-/// the call/menu capsule stays inside the trailing margin, whatever either
-/// side needs. Both are the same height and share the bar's vertical center.
-struct LAACompactConversationToolbar<Title: View, Controls: View>: View {
-    /// The screen width; the row keeps the bar's margins on both sides.
-    let width: CGFloat
-    /// Width the leading system Back button occupies. It is reserved on both
-    /// sides, so reserving it cannot move the name off center.
-    let leadingInset: CGFloat
-    @ViewBuilder let title: Title
+/// The call button and the conversation menu side by side in one bar item,
+/// so the system draws one glass around both.
+struct LAAConversationControls<Controls: View>: View {
     @ViewBuilder let controls: Controls
 
     var body: some View {
-        let rowWidth = max(0, width - 2 * LAASpacing.horizontal)
-        // The name keeps the screen's center and shrinks rather than running
-        // under the capsule, so neither side can move it.
-        let nameWidth = max(0, rowWidth - 2 * LAAConversationHeaderLayout.sideReserve)
-        ZStack {
-            title
-                .frame(width: nameWidth)
-            HStack(spacing: LAASpacing.x1) { controls }
-                .padding(.horizontal, LAASpacing.x1)
-                .frame(height: LAAConversationHeaderLayout.controlHeight)
-                .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
-                .laaPhotoGlassScope()
-                .fixedSize()
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .frame(width: rowWidth)
-        .frame(height: LAAConversationHeaderLayout.controlHeight)
+        HStack(spacing: 0) { controls }
+            .frame(height: LAAConversationHeaderLayout.controlHeight)
+            .fixedSize()
     }
 }
 
 enum LAAConversationHeaderLayout {
     /// The bar's controls are all this tall, so their centers line up.
     static let controlHeight: CGFloat = 44
-    /// Half the width the call/menu capsule needs, including its margin: the
-    /// name keeps the screen's center instead of the space left over.
-    static let sideReserve: CGFloat = 110
+    /// What the call/menu capsule and its margin take on the trailing side.
+    /// A name no wider than the screen less this on both sides fits between
+    /// equal margins, so the bar keeps it on the screen's center.
+    static let sideReserve: CGFloat = 136
+
+    /// The widest the name may be; nil until the screen width is known.
+    static func nameWidth(screenWidth: CGFloat) -> CGFloat? {
+        guard screenWidth > 0 else { return nil }
+        return max(96, screenWidth - 2 * sideReserve)
+    }
 }
 
 enum LAAEmployeeCallAvailability {

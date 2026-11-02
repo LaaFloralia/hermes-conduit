@@ -17,10 +17,7 @@ enum LAAChatsLoadState: Equatable {
 struct LAAChatsSnapshot {
     var people: [LAAChatsPerson]
     var rooms: [GroupRoom]
-    var sessions: [SessionSummary]
-    var activeProfile: String
     var groupsState: LAAChatsLoadState
-    var sessionsState: LAAChatsLoadState
     var canCreateChat: Bool
     var canCreateGroup: Bool
 }
@@ -43,18 +40,12 @@ enum LAAChatsSearch {
         matches(query, [room.name] + room.members.flatMap { [$0.displayName, $0.profile, $0.handle] })
     }
 
-    static func session(_ session: SessionSummary, ownerName: String?, matches query: String) -> Bool {
-        matches(query, [session.title, session.preview, ownerName, session.profile])
-    }
-
-    static func emptySearchState(groups: LAAChatsLoadState, sessions: LAAChatsLoadState) -> LAAChatsLoadState {
-        let states = [groups, sessions]
-        if states.contains(.offline) { return .offline }
-        if states.contains(where: { if case .failed = $0 { return true }; return $0 == .unsupported }) {
-            return .failed("")
+    /// Groups are the only source that loads; an empty search waits for it.
+    static func emptySearchState(groups: LAAChatsLoadState) -> LAAChatsLoadState {
+        switch groups {
+        case .failed, .unsupported: return .failed("")
+        default: return groups
         }
-        if states.contains(.loading) { return .loading }
-        return .ready
     }
 }
 #endif

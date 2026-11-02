@@ -388,6 +388,7 @@ build (keeps its own chat and call controls)
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
 - The muted loop runs only while visible and active, after disconnecting from system audio. Reduce Motion, Low Power Mode, scrolling and platforms unable to disconnect use the still, so opening a chat does not take over another app's audio.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
+- The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui).
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
@@ -407,7 +408,7 @@ build (keeps its own chat and call controls)
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-11-02, laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -3791,15 +3792,15 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAChatsTests.swift`, `ConduitUITests/LAAChatsUITests.swift`, `Conduit/LAA/Chats/LAAChatsFixtureView.swift`
 
 **Rulings**
-- The LAA list shows Ciel, available employees, hosted rooms and loaded recent conversations. Employee taps use the widget's saved-or-latest chat route; conversation and room taps keep their existing identity. Search covers names, room members and loaded conversation titles and previews, and distinguishes incomplete reads from no matches.
+- The LAA list shows Ciel, every available employee and every hosted room, none folded behind a See all; it has no Recent section (the owner, 2026-11-02; conversations are in Work › Sessions). A room's icon overlaps its members' faces. Employee taps use the widget's saved-or-latest chat route; room taps keep their existing identity. Search covers names, roles, rooms and room members, and distinguishes an incomplete room read from no matches.
 - Show no invented unread counts or activity. The creation actions use existing Hermes flows; unavailable actions are disabled and their reason is available. Conduit's upstream list remains unchanged.
 
 **Open gaps**
-- Recent is limited to the catalogs the app has loaded and respects the existing All Profiles setting. The existing hosted-room read returns its first page; See all exposes all rooms already loaded, not undiscovered pages.
+- The existing hosted-room read returns its first page; the list shows every room already loaded, not undiscovered pages.
 - The LAA redesign does not expose the upstream list's filters, full-text message search, archived sheet, pin ordering, project and artifact controls on this screen. The existing underlying records and links are retained.
 - Dynamic Type, VoiceOver, reduced transparency, small screens, and the employee and group routes require physical iPhone verification.
 
-**Checked:** 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
+**Checked:** 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
 
 ## LAA v2 chat presentation
 

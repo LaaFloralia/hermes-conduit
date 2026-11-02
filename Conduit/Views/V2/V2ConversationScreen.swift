@@ -52,9 +52,6 @@ struct V2ConversationScreen: View {
     #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
-#if LAA_BUILD
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-#endif
     @State private var composerExpanded = false
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
@@ -77,18 +74,6 @@ struct V2ConversationScreen: View {
     @State private var screenWidth: CGFloat = 0
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
-#if LAA_BUILD
-    private var usesCompactHeader: Bool {
-        LAACompactHeaderLayout.isInline(width: screenWidth, sizeClass: horizontalSizeClass)
-    }
-
-    private var compactMenu: AnyView? { usesCompactHeader ? AnyView(conversationMenu) : nil }
-
-    // Leave the system Back button unobstructed when the chat was pushed.
-    private var compactLeadingInset: CGFloat {
-        shell.isRootCovered && !shell.isSplit ? 2 * LAASpacing.x8 + LAASpacing.x4 : 0
-    }
-#endif
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
     }
@@ -103,7 +88,7 @@ struct V2ConversationScreen: View {
         if appState.activeRoomSurface != nil {
             // Keyed by room: another room starts with its own draft.
 #if LAA_BUILD
-            GroupChatView(compactMenu: compactMenu, compactWidth: screenWidth, compactLeadingInset: compactLeadingInset)
+            GroupChatView(screenWidth: screenWidth, menu: AnyView(conversationMenu))
                 .id(appState.activeRoomSurface?.room.roomID)
                 .environment(\.v2ComposerRests, true)
 #else
@@ -290,7 +275,7 @@ struct V2ConversationScreen: View {
         // Session-only controls: an open room owns the title and actions.
         if appState.activeRoomSurface == nil {
 #if LAA_BUILD
-            LAAEmployeeChatToolbar(compactMenu: compactMenu, compactWidth: screenWidth, compactLeadingInset: compactLeadingInset)
+            LAAEmployeeChatToolbar(screenWidth: screenWidth, menu: AnyView(conversationMenu))
 #else
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
@@ -338,9 +323,7 @@ struct V2ConversationScreen: View {
         }
 #endif
 #if LAA_BUILD
-        if !usesCompactHeader {
-            ToolbarItem(placement: .topBarTrailing) { conversationMenu }
-        }
+        // The LAA chat and room put the menu beside their call button.
 #else
         ToolbarItem(placement: .topBarTrailing) { conversationMenu }
 #endif
@@ -379,14 +362,6 @@ struct V2ConversationScreen: View {
         )
     }
 }
-
-#if LAA_BUILD
-enum LAACompactHeaderLayout {
-    static func isInline(width: CGFloat, sizeClass: UserInterfaceSizeClass?) -> Bool {
-        sizeClass == .compact && width > 0 && width < 460
-    }
-}
-#endif
 
 /// The conversation's rename sheet, delete alert, room picture picker and
 /// disband confirmation.

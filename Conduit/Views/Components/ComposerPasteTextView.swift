@@ -103,16 +103,12 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// `AppState.noteComposerUserEdit()` so an in-flight automatic foreground
     /// return loses session-selection authority the moment the user edits.
     var onUserEdit: (() -> Void)? = nil
-    var onMarkdownPreview: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> ImagePasteTextView {
         let view = ImagePasteTextView()
         view.delegate = context.coordinator
-#if LAA_BUILD
-        LAAComposerMarkdown.install(on: view) { context.coordinator.parent.onMarkdownPreview?() }
-#endif
         view.accessibilityIdentifier = "composer.field"
         view.font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
         view.adjustsFontForContentSizeCategory = false

@@ -27,16 +27,6 @@ struct LAAChatsView: View {
             return LAAChatsPerson(profile: profile, name: name, role: staff.role,
                                   available: found == expected && appState.isConnected)
         }
-        let sessionsState: LAAChatsLoadState
-        if !appState.isConnected && !appState.isConnecting {
-            sessionsState = .offline
-        } else {
-            switch appState.sessionCatalogPhase {
-            case .notLoaded: sessionsState = .loading
-            case .loaded: sessionsState = .ready
-            case .failed(let message): sessionsState = .failed(message)
-            }
-        }
         let groupsState: LAAChatsLoadState
         if !appState.isConnected {
             groupsState = appState.isConnecting ? .loading : .offline
@@ -52,9 +42,7 @@ struct LAAChatsView: View {
         return LAAChatsSnapshot(
             people: people,
             rooms: groupReadDashboard == appState.activeDashboardID ? loadedRooms : [],
-            sessions: AllProfilesChats.newestFirst(appState.chatListSessions.filter { !$0.isArchived }),
-            activeProfile: appState.activeProfile,
-            groupsState: groupsState, sessionsState: sessionsState,
+            groupsState: groupsState,
             canCreateChat: appState.canTapNewChat,
             canCreateGroup: appState.isConnected && appState.groupChatPhase == .available
         )
@@ -78,9 +66,6 @@ struct LAAChatsView: View {
         LAAChatsContent(snapshot: snapshot, settingsAvailable: settings != nil,
                         openPerson: openPerson, openRoom: { room in
             Task { await appState.openGroupRoom(room) }
-        }, openSession: { session in
-            appState.dismissSidebarDrawer()
-            appState.openListedSession(session)
         }, newChat: {
             appState.startNewChat()
         }, newGroup: {
