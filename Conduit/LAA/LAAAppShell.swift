@@ -194,7 +194,7 @@ struct LAAAppShell: View {
                     } else {
                         NavigationStack {
                             if tab == .today {
-                                LAATodayView(openTasks: { selectedTab = .work }, openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
+                                LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
                             } else if tab == .studio {
                                 ScrollView { LAAStudioHomeView().padding(LAASpacing.horizontal) }
                                     .navigationTitle(Text(verbatim: "Studio"))

@@ -411,3 +411,35 @@ iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示は本文の保存・版管理・適用まで実装済みで、外部ファイル参照は持たない。
 
 指示ファイルAPIは独立レビューまで既定で無効（ルート未登録）。アプリの編集画面も `LAA_INSTRUCTION_EDITOR` が未定義のため無効。専用scopeは自動付与しない。対象端末を確認して `laa-bridge grant-instructions <device-id> --reason <reason>` で明示付与する。保存は最終再照合後のatomic renameだが、ロック非参加の外部編集がその間に書いた場合の競合は完全に防げない。バックアップはBridge stateの `instruction-backups/`（0600）に残る。
+
+### Google Calendar (Today)
+
+`GET /v1/calendar/events?start=<RFC3339>&end=<RFC3339>` requires an explicitly granted
+`calendar:read` device scope (not part of the default enrollment). The range is
+limited to eight days; Today requests seven local days. Events are read only,
+including recurring instances, title, start/end and location. Date-only all-day
+end dates are exclusive. No attendee list, description or OAuth token is returned.
+
+The adapter reads credentials at runtime from the default helper
+`/Users/laa/.config/laa/google-calendar-credential.sh`, executed directly with
+`execFile` (no shell, no arguments, bounded timeout and output). The helper prints
+one JSON object to stdout with `client_id`, `client_secret`, `refresh_token` and an
+optional `calendar_id`. stderr is discarded, and neither the output nor its values
+are logged or returned. A missing, failing, malformed or incomplete helper result
+returns `calendar_not_configured` (503), never an empty calendar. The helper is
+provisioned by the operator; this implementation does not create it.
+`LAA_GOOGLE_CALENDAR_CLIENT_ID`, `LAA_GOOGLE_CALENDAR_CLIENT_SECRET` and
+`LAA_GOOGLE_CALENDAR_REFRESH_TOKEN` remain only as an explicit test override when
+all three are set. `LAA_GOOGLE_CALENDAR_ID` overrides the helper's `calendar_id`,
+which defaults to `primary`. Access tokens stay in memory, are reused until their
+`expires_in` lifetime ends or the events API rejects the token, and concurrent
+reads share one refresh.
+Do not put values in the plist, source, command arguments or a plain `.env` file.
+OAuth clients, consent and Google Cloud configuration are **not** created by this
+implementation. An operator must first confirm an existing authorized OAuth route
+or arrange Calendar API enablement and consent for
+`https://www.googleapis.com/auth/calendar.events.readonly`. Existing Codex connector
+authentication and Google web login credentials are not transferable to the Bridge.
+Without these prerequisites the endpoint returns `calendar_not_configured` (503),
+not an empty event list. OAuth/permissions/API and connection errors have separate
+safe codes. See [Google events.list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).

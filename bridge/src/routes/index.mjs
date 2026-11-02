@@ -25,6 +25,7 @@ import { createOwnerTaskService } from '../tasks/owner-service.mjs';
 import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
 import { studioRoutes } from './studio.mjs';
+import { calendarRoutes } from './calendar.mjs';
 import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
 
@@ -79,6 +80,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
     ...routineRoutes(options.routines ?? {}),
+    ...calendarRoutes(options.calendar ?? {}),
     // Disabled in production pending independent review; explicit injection is for tests.
     ...(options.instructions?.enabled === true
       ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
