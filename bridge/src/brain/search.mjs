@@ -3,10 +3,8 @@
 // policy or the re-ranker — it runs the same command a person would run and
 // maps its JSON to the Bridge envelope.
 //
-// The CLI sends scrubbed passages to the local judgement gateway only when the
-// re-ranker is enabled. The Bridge passes `--no-jev` unless the request asks for
-// `rerank=1`: a phone search must not create a new path that ships Brain excerpts
-// to another model without the owner asking for it.
+// Bridge searches always use --no-jev. Note bodies never go to a model,
+// including when an older client sends rerank=1.
 
 import { spawn } from 'node:child_process';
 import { BridgeError } from '../errors.mjs';
@@ -22,7 +20,7 @@ export function brainSearchAdapter({
   return async function search({ query, k = 5, areas = [], adopted = false, rerank = false }) {
     const args = ['search', query, '-k', String(k), '--json'];
     if (adopted) args.push('--adopted');
-    if (!rerank) args.push('--no-jev');
+    args.push('--no-jev'); // Bridge must never transmit note bodies to models.
     for (const area of areas) args.push('--area', area);
 
     return new Promise((resolvePromise, reject) => {
@@ -34,9 +32,7 @@ export function brainSearchAdapter({
         return;
       }
       const out = [];
-      const err = [];
       let outBytes = 0;
-      let errBytes = 0;
       let settled = false;
       const timer = setTimeout(() => {
         if (settled) return;
@@ -50,9 +46,8 @@ export function brainSearchAdapter({
         if (outBytes > maxOutput) child.kill('SIGKILL');
         else out.push(chunk);
       });
-      child.stderr?.on('data', (chunk) => {
-        errBytes += chunk.length;
-        if (errBytes <= 4096) err.push(chunk); // enough for a message, never a dump
+      child.stderr?.on('data', () => {
+        // Discard stderr: it may include note content and must not reach logs.
       });
       child.on('error', () => {
         if (settled) return;
@@ -65,9 +60,8 @@ export function brainSearchAdapter({
         settled = true;
         clearTimeout(timer);
         if (code !== 0) {
-          const detail = Buffer.concat(err).toString('utf8').trim().split('\n').pop() ?? '';
           reject(new BridgeError(503, 'brain_search_failed',
-            `the Brain search failed${detail ? `: ${detail.slice(0, 200)}` : ''}`, { retryable: true }));
+            'the Brain search failed', { retryable: true }));
           return;
         }
         let parsed;

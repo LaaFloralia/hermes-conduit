@@ -43,14 +43,14 @@ export function fileId(relPath) {
   return `bf_${Buffer.from(String(relPath).normalize('NFC'), 'utf8').toString('base64url')}`;
 }
 
-export function pathFromId(id) {
+export function pathFromId(id, options) {
   if (typeof id !== 'string' || !id.startsWith('bf_')) throw badRequest('file_id_invalid', 'file id is not recognised');
-  return parseVaultPath(Buffer.from(id.slice(3), 'base64url').toString('utf8'));
+  return parseVaultPath(Buffer.from(id.slice(3), 'base64url').toString('utf8'), options);
 }
 
 // Returns the NFC-normalised vault-relative path, or throws 400. Shared by
 // create and by id decoding, so both go through the same rules.
-export function parseVaultPath(raw) {
+export function parseVaultPath(raw, { owner = false } = {}) {
   if (typeof raw !== 'string') throw badRequest('path_invalid', 'path must be a string');
   if (raw.length === 0 || raw.length > 400) throw badRequest('path_invalid', 'path must be 1-400 characters');
   if (/[\u0000-\u001f\u007f]/.test(raw)) throw badRequest('path_invalid', 'path must not contain control characters');
@@ -65,14 +65,14 @@ export function parseVaultPath(raw) {
   if (parts.length > MAX_WALK_DEPTH) throw badRequest('path_invalid', 'path is too deep');
   if (!rel.toLowerCase().endsWith('.md')) throw badRequest('path_invalid', 'only Markdown (.md) notes are addressable');
   for (const part of parts) {
-    if (part.startsWith('.') || RESERVED_SEGMENTS.has(part)) {
+    if (part.startsWith('.') || (!owner && RESERVED_SEGMENTS.has(part))) {
       throw badRequest('path_invalid', `${part} is not addressable`);
     }
   }
   const base = parts[parts.length - 1];
-  if (RESERVED_BASENAMES.has(base)) throw badRequest('path_invalid', `${base} is a harness instruction file`);
+  if (!owner && RESERVED_BASENAMES.has(base)) throw badRequest('path_invalid', `${base} is a harness instruction file`);
   for (const marker of CONFLICT_MARKERS) {
-    if (base.includes(marker)) throw badRequest('path_invalid', 'conflict copies are not addressable');
+    if (!owner && base.includes(marker)) throw badRequest('path_invalid', 'conflict copies are not addressable');
   }
   return rel;
 }
@@ -152,7 +152,7 @@ export function createBrainVault({ root, policy, createPrefixes }) {
 
   function entryFor(real, rel, allowedAreas, { withText, tolerant = false }) {
     const area = zoneOf(policy, rel);
-    if (!allowedAreas.includes(area.zone)) return null;
+    if (allowedAreas !== null && !allowedAreas.includes(area.zone)) return null;
     let resolved;
     try {
       resolved = resolveExisting(real, rel);
@@ -196,7 +196,7 @@ export function createBrainVault({ root, policy, createPrefixes }) {
     };
   }
 
-  function walk(dir, depth, out) {
+  function walk(dir, depth, out, owner = false) {
     if (depth > MAX_WALK_DEPTH || out.length >= MAX_LIST_ENTRIES) return;
     let entries;
     try {
@@ -207,11 +207,11 @@ export function createBrainVault({ root, policy, createPrefixes }) {
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (out.length >= MAX_LIST_ENTRIES) return;
       const name = entry.name;
-      if (name.startsWith('.') || policy.excludeDirs.includes(name) || RESERVED_SEGMENTS.has(name)) continue;
+      if (name.startsWith('.') || (!owner && (policy.excludeDirs.includes(name) || RESERVED_SEGMENTS.has(name)))) continue;
       const absolute = join(dir, name);
       if (entry.isSymbolicLink()) continue; // never follow: a link could leave the vault or enter `old/`
       if (entry.isDirectory()) {
-        walk(absolute, depth + 1, out);
+        walk(absolute, depth + 1, out, owner);
         continue;
       }
       if (!entry.isFile() || !name.toLowerCase().endsWith('.md')) continue;
@@ -225,16 +225,16 @@ export function createBrainVault({ root, policy, createPrefixes }) {
     createPrefixes,
 
     // Notes the device may see, in a stable path order.
-    list({ allowedAreas }) {
+    list({ allowedAreas, owner = false }) {
       const real = rootReal();
       const files = [];
-      walk(real, 0, files);
+      walk(real, 0, files, owner);
       const items = [];
       for (const absolute of files) {
         const rel = absolute.slice(real.length + 1).split(sep).join('/');
         let path;
         try {
-          path = parseVaultPath(rel);
+          path = parseVaultPath(rel, { owner });
         } catch {
           continue; // reserved/conflict files are not notes
         }

@@ -368,10 +368,6 @@ struct LAABrainView: View {
             if !local.isReady {
                 Text(verbatim: LAACopy.Brain.tagsUnavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if !local.isSelected {
-                Toggle(isOn: $includeInbox) { Text(verbatim: LAACopy.Brain.includeInbox).laaTextStyle(.secondary) }
-                    .accessibilityIdentifier("laa.brain.inbox")
-            }
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchResults
             } else if local.isSelected, localReadFailed {

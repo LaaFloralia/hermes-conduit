@@ -503,6 +503,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   readings and their times on failure, disables duplicate refreshes and
   distinguishes missing, zero, stale, expired and unavailable data. Hermes'
   existing Settings report remains available.
+- Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
+  server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
+  area access by naming that audience. Owner search stays local and Bridge
+  searches never re-rank with a model. Hidden paths and trash remain excluded.
 - Brain opens the Mac Bridge when no security-scoped folder is selected;
   choosing the SyncTrain folder enables local, offline browsing. The local
   list shows folders (including empty ones) and Markdown notes. The user can

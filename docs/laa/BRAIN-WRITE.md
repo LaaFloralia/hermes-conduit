@@ -100,7 +100,7 @@ atomic_write(path, data + b'BRIDGE\n')  # 4 古い読み取りを元に rename
 - 作成の順序: 空き容量64MB以上 → git（`master`・`index.lock`/rebase/merge/cherry-pick無し）→ Syncthing（paused・`errors`・`pullErrors`）→ journal `intent`（fsync）→ 親フォルダ検証 → `O_EXCL` で作成 → 本文fsync・ディレクトリfsync → 読戻しで長さとhashを照合 → journal `committed`。どこかで止まれば vault は不変か、作成済みなら `brain_create_unverified`／`brain_journal_incomplete` として人へ渡す。
 - 名前衝突: 既定は `onConflict:"suffix"`（`Note 2.md` を `O_EXCL` で確保）。`"reject"` は 409 `path_exists`。上書き・rename・切詰め・削除の経路は持たない。
 - `brain:create` は**既定scopeに加えない**。§9の初期集合を変えず、端末ごとに `laa-bridge pair --scopes brain:read,brain:create` で付与する。§7が「安全」とするのは新規作成経路だけで、全端末へ広げる根拠にはならないため。
-- 領域は `laa-brain` の `policy.json` をそのまま読み、既定は default 領域のみ。旧資料・Inbox・Sources・`Journal/`（日記）・研究/振り返り・添付・Templates・未分類は `?area=` で明示した時だけ足す。`daily journal/`・`Tasks/`・`Context/`・`Guide/` は policy どおり既定で含み、Jevへは送らない（`--no-jev`）。タスク指示の「daily journals を既定で除外」は現行 policy／BRAIN-SEARCH.md と食い違うため、検索CLIの実挙動（`Journal/` のみ除外）に合わせた。検索は `laa-brain search --json` を再利用し、既定は `--no-jev`（ローカル順位のみ）、`rerank=1` の時だけJev再判定を通す。電話からの検索を、既定でBrain抜粋を外部モデルへ送る新しい経路にしないため。
+- 領域は `laa-brain` の `policy.json` をそのまま読み、既定は default 領域のみ。旧資料・Inbox・Sources・`Journal/`（日記）・研究/振り返り・添付・Templates・未分類は `?area=` で明示した時だけ足す。`daily journal/`・`Tasks/`・`Context/`・`Guide/` は policy どおり既定で含み、Jevへは送らない（`--no-jev`）。タスク指示の「daily journals を既定で除外」は現行 policy／BRAIN-SEARCH.md と食い違うため、検索CLIの実挙動（`Journal/` のみ除外）に合わせた。検索は `laa-brain search --json` を再利用し、既定は `--no-jev`（ローカル順位のみ）、現在は `rerank=1` でも再判定せず、Bridgeからモデルへ本文を送らない。電話からの検索を、既定でBrain抜粋を外部モデルへ送る新しい経路にしないため。
 
 §5との差分（意図的）:
 
@@ -145,3 +145,10 @@ SyncTrainフォルダのローカル操作だけを対象とする。
 - 試験は使い捨てfixtureのみ。実SyncTrainのFile Provider、ブックマーク再起動、
   双方向同期、外部writerが古いFDを保持したまま書く場合の保全、
   1秒以内の表示は実機未確認。§3の競合窓を一般に解消したとの保証はしない。
+
+本人UIのBridge要求は `audience=owner` を指定する。Bridgeは認証済み端末の
+保存済み `brain:owner` scopeを検査し、ない要求は403で拒否する。既定scopeには
+含めず、社長の端末を特定してoperatorがopt-in付与する。通常のCLI・エージェント用
+要求の領域制限は維持する。本人用一覧は非隠しMarkdownと競合コピーを含み、
+`.trash`・`.obsidian`・隠し項目とsymlinkは除く。本人検索はローカル字句検索で、
+CLI・モデル・通知へ本文を渡さない。Bridgeの既存ノート編集は引き続き未対応。
