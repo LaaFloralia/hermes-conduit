@@ -5,6 +5,9 @@ final class LAAWorkUITests: XCTestCase {
     private func launchWork() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]
+        if let address = ProcessInfo.processInfo.environment["LAA_BRIDGE_DEFAULT_ADDRESS"] {
+            app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = address
+        }
         if let appearance = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_APPEARANCE"],
            ["light", "dark"].contains(appearance) {
             app.launchArguments += ["-conduit.themePreference", appearance]
@@ -31,7 +34,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     private func openScratchSession(_ app: XCUIApplication) -> Bool {
-        guard waitUntilReady(app.buttons["New Session"]) else { return false }
+        guard waitUntilReady(app.buttons["work.sessions.new"]) else { return false }
         let row: XCUIElement
         if let id = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SESSION_ID"], !id.isEmpty {
             row = app.staticTexts["work.session.\(id)"].firstMatch
@@ -44,7 +47,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     private func openScratchProject(_ app: XCUIApplication) -> Bool {
-        guard waitUntilReady(app.buttons["New Session"]) else { return false }
+        guard waitUntilReady(app.buttons["work.sessions.new"]) else { return false }
         app.buttons["Projects"].tap()
         let row = app.staticTexts["LAA 14i Project Test 20261029"].firstMatch
         guard row.waitForExistence(timeout: 30), reveal(row, in: app) else { return false }
@@ -54,6 +57,7 @@ final class LAAWorkUITests: XCTestCase {
 
     private func enterDedicatedAddress(_ address: XCUIElement) -> Bool {
         guard address.waitForExistence(timeout: 10) else { return false }
+        if address.value as? String == "http://127.0.0.1:19414" { return true }
         for _ in 0..<4 {
             let existing = address.value as? String ?? ""
             if existing.isEmpty || existing == "Address" { break }
@@ -89,7 +93,7 @@ final class LAAWorkUITests: XCTestCase {
         let app = launchWork()
         let connect = app.buttons["Connect to Mac"]
         guard connect.waitForExistence(timeout: 15) else {
-            if waitUntilReady(app.buttons["New Session"]) {
+            if waitUntilReady(app.buttons["work.sessions.new"]) {
                 throw XCTSkip("This simulator is already paired; the live flow covers its Work screen.")
             }
             XCTFail("Neither the unpaired nor the paired Work screen appeared.")
@@ -116,7 +120,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["ルーティンはありません。"].exists)
         app.buttons["Sessions"].tap()
         XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 5))
-        if app.buttons["New Session"].exists { XCTAssertFalse(app.buttons["New Session"].isEnabled) }
+        if app.buttons["work.sessions.new"].exists { XCTAssertFalse(app.buttons["work.sessions.new"].isEnabled) }
     }
 
     func testOwnerTasksAndPendingAreAvailableWithoutPairing() {
@@ -164,7 +168,7 @@ final class LAAWorkUITests: XCTestCase {
         let app = launchWork()
         let connect = app.buttons["Connect to Mac"]
         guard connect.waitForExistence(timeout: 15) else {
-            if waitUntilReady(app.buttons["New Session"]) {
+            if waitUntilReady(app.buttons["work.sessions.new"]) {
                 throw XCTSkip("The dedicated simulator is already paired.")
             }
             XCTFail("Neither the unpaired nor the paired Work screen appeared.")
@@ -179,12 +183,18 @@ final class LAAWorkUITests: XCTestCase {
 
         let code = app.secureTextFields["laa.bridge.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 5))
-        code.press(forDuration: 1)
-        let paste = app.menuItems.matching(NSPredicate(format: "label IN %@", ["Paste", "ペースト"])).firstMatch
-        XCTAssertTrue(paste.waitForExistence(timeout: 5))
-        paste.tap()
+        if let fixtureCode = ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PAIR_CODE"] {
+            // Only for a throwaway fixture Bridge; a real code is always pasted.
+            code.tap()
+            code.typeText(fixtureCode)
+        } else {
+            code.press(forDuration: 1)
+            let paste = app.menuItems.matching(NSPredicate(format: "label IN %@", ["Paste", "ペースト"])).firstMatch
+            XCTAssertTrue(paste.waitForExistence(timeout: 5))
+            paste.tap()
+        }
         app.buttons["laa.bridge.pair"].tap()
-        guard waitUntilReady(app.buttons["New Session"], timeout: 30) else {
+        guard waitUntilReady(app.buttons["work.sessions.new"], timeout: 30) else {
             let errors = ["接続先はTailscaleのHTTPSアドレスで入力してください。",
                           "Macに届きません。TailscaleとMacの接続を確認してください。",
                           "安全な接続を確認できません。接続先と証明書を確認してください。",
@@ -208,7 +218,7 @@ final class LAAWorkUITests: XCTestCase {
             : "Mac側のサービスを利用できません。"
         XCTAssertTrue(app.staticTexts["取得できませんでした"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts[expected].exists)
-        XCTAssertFalse(app.buttons["New Session"].isEnabled)
+        XCTAssertFalse(app.buttons["work.sessions.new"].isEnabled)
     }
 
     func testLiveEmptySessionList() throws {
@@ -216,7 +226,7 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Explicit live empty-response injection is not enabled.")
         }
         let app = launchWork()
-        XCTAssertTrue(app.staticTexts["セッションがありません。＋から始められます。"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["セッションはまだありません。"].waitForExistence(timeout: 30))
     }
 
     func testCaptureLiveSessionList() throws {
@@ -224,9 +234,9 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Explicit live screenshots are not enabled.")
         }
         let app = launchWork()
-        XCTAssertTrue(waitUntilReady(app.buttons["New Session"], timeout: 30))
+        XCTAssertTrue(waitUntilReady(app.buttons["work.sessions.new"], timeout: 30))
         if ProcessInfo.processInfo.environment["LAA_WORK_LIVE_EMPTY"] == "1" {
-            XCTAssertTrue(app.staticTexts["セッションがありません。＋から始められます。"].waitForExistence(timeout: 30))
+            XCTAssertTrue(app.staticTexts["セッションはまだありません。"].waitForExistence(timeout: 30))
         }
         let loading = app.progressIndicators["読み込み中"]
         if loading.exists {
@@ -244,15 +254,15 @@ final class LAAWorkUITests: XCTestCase {
         if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
-        let add = app.buttons["New Session"]
+        let add = app.buttons["work.sessions.new"]
         guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
-        XCTAssertTrue(app.navigationBars["New Session"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Input Text Size"].exists)
         XCTAssertTrue(app.buttons["Full Screen Editor"].exists)
-        app.buttons["Close"].tap()
+        app.buttons["閉じる"].tap()
         app.buttons["Projects"].tap()
-        let addProject = app.buttons["New Project"]
+        let addProject = app.buttons["work.projects.new"]
         XCTAssertTrue(addProject.waitForExistence(timeout: 10))
         addProject.tap()
         XCTAssertTrue(app.navigationBars["New Project"].waitForExistence(timeout: 10))
@@ -264,96 +274,6 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
     }
 
-    func testLiveWorkspaceCreationEntry() throws {
-        let app = launchWork()
-        if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {
-            throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
-        }
-        let add = app.buttons["New Session"]
-        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
-        add.tap()
-        let createWorkspace = app.buttons["Create Workspace"]
-        XCTAssertTrue(createWorkspace.waitForExistence(timeout: 10))
-        createWorkspace.tap()
-        XCTAssertTrue(app.navigationBars["New Workspace"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textFields["work.workspace.name"].exists)
-        XCTAssertTrue(app.textFields["work.workspace.branch"].exists)
-        XCTAssertFalse(app.buttons["work.workspace.create"].isEnabled)
-    }
-
-    func testLiveWorkspaceRepositoryMenu() throws {
-        let app = launchWork()
-        if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {
-            throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
-        }
-        let add = app.buttons["New Session"]
-        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
-        add.tap()
-        app.buttons["Create Workspace"].tap()
-        let picker = app.descendants(matching: .any)["work.workspace.repo"].firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        picker.tap()
-        let repo = app.buttons["~/dev/hermes-conduit"]
-        XCTAssertTrue(repo.waitForExistence(timeout: 10))
-        repo.tap()
-        XCTAssertTrue(picker.staticTexts["~/dev/hermes-conduit"].exists)
-    }
-
-    // This test creates one named scratch worktree only when explicitly
-    // enabled for the dedicated simulator. It must be archived afterwards.
-    func testLiveCreateScratchWorkspace() throws {
-        let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]
-        guard stage == "workspace" || stage == "workspace-preflight" else {
-            throw XCTSkip("Explicit scratch-workspace creation is not enabled.")
-        }
-        let app = launchWork()
-        let add = app.buttons["New Session"]
-        guard waitUntilReady(add) else {
-            let known = ["取得できませんでした", "Macからの応答を読み取れませんでした。",
-                         "Macに届きません。TailscaleとMacの接続を確認してください。",
-                         "Mac側のサービスを利用できません。"]
-            XCTFail("Session data did not finish loading: \(known.filter { app.staticTexts[$0].exists }.joined(separator: " / "))")
-            return
-        }
-        add.tap()
-        app.buttons["Create Workspace"].tap()
-        let picker = app.descendants(matching: .any)["work.workspace.repo"].firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        picker.tap()
-        let repo = app.buttons["~/dev/hermes-conduit"]
-        guard repo.waitForExistence(timeout: 10) else {
-            XCTFail("The designated repository is unavailable.")
-            return
-        }
-        repo.tap()
-        guard picker.staticTexts["~/dev/hermes-conduit"].exists else {
-            XCTFail("The designated repository was not selected.")
-            return
-        }
-        let name = app.textFields["work.workspace.name"]
-        name.tap()
-        name.typeText("LAA-14i-validation-20261029")
-        let branch = app.textFields["work.workspace.branch"]
-        branch.tap()
-        branch.typeText("laa/14i-validation-20261029")
-        guard name.value as? String == "LAA-14i-validation-20261029",
-              branch.value as? String == "laa/14i-validation-20261029" else {
-            XCTFail("The scratch-workspace fields do not match their intended values.")
-            return
-        }
-        let create = app.buttons["work.workspace.create"]
-        guard create.isEnabled else {
-            XCTFail("Scratch-workspace creation is not ready.")
-            return
-        }
-        if stage == "workspace-preflight" { return }
-        create.tap()
-        let newWorkspace = app.navigationBars["New Workspace"]
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: newWorkspace)
-        waitForExpectations(timeout: 90)
-        XCTAssertTrue(app.navigationBars["New Session"].exists)
-    }
-
     // Separating workspace creation from session creation makes each external
     // write observable before the next one is attempted.
     func testLiveCreateScratchSession() throws {
@@ -362,80 +282,25 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Explicit scratch-session creation is not enabled.")
         }
         let app = launchWork()
-        let add = app.buttons["New Session"]
+        let add = app.buttons["work.sessions.new"]
         guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
-        let projectPicker = app.descendants(matching: .any)["work.session.project"].firstMatch
+        let projectPicker = app.descendants(matching: .any)["work.launch.project"].firstMatch
         guard projectPicker.waitForExistence(timeout: 10) else { XCTFail("Project picker unavailable."); return }
         projectPicker.tap()
         let testProject = app.buttons["LAA 14i Project Test 20261029"]
         guard testProject.waitForExistence(timeout: 10) else { XCTFail("Scratch Project unavailable."); return }
         testProject.tap()
-        guard projectPicker.label.contains("LAA 14i Project Test 20261029") else {
-            XCTFail("Scratch Project was not selected."); return
-        }
-        let picker = app.descendants(matching: .any)["work.session.workspace"].firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        picker.tap()
-        let workspace = app.buttons.matching(
-            NSPredicate(format: "label ENDSWITH %@", " · laa-14i-validation-20261029")
-        ).firstMatch
-        guard workspace.waitForExistence(timeout: 10) else {
-            XCTFail("The designated scratch workspace is unavailable.")
-            return
-        }
-        workspace.tap()
-        guard picker.label.hasSuffix(" · laa-14i-validation-20261029") else {
-            XCTFail("The designated scratch workspace was not selected.")
-            return
-        }
-        let profile = app.textFields["work.session.profile"]
-        profile.tap()
-        profile.typeText("deepseek-flash-high")
-        let name = app.textFields["work.session.name"]
-        name.tap()
-        name.typeText("LAA 14i validation")
-        let prompt = app.textViews["work.composer.field"]
+        XCTAssertTrue(app.descendants(matching: .any)["work.launch.model"].firstMatch.waitForExistence(timeout: 10))
+        let prompt = app.textViews["work.launch.composer.field"]
         XCTAssertTrue(prompt.waitForExistence(timeout: 10))
-        let previous = prompt.value as? String ?? ""
-        let expectedPrompt = "Reply exactly 14i-ready. Do not change files."
-        if previous != expectedPrompt {
-            app.buttons["Full Screen Editor"].tap()
-            let full = app.textViews["work.composer.fullEditor.field"]
-            guard full.waitForExistence(timeout: 10) else { XCTFail("Full editor unavailable."); return }
-            full.tap()
-            if !previous.isEmpty {
-                full.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
-            }
-            guard (full.value as? String ?? "").isEmpty else {
-                XCTFail("The existing scratch-session draft could not be cleared."); return
-            }
-            full.typeText(expectedPrompt)
-            guard full.value as? String == expectedPrompt else { XCTFail("Scratch prompt did not match."); return }
-            app.buttons["composer.collapse-editor"].tap()
-        }
-        let profileMatches = profile.value as? String == "deepseek-flash-high"
-        let nameMatches = name.value as? String == "LAA 14i validation"
-        let promptMatches = prompt.value as? String == expectedPrompt
-        guard profileMatches, nameMatches, promptMatches else {
-            XCTFail("Scratch fields did not match: profile=\(profileMatches), name=\(nameMatches), prompt=\(promptMatches).")
-            return
-        }
-        let confirm = app.buttons["work.composer.send"]
-        guard confirm.isEnabled else {
-            XCTFail("Scratch-session confirmation is not ready.")
-            return
-        }
-        confirm.tap()
-        let start = app.buttons["Start Session"]
-        guard start.waitForExistence(timeout: 10) else {
-            XCTFail("Scratch-session confirmation did not appear.")
-            return
-        }
+        prompt.tap()
+        prompt.typeText("Reply exactly 14i-ready. Do not change files.")
+        let start = app.buttons["work.launch.composer.send"]
+        guard start.isEnabled else { XCTFail("Scratch-session start is not ready."); return }
         if stage == "session-preflight" { return }
         start.tap()
-        XCTAssertTrue(app.staticTexts["セッションを開始しました"].waitForExistence(timeout: 120))
-        XCTAssertTrue(app.buttons["Open Session"].exists)
+        XCTAssertTrue(app.staticTexts["Reply exactly 14i-ready.…"].waitForExistence(timeout: 120))
     }
 
     // Each opt-in mutation is isolated so an uncertain result is never retried
@@ -445,9 +310,9 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Explicit scratch-Project creation is not enabled.")
         }
         let app = launchWork()
-        guard waitUntilReady(app.buttons["New Session"]) else { XCTFail("Work did not load."); return }
+        guard waitUntilReady(app.buttons["work.sessions.new"]) else { XCTFail("Work did not load."); return }
         app.buttons["Projects"].tap()
-        let add = app.buttons["New Project"]
+        let add = app.buttons["work.projects.new"]
         guard waitUntilReady(add) else { XCTFail("Project creation unavailable."); return }
         add.tap()
         let name = app.textFields["Project Name"]
@@ -661,7 +526,7 @@ final class LAAWorkUITests: XCTestCase {
         if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
-        let add = app.buttons["New Session"]
+        let add = app.buttons["work.sessions.new"]
         guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
         let expand = app.buttons["Full Screen Editor"]
@@ -684,6 +549,44 @@ final class LAAWorkUITests: XCTestCase {
         let restored = app.textViews["work.composer.field"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10))
         XCTAssertTrue((restored.value as? String ?? "").contains("Draft survives relaunch"))
+    }
+    // Opt-in screenshots of Sessions, the launcher, Projects and a project on a
+    // simulator paired with a seeded throwaway Bridge.
+    func testCaptureSessionsAndProjectsDesign() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SCREENSHOT"] == "sessions" else {
+            throw XCTSkip("Explicit sessions screenshots are not enabled.")
+        }
+        let appearance = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_APPEARANCE"] ?? "light"
+        let app = launchWork()
+        func shot(_ name: String) {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = "sessions-ui-\(name)-\(appearance)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        XCTAssertTrue(waitUntilReady(app.buttons["work.sessions.new"], timeout: 30))
+        XCTAssertTrue(app.staticTexts["ピン留め"].waitForExistence(timeout: 30))
+        shot("sessions")
+        app.buttons["work.sessions.new"].tap()
+        XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["work.launch.favorite"].waitForExistence(timeout: 10))
+        if app.buttons["work.launch.favorite"].label == "お気に入りに登録" { app.buttons["work.launch.favorite"].tap() }
+        shot("launcher")
+        app.buttons["work.launch.model"].tap()
+        shot("model-menu")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
+        let close = app.buttons["閉じる"]
+        XCTAssertTrue(waitUntilReady(close, timeout: 10))
+        close.tap()
+        app.buttons["Projects"].tap()
+        XCTAssertTrue(app.buttons["work.projects.new"].waitForExistence(timeout: 10))
+        let project = app.staticTexts["トレード｜環境認識"].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 30))
+        shot("projects")
+        project.tap()
+        XCTAssertTrue(app.buttons["work.project.newSession"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["手法メモ v3.md"].waitForExistence(timeout: 30))
+        shot("project")
     }
 }
 #endif

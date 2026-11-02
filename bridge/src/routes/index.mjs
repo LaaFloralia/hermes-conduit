@@ -14,6 +14,7 @@
 import { personalAgentAdapter } from '../sessions/adapter.mjs';
 import { createSessionService } from '../sessions/service.mjs';
 import { createSessionStore } from '../sessions/store.mjs';
+import { resolveModelsFile, sessionOptionsReader } from '../sessions/options.mjs';
 import { createProjectRoutes, createProjectStore } from './projects.mjs';
 import { createSessionRoutes } from './sessions.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOptions } from './workspaces.mjs';
@@ -50,6 +51,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     findProject: sessionOptions.findProject ?? ((id) => projectStore.get(id)),
     resolveProjectInstructions: sessionOptions.resolveProjectInstructions
       ?? ((project) => projectStore.instructionsFor(project)),
+    resolveProjectFiles: sessionOptions.resolveProjectFiles ?? ((project) => projectStore.filesFor(project)),
     now,
   });
 
@@ -70,7 +72,10 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       now,
       ...workspaceOptions,
     }),
-    ...createSessionRoutes({ sessions: sessionService }),
+    ...createSessionRoutes({
+      sessions: sessionService,
+      sessionOptions: sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() }),
+    }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
     ...routineRoutes(options.routines ?? {}),

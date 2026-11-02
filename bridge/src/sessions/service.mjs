@@ -24,6 +24,7 @@
 // request.
 
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
@@ -37,6 +38,11 @@ const MAX_NAME_LENGTH = 100;
 const TITLE_MAX_BYTES = 200;
 const MAX_ARTIFACT_BYTES = 64 * 1024;
 const INSTRUCTION_TAG = 'project_instructions';
+const FILES_TAG = 'project_files';
+const DEFAULT_NAME_GRAPHEMES = 24;
+// A session that starts in the owner's home folder instead of a repo or worktree.
+export const HOME_WORKSPACE_ID = 'home';
+const MODES = new Set(['bypass', 'default']);
 
 const sha = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const count = (text) => [...text].length;
@@ -47,6 +53,8 @@ export function createSessionService({
   findWorkspace,
   findProject = () => null,
   resolveProjectInstructions = () => null,
+  resolveProjectFiles = () => [],
+  homeCwd = homedir(),
   now = () => Date.now(),
   retentionMs = 24 * 60 * 60 * 1000,
   pollMs = 2500,
@@ -96,7 +104,11 @@ export function createSessionService({
     const requestId = parseRequestId(body.requestId);
     const profile = parseProfile(body.profile);
     const prompt = asText(body.prompt, 'prompt');
-    const workspaceId = parseWorkspaceId(body.workspaceId);
+    const workspaceId = body.workspaceId === undefined || body.workspaceId === null || body.workspaceId === HOME_WORKSPACE_ID
+      ? HOME_WORKSPACE_ID
+      : parseWorkspaceId(body.workspaceId);
+    const mode = parseMode(body.mode);
+    const fast = parseFast(body.fast);
     const parentId = body.parentId === undefined || body.parentId === null ? null : parseSessionId(body.parentId);
     const projectId = body.projectId === undefined || body.projectId === null
       ? null
@@ -110,6 +122,7 @@ export function createSessionService({
     const project = projectId ? findProject(projectId) : null;
     if (projectId && !project) throw notFound('project not found');
     const instructions = project && applyProjectInstructions ? resolveInstructions(project) : null;
+    const files = project ? (resolveProjectFiles(project) ?? []) : [];
 
     // The request identity is bound to its content: the same requestId with a
     // different profile, workspace, parent, prompt or instruction version is a
@@ -132,6 +145,9 @@ export function createSessionService({
       ...requestBody,
       instructionVersion: instructions?.version ?? null,
       instructionHash: instructions?.hash ?? null,
+      mode,
+      fast,
+      files: files.map((file) => file.sha256).sort(),
     }));
     const legacyRequestDigest = sha(JSON.stringify(requestBody));
 
@@ -141,13 +157,13 @@ export function createSessionService({
       return { session: existing, created: false };
     }
 
-    const workspace = await findWorkspace(workspaceId);
+    const workspace = workspaceId === HOME_WORKSPACE_ID ? { path: homeCwd } : await findWorkspace(workspaceId);
     if (!workspace) throw notFound('workspace not found under an allowlisted root');
     if (parentId && !sessionStore.get(parentId)) throw notFound('parent session not found');
 
     let name = body.name === undefined || body.name === null ? null : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
     const nameSource = name === null ? 'default' : 'owner';
-    if (name === null) name = `セッション ${id.slice(4, 10)}`;
+    if (name === null) name = defaultName(prompt) ?? `セッション ${id.slice(4, 10)}`;
     if (parentId && !name.startsWith(CHILD_NAME_PREFIX)) name = `${CHILD_NAME_PREFIX}${name}`;
 
     // The delegation wrapper requires the task fields; a plain chat session
@@ -157,7 +173,7 @@ export function createSessionService({
       completion: asText(body.completion ?? 'Answer the request and leave the result for the Bridge to collect.', 'completion', { max: 2000 }),
       scope: asText(body.scope ?? 'Only the assigned workspace and task; do not touch other conversations.', 'scope', { max: 2000 }),
       returnTo: asText(body.returnTo ?? 'The requesting Bridge device', 'returnTo', { max: 2000 }),
-      prompt: instructions ? composePrompt(project.id, instructions, prompt) : prompt,
+      prompt: instructions || files.length > 0 ? composePrompt(project.id, instructions, files, prompt) : prompt,
     };
 
     // The Paseo agent title: the project is what the owner recognises in the
@@ -167,7 +183,15 @@ export function createSessionService({
     // is normalised and bounded here instead of failing as a 503 downstream.
     const title = sessionTitle(project ? `${project.name}｜${name}` : name);
     const delegateRequestId = delegateIdFor(requestId);
-    const created = await adapter.create({ requestId: delegateRequestId, profile, cwd: workspace.path, task, title });
+    const created = await adapter.create({
+      requestId: delegateRequestId,
+      profile,
+      cwd: workspace.path,
+      task,
+      title,
+      ...(mode === 'bypass' ? { mode } : {}),
+      ...(fast ? { fast } : {}),
+    });
     if (typeof created?.sessionId !== 'string' || created.sessionId === '') {
       throw new BridgeError(503, 'delegation_inconsistent', 'the delegation path returned no session id');
     }
@@ -183,7 +207,12 @@ export function createSessionService({
       cwd: workspace.path,
       name,
       nameSource,
+      sentTitle: title,
       profile,
+      mode,
+      fast,
+      favorite: false,
+      archivedAt: null,
       instructionVersion: instructions?.version ?? null,
       instructionHash: instructions?.hash ?? null,
       instructionsApplied: instructions !== null,
@@ -239,9 +268,15 @@ export function createSessionService({
     const limit = parseLimit(query.limit);
     const offset = parseOffset(query.cursor);
     const projectId = query.projectId ?? null;
-    const workspaceId = query.workspaceId ? parseWorkspaceId(query.workspaceId) : null;
+    const workspaceId = query.workspaceId
+      ? (query.workspaceId === HOME_WORKSPACE_ID ? HOME_WORKSPACE_ID : parseWorkspaceId(query.workspaceId))
+      : null;
     const requestId = query.requestId ? parseRequestId(query.requestId) : null;
     const phase = query.phase ?? null;
+    // The app's list hides archived sessions and the older worktree sessions;
+    // a requestId lookup (reconcile after an unknown outcome) sees everything.
+    const scopeAll = query.scope === 'all' || requestId !== null;
+    const archivedOnly = query.archived === 'only';
     let parentId;
     if (query.parentId === 'root') parentId = null;
     else if (query.parentId !== undefined && query.parentId !== null && query.parentId !== '') parentId = parseSessionId(query.parentId);
@@ -252,6 +287,7 @@ export function createSessionService({
       .filter((record) => (requestId ? record.requestId === requestId : true))
       .filter((record) => (phase ? record.phase === phase : true))
       .filter((record) => (parentId === undefined ? true : (record.parentId ?? null) === parentId))
+      .filter((record) => scopeAll || (!isWorktree(record) && Boolean(record.archivedAt) === archivedOnly))
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || a.id.localeCompare(b.id));
 
     const page = filtered.slice(offset, offset + limit);
@@ -306,6 +342,36 @@ export function createSessionService({
         current.phase = 'running';
       }
       events.push({ type: 'session.message.sent', payload: { messageId, chars: count(text) } });
+      return events;
+    });
+    return { session: updated?.record ?? requireSession(id) };
+  }
+
+  // Bridge-side organisation only: favourites, archive and an owner rename never
+  // stop, archive or rename the Paseo agent behind the session.
+  function updateSession({ id, body = {} }) {
+    requireSession(id);
+    const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
+    const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
+    const name = body.name === undefined ? undefined : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
+    if (favorite === undefined && archived === undefined && name === undefined) {
+      throw badRequest('payload_invalid', 'favorite, archived or name is required');
+    }
+    const updated = sessionStore.update(id, (current) => {
+      const events = [];
+      if (favorite !== undefined && Boolean(current.favorite) !== favorite) {
+        current.favorite = favorite;
+        events.push({ type: 'session.favorite', payload: { favorite } });
+      }
+      if (archived !== undefined && Boolean(current.archivedAt) !== archived) {
+        current.archivedAt = archived ? new Date(now()).toISOString() : null;
+        events.push({ type: 'session.archived', payload: { archived } });
+      }
+      if (name !== undefined && (current.name !== name || current.nameSource !== 'owner')) {
+        current.name = name;
+        current.nameSource = 'owner';
+        events.push({ type: 'session.renamed', payload: { name, nameSource: 'owner' } });
+      }
       return events;
     });
     return { session: updated?.record ?? requireSession(id) };
@@ -374,6 +440,8 @@ export function createSessionService({
         projectId: original.projectId,
         parentId: original.parentId,
         name: original.name,
+        mode: MODES.has(original.mode) ? original.mode : 'default',
+        fast: original.fast === true,
       },
     });
 
@@ -489,6 +557,14 @@ export function createSessionService({
         record.runtimeVerified = status.modelCheck.runtimeVerified === true;
       }
       if (status.daemonStatus) record.daemonStatus = status.daemonStatus;
+      // Agents name their own conversation after the first answer (HQ
+      // PASEO-HERMES.md). Follow that name unless the owner chose one.
+      const title = typeof status.title === 'string' ? status.title.trim() : '';
+      if (title !== '' && title !== record.sentTitle && title !== record.name && record.nameSource !== 'owner') {
+        record.name = title.length > MAX_NAME_LENGTH ? [...title].slice(0, MAX_NAME_LENGTH).join('') : title;
+        record.nameSource = 'agent';
+        events.push({ type: 'session.renamed', payload: { name: record.name, nameSource: 'agent' } });
+      }
       if (status.stopRequestedAt) record.stopRequestedAt = new Date(status.stopRequestedAt).toISOString();
       if (phase !== record.phase) {
         events.push({ type: 'session.phase', payload: { phase, previous: record.phase, daemonStatus: record.daemonStatus } });
@@ -521,6 +597,11 @@ export function createSessionService({
       workspaceId: record.workspaceId,
       cwd: record.cwd,
       profile: record.profile,
+      mode: MODES.has(record.mode) ? record.mode : 'default',
+      fast: record.fast === true,
+      favorite: record.favorite === true,
+      archivedAt: record.archivedAt ?? null,
+      worktree: isWorktree(record),
       instructionVersion: record.instructionVersion ?? null,
       instructionHash: record.instructionHash ?? null,
       instructionsApplied: record.instructionsApplied === true,
@@ -560,6 +641,7 @@ export function createSessionService({
     getSession,
     conversation,
     sendMessage,
+    updateSession,
     stopSession,
     resumeSession,
     readEventPage,
@@ -621,9 +703,49 @@ export function sessionTitle(raw) {
 // One clearly delimited block, version and hash on the header line, then the
 // owner's own request. The body is the project's shared text verbatim; it was
 // refused at write time (or is refused above) if it could close the delimiter.
-function composePrompt(projectId, instructions, prompt) {
-  const header = `<${INSTRUCTION_TAG} project="${projectId}" version="${instructions.version}" hash="${instructions.hash}">`;
-  return `${header}\n${instructions.body}\n</${INSTRUCTION_TAG}>\n\n<user_request>\n${prompt}\n</user_request>`;
+function composePrompt(projectId, instructions, files, prompt) {
+  const blocks = [];
+  if (instructions) {
+    const header = `<${INSTRUCTION_TAG} project="${projectId}" version="${instructions.version}" hash="${instructions.hash}">`;
+    blocks.push(`${header}\n${instructions.body}\n</${INSTRUCTION_TAG}>`);
+  }
+  if (files.length > 0) {
+    // Paths only: the agent reads what it needs, so large files never inflate the prompt.
+    const lines = files.map((file) => `- ${file.name}: ${file.path}`).join('\n');
+    blocks.push(`<${FILES_TAG} project="${projectId}">\nProject reference files. Read them as needed.\n${lines}\n</${FILES_TAG}>`);
+  }
+  blocks.push(`<user_request>\n${prompt}\n</user_request>`);
+  return blocks.join('\n\n');
+}
+
+// The prompt's first line, short enough for a list row, until the agent renames
+// the session after its first answer.
+export function defaultName(prompt) {
+  const line = prompt.split('\n').map((item) => item.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim()).find((item) => item !== '');
+  if (!line) return null;
+  const graphemes = [...TITLE_SEGMENTER.segment(line)].map((item) => item.segment);
+  return graphemes.length > DEFAULT_NAME_GRAPHEMES ? `${graphemes.slice(0, DEFAULT_NAME_GRAPHEMES).join('')}…` : line;
+}
+
+export function isWorktree(record) {
+  return typeof record.cwd === 'string' && record.cwd.includes('/.paseo/worktrees/');
+}
+
+function parseMode(raw) {
+  // Bypass is always an explicit request (the app sends it as its default).
+  if (raw === undefined || raw === null) return 'default';
+  if (!MODES.has(raw)) throw badRequest('payload_invalid', 'mode must be "bypass" or "default"');
+  return raw;
+}
+
+function parseFast(raw) {
+  if (raw === undefined || raw === null) return false;
+  return parseBoolean(raw, 'fast');
+}
+
+function parseBoolean(raw, field) {
+  if (typeof raw !== 'boolean') throw badRequest('payload_invalid', `${field} must be a boolean`);
+  return raw;
 }
 
 function parseRequestId(raw) {

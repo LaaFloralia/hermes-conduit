@@ -13,7 +13,7 @@
 
 import { parseObjectBody } from './state-file.mjs';
 
-export function createSessionRoutes({ sessions }) {
+export function createSessionRoutes({ sessions, sessionOptions }) {
   async function list({ req }) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const page = await sessions.listSessions({
@@ -24,6 +24,8 @@ export function createSessionRoutes({ sessions }) {
       parentId: url.searchParams.get('parentId'),
       requestId: url.searchParams.get('requestId'),
       phase: url.searchParams.get('phase'),
+      archived: url.searchParams.get('archived'),
+      scope: url.searchParams.get('scope'),
     });
     return {
       status: 200,
@@ -54,6 +56,15 @@ export function createSessionRoutes({ sessions }) {
       key: req.headers['idempotency-key'],
     });
     return { status: 202, data: sessions.view(result.session) };
+  }
+
+  async function update({ params, rawBody }) {
+    const result = sessions.updateSession({ id: params[0], body: parseObjectBody(rawBody) });
+    return { status: 200, data: sessions.view(result.session) };
+  }
+
+  async function options() {
+    return { status: 200, data: sessionOptions() };
   }
 
   async function stop({ params }) {
@@ -115,6 +126,8 @@ export function createSessionRoutes({ sessions }) {
     { method: 'GET', path: '/v1/sessions', auth: true, scope: 'sessions:read', handler: list },
     { method: 'POST', path: '/v1/sessions', auth: true, scope: 'sessions:write', idempotent: true, handler: create },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:read', handler: detail },
+    { method: 'PATCH', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:write', idempotent: true, handler: update },
+    { method: 'GET', path: '/v1/session-options', auth: true, scope: 'sessions:read', handler: options },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/conversation$/, auth: true, scope: 'sessions:read', handler: conversation },
     {
       method: 'GET',
