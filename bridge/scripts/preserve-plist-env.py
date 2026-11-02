@@ -34,9 +34,13 @@ def main(argv):
     try:
         with open(old_path, "rb") as handle:
             previous = plistlib.load(handle)
-    except (FileNotFoundError, plistlib.InvalidFileException, ValueError):
-        # A first install, or a plist this script cannot read: keep the template.
+    except FileNotFoundError:
+        # A first install: nothing to carry, the template stands.
         return 0
+    except (plistlib.InvalidFileException, ValueError) as error:
+        # Keep the live plist as it is rather than losing settings silently.
+        print(f"cannot read the installed plist, so it was left unchanged: {error}", file=sys.stderr)
+        return 1
     kept = carried(previous)
     if not kept:
         return 0
