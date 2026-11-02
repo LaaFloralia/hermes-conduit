@@ -78,11 +78,13 @@ struct LAABrainView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                // Creation stays leading so the settings button sits where every
+                // other tab puts it (the common-position check compares frames).
                 if local.isReady {
-                    ToolbarItem(placement: .topBarTrailing) { createMenu(parent: "") }
+                    ToolbarItem(placement: .topBarLeading) { createMenu(parent: "") }
                 }
                 if !local.isSelected && (showMacSource || useBridgeFixture) && LAABrainData.available(bridge) {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .topBarLeading) {
                         Button { showCreate = true } label: { Image(systemName: "square.and.pencil") }
                             .accessibilityLabel(Text(verbatim: LAACopy.Brain.newNote))
                             .accessibilityIdentifier("laa.brain.create")

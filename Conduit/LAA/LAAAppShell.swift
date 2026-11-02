@@ -216,6 +216,30 @@ struct LAAAppShell: View {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: LAASpacing.x6) {
                                         LAATabHeading(title: LAATab.studio.title)
+                                        // Drive keeps one entry inside the five tabs: the
+                                        // Assets screen stays reachable without a sixth tab.
+                                        NavigationLink {
+                                            LAAAssetsView(onRequestSettings: onRequestSettings)
+                                        } label: {
+                                            HStack(spacing: LAASpacing.x3) {
+                                                Image(systemName: "folder")
+                                                    .foregroundStyle(LAAColor.link)
+                                                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                                    Text(verbatim: "Drive")
+                                                    Text(verbatim: "Google Driveのファイルを開く、アップロードする")
+                                                        .laaTextStyle(.secondary)
+                                                        .foregroundStyle(LAAColor.secondaryText)
+                                                }
+                                                Spacer(minLength: 0)
+                                                Image(systemName: "chevron.right")
+                                                    .foregroundStyle(LAAColor.secondaryText)
+                                            }
+                                            .padding(LAASpacing.x4)
+                                            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel(Text(verbatim: "Drive"))
+                                        .accessibilityIdentifier("studio.drive")
                                         LAAStudioHomeView()
                                     }.padding(LAASpacing.horizontal)
                                 }

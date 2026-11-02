@@ -5,6 +5,7 @@
 - Design and verify for the owner's single-screen iPhone 16 Pro Max (440 × 956 pt). The owner does not use iPhone Duo; do not test on it.
 - Simulators on this Mac: the `LAA 16 Pro Max` simulator (iOS 27.0, the owner's device) is the default for UI tests and screenshots. Keep the compact 440 × 956 pt snapshot tests, such as `LAACompactChatSnapshotTests`, and confirm on the real device through TestFlight. Do not add simulator runtimes without the parent session's approval.
 - Across the shared Mac, one `xcodebuild` runs at a time (`build-slot.sh`, `-jobs 4`, currently max 1), and its own simulator is booted only for that run and shut down immediately after testing. Check `laa-storage-guard status` and keep at least 80 GiB free.
+- Export attachments from one `xcresult` one call at a time: concurrent `xcresulttool export` runs on the same bundle race on its index and fail.
 - Keep generated output out of git: `.deriveddata*`, `*.xcresult` and `build/` never enter a commit. Stage the files you own by name instead of `git add -A` (a worktree's DerivedData sits beside the sources), and read `git diff --cached --name-only` before committing.
 - Merge one candidate at a time. Require GitHub CI and the LAA personal build on the candidate. GitHub CI selects tests with `--changed-from HEAD^1`; integration candidates also require the selected smoke tests locally with `--changed-from <master SHA>`.
 - Compare candidate and master on `LAA 16 Pro Max`; the known smoke failures are listed in the handoff's merge gate. New failures block the merge.

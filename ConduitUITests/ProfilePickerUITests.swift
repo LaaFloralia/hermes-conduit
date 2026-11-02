@@ -86,6 +86,17 @@ final class ProfilePickerUITests: XCTestCase {
         // mutation check for this test failed on exactly that mistake.) `x` comes
         // from the current row's marker and `y` from the target row's avatar, so
         // the probe is row-specific without depending on the card's bounds.
+        // Saved dashboards above the profiles can push the target row off
+        // screen; the probe must land inside the window.
+        let scroller = pickerScroller(app)
+        for _ in 0..<4 where !photoControl.isHittable {
+            scroller.swipeUp()
+        }
+        XCTAssertTrue(
+            photoControl.isHittable,
+            "The target row must be on screen for the card-body probe. Tree:\n\(app.debugDescription)"
+        )
+
         let accessorySlot = app.staticTexts[Identity.currentMarker]
         XCTAssertTrue(accessorySlot.waitForExistence(timeout: 5), "No current profile marked. Tree:\n\(app.debugDescription)")
         tapInWindow(app, at: CGPoint(x: accessorySlot.frame.maxX + 6, y: photoControl.frame.midY))
@@ -167,7 +178,11 @@ final class ProfilePickerUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@", "Move ", " later")
         )
         XCTAssertTrue(laterArrows.firstMatch.waitForExistence(timeout: 5), "Reorder arrows missing. Tree:\n\(app.debugDescription)")
-        let topArrow = laterArrows.allElementsBoundByIndex.min { $0.frame.minY < $1.frame.minY }
+        // The last row's "later" arrow is disabled: take a row that can move.
+        // Swiping the sheet down to reach the top would dismiss it.
+        let movable = laterArrows.allElementsBoundByIndex.filter { $0.isEnabled }
+        XCTAssertFalse(movable.isEmpty, "No row can move later. Tree:\n\(app.debugDescription)")
+        let topArrow = movable.min { $0.frame.minY < $1.frame.minY }
         let label = try XCTUnwrap(topArrow?.label)
         let arrow = app.buttons[label]
         XCTAssertTrue(arrow.isEnabled, "The top row must be able to move later. Tree:\n\(app.debugDescription)")
@@ -251,6 +266,16 @@ final class ProfilePickerUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 5), "Select button for \(displayName) missing. Tree:\n\(app.debugDescription)")
         return button
+    }
+
+    /// The picker is a sheet over the chat list, and both scroll: scope every
+    /// swipe to the sheet so the list behind it never moves.
+    private func pickerScroller(_ app: XCUIApplication) -> XCUIElement {
+        let sheet = app.sheets.firstMatch
+        if sheet.exists, sheet.scrollViews.firstMatch.exists { return sheet.scrollViews.firstMatch }
+        let titled = app.scrollViews.containing(.staticText, identifier: Identity.pickerTitle).firstMatch
+        if titled.exists { return titled }
+        return app.scrollViews.firstMatch
     }
 
     /// Taps an absolute point in the app's window — the card's padding has no

@@ -36,7 +36,11 @@ final class LAAFullTaskUITests: XCTestCase {
         let app = try launch(appearance)
         capture("linear-browse-" + appearance)
         app.staticTexts["Fixture task"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Fixture original"].firstMatch.waitForExistence(timeout: 20))
+        // The description is markdown: it is not always exposed as a static text,
+        // so match the exact label on any element (the screenshot shows it).
+        let description = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ OR value == %@", "Fixture original", "Fixture original")).firstMatch
+        XCTAssertTrue(description.waitForExistence(timeout: 20))
         capture("linear-detail-" + appearance)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let inbox = app.buttons["work.tasks.inbox"]
