@@ -19,7 +19,8 @@ import {
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { parseObjectBody } from './state-file.mjs';
 
-const FILE_ID = /^\/v1\/brain\/files\/(bf_[A-Za-z0-9_-]{1,400})$/;
+// A 400-character Japanese path can occupy 1,200 UTF-8 bytes before base64.
+const FILE_ID = /^\/v1\/brain\/files\/(bf_[A-Za-z0-9_-]{1,1600})$/;
 
 function parseAreas(url) {
   const values = [...url.searchParams.getAll('area')];

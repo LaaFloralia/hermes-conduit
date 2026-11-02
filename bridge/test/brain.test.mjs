@@ -272,7 +272,9 @@ test('search reuses the CLI shape, is local-only by default and filters restrict
 });
 
 test('owner UI lists and reads restricted and conflict notes without exposing hidden paths', async (t) => {
-  const { api } = await startBrain(t);
+  const { api, root } = await startBrain(t);
+  const longPath = 'Company/' + '長'.repeat(100) + '.md';
+  writeFileSync(join(root, longPath), '# Long Japanese path\n');
   const token = await api.token([...DEFAULT_SCOPES, 'brain:owner']);
   const res = await api.request('/v1/brain/files?audience=owner&limit=200', { token });
   assert.equal(res.status, 200);
@@ -284,6 +286,9 @@ test('owner UI lists and reads restricted and conflict notes without exposing hi
   const read = await api.request(`/v1/brain/files/${fileId('Inbox/Draft.md')}?audience=owner`, { token });
   assert.equal(read.status, 200);
   assert.equal(read.body.data.text, DRAFT);
+  const longRead = await api.request(`/v1/brain/files/${fileId(longPath)}?audience=owner`, { token });
+  assert.equal(longRead.status, 200);
+  assert.equal(longRead.body.data.path, longPath);
   for (const path of ['.obsidian/config.md', '.trash/deleted.md', '.hidden.md']) {
     const denied = await api.request(`/v1/brain/files/${fileId(path)}?audience=owner`, { token });
     assert.equal(denied.status, 400);
