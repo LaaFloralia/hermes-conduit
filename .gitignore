@@ -44,6 +44,7 @@ AGENTS.md
 .dsh/
 .zcode/
 /workflows/
-.test-runs/.deriveddata/
+.test-runs/
+.deriveddata/
 .deriveddata-release/
 *.xcresult
