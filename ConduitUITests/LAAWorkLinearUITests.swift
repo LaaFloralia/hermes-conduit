@@ -165,8 +165,9 @@ final class LAAWorkLinearUITests: XCTestCase {
     }
     private func selectSection(_ app: XCUIApplication, _ section: String) {
         let button = app.buttons["work.section.\(section)"]
-        let strip = app.scrollViews["work.segment"]
-        for _ in 0..<2 where button.frame.maxX > app.frame.maxX - 10 || !button.isHittable { strip.swipeLeft() }
+        // Selecting a visible middle section lets the hub's ScrollViewReader
+        // bring the right-hand sections into view before the next tap.
+        if button.frame.maxX > app.frame.maxX - 10 { app.buttons["work.section.projects"].tap() }
         button.tap()
     }
     private func attach(_ name: String) {
