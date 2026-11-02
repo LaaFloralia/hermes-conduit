@@ -37865,6 +37865,22 @@ extension AppState {
     /// profile's row in the Chats list's All view, the listed profile its
     /// tag names. A row tagged with a profile this dashboard doesn't list
     /// stays with the one in use, as before All.
+    /// A profile's unread messages, for the chat list's badge. Another
+    /// profile's rows come from the loaded All catalog, which Hermes tags with
+    /// their profile; the profile in use also has its own list. Nil while
+    /// nothing carrying that profile is loaded, so unknown never reads as 0.
+    func unreadChatCount(profile: String) -> Int? {
+        var rows = profile == activeProfile ? sessions.filter { rowProfile($0) == profile } : []
+        if allProfilesCatalog.isLoaded, allProfilesCatalog.dashboardID == activeDashboardID {
+            rows += allProfilesCatalog.sessions.filter { rowProfile($0) == profile }
+        }
+        guard !rows.isEmpty else { return nil }
+        return rows
+            .filter { !$0.isArchived }
+            .compactMap { chatReadState.unreadCount($0, profile: profile) }
+            .reduce(0, +)
+    }
+
     func rowProfile(_ session: SessionSummary) -> String {
         guard let owner = session.profile,
               !sessionBelongsToProfile(session, profile: activeProfile),

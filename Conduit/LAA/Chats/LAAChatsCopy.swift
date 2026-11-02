@@ -28,5 +28,11 @@ extension LAACopy {
     static let chatsGroupUnsupported = "この接続先はグループに対応していません。"
     static let chatsUnavailable = "Macに接続し、社員のプロフィールを確認してください。"
     static let chatsNewUnavailable = "現在は会話を作成できません。接続や処理の完了を確認してください。"
+    static let chatsCron = "定期実行"
+    static let chatsCronNone = "定期実行はありません。"
+    static let chatsCronToChat = "このチャットに届く"
+    static let chatsCronRecordOnly = "実行記録のみ（会話に残る）"
+    static let chatsCronRuns = "最近の実行"
+    static func chatsUnread(_ count: Int) -> String { "未読\(count)件" }
 }
 #endif

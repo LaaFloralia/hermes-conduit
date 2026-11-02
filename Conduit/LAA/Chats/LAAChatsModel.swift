@@ -32,6 +32,15 @@ struct LAAChatsSnapshot {
     var groupsState: LAAChatsLoadState
     var canCreateChat: Bool
     var canCreateGroup: Bool
+    /// Unread messages per profile, when the loaded list can count them.
+    var unreadByProfile: [String: Int] = [:]
+    /// The active profile's scheduled jobs and its recent cron runs.
+    var cronJobs: [CronJob] = []
+    var cronRuns: [SessionSummary] = []
+    var cronZoneLabel: String? = nil
+    /// The profile whose Hermes connection produced these jobs; a job that
+    /// runs in its own conversation belongs to it.
+    var cronProfile: String = ""
 }
 
 /// Search only what the existing Hermes catalogs have actually returned.
