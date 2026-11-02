@@ -4031,4 +4031,4 @@ Debug build exited 0 before review fixes, updated build pending. Owner-size visu
 - The parent runs the consolidated iPhone compact regression and the Mac UI tests. Physical Mac and iPhone confirmation of the three screens is pending.
 - Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column tops out at 460 UIKit points (about 354 Mac points), which no four-column row fits.
 
-**Checked:** 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
+**Checked:** 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
