@@ -25,7 +25,8 @@ final class LAABrainIndexPerformanceTests: XCTestCase {
             let first = (index + 1) % count
             let second = (index + 7) % count
             let target = "F\(first % 40)/Note \(first).md"
-            texts[path] = "# Note \(index)\n\n本文 \(index) 行\n[[Note \(first)]] と [[Note \(second)|別名]] と [[\(target)#見出し]]\n"
+            let image = index % 50 == 0 ? "\n![[photo \(index).png]]" : ""
+            texts[path] = "# Note \(index)\n\n本文 \(index) 行\n[[Note \(first)]] と [[Note \(second)|別名]] と [[\(target)#見出し]]\(image)\n"
         }
         return (files, texts)
     }
@@ -127,6 +128,45 @@ final class LAABrainIndexPerformanceTests: XCTestCase {
         XCTAssertFalse(links.isEmpty)
     }
 
+    // MARK: - The gallery's rows come from the same parser.
+
+    /// The gallery filters notes by a substring before parsing. Every way the
+    /// parser produces an image must survive that filter, and nothing else may
+    /// become a row.
+    func testGalleryRowsMatchTheNoteParserForEveryImageForm() throws {
+        let files = ["A/Wiki.md", "A/Markdown.md", "A/Fence.md", "A/Inline.md", "A/Plain.md",
+                     "A/Heading.md", "A/Footnote.md", "A/Two.md", "A/Pdf.md"].map(file)
+        let texts = [
+            "A/Wiki.md": "本文\n![[photo.png]]",
+            "A/Markdown.md": "本文\n![alt text](photo.jpg)",
+            "A/Fence.md": "本文\n```\n![[hidden.png]]\n```\n",
+            "A/Inline.md": "本文 `![[inline.png]]` だけ",
+            "A/Plain.md": "画像のないノート [[Wiki]]",
+            "A/Heading.md": "# 見出し\n![[after-heading.heic]]",
+            "A/Footnote.md": "本文[^1]\n\n[^1]: ![[note.gif]]",
+            "A/Two.md": "![[first.webp]]\n![[second.tiff]]",
+            "A/Pdf.md": "![[manual.pdf]]",
+        ]
+        let index = LAABrainIndex(files: files, read: read(texts))
+        let legacy = files.compactMap { entry -> (file: LAABrainFile, source: String)? in
+            let images = LAABrainDocument(texts[entry.path] ?? "").parts(currentPath: entry.path, files: files)
+            for part in images {
+                guard case .image(let source) = part, let spec = LAABrainEmbedSpec.parse(source) else { continue }
+                let name = spec.target.split(separator: "#").first.map(String.init) ?? ""
+                if ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"].contains(URL(fileURLWithPath: name).pathExtension.lowercased()) {
+                    return (entry, source)
+                }
+            }
+            return nil
+        }
+        let rows = LAABrainGalleryRows.items(index: index, files: files)
+        XCTAssertEqual(rows.map(\.file.path), legacy.map(\.file.path))
+        XCTAssertEqual(rows.map(\.source), legacy.map(\.source))
+        // A footnote's image stays footnote text and a fenced or inline-code
+        // embed is not an image; the parser says so, and the filter agrees.
+        XCTAssertEqual(rows.map(\.file.path), ["A/Wiki.md", "A/Markdown.md", "A/Heading.md", "A/Two.md"])
+    }
+
     // MARK: - The hang that took the app down.
 
     func testBacklinksOverAThousandNotesDoesNotRescanEveryFile() throws {
@@ -184,6 +224,12 @@ final class LAABrainIndexPerformanceTests: XCTestCase {
             if case .markdown(let text) = part { return text }
             return nil
         }.joined()
+        // The screen the owner opens next: every note of the same folder.
+        var rows: [(file: LAABrainFile, source: String)] = []
+        let gallery = duration { rows = LAABrainGalleryRows.items(index: index, files: files) }
+        print("gallery rows for \(files.count) notes: \(String(format: "%.4f", gallery))s, \(rows.count) rows")
+        XCTAssertEqual(rows.count, files.count / 50, "the gallery lost or invented rows")
+        XCTAssertLessThan(gallery, 5.0, "the gallery walks the whole folder per note")
         XCTAssertEqual(markdown.components(separatedBy: "laabrain://note/").count - 1, 200, "links were not rewritten")
         for number in 0..<200 {
             let target = "Note \(number)"

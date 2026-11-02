@@ -13,10 +13,13 @@ struct LAABrainRenderedDocument: View {
     let visited: Set<String>
     let depth: Int
     let open: (LAABrainReference) -> Void
+    /// Built once by the note screen; nil keeps the per-view lookup.
+    var lookup: LAABrainPathLookup? = nil
 
     var body: some View {
         let document = LAABrainDocument(note.text)
-        let parts = document.parts(currentPath: note.path, files: files)
+        let shared = lookup ?? (note.text.contains("[[") ? LAABrainPathLookup(files: files) : nil)
+        let parts = document.parts(currentPath: note.path, lookup: shared)
         if let frontmatter = document.frontmatter {
             DisclosureGroup {
                 ForEach(Array(document.properties.enumerated()), id: \.offset) { _, property in
@@ -52,7 +55,8 @@ struct LAABrainRenderedDocument: View {
                 LAABrainHighlight(source: source)
             case .image(let source):
                 LAABrainEmbedView(source: source, currentPath: note.path, files: files, local: local,
-                                  isLocal: isLocal, visited: visited, depth: depth, maxPixelSize: 1600, open: open)
+                                  isLocal: isLocal, visited: visited, depth: depth, maxPixelSize: 1600, open: open,
+                                  lookup: shared)
             }
         }
         let gallery = parts.compactMap { part -> String? in
@@ -66,11 +70,35 @@ struct LAABrainRenderedDocument: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: LAASpacing.x2) {
                     ForEach(Array(gallery.enumerated()), id: \.offset) { _, source in
                         LAABrainEmbedView(source: source, currentPath: note.path, files: files, local: local,
-                                          isLocal: true, visited: visited, depth: depth, maxPixelSize: 512, open: open)
+                                          isLocal: true, visited: visited, depth: depth, maxPixelSize: 512, open: open,
+                                          lookup: shared)
                             .frame(maxHeight: 160).clipped()
                     }
                 }
             }
+        }
+    }
+}
+
+/// The gallery's rows: the first image embed of every note. One lookup serves
+/// every note, so the file list is read once per gallery, not once per note.
+enum LAABrainGalleryRows {
+    static func items(index: LAABrainIndex, files: [LAABrainFile]) -> [(file: LAABrainFile, source: String)] {
+        let lookup = LAABrainPathLookup(files: files)
+        return index.entries.compactMap { entry in
+            // Only a note with an image embed can add a row. `parts` is the
+            // expensive step (it walks and matches every line), so the whole
+            // folder is filtered with one substring scan first.
+            guard entry.text.contains("![") else { return nil }
+            let images = LAABrainDocument(entry.text).parts(currentPath: entry.file.path, lookup: lookup)
+            for part in images {
+                guard case .image(let source) = part, let spec = LAABrainEmbedSpec.parse(source) else { continue }
+                let name = spec.target.split(separator: "#").first.map(String.init) ?? ""
+                if ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"].contains(URL(fileURLWithPath: name).pathExtension.lowercased()) {
+                    return (entry.file, source)
+                }
+            }
+            return nil
         }
     }
 }
@@ -84,17 +112,7 @@ struct LAABrainGalleryView: View {
     let open: (LAABrainReference) -> Void
 
     private var items: [(file: LAABrainFile, source: String)] {
-        index.entries.compactMap { entry in
-            let images = LAABrainDocument(entry.text).parts(currentPath: entry.file.path, files: files)
-            for part in images {
-                guard case .image(let source) = part, let spec = LAABrainEmbedSpec.parse(source) else { continue }
-                let name = spec.target.split(separator: "#").first.map(String.init) ?? ""
-                if ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"].contains(URL(fileURLWithPath: name).pathExtension.lowercased()) {
-                    return (entry.file, source)
-                }
-            }
-            return nil
-        }
+        LAABrainGalleryRows.items(index: index, files: files)
     }
 
     var body: some View {
@@ -177,6 +195,7 @@ private struct LAABrainEmbedView: View {
     let depth: Int
     let maxPixelSize: Int
     let open: (LAABrainReference) -> Void
+    var lookup: LAABrainPathLookup? = nil
     @State private var content: Content?
 
     private enum Content {
@@ -200,7 +219,8 @@ private struct LAABrainEmbedView: View {
                         Label { Text(verbatim: file.path) } icon: { Image(systemName: "doc.text") }
                     }
                     LAABrainRenderedDocument(note: note, files: files, local: local, isLocal: isLocal,
-                                             visited: visited.union([file.path]), depth: depth + 1, open: open)
+                                             visited: visited.union([file.path]), depth: depth + 1, open: open,
+                                             lookup: lookup)
                 }.padding(LAASpacing.x3).background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
             case .image(let image):
                 Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: .infinity)
@@ -228,7 +248,7 @@ private struct LAABrainEmbedView: View {
         let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
         let imageTypes: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"]
         if !imageTypes.contains(ext), ext != "pdf",
-           let file = LAABrainPaths.resolve(spec.target, currentPath: currentPath, files: files) {
+           let file = (lookup ?? LAABrainPathLookup(files: files)).resolve(spec.target, currentPath: currentPath) {
             guard depth < 3, !visited.contains(file.path) else { content = .unavailable("Nested or circular embed. Open the note directly."); return }
             do {
                 let note: LAABrainNote

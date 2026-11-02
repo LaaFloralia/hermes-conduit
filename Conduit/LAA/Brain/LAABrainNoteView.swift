@@ -64,7 +64,8 @@ struct LAABrainNoteView: View {
                                     Text(verbatim: "Heading not found: \(anchor)").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                                 }
                                 LAABrainRenderedDocument(note: note, files: files, local: local, isLocal: isLocal,
-                                                         visited: [note.path], depth: 0, open: { path.append(.note($0)) })
+                                                         visited: [note.path], depth: 0, open: { path.append(.note($0)) },
+                                                         lookup: LAABrainPathLookup(files: files))
                                 if isLocal, let index {
                                     relatedLinks(LAACopy.Brain.links, files: index.outgoing(from: note.path, files: files))
                                     relatedLinks(LAACopy.Brain.backlinks, files: index.backlinks(to: note.path, files: files))
