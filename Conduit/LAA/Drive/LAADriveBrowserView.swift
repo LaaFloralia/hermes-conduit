@@ -148,31 +148,43 @@ struct LAADriveBrowserView: View {
         .frame(minHeight: LAASpacing.minimumTouchTarget)
     }
 
-    private var sections: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: LAASpacing.x2) {
+    @ViewBuilder private var sections: some View {
+        if desktop {
+            LAAMacFlowLayout(spacing: LAASpacing.x2) {
                 ForEach(LAADriveBrowseSection.allCases, id: \.self) { option in
-                    Button {
-                        guard option != section else { return }
-                        section = option
-                        folders = []
-                        search = ""
-                        searchFocused = false
-                    } label: {
-                        Text(verbatim: option.title).laaTextStyle(.secondary)
-                            .fontWeight(option == section ? .semibold : .regular)
-                            .foregroundStyle(option == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
-                            .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
-                            .background(option == section ? LAAColor.filledButton : LAAColor.subtleSurface,
-                                        in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
-                            .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    sectionChip(option)
+                }
+            }
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LAASpacing.x2) {
+                    ForEach(LAADriveBrowseSection.allCases, id: \.self) { option in
+                        sectionChip(option)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(option == section ? .isSelected : [])
-                    .accessibilityIdentifier("laa.drive.browser.section.\(option.rawValue)")
                 }
             }
         }
+    }
+
+    private func sectionChip(_ option: LAADriveBrowseSection) -> some View {
+        Button {
+            guard option != section else { return }
+            section = option
+            folders = []
+            search = ""
+            searchFocused = false
+        } label: {
+            Text(verbatim: option.title).laaTextStyle(.secondary)
+                .fontWeight(option == section ? .semibold : .regular)
+                .foregroundStyle(option == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
+                .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
+                .background(option == section ? LAAColor.filledButton : LAAColor.subtleSurface,
+                            in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                .frame(minHeight: LAASpacing.minimumTouchTarget)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(option == section ? .isSelected : [])
+        .accessibilityIdentifier("laa.drive.browser.section.\(option.rawValue)")
     }
 
     private var searchField: some View {

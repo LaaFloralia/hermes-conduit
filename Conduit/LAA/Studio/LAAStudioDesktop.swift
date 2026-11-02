@@ -7,42 +7,6 @@ enum LAAStudioDesktopSelection: Hashable {
     case request(String)
 }
 
-/// A work card for the wide detail column. The grid is adaptive, so the same
-/// card is a single column in a narrow window and four in a wide one.
-struct LAAStudioDesktopWorkCard: View {
-    let project: LAAStudioProject
-    let isSelected: Bool
-    let open: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: open) {
-            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                LAAStudioThumbnail(path: project.pages.first?.preview, symbol: "doc.richtext")
-                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
-                Text(verbatim: project.title).laaTextStyle(.body).fontWeight(.semibold)
-                    .foregroundStyle(LAAColor.text).lineLimit(2).multilineTextAlignment(.leading)
-                Text(verbatim: "\(project.kind) · \(LAAWorkPresentation.date(project.syncedAt))")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
-            }
-            .padding(LAASpacing.x3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-            .overlay {
-                RoundedRectangle(cornerRadius: LAARadius.card)
-                    .strokeBorder(isSelected ? LAAColor.link : (hovering ? LAAColor.separator : Color.clear), lineWidth: 1)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(project.title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("laa.studio.work.\(project.id)")
-    }
-}
-
 /// A work or request row in the desktop list. Selection stays visible while
 /// the detail column shows it.
 struct LAAStudioDesktopRow: View {
@@ -116,39 +80,45 @@ struct LAAStudioDesktopHeader: View {
     }
 }
 
-/// Works gallery shown in the detail column before a work is chosen.
-struct LAAStudioDesktopGallery: View {
-    let projects: [LAAStudioProject]
-    let selected: String?
-    let open: (LAAStudioProject) -> Void
+/// Wraps the section chips instead of clipping them when the list column is
+/// narrower than the row.
+struct LAAMacFlowLayout: Layout {
+    var spacing: CGFloat = LAASpacing.x2
 
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x4)]
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight)
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                Text(verbatim: "作品 · \(projects.count)").laaTextStyle(.section).fontWeight(.semibold)
-                    .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
-                if projects.isEmpty {
-                    Text(verbatim: LAACopy.Studio.emptyWorks)
-                        .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
-                } else {
-                    LazyVGrid(columns: columns, spacing: LAASpacing.x4) {
-                        ForEach(projects) { project in
-                            LAAStudioDesktopWorkCard(project: project, isSelected: selected == project.id) {
-                                open(project)
-                            }
-                        }
-                    }
-                }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
             }
-            .padding(LAASpacing.x6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
         }
-        .background(LAAColor.background)
-        .accessibilityIdentifier("laa.studio.desktop.gallery")
     }
 }
+
 #endif

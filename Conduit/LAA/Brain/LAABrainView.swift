@@ -250,9 +250,9 @@ struct LAABrainView: View {
                              index: index, isPinned: pins.contains(selection.path),
                              togglePin: { togglePin(selection.path) }, path: $path,
                              autoEditPath: $autoEditPath, editorIsOpen: $editorIsOpen,
-                             showsBackButton: false, usesNavigationTitle: false)
-                .laaReadableWidth(LAADesktopMetrics.documentWidth)
-                .background(LAAColor.surface)
+                             showsBackButton: false, usesNavigationTitle: false,
+                             contentMaxWidth: LAADesktopMetrics.documentWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             LAAMacEmptyDetail(symbol: "doc.text", title: "ノートを選ぶ",
                               message: "左の一覧からノートを選ぶと、ここに本文を表示します。")

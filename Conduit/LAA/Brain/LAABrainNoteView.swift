@@ -19,6 +19,9 @@ struct LAABrainNoteView: View {
     /// title from the shell.
     var showsBackButton = true
     var usesNavigationTitle = true
+    /// The Mac detail column paints the whole column and narrows only this
+    /// card, so no second colour shows down its sides.
+    var contentMaxWidth: CGFloat? = nil
     @State private var note: LAABrainNote?
     @State private var error: LAABridgeError?
     @State private var localError: String?
@@ -77,7 +80,7 @@ struct LAABrainNoteView: View {
                         }
                     }
                     .padding(LAASpacing.horizontal)
-                    .frame(maxWidth: 720, alignment: .leading)
+                    .frame(maxWidth: contentMaxWidth ?? 720, alignment: .leading)
                     .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
                     .padding(.horizontal, LAASpacing.horizontal)
                     .frame(maxWidth: .infinity, alignment: .center)

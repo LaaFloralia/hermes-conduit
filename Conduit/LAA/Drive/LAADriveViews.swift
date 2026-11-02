@@ -110,10 +110,18 @@ struct LAADriveDetailView: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var saveMessage: String?
 
-    init(item: LAADriveItem, webViewURL: URL? = nil, images: [LAADriveItem] = []) {
+    /// The Mac detail column paints the whole column; only the content is
+    /// narrowed, so no banded background shows beside it.
+    var contentMaxWidth: CGFloat? = nil
+    var usesNavigationTitle = true
+
+    init(item: LAADriveItem, webViewURL: URL? = nil, images: [LAADriveItem] = [],
+         contentMaxWidth: CGFloat? = nil, usesNavigationTitle: Bool = true) {
         self.item = item
         self.webViewURL = webViewURL
         self.images = images
+        self.contentMaxWidth = contentMaxWidth
+        self.usesNavigationTitle = usesNavigationTitle
     }
 
     var body: some View {
@@ -170,10 +178,14 @@ struct LAADriveDetailView: View {
                         }
                     }
                 }
-            }.laaTextStyle(.body).padding(LAASpacing.horizontal).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .laaTextStyle(.body)
+            .padding(LAASpacing.horizontal)
+            .frame(maxWidth: contentMaxWidth ?? .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .background(LAAColor.background.ignoresSafeArea())
-        .navigationTitle(Text(verbatim: LAACopy.Drive.details))
+        .navigationTitle(Text(verbatim: usesNavigationTitle ? LAACopy.Drive.details : ""))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task(id: bridge.revision) { await load() }

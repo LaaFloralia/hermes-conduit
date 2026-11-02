@@ -45,6 +45,7 @@ private enum LAAStudioFilter: String, CaseIterable, Identifiable {
 
 struct LAAStudioWorkBody: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     let project: LAAStudioProject
     let snapshot: LAAStudioSnapshot?
     @State private var fetchedSnapshot: LAAStudioSnapshot?
@@ -137,15 +138,15 @@ struct LAAStudioWorkBody: View {
                 }
                 Text(verbatim: "ページと素材 · \(items.count)").laaTextStyle(.section).fontWeight(.semibold)
                 TextField(text: $search) { Text(verbatim: "名前を検索") }.studioSearchField().accessibilityIdentifier("laa.studio.item.search")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: LAASpacing.x2) {
-                        ForEach(LAAStudioFilter.allCases) { value in
-                            Button { filter = value } label: {
-                                Text(verbatim: value.rawValue).studioFilterChip(selected: filter == value)
-                            }.buttonStyle(.plain).accessibilityAddTraits(filter == value ? .isSelected : [])
-                        }
+                if laaDesktop {
+                    LAAMacFlowLayout(spacing: LAASpacing.x2) {
+                        filterChips
                     }
-                }.scrollClipDisabled()
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: LAASpacing.x2) { filterChips }
+                    }.scrollClipDisabled()
+                }
                 if items.isEmpty { Text(verbatim: "表示できるページや素材はありません。").foregroundStyle(LAAColor.secondaryText) }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in itemLink(item, index: index, items: items) }
             }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
@@ -154,6 +155,14 @@ struct LAAStudioWorkBody: View {
             .task(id: bridge.revision) { await load() }.refreshable { await load() }
             .onAppear { refreshDisplacedDrafts(); if detail != nil { Task { await load() } } }
     }
+    @ViewBuilder private var filterChips: some View {
+        ForEach(LAAStudioFilter.allCases) { value in
+            Button { filter = value } label: {
+                Text(verbatim: value.rawValue).studioFilterChip(selected: filter == value)
+            }.buttonStyle(.plain).accessibilityAddTraits(filter == value ? .isSelected : [])
+        }
+    }
+
     private var delivery: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             Text(verbatim: LAACopy.Studio.deliverables.uppercased()).laaTextStyle(.section).fontWeight(.semibold)

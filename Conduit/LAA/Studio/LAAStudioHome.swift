@@ -206,10 +206,6 @@ struct LAAStudioHomeView: View {
             LAAStudioRequestView(initial: record,
                                  initialProject: snapshot?.projects.first { $0.id == record.request.projectId })
                 .laaReadableWidth(LAADesktopMetrics.documentWidth)
-        } else if let snapshot {
-            LAAStudioDesktopGallery(projects: desktopProjects(snapshot), selected: nil) {
-                desktopSelection = .work($0.id)
-            }
         } else {
             LAAMacEmptyDetail(symbol: "square.stack.3d.up", title: "作品を選ぶ",
                               message: "左の一覧から作品を選ぶと、ここに詳細とプレビューを表示します。")

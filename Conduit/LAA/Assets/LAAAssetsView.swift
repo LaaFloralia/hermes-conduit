@@ -130,8 +130,10 @@ struct LAAAssetsView: View {
         if let desktopSelected {
             LAADriveDetailView(item: desktopSelected.entry.item,
                                webViewURL: desktopSelected.entry.safeWebViewURL,
-                               images: desktopSelected.images)
-                .laaReadableWidth(LAADesktopMetrics.documentWidth)
+                               images: desktopSelected.images,
+                               contentMaxWidth: LAADesktopMetrics.documentWidth,
+                               usesNavigationTitle: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             LAAMacEmptyDetail(symbol: "folder", title: "ファイルを選ぶ",
                               message: "左の一覧からファイルを選ぶと、ここにプレビューと情報を表示します。")
