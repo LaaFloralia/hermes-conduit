@@ -15,6 +15,10 @@ struct LAABrainNoteView: View {
     @Binding var path: [LAABrainRoute]
     @Binding var autoEditPath: String?
     @Binding var editorIsOpen: Bool
+    /// The Mac detail column has no list to go back to and takes the window
+    /// title from the shell.
+    var showsBackButton = true
+    var usesNavigationTitle = true
     @State private var note: LAABrainNote?
     @State private var error: LAABridgeError?
     @State private var localError: String?
@@ -80,14 +84,18 @@ struct LAABrainNoteView: View {
                     .foregroundStyle(LAAColor.text)
                 }
             }
-            .navigationTitle(Text(verbatim: reference.path.split(separator: "/").last.map(String.init) ?? reference.path))
+            .navigationTitle(Text(verbatim: usesNavigationTitle
+                                    ? (reference.path.split(separator: "/").last.map(String.init) ?? reference.path)
+                                    : ""))
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { if !path.isEmpty { path.removeLast() } } label: {
-                        Label { Text(verbatim: LAACopy.Brain.back) } icon: { Image(systemName: "chevron.left") }
-                    }.accessibilityIdentifier("laa.brain.back")
+                if showsBackButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { if !path.isEmpty { path.removeLast() } } label: {
+                            Label { Text(verbatim: LAACopy.Brain.back) } icon: { Image(systemName: "chevron.left") }
+                        }.accessibilityIdentifier("laa.brain.back")
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showQuickSwitch = true } label: { Image(systemName: "doc.text.magnifyingglass") }

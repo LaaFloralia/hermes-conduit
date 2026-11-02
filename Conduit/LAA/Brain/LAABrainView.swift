@@ -17,7 +17,10 @@ struct LAABrainView: View {
     @StateObject private var local = LAABrainLocalVault()
     @ObservedObject private var dailyRequest = LAABrainDailyRequest.shared
     let onRequestSettings: () -> Void
+    @Environment(\.laaDesktop) private var laaDesktop
     @State private var path: [LAABrainRoute] = []
+    @State private var desktopSelection: LAABrainReference?
+    @State private var desktopFolder = ""
     @State private var dailyOpening = false
     @State private var autoEditPath: String?
     @State private var editorIsOpen = false
@@ -51,6 +54,14 @@ struct LAABrainView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
+            Group {
+            if laaDesktop {
+                desktopBody
+                    .navigationTitle("")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(.hidden, for: .navigationBar)
+                    .toolbar { desktopToolbar }
+            } else {
             ZStack {
                 LAAColor.background.ignoresSafeArea()
                 ScrollView {
@@ -93,6 +104,8 @@ struct LAABrainView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     LAASettingsButton(action: onRequestSettings)
                 }
+            }
+            }
             }
             .navigationDestination(for: LAABrainRoute.self) { route in
                 switch route {
@@ -173,6 +186,149 @@ struct LAABrainView: View {
         editorIsOpen || localCreate != nil || showCreate || showRecovery || showPairing || chooseFolder
     }
 
+    // MARK: Desktop (Mac) list and detail
+
+    /// The Mac shell gives this screen the whole detail column. The list keeps
+    /// the phone's search, source and folder browsing; choosing a note fills
+    /// the reading column instead of pushing the list away.
+    private var desktopBody: some View {
+        LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
+            desktopList
+        } detail: {
+            desktopDetail
+        }
+        .background(LAAColor.background.ignoresSafeArea())
+        .background {
+            LAABrainDesktopShortcuts(search: { searchFocused = true },
+                                     reload: { Task { await load() } },
+                                     create: createFromKeyboard)
+        }
+    }
+
+    private var desktopList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            LAABrainDesktopHeader(
+                subtitle: local.isSelected ? nil : LAACopy.Brain.subtitle,
+                canCreate: false,
+                canRefresh: true,
+                isRefreshing: isLoading,
+                create: {},
+                refresh: { Task { await load() } }
+            )
+            .padding(.horizontal, LAASpacing.x4)
+            .padding(.top, LAASpacing.x4)
+            ScrollView {
+                LAAMacKeyboardList(count: desktopNotes.count,
+                                  selectedIndex: desktopNotes.firstIndex { $0.path == desktopSelection?.path },
+                                  move: { index in
+                                      guard desktopNotes.indices.contains(index) else { return }
+                                      desktopSelection = LAABrainReference(file: desktopNotes[index], includeInbox: includeInbox)
+                                  },
+                                  open: {}) {
+                    VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                        sourceSelector
+                        if local.isSelected {
+                            if local.state == .needsAccess { localAccessView } else { localBrowser }
+                        } else if showMacSource || useBridgeFixture {
+                            if LAABrainData.available(bridge) { browser } else { connectionView }
+                        } else {
+                            localIntroduction
+                        }
+                    }
+                    .padding(.horizontal, LAASpacing.x4)
+                    .padding(.vertical, LAASpacing.x4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder private var desktopDetail: some View {
+        if let selection = desktopSelection {
+            LAABrainNoteView(reference: selection, files: files, local: local, isLocal: local.isReady,
+                             index: index, isPinned: pins.contains(selection.path),
+                             togglePin: { togglePin(selection.path) }, path: $path,
+                             autoEditPath: $autoEditPath, editorIsOpen: $editorIsOpen,
+                             showsBackButton: false, usesNavigationTitle: false)
+                .laaReadableWidth(LAADesktopMetrics.documentWidth)
+                .background(LAAColor.surface)
+        } else {
+            LAAMacEmptyDetail(symbol: "doc.text", title: "ノートを選ぶ",
+                              message: "左の一覧からノートを選ぶと、ここに本文を表示します。")
+        }
+    }
+
+    @ToolbarContentBuilder private var desktopToolbar: some ToolbarContent {
+        if local.isReady {
+            ToolbarItem(placement: .topBarLeading) { createMenu(parent: desktopFolder) }
+        }
+        if !local.isSelected && (showMacSource || useBridgeFixture) && LAABrainData.available(bridge) {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showCreate = true } label: { Image(systemName: "square.and.pencil") }
+                    .accessibilityLabel(Text(verbatim: LAACopy.Brain.newNote))
+                    .accessibilityIdentifier("laa.brain.create")
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            LAASettingsButton(action: onRequestSettings)
+        }
+    }
+
+    private var desktopActions: LAABrainDesktopActions? {
+        guard laaDesktop else { return nil }
+        return LAABrainDesktopActions(
+            selectedPath: desktopSelection?.path ?? "",
+            folder: desktopFolder,
+            select: { desktopSelection = $0 },
+            openFolder: { desktopFolder = $0 }
+        )
+    }
+
+    private func createFromKeyboard() {
+        if local.isReady {
+            localCreate = LAABrainLocalCreateTarget(parent: desktopFolder, kind: .note)
+        } else if LAABrainData.available(bridge) {
+            showCreate = true
+        }
+    }
+
+    /// Rows the keyboard moves through, in the order the list shows them.
+    private var desktopNotes: [LAABrainFile] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !term.isEmpty {
+            return hits.compactMap { hit in files.first { $0.path == hit.path } }
+        }
+        let browsingLocal = local.isSelected
+        let currentMode = browsingLocal ? localMode : mode
+        switch currentMode {
+        case 0:
+            return files.sorted { $0.modifiedAt > $1.modifiedAt }
+        case 2:
+            guard let selectedTag else { return [] }
+            return index?.files(tag: selectedTag) ?? []
+        case 3:
+            return files.filter { $0.conflictOriginalPath != nil }
+        default:
+            return files.filter { $0.folder == desktopFolder }
+                .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        }
+    }
+
+    /// Feed the phone's route into the column that is showing it.
+    private func showBrainRoute(_ route: LAABrainRoute?) {
+        guard laaDesktop else {
+            path = route.map { [$0] } ?? []
+            return
+        }
+        switch route {
+        case .note(let reference): desktopSelection = reference
+        case .folder(let folder): desktopFolder = folder; mode = 1
+        case nil: desktopSelection = nil
+        }
+        path = []
+    }
+
     @MainActor private func openDailyIfPossible() {
         guard let request = dailyRequest.id, local.isReady, !dailyOpening, !dailyBlocked,
               let root = try? local.snapshot() else { return }
@@ -187,7 +343,7 @@ struct LAABrainView: View {
                 guard !dailyBlocked else { return }
                 guard (try? local.snapshot()) == root else { openDailyIfPossible(); return }
                 autoEditPath = dailyPath
-                path = [.note(LAABrainReference(path: dailyPath, includeInbox: true))]
+                showBrainRoute(.note(LAABrainReference(path: dailyPath, includeInbox: true)))
                 localError = nil
                 dailyRequest.consume(request)
             } catch {
@@ -196,7 +352,7 @@ struct LAABrainView: View {
                 guard !dailyBlocked else { return }
                 guard (try? local.snapshot()) == root else { openDailyIfPossible(); return }
                 localError = AppLocalization.string("今日のノートを開けません。フォルダとノートを確認してください。")
-                path = []
+                showBrainRoute(nil)
                 dailyRequest.consume(request)
             }
         }
@@ -293,6 +449,10 @@ struct LAABrainView: View {
                 else if localMode == 2 { tagBrowser }
                 else if localMode == 3 { conflictBrowser }
                 else if localMode == 4 { galleryBrowser }
+                else if laaDesktop {
+                    LAABrainDesktopBreadcrumb(folder: desktopFolder) { desktopFolder = $0 }
+                    folderContents(desktopFolder)
+                }
                 else { folderContents("") }
             }
         }.foregroundStyle(LAAColor.text)
@@ -388,8 +548,12 @@ struct LAABrainView: View {
                 conflictBrowser
             } else {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    sectionHeading(LAACopy.Brain.folders)
-                    folderContents("")
+                    if laaDesktop {
+                        LAABrainDesktopBreadcrumb(folder: desktopFolder) { desktopFolder = $0 }
+                    } else {
+                        sectionHeading(LAACopy.Brain.folders)
+                    }
+                    folderContents(laaDesktop ? desktopFolder : "")
                 }
             }
         }
@@ -504,16 +668,20 @@ struct LAABrainView: View {
         }
     }
 
-    private func folderLink(_ name: String, parent: String) -> some View {
+    @ViewBuilder private func folderLink(_ name: String, parent: String) -> some View {
         let child = parent.isEmpty ? name : parent + "/" + name
-        return NavigationLink(value: LAABrainRoute.folder(child)) {
-            HStack(spacing: LAASpacing.x3) {
-                Image(systemName: "folder").foregroundStyle(LAAColor.link)
-                Text(verbatim: name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                Spacer(minLength: 0)
-            }.padding(LAASpacing.x4).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-        }.buttonStyle(.plain)
+        if let desktop = desktopActions {
+            LAABrainDesktopFolderRow(name: name) { desktop.openFolder(child) }
+        } else {
+            NavigationLink(value: LAABrainRoute.folder(child)) {
+                HStack(spacing: LAASpacing.x3) {
+                    Image(systemName: "folder").foregroundStyle(LAAColor.link)
+                    Text(verbatim: name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                    Spacer(minLength: 0)
+                }.padding(LAASpacing.x4).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                    .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            }.buttonStyle(.plain)
+        }
     }
 
     private func folderNames(_ folder: String) -> [String] {
@@ -538,22 +706,30 @@ struct LAABrainView: View {
         ForEach(notes) { file in noteLink(file) }
     }
 
-    private func noteLink(_ file: LAABrainFile) -> some View {
-        NavigationLink(value: LAABrainRoute.note(LAABrainReference(file: file, includeInbox: includeInbox))) {
-            HStack(alignment: .top, spacing: LAASpacing.x4) {
-                Image(systemName: "doc.text").foregroundStyle(LAAColor.link)
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: file.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                    if !local.isReady { Text(verbatim: file.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                    if file.conflictOriginalPath != nil { Text(verbatim: local.isReady ? "競合コピー" : "Sync conflict").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                    if file.unreadable != nil { Text(verbatim: "本文を読み込めません").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+    @ViewBuilder private func noteLink(_ file: LAABrainFile) -> some View {
+        let reference = LAABrainReference(file: file, includeInbox: includeInbox)
+        if let desktop = desktopActions {
+            LAABrainDesktopNoteRow(file: file, isSelected: desktop.selectedPath == file.path,
+                                   showsPath: !local.isReady, isPinned: pins.contains(file.path),
+                                   open: { desktop.select(reference) },
+                                   togglePin: { togglePin(file.path) })
+        } else {
+            NavigationLink(value: LAABrainRoute.note(reference)) {
+                HStack(alignment: .top, spacing: LAASpacing.x4) {
+                    Image(systemName: "doc.text").foregroundStyle(LAAColor.link)
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                        Text(verbatim: file.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                        if !local.isReady { Text(verbatim: file.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                        if file.conflictOriginalPath != nil { Text(verbatim: local.isReady ? "競合コピー" : "Sync conflict").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+                        if file.unreadable != nil { Text(verbatim: "本文を読み込めません").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+                    }
+                    Spacer(minLength: 0)
+                    if !local.isReady { Text(verbatim: String(file.modifiedAt.prefix(10))).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                 }
-                Spacer(minLength: 0)
-                if !local.isReady { Text(verbatim: String(file.modifiedAt.prefix(10))).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-            }
-            .padding(.vertical, LAASpacing.x3).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .overlay(alignment: .top) { LAAColor.separator.frame(height: 1) }
-        }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.note")
+                .padding(.vertical, LAASpacing.x3).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                .overlay(alignment: .top) { LAAColor.separator.frame(height: 1) }
+            }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.note")
+        }
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -563,13 +739,30 @@ struct LAABrainView: View {
         else {
             Text(verbatim: local.isReady ? "Search results" : "検索結果（最大10件）").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             ForEach(hits) { hit in
-                NavigationLink(value: LAABrainRoute.note(LAABrainReference(path: hit.path, includeInbox: includeInbox))) {
-                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        Text(verbatim: hit.path).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                        if !hit.section.isEmpty { Text(verbatim: hit.section).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                        Text(verbatim: hit.text).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(4)
-                    }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.searchResult")
+                if let desktop = desktopActions {
+                    Button { desktop.select(LAABrainReference(path: hit.path, includeInbox: includeInbox)) } label: {
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            Text(verbatim: hit.path).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
+                            if !hit.section.isEmpty { Text(verbatim: hit.section).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                            Text(verbatim: hit.text).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(4)
+                        }
+                        .padding(.horizontal, LAASpacing.x3)
+                        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                        .background(desktop.selectedPath == hit.path ? LAAColor.selectionFill : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityIdentifier("laa.brain.searchResult")
+                        .help(hit.path)
+                } else {
+                    NavigationLink(value: LAABrainRoute.note(LAABrainReference(path: hit.path, includeInbox: includeInbox))) {
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            Text(verbatim: hit.path).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
+                            if !hit.section.isEmpty { Text(verbatim: hit.section).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                            Text(verbatim: hit.text).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(4)
+                        }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                    }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.searchResult")
+                }
             }
         }
         if local.isReady, let index, index.unreadableCount > 0 {
