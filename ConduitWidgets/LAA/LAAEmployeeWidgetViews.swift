@@ -132,18 +132,19 @@ struct LAAEmployeeWidgetView: View {
                             .frame(width: geometry.size.height, height: geometry.size.height)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                             .accessibilityHidden(true)
-                        Text(verbatim: LAAWidgetEmployee.ciel.name).font(LAAType.employeeName)
-                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                        HStack(spacing: LAASpacing.x2) {
+                            companyIcon
+                            Text(verbatim: LAAWidgetEmployee.ciel.name).font(LAAType.employeeName)
+                                .foregroundStyle(LAAColor.text).lineLimit(1)
+                        }
                     }
                 }
+                // Bare symbols, like the system's own widget controls: a
+                // filled plate reads as a hazy glow on tinted and clear Home
+                // Screens.
                 HStack(spacing: LAASpacing.x2) {
-                    iconAction(entry.mediumCall.url, symbol: "phone.fill", label: LAACopy.widgetCall, primary: true)
-                    iconAction(entry.mediumChat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat, primary: false)
-                }
-                if let caption = Self.observationText(entry.usage, at: renderedAt) {
-                    Text(verbatim: caption).font(.system(size: 10)).monospacedDigit()
-                        .foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(1).minimumScaleFactor(0.8)
+                    iconAction(entry.mediumCall.url, symbol: "phone.fill", label: LAACopy.widgetCall)
+                    iconAction(entry.mediumChat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -155,11 +156,30 @@ struct LAAEmployeeWidgetView: View {
         .dynamicTypeSize(...DynamicTypeSize.accessibility3)
     }
 
+    private var companyIcon: some View {
+        Group {
+            #if LAA_WIDGET_TEST
+            let image = Image("LAAWidgetCompanyIcon", bundle: Bundle(for: LAAWidgetTestResources.self))
+            #else
+            let image = Image("LAAWidgetCompanyIcon")
+            #endif
+            if #available(iOS 18.0, *) {
+                image.resizable().widgetAccentedRenderingMode(.accentedDesaturated)
+            } else {
+                image.resizable()
+            }
+        }
+        .scaledToFit()
+        .frame(width: 24, height: 24)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .accessibilityLabel(Text(verbatim: LAACopy.widgetBrand))
+    }
+
     @ViewBuilder
     private var usageSummary: some View {
         let meters = entry.usage?.meters ?? []
         // The rows are already in the owner's priority order: show as many as
-        // fit, from the top. The observation time lives below the action buttons.
+        // fit, from the top.
         ViewThatFits(in: .vertical) {
             usageList(meters: meters, limit: 8)
             usageList(meters: meters, limit: 7)
@@ -204,13 +224,6 @@ struct LAAEmployeeWidgetView: View {
         .accessibilityLabel(hasValue ? "\(meter.label), \(Self.valueText(meter)), \(Self.timeText(meter.observedAt!, at: renderedAt))" : "\(meter.label), 未取得")
     }
 
-    static func observationText(_ usage: WidgetUsageSnapshot?, at date: Date) -> String? {
-        let times = (usage?.meters ?? []).filter { $0.hasRecordedValue(at: date) }.compactMap(\.observedAt)
-        guard let oldest = times.min() else { return nil }
-        let mixed = times.max().map { $0.timeIntervalSince(oldest) >= 60 } ?? false
-        return (mixed ? "最古 " : "") + timeText(oldest, at: date)
-    }
-
     static func timeText(_ observation: Date, at date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
@@ -235,20 +248,12 @@ struct LAAEmployeeWidgetView: View {
         return value.formatted(.number.precision(.fractionLength(0...2))) + "%"
     }
 
-    private func iconAction(_ url: URL, symbol: String, label: String, primary: Bool) -> some View {
+    private func iconAction(_ url: URL, symbol: String, label: String) -> some View {
         Link(destination: url) {
-            Image(systemName: symbol).laaTextStyle(.body).fontWeight(.semibold)
+            Image(systemName: symbol).font(.title3).fontWeight(.semibold)
+                .foregroundStyle(LAAColor.link)
                 .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
-                .foregroundStyle(effectiveRenderingMode == .fullColor && primary ? LAAColor.filledButtonText : LAAColor.link)
-                .background {
-                    if effectiveRenderingMode == .fullColor {
-                        RoundedRectangle(cornerRadius: LAARadius.control)
-                            .fill(primary ? LAAColor.filledButton : LAAColor.subtleSurface)
-                    } else {
-                        RoundedRectangle(cornerRadius: LAARadius.control)
-                            .fill(LAAColor.text.opacity(primary ? 0.24 : 0.14))
-                    }
-                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Ciel, \(label)")

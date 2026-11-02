@@ -449,7 +449,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and settings: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/Settings/LAAMacSettingsCard.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`, `Conduit/Views/AuxiliaryViews.swift`
-- Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
+- Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `Conduit/LAA/Design/LAAGlass.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
@@ -464,7 +464,11 @@ App Store build · the Bridge API, Brain and Usage data contracts
   system tab bar. The other tabs remain accessible while Hermes is unpaired.
   Design v2 uses English top-level labels, retaining the `source` identifier.
   iOS 26+ uses the system Liquid Glass tab bar; earlier versions use Material
-  or an opaque surface when Reduce Transparency is on. For the Conduit
+  or an opaque surface when Reduce Transparency is on. Chats, Today, Brain and
+  Studio share one heading (LAA over a Georgia title) under a bare bar whose
+  buttons are system glass; their search fields, filter chips and action
+  buttons are standard glass (`Conduit/LAA/Design/LAAGlass.swift`), while rows, cards and note
+  bodies stay opaque. For the Conduit
   notifier only, LAA shows version and connection as read-only status and
   suppresses update prompts and actions in the shell, Settings and plugin
   catalog; the server decides updates. The Conduit finish-setup card is also
@@ -590,7 +594,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
+**Checked:** 2026-11-02, laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 
 ## LAA Work tab
 
@@ -3751,19 +3755,19 @@ and rollback instructions · the upstream App Store build
 
 **Code**
 - Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
-- Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
+- Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/Resources/LAAStaff.xcassets/LAAWidgetCompanyIcon.imageset/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
 - Snapshot reload and notice: `Shared/Widgets/WidgetSnapshot.swift`, `Shared/Widgets/WidgetSnapshotStore.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows Ciel's call and chat icons beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen keeps its last fetched snapshot stable until explicit refresh; automatic shell refresh is suspended while it is visible. WidgetKit controls subsequent timeline delivery.
+- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows the LAA company icon and Ciel's name above Ciel's bare call and chat icons (no plate or glow behind them, no observation time), beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen keeps its last fetched snapshot stable until explicit refresh; automatic shell refresh is suspended while it is visible. WidgetKit controls subsequent timeline delivery.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
+**Checked:** 2026-11-02, laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 
@@ -3796,6 +3800,7 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAChatsTests.swift`, `ConduitUITests/LAAChatsUITests.swift`, `Conduit/LAA/Chats/LAAChatsFixtureView.swift`
 
 **Rulings**
+- New chat and Settings share one glass in the navigation bar and search is a glass capsule; rows stay opaque (2026-11-02).
 - The LAA list shows Ciel, every available employee and every hosted room, none folded behind a See all; it has no Recent section (the owner, 2026-11-02; conversations are in Work › Sessions). A room's icon overlaps its members' faces. Employee taps use the widget's saved-or-latest chat route; room taps keep their existing identity. Search covers names, roles, rooms and room members, and distinguishes an incomplete room read from no matches.
 - Show no invented unread counts or activity. The creation actions use existing Hermes flows; unavailable actions are disabled and their reason is available. Conduit's upstream list remains unchanged.
 
@@ -3804,7 +3809,7 @@ and rollback instructions · the upstream App Store build
 - The LAA redesign does not expose the upstream list's filters, full-text message search, archived sheet, pin ordering, project and artifact controls on this screen. The existing underlying records and links are retained.
 - Dynamic Type, VoiceOver, reduced transparency, small screens, and the employee and group routes require physical iPhone verification.
 
-**Checked:** 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
+**Checked:** 2026-11-02, laa/glass (bar and search glass); 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
 
 ## LAA v2 chat presentation
 

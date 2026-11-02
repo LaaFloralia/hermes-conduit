@@ -212,7 +212,7 @@ struct LAABrainView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Text("SyncTrainで同期しているBrainフォルダを選んでください。")
             Button("フォルダを選ぶ") { chooseFolder = true }
-                .buttonStyle(.borderedProminent).accessibilityIdentifier("laa.brain.chooseFolder")
+                .laaGlassButton(prominent: true).accessibilityIdentifier("laa.brain.chooseFolder")
             Button("Mac接続で開く") { showMacSource = true }.laaTextStyle(.secondary)
                 .accessibilityIdentifier("laa.brain.openMac")
             if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
@@ -263,7 +263,7 @@ struct LAABrainView: View {
                 }
             }
             .padding(.horizontal, LAASpacing.x4).frame(minHeight: LAASpacing.minimumTouchTarget)
-            .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .laaGlass(in: Capsule())
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchResults
             } else if localReadFailed {
@@ -318,16 +318,13 @@ struct LAABrainView: View {
     private var localAccessView: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: LAABrainVaultError.access.message).foregroundStyle(LAAColor.attention)
-            Button("フォルダを選ぶ") { chooseFolder = true }.buttonStyle(.borderedProminent)
+            Button("フォルダを選ぶ") { chooseFolder = true }.laaGlassButton(prominent: true)
         }
     }
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
-            Text(verbatim: LAACopy.Brain.title).font(LAAType.screenTitle)
-                .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("laa.brain.title")
+            LAATabHeading(title: LAACopy.Brain.title, identifier: "laa.brain.title")
             if !local.isSelected && (showMacSource || useBridgeFixture) {
                 Text(verbatim: LAACopy.Brain.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
@@ -350,7 +347,7 @@ struct LAABrainView: View {
             .laaTextStyle(.body)
             .padding(.horizontal, LAASpacing.x4)
             .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .laaGlass(in: Capsule())
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: LAASpacing.x2) {
                     chip(LAACopy.Brain.recent, selected: mode == 0) { mode = 0 }
@@ -362,6 +359,7 @@ struct LAABrainView: View {
                     }
                 }
             }
+            .scrollClipDisabled()
             if !local.isReady {
                 Text(verbatim: LAACopy.Brain.tagsUnavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
@@ -417,13 +415,13 @@ struct LAABrainView: View {
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
+            // The same glass pills as Work's sections.
             Text(verbatim: title).laaTextStyle(.secondary).fontWeight(selected ? .semibold : .regular)
-                .foregroundStyle(selected ? LAAColor.filledButtonText : LAAColor.secondaryText)
-                .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
-                .background(selected ? LAAColor.filledButton : LAAColor.subtleSurface,
-                            in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
+                .padding(.horizontal, LAASpacing.x4)
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
         }.buttonStyle(.plain)
+            .laaGlass(in: Capsule(), selected: selected)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -439,7 +437,7 @@ struct LAABrainView: View {
                  "この端末の接続が無効になりました。新しいコードで接続してください。" : LAACopy.bridgeNotPairedBody)
             if bridge.status != .keychainError {
                 Button { showPairing = true } label: { Text(verbatim: LAACopy.Brain.connect) }
-                    .buttonStyle(.borderedProminent).accessibilityIdentifier("laa.bridge.openPairing")
+                    .laaGlassButton(prominent: true).accessibilityIdentifier("laa.bridge.openPairing")
             }
         }.laaTextStyle(.body).foregroundStyle(LAAColor.text)
     }

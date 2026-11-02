@@ -11,14 +11,11 @@ final class LAAStudioUITests: XCTestCase {
         _ = try helper("reset")
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
         app.launch()
-        XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
-        let studio = app.scrollViews.buttons["Studio"].firstMatch
-        XCTAssertTrue(studio.waitForExistence(timeout: 30)); studio.tap()
         let connect = app.buttons["laa.studio.pair"]
-        XCTAssertTrue(connect.waitForExistence(timeout: 10)); connect.tap()
+        XCTAssertTrue(connect.waitForExistence(timeout: 30)); connect.tap()
         let address = app.textFields["laa.bridge.address"]
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         XCTAssertEqual(address.value as? String, "http://127.0.0.1:19582")
@@ -107,13 +104,11 @@ final class LAAStudioUITests: XCTestCase {
         _ = try helper("mode/v2")
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
         app.launch()
-        XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
-        XCTAssertTrue(app.scrollViews.buttons["Studio"].firstMatch.waitForExistence(timeout: 30)); app.scrollViews.buttons["Studio"].firstMatch.tap()
         let connect = app.buttons["laa.studio.pair"]
-        XCTAssertTrue(connect.waitForExistence(timeout: 10)); connect.tap()
+        XCTAssertTrue(connect.waitForExistence(timeout: 30)); connect.tap()
         let address = app.textFields["laa.bridge.address"]
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         XCTAssertEqual(address.value as? String, "http://127.0.0.1:19582")
@@ -161,12 +156,10 @@ final class LAAStudioUITests: XCTestCase {
         _ = try helper("reset"); _ = try helper("mode/v2")
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
         app.launch()
-        XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
-        XCTAssertTrue(app.scrollViews.buttons["Studio"].firstMatch.waitForExistence(timeout: 30)); app.scrollViews.buttons["Studio"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 10)); app.buttons["laa.studio.pair"].tap()
+        XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 30)); app.buttons["laa.studio.pair"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]
@@ -221,12 +214,10 @@ final class LAAStudioUITests: XCTestCase {
         _ = try helper("reset"); _ = try helper("mode/v2-document-wait")
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
         app.launch()
-        XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
-        XCTAssertTrue(app.scrollViews.buttons["Studio"].firstMatch.waitForExistence(timeout: 30)); app.scrollViews.buttons["Studio"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 10)); app.buttons["laa.studio.pair"].tap()
+        XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 30)); app.buttons["laa.studio.pair"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]

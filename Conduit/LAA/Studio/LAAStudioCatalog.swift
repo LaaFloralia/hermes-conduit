@@ -43,12 +43,11 @@ struct LAAStudioCatalogView: View {
                     HStack(spacing: LAASpacing.x2) {
                         ForEach(categories, id: \.self) { item in
                             Button { category = item } label: {
-                                Text(verbatim: item).frame(minHeight: LAASpacing.minimumTouchTarget).padding(.horizontal, LAASpacing.x3)
-                                    .background(category == item ? LAAColor.subtleSurface : .clear, in: Capsule())
-                            }.accessibilityAddTraits(category == item ? .isSelected : [])
+                                Text(verbatim: item).studioFilterChip(selected: category == item)
+                            }.buttonStyle(.plain).accessibilityAddTraits(category == item ? .isSelected : [])
                         }
                     }
-                }
+                }.scrollClipDisabled()
                 ForEach(catalog.documents.filter { category == "All" || $0.category == category }) { document in
                     NavigationLink { LAAStudioDocumentView(document: document) } label: {
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
@@ -97,8 +96,8 @@ private struct LAAStudioPrincipleView: View {
                     LAAStudioCreateView(snapshot: snapshot, draftID: LAAStudioDraftStore.principleDraftID(principle.id),
                                         initialPrinciple: principle.requestPrinciple)
                 } label: {
-                    Text(verbatim: "この原則で始める").frame(minHeight: LAASpacing.minimumTouchTarget)
-                }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                    Text(verbatim: "この原則で始める")
+                }.laaGlassButton(prominent: true)
                 heading("色")
                 ForEach(Array(principle.colors.enumerated()), id: \.offset) { _, color in
                     HStack(alignment: .top, spacing: LAASpacing.x3) {

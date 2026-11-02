@@ -195,7 +195,7 @@ struct LAABrainSaveEditor: View {
                 }
                 versionPanel("自分の下書き", text: conflict.draft)
                 Button("自分の下書きで続ける") { Task { await resolve(using: conflict.draft) } }
-                    .buttonStyle(.borderedProminent)
+                    .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("laa.brain.conflict.useDraft")
                 if let other = conflict.other {
                     Button("別の内容で続ける") { Task { await resolve(using: other) } }
@@ -478,7 +478,7 @@ private struct BrainHistoryDetail: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let use {
                             Button("下書きとして使う") { use(version) }
-                                .buttonStyle(.borderedProminent).disabled(!canUse || restoring)
+                                .laaGlassButton(prominent: true).disabled(!canUse || restoring)
                                 .accessibilityIdentifier("laa.brain.history.use")
                         }
                     } else {
