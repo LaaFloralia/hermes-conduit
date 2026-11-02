@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from xml.parsers.expat import ExpatError
 
 APP_ID = "com.laa-inc.laa"
 REQUIRED = {APP_ID, APP_ID + ".widgets", APP_ID + ".ShareExtension",
@@ -52,7 +53,7 @@ def load_resource(path):
     data = path.read_bytes()
     try:
         return plistlib.loads(data)
-    except (plistlib.InvalidFileException, ValueError):
+    except (plistlib.InvalidFileException, ValueError, ExpatError):
         pass
     try:
         return json.loads(data)
@@ -63,7 +64,7 @@ def load_resource(path):
             result = subprocess.run(["/usr/bin/plutil", "-convert", "xml1", "-o", "-", str(path)],
                                     capture_output=True, check=True)
             return plistlib.loads(result.stdout)
-        except (OSError, subprocess.CalledProcessError, plistlib.InvalidFileException):
+        except (OSError, subprocess.CalledProcessError, plistlib.InvalidFileException, ExpatError):
             pass
     raise CheckError(f"unreadable resource: {path}")
 

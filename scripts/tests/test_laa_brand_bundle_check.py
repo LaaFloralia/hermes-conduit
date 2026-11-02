@@ -44,6 +44,17 @@ class LAABrandCheckTests(unittest.TestCase):
     def test_complete_bundle_passes_and_preserves_internal_identifiers(self):
         self.assertEqual(checker.check_bundle(self.app), [])
 
+    def test_utf16_xml_plurals_are_checked_and_malformed_xml_is_rejected(self):
+        resource = self.app / "en.lproj/Localizable.stringsdict"
+        for display, should_fail in (("%lld LAA items", False), ("%lld Conduit items", True)):
+            with self.subTest(display=display):
+                resource.write_bytes(plistlib.dumps({"items": {"other": display}})
+                                     .decode("utf-8").encode("utf-16"))
+                self.assertEqual(bool(checker.check_bundle(self.app)), should_fail)
+        resource.write_bytes(b'<?xml version="1.0"?><plist><dict>')
+        with self.assertRaises(checker.CheckError):
+            checker.check_bundle(self.app)
+
     def test_catalyst_checks_nested_resources_and_requires_its_extension(self):
         mac = Path(self.temp.name) / "Mac.app"
         extension = mac / "Contents/PlugIns/Notification.appex"

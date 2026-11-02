@@ -19,6 +19,26 @@ LANGUAGES = {"en", "de", "es", "fr", "id", "it", "ja", "ko", "pl", "pt-BR", "ru"
 
 
 class LAABrandBundleTests(unittest.TestCase):
+    def test_catalyst_utf16_plurals_keep_keys_and_format_specifiers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / "Notification.appex"
+            local = bundle / "Contents/Resources/en.lproj"
+            local.mkdir(parents=True)
+            (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleName": "Conduit"}))
+            plural = local / "Localizable.stringsdict"
+            original = {"%lld Conduit items": {
+                "NSStringLocalizedFormatKey": "%#@items@",
+                "items": {"NSStringFormatSpecTypeKey": "NSStringPluralRuleType",
+                          "NSStringFormatValueTypeKey": "lld", "one": "%lld Conduit item",
+                          "other": "%lld Conduit items"}}}
+            # Match Xcode's UTF-16 copyStrings output with its UTF-8 XML declaration.
+            plural.write_bytes(plistlib.dumps(original).decode("utf-8").encode("utf-16"))
+            brand.brand_bundle(bundle, "notification", ROOT)
+            result = plistlib.loads(plural.read_bytes())
+            self.assertEqual(result, brand.values_only(original, locale="en"))
+            self.assertEqual(result["%lld Conduit items"]["NSStringLocalizedFormatKey"], "%#@items@")
+            self.assertEqual(result["%lld Conduit items"]["items"]["other"], "%lld LAA items")
+
     def test_catalyst_brands_contents_resources_and_preserves_phone_scene(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = Path(tmp) / "Conduit.app"

@@ -7,6 +7,7 @@ import re
 import subprocess
 import unicodedata
 from pathlib import Path
+from xml.parsers.expat import ExpatError
 
 # Each target's default home-screen name. A build that needs another one (the
 # personal build uses a distinct LAA name) passes --name.
@@ -122,7 +123,9 @@ def read_plist(path):
     try:
         with path.open("rb") as stream:
             return plistlib.load(stream)
-    except plistlib.InvalidFileException:
+    except (plistlib.InvalidFileException, ExpatError):
+        # Catalyst's copyStrings can encode XML as UTF-16 while keeping its
+        # UTF-8 declaration. Apple's parser normalizes that generated form.
         xml = subprocess.check_output(["/usr/bin/plutil", "-convert", "xml1", "-o", "-", str(path)])
         return plistlib.loads(xml)
 
