@@ -21,6 +21,15 @@ final class LAAUsageUITests: XCTestCase {
         }
     }
 
+    private func openUsageFromSettings(_ app: XCUIApplication) {
+        let settings = app.buttons["laa.settings.open"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 30))
+        settings.tap()
+        let usage = app.buttons["settings.ai-usage"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 15))
+        usage.tap()
+    }
+
     private func helper(_ route: String) throws -> String {
         let data = try Data(contentsOf: URL(string: "http://127.0.0.1:19493/\(route)")!)
         return String(data: data, encoding: .utf8) ?? ""
@@ -80,7 +89,7 @@ final class LAAUsageUITests: XCTestCase {
                                "-laa-tab", "work"]
         app.launch()
         defer { app.terminate() }
-        XCTAssertTrue(app.buttons["AI usage"].waitForExistence(timeout: 30)); app.buttons["AI usage"].tap()
+        openUsageFromSettings(app)
         let connect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
@@ -109,7 +118,7 @@ final class LAAUsageUITests: XCTestCase {
                                "https://conduit-ui-test.invalid", "-laa-tab", "work"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
-        XCTAssertTrue(app.buttons["AI usage"].waitForExistence(timeout: 30)); app.buttons["AI usage"].tap()
+        openUsageFromSettings(app)
         let connect = app.buttons["laa.bridge.openPairing"]
         if connect.waitForExistence(timeout: 15) {
             screenshot("usage-ui-unpaired")
@@ -161,8 +170,7 @@ final class LAAUsageUITests: XCTestCase {
         app.terminate()
         app.launch()
         // The isolated test Keychain deliberately uses a new service per launch.
-        let usage = app.buttons["AI usage"]
-        XCTAssertTrue(usage.waitForExistence(timeout: 30)); usage.tap()
+        openUsageFromSettings(app)
         let reconnect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 15))
         reconnect.tap()
