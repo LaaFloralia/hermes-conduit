@@ -215,6 +215,29 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertFalse(route.open(try XCTUnwrap(URL(string: "https://example.com/work"))))
     }
 
+    func testCalendarDeepLinkRoundTripPreservesGoogleIdentifierCharacters() throws {
+        let route = LAAWorkLinkRequest()
+        let values = [
+            ("invite_123@google.com", "floralia@laa-inc.com"),
+            ("holiday_123", "ja.japanese#holiday@group.v.calendar.google.com"),
+            ("event+with_under_score@google.com", "team+calendar_123@group.calendar.google.com")
+        ]
+        let segmentCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_~."))
+        for (event, calendar) in values {
+            var link = URLComponents()
+            link.scheme = "laa"; link.host = "today"
+            link.percentEncodedPath = "/events/" + (try XCTUnwrap(event.addingPercentEncoding(withAllowedCharacters: segmentCharacters)))
+            link.queryItems = [URLQueryItem(name: "calendar", value: calendar)]
+            let url = try XCTUnwrap(link.url)
+            XCTAssertTrue(route.open(url))
+            XCTAssertEqual(route.calendarEvent?.id, event)
+            XCTAssertEqual(route.calendarEvent?.calendarID, calendar)
+        }
+        XCTAssertTrue(route.open(try XCTUnwrap(URL(string: "laa://today/events/event%2B_uid%40google.com?calendar=team%2Bname%23holiday%40group.calendar.google.com"))))
+        XCTAssertEqual(route.calendarEvent?.id, "event+_uid@google.com")
+        XCTAssertEqual(route.calendarEvent?.calendarID, "team+name#holiday@group.calendar.google.com")
+    }
+
     func testImageDraftAndExactRequestSurviveUncertainSubmission() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

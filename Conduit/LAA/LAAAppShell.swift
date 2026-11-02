@@ -209,7 +209,9 @@ struct LAAAppShell: View {
                     } else {
                         NavigationStack {
                             if tab == .today {
-                                LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
+                                LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings,
+                                             initialEventID: workLinkRequest.calendarEvent?.id, initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
+                                    .id(workLinkRequest.generation)
                             } else if tab == .studio {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: LAASpacing.x6) {
