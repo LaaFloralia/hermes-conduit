@@ -179,6 +179,86 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertFalse(reason.isEnabled)
     }
 
+    /// The input row in Liquid Glass on paper and on a photo, in both
+    /// appearances: empty, on the keyboard, and grown to its scroll cap.
+    func testComposerGlassScreenshots() {
+        for (dark, kind) in [(false, "paper"), (true, "paper"), (false, "photo"), (true, "photo")] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
+                                   "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", kind]
+                + (dark ? ["-LAA_V2_DARK"] : [])
+            app.launch()
+            XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 25))
+            let field = app.textViews["composer.field"]
+            XCTAssertTrue(field.waitForExistence(timeout: 15))
+            XCTAssertTrue(app.buttons["chat.code.copy"].waitForExistence(timeout: 15))
+            let name = "composer-\(dark ? "dark" : "light")-\(kind)"
+            capture(app, "\(name)-empty")
+            field.tap()
+            field.typeText("明日の打ち合わせの資料")
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+            XCTAssertLessThanOrEqual(app.buttons["composer.action"].frame.maxY, keyboard.frame.minY + 1)
+            let latest = app.buttons["chat.replyMoreMenu"]
+            let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                latest.exists && latest.frame.maxY <= field.frame.minY
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed, "The latest reply sits above the composer")
+            capture(app, "\(name)-keyboard")
+            let short = field.frame.height
+            field.typeText((1...9).map { "\n\($0)行目の確認事項" }.joined())
+            let grown = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in field.frame.height > short + 40 }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [grown], timeout: 5), .completed, "The field grows with the draft")
+            XCTAssertTrue(app.buttons["composer.expand-editor"].isHittable)
+            XCTAssertTrue(app.buttons["composer.action"].isEnabled)
+            capture(app, "\(name)-multiline")
+            app.terminate()
+        }
+    }
+
+    /// The worst photo (white, no dim or blur): typed text on the field
+    /// keeps 4.5:1 against the glass behind it.
+    func testComposerGlassKeepsContrastOnWhitePhoto() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_CAPTURE_SURFACE", "chat",
+                               "-LAA_CAPTURE_KIND", "photo", "-LAA_CAPTURE_WHITE"]
+        app.launch()
+        defer { app.terminate() }
+        let field = app.textViews["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 25))
+        Thread.sleep(forTimeInterval: 2)
+        let shot = app.screenshot()
+        let frame = field.frame
+        let screen = app.windows.firstMatch.frame
+        // An empty spot inside the field: right of the placeholder, under the expand button.
+        let x = (frame.maxX - 24) / screen.width
+        let y = (frame.maxY - 12) / screen.height
+        let image = try XCTUnwrap(shot.image.cgImage)
+        let px = try XCTUnwrap(image.cropping(to: CGRect(x: Int(Double(image.width) * x), y: Int(Double(image.height) * y), width: 1, height: 1)))
+        var bytes = [UInt8](repeating: 0, count: 4)
+        try bytes.withUnsafeMutableBytes { buffer in
+            let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                bytesPerRow: 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(px, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        func linear(_ v: UInt8) -> Double {
+            let c = Double(v) / 255
+            return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(bytes[0]) + 0.7152 * linear(bytes[1]) + 0.0722 * linear(bytes[2])
+        // The field's text is light on a photo (white in the dark appearance).
+        XCTAssertGreaterThanOrEqual(1.05 / (luminance + 0.05), 4.5, "Field background \(bytes) is too light for its text")
+        capture(app, "composer-photo-white")
+    }
+
+    private func capture(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testReferenceScreenshots() {
         addTeardownBlock {
             let restore = XCUIApplication()

@@ -302,22 +302,6 @@ private struct LAAGroupSurface: ViewModifier {
         else { content.background(LAAColors.surface, in: RoundedRectangle(cornerRadius: 19, style: .continuous)) }
     }
 }
-private struct LAAComposerSurface: ViewModifier {
-    @Environment(\.laaBackgroundKind) private var kind
-    let foundation: Color
-    @ViewBuilder func body(content: Content) -> some View {
-        if kind == .photo {
-            if #available(iOS 26.0, *) {
-                content.background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-                    .glassEffect(.clear, in: .rect(cornerRadius: 30))
-            } else {
-                content.background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            }
-        } else {
-            content.background(foundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-        }
-    }
-}
 private struct LAAPhotoGlassScope: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
     func body(content: Content) -> some View { content.environment(\.laaClearGlassControls, kind == .photo) }
@@ -348,7 +332,6 @@ extension View {
     func laaAssistantSurface() -> some View { modifier(LAAAssistantSurface()) }
     func laaPhotoSupportingText() -> some View { modifier(LAAPhotoSupportingText()) }
     func laaGroupSurface() -> some View { modifier(LAAGroupSurface()) }
-    func laaComposerSurface(_ foundation: Color) -> some View { modifier(LAAComposerSurface(foundation: foundation)) }
     func laaComposerGlassScope() -> some View { modifier(LAAPhotoGlassScope()) }
     func laaPhotoGlassScope() -> some View { modifier(LAAPhotoGlassScope()) }
     func laaGroupTitleGlass() -> some View { modifier(LAAGroupTitleGlass()) }
