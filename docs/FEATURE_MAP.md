@@ -3861,7 +3861,7 @@ and rollback instructions · the upstream App Store build
 - Archiving/favourites remain Bridge-side. Previously attached Paseo images are absent from the daemon projected timeline; only images sent from LAA are currently displayed. Native conversation branch/rewind, terminal and execution configuration are outside this replacement.
 - End-to-end push delivery, physical-device dictation/IME and the one-second presentation target still require the parent’s device check.
 
-**Checked:** 2026-11-02, based on a2726666 plus the Paseo replacement changes; physical iPhone verification pending.
+**Checked:** 2026-11-02, based on integrate-1102 6344beda plus the Paseo replacement changes. Bridge 425/425 passed; the parent owns the consolidated iOS build, related unit/UI tests and physical iPhone verification.
 ## LAA Today and calendar widget
 
 **Siblings:** Google Calendar in Today · small next-event widget · calendar notifications and deep links · Drive's shared Google connection · Brain entry point.
