@@ -195,6 +195,22 @@ private extension View {
     func laaCompactColumn() -> some View {
         environment(\.horizontalSizeClass, .compact)
             .background(LAAColor.background.ignoresSafeArea())
+            .modifier(LAAMacFlatTopEdge())
+    }
+}
+
+/// iOS 26 blurs and tints the top of a scroll view under a navigation bar.
+/// On the phone that edge reads as the bar; in a Mac column it left a band of
+/// another colour across the top of the detail column, and across only the
+/// readable-width column where one is centred. The column's paper shows
+/// through instead, so the bar and the page are one colour.
+struct LAAMacFlatTopEdge: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
     }
 }
 #endif

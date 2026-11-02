@@ -6,6 +6,21 @@
 #                              [--address URL] [--sections chats,work,...]
 #                              [--sizes 900x600,1280x820,1680x1050]
 #                              [--schemes light,dark] [--skip-build]
+#                              [--app-args "-flag value"] [--app-env "K=V K2=V2"]
+#
+# --app-args adds launch arguments, --app-env adds environment variables. The
+# Chat split needs a dashboard and an open conversation, which the DEBUG
+# fixtures below supply without a real Hermes:
+#
+#   scripts/laa/mac-screens.sh --owner chat --sections chats \
+#     --sizes 1280x820,1680x1050 --app-env "CONDUIT_UITEST=1" \
+#     --app-args "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD https://conduit-ui-test.invalid
+#                 -CONDUIT_UI_TEST_PROFILES work,staging
+#                 -CONDUIT_UI_TEST_WIDGET_URL conduit://widget/v1/resume?..."
+#
+# The link is the same one ConduitUITests/LAAShellNavigationUITests uses; it
+# opens a session that does not exist anywhere, so nothing is sent and no
+# real Hermes or personal data is read.
 #
 # The build is a local Debug copy with its own bundle id (com.laa-inc.laa.macdev
 # and .macdev.<suffix> for its extensions), ad-hoc signed, and with the app
@@ -38,6 +53,8 @@ ADDRESS=""
 SECTIONS=chats,work,today,brain,studio,drive,usage
 SIZES=900x600,1280x820,1680x1050
 SCHEMES=light,dark
+APP_ARGS=""
+APP_ENV=""
 SKIP_BUILD=0
 DEV_ID=com.laa-inc.laa.macdev
 DEV_NAME="LAA"
@@ -56,6 +73,8 @@ while [ $# -gt 0 ]; do
     --sections) SECTIONS=$2; shift 2 ;;
     --sizes) SIZES=$2; shift 2 ;;
     --schemes) SCHEMES=$2; shift 2 ;;
+    --app-args) APP_ARGS=$2; shift 2 ;;
+    --app-env) APP_ENV=$2; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -152,9 +171,13 @@ launch() {
   local args=(-laa-mac-section "$section" -laa-mac-window "$size"
               -conduit.themePreference "$scheme")
   [ -n "$ADDRESS" ] && export LAA_BRIDGE_DEFAULT_ADDRESS="$ADDRESS"
+  local extra=()
+  [ -n "$APP_ARGS" ] && read -r -a extra <<< "$APP_ARGS"
+  local pair
+  for pair in $APP_ENV; do export "${pair?}"; done
   # A dev window is a fresh process every shot: no window state carries over
   # from the previous size or scheme.
-  "$APP/Contents/MacOS/Conduit" "${args[@]}" >"$DERIVED/app.log" 2>&1 &
+  "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$DERIVED/app.log" 2>&1 &
   APP_PID=$!
 }
 
