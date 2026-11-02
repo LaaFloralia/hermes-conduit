@@ -182,8 +182,10 @@ test('usage and mac status require a device with usage:read', async (t) => {
   const token = await api.token(['usage:read']);
   const allowed = await api.request('/v1/usage', { token });
   assert.equal(allowed.status, 200);
-  assert.deepEqual(Object.keys(allowed.body.data).sort(), ['items', 'nextCursor']);
+  assert.deepEqual(Object.keys(allowed.body.data).sort(), ['fetchedAt', 'items', 'nextCursor']);
   assert.equal(allowed.body.data.nextCursor, null);
+  // The receipt time of the served snapshot, not of this request.
+  assert.equal(allowed.body.data.fetchedAt, new Date(NOW).toISOString());
   assert.match(allowed.body.requestId, /^req_/);
   assert.equal(allowed.headers.get('cache-control'), 'no-store');
 });
@@ -332,9 +334,34 @@ test('every fixture satisfies the item contract', async (t) => {
   for (const name of ['usage-normal.json', 'usage-degraded.json', 'mac-status-normal.json', 'mac-status-unavailable.json']) {
     const body = await fixture(name);
     assert.deepEqual(Object.keys(body).sort(), ['data', 'requestId'], name);
-    assert.deepEqual(Object.keys(body.data).sort(), ['items', 'nextCursor'], name);
+    const keys = name.startsWith('usage-') ? ['fetchedAt', 'items', 'nextCursor'] : ['items', 'nextCursor'];
+    assert.deepEqual(Object.keys(body.data).sort(), keys, name);
     for (const item of body.data.items) assertItemShape(item, name);
   }
   const degraded = (await fixture('usage-degraded.json')).data.items;
   for (const item of degraded) assert.equal(item.value, null);
+});
+
+test('a slow proxy read never holds a usage response', async (t) => {
+  // The reading source (the CodexBar proxy) can take seconds; the response must not.
+  const fetcher = (url, { signal } = {}) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ ok: true, headers: { get: () => null }, text: async () => JSON.stringify(feed()) }), 5000);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    }, { once: true });
+  });
+  const api = await startBridge({ now: () => NOW, usage: { fetcher, autoStaleMs: 20 * 60 * 1000 } });
+  t.after(() => api.close());
+  const token = await api.token(['usage:read']);
+  for (const attempt of ['first', 'second']) {
+    const started = Date.now();
+    const response = await api.request('/v1/usage', { token });
+    const elapsed = Date.now() - started;
+    assert.equal(response.status, 200);
+    assert.ok(elapsed < 50, `the ${attempt} response took ${elapsed} ms`);
+    assert.deepEqual(Object.keys(response.body.data).sort(), ['fetchedAt', 'items', 'nextCursor']);
+    assert.equal(response.body.data.fetchedAt, null, 'nothing has been read yet');
+    assert.ok(response.body.data.items.every((item) => item.availability === 'unavailable'));
+  }
 });

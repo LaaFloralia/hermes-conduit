@@ -100,7 +100,8 @@
         "nullReason": "auth_required"
       }
     ],
-    "nextCursor": null
+    "nextCursor": null,
+    "fetchedAt": null
   },
   "requestId": "usage-degraded-fixture"
 }

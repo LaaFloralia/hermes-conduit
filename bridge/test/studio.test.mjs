@@ -720,3 +720,106 @@ describe('Studio UDS backend', () => {
     } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('Studio read cache', () => {
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const snapshotBody = { online: true, accepting: true, lastSeen: null, projects: [], principles: [], requests: [] };
+
+  it('serves the last good snapshot while a slow Studio read is still running', async () => {
+    let reads = 0;
+    const backend = { async snapshot() { reads += 1; await delay(5000); return { ...snapshotBody }; } };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read']);
+      const first = await bridge.request('/v1/studio/snapshot', { token });
+      assert.equal(first.status, 200);
+      assert.equal(Number.isNaN(Date.parse(first.body.data.fetchedAt)), false);
+
+      const started = Date.now();
+      const second = await bridge.request('/v1/studio/snapshot', { token });
+      const elapsed = Date.now() - started;
+      assert.equal(second.status, 200);
+      assert.ok(elapsed < 50, `a repeated snapshot took ${elapsed} ms`);
+      assert.equal(second.body.data.stale, true);
+      assert.equal(second.body.data.fetchedAt, first.body.data.fetchedAt);
+      assert.equal(reads, 2, 'one refresh runs behind the served value');
+    } finally { await bridge.close(); }
+  });
+
+  it('marks a cached snapshot disconnected when Studio cannot be reached', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read']);
+      const online = await bridge.request('/v1/studio/snapshot', { token });
+      assert.equal(online.body.data.online, true);
+      assert.equal(online.body.data.projects.length, 1);
+
+      backend.state.connected = false;
+      const started = Date.now();
+      const offline = await bridge.request('/v1/studio/snapshot', { token });
+      assert.ok(Date.now() - started < 50, `an unreachable Studio held the response for ${Date.now() - started} ms`);
+      assert.equal(offline.status, 200);
+      assert.equal(offline.body.data.online, false);
+      assert.equal(offline.body.data.accepting, false);
+      assert.equal(offline.body.data.stale, true);
+      assert.equal(offline.body.data.projects.length, 1);
+      assert.equal(offline.body.data.fetchedAt, online.body.data.fetchedAt);
+    } finally { await bridge.close(); }
+  });
+
+  it('serves the last good catalog when Studio stops answering, and a first failure stays a 503', async () => {
+    let unreachable = false;
+    const catalog = { documents: [{ id: 'doc1' }], principles: [], capabilities: [], brief: [] };
+    const backend = {
+      async snapshot() {
+        if (unreachable) throw new BridgeError(503, 'studio_not_connected', 'Studio is not connected on the Mac', { retryable: true });
+        return { ...snapshotBody };
+      },
+      async catalog() {
+        if (unreachable) throw new BridgeError(503, 'studio_not_connected', 'Studio is not connected on the Mac', { retryable: true });
+        return { status: 200, data: catalog, etag: '"tag"' };
+      },
+    };
+    const warm = await startBridge({ studio: { backend } });
+    const cold = await startBridge({ studio: { backend } });
+    try {
+      const token = await warm.token(['studio:read']);
+      const first = await warm.request('/v1/studio/catalog', { token });
+      assert.equal(first.status, 200);
+      assert.equal(first.headers.get('etag'), '"tag"');
+      unreachable = true;
+      const again = await warm.request('/v1/studio/catalog', { token });
+      assert.equal(again.status, 200);
+      assert.equal(again.headers.get('etag'), '"tag"');
+      assert.equal(again.body.data.stale, true);
+      const { fetchedAt: servedAt, stale: servedStale, ...served } = again.body.data;
+      assert.deepEqual(served, catalog);
+      assert.equal(servedStale, true);
+      assert.equal(again.body.data.fetchedAt, first.body.data.fetchedAt);
+
+      const coldToken = await cold.token(['studio:read']);
+      assert.equal((await cold.request('/v1/studio/catalog', { token: coldToken })).status, 503);
+      assert.equal((await cold.request('/v1/studio/snapshot', { token: coldToken })).status, 503);
+    } finally { await warm.close(); await cold.close(); }
+  });
+});
+
+it('answers a read without waiting for Studio to launch', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'studio-read-nowait-'));
+  chmodSync(dir, 0o700);
+  let launches = 0;
+  const backend = createStudioBackend({ directory: dir, launch: async () => {
+    launches += 1;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  } });
+  try {
+    const started = Date.now();
+    await assert.rejects(backend.snapshot(), { code: 'studio_not_connected' });
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 150, `a snapshot read waited ${elapsed} ms for the launch`);
+    assert.equal(launches, 1, 'Studio is still asked to start, behind the request');
+    await assert.rejects(backend.catalog(), { code: 'studio_not_connected' });
+    assert.equal(launches, 1, 'the startup cooldown still applies');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -168,7 +168,9 @@ describe('Studio v2 mock socket contract', () => {
     assert.equal(first.status, 200);
     assert.equal(first.headers.get('etag'), tag);
     assert.equal(first.headers.get('cache-control'), 'no-store');
-    assert.deepEqual(first.body.data, catalog);
+    const { fetchedAt, ...body } = first.body.data;
+    assert.deepEqual(body, catalog);
+    assert.equal(Number.isNaN(Date.parse(fetchedAt)), false, 'the catalog carries its read time');
     const conditions = `"other", W/${tag}`;
     const cached = await bridge.request('/v1/studio/catalog', { token: readToken, headers: { 'if-none-match': conditions } });
     assert.equal(cached.status, 304);

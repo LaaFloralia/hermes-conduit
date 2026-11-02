@@ -68,3 +68,90 @@ test('routine classification uses structured triggers, never schedule wording', 
   assert.equal(routineKind({ schedule: '常駐', reading: { source: 'hermes' } }), 'scheduled');
   assert.equal(routineKind({ triggerKind: 'invalid' }), 'unknown');
 });
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForStatus(bridge, token, status, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await bridge.request('/v1/routines', { token });
+    if (last.status === status) return last;
+    await delay(50);
+  }
+  return last;
+}
+
+test('a slow console read never holds the response: the last observations are served from the cache', async (t) => {
+  let calls = 0;
+  const bridge = await startBridge({ routines: { read: async () => {
+    calls += 1;
+    await delay(5000); // the production hang was 86 s; the shape of the failure is the same
+    return { data: [{ id: 'job:a', name: 'Daily', reading: { enabled: true } }] };
+  } } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+
+  const cold = Date.now();
+  const first = await bridge.request('/v1/routines', { token });
+  assert.equal(first.status, 503);                       // nothing has ever been read
+  assert.ok(Date.now() - cold < 1000, `a cold request waited ${Date.now() - cold} ms`);
+
+  const filled = await waitForStatus(bridge, token, 200);
+  assert.equal(filled.body.data.items[0].id, 'job:a');
+  assert.equal(typeof filled.body.data.fetchedAt, 'string');
+
+  const warm = Date.now();
+  const second = await bridge.request('/v1/routines', { token });
+  assert.equal(second.status, 200);
+  assert.ok(Date.now() - warm < 50, `a repeated request took ${Date.now() - warm} ms`);
+  assert.equal(second.body.data.fetchedAt, filled.body.data.fetchedAt);
+  assert.equal(calls, 1);
+});
+
+test('an expired routine value is served at once and one console read refreshes it', async (t) => {
+  let calls = 0;
+  let clock = 1_000_000;
+  const bridge = await startBridge({ routines: { freshMs: 60000, now: () => clock, read: async () => {
+    calls += 1;
+    if (calls > 1) await delay(300);
+    return { data: [{ id: 'job:a', name: 'Daily', reading: { enabled: true } }] };
+  } } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  const first = await waitForStatus(bridge, token, 200);
+  assert.equal(first.body.data.fetchedAt, new Date(clock).toISOString());
+  clock += 60001;
+
+  const started = Date.now();
+  const stale = await bridge.request('/v1/routines', { token });
+  const elapsed = Date.now() - started;
+  assert.equal(stale.status, 200);
+  assert.ok(elapsed < 50, `an expired value took ${elapsed} ms`);
+  assert.equal(stale.body.data.fetchedAt, first.body.data.fetchedAt);
+
+  const concurrent = await Promise.all(Array.from({ length: 4 }, () => bridge.request('/v1/routines', { token })));
+  assert.ok(concurrent.every((response) => response.status === 200));
+  assert.ok(concurrent.every((response) => response.body.data.fetchedAt === first.body.data.fetchedAt));
+  assert.equal(calls, 2, 'one refresh runs for all requests');
+});
+
+test('a failed console read keeps the previous observations instead of a 503', async (t) => {
+  let calls = 0;
+  let clock = 2_000_000;
+  const bridge = await startBridge({ routines: { freshMs: 60000, now: () => clock, read: async () => {
+    calls += 1;
+    if (calls > 1) throw new Error('console failed');
+    return { data: [{ id: 'job:a', name: 'Daily', reading: { enabled: true } }] };
+  } } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  const first = await waitForStatus(bridge, token, 200);
+  clock += 60001;
+  const kept = await bridge.request('/v1/routines', { token });
+  assert.equal(kept.status, 200);
+  assert.deepEqual(kept.body.data.items, first.body.data.items);
+  assert.equal(kept.body.data.fetchedAt, first.body.data.fetchedAt);
+  await delay(100);
+  assert.equal(calls, 2);
+});
