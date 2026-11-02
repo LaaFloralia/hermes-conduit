@@ -34,8 +34,8 @@ test('routine states use current scheduler and business observations with explic
 });
 
 test('destinations only use explicitly configured chat roles and preserve unknown receivers', () => {
-  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'COS', ownerRole: 'Ciel' }), 'Merlinの定期実行チャット');
-  assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'ciel', deliver: 'local' }), 'Cielの定期実行チャット');
+  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'COS', ownerRole: 'Ciel' }), 'Merlinのチャット');
+  assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'ciel', deliver: 'local' }), 'Cielのチャット');
   assert.equal(routineDestination({ notificationMode: 'email', ownerRole: 'ciel' }), null);
   assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'unknown', ownerRole: 'ciel' }), null);
   assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'constructor' }), null);

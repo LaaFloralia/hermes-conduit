@@ -28,7 +28,7 @@ export function routineDestination(job) {
   const rawRole = job.receiverRole ?? job.ownerRole;
   const role = typeof rawRole === 'string' ? rawRole.toLowerCase() : null;
   const name = Object.hasOwn(ROLE_NAMES, role) ? ROLE_NAMES[role] : null;
-  return name ? `${name}の定期実行チャット` : null;
+  return name ? `${name}のチャット` : null;
 }
 
 export function routineKind(job) {

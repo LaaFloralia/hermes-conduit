@@ -886,3 +886,31 @@ test('project files are listed for every session in the project as paths', async
   assert.ok(prompt.trimEnd().endsWith('</user_request>'));
   assert.ok(!prompt.includes('<project_instructions'), 'no empty instructions block');
 });
+
+test('a favourite on a workspace session is written to Paseo, and a refused pin is not reported as set', async (t) => {
+  const calls = [];
+  let refuse = false;
+  const daemon = {
+    setWorkspacePinned: async (workspaceId, pinned) => {
+      if (refuse) throw new Error('daemon refused');
+      calls.push([workspaceId, pinned]);
+      return { pinnedAt: pinned ? '2026-11-03T00:00:00Z' : null };
+    },
+  };
+  const ctx = await boot(t, { sessions: { daemon } });
+  const created = (await createSession(ctx, { requestId: 'req-pin' }, 'k-pin')).body.data;
+
+  const fav = await ctx.bridge.request(`/v1/sessions/${created.id}`, {
+    method: 'PATCH', token: ctx.token, key: 'k-pin-fav', body: { favorite: true },
+  });
+  assert.equal(fav.status, 200);
+  assert.deepEqual(calls, [[created.workspaceId, true]]);
+
+  refuse = true;
+  const denied = await ctx.bridge.request(`/v1/sessions/${created.id}`, {
+    method: 'PATCH', token: ctx.token, key: 'k-pin-off', body: { favorite: false },
+  });
+  assert.equal(denied.status, 503);
+  const after = await ctx.bridge.request(`/v1/sessions/${created.id}`, { token: ctx.token });
+  assert.equal(after.body.data.favorite, true, 'a refused pin leaves the row as it was');
+});

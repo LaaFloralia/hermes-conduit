@@ -278,19 +278,28 @@ export function createSessionService({
     if (syncInFlight) return syncInFlight;
     syncInFlight = (async () => {
       const agents = await daemon.list();
+      // Paseo's pin belongs to the workspace. A failed read leaves every
+      // local choice as it is rather than reading as "all unpinned".
+      const pins = await daemon.workspacePins().then(
+        (rows) => new Map(rows.map((row) => [row.id, row.pinnedAt != null])),
+        () => null,
+      );
       const known = new Map(sessionStore.all().map((r) => [r.delegate?.sessionId, r]));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
       const rows = agents.map((a) => {
         const state = snapshot(a, now());
         const previous = known.get(a.id);
         const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
+        const workspaceId = previous?.workspaceId ?? a.workspaceId ?? HOME_WORKSPACE_ID;
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
-          projectId: null, workspaceId: previous?.workspaceId ?? a.workspaceId ?? HOME_WORKSPACE_ID, cwd: a.cwd,
+          projectId: null, workspaceId, cwd: a.cwd,
           name: a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
           requested: model, observed: state.modelCheck.observed, phase: state.phase,
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
-          daemonStatus: a.status, favorite: false, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
+          daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
+          // favourite the owner set here survives a Paseo that has no pin yet.
+          favorite: pins?.get(workspaceId) === true ? true : undefined, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
           version: previous?.version ?? 1, delegate: { sessionId: a.id },
           createdAt: a.createdAt, updatedAt: a.updatedAt, sourceUpdatedAt: a.updatedAt,
           observedAt: new Date(now()).toISOString(), attentionTimestamp: a.attentionTimestamp ?? a.updatedAt, attentionReason: a.attentionReason, requiresAttention: a.requiresAttention };
@@ -412,14 +421,19 @@ export function createSessionService({
 
   // Bridge-side organisation only: favourites, archive and an owner rename never
   // stop, archive or rename the Paseo agent behind the session.
-  function updateSession({ id, body = {} }) {
-    requireSession(id);
+  async function updateSession({ id, body = {} }) {
+    const existing = requireSession(id);
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
     const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
     const name = body.name === undefined ? undefined : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
     if (favorite === undefined && archived === undefined && name === undefined) {
       throw badRequest('payload_invalid', 'favorite, archived or name is required');
     }
+    // A workspace's pin is where Paseo keeps the same choice. Sessions in the
+    // home workspace, and a daemon that is not connected, keep the Bridge-only
+    // behaviour they had.
+    const mirror = favorite !== undefined && Boolean(existing.favorite) !== favorite
+      && existing.workspaceId && existing.workspaceId !== HOME_WORKSPACE_ID ? favorite : null;
     const updated = sessionStore.update(id, (current) => {
       const events = [];
       if (favorite !== undefined && Boolean(current.favorite) !== favorite) {
@@ -437,6 +451,19 @@ export function createSessionService({
       }
       return events;
     });
+    if (mirror !== null && daemon) {
+      try {
+        await daemon.setWorkspacePinned(existing.workspaceId, mirror);
+      } catch {
+        // The list must not claim a pin Paseo refused: put the row back.
+        sessionStore.update(id, (row) => {
+          if (Boolean(row.favorite) !== mirror) return [];
+          row.favorite = !mirror;
+          return [{ type: 'session.favorite', payload: { favorite: !mirror } }];
+        });
+        throw new BridgeError(503, 'paseo_unavailable', 'Paseo could not record the pin', { retryable: true });
+      }
+    }
     return { session: updated?.record ?? requireSession(id) };
   }
 

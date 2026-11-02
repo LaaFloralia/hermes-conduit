@@ -124,7 +124,10 @@ export function createSessionStore({
         for (const row of rows) {
           const previous = doc.sessions[row.id];
           const current = previous ? { ...previous, ...row,
-            favorite: previous.favorite === true, archivedAt: previous.archivedAt,
+            // A sync that could not read Paseo's pin leaves the local choice
+            // alone; only a known value replaces it.
+            favorite: row.favorite === undefined ? previous.favorite === true : row.favorite === true,
+            archivedAt: previous.archivedAt,
             name: previous.nameSource === 'owner' ? previous.name : row.name,
             nameSource: previous.nameSource === 'owner' ? 'owner' : 'agent',
             requested: previous.requested ?? row.requested,

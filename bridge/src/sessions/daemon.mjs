@@ -42,6 +42,21 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
       } while (cursor);
       return items;
     }),
+    /// Paseo's own pins, so a workspace pinned in Paseo reads as a favourite
+    /// here. Nothing is invented when the read fails: the caller sees null.
+    workspacePins: () => call(async (c) => {
+      const page = await c.fetchWorkspaces({ page: { limit: 200 } });
+      if (!Array.isArray(page?.entries)) throw new Error('invalid workspace directory');
+      return page.entries.map((entry) => ({
+        id: entry?.id ?? entry?.workspace?.id,
+        pinnedAt: entry?.pinnedAt ?? entry?.workspace?.pinnedAt ?? null,
+      })).filter((row) => typeof row.id === 'string');
+    }),
+    /// A favourite the owner set in LAA is the workspace's pin in Paseo.
+    setWorkspacePinned: (workspaceId, pinned) => call(async (c) => {
+      const result = await c.setWorkspacePinned(workspaceId, pinned);
+      return { pinnedAt: result?.pinnedAt ?? null };
+    }),
     status: (id) => call(async (c) => snapshot(await agent(c, id), now())),
     send: (id, { text, messageId, images }) => call(async (c) => {
       const a = await agent(c, id);
