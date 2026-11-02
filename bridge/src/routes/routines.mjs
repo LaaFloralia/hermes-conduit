@@ -1,5 +1,6 @@
 // Read only: project the Console's inventory-backed job observations.
 import { execFile } from 'node:child_process';
+import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { BridgeError } from '../errors.mjs';
 const exec = promisify(execFile);
@@ -37,8 +38,13 @@ export function projectRoutines(document) {
   });
 }
 
+// launchd starts the Bridge with a PATH that has no node; laa-console's tsx needs one, so lend it the Bridge runtime.
+export function consoleEnv(env = process.env, execPath = process.execPath) {
+  return { ...env, PATH: [dirname(execPath), env.PATH].filter(Boolean).join(':') };
+}
+
 export function routineRoutes({ read = async () => {
-  const { stdout } = await exec('/Users/laa/.local/bin/laa-console', ['jobs'], { timeout: 20000, maxBuffer: 4 * 1024 * 1024 });
+  const { stdout } = await exec('/Users/laa/.local/bin/laa-console', ['jobs'], { timeout: 20000, maxBuffer: 4 * 1024 * 1024, env: consoleEnv() });
   return JSON.parse(stdout);
 } } = {}) {
   return [{ method: 'GET', path: '/v1/routines', auth: true, scope: 'sessions:read', handler: async () => {

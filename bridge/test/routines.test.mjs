@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { projectRoutines, routineDestination, routineState } from '../src/routes/routines.mjs';
+import { consoleEnv, projectRoutines, routineDestination, routineState } from '../src/routes/routines.mjs';
 import { startBridge } from './helpers.mjs';
 
 test('routine endpoint requires read access and projects only public fields', async (t) => {
@@ -51,4 +51,11 @@ test('history stays visible separately from the current state and is recomputed 
   assert.equal(row.result, 'timeout');
   assert.equal(row.notificationStatus, 'pending');
   assert.equal(row.lastRunAt, '2026-11-02T00:00:00Z');
+});
+
+test('console reader puts the Bridge runtime first on the launchd PATH', () => {
+  const env = consoleEnv({ PATH: '/usr/bin:/bin', HOME: '/Users/laa' }, '/opt/laa/node/bin/node');
+  assert.equal(env.PATH, '/opt/laa/node/bin:/usr/bin:/bin');
+  assert.equal(env.HOME, '/Users/laa');
+  assert.equal(consoleEnv({}, '/opt/laa/node/bin/node').PATH, '/opt/laa/node/bin');
 });
