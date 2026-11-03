@@ -629,6 +629,7 @@ final class LoginFlowModel {
                 appState.rememberDashboardUsername(username, dashboardID: dashboardID)
                 authenticated.commitCookies(dashboardID: dashboardID)
             }
+            await closeCredentialsBeforeConnecting()
             appState.prepareInteractiveSignIn(baseURL: target.baseURL)
             await appState.connect(with: HermesConnection(baseUrl: target.baseURL, ticket: authenticated.ticket))
             finishSignIn(at: target.baseURL)
@@ -779,6 +780,18 @@ final class LoginFlowModel {
     }
 
     /// A sign-in finished: its dashboard stays whatever happens to the sheet.
+    /// On the Mac the sign-in page is pushed in the window's detail column,
+    /// which outlives the sign-in screen: connecting swaps that screen for
+    /// the chats, and a page still pushed then stays over them. Close it
+    /// first and let the pop land. A refused connection reopens it.
+    private func closeCredentialsBeforeConnecting() async {
+        #if targetEnvironment(macCatalyst)
+        guard showsCredentials else { return }
+        showsCredentials = false
+        try? await Task.sleep(for: .milliseconds(450))
+        #endif
+    }
+
     private func finishSignIn(at baseURL: String) {
         if let appState, let id = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) {
             unfinishedAddresses = unfinishedAddresses.filter {
@@ -837,6 +850,7 @@ final class LoginFlowModel {
             KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
         }
         appState.rememberDashboardURL(baseURL)
+        await closeCredentialsBeforeConnecting()
         appState.prepareInteractiveSignIn(baseURL: baseURL)
         await appState.connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket))
         finishSignIn(at: baseURL)
