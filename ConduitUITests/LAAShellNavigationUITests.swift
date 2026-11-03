@@ -16,10 +16,13 @@ final class LAAShellNavigationUITests: XCTestCase {
         app.buttons["Brain"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
-        let usage = app.buttons["work.section.usage"]
-        XCTAssertTrue(usage.waitForExistence(timeout: 10))
-        if !usage.isHittable { app.scrollViews["work.segment"].swipeLeft() }
-        usage.tap()
+        // Selecting a visible section centers it and reveals the next section.
+        for name in ["projects", "routines", "skills", "usage"] {
+            let segment = app.buttons["work.section.\(name)"]
+            XCTAssertTrue(segment.waitForExistence(timeout: 10))
+            segment.tap()
+        }
+        XCTAssertTrue(app.buttons["work.section.usage"].isSelected)
         // Unpaired, AI usage waits for the Mac like the other Work sections.
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 10))
         app.buttons["Studio"].tap()
