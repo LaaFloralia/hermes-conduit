@@ -259,22 +259,39 @@ struct LAAUsageGroup: Identifiable {
         return result
     }
 
-    /// The owner's display order (2026-11-01), taken from the widget's one slot
-    /// list so a provider added there shows here too: Codex Weekly, OpenCode
-    /// Weekly, Claude Weekly, nanoGPT, Venice, Magnific, GPT API, Claude API,
-    /// Liquid AI. Retired providers (Jev, Google Cloud, Google Flow) are never
-    /// listed.
+    /// The owner's display order (2026-11-01), taken from the one slot list the
+    /// widget also reads, so a provider is added in one place: Codex Weekly,
+    /// OpenCode Weekly, Claude Weekly, nanoGPT, Venice, Magnific, GPT API,
+    /// Claude API, Liquid AI. Retired providers (Jev, Google Cloud, Google
+    /// Flow) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
             let prefix = "provider.\(slot.provider)."
-            let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
-            guard !selected.isEmpty else { return nil }
-            return LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.label, items: selected.sorted { left, right in
+            let reported = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
+            let selected = reported.filter(showsOnScreen)
+            guard !selected.isEmpty else {
+                // An API group the feed reported keeps its header even when the
+                // readings it carries cannot be shown, so the owner still sees
+                // the provider and its billing page.
+                return reported.isEmpty ? nil
+                    : (slot.reading == .monthCost ? LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.groupLabel, items: []) : nil)
+            }
+            return LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.groupLabel, items: selected.sorted { left, right in
                 let leftOrder = readingOrder(left.id)
                 let rightOrder = readingOrder(right.id)
                 return leftOrder == rightOrder ? left.id < right.id : leftOrder < rightOrder
             })
         }
+    }
+
+    /// Neither API publishes a balance, and Anthropic only serves completed
+    /// UTC days, so those rows are left out instead of drawn as 未取得.
+    private static func showsOnScreen(_ item: LAAUsageItem) -> Bool {
+        let isAPI = item.id.hasPrefix("provider.openai-api.") || item.id.hasPrefix("provider.claude-api.")
+        guard isAPI else { return true }
+        if item.id.hasSuffix(".balance") { return false }
+        if item.id.hasSuffix("cost-today") { return item.availability == "available" }
+        return true
     }
 
     /// Balance first, then today's spend, then the month's. A provider's spend
@@ -288,26 +305,34 @@ struct LAAUsageGroup: Identifiable {
 }
 
 enum LAAWidgetUsageBuilder {
-    /// The eight rows the home-screen widget shows, in the owner's priority order.
+    /// One ordered list for the app's AI Usage screen and the widget. The
+    /// widget leaves out the provider the screen shows last, so the list fits
+    /// the largest widget without dropping a row silently.
     struct Slot {
-        enum Reading { case weeklyQuota, balance, credits, recordedUsage }
+        enum Reading { case weeklyQuota, balance, credits, recordedUsage, monthCost }
         let provider: String
         let name: String
         let reading: Reading
+        /// Whether the home-screen widget lists this provider.
+        let showsInWidget: Bool
 
-        var label: String {
+        /// The group header on the AI Usage screen.
+        var groupLabel: String {
             reading == .weeklyQuota ? name + " " + AppLocalization.string("Weekly") : name
         }
 
-        /// A row kept without a reading. The two API balances are always shown
-        /// so the owner sees what was not fetched; every other row appears once
-        /// its own reading arrives.
-        let keepsPlaceWhenMissing: Bool
+        /// The row label in the widget, which says what the number is.
+        var widgetLabel: String {
+            switch reading {
+            case .weeklyQuota: return name + " " + AppLocalization.string("Weekly")
+            case .monthCost: return name + " " + AppLocalization.string("Monthly")
+            case .balance, .credits, .recordedUsage: return name
+            }
+        }
 
         /// Only the reading this slot shows may fill it. A snapshot written
-        /// before the API rows became balances still holds their month spend
-        /// under the same provider; that figure is a use amount, not what is
-        /// left, so it is never reused here.
+        /// before the API rows became spend still holds a balance under the same
+        /// provider; neither API publishes one, so it is never reused here.
         func owns(_ meterID: String) -> Bool {
             let prefix = "provider.\(provider)."
             switch reading {
@@ -315,30 +340,34 @@ enum LAAWidgetUsageBuilder {
             case .balance: return meterID == prefix + "balance"
             case .credits: return meterID.hasPrefix(prefix + "credits")
             case .recordedUsage: return meterID.hasPrefix(prefix + "usage")
+            case .monthCost: return meterID == prefix + "cost-month"
             }
         }
     }
 
     static let slots: [Slot] = [
-        Slot(provider: "codex", name: "Codex", reading: .weeklyQuota, keepsPlaceWhenMissing: false),
-        Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, keepsPlaceWhenMissing: false),
-        Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, keepsPlaceWhenMissing: false),
-        Slot(provider: "nanogpt", name: "nanoGPT", reading: .weeklyQuota, keepsPlaceWhenMissing: false),
-        Slot(provider: "venice", name: "Venice", reading: .balance, keepsPlaceWhenMissing: false),
-        Slot(provider: "magnific", name: "Magnific", reading: .credits, keepsPlaceWhenMissing: false),
-        Slot(provider: "openai-api", name: "GPT API", reading: .balance, keepsPlaceWhenMissing: true),
-        Slot(provider: "claude-api", name: "Claude API", reading: .balance, keepsPlaceWhenMissing: true),
-        Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage, keepsPlaceWhenMissing: false),
+        Slot(provider: "codex", name: "Codex", reading: .weeklyQuota, showsInWidget: true),
+        Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, showsInWidget: true),
+        Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
+        Slot(provider: "nanogpt", name: "nanoGPT", reading: .weeklyQuota, showsInWidget: true),
+        Slot(provider: "venice", name: "Venice", reading: .balance, showsInWidget: true),
+        Slot(provider: "magnific", name: "Magnific", reading: .credits, showsInWidget: true),
+        Slot(provider: "openai-api", name: "GPT API", reading: .monthCost, showsInWidget: true),
+        Slot(provider: "claude-api", name: "Claude API", reading: .monthCost, showsInWidget: true),
+        Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage, showsInWidget: false),
     ]
+
+    /// The rows the widget draws, in the owner's priority order.
+    static var widgetSlots: [Slot] { slots.filter(\.showsInWidget) }
 
     static func make(items: [LAAUsageItem], receivedAt: Date = Date(), previous: WidgetUsageSnapshot? = nil) -> WidgetUsageSnapshot {
         let feed = items.filter { $0.source == "codexbar-usage-proxy" }
-        let meters = slots.compactMap { slot -> WidgetUsageMeter? in
+        let meters = widgetSlots.compactMap { slot -> WidgetUsageMeter? in
             let current = meter(for: slot, feed: feed, receivedAt: receivedAt)
             if current?.hasRecordedValue(at: receivedAt) == true { return current }
             if let prior = previous?.displayableMeters.first(where: {
                 slot.owns($0.id) && $0.hasRecordedValue(at: receivedAt)
-            }) { return prior.lastKnown(label: slot.label) }
+            }) { return prior.lastKnown(label: slot.widgetLabel) }
             return current
         }
         // The feed can be cached even when the app has just contacted Bridge.
@@ -359,36 +388,42 @@ enum LAAWidgetUsageBuilder {
             let window = weeklyWindow(item.detail?.windows ?? [])
             guard available(item), let window,
                   let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) else {
-                return .missing(id: "\(item.id).weekly", label: slot.label)
+                return .missing(id: "\(item.id).weekly", label: slot.widgetLabel)
             }
-            return meter(id: "\(item.id).weekly", label: slot.label, unit: .percent, amount: remaining,
+            return meter(id: "\(item.id).weekly", label: slot.widgetLabel, unit: .percent, amount: remaining,
                          item: item, freshUntil: item.detail?.freshUntil,
                          resetsAt: LAAUsageItem.date(window.resetsAt), receivedAt: receivedAt)
         case .balance:
-            // A balance the feed does not carry keeps its row with no number
-            // where the slot says so: the owner still sees the provider was not
-            // read, and a spend figure never appears in its place.
-            guard let item = feed.first(where: { $0.id == "\(prefix)balance" }) else {
-                return slot.keepsPlaceWhenMissing ? .missing(id: "\(prefix)balance", label: slot.label) : nil
-            }
+            // A balance the feed does not carry is left out rather than drawn
+            // with no number: a spend figure never appears in its place.
+            guard let item = feed.first(where: { $0.id == "\(prefix)balance" }) else { return nil }
             guard available(item), item.unit == "usd", let amount = item.value, amount.isFinite else {
-                return .missing(id: item.id, label: slot.label)
+                return .missing(id: item.id, label: slot.widgetLabel)
             }
-            return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
+            return meter(id: item.id, label: slot.widgetLabel, unit: .usd, amount: amount,
                          item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
         case .credits:
             guard let item = feed.first(where: { $0.id == "\(prefix)credits" }) else { return nil }
             guard available(item), item.unit == "credits", let amount = item.value, amount.isFinite, amount >= 0 else {
-                return .missing(id: item.id, label: slot.label)
+                return .missing(id: item.id, label: slot.widgetLabel)
             }
-            return meter(id: item.id, label: slot.label, unit: .credits, amount: amount,
+            return meter(id: item.id, label: slot.widgetLabel, unit: .credits, amount: amount,
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+        case .monthCost:
+            guard let item = feed.first(where: { $0.id == "\(prefix)cost-month" }) else {
+                return .missing(id: "\(prefix)cost-month", label: slot.widgetLabel)
+            }
+            guard available(item), item.unit == "usd", let amount = item.value, amount.isFinite, amount >= 0 else {
+                return .missing(id: item.id, label: slot.widgetLabel)
+            }
+            return meter(id: item.id, label: slot.widgetLabel, unit: .usd, amount: amount,
                          item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
         case .recordedUsage:
             guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "usage" }) else { return nil }
             guard available(item), let amount = item.detail?.recordedCostUsd, amount.isFinite else {
-                return .missing(id: item.id, label: slot.label)
+                return .missing(id: item.id, label: slot.widgetLabel)
             }
-            return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
+            return meter(id: item.id, label: slot.widgetLabel, unit: .usd, amount: amount,
                          item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
         }
     }

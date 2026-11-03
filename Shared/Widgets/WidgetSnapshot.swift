@@ -253,8 +253,8 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
 struct WidgetUsageSnapshot: Codable, Equatable {
     /// The owner's display order and labels are fixed in the app; the widget
-    /// only ever shows these eight providers.
-    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "magnific", "openai-api", "claude-api", "liquid"]
+    /// only ever shows these providers.
+    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "nanogpt", "venice", "magnific", "openai-api", "claude-api", "liquid"]
 
     let meters: [WidgetUsageMeter]
     let checkedAt: Date?
@@ -266,17 +266,17 @@ struct WidgetUsageSnapshot: Codable, Equatable {
     }
 
     /// Rows saved by an older build keep their bytes but never render: a retired
-    /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here. The two
-    /// API rows are balances, so a snapshot that still holds their month spend
-    /// (`provider.<id>.cost-month`) is dropped instead of drawn or reused: that
-    /// figure is an amount used, not an amount left.
+    /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here. Venice
+    /// shows its balance only. The two API rows show the month's spend, so a
+    /// snapshot still holding their balance (`provider.<id>.balance`, which
+    /// neither API publishes) is dropped instead of drawn as 未取得.
     var displayableMeters: [WidgetUsageMeter] {
         meters.filter { meter in
             let parts = meter.id.split(separator: ".")
             guard parts.count >= 2, Self.shownProviders.contains(String(parts[1])) else { return false }
             let provider = String(parts[1])
             if provider == "venice" { return meter.id == "provider.venice.balance" }
-            if provider == "openai-api" || provider == "claude-api" { return meter.id == "provider.\(provider).balance" }
+            if provider == "openai-api" || provider == "claude-api" { return meter.id == "provider.\(provider).cost-month" }
             return true
         }
     }

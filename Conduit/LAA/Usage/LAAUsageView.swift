@@ -162,8 +162,15 @@ struct LAAUsageView: View {
                                     .multilineTextAlignment(.trailing)
                             }
                         }
+                        if group.items.isEmpty { caption("使用額を取得できません。") }
                         ForEach(group.items) { item in usageItem(item) }
-                        if let url = group.serviceURL,
+                        if let url = LAAUsageGroup.billingURL(for: Self.apiBalanceID(group.id)) {
+                            caption("残高は各社APIで公開されていません。")
+                            Link(destination: url) { Text(verbatim: LAACopy.usageBilling) }
+                                .laaTextStyle(.secondary)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                                .accessibilityIdentifier("laa.usage.billing.\(group.id)")
+                        } else if let url = group.serviceURL,
                            group.items.contains(where: { $0.availability != "available" || past($0) }) {
                             Link(destination: url) { Text(verbatim: LAACopy.usageOpenService) }
                                 .laaTextStyle(.secondary)
@@ -179,7 +186,7 @@ struct LAAUsageView: View {
             } else if !state.isRefreshing {
                 caption(state.usage.error == nil ? LAACopy.notFetched : "利用できません。")
                 ForEach(LAAWidgetUsageBuilder.slots, id: \.provider) { slot in
-                    let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.label, items: [])
+                    let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.groupLabel, items: [])
                     if let url = group.serviceURL {
                         Link(destination: url) { Text(verbatim: group.label) }
                             .laaTextStyle(.body)
@@ -191,30 +198,16 @@ struct LAAUsageView: View {
         }
     }
 
-    /// The two API providers' balance rows. Their spend is never shown here.
-    static func isAPIBalance(_ item: LAAUsageItem) -> Bool {
-        ["provider.openai-api.balance", "provider.claude-api.balance"].contains(item.id)
+    /// The API group's billing page, keyed by the group's provider id.
+    static func apiBalanceID(_ groupID: String) -> String {
+        ["provider.openai-api", "provider.claude-api"].contains(groupID) ? groupID + ".balance" : ""
     }
 
     @ViewBuilder
     private func usageItem(_ item: LAAUsageItem) -> some View {
         let warning = past(item)
         if item.availability != "available" || warning {
-            if Self.isAPIBalance(item) {
-                // The amount left is never replaced by an amount used: the row
-                // stays, without a number, with the reason and the official
-                // billing page to check it by hand.
-                metric("残り", value(warning ? nil : item.availableValue, unit: item.unit), warning: true, prominent: true)
-                caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
-                if let url = LAAUsageGroup.billingURL(for: item.id) {
-                    Link(destination: url) { Text(verbatim: LAACopy.usageBilling) }
-                        .laaTextStyle(.secondary)
-                        .frame(minHeight: LAASpacing.minimumTouchTarget)
-                        .accessibilityIdentifier("laa.usage.billing.\(item.id)")
-                }
-            } else {
-                caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
-            }
+            caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
         } else if item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
                 meter(window, item: item)
@@ -363,11 +356,10 @@ struct LAAUsageView: View {
     }
 
     static func unavailable(_ item: LAAUsageItem) -> String {
-        let balance = isAPIBalance(item)
         switch item.nullReason {
         case "not_configured": return item.kind == "cost" ? "管理者キー未設定" : "利用不可・未設定"
-        case "not_auto": return balance ? "自動取得できる残高がありません" : "自動取得なし"
-        case "freshness_unknown": return balance ? "残高を確認できません" : "使用額を確認できません"
+        case "not_auto": return "自動取得なし"
+        case "freshness_unknown": return "使用額を確認できません"
         case "fetch_failed": return "未取得・取得失敗"
         case "unsupported": return "利用不可・未対応"
         case "auth_required": return "利用不可・認証が必要"

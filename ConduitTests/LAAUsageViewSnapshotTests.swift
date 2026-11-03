@@ -18,7 +18,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
         XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません",
-                                                             "自動取得できる残高がありません"])
+                                                             "自動取得なし"])
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
         XCTAssertNil(LAAUsageGroup(id: "unknown", label: "Unknown", items: []).serviceURL)
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.openai-api.balance")?.host, "platform.openai.com")
