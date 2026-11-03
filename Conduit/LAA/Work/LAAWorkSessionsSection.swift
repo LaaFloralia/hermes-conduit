@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// Work › Sessions. Sessions start in /Users/laa; favourites stay on top,
-/// swiping a row archives it (trailing) or pins it (leading).
+/// swiping left pins a row, and swiping right archives it.
 struct LAAWorkSessionsSection: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
@@ -93,12 +93,10 @@ struct LAAWorkSessionsSection: View {
                                                    tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } },
                                     trailing: .init(title: session.isFavorite ? "ピン解除" : "ピン留め",
                                                     systemImage: session.isFavorite ? "pin.slash" : "pin",
-                                                    tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } }) {
-                        Button { opened = session } label: {
-                            LAAWorkSessionRow(session: session, projectName: projectName(session.projectId), options: options)
-                                .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: sessions)) * 16)
-                        }
-                        .buttonStyle(.plain)
+                                                    tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } },
+                                    onOpen: { opened = session }) {
+                        LAAWorkSessionRow(session: session, projectName: projectName(session.projectId), options: options)
+                            .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: sessions)) * 16)
                     }
                     .contextMenu {
                         Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
@@ -401,6 +399,7 @@ struct LAAWorkSwipeRow<Content: View>: View {
     @Binding var openID: String?
     let leading: Action
     let trailing: Action
+    let onOpen: () -> Void
     @ViewBuilder let content: () -> Content
 
     @State private var offset: CGFloat = 0
@@ -417,11 +416,25 @@ struct LAAWorkSwipeRow<Content: View>: View {
             }
             content()
                 .background(LAAColor.surface)
+                .contentShape(Rectangle())
                 .offset(x: offset)
+                // A completed drag must not also activate the row. Keep the
+                // gesture on the content so the revealed buttons stay separate.
+                .simultaneousGesture(drag.exclusively(before: TapGesture().onEnded { open() }))
         }
         .clipped()
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 18)
+        .onChange(of: openID) { _, value in
+            if value != id && offset != 0 { withAnimation(.snappy) { offset = 0 }; settled = 0 }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { open() }
+        .accessibilityAction(named: Text(verbatim: leading.title)) { leading.run() }
+        .accessibilityAction(named: Text(verbatim: trailing.title)) { trailing.run() }
+    }
+
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 18)
                 .onChanged { value in
                     guard abs(value.translation.width) > abs(value.translation.height) * 1.4 else { return }
                     if openID != id { openID = id }
@@ -441,12 +454,15 @@ struct LAAWorkSwipeRow<Content: View>: View {
                         settled = target
                     }
                 }
-        )
-        .onChange(of: openID) { _, value in
-            if value != id && offset != 0 { withAnimation(.snappy) { offset = 0 }; settled = 0 }
+    }
+
+    private func open() {
+        if offset != 0 {
+            withAnimation(.snappy) { offset = 0 }
+            settled = 0
+        } else {
+            onOpen()
         }
-        .accessibilityAction(named: Text(verbatim: leading.title)) { leading.run() }
-        .accessibilityAction(named: Text(verbatim: trailing.title)) { trailing.run() }
     }
 
     private func actionButton(_ action: Action) -> some View {
