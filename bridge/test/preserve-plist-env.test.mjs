@@ -40,7 +40,7 @@ function workspace(t) {
   return dir;
 }
 
-test('a reinstall keeps the three opt-in settings and nothing else from the old plist', (t) => {
+test('a reinstall keeps the opt-in settings and nothing else from the old plist', (t) => {
   const dir = workspace(t);
   const previous = join(dir, 'previous.plist');
   const next = join(dir, 'next.plist');
@@ -50,6 +50,7 @@ test('a reinstall keeps the three opt-in settings and nothing else from the old 
     LAA_LINEAR_PERSONAL_TOKEN_HELPER: '/Users/someone/.local/bin/laa-linear-key',
     LAA_LINEAR_PERSONAL_VIEWER_ID: 'viewer-1',
     LAA_GOOGLE_REMINDERS_ENABLED: '1',
+    LAA_VOICE_WORKER: '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker',
     LAA_SOMETHING_ELSE: 'keep-me-out',
   }));
   writeFileSync(next, plist({ HOME: '/Users/someone', LAA_BRIDGE_PORT: '9137', PATH: '/usr/bin:/bin' }));
@@ -60,7 +61,8 @@ test('a reinstall keeps the three opt-in settings and nothing else from the old 
   assert.equal(env.LAA_LINEAR_PERSONAL_TOKEN_HELPER, '/Users/someone/.local/bin/laa-linear-key');
   assert.equal(env.LAA_LINEAR_PERSONAL_VIEWER_ID, 'viewer-1');
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, '1');
-  assert.equal(env.LAA_SOMETHING_ELSE, undefined, 'only the three carried keys survive');
+  assert.equal(env.LAA_VOICE_WORKER, '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker');
+  assert.equal(env.LAA_SOMETHING_ELSE, undefined, 'only the carried keys survive');
   assert.equal(env.PATH, '/usr/bin:/bin', 'the template keeps its own values');
 });
 
@@ -74,6 +76,7 @@ test('a fresh install gains none of the opt-in settings', (t) => {
 
   assert.equal(readFileSync(next, 'utf8'), before);
   const env = environment(next);
+  assert.equal(env.LAA_VOICE_WORKER, undefined, 'voice stays off until an operator enables it');
   assert.equal(env.LAA_LINEAR_PERSONAL_TOKEN_HELPER, undefined);
   assert.equal(env.LAA_LINEAR_PERSONAL_VIEWER_ID, undefined);
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, undefined, 'reminders stay off until an operator enables them');
@@ -142,6 +145,7 @@ test('install-plist.sh carries the three settings from the live plist it replace
     LAA_LINEAR_PERSONAL_TOKEN_HELPER: '/Users/someone/.local/bin/laa-linear-key',
     LAA_LINEAR_PERSONAL_VIEWER_ID: 'viewer-1',
     LAA_GOOGLE_REMINDERS_ENABLED: '1',
+    LAA_VOICE_WORKER: '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker',
     LAA_SOMETHING_ELSE: 'drop-me',
   }));
 
@@ -151,6 +155,7 @@ test('install-plist.sh carries the three settings from the live plist it replace
   assert.equal(env.LAA_LINEAR_PERSONAL_TOKEN_HELPER, '/Users/someone/.local/bin/laa-linear-key');
   assert.equal(env.LAA_LINEAR_PERSONAL_VIEWER_ID, 'viewer-1');
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, '1');
+  assert.equal(env.LAA_VOICE_WORKER, '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker');
   assert.equal(env.LAA_SOMETHING_ELSE, undefined);
   assert.equal(env.LAA_BRIDGE_PORT, '9137', 'the template still supplies its own values');
 });

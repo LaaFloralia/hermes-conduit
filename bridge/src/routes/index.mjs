@@ -35,6 +35,8 @@ import { createCalendarReminders } from '../calendar/reminders.mjs';
 import { calendarRoutes } from './calendar.mjs';
 import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
+import { voiceRoutes } from './voice.mjs';
+import { deviceRoutes } from './devices.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -119,5 +121,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...(options.instructions?.enabled === true
       ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
       : []),
+    ...voiceRoutes(options.voice ?? {}),
+    ...deviceRoutes({ store, now }),
   ];
 }

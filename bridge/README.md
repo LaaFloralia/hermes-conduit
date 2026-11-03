@@ -63,6 +63,8 @@ laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner
 
 失効後、そのトークンの要求は `401 token_revoked`。実行中の下流処理は自動停止しないので、必要なら既存の停止制御で別途止める。再登録は新しいコードと新しい端末IDになる。
 
+音声専用端末は `laa-bridge pair --scopes voice:polish,voice:transcribe` で別に登録する。既存端末・既定scopeには追加しない。`LAA_VOICE_WORKER` に Mac mini の `saiddone-polish-worker` の絶対パスを設定した起動時だけ有効（未設定は503）。Haas-ja-v1.0 Q8_0とQwen3-4Bをprivate stdioで呼び、本文・音声はログやidempotency台帳に保存しない。同時要求は1件、処理中の追加要求は429。Bridgeの上限は通常90秒・worker初回120秒で、クライアント切断時はその要求だけを取り消す。ソースの配置と稼働への反映は別で、設定後の再起動には対象別の承認が必要。
+
 ## API（実装済み）
 
 | method / path | 認証 | 応答 |
@@ -70,6 +72,9 @@ laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner
 | `GET /v1/health` | 不要 | `{version, uptimeSeconds}` のみ |
 | `POST /v1/devices/enroll` | ペアリングコード | `{deviceId, token, scopes, createdAt}`（201） |
 | `GET /v1/me` | Bearer | `{deviceId, name, scopes, platform, createdAt}` |
+| `POST /v1/voice/transcribe` | Bearer + `voice:transcribe` | `{pcm16,sampleRate:16000,language?:ja}` → `{text,model}`。PCM16LE mono base64、25秒まで |
+| `POST /v1/voice/polish` | Bearer + `voice:polish` | `{text,language?}` → `{text,model,nothing?}`。4,000 UTF-16文字まで |
+| `POST /v1/devices/self/revoke` | Bearer + voice scope | 呼出端末の資格情報だけ失効。対象指定不可 |
 | `GET /v1/instructions/{agents|claude}` | Bearer + `instructions:read` | 指定された2ファイルのみ。本文と内容のSHA-256 ETag |
 | `PUT /v1/instructions/{agents|claude}` | Bearer + `instructions:write` + `If-Match` | 保存前にBridge stateへ旧版をバックアップし、版不一致は412。git commitしない |
 | `GET /v1/drive/files?query=&folderId=&pageSize=&cursor=` | Bearer + `media:read` | `{items,nextCursor}` |

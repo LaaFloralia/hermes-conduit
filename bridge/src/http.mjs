@@ -38,6 +38,30 @@ const LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
 const ENROLL_FAILURE_WINDOW_MS = 60 * 1000;
 const ENROLL_FAILURE_LIMIT = 10;
 
+// An unexpected error may carry the request text (a JSON parse message quotes
+// its input) or a filesystem path. The operator log keeps the error class and
+// a known system code only: enough to trace a fault, nothing that identifies
+// the user's words or the Mac's layout.
+const ERROR_NAMES = new Set([
+  'Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError',
+  'EvalError', 'AggregateError', 'StateError', 'BridgeError',
+]);
+
+// Node's own system codes. Anything else is dropped: a custom error's `code`
+// is just another string the thrower controls and may carry user text.
+const ERROR_CODES = new Set([
+  'ENOENT', 'EACCES', 'EPERM', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EIO',
+  'ENOSPC', 'EMFILE', 'ENFILE', 'EPIPE', 'EAGAIN', 'ENOTDIR', 'EISDIR', 'ELOOP',
+  'ENAMETOOLONG', 'EADDRINUSE', 'EHOSTUNREACH', 'ENETUNREACH',
+]);
+
+export function errorForLog(err) {
+  const name = ERROR_NAMES.has(err?.name) ? err.name : 'Error';
+  const entry = { error: name };
+  if (ERROR_CODES.has(err?.code)) entry.code = err.code;
+  return entry;
+}
+
 // Consume rejected upload bytes without buffering so a client still writing can
 // receive the HTTP error. Bound both time and traffic from a dishonest peer.
 function drainRejectedUpload(req, { timeoutMs, maxBytes }) {
@@ -109,6 +133,9 @@ export function createBridge({
   const cleanup = [];
 
   function sendJson(res, status, body, requestId, headers = {}) {
+    // A cancelled request may finish after the socket is gone; writing then
+    // would throw inside the error path.
+    if (res.writableEnded || res.destroyed) return;
     const payload = `${JSON.stringify(body)}\n`;
     res.writeHead(status, {
       'content-type': 'application/json; charset=utf-8',
@@ -381,7 +408,7 @@ export function createBridge({
       }
       errorCode = error.code;
       if (!(err instanceof BridgeError) && log) {
-        log({ level: 'error', requestId, error: err?.message ?? String(err) });
+        log({ level: 'error', requestId, ...errorForLog(err) });
       }
       if (!res.headersSent) {
         const drain = streamingUpload ? await rejectedUploadDrainer(req) : 'complete';

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Carry the three opt-in Bridge settings over a reinstall.
+"""Carry the explicit opt-in Bridge settings over a reinstall.
 
 `scripts/install.sh` writes the LaunchAgent plist from the template, so any
 setting an operator added by hand would disappear on reinstall. Only these
@@ -16,6 +16,7 @@ CARRIED = (
     "LAA_LINEAR_PERSONAL_TOKEN_HELPER",
     "LAA_LINEAR_PERSONAL_VIEWER_ID",
     "LAA_GOOGLE_REMINDERS_ENABLED",
+    "LAA_VOICE_WORKER",
 )
 
 

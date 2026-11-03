@@ -56,6 +56,12 @@ export const OPERATOR_GRANT_SCOPES = Object.freeze(['brain:create', 'brain:owner
 // It stays opt-in per device: `laa-bridge pair --scopes brain:read,brain:create`.
 export const ALL_SCOPES = Object.freeze([
   ...DEFAULT_SCOPES,
+  // Voice is opt-in per device and never part of the default grant. A device
+  // gets it only when an operator pairs it with `--scopes voice:polish` or
+  // `--scopes voice:transcribe`. Adding the names here makes that grant
+  // possible; devices that already exist keep the scopes they were paired with.
+  'voice:polish',
+  'voice:transcribe',
   ...STUDIO_SCOPES,
   'calendar:read',
   'calendar:write',
@@ -90,6 +96,36 @@ export function resolvePort(env = process.env) {
 
 export function testEndpointsEnabled(env = process.env) {
   return env.LAA_BRIDGE_TEST_ENDPOINTS === '1';
+}
+
+// --- voice -----------------------------------------------------------------
+//
+// One polish request is one short utterance: 4,000 characters is far beyond a
+// dictation and still bounds the model's prompt and the response body.
+export const VOICE_POLISH_MAX_CHARS = 4000;
+
+// One transcribe request carries at most 25 s of 16 kHz mono PCM16LE audio:
+// 16,000 samples/s x 2 bytes x 25 s. The base64 body is ~1.07 MB, so the route
+// raises the HTTP limit instead of accepting a truncated recording.
+export const VOICE_TRANSCRIBE_SAMPLE_RATE = 16_000;
+export const VOICE_TRANSCRIBE_MAX_SECONDS = 25;
+export const VOICE_TRANSCRIBE_MAX_BYTES = VOICE_TRANSCRIBE_SAMPLE_RATE * 2 * VOICE_TRANSCRIBE_MAX_SECONDS;
+export const VOICE_TRANSCRIBE_BODY_LIMIT_BYTES = 1_200_000;
+
+// The worker holds the model in its own process and loads it on the first
+// request of a child. A dictation after speech recognition pays that load
+// again, so warm requests also allow loading. The client allows 135 s,
+// covering the cold budget and network margin.
+export const VOICE_REQUEST_TIMEOUT_MS = 90_000;
+export const VOICE_COLD_TIMEOUT_MS = 120_000;
+
+// Absolute path to the voice worker. Empty means the feature is off and both
+// routes answer 503: installing the worker is an explicit deployment step, not
+// something a running Bridge discovers on its own.
+export function resolveVoiceWorkerPath(env = process.env) {
+  const raw = env.LAA_VOICE_WORKER;
+  if (typeof raw !== 'string' || raw.trim() === '') return '';
+  return resolve(raw.trim());
 }
 
 // Expands "sessions:*" style groups and rejects unknown names. Used by the CLI

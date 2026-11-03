@@ -12,7 +12,7 @@ import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { grantStudio, issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null, studio = null, ownerTasks = null, linearOwnerTasks = null, skills = null, routines = null, calendar = null, instructions = null, rejectedUploadDrainer, log = null } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null, studio = null, ownerTasks = null, linearOwnerTasks = null, skills = null, routines = null, calendar = null, instructions = null, voice = null, rejectedUploadDrainer, log = null } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
@@ -34,12 +34,13 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     routines: routines ?? { read: async () => ({ data: [] }) },
     ...(calendar ? { calendar } : {}),
     ...(instructions ? { instructions } : {}),
+    ...(voice ? { voice } : {}),
   };
 
   let bridge = createBridge({ store, testEndpoints, drive, now: clock, log, routeOptions, ...(rejectedUploadDrainer ? { rejectedUploadDrainer } : {}) });
   let address = await bridge.listen({ port: 0, host: '127.0.0.1' });
 
-  async function request(path, { method = 'GET', body, token, key, headers = {} } = {}) {
+  async function request(path, { method = 'GET', body, token, key, headers = {}, signal } = {}) {
     const finalHeaders = { ...headers };
     if (body !== undefined) finalHeaders['content-type'] = 'application/json';
     if (token) finalHeaders.authorization = `Bearer ${token}`;
@@ -48,6 +49,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
       method,
       headers: finalHeaders,
       body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)),
+      signal,
     });
     const text = await response.text();
     return { status: response.status, headers: response.headers, body: text === '' ? null : JSON.parse(text) };
