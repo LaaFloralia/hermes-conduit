@@ -9,6 +9,7 @@
 | 各サービスの利用枠 | CodexBar → ローカルproxy `/widget`、残り% | 数値なし |
 | 自動取得可能な残高 | 同proxy、USD・クレジット | 数値なし |
 | GPT API・Claude APIの残高 | 同上流feedの `amount`（USD）だけ。両社のCost APIは残高を返さない | `not_auto`・数値なし。使用額で代用しない |
+| nanoGPT | 公式のサブスク利用枠 `/api/subscription/v1/usage`、残り%（デイリー・ウィークリー） | 数値なし。未設定の枠は出さない |
 | Venice | 自動取得したUSD残高と補助残高 | 数値なし |
 | Liquid AIの記録済み使用 | ローカル台帳に記録された呼出しのトークン・費用 | 数値なし。全利用分とは限らない |
 | Claude API使用額 | Anthropic従来Cost API、今日・今月のUSD | Admin key未設定・認証失敗・取得失敗を区別 |
@@ -48,7 +49,7 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットはこの順で入る分を並べ、最後に取得できた値と「HH:mm時点」を表示する。行ごとの取得時刻が異なる場合は最古の時刻、別日は日付も示す。残高の行は保存値がなくても残して未取得にする。
+- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、nanoGPT、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットはこの順で入る分を並べ、最後に取得できた値と「HH:mm時点」を表示する。行ごとの取得時刻が異なる場合は最古の時刻、別日は日付も示す。残高の行は保存値がなくても残して未取得にする。
 - GPT API・Claude APIは残高の行を先に、取得できた時だけ数値を出す。残高が未取得でも行は残し、理由と公式の請求画面へのリンクを出す。今日・今月の金額は必ず「使用額」と書き、残高として読ませない。ウィジェットのこの2枠も残高だけで、App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
 - アプリは開いた時と明示更新で取得する。表示中はshellの自動取得を抑止し、鮮度・期限の判定も最終取得時点に固定する。ウィジェットはApp Groupのlauncher-v1.jsonを読み、Bridgeへ直接通信しない。アプリが/v1/usageを取得して保存する。期限超過・通信失敗・一部行の欠測では、保存済みの値と元の取得時刻を保持する。接続解除・接続先変更・アクセス拒否では消去する。Magnificの単位はAI creditsで、USDに換算しない。
 - Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。

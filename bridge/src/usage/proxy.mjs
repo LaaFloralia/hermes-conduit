@@ -43,6 +43,7 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'codex', label: 'Codex', kind: 'quota' },
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
+  { id: 'nanogpt', label: 'nanoGPT', kind: 'quota' },
   { id: 'venice', label: 'Venice', kind: 'balance' },
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
   { id: 'openai-api', label: 'GPT API', kind: 'balance' },
