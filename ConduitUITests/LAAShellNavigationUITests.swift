@@ -12,16 +12,19 @@ final class LAAShellNavigationUITests: XCTestCase {
         for name in ["Chat", "Today", "Brain", "Studio", "Work"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
-        app.buttons["Sessions, projects and tasks"].tap()
-        XCTAssertTrue(app.staticTexts["laa.work.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 10))
         app.buttons["Brain"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
-        app.navigationBars.buttons.firstMatch.tap()
-        app.buttons["AI usage"].tap()
-        XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons.firstMatch.tap()
-        app.buttons["Drive"].tap()
+        let usage = app.buttons["work.section.usage"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 10))
+        if !usage.isHittable { app.scrollViews["work.segment"].swipeLeft() }
+        usage.tap()
+        // Unpaired, AI usage waits for the Mac like the other Work sections.
+        XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 10))
+        app.buttons["Studio"].tap()
+        let drive = app.buttons["studio.drive"]
+        XCTAssertTrue(drive.waitForExistence(timeout: 10)); drive.tap()
         XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 10))
         let settings = app.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 10)); settings.tap()
