@@ -9,7 +9,7 @@ final class LAAShellNavigationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]
         app.launch()
-        for name in ["Chats", "Today", "Brain", "Studio", "Work"] {
+        for name in ["Chat", "Today", "Brain", "Studio", "Work"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
         app.buttons["Sessions, projects and tasks"].tap()
