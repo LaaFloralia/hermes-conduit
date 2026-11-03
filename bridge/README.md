@@ -39,7 +39,7 @@ cd bridge && LAA_BRIDGE_PORT=9141 node src/main.mjs
 
 install は plist を `~/Library/LaunchAgents/com.laa.bridge.plist` へ書き、`launchctl bootstrap` し、`~/.local/bin/laa-bridge` をリンクする。再実行は再インストールとして扱う。ポートが他のプロセスに使われていれば中止する。
 
-再インストールでも、`LAA_LINEAR_PERSONAL_TOKEN_HELPER`・`LAA_LINEAR_PERSONAL_VIEWER_ID`・`LAA_GOOGLE_REMINDERS_ENABLED` の3つだけは、既に設定されていた時に限り引き継ぐ（`scripts/preserve-plist-env.py`）。それ以外の環境変数はテンプレートの値に戻るため、未設定の新規インストールで自動的に有効になることはない。plistは0600の一時ファイルへ描画し、`plutil -lint`の成功後に本番へatomic renameする（`scripts/install-plist.sh`）。既存plistが壊れていて読めない時は、値を出さずに失敗し、本番plistは変更しない。
+再インストールでも、`LAA_LINEAR_PERSONAL_TOKEN_HELPER`・`LAA_LINEAR_PERSONAL_VIEWER_ID`・`LAA_GOOGLE_REMINDERS_ENABLED`・`LAA_VOICE_WORKER` の4つだけは、既に設定されていた時に限り引き継ぐ（`scripts/preserve-plist-env.py`）。それ以外の環境変数はテンプレートの値に戻るため、未設定の新規インストールで自動的に有効になることはない。plistは0600の一時ファイルへ描画し、`plutil -lint`の成功後に本番へatomic renameする（`scripts/install-plist.sh`）。既存plistが壊れていて読めない時は、値を出さずに失敗し、本番plistは変更しない。
 
 ## ペアリング（端末の追加）
 
@@ -399,6 +399,8 @@ launchctl kickstart -k gui/$(id -u)/com.laa.bridge     # 再起動
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.laa.bridge.plist   # 停止
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.laa.bridge.plist # 開始
 ```
+
+停止を伴う操作は、その対象に対する社長の明示承認後だけ行う。`bootout` の終了コード0だけで削除完了とはせず、旧サービスの未登録と旧PIDの終了を読み戻してから `bootstrap` する。初回起動が失敗した場合は、サービス未登録・待受ポートなし・plistの構文正常を確認し、追加停止をせず、承認済みの起動を完了する `bootstrap` だけを1回再試行できる。再停止が必要なら新しい承認を得る。初回失敗も保存し、復旧は新PID・health・既存端末の保持・対象APIで判定する（[2026-11-03の復旧記録](../security/incidents/2026-11-03-bridge-bootstrap.md)）。
 
 `KeepAlive` により `kill -9` 後も launchd が再起動する（`ThrottleInterval` 10 秒）。端末・台帳は state に残るため、再起動後も同じトークンと idempotency key が有効。
 
