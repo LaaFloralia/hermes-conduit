@@ -259,17 +259,17 @@ struct LAAUsageGroup: Identifiable {
         return result
     }
 
-    /// The owner's display order (2026-11-01): Codex Weekly, OpenCode Weekly,
-    /// Claude Weekly, Venice, Magnific, GPT API, Claude API, Liquid AI. Retired
-    /// providers (Jev, Google Cloud, Google Flow) are never listed.
+    /// The owner's display order (2026-11-01), taken from the widget's one slot
+    /// list so a provider added there shows here too: Codex Weekly, OpenCode
+    /// Weekly, Claude Weekly, nanoGPT, Venice, Magnific, GPT API, Claude API,
+    /// Liquid AI. Retired providers (Jev, Google Cloud, Google Flow) are never
+    /// listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
-        let ids = ["codex", "opencode-go", "claude", "venice", "magnific", "openai-api", "claude-api", "liquid"]
-        let names = ["codex": "Codex Weekly", "claude": "Claude Weekly", "opencode-go": "OpenCode Weekly", "liquid": "Liquid AI"]
-        return ids.compactMap { id in
-            let prefix = "provider.\(id)."
+        LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
+            let prefix = "provider.\(slot.provider)."
             let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
-            guard let first = selected.first else { return nil }
-            return LAAUsageGroup(id: "provider.\(id)", label: names[id] ?? first.label, items: selected.sorted { left, right in
+            guard !selected.isEmpty else { return nil }
+            return LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.label, items: selected.sorted { left, right in
                 let leftOrder = readingOrder(left.id)
                 let rightOrder = readingOrder(right.id)
                 return leftOrder == rightOrder ? left.id < right.id : leftOrder < rightOrder
