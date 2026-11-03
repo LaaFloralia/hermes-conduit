@@ -18,7 +18,8 @@ final class LAAShellNavigationUITests: XCTestCase {
         app.buttons["Work"].tap()
         let usage = app.buttons["work.section.usage"]
         XCTAssertTrue(usage.waitForExistence(timeout: 10))
-        if !usage.isHittable { app.scrollViews["work.segment"].swipeLeft() }
+        // AI usage is the last segment, past the screen's right edge.
+        app.scrollViews["work.segment"].swipeLeft()
         usage.tap()
         // Unpaired, AI usage waits for the Mac like the other Work sections.
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 10))
