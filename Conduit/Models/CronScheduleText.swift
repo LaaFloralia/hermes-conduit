@@ -31,7 +31,8 @@ struct CronJobsOwner: Equatable {
 
 /// The live connection a read went through, not just its names: a re-created
 /// bridge or client for the same dashboard and profile is a new connection,
-/// and nothing read through the old one stands for it.
+/// and nothing read through the old one stands for it. The object itself is
+/// held (not an address) so a token can never be reused by a later object.
 struct CronJobsConnection: Equatable {
     enum Kind: Equatable {
         case dashboard
@@ -39,8 +40,12 @@ struct CronJobsConnection: Equatable {
     }
 
     let kind: Kind
-    let identity: ObjectIdentifier
     let owner: CronJobsOwner
+    let object: AnyObject
+
+    static func == (lhs: CronJobsConnection, rhs: CronJobsConnection) -> Bool {
+        lhs.kind == rhs.kind && lhs.owner == rhs.owner && lhs.object === rhs.object
+    }
 }
 
 /// What a job-list answer actually contains. Only an empty array is "no
@@ -84,6 +89,15 @@ enum CronJobsReadDecision {
     /// switched-away owner has its own reader.
     static func shouldReloadAfterDrop(owner: CronJobsOwner, activeOwner: CronJobsOwner?) -> Bool {
         owner == activeOwner
+    }
+
+    /// Rows belong on screen only while they were read through the connection
+    /// that is current now: a replaced connection's list is not this one's,
+    /// even for the same dashboard and profile, so the screen waits for the
+    /// new read instead of showing the old list as current.
+    static func showsRows(rowsConnection: CronJobsConnection?, activeConnection: CronJobsConnection?) -> Bool {
+        guard let activeConnection else { return false }
+        return rowsConnection == activeConnection
     }
 
     /// The phase for the connection on screen: its own read wins, a read
