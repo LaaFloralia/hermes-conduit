@@ -12,6 +12,8 @@ export async function connectDaemon() {
 }
 export const pendingHash = (pending) => createHash('sha256').update(JSON.stringify(pending)).digest('hex');
 export const daemonSessionID = (id) => `ses_${createHash('sha256').update(`paseo|${id}`).digest('hex').slice(0, 16)}`;
+const PARENT_LABEL = 'paseo.parent-agent-id';
+const isBusy = (a) => Boolean(a.activeTurn || a.pendingPermissions?.length) || !['idle', 'closed', 'error'].includes(a.status);
 
 export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() } = {}) {
   const decisions = new Map();
@@ -28,26 +30,30 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
     if (!a || a.id !== id) throw new BridgeError(404, 'not_found', 'Paseo agent not found');
     return a;
   }
+  async function directory(c) {
+    const items = [], seen = new Set();
+    let cursor;
+    do {
+      const page = await c.fetchAgents({ filter: { includeArchived: true }, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+      if (!Array.isArray(page.entries)) throw new Error('invalid directory');
+      items.push(...page.entries.map((e) => e.agent));
+      cursor = page.pageInfo?.nextCursor;
+      if (cursor && seen.has(cursor)) throw new Error('repeated directory cursor');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+    return items;
+  }
+  async function activeWorkspaces(c) {
+    const page = await c.fetchWorkspaces({ page: { limit: 200 } });
+    if (!Array.isArray(page?.entries)) throw new Error('invalid workspace directory');
+    return page.entries;
+  }
   return {
-    list: () => call(async (c) => {
-      const items = [], seen = new Set();
-      let cursor;
-      do {
-        const page = await c.fetchAgents({ filter: { includeArchived: true }, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
-        if (!Array.isArray(page.entries)) throw new Error('invalid directory');
-        items.push(...page.entries.map((e) => e.agent));
-        cursor = page.pageInfo?.nextCursor;
-        if (cursor && seen.has(cursor)) throw new Error('repeated directory cursor');
-        if (cursor) seen.add(cursor);
-      } while (cursor);
-      return items;
-    }),
+    list: () => call(directory),
     /// Paseo's own pins, so a workspace pinned in Paseo reads as a favourite
     /// here. Nothing is invented when the read fails: the caller sees null.
     workspacePins: () => call(async (c) => {
-      const page = await c.fetchWorkspaces({ page: { limit: 200 } });
-      if (!Array.isArray(page?.entries)) throw new Error('invalid workspace directory');
-      return page.entries.map((entry) => ({
+      return (await activeWorkspaces(c)).map((entry) => ({
         id: entry?.id ?? entry?.workspace?.id,
         pinnedAt: entry?.pinnedAt ?? entry?.workspace?.pinnedAt ?? null,
       })).filter((row) => typeof row.id === 'string');
@@ -56,6 +62,43 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
     setWorkspacePinned: (workspaceId, pinned) => call(async (c) => {
       const result = await c.setWorkspacePinned(workspaceId, pinned);
       return { pinnedAt: result?.pinnedAt ?? null };
+    }),
+    /// Archive these agents in Paseo. Paseo interrupts a running turn and
+    /// closes labelled children with their parent, so a tree with anything at
+    /// work is refused whole. A workspace left empty goes too, or Paseo's
+    /// sidebar keeps it; a worktree stays because archiving one deletes files.
+    archive: (ids) => call(async (c) => {
+      const agents = await directory(c);
+      const tree = new Set(ids.filter((id) => agents.some((a) => a.id === id)));
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const a of agents) {
+          if (tree.has(a.id) || !tree.has(a.labels?.[PARENT_LABEL])) continue;
+          tree.add(a.id);
+          grew = true;
+        }
+      }
+      const rows = agents.filter((a) => tree.has(a.id));
+      if (rows.some((a) => !a.archivedAt && isBusy(a))) throw conflict('session_running', 'a session in this tree is still running');
+      for (const a of rows) {
+        if (!a.archivedAt && !(await agent(c, a.id)).archivedAt) await c.archiveAgent(a.id);
+      }
+      const remaining = await directory(c);
+      const emptied = new Set(rows.map((a) => a.workspaceId).filter((id) => id && !remaining.some((a) => a.workspaceId === id && !a.archivedAt)));
+      for (const entry of await activeWorkspaces(c)) {
+        if (!emptied.has(entry.id) || entry.workspaceKind === 'worktree') continue;
+        const result = await c.archiveWorkspace(entry.id);
+        if (result?.error) throw new Error(result.error);
+      }
+    }),
+    /// Bring one agent back, with its workspace if that was archived. Paseo
+    /// has no bare unarchive: refresh unarchives and loads it without a turn.
+    unarchive: (id) => call(async (c) => {
+      const a = await agent(c, id);
+      if (!a.archivedAt) return;
+      const active = await activeWorkspaces(c);
+      if (a.workspaceId && !active.some((entry) => entry.id === a.workspaceId)) await c.restoreWorkspace(a.workspaceId);
+      await c.refreshAgent(id);
     }),
     status: (id) => call(async (c) => snapshot(await agent(c, id), now())),
     send: (id, { text, messageId, images }) => call(async (c) => {

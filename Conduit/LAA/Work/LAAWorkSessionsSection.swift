@@ -2,7 +2,8 @@
 import SwiftUI
 
 /// Work › Sessions. Sessions start in /Users/laa; favourites stay on top,
-/// swiping left pins a row, and swiping right archives it.
+/// swiping left pins a row, swiping right archives it, and a parent's children
+/// stay folded under it until opened.
 struct LAAWorkSessionsSection: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
@@ -20,6 +21,9 @@ struct LAAWorkSessionsSection: View {
     @State private var failure: String?
     @State private var loading = false
     @State private var openRow: String?
+    @State private var expanded = Set<String>()
+
+    private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
@@ -30,14 +34,16 @@ struct LAAWorkSessionsSection: View {
 
             TextField("", text: $search, prompt: Text(verbatim: "セッションを検索"))
                 .textFieldStyle(.roundedBorder).accessibilityIdentifier("work.sessions.search")
-            let visible = LAAWorkSessionOrder.rows(filteredSessions)
+            let matches = filteredSessions
+            let visible = LAAWorkSessionOrder.rows(matches)
+            let children = LAAWorkSessionOrder.descendants(matches)
             if visible.pinned.isEmpty && visible.recent.isEmpty && !loading && failure == nil {
                 Text(verbatim: showArchived ? "アーカイブしたセッションはありません。" : "セッションはまだありません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .padding(.vertical, LAASpacing.x4)
             }
-            if !visible.pinned.isEmpty { group("ピン留め", visible.pinned) }
-            if !visible.recent.isEmpty { group(showArchived ? "アーカイブ" : "最近", visible.recent) }
+            if !visible.pinned.isEmpty { group("ピン留め", shown(visible.pinned), children) }
+            if !visible.recent.isEmpty { group(showArchived ? "アーカイブ" : "最近", shown(visible.recent), children) }
 
             Button {
                 showArchived.toggle()
@@ -81,29 +87,44 @@ struct LAAWorkSessionsSection: View {
         }
     }
 
-    private func group(_ title: String, _ rows: [LAAWorkSession]) -> some View {
+    /// A search shows every match, so a child it found is not left folded away.
+    private func shown(_ rows: [LAAWorkSession]) -> [LAAWorkSession] {
+        searching ? rows : LAAWorkSessionOrder.visible(rows, expanded: expanded)
+    }
+
+    private func group(_ title: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                 .padding(.bottom, LAASpacing.x2)
             VStack(spacing: 0) {
                 ForEach(rows) { session in
-                    LAAWorkSwipeRow(id: session.id, openID: $openRow,
-                                    leading: .init(title: session.isArchived ? "戻す" : "アーカイブ",
-                                                   systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox",
-                                                   tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } },
-                                    trailing: .init(title: session.isFavorite ? "ピン解除" : "ピン留め",
-                                                    systemImage: session.isFavorite ? "pin.slash" : "pin",
-                                                    tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } },
-                                    onOpen: { opened = session }) {
-                        LAAWorkSessionRow(session: session, projectName: projectName(session.projectId), options: options)
-                            .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: sessions)) * 16)
-                    }
-                    .contextMenu {
-                        Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
-                            Label { Text(verbatim: session.isFavorite ? "ピン解除" : "ピン留め") } icon: { Image(systemName: "pin") }
+                    let folded = children[session.id] ?? []
+                    let open = searching || expanded.contains(session.id)
+                    HStack(spacing: 0) {
+                        LAAWorkSwipeRow(id: session.id, openID: $openRow,
+                                        leading: .init(title: session.isArchived ? "戻す" : "アーカイブ",
+                                                       systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox",
+                                                       tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } },
+                                        trailing: .init(title: session.isFavorite ? "ピン解除" : "ピン留め",
+                                                        systemImage: session.isFavorite ? "pin.slash" : "pin",
+                                                        tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } },
+                                        onOpen: { opened = session }) {
+                            LAAWorkSessionRow(session: session, projectName: projectName(session.projectId), options: options,
+                                              childNeedsDecision: !open && folded.contains(where: \.needsDecision))
+                                .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: sessions)) * 16)
                         }
-                        Button { Task { await update(session, archived: !session.isArchived) } } label: {
-                            Label { Text(verbatim: session.isArchived ? "アーカイブから戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                        .contextMenu {
+                            Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
+                                Label { Text(verbatim: session.isFavorite ? "ピン解除" : "ピン留め") } icon: { Image(systemName: "pin") }
+                            }
+                            Button { Task { await update(session, archived: !session.isArchived) } } label: {
+                                Label { Text(verbatim: session.isArchived ? "アーカイブから戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                            }
+                        }
+                        if !folded.isEmpty && !searching {
+                            LAAWorkChildDisclosure(id: session.id, count: folded.count, open: open) {
+                                withAnimation(.snappy) { expanded.formSymmetricDifference([session.id]) }
+                            }
                         }
                     }
                     if session.id != rows.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 30) }
@@ -182,6 +203,8 @@ struct LAAWorkSessionsSection: View {
                 else if let index = sessions.firstIndex(where: { $0.id == updated.id }) { sessions[index] = updated }
             }
             failure = nil
+            // Archiving takes the children along.
+            if archived != nil { await load() }
         } catch let error as LAABridgeHTTPError {
             failure = error.status == 404 || error.status == 405 ? "MacのBridgeを更新すると使えます。" : LAAWorkHTTP.message(error)
         } catch {
@@ -221,6 +244,7 @@ struct LAAWorkSessionRow: View {
     let session: LAAWorkSession
     let projectName: String?
     let options: LAAWorkSessionOptions?
+    var childNeedsDecision = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
@@ -239,8 +263,8 @@ struct LAAWorkSessionRow: View {
                 Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }
             Spacer(minLength: LAASpacing.x2)
-            if LAAWorkPresentation.phaseNeedsAttention(session.phase) || session.needsDecision {
-                Text(verbatim: session.needsDecision ? "判断待ち" : LAAWorkPresentation.phase(session.phase))
+            if LAAWorkPresentation.phaseNeedsAttention(session.phase) || session.needsDecision || childNeedsDecision {
+                Text(verbatim: session.needsDecision || childNeedsDecision ? "判断待ち" : LAAWorkPresentation.phase(session.phase))
                     .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.attention)
             }
         }
@@ -252,6 +276,35 @@ struct LAAWorkSessionRow: View {
     private var detail: String {
         [projectName, LAAWorkSessionStyle.model(session, options: options), LAAWorkSessionStyle.relative(session.updatedAt)]
             .compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// Opens and closes a parent's children. It sits beside the swipe row, not in
+/// it, so a tap here cannot also open the session.
+struct LAAWorkChildDisclosure: View {
+    @Environment(\.laaDesktop) private var laaDesktop
+    let id: String
+    let count: Int
+    let open: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: LAASpacing.x1) {
+                Text(verbatim: "\(count)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .rotationEffect(.degrees(open ? 90 : 0))
+            }
+            .padding(.horizontal, LAASpacing.x2)
+            .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: laaDesktop ? (open ? "Hide child agents" : "Show child agents")
+                                                      : (open ? "子エージェントを閉じる" : "子エージェントを開く")))
+        .accessibilityValue(Text(verbatim: "\(count)"))
+        .accessibilityIdentifier("work.session.\(id).children")
     }
 }
 
@@ -273,6 +326,31 @@ enum LAAWorkSessionOrder {
         }
         recent += sorted.filter { !visited.contains($0.id) }
         return (pinned, recent)
+    }
+    /// Everything under each session that has children, however deep.
+    static func descendants(_ rows: [LAAWorkSession]) -> [String: [LAAWorkSession]] {
+        let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var result: [String: [LAAWorkSession]] = [:]
+        for row in rows {
+            var parent = row.parentId, seen = Set([row.id])
+            while let id = parent, seen.insert(id).inserted, let found = byID[id] {
+                result[id, default: []].append(row)
+                parent = found.parentId
+            }
+        }
+        return result
+    }
+    /// The rows left once closed parents fold their children away.
+    static func visible(_ rows: [LAAWorkSession], expanded: Set<String>) -> [LAAWorkSession] {
+        let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return rows.filter { row in
+            var parent = row.parentId, seen = Set([row.id])
+            while let id = parent, seen.insert(id).inserted, let found = byID[id] {
+                if !expanded.contains(id) { return false }
+                parent = found.parentId
+            }
+            return true
+        }
     }
     static func depth(_ row: LAAWorkSession, in rows: [LAAWorkSession]) -> Int {
         var parent = row.parentId, depth = 0, seen = Set([row.id])
@@ -398,7 +476,7 @@ struct LAAWorkSwipeRow<Content: View>: View {
     let id: String
     @Binding var openID: String?
     let leading: Action
-    let trailing: Action
+    var trailing: Action?
     let onOpen: () -> Void
     @ViewBuilder let content: () -> Content
 
@@ -412,7 +490,7 @@ struct LAAWorkSwipeRow<Content: View>: View {
             HStack(spacing: 0) {
                 actionButton(leading).frame(width: max(0, offset)).opacity(offset > 0 ? 1 : 0)
                 Spacer(minLength: 0)
-                actionButton(trailing).frame(width: max(0, -offset)).opacity(offset < 0 ? 1 : 0)
+                if let trailing { actionButton(trailing).frame(width: max(0, -offset)).opacity(offset < 0 ? 1 : 0) }
             }
             content()
                 .background(LAAColor.surface)
@@ -430,7 +508,9 @@ struct LAAWorkSwipeRow<Content: View>: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { open() }
         .accessibilityAction(named: Text(verbatim: leading.title)) { leading.run() }
-        .accessibilityAction(named: Text(verbatim: trailing.title)) { trailing.run() }
+        .accessibilityActions {
+            if let trailing { Button { trailing.run() } label: { Text(verbatim: trailing.title) } }
+        }
     }
 
     private var drag: some Gesture {
@@ -439,6 +519,7 @@ struct LAAWorkSwipeRow<Content: View>: View {
                     guard abs(value.translation.width) > abs(value.translation.height) * 1.4 else { return }
                     if openID != id { openID = id }
                     offset = settled + value.translation.width
+                    if trailing == nil { offset = max(0, offset) }
                 }
                 .onEnded { value in
                     guard abs(value.translation.width) > abs(value.translation.height) * 1.4 else {
@@ -447,9 +528,9 @@ struct LAAWorkSwipeRow<Content: View>: View {
                     }
                     let final = settled + value.predictedEndTranslation.width
                     if final > commit { finish(leading) }
-                    else if final < -commit { finish(trailing) }
+                    else if final < -commit, let trailing { finish(trailing) }
                     else {
-                        let target: CGFloat = final > reveal / 2 ? reveal : final < -reveal / 2 ? -reveal : 0
+                        let target: CGFloat = final > reveal / 2 ? reveal : final < -reveal / 2 && trailing != nil ? -reveal : 0
                         withAnimation(.snappy) { offset = target }
                         settled = target
                     }

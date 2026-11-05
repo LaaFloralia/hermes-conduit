@@ -562,3 +562,24 @@ test('a schema-1 project file is converted once without inventing a body', async
   assert.equal(store.instructionsFor(project), null, 'a ref is never read');
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).schema, 2);
 });
+
+test('archiving a project moves it out of the list, keeps it readable and restores it', async (t) => {
+  const { api, token } = await boot(t);
+  const project = (await createProject(api, token)).body.data;
+  const names = async (query = '') => (await api.request(`/v1/projects${query}`, { token })).body.data.items.map((item) => item.id);
+
+  const patch = (body, etag, key) => api.request(`/v1/projects/${project.id}`, { method: 'PATCH', token, key, headers: { 'if-match': etag }, body });
+  assert.equal((await patch({ archived: 'yes' }, project.etag, 'k-bad')).status, 400);
+  const archived = await patch({ archived: true }, project.etag, 'k-archive');
+  assert.equal(archived.status, 200);
+  assert.ok(archived.body.data.archivedAt);
+  assert.equal(archived.body.data.instructions, BODY);
+  assert.deepEqual(await names(), []);
+  assert.deepEqual(await names('?archived=only'), [project.id]);
+  assert.equal((await api.request(`/v1/projects/${project.id}`, { token })).status, 200);
+
+  const restored = await patch({ archived: false }, archived.body.data.etag, 'k-restore');
+  assert.equal(restored.body.data.archivedAt, null);
+  assert.deepEqual(await names(), [project.id]);
+  assert.deepEqual(await names('?archived=only'), []);
+});

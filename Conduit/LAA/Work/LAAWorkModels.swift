@@ -102,15 +102,18 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let version: Int?
     let etag: String?
     let updatedAt: String?
+    let archivedAt: String?
     let fileCount: Int?
     let files: [LAAWorkProjectFile]?
+
+    var isArchived: Bool { archivedAt != nil }
 
     // An older server simply omits this field. Do not offer editing until the
     // Bridge confirms it can return the actual body and protect the version.
     let hasInstructionBody: Bool
     enum CodingKeys: String, CodingKey {
         case id, name, nameSource, instructionRef, instructionHash, instructionVersion
-        case instructions, instructionError, version, etag, updatedAt, fileCount, files
+        case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
@@ -126,6 +129,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         version = try box.decodeIfPresent(Int.self, forKey: .version)
         etag = try box.decodeIfPresent(String.self, forKey: .etag)
         updatedAt = try box.decodeIfPresent(String.self, forKey: .updatedAt)
+        archivedAt = try box.decodeIfPresent(String.self, forKey: .archivedAt)
         fileCount = try box.decodeIfPresent(Int.self, forKey: .fileCount)
         files = try box.decodeIfPresent([LAAWorkProjectFile].self, forKey: .files)
     }

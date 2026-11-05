@@ -42,6 +42,12 @@ enum LAAWorkHTTP {
         return try await write(bridge, path: "/v1/projects", body: body, key: key)
     }
 
+    @MainActor static func setProjectArchived(_ project: LAAWorkProject, archived: Bool, bridge: LAABridgeSession) async throws {
+        struct Change: Encodable { let archived: Bool }
+        _ = try await projectWrite(bridge: bridge, id: project.id, body: JSONEncoder().encode(Change(archived: archived)),
+                                   key: LAABridgeIdempotencyKey(), etag: project.etag)
+    }
+
     static func isVersionConflict(_ error: LAABridgeHTTPError) -> Bool { error.status == 412 }
 
     /// A received refusal can restore the draft only when the Bridge confirms
@@ -60,6 +66,7 @@ enum LAAWorkHTTP {
         case "pending_decision_requires_reply": return "判断待ちのため追加送信できません。判断内容を確認してください。"
         case "session_stopped": return "停止済みまたは停止確認中です。停止が確認できた後、後継セッションを開始できます。"
         case "session_busy": return "セッションは実行中です。完了してから追加指示を送れます。"
+        case "session_running": return "実行中または判断待ちのセッションがあります。止めてからアーカイブしてください。"
         case "message_limit_reached": return "このセッションは追加指示の上限に達しました。"
         case "message_id_conflict": return "送信IDが別の内容と衝突しました。ログと送信状況を確認してください。"
         case "model_effort_mismatch": return "要求したモデル・推論設定と実際の状態が一致しません。実行状況を確認してください。"

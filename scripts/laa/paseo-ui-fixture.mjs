@@ -5,6 +5,10 @@ const rootID = 'ses_1111111111111111', childID = 'ses_2222222222222222';
 let replied = false;
 let favorite = true;
 let longList = false;
+const projectID = 'prj_aaaaaaaaaaaa';
+let projectArchivedAt = null;
+const project = () => ({ id: projectID, name: '試験プロジェクト', nameSource: 'owner', instructionHash: null, instructionVersion: 0, instructions: null,
+  fileCount: 0, files: [], version: 1, etag: '"1"', createdAt: stamp, updatedAt: stamp, archivedAt: projectArchivedAt });
 const row = (id, name, parentId, phase) => ({ id, name, parentId, requestId: id, workspaceId: 'home', cwd: '/Users/laa', profile: 'sol-high',
   requested: { provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' }, phase, favorite: id === rootID && favorite,
   pending: { count: phase === 'awaiting_decision' ? 1 : 0 }, createdAt: stamp, updatedAt: stamp,
@@ -14,11 +18,20 @@ const rows = () => [row(rootID, '移行の動作確認', null, 'running'), row(c
 const send = (res, data, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'paseo-fixture' })); };
 export const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1'), path = url.pathname;
-  if (path === '/reset') { replied = false; favorite = true; longList = url.searchParams.get('long') === '1'; return send(res, {}); }
+  if (path === '/reset') { replied = false; favorite = true; projectArchivedAt = null; longList = url.searchParams.get('long') === '1'; return send(res, {}); }
   if (path === '/state') return send(res, { favorite });
   if (path === '/v1/devices/enroll') { req.resume(); return send(res, { deviceId: 'paseo-fixture', token: 'fixture-paseo', scopes: ['sessions:read', 'sessions:write'] }, 201); }
   if (req.headers.authorization !== 'Bearer fixture-paseo') return send(res, {}, 401);
   if (path === '/v1/sessions') return send(res, { items: rows(), nextCursor: null });
+  if (path === '/v1/projects') return send(res, { items: Boolean(projectArchivedAt) === (url.searchParams.get('archived') === 'only') ? [project()] : [], nextCursor: null });
+  if (path === `/v1/projects/${projectID}`) {
+    if (req.method === 'PATCH') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      projectArchivedAt = JSON.parse(body).archived ? stamp : null;
+    }
+    return send(res, project());
+  }
   if (path === '/v1/session-options') return send(res, { profiles: [{ id: 'sol-high', label: 'GPT-6.1 Sol High', provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' }], defaultProfile: 'sol-high', defaultMode: 'default' });
   const id = path.split('/')[3], current = rows().find(x => x.id === id);
   if (current) {

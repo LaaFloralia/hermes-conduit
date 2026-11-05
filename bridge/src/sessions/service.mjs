@@ -419,8 +419,19 @@ export function createSessionService({
     return { session: updated?.record ?? requireSession(id) };
   }
 
-  // Archive and owner rename stay Bridge-side; favourites mirror a Paseo
-  // workspace pin when one is available. None of these actions stops a turn.
+  // A session with everything started under it, parent first.
+  function sessionTree(root) {
+    const all = sessionStore.all();
+    const tree = [root];
+    for (const row of tree) tree.push(...all.filter((r) => r.parentId === row.id && !tree.includes(r)));
+    return tree;
+  }
+
+  // Archive goes through Paseo, so both lists agree, and takes the session's
+  // children with it; restoring brings back only the chosen row, because each
+  // restored agent loads again in Paseo. Owner rename stays Bridge-side and
+  // favourites mirror a Paseo workspace pin when one is available. None of
+  // these actions stops a turn: the adapter refuses a tree with a turn running.
   async function updateSession({ id, body = {} }) {
     const existing = requireSession(id);
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
@@ -434,16 +445,26 @@ export function createSessionService({
     // behaviour they had.
     const mirror = favorite !== undefined && Boolean(existing.favorite) !== favorite
       && existing.workspaceId && existing.workspaceId !== HOME_WORKSPACE_ID ? favorite : null;
+    const archiving = archived !== undefined && Boolean(existing.archivedAt || existing.daemonArchivedAt) !== archived;
+    const tree = archiving && archived ? sessionTree(existing) : [existing];
+    if (archiving && daemon) {
+      if (archived) await daemon.archive(tree.map((row) => row.delegate?.sessionId).filter(Boolean));
+      else if (existing.daemonArchivedAt) await daemon.unarchive(existing.delegate.sessionId);
+    }
+    const setArchived = (current) => {
+      if (Boolean(current.archivedAt || current.daemonArchivedAt) === archived) return [];
+      current.archivedAt = archived ? new Date(now()).toISOString() : null;
+      if (!archived) current.daemonArchivedAt = null;
+      return [{ type: 'session.archived', payload: { archived } }];
+    };
+    if (archiving) for (const row of tree.slice(1)) sessionStore.update(row.id, setArchived);
     const updated = sessionStore.update(id, (current) => {
       const events = [];
       if (favorite !== undefined && Boolean(current.favorite) !== favorite) {
         current.favorite = favorite;
         events.push({ type: 'session.favorite', payload: { favorite } });
       }
-      if (archived !== undefined && Boolean(current.archivedAt) !== archived) {
-        current.archivedAt = archived ? new Date(now()).toISOString() : null;
-        events.push({ type: 'session.archived', payload: { archived } });
-      }
+      if (archiving) events.push(...setArchived(current));
       if (name !== undefined && (current.name !== name || current.nameSource !== 'owner')) {
         current.name = name;
         current.nameSource = 'owner';

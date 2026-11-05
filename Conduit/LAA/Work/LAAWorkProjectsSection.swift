@@ -14,6 +14,9 @@ struct LAAWorkProjectsSection: View {
     @State private var loading = false
     @State private var showNew = false
     @State private var editorID = 0
+    @State private var showArchived = false
+    @State private var opened: LAAWorkProject?
+    @State private var openRow: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
@@ -22,15 +25,17 @@ struct LAAWorkProjectsSection: View {
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && projects.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
             if projects.isEmpty && !loading && failure == nil {
-                Text(verbatim: "名前・指示・資料をまとめ、その中でセッションを始められます。")
+                Text(verbatim: showArchived ? "アーカイブしたプロジェクトはありません。" : "名前・指示・資料をまとめ、その中でセッションを始められます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             if !projects.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(projects) { project in
-                        NavigationLink {
-                            LAAWorkProjectHome(project: project, drafts: drafts)
-                        } label: {
+                        LAAWorkSwipeRow(id: project.id, openID: $openRow,
+                                        leading: .init(title: project.isArchived ? "戻す" : "アーカイブ",
+                                                       systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox",
+                                                       tint: LAAColor.attention) { Task { await setArchived(project) } },
+                                        onOpen: { opened = project }) {
                             HStack(spacing: LAASpacing.x3) {
                                 Image(systemName: "folder").foregroundStyle(LAAColor.link).frame(width: 22)
                                 VStack(alignment: .leading, spacing: 3) {
@@ -47,20 +52,38 @@ struct LAAWorkProjectsSection: View {
                             .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button { Task { await setArchived(project) } } label: {
+                                Label { Text(verbatim: project.isArchived ? "アーカイブから戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                            }
+                        }
                         .accessibilityIdentifier("work.project.\(project.id)")
                         if project.id != projects.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 50) }
                     }
                 }
                 .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
             }
+            Button {
+                showArchived.toggle()
+            } label: {
+                Label { Text(verbatim: showArchived ? "プロジェクトへ戻る" : "アーカイブを表示") }
+                    icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("work.projects.archiveToggle")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.projects")
+        .navigationDestination(item: $opened) { project in
+            LAAWorkProjectHome(project: project, drafts: drafts)
+        }
         .sheet(isPresented: $showNew, onDismiss: { editorID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
-        .task(id: "\(bridge.revision)-\(refreshID)-\(editorID)") { await load() }
+        .task(id: "\(bridge.revision)-\(refreshID)-\(editorID)-\(showArchived)") { await load() }
     }
 
     private func summary(_ project: LAAWorkProject) -> String {
@@ -74,7 +97,8 @@ struct LAAWorkProjectsSection: View {
         loading = true
         defer { loading = false }
         do {
-            let loaded: [LAAWorkProject] = try await LAAWorkPaging.all(bridge, "/v1/projects")
+            let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
+            let loaded: [LAAWorkProject] = try await LAAWorkPaging.all(bridge, "/v1/projects", query: query)
             guard !Task.isCancelled else { return }
             projects = loaded; failure = nil
         } catch is CancellationError {
@@ -83,6 +107,19 @@ struct LAAWorkProjectsSection: View {
             failure = error.japaneseText
         } catch {
             failure = "プロジェクトを読み取れませんでした。"
+        }
+    }
+
+    @MainActor private func setArchived(_ project: LAAWorkProject) async {
+        openRow = nil
+        do {
+            try await LAAWorkHTTP.setProjectArchived(project, archived: !project.isArchived, bridge: bridge)
+            await load()
+        } catch let error as LAABridgeHTTPError {
+            failure = LAAWorkHTTP.isVersionConflict(error) ? "別の端末で更新されています。読み直してからもう一度操作してください。" : LAAWorkHTTP.message(error)
+            await load()
+        } catch {
+            failure = "変更を保存できませんでした。"
         }
     }
 }

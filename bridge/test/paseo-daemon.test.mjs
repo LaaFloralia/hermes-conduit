@@ -155,3 +155,81 @@ test('owner scopes gate interruption, images and decisions, and a replay cannot 
   assert.equal(f.calls.filter(x => x[0] === 'reply').length, 1);
   assert.equal((await bridge.request(`/v1/sessions/${id}/images/${'a'.repeat(64)}`)).status, 401);
 });
+
+function archiveFixture() {
+  const calls = [], agents = [
+    { id: 'root', title: '親', provider: 'dsh', status: 'idle', workspaceId: 'wks_a', labels: {}, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' },
+    { id: 'kid', title: '子', provider: 'dsh', status: 'closed', workspaceId: 'wks_a', labels: { 'paseo.parent-agent-id': 'root' }, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' },
+    { id: 'other', title: '別', provider: 'dsh', status: 'idle', workspaceId: 'wks_b', labels: {}, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' },
+  ];
+  const workspaces = [{ id: 'wks_a', workspaceKind: 'directory' }, { id: 'wks_b', workspaceKind: 'worktree' }];
+  const client = { close: async () => {},
+    fetchAgent: async ({ agentId }) => ({ agent: agents.find((a) => a.id === agentId) }),
+    fetchAgents: async () => ({ entries: agents.map((agent) => ({ agent })), pageInfo: { nextCursor: null } }),
+    fetchWorkspaces: async () => ({ entries: workspaces.filter((w) => !w.archived) }),
+    archiveAgent: async (id) => { calls.push(['archive', id]); for (const a of agents) if (a.id === id || a.labels['paseo.parent-agent-id'] === id) a.archivedAt ??= '2026-11-05T00:00:00Z'; },
+    archiveWorkspace: async (id) => { calls.push(['archiveWorkspace', id]); workspaces.find((w) => w.id === id).archived = true; return { error: null }; },
+    restoreWorkspace: async (id) => { calls.push(['restoreWorkspace', id]); workspaces.find((w) => w.id === id).archived = false; },
+    refreshAgent: async (id) => { calls.push(['refresh', id]); agents.find((a) => a.id === id).archivedAt = null; },
+  };
+  return { agents, calls, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
+}
+
+test('archive reaches Paseo for the whole tree and clears the emptied workspace; restore brings back one row', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-bridge-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = archiveFixture();
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {} });
+  await service.listSessions();
+  const root = daemonSessionID('root'), kid = daemonSessionID('kid');
+
+  const { session } = await service.updateSession({ id: root, body: { archived: true } });
+  assert.ok(session.archivedAt);
+  assert.ok(store.get(kid).archivedAt, 'the child follows its parent');
+  assert.deepEqual(f.calls, [['archive', 'root'], ['archiveWorkspace', 'wks_a']]);
+  assert.deepEqual((await service.listSessions()).items.map((r) => r.id), [daemonSessionID('other')]);
+  assert.equal((await service.listSessions({ archived: 'only' })).items.length, 2);
+
+  f.calls.length = 0;
+  await service.updateSession({ id: root, body: { archived: false } });
+  assert.deepEqual(f.calls, [['restoreWorkspace', 'wks_a'], ['refresh', 'root']]);
+  assert.equal(store.get(root).archivedAt, null);
+  assert.ok(store.get(kid).archivedAt, 'a restored parent leaves its children archived');
+  await service.syncDaemon();
+  assert.equal(store.get(root).daemonArchivedAt, null);
+});
+
+test('archive refuses a tree with a running or undecided agent and leaves everything as it was', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-bridge-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = archiveFixture();
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {} });
+  await service.listSessions();
+  const root = daemonSessionID('root');
+
+  f.agents[1].status = 'running';
+  await assert.rejects(service.updateSession({ id: root, body: { archived: true } }), { code: 'session_running' });
+  f.agents[1].status = 'idle'; f.agents[1].pendingPermissions = [{ id: 'p' }];
+  await assert.rejects(service.updateSession({ id: root, body: { archived: true } }), { code: 'session_running' });
+  assert.deepEqual(f.calls, []);
+  assert.equal(store.get(root).archivedAt ?? null, null);
+});
+
+test('a worktree workspace survives archiving its last agent', async () => {
+  const f = archiveFixture();
+  await f.daemon.archive(['other']);
+  assert.deepEqual(f.calls, [['archive', 'other']]);
+});
+
+test('a session Paseo brought back leaves the LAA archive too', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-bridge-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = archiveFixture();
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {} });
+  await service.listSessions();
+  await service.updateSession({ id: daemonSessionID('other'), body: { archived: true } });
+  await service.syncDaemon();
+  f.agents[2].archivedAt = null;
+  await service.syncDaemon();
+  assert.equal(store.get(daemonSessionID('other')).archivedAt, null);
+});

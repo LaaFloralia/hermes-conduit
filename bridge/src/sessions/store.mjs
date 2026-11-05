@@ -127,7 +127,8 @@ export function createSessionStore({
             // A sync that could not read Paseo's pin leaves the local choice
             // alone; only a known value replaces it.
             favorite: row.favorite === undefined ? previous.favorite === true : row.favorite === true,
-            archivedAt: previous.archivedAt,
+            // Paseo decides: a session it brought back is back here too.
+            archivedAt: previous.daemonArchivedAt && !row.daemonArchivedAt ? null : previous.archivedAt,
             name: previous.nameSource === 'owner' ? previous.name : row.name,
             nameSource: previous.nameSource === 'owner' ? 'owner' : 'agent',
             requested: previous.requested ?? row.requested,

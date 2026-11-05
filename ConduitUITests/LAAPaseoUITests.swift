@@ -34,6 +34,32 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["移行の動作確認"].waitForExistence(timeout: 15), "A plain tap must still open the session")
     }
 
+    func testProjectOpensAndArchivesWithASwipe() throws {
+        let app = try launchFixture("light")
+        app.buttons["work.section.projects"].tap()
+        let row = app.descendants(matching: .any)["work.project.prj_aaaaaaaaaaaa"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        row.tap()
+        XCTAssertTrue(app.buttons["work.project.newSession"].waitForExistence(timeout: 15), "A plain tap must still open the project")
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+
+        func swipeRight(_ element: XCUIElement) {
+            let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 300, dy: 0)),
+                        withVelocity: XCUIGestureVelocity(900), thenHoldForDuration: 0.1)
+        }
+        swipeRight(row)
+        XCTAssertTrue(row.waitForNonExistence(timeout: 10), "Archiving must take the project out of the list")
+        capture(app, "project-archived", "light")
+        app.buttons["work.projects.archiveToggle"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The archive must list the project")
+        swipeRight(row)
+        XCTAssertTrue(row.waitForNonExistence(timeout: 10), "Restoring must take it out of the archive")
+        app.buttons["work.projects.archiveToggle"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "A restored project must be back in the list")
+    }
+
     func testSessionDetailBackRestoresTabs() throws {
         let app = try launchFixture("light")
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
@@ -128,15 +154,21 @@ final class LAAPaseoUITests: XCTestCase {
         pair.tap()
         let sessions = app.buttons["work.section.sessions"]
         XCTAssertTrue(sessions.waitForExistence(timeout: 15)); sessions.tap()
-        let child = app.staticTexts["work.session.ses_2222222222222222"].firstMatch
-        XCTAssertTrue(child.waitForExistence(timeout: 15))
+        let parent = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
+        XCTAssertTrue(parent.waitForExistence(timeout: 15))
         return app
     }
 
     private func verify(_ appearance: String) throws {
         let app = try launchFixture(appearance)
         let child = app.staticTexts["work.session.ses_2222222222222222"].firstMatch
+        XCTAssertFalse(child.exists, "A child stays folded under its parent")
         capture(app, "list", appearance)
+        let disclosure = app.buttons["work.session.ses_1111111111111111.children"]
+        disclosure.tap()
+        XCTAssertTrue(child.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["移行の動作確認"].exists, "Opening the children must not open the parent")
+        capture(app, "list-open", appearance)
         child.tap()
         let question = app.staticTexts["どちらの構成で進めますか？"]
         XCTAssertTrue(question.waitForExistence(timeout: 15))

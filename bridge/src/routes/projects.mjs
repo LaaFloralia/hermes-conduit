@@ -168,8 +168,10 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const limit = parseLimit(url.searchParams.get('limit'));
     const offset = parseCursor(url.searchParams.get('cursor'));
+    const archivedOnly = url.searchParams.get('archived') === 'only';
     const items = projects
       .list()
+      .filter((project) => Boolean(project.archivedAt) === archivedOnly)
       .sort((a, b) => (a.updatedAt === b.updatedAt ? a.id.localeCompare(b.id) : b.updatedAt.localeCompare(a.updatedAt)))
       .map((project) => view(project));
     const page = items.slice(offset, offset + limit);
@@ -248,6 +250,8 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
     let refCleared;
     let instructionsChanged;
     let nextHash;
+    let archivedChanged;
+    let nextArchivedAt;
     let changed;
     let iso;
     try {
@@ -257,7 +261,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       iso = new Date(now()).toISOString();
 
       const requested = body.name !== undefined || body.nameSource !== undefined
-        || body.instructionRef !== undefined || body.instructions !== undefined;
+        || body.instructionRef !== undefined || body.instructions !== undefined || body.archived !== undefined;
       if (!requested) throw badRequest('payload_invalid', 'no supported change was requested');
 
       name = body.name === undefined ? undefined : parseName(body.name, { required: true });
@@ -289,7 +293,12 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
 
       // A PATCH that names fields identical to the stored state is accepted as a
       // no-op: the caller read the current version, and nothing is bumped.
-      changed = identityChanged || instructionsChanged || refCleared;
+      if (body.archived !== undefined && typeof body.archived !== 'boolean') {
+        throw badRequest('payload_invalid', 'archived must be a boolean');
+      }
+      archivedChanged = body.archived !== undefined && body.archived !== Boolean(current.archivedAt);
+      nextArchivedAt = body.archived ? iso : null;
+      changed = identityChanged || instructionsChanged || refCleared || archivedChanged;
     } catch (error) {
       throw markBeforeWrite(error);
     }
@@ -305,6 +314,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
           record.nameSource = nameSource ?? 'owner';
         }
         if (refCleared) record.instructionRef = null;
+        if (archivedChanged) record.archivedAt = nextArchivedAt;
         record.instructions = nextInstructions;
         if (instructionsChanged) {
           record.instructionVersion = (record.instructionVersion ?? 0) + 1;
@@ -471,6 +481,7 @@ function view(project) {
     etag: etagFor(project.version),
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+    archivedAt: project.archivedAt ?? null,
   };
 }
 

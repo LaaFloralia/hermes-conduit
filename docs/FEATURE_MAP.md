@@ -648,6 +648,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 The LAA build's Work hub contains priority tasks, the owner's Linear tasks, sessions, projects, routines and read-only skills. AI usage is opened from Settings.
 
+A parent session's children stay folded under it until opened; a folded child waiting for a decision shows on the parent. Archiving a session archives its children and reaches Paseo, along with a workspace left empty (never a worktree, which would delete files); a tree with a running or undecided agent is refused, and restoring brings back only the chosen row. Projects archive and restore on the Bridge only, and their sessions stay as they are.
+
 **Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
 store · the session and project API · the owner-task API · Console job observations
 

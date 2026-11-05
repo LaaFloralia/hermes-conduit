@@ -234,6 +234,33 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(Set(LAAWorkSessionOrder.rows([cycle, child]).recent.map(\.id)), ["p", "c"])
     }
 
+    func testChildrenFoldUnderTheirParentUntilOpened() throws {
+        let parent = try session("p", name: "親", updated: "1")
+        let child = try session("c", name: "子", parent: "p", updated: "2")
+        let grandchild = try session("g", name: "孫", parent: "c", updated: "3")
+        let other = try session("o", name: "別", updated: "0")
+        let rows = [parent, child, grandchild, other]
+        XCTAssertEqual(LAAWorkSessionOrder.visible(rows, expanded: []).map(\.id), ["p", "o"])
+        XCTAssertEqual(LAAWorkSessionOrder.visible(rows, expanded: ["p"]).map(\.id), ["p", "c", "o"])
+        XCTAssertEqual(LAAWorkSessionOrder.visible(rows, expanded: ["p", "c"]).map(\.id), ["p", "c", "g", "o"])
+        XCTAssertEqual(LAAWorkSessionOrder.visible(rows, expanded: ["c"]).map(\.id), ["p", "o"], "A closed grandparent hides everything below it")
+        let tree = LAAWorkSessionOrder.descendants(rows)
+        XCTAssertEqual(tree["p"]?.map(\.id), ["c", "g"])
+        XCTAssertEqual(tree["c"]?.map(\.id), ["g"])
+        XCTAssertNil(tree["o"])
+        let orphan = try session("x", name: "親なし", parent: "archived", updated: "1")
+        XCTAssertEqual(LAAWorkSessionOrder.visible([orphan], expanded: []).map(\.id), ["x"], "A child whose parent is not listed stays visible")
+        let cycle = try session("p", name: "親", parent: "c", updated: "1")
+        XCTAssertEqual(LAAWorkSessionOrder.descendants([cycle, child])["p"]?.map(\.id), ["c"])
+    }
+
+    func testProjectArchiveFieldDecodes() throws {
+        let older = try JSONDecoder().decode(LAAWorkProject.self, from: Data(#"{"id":"prj_1","name":"旧"}"#.utf8))
+        XCTAssertFalse(older.isArchived, "an older Bridge omits the field")
+        let archived = try JSONDecoder().decode(LAAWorkProject.self, from: Data(#"{"id":"prj_2","name":"済","archivedAt":"2026-11-05T00:00:00Z"}"#.utf8))
+        XCTAssertTrue(archived.isArchived)
+    }
+
     func testDeviceScopedSessionCacheRestoresBeforeAnyNetworkRead() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

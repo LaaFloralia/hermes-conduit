@@ -858,6 +858,13 @@ test('favourite and archive organise the list; worktree sessions stay out of the
   assert.deepEqual(await ids('?scope=all'), [a.id, b.id, w.id].sort());
   assert.deepEqual(await ids('?requestId=req-w'), [w.id]);
 
+  const child = await createSession(ctx, { requestId: 'req-child', parentId: a.id }, 'k-child-arc');
+  assert.equal(child.status, 201);
+  const parent = await ctx.bridge.request(`/v1/sessions/${a.id}`, { method: 'PATCH', token: ctx.token, key: 'k-parent-arc', body: { archived: true } });
+  assert.ok(parent.body.data.archivedAt);
+  assert.deepEqual((await ids('?archived=only')).sort(), [a.id, b.id, child.body.data.id].sort());
+  await ctx.bridge.request(`/v1/sessions/${a.id}`, { method: 'PATCH', token: ctx.token, key: 'k-parent-unarc', body: { archived: false } });
+  await ctx.bridge.request(`/v1/sessions/${child.body.data.id}`, { method: 'PATCH', token: ctx.token, key: 'k-child-unarc', body: { archived: false } });
   const restored = await ctx.bridge.request(`/v1/sessions/${b.id}`, { method: 'PATCH', token: ctx.token, key: 'k-unarc', body: { archived: false } });
   assert.equal(restored.body.data.archivedAt, null);
   const empty = await ctx.bridge.request(`/v1/sessions/${b.id}`, { method: 'PATCH', token: ctx.token, key: 'k-empty', body: {} });

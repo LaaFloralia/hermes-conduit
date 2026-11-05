@@ -32,15 +32,21 @@ struct LAAWorkDesktopSessionsView: View {
     @State private var loading = false
     @State private var showLauncher = false
     @State private var reloadID = 0
+    @State private var expanded = Set<String>()
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
-    private var ordered: [LAAWorkSession] {
-        let filtered = sessions.filter {
+    private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    private var filtered: [LAAWorkSession] {
+        sessions.filter {
             LAAWorkDesktopList.matches($0.name + " " + ($0.observed?.model ?? $0.requested?.model ?? ""), query: search)
         }
+    }
+
+    private var ordered: [LAAWorkSession] {
         let rows = LAAWorkSessionOrder.rows(filtered)
-        return rows.pinned + rows.recent
+        return searching ? rows.pinned + rows.recent : LAAWorkSessionOrder.visible(rows.pinned + rows.recent, expanded: expanded)
     }
 
     private var selected: LAAWorkSession? { sessions.first { $0.id == selectedID } }
@@ -82,6 +88,8 @@ struct LAAWorkDesktopSessionsView: View {
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        let ordered = self.ordered
+                        let children = LAAWorkSessionOrder.descendants(filtered)
                         ForEach(Array(ordered.enumerated()), id: \.element.id) { index, session in
                             if index == 0 || ordered[index - 1].isFavorite != session.isFavorite {
                                 Text(verbatim: session.isFavorite ? "PINNED" : "RECENT")
@@ -89,7 +97,7 @@ struct LAAWorkDesktopSessionsView: View {
                                     .foregroundStyle(LAAColor.secondaryText)
                                     .padding(.horizontal, LAASpacing.x3).padding(.top, LAASpacing.x3).padding(.bottom, LAASpacing.x1)
                             }
-                            sessionRow(session)
+                            sessionRow(session, children: children[session.id] ?? [], in: ordered)
                         }
                         if ordered.isEmpty && !loading && failure == nil {
                             Text(verbatim: showArchived ? "No archived sessions." : "No sessions yet.")
@@ -151,12 +159,25 @@ struct LAAWorkDesktopSessionsView: View {
         .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") { await load() }
     }
 
-    private func sessionRow(_ session: LAAWorkSession) -> some View {
+    private func sessionRow(_ session: LAAWorkSession, children: [LAAWorkSession], in rows: [LAAWorkSession]) -> some View {
+        let open = searching || expanded.contains(session.id)
+        return HStack(spacing: 0) {
+            sessionButton(session, open: open, children: children, in: rows)
+            if !children.isEmpty && !searching {
+                LAAWorkChildDisclosure(id: session.id, count: children.count, open: open) {
+                    expanded.formSymmetricDifference([session.id])
+                }
+            }
+        }
+    }
+
+    private func sessionButton(_ session: LAAWorkSession, open: Bool, children: [LAAWorkSession], in rows: [LAAWorkSession]) -> some View {
         Button {
             selectedID = session.id
         } label: {
-            LAAWorkSessionRow(session: session, projectName: projects.first { $0.id == session.projectId }?.name, options: options)
-                .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: ordered)) * 16)
+            LAAWorkSessionRow(session: session, projectName: projects.first { $0.id == session.projectId }?.name, options: options,
+                              childNeedsDecision: !open && children.contains(where: \.needsDecision))
+                .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: rows)) * 16)
                 .background(rowBackground(session.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
         }
         .buttonStyle(.plain)
@@ -218,6 +239,10 @@ struct LAAWorkDesktopSessionsView: View {
             if updated.isArchived != showArchived { sessions.removeAll { $0.id == updated.id } }
             else if let index = sessions.firstIndex(where: { $0.id == updated.id }) { sessions[index] = updated }
             failure = nil
+            // Archiving takes the children along.
+            if archived != nil { reloadID += 1 }
+        } catch let error as LAABridgeHTTPError {
+            failure = LAAWorkHTTP.message(error)
         } catch {
             failure = "Could not save the change."
         }
@@ -237,6 +262,7 @@ struct LAAWorkDesktopProjectsView: View {
     @State private var loading = false
     @State private var showNew = false
     @State private var reloadID = 0
+    @State private var showArchived = false
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
@@ -295,14 +321,31 @@ struct LAAWorkDesktopProjectsView: View {
                             }
                             .buttonStyle(.plain)
                             .onHover { hoveredID = $0 ? project.id : (hoveredID == project.id ? nil : hoveredID) }
+                            .contextMenu {
+                                Button { Task { await setArchived(project) } } label: {
+                                    Label { Text(verbatim: project.isArchived ? "Restore" : "Archive") } icon: { Image(systemName: "archivebox") }
+                                }
+                            }
                             .accessibilityAddTraits(selectedID == project.id ? .isSelected : [])
                             .accessibilityIdentifier("work.project.\(project.id)")
                         }
                         if visible.isEmpty && !loading && failure == nil {
-                            Text(verbatim: "No projects yet.")
+                            Text(verbatim: showArchived ? "No archived projects." : "No projects yet.")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
+                        Button {
+                            showArchived.toggle()
+                        } label: {
+                            Label { Text(verbatim: showArchived ? "Back to projects" : "Show archive") }
+                                icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                                .padding(.horizontal, LAASpacing.x3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("work.projects.archiveToggle")
                     }
                 }
             }
@@ -339,7 +382,7 @@ struct LAAWorkDesktopProjectsView: View {
         .sheet(isPresented: $showNew, onDismiss: { reloadID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
-        .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)") { await load() }
+        .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") { await load() }
     }
 
     private func summary(_ project: LAAWorkProject) -> String {
@@ -365,7 +408,8 @@ struct LAAWorkDesktopProjectsView: View {
         loading = true
         defer { loading = false }
         do {
-            let loaded: [LAAWorkProject] = try await LAAWorkPaging.all(bridge, "/v1/projects")
+            let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
+            let loaded: [LAAWorkProject] = try await LAAWorkPaging.all(bridge, "/v1/projects", query: query)
             guard !Task.isCancelled else { return }
             projects = loaded; failure = nil
             if selectedID == nil || !projects.contains(where: { $0.id == selectedID }) { selectedID = projects.first?.id }
@@ -373,6 +417,17 @@ struct LAAWorkDesktopProjectsView: View {
             return
         } catch {
             failure = "Could not read projects."
+        }
+    }
+
+    @MainActor private func setArchived(_ project: LAAWorkProject) async {
+        do {
+            try await LAAWorkHTTP.setProjectArchived(project, archived: !project.isArchived, bridge: bridge)
+            reloadID += 1
+        } catch let error as LAABridgeHTTPError {
+            failure = LAAWorkHTTP.message(error)
+        } catch {
+            failure = "Could not save the change."
         }
     }
 }
