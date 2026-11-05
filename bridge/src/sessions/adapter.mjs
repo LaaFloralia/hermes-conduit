@@ -62,6 +62,7 @@ const ERROR_MAP = new Map(Object.entries({
   operation_failed: [503, 'delegation_failed', true],
   unsupported_mode: [400, 'profile_unsupported'],
   fast_unsupported: [400, 'profile_unsupported'],
+  plain_prompt_invalid: [400, 'payload_invalid'],
 }));
 
 export function delegationError(code) {
@@ -158,13 +159,14 @@ export function personalAgentAdapter({
     // names its own sessions so the daemon does not show "laa-bridge" as the
     // owner. The wrapper leaves it out of the request digest, so a title change
     // is not a different request.
-    create({ requestId, profile, cwd, task, title, mode, fast }) {
+    create({ requestId, profile, cwd, task, title, mode, fast, plainPrompt }) {
       return call('create', {
         requestId,
         profile,
         cwd,
         task,
         ...(title === undefined || title === null ? {} : { title }),
+        ...(plainPrompt ? { plainPrompt } : {}),
         ...(mode === undefined ? {} : { mode }),
         ...(fast === true ? { fast } : {}),
       });

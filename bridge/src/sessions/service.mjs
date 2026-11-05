@@ -176,6 +176,7 @@ export function createSessionService({
 
     // The delegation wrapper requires the task fields; a plain chat session
     // gets neutral defaults, an explicit body can describe the job properly.
+    const plainPrompt = [body.purpose, body.completion, body.scope, body.returnTo].every((field) => field === undefined || field === null);
     const task = {
       purpose: asText(body.purpose ?? 'LAA Bridge session', 'purpose', { max: 2000 }),
       completion: asText(body.completion ?? 'Answer the request and leave the result for the Bridge to collect.', 'completion', { max: 2000 }),
@@ -199,6 +200,7 @@ export function createSessionService({
       title,
       ...(mode === 'bypass' ? { mode } : {}),
       ...(fast ? { fast } : {}),
+      ...(plainPrompt ? { plainPrompt } : {}),
     });
     if (typeof created?.sessionId !== 'string' || created.sessionId === '') {
       throw new BridgeError(503, 'delegation_inconsistent', 'the delegation path returned no session id');

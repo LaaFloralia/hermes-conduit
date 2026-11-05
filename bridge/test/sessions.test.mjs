@@ -38,8 +38,8 @@ function fakeDelegation() {
     setPending(requestId, pending) {
       records.get(requestId).pending = pending;
     },
-    async create({ requestId, profile, cwd, task, title, mode, fast }) {
-      calls.push({ op: 'create', requestId, profile, cwd, task, title, mode, fast });
+    async create({ requestId, profile, cwd, task, title, mode, fast, plainPrompt }) {
+      calls.push({ op: 'create', requestId, profile, cwd, task, title, mode, fast, plainPrompt });
       if (adapter.unavailable) throw new BridgeError(503, 'delegation_unavailable', 'down', { retryable: true });
       // Mirrors laa-personal-agent: the title is capped at 200 UTF-8 bytes and
       // must be non-empty. The Bridge has no mapping for `title_invalid`, so an
@@ -649,6 +649,7 @@ test('a session without a project runs with the prompt alone', async (t) => {
   assert.equal(created.body.data.instructionHash, null);
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
   assert.equal(create.task.prompt, 'Reply with the single word ok.');
+  assert.equal(create.plainPrompt, true);
   assert.equal(create.title, created.body.data.name, 'without a project the title is the session name');
 });
 

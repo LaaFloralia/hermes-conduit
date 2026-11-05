@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readConversation } from '../src/sessions/history.mjs';
+import { ownerText, readConversation } from '../src/sessions/history.mjs';
+
+test('the owner sees the typed text, not the delivered context', () => {
+  const typed = 'Laa Voiceの記号を直して\n\n二段落目';
+  const legacy = 'Origin / owner: laa-bridge\nClient request ID: x\nPurpose: LAA Bridge session\nIdle means awaiting review, not verified completion.\n\n';
+  const directory = 'Working directory: /Users/laa/dev — use this absolute path for files and commands.\n\n';
+  const project = '<project_instructions project="p" version="1" hash="h">\n規則\n</project_instructions>\n\n<user_request>\n' + typed + '\n</user_request>';
+  assert.equal(ownerText(legacy + typed), typed);
+  assert.equal(ownerText(legacy.replace('\n\n', '\n') + directory + typed), typed);
+  assert.equal(ownerText(directory + project), typed);
+  assert.equal(ownerText('Working directory: どこ？\n\n質問'), 'Working directory: どこ？\n\n質問');
+});
 
 test('conversation exposes only user and assistant messages and closes the client', async () => {
   let closed = false;
