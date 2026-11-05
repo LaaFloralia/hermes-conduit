@@ -40,6 +40,8 @@ struct LAAChatsSnapshot {
     var cronZoneLabel: String? = nil
     /// Whether `cronJobs` was read. An unread or failed read is not "none".
     var cronState: LAAChatsLoadState = .ready
+    /// Rows Hermes sent that this app could not read: the list is partial.
+    var cronSkipped: Int = 0
     /// The profile whose Hermes connection produced these jobs; a job that
     /// runs in its own conversation belongs to it.
     var cronProfile: String = ""

@@ -321,6 +321,10 @@ struct LAAChatsContent: View {
                 }
                 if case .failed = snapshot.cronState { cronNote(.failed("")) }
             }
+            if snapshot.cronSkipped > 0 {
+                note(LAACopy.chatsCronPartial(snapshot.cronSkipped))
+                    .accessibilityIdentifier("laa.chats.cron.partial")
+            }
             if !snapshot.cronRuns.isEmpty { recentRuns }
         }
     }

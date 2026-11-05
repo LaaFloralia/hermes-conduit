@@ -34,6 +34,7 @@ extension LAACopy {
     static let chatsCronStale = "最新の一覧を取得できません。前回の内容を表示しています。"
     static let chatsCronRetry = "読み直す"
     static let chatsCronPending = "定期実行を読み込み中…"
+    static func chatsCronPartial(_ count: Int) -> String { "一部の定期実行を読み取れませんでした（\(count)件）。この一覧は完全ではありません。" }
     static let chatsCronToChat = "このチャットに届く"
     static let chatsCronRecordOnly = "実行記録のみ（会話に残る）"
     static let chatsCronRuns = "最近の実行"

@@ -62,6 +62,7 @@ struct LAAChatsView: View {
             cronRuns: Array(runs.prefix(5)),
             cronZoneLabel: ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting),
             cronState: LAAChatsCron.loadState(appState.activeProfileCronJobsPhase, connected: appState.isConnected),
+            cronSkipped: appState.activeProfileCronJobsSkipped,
             cronProfile: appState.activeProfile
         )
     }

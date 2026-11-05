@@ -363,14 +363,60 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertTrue(CronJobsReadDecision.mayStart(loadingOwner: macA, owner: macB))
         XCTAssertTrue(CronJobsReadDecision.mayStart(loadingOwner: nil, owner: macA))
         XCTAssertFalse(CronJobsReadDecision.mayStart(loadingOwner: macA, owner: macA))
-        XCTAssertTrue(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1, currentGeneration: 1))
+        XCTAssertTrue(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
+                                                      currentGeneration: 1, connectionStillCurrent: true))
         // The same profile name on another Mac is another connection's list.
-        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macB, generation: 1, currentGeneration: 1))
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macB, generation: 1,
+                                                       currentGeneration: 1, connectionStillCurrent: true))
         // A job deleted while the read was in flight wins over that read.
-        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1, currentGeneration: 2))
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
+                                                       currentGeneration: 2, connectionStillCurrent: true))
         XCTAssertFalse(CronJobsReadDecision.mayPublish(
             owner: CronJobsOwner(dashboardID: nil, profile: "laa-cos"),
-            activeOwner: macA, generation: 1, currentGeneration: 1))
+            activeOwner: macA, generation: 1, currentGeneration: 1, connectionStillCurrent: true))
+        // The same dashboard and profile through a re-created bridge: the old
+        // answer belongs to a connection that no longer exists.
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
+                                                       currentGeneration: 1, connectionStillCurrent: false))
+        XCTAssertTrue(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
+                                                      currentGeneration: 1, connectionStillCurrent: true))
+    }
+
+    func testCronDropReloadsOnlyWhileItsConnectionIsStillOnScreen() {
+        let macA = CronJobsOwner(dashboardID: UUID(uuidString: "11111111-1111-1111-1111-111111111111"), profile: "laa-ciel")
+        let macB = CronJobsOwner(dashboardID: UUID(uuidString: "22222222-2222-2222-2222-222222222222"), profile: "laa-ciel")
+        // Same connection with a new bridge: drop, then read again there.
+        XCTAssertTrue(CronJobsReadDecision.shouldReloadAfterDrop(owner: macA, activeOwner: macA))
+        // Switched away: the owner now on screen has its own reader.
+        XCTAssertFalse(CronJobsReadDecision.shouldReloadAfterDrop(owner: macA, activeOwner: macB))
+    }
+
+    func testChatCronPayloadOnlyCallsAnEmptyArrayEmpty() {
+        func job(_ value: Any) -> CronJob? {
+            guard let data = try? JSONSerialization.data(withJSONObject: value) else { return nil }
+            return try? JSONDecoder().decode(CronJob.self, from: data)
+        }
+        var outcome = CronJobsPayload.decode(rows: [], decode: job)
+        if case .jobs(let jobs, let skipped) = outcome {
+            XCTAssertTrue(jobs.isEmpty)
+            XCTAssertEqual(skipped, 0)
+        } else { XCTFail("an empty array is the only empty schedule") }
+
+        // No job array at all (a changed document) is a failed read.
+        if case .jobs = CronJobsPayload.decode(rows: nil, decode: job) {
+            XCTFail("a document without jobs is not an empty schedule")
+        }
+        // Every row undecodable is a changed shape, not an empty list.
+        if case .jobs = CronJobsPayload.decode(rows: [["nope": 1], ["also": 2]], decode: job) {
+            XCTFail("all rows failing must not read as no jobs")
+        }
+        // A mixed answer keeps the readable rows and says how many are missing.
+        outcome = CronJobsPayload.decode(rows: [["id": "a", "enabled": true], ["id": 7]], decode: job)
+        if case .jobs(let jobs, let skipped) = outcome {
+            XCTAssertEqual(jobs.map(\.id), ["a"])
+            XCTAssertEqual(skipped, 1)
+        } else { XCTFail("a partial list stays a list") }
+        XCTAssertTrue(LAACopy.chatsCronPartial(2).contains("2件"))
     }
 
     func testCronPhaseNeverBorrowsAnotherConnectionsRead() {
