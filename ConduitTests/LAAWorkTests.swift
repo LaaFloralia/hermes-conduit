@@ -356,39 +356,86 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNotEqual(LAACopy.chatsCronUnavailable, LAACopy.chatsCronNone)
     }
 
-    func testCronReadPublishesOnlyForTheConnectionOnScreen() {
-        let macA = CronJobsOwner(dashboardID: UUID(uuidString: "11111111-1111-1111-1111-111111111111"), profile: "laa-ciel")
-        let macB = CronJobsOwner(dashboardID: UUID(uuidString: "22222222-2222-2222-2222-222222222222"), profile: "laa-ciel")
-        // A read still running for the other Mac must not hold this one back.
-        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingOwner: macA, owner: macB))
-        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingOwner: nil, owner: macA))
-        XCTAssertFalse(CronJobsReadDecision.mayStart(loadingOwner: macA, owner: macA))
-        XCTAssertTrue(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
-                                                      currentGeneration: 1, connectionStillCurrent: true))
-        // The same profile name on another Mac is another connection's list.
-        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macB, generation: 1,
-                                                       currentGeneration: 1, connectionStillCurrent: true))
-        // A job deleted while the read was in flight wins over that read.
-        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
-                                                       currentGeneration: 2, connectionStillCurrent: true))
-        XCTAssertFalse(CronJobsReadDecision.mayPublish(
-            owner: CronJobsOwner(dashboardID: nil, profile: "laa-cos"),
-            activeOwner: macA, generation: 1, currentGeneration: 1, connectionStillCurrent: true))
-        // The same dashboard and profile through a re-created bridge: the old
-        // answer belongs to a connection that no longer exists.
-        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
-                                                       currentGeneration: 1, connectionStillCurrent: false))
-        XCTAssertTrue(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1,
-                                                      currentGeneration: 1, connectionStillCurrent: true))
+    /// Stands in for a bridge or client instance: only its identity matters.
+    private func cronConnection(_ token: NSObject, dashboard: UUID?,
+                                profile: String = "laa-ciel",
+                                kind: CronJobsConnection.Kind = .dashboard) -> CronJobsConnection {
+        CronJobsConnection(kind: kind, identity: ObjectIdentifier(token),
+                           owner: CronJobsOwner(dashboardID: dashboard, profile: profile))
     }
 
-    func testCronDropReloadsOnlyWhileItsConnectionIsStillOnScreen() {
-        let macA = CronJobsOwner(dashboardID: UUID(uuidString: "11111111-1111-1111-1111-111111111111"), profile: "laa-ciel")
-        let macB = CronJobsOwner(dashboardID: UUID(uuidString: "22222222-2222-2222-2222-222222222222"), profile: "laa-ciel")
-        // Same connection with a new bridge: drop, then read again there.
-        XCTAssertTrue(CronJobsReadDecision.shouldReloadAfterDrop(owner: macA, activeOwner: macA))
-        // Switched away: the owner now on screen has its own reader.
-        XCTAssertFalse(CronJobsReadDecision.shouldReloadAfterDrop(owner: macA, activeOwner: macB))
+    func testCronReadPublishesOnlyForTheConnectionItReadThrough() {
+        let macA = UUID(uuidString: "11111111-1111-1111-1111-111111111111")
+        let macB = UUID(uuidString: "22222222-2222-2222-2222-222222222222")
+        let bridgeA = NSObject()
+        let bridgeAReplaced = NSObject()
+        let connection = cronConnection(bridgeA, dashboard: macA)
+        let reconnected = cronConnection(bridgeAReplaced, dashboard: macA)
+        let otherDashboard = cronConnection(bridgeA, dashboard: macB)
+
+        // A read for this connection is not started twice...
+        XCTAssertFalse(CronJobsReadDecision.mayStart(loadingConnection: connection, connection: connection))
+        // ...but a re-created bridge for the same dashboard and profile, or
+        // another dashboard, is a different connection and may start.
+        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingConnection: connection, connection: reconnected))
+        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingConnection: connection, connection: otherDashboard))
+        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingConnection: nil, connection: connection))
+
+        XCTAssertTrue(CronJobsReadDecision.mayPublish(connection: connection, activeConnection: connection,
+                                                      generation: 1, currentGeneration: 1))
+        // The same profile and dashboard through a replaced bridge: the old
+        // answer belongs to a connection that no longer exists.
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(connection: connection, activeConnection: reconnected,
+                                                       generation: 1, currentGeneration: 1))
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(connection: connection, activeConnection: otherDashboard,
+                                                       generation: 1, currentGeneration: 1))
+        // No connection at all, and a job deleted while the read was in flight.
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(connection: connection, activeConnection: nil,
+                                                       generation: 1, currentGeneration: 1))
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(connection: connection, activeConnection: connection,
+                                                       generation: 1, currentGeneration: 2))
+    }
+
+    func testCronDropReloadsForAReplacedBridgeButNotForAChangedOwner() {
+        let macA = UUID(uuidString: "11111111-1111-1111-1111-111111111111")
+        let bridgeA = NSObject()
+        let bridgeAReplaced = NSObject()
+        let connection = cronConnection(bridgeA, dashboard: macA)
+        let reconnected = cronConnection(bridgeAReplaced, dashboard: macA)
+        // Same dashboard and profile after a reconnect: read again there.
+        XCTAssertTrue(CronJobsReadDecision.shouldReloadAfterDrop(owner: connection.owner, activeOwner: reconnected.owner))
+        // Switched away or offline: the owner now on screen has its own reader.
+        XCTAssertFalse(CronJobsReadDecision.shouldReloadAfterDrop(owner: connection.owner,
+                                                                 activeOwner: cronConnection(bridgeA, dashboard: UUID()).owner))
+        XCTAssertFalse(CronJobsReadDecision.shouldReloadAfterDrop(owner: connection.owner, activeOwner: nil))
+    }
+
+    func testCronPhaseNeverBorrowsAnotherConnectionsRead() {
+        let macA = UUID(uuidString: "11111111-1111-1111-1111-111111111111")
+        let bridgeA = NSObject()
+        let bridgeAReplaced = NSObject()
+        let connection = cronConnection(bridgeA, dashboard: macA)
+        let reconnected = cronConnection(bridgeAReplaced, dashboard: macA)
+
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: connection, phaseConnection: connection,
+                                                  phase: .loading, activeConnection: connection), .loading)
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: nil, phaseConnection: connection,
+                                                  phase: .failed("x"), activeConnection: connection), .failed("x"))
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: nil, phaseConnection: connection,
+                                                  phase: .ready, activeConnection: connection), .ready)
+        // A read still running for the replaced bridge must not spin the new one.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: connection, phaseConnection: connection,
+                                                  phase: .loading, activeConnection: reconnected), .idle)
+        // An old connection's failure or readiness says nothing about the new one.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: nil, phaseConnection: connection,
+                                                  phase: .failed("x"), activeConnection: reconnected), .idle)
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: nil, phaseConnection: connection,
+                                                  phase: .ready, activeConnection: reconnected), .idle)
+        // A `loading` left behind by a read that no longer runs does not spin.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: nil, phaseConnection: reconnected,
+                                                  phase: .loading, activeConnection: reconnected), .idle)
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: nil, phaseConnection: connection,
+                                                  phase: .failed("x"), activeConnection: nil), .idle)
     }
 
     func testChatCronPayloadOnlyCallsAnEmptyArrayEmpty() {
@@ -417,22 +464,6 @@ final class LAAWorkTests: XCTestCase {
             XCTAssertEqual(skipped, 1)
         } else { XCTFail("a partial list stays a list") }
         XCTAssertTrue(LAACopy.chatsCronPartial(2).contains("2件"))
-    }
-
-    func testCronPhaseNeverBorrowsAnotherConnectionsRead() {
-        let macA = CronJobsOwner(dashboardID: UUID(uuidString: "11111111-1111-1111-1111-111111111111"), profile: "laa-ciel")
-        let macB = CronJobsOwner(dashboardID: UUID(uuidString: "22222222-2222-2222-2222-222222222222"), profile: "laa-ciel")
-        // Read on the other Mac, nothing running here: this Mac has not read.
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macA, phase: .ready, activeOwner: macB), .idle)
-        // A read for the other Mac must not spin this one.
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: macA, phaseOwner: macA, phase: .loading, activeOwner: macB), .idle)
-        // A superseded read that left `loading` behind does not spin forever.
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macB, phase: .loading, activeOwner: macB), .idle)
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macA, phase: .loading, activeOwner: macB), .idle)
-        // Its own failure stands; another connection's does not.
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macB, phase: .failed("x"), activeOwner: macB), .failed("x"))
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macA, phase: .failed("x"), activeOwner: macB), .idle)
-        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: macB, phaseOwner: macA, phase: .ready, activeOwner: macB), .loading)
     }
 
     func testRoutinePageKeepsTheBridgesSkippedCount() throws {

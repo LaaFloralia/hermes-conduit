@@ -29,6 +29,20 @@ struct CronJobsOwner: Equatable {
     let profile: String
 }
 
+/// The live connection a read went through, not just its names: a re-created
+/// bridge or client for the same dashboard and profile is a new connection,
+/// and nothing read through the old one stands for it.
+struct CronJobsConnection: Equatable {
+    enum Kind: Equatable {
+        case dashboard
+        case client
+    }
+
+    let kind: Kind
+    let identity: ObjectIdentifier
+    let owner: CronJobsOwner
+}
+
 /// What a job-list answer actually contains. Only an empty array is "no
 /// scheduled jobs": a document without a job array, or one where no row
 /// decodes, is a failed read; some rows failing is a partial list with a count
@@ -52,25 +66,23 @@ enum CronJobsPayload {
 /// apart from AppState so the switch rules are testable without a bridge.
 enum CronJobsReadDecision {
     /// A read may start unless one for that same connection is already
-    /// running. Another connection's read never holds this one back, so a
-    /// switch during a load still reads the new owner.
-    static func mayStart(loadingOwner: CronJobsOwner?, owner: CronJobsOwner) -> Bool {
-        loadingOwner != owner
+    /// running. A re-created connection or another owner never holds it back.
+    static func mayStart(loadingConnection: CronJobsConnection?, connection: CronJobsConnection) -> Bool {
+        loadingConnection != connection
     }
 
-    /// A read may publish only while the app still shows the dashboard and
-    /// profile it read for, that dashboard's bridge is still the one it used,
+    /// A read may publish only while the app still shows the very connection
+    /// it read through (same dashboard, profile and bridge/client instance),
     /// and no job was deleted underneath it.
-    static func mayPublish(owner: CronJobsOwner, activeOwner: CronJobsOwner,
-                           generation: Int, currentGeneration: Int,
-                           connectionStillCurrent: Bool) -> Bool {
-        connectionStillCurrent && owner == activeOwner && generation == currentGeneration
+    static func mayPublish(connection: CronJobsConnection, activeConnection: CronJobsConnection?,
+                           generation: Int, currentGeneration: Int) -> Bool {
+        connection == activeConnection && generation == currentGeneration
     }
 
-    /// A dropped read is asked again only while its connection is still the
-    /// one on screen: a re-created bridge for the same dashboard and profile
-    /// must reload, a switched-away owner has its own reader.
-    static func shouldReloadAfterDrop(owner: CronJobsOwner, activeOwner: CronJobsOwner) -> Bool {
+    /// A dropped read is asked again only while its dashboard and profile are
+    /// still the ones on screen: a re-created bridge for them must reload, a
+    /// switched-away owner has its own reader.
+    static func shouldReloadAfterDrop(owner: CronJobsOwner, activeOwner: CronJobsOwner?) -> Bool {
         owner == activeOwner
     }
 
@@ -78,10 +90,11 @@ enum CronJobsReadDecision {
     /// still running for it shows loading, and another connection's readiness
     /// or failure says nothing about it. A `loading` left behind by a read
     /// that no longer runs must not spin forever, so it reads as unread.
-    static func phase(loadingOwner: CronJobsOwner?, phaseOwner: CronJobsOwner?,
-                      phase: CronJobsPhase, activeOwner: CronJobsOwner) -> CronJobsPhase {
-        if loadingOwner == activeOwner { return .loading }
-        guard phaseOwner == activeOwner else { return .idle }
+    static func phase(loadingConnection: CronJobsConnection?, phaseConnection: CronJobsConnection?,
+                      phase: CronJobsPhase, activeConnection: CronJobsConnection?) -> CronJobsPhase {
+        guard let activeConnection else { return .idle }
+        if loadingConnection == activeConnection { return .loading }
+        guard phaseConnection == activeConnection else { return .idle }
         if case .loading = phase { return .idle }
         return phase
     }

@@ -4983,29 +4983,49 @@ final class AppState: ObservableObject {
     /// prints "no scheduled jobs" must know the difference: the LAA shell has
     /// no Cron tab, so nothing else loads this list for the Chat list.
     @Published private(set) var cronJobsPhase: CronJobsPhase = .idle
-    /// Who the rows in `cronJobs` came from, and when: a second Mac's dashboard
-    /// or another profile's answer never stands in for this one.
-    private var cronJobsOwner: CronJobsOwner?
+    /// The connection the rows in `cronJobs` were read through, and when:
+    /// the same profile name on another dashboard, or a re-created bridge for
+    /// this one, never stands in for the connection on screen.
+    private var cronJobsRowsConnection: CronJobsConnection?
     private var cronJobsLoadedAt: Date?
     /// The newest read. A read superseded while it was in flight drops its
-    /// rows and its failure instead of publishing them over the new owner.
+    /// rows and its failure instead of publishing them over the new connection.
     private var cronJobsLoadToken = 0
-    private var cronJobsLoadingOwner: CronJobsOwner?
-    /// Whose list `cronJobsPhase` describes, so another owner's readiness or
-    /// failure is never read as this connection's.
-    private var cronJobsPhaseOwner: CronJobsOwner?
+    private var cronJobsLoadingConnection: CronJobsConnection?
+    /// Whose list `cronJobsPhase` describes, so another connection's readiness
+    /// or failure is never read as this one's.
+    private var cronJobsPhaseConnection: CronJobsConnection?
     /// Rows Hermes answered with but this app could not read. Any makes the
     /// list partial, so no surface may call it complete.
     @Published private(set) var cronJobsSkipped = 0
     /// The jobs and read state that belong to the connection on screen.
-    var activeProfileCronJobs: [CronJob] { cronJobsOwner == activeCronJobsOwner ? cronJobs : [] }
-    var activeProfileCronJobsSkipped: Int { cronJobsOwner == activeCronJobsOwner ? cronJobsSkipped : 0 }
-    var activeProfileCronJobsPhase: CronJobsPhase {
-        CronJobsReadDecision.phase(loadingOwner: cronJobsLoadingOwner, phaseOwner: cronJobsPhaseOwner,
-                                   phase: cronJobsPhase, activeOwner: activeCronJobsOwner)
+    var activeProfileCronJobs: [CronJob] {
+        guard let active = activeCronJobsConnection, cronJobsRowsConnection?.owner == active.owner else { return [] }
+        return cronJobs
     }
-    private var activeCronJobsOwner: CronJobsOwner {
-        CronJobsOwner(dashboardID: activeDashboardID, profile: activeProfile)
+    var activeProfileCronJobsSkipped: Int {
+        guard let active = activeCronJobsConnection, cronJobsRowsConnection?.owner == active.owner else { return 0 }
+        return cronJobsSkipped
+    }
+    var activeProfileCronJobsPhase: CronJobsPhase {
+        CronJobsReadDecision.phase(loadingConnection: cronJobsLoadingConnection,
+                                   phaseConnection: cronJobsPhaseConnection,
+                                   phase: cronJobsPhase, activeConnection: activeCronJobsConnection)
+    }
+    /// The connection a read would go through now, preferring the dashboard
+    /// bridge. Its identity is what makes a re-created connection a new one.
+    private var activeCronJobsConnection: CronJobsConnection? {
+        cronJobsConnection(bridge: dashboardTicketBridge, client: client)
+    }
+    private func cronJobsConnection(bridge: DashboardTicketBridge?, client: HermesClient?) -> CronJobsConnection? {
+        let owner = CronJobsOwner(dashboardID: activeDashboardID, profile: activeProfile)
+        if let bridge {
+            return CronJobsConnection(kind: .dashboard, identity: ObjectIdentifier(bridge), owner: owner)
+        }
+        if let client {
+            return CronJobsConnection(kind: .client, identity: ObjectIdentifier(client), owner: owner)
+        }
+        return nil
     }
     @Published private(set) var cronJobActionID: String?
     /// Bumped by a job delete so a list load that started before it can't
@@ -31969,54 +31989,63 @@ final class AppState: ObservableObject {
     /// Loads the active connection's jobs for a surface that shows them. The
     /// LAA shell has no Cron tab, so the Chat list asks through this: the
     /// phase says whether an empty `cronJobs` means "read and empty" or "not
-    /// read". A read for the owner on screen is not started twice; a read for
-    /// another dashboard or profile never blocks this one.
+    /// read". A read for the connection on screen is not started twice; a read
+    /// for another dashboard, profile or re-created connection never blocks it.
     func loadCronJobsIfNeeded(maxAge: TimeInterval = 60) async {
-        let owner = activeCronJobsOwner
-        if let held = cronJobsOwner, held != owner {
+        guard let connection = activeCronJobsConnection else { return }
+        if let held = cronJobsRowsConnection, held.owner != connection.owner {
             // Another connection's rows must not stand in for this one while
             // its own read is on the way.
             cronJobs = []
             cronJobsSkipped = 0
             cronJobsLoadedAt = nil
         }
-        if cronJobsOwner == owner, cronJobsPhase == .ready,
+        // The 60 s window belongs to this exact connection: a reconnect reads
+        // again instead of keeping what the replaced connection answered.
+        if cronJobsRowsConnection == connection, cronJobsPhase == .ready,
            let at = cronJobsLoadedAt, Date().timeIntervalSince(at) < maxAge { return }
-        guard CronJobsReadDecision.mayStart(loadingOwner: cronJobsLoadingOwner, owner: owner) else { return }
+        guard CronJobsReadDecision.mayStart(loadingConnection: cronJobsLoadingConnection, connection: connection) else { return }
         await loadCronJobs()
     }
 
     func loadCronJobs() async {
         cronJobsLoadToken += 1
         let token = cronJobsLoadToken
-        let owner = activeCronJobsOwner
         let generation = cronJobsGeneration
-        let dashboardOwner = currentDashboardRuntimeOwner()
-        cronJobsLoadingOwner = owner
+        let bridge = dashboardTicketBridge
+        let client = self.client
+        guard let connection = cronJobsConnection(bridge: bridge, client: client) else {
+            // No bridge and no client: the list was not read, so it must not
+            // pass for an empty one.
+            cronJobsPhase = .failed("")
+            cronJobsPhaseConnection = nil
+            settleCronJobsRead(token: token)
+            return
+        }
+        cronJobsLoadingConnection = connection
         cronJobsLoading = true
-        cronJobsPhaseOwner = owner
-        // A kept list stays on screen while it refreshes; only an owner with
-        // no list yet shows the loading phase.
-        if cronJobsOwner != owner || cronJobsPhase != .ready { cronJobsPhase = .loading }
+        cronJobsPhaseConnection = connection
+        // A kept list stays on screen while it refreshes; only a connection
+        // with no list yet shows the loading phase.
+        if cronJobsRowsConnection != connection || cronJobsPhase != .ready { cronJobsPhase = .loading }
 
-        // Read after every await: a re-created bridge for the same dashboard
-        // and profile, a switch, or a delete all invalidate this read.
+        // The live connection must still be the one this read started on: a
+        // re-created bridge or client, a switch, or a delete invalidates it.
         func mayPublish() -> Bool {
             CronJobsReadDecision.mayPublish(
-                owner: owner, activeOwner: activeCronJobsOwner,
-                generation: generation, currentGeneration: cronJobsGeneration,
-                connectionStillCurrent: dashboardOwner.map(ownsDashboardRuntime) ?? true)
+                connection: connection, activeConnection: activeCronJobsConnection,
+                generation: generation, currentGeneration: cronJobsGeneration)
         }
 
         do {
             let jobs: [CronJob]
             let skipped: Int
-            if let dashboardOwner {
-                let result = try await dashboardOwner.bridge.requestJSON(
-                    path: cronDashboardPath("/api/cron/jobs", profile: owner.profile))
+            if let bridge {
+                let result = try await bridge.requestJSON(
+                    path: cronDashboardPath("/api/cron/jobs", profile: connection.owner.profile))
                 guard token == cronJobsLoadToken else { return }
                 guard mayPublish() else {
-                    await dropCronJobsRead(token: token, owner: owner)
+                    await dropCronJobsRead(token: token, connection: connection)
                     return
                 }
                 // Only an empty array is "no jobs"; a changed shape or a list
@@ -32035,27 +32064,20 @@ final class AppState: ObservableObject {
                 }
             } else if let client {
                 let page = try await client.listCronJobsPage()
-                guard self.client === client else {
-                    await dropCronJobsRead(token: token, owner: owner)
-                    return
-                }
                 guard token == cronJobsLoadToken else { return }
                 guard mayPublish() else {
-                    await dropCronJobsRead(token: token, owner: owner)
+                    await dropCronJobsRead(token: token, connection: connection)
                     return
                 }
                 jobs = page.jobs
                 skipped = page.skipped
             } else {
-                // Neither a dashboard bridge nor a client: the list was not
-                // read, so it must not pass for an empty one.
-                if token == cronJobsLoadToken, mayPublish() { cronJobsPhase = .failed("") }
                 settleCronJobsRead(token: token)
                 return
             }
             cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             cronJobsSkipped = skipped
-            cronJobsOwner = owner
+            cronJobsRowsConnection = connection
             cronJobsLoadedAt = Date()
             cronJobsPhase = .ready
             settleCronJobsRead(token: token)
@@ -32064,7 +32086,7 @@ final class AppState: ObservableObject {
             guard mayPublish() else {
                 // A failure from a connection that was replaced says nothing
                 // about the one now on screen; it reads again.
-                await dropCronJobsRead(token: token, owner: owner)
+                await dropCronJobsRead(token: token, connection: connection)
                 return
             }
             settleCronJobsRead(token: token)
@@ -32078,16 +32100,17 @@ final class AppState: ObservableObject {
     private func settleCronJobsRead(token: Int) {
         guard token == cronJobsLoadToken else { return }
         cronJobsLoading = false
-        cronJobsLoadingOwner = nil
+        cronJobsLoadingConnection = nil
     }
 
     /// Drops a read whose answer no longer describes the app (a delete, a
     /// re-created bridge, a switched connection): its rows would be wrong, so
     /// the connection on screen reads again instead of being left on a spinner.
-    private func dropCronJobsRead(token: Int, owner: CronJobsOwner) async {
+    private func dropCronJobsRead(token: Int, connection: CronJobsConnection) async {
         guard token == cronJobsLoadToken else { return }
         settleCronJobsRead(token: token)
-        guard CronJobsReadDecision.shouldReloadAfterDrop(owner: owner, activeOwner: activeCronJobsOwner) else { return }
+        guard CronJobsReadDecision.shouldReloadAfterDrop(owner: connection.owner,
+                                                         activeOwner: activeCronJobsConnection?.owner) else { return }
         await loadCronJobs()
     }
 
@@ -32265,7 +32288,7 @@ final class AppState: ObservableObject {
             cronJobs.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             // The list now describes this connection, even before a full
             // read; the phase keeps saying it was not read whole.
-            cronJobsOwner = activeCronJobsOwner
+            cronJobsRowsConnection = activeCronJobsConnection
         } else {
             await loadCronJobs()
         }
