@@ -44,8 +44,10 @@ struct LAAChatsView: View {
         }
         let unread = appState.unreadChatCounts(profiles: Set(people.map(\.profile)))
             .filter { $0.value > 0 }
-        let runs = appState.sessions
-            .filter { $0.source == .cron && !$0.isArchived }
+        // Cron runs live in their own list (`sessions` excludes `.cron`), and
+        // `listedCronSessions` is the profile-scoped rows the Chats list shows.
+        let runs = appState.listedCronSessions
+            .filter { !$0.isArchived }
             .sorted { ($0.lastActivityAt ?? 0) > ($1.lastActivityAt ?? 0) }
         return LAAChatsSnapshot(
             people: people,
@@ -54,9 +56,10 @@ struct LAAChatsView: View {
             canCreateChat: appState.canTapNewChat,
             canCreateGroup: appState.isConnected && appState.groupChatPhase == .available,
             unreadByProfile: unread,
-            cronJobs: appState.cronJobs,
+            cronJobs: appState.activeProfileCronJobs,
             cronRuns: Array(runs.prefix(5)),
             cronZoneLabel: ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting),
+            cronState: LAAChatsCron.loadState(appState.activeProfileCronJobsPhase, connected: appState.isConnected),
             cronProfile: appState.activeProfile
         )
     }
@@ -113,6 +116,7 @@ struct LAAChatsView: View {
             if appState.isConnected {
                 await appState.refreshBotRoster()
                 await appState.refreshGroupChatSupport()
+                await appState.loadCronJobsIfNeeded()
                 await readRooms()
             }
         }
@@ -135,6 +139,7 @@ struct LAAChatsView: View {
         await appState.loadSessions(forceRefresh: true)
         await appState.refreshBotRoster()
         await appState.refreshGroupChatSupport()
+        await appState.loadCronJobs()
         await readRooms()
         if appState.isAllProfilesChatsOn { appState.refreshAllProfilesCatalog() }
     }

@@ -306,18 +306,39 @@ struct LAAChatsContent: View {
     /// What this profile's jobs do, split by where their results land, with
     /// the next run and whether the job runs at all. Jobs stay Hermes' own:
     /// this only reads them, and the runs are the cron chats the list holds.
+    /// An unread or failed read says so; only a read, empty answer says there
+    /// are no scheduled jobs, so a display failure never reads as "stopped".
     private var scheduledSection: some View {
         let jobs = snapshot.cronJobs
         return VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(LAACopy.chatsCron)
             if jobs.isEmpty {
-                note(LAACopy.chatsCronNone)
+                cronNote(snapshot.cronState)
             } else {
                 ForEach(scheduledGroups, id: \.0) { group in
                     scheduledGroup(group.0, jobs: group.1)
                 }
+                if case .failed = snapshot.cronState { cronNote(.failed("")) }
             }
             if !snapshot.cronRuns.isEmpty { recentRuns }
+        }
+    }
+
+    /// The scheduled section's own read state: loading, offline, or a failure
+    /// with a way to ask again. Never the "no jobs" line.
+    @ViewBuilder private func cronNote(_ state: LAAChatsLoadState) -> some View {
+        switch state {
+        case .ready: note(LAACopy.chatsCronNone)
+        case .loading:
+            HStack(spacing: LAASpacing.x2) { ProgressView(); note(LAACopy.chatsCronPending) }
+        case .offline: note(LAACopy.chatsOffline)
+        case .unsupported: note(LAACopy.chatsCronUnavailable)
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                note(message.isEmpty ? LAACopy.chatsCronStale : message)
+                Button(LAACopy.chatsCronRetry, action: retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+            }
         }
     }
 

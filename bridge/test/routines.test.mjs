@@ -21,6 +21,39 @@ test('unavailable routine source returns an error rather than an empty list', as
   assert.equal(JSON.stringify(response.body).includes('private error'), false);
 });
 
+test('one unusable row is skipped and a wholly unusable document is still an error', async (t) => {
+  const mixed = await startBridge({ routines: { read: async () => ({ data: [
+    { id: 'job:a', name: 'Daily', reading: { enabled: true } },
+    { id: 7, name: null },
+  ] }) } });
+  t.after(() => mixed.close());
+  const page = await mixed.request('/v1/routines', { token: await mixed.token() });
+  assert.equal(page.status, 200);
+  assert.deepEqual(page.body.data.items.map((row) => row.id), ['job:a']);
+  assert.equal(page.body.data.skipped, 1);
+
+  const replaced = await startBridge({ routines: { read: async () => ({ data: [{ nope: true }] }) } });
+  t.after(() => replaced.close());
+  const broken = await replaced.request('/v1/routines', { token: await replaced.token() });
+  assert.equal(broken.status, 503, 'a changed Console shape is never shown as "no routines"');
+});
+
+test('a failed cold read retries on its own instead of waiting for the next app request', async (t) => {
+  let calls = 0;
+  const bridge = await startBridge({ routines: { firstWaitMs: 100, retryMs: 50, read: async () => {
+    calls += 1;
+    if (calls === 1) throw new Error('console busy');
+    return { data: [{ id: 'job:a', name: 'Daily', reading: { enabled: true } }] };
+  } } });
+  t.after(() => bridge.close());
+  const deadline = Date.now() + 5000;
+  while (calls < 2 && Date.now() < deadline) await delay(20);
+  assert.ok(calls >= 2, 'the cold cache retried without an HTTP request');
+  const page = await bridge.request('/v1/routines', { token: await bridge.token() });
+  assert.equal(page.status, 200);
+  assert.equal(page.body.data.items[0].id, 'job:a');
+});
+
 
 test('routine states use current scheduler and business observations with explicit precedence', () => {
   assert.equal(routineState({ expected: 'stopped' }, { running: true, enabled: false, schedulerResult: 'error' }), 'running');
@@ -82,11 +115,11 @@ async function waitForStatus(bridge, token, status, timeoutMs = 10000) {
   return last;
 }
 
-test('a slow console read never holds the response: the last observations are served from the cache', async (t) => {
+test('a cold request waits for the first console read and a bounded wait still leaves it running', async (t) => {
   let calls = 0;
-  const bridge = await startBridge({ routines: { read: async () => {
+  const bridge = await startBridge({ routines: { firstWaitMs: 150, read: async () => {
     calls += 1;
-    await delay(5000); // the production hang was 86 s; the shape of the failure is the same
+    await delay(600); // the production hang was 86 s; the shape of the failure is the same
     return { data: [{ id: 'job:a', name: 'Daily', reading: { enabled: true } }] };
   } } });
   t.after(() => bridge.close());
@@ -94,8 +127,9 @@ test('a slow console read never holds the response: the last observations are se
 
   const cold = Date.now();
   const first = await bridge.request('/v1/routines', { token });
-  assert.equal(first.status, 503);                       // nothing has ever been read
-  assert.ok(Date.now() - cold < 1000, `a cold request waited ${Date.now() - cold} ms`);
+  const waited = Date.now() - cold;
+  assert.equal(first.status, 503);                       // nothing has ever been read yet
+  assert.ok(waited >= 140 && waited < 1200, `a cold request waited ${waited} ms`);
 
   const filled = await waitForStatus(bridge, token, 200);
   assert.equal(filled.body.data.items[0].id, 'job:a');
@@ -106,6 +140,21 @@ test('a slow console read never holds the response: the last observations are se
   assert.equal(second.status, 200);
   assert.ok(Date.now() - warm < 50, `a repeated request took ${Date.now() - warm} ms`);
   assert.equal(second.body.data.fetchedAt, filled.body.data.fetchedAt);
+  assert.equal(calls, 1);
+});
+
+test('a first read that lands inside the wait answers with data, not an error', async (t) => {
+  let calls = 0;
+  const bridge = await startBridge({ routines: { firstWaitMs: 2000, read: async () => {
+    calls += 1;
+    await delay(250);
+    return { data: [{ id: 'job:a', name: 'Daily', reading: { enabled: true } }] };
+  } } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  const page = await bridge.request('/v1/routines', { token });
+  assert.equal(page.status, 200, 'the app asked once and got the routines instead of "could not load"');
+  assert.equal(page.body.data.items[0].id, 'job:a');
   assert.equal(calls, 1);
 });
 

@@ -4979,6 +4979,30 @@ final class AppState: ObservableObject {
     @Published var cronJobs: [CronJob] = []
     @Published var cronRuns: [CronRun] = []
     @Published private(set) var cronJobsLoading = false
+    /// Whether `cronJobs` is a read list or an unread one. A surface that
+    /// prints "no scheduled jobs" must know the difference: the LAA shell has
+    /// no Cron tab, so nothing else loads this list for the Chat list.
+    @Published private(set) var cronJobsPhase: CronJobsPhase = .idle
+    /// Who the rows in `cronJobs` came from, and when: a second Mac's dashboard
+    /// or another profile's answer never stands in for this one.
+    private var cronJobsOwner: CronJobsOwner?
+    private var cronJobsLoadedAt: Date?
+    /// The newest read. A read superseded while it was in flight drops its
+    /// rows and its failure instead of publishing them over the new owner.
+    private var cronJobsLoadToken = 0
+    private var cronJobsLoadingOwner: CronJobsOwner?
+    /// Whose list `cronJobsPhase` describes, so another owner's readiness or
+    /// failure is never read as this connection's.
+    private var cronJobsPhaseOwner: CronJobsOwner?
+    /// The jobs and read state that belong to the connection on screen.
+    var activeProfileCronJobs: [CronJob] { cronJobsOwner == activeCronJobsOwner ? cronJobs : [] }
+    var activeProfileCronJobsPhase: CronJobsPhase {
+        CronJobsReadDecision.phase(loadingOwner: cronJobsLoadingOwner, phaseOwner: cronJobsPhaseOwner,
+                                   phase: cronJobsPhase, activeOwner: activeCronJobsOwner)
+    }
+    private var activeCronJobsOwner: CronJobsOwner {
+        CronJobsOwner(dashboardID: activeDashboardID, profile: activeProfile)
+    }
     @Published private(set) var cronJobActionID: String?
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
@@ -31942,29 +31966,94 @@ final class AppState: ObservableObject {
 
     // MARK: - Scheduled jobs
 
+    /// Loads the active connection's jobs for a surface that shows them. The
+    /// LAA shell has no Cron tab, so the Chat list asks through this: the
+    /// phase says whether an empty `cronJobs` means "read and empty" or "not
+    /// read". A read for the owner on screen is not started twice; a read for
+    /// another dashboard or profile never blocks this one.
+    func loadCronJobsIfNeeded(maxAge: TimeInterval = 60) async {
+        let owner = activeCronJobsOwner
+        if let held = cronJobsOwner, held != owner {
+            // Another connection's rows must not stand in for this one while
+            // its own read is on the way.
+            cronJobs = []
+            cronJobsLoadedAt = nil
+        }
+        if cronJobsOwner == owner, cronJobsPhase == .ready,
+           let at = cronJobsLoadedAt, Date().timeIntervalSince(at) < maxAge { return }
+        guard CronJobsReadDecision.mayStart(loadingOwner: cronJobsLoadingOwner, owner: owner) else { return }
+        await loadCronJobs()
+    }
+
     func loadCronJobs() async {
-        guard !cronJobsLoading else { return }
-        let profile = activeProfile
+        cronJobsLoadToken += 1
+        let token = cronJobsLoadToken
+        let owner = activeCronJobsOwner
         let generation = cronJobsGeneration
+        cronJobsLoadingOwner = owner
         cronJobsLoading = true
-        defer { cronJobsLoading = false }
+        cronJobsPhaseOwner = owner
+        // A kept list stays on screen while it refreshes; only an owner with
+        // no list yet shows the loading phase.
+        if cronJobsOwner != owner || cronJobsPhase != .ready { cronJobsPhase = .loading }
 
         do {
+            let jobs: [CronJob]
             if let dashboardTicketBridge {
-                let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
+                let result = try await dashboardTicketBridge.requestJSON(
+                    path: cronDashboardPath("/api/cron/jobs", profile: owner.profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
-                let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile, generation == cronJobsGeneration else { return }
-                cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+                jobs = values.compactMap(decodeCronJob)
             } else if let client {
-                let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
-                cronJobs = jobs
+                jobs = try await client.listCronJobs()
+                guard self.client === client else {
+                    await dropCronJobsRead(token: token, owner: owner)
+                    return
+                }
+            } else {
+                // Neither a dashboard bridge nor a client: the list was not
+                // read, so it must not pass for an empty one.
+                if token == cronJobsLoadToken, owner == activeCronJobsOwner { cronJobsPhase = .failed("") }
+                settleCronJobsRead(token: token)
+                return
             }
+            guard token == cronJobsLoadToken else { return }
+            guard CronJobsReadDecision.mayPublish(owner: owner, activeOwner: activeCronJobsOwner,
+                                                  generation: generation,
+                                                  currentGeneration: cronJobsGeneration) else {
+                await dropCronJobsRead(token: token, owner: owner)
+                return
+            }
+            cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            cronJobsOwner = owner
+            cronJobsLoadedAt = Date()
+            cronJobsPhase = .ready
+            settleCronJobsRead(token: token)
         } catch {
-            guard profile == activeProfile else { return }
+            guard token == cronJobsLoadToken else { return }
+            settleCronJobsRead(token: token)
+            guard owner == activeCronJobsOwner else { return }
+            cronJobsPhase = .failed(UserFacingError.message(for: error))
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// Only the newest read clears the spinner: a superseded one returns
+    /// without touching a state its successor now owns.
+    private func settleCronJobsRead(token: Int) {
+        guard token == cronJobsLoadToken else { return }
+        cronJobsLoading = false
+        cronJobsLoadingOwner = nil
+    }
+
+    /// Drops a read whose answer no longer describes the app (a delete, a
+    /// replaced client): its rows would be wrong, so the connection on screen
+    /// reads again instead of being left on a spinner.
+    private func dropCronJobsRead(token: Int, owner: CronJobsOwner) async {
+        guard token == cronJobsLoadToken else { return }
+        settleCronJobsRead(token: token)
+        guard owner == activeCronJobsOwner else { return }
+        await loadCronJobs()
     }
 
     func loadCronRuns(for job: CronJob) async {
@@ -32139,6 +32228,9 @@ final class AppState: ObservableObject {
             cronJobs.removeAll { $0.id == created.id }
             cronJobs.append(created)
             cronJobs.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            // The list now describes this connection, even before a full
+            // read; the phase keeps saying it was not read whole.
+            cronJobsOwner = activeCronJobsOwner
         } else {
             await loadCronJobs()
         }

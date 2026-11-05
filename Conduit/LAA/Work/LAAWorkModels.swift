@@ -6,6 +6,9 @@ struct LAAWorkPage<Item: Decodable>: Decodable {
     let nextCursor: String?
     let sources: [LAAWorkSource]?
     let total: Int?
+    /// Rows the Bridge could not read from its source. A list with any is
+    /// partial: it must not be presented as the whole answer.
+    let skipped: Int?
     /// When the Bridge last read a cacheable list successfully. Its slow
     /// read-only routes answer from the last good value while they refresh,
     /// so a page older than the freshness window is shown as such.

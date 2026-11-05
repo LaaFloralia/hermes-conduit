@@ -4,6 +4,11 @@
 // projection is cached: a request is answered from the last successful read,
 // one read runs at a time, and the cache refreshes in the background once the
 // value is older than `freshMs`. Only a source that has never answered is a 503.
+//
+// A cold cache keeps retrying on its own: the startup warm can fail once (a
+// busy Mac, a Console run that outlived the exec timeout) and otherwise leave
+// the app showing "could not load the list" until someone tapped refresh hours
+// later. One unusable row is skipped instead of voiding every routine.
 import { execFile } from 'node:child_process';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
@@ -39,16 +44,27 @@ export function routineKind(job) {
 }
 
 export function projectRoutines(document) {
+  return projectRoutineRows(document).items;
+}
+
+// Splits "the Console answered with an unusable document" from "this row is
+// unusable". A document whose every row is unusable is a shape change, not an
+// empty schedule list, so it still fails the read instead of showing none.
+export function projectRoutineRows(document) {
   if (!Array.isArray(document?.data)) throw new Error('invalid jobs response');
-  return document.data.map((job) => {
-    if (typeof job?.id !== 'string' || typeof job?.name !== 'string') throw new Error('invalid job');
+  const items = [];
+  let skipped = 0;
+  for (const job of document.data) {
+    if (typeof job?.id !== 'string' || typeof job?.name !== 'string') { skipped += 1; continue; }
     const reading = job.reading && typeof job.reading === 'object' ? job.reading : {};
-    return { id: job.id, name: job.name, schedule: boundedString(job.schedule),
+    items.push({ id: job.id, name: job.name, schedule: boundedString(job.schedule),
       triggerKind: routineKind(job), destination: routineDestination(job), state: routineState(job, reading),
       nextRunAt: boundedString(reading.nextRunAt), lastRunAt: boundedString(reading.lastRunAt),
       businessStatus: boundedString(reading.businessStatus), notificationStatus: boundedString(reading.notificationStatus),
-      result: boundedString(reading.result) };
-  });
+      result: boundedString(reading.result) });
+  }
+  if (document.data.length > 0 && items.length === 0) throw new Error('invalid jobs response');
+  return { items, skipped };
 }
 
 // launchd starts the Bridge with a PATH that has no node; laa-console's tsx needs one, so lend it the Bridge runtime.
@@ -61,17 +77,31 @@ export function routineRoutes({
     const { stdout } = await exec('/Users/laa/.local/bin/laa-console', ['jobs'], { timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: consoleEnv() });
     return JSON.parse(stdout);
   },
-  freshMs = 60000, firstWaitMs = 250, now = () => Date.now(),
+  freshMs = 60000, firstWaitMs = 3000, retryMs = 15000, now = () => Date.now(),
 } = {}) {
-  const cache = createReadCache({ read: async () => projectRoutines(await read()), freshMs, waitMs: 0, firstWaitMs, now });
+  const cache = createReadCache({ read: async () => projectRoutineRows(await read()), freshMs, waitMs: 0, firstWaitMs, now });
+  // A cold cache retries until the first read lands, so a warm that failed at
+  // startup does not leave the app with a 503 until its next manual refresh.
+  let retryTimer = null;
+  const keepWarm = () => {
+    if (cache.peek() !== null) return;
+    cache.warm();
+    if (retryTimer !== null) return;
+    retryTimer = setInterval(() => {
+      if (cache.peek() !== null) { clearInterval(retryTimer); retryTimer = null; return; }
+      cache.warm();
+    }, retryMs);
+    retryTimer.unref?.();
+  };
   // Warm at startup so the app does not pay for the first Console run.
-  cache.warm();
+  keepWarm();
   return [{ method: 'GET', path: '/v1/routines', auth: true, scope: 'sessions:read', handler: async () => {
     let entry = null;
     try { entry = await cache.get(); } catch { /* nothing has ever been read */ }
     if (entry === null || entry.fetchedAt === null) {
+      keepWarm();
       throw new BridgeError(503, 'routines_unavailable', 'routine observations unavailable', { retryable: true });
     }
-    return { status: 200, data: { items: entry.value, nextCursor: null, fetchedAt: new Date(entry.fetchedAt).toISOString() } };
+    return { status: 200, data: { items: entry.value.items, skipped: entry.value.skipped, nextCursor: null, fetchedAt: new Date(entry.fetchedAt).toISOString() } };
   } }];
 }
