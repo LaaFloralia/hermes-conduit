@@ -264,7 +264,10 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         table.setCell("line1\nline2", row: 0, column: 0)
         let saved = table.markdown
         XCTAssertFalse(saved.contains("\n\n"), "a pasted newline must not add a row")
-        XCTAssertEqual(LAAMarkdownTable.from(LAAMarkdownParser.split(saved))?.rows[0], ["line1 line2", "2"])
+        XCTAssertEqual(LAAMarkdownTable.from(LAAMarkdownParser.split(saved))?.rows[0], ["line1<br>line2", "2"],
+                       "a pasted newline is written as <br>, the table's own break")
+        XCTAssertEqual(LAAMarkdownTable.from(LAAMarkdownParser.split("| a<br>b | c |\n| --- | --- |"))?.header,
+                       ["a<br>b", "c"], "a literal <br> stays as written")
     }
 
     // MARK: Live model (the grid reads this, not a snapshot)
@@ -310,6 +313,65 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         let revision = model.revision
         model.reload("履歴から復元した内容に追記")
         XCTAssertEqual(model.revision, revision, "the editor's own edit must not reinitialise the model")
+    }
+
+    func testEscapedTrailingPipeSurvivesAnEditElsewhere() {
+        let source = "| a | b\\|\n| --- | --- |\n| 1 | 2 |"
+        let reloaded = editAndReload(source, row: -1, column: 0, value: "x")
+        XCTAssertEqual(reloaded?.header, ["x", "b|"], "the escaped trailing pipe stays in its cell")
+        XCTAssertEqual(reloaded?.rows[0], ["1", "2"])
+
+        // An even number of backslashes leaves a real delimiter; an odd number
+        // escapes the pipe into the cell. Either way another cell's edit must
+        // not change it.
+        for line in ["| a | b\\|", "| a | b\\\\|", "| a | b\\\\\\|", "| a | b"] {
+            let text = line + "\n| --- | --- |\n| 1 | 2 |"
+            guard let table = LAAMarkdownTable.from(LAAMarkdownParser.split(text)) else {
+                return XCTFail("expected a table for \(line)")
+            }
+            var edited = table
+            edited.setCell("z", row: -1, column: 0)
+            let reparsed = LAAMarkdownTable.from(LAAMarkdownParser.split(edited.markdown))
+            XCTAssertEqual(reparsed?.header.count, table.header.count, "cell count stays stable for \(line)")
+            XCTAssertEqual(reparsed?.header.last, table.header.last, "the last cell keeps its text for \(line)")
+        }
+    }
+
+    func testCRLFTableStaysEditableAndKeepsItsLineEndings() {
+        let source = "前置き\r\n| 項目 | 値 |\r\n| --- | --- |\r\n| あ | 1 |\r\n後置き\r\n"
+        assertRoundTrip(source)
+        let segments = LAAMarkdownParser.segments(in: source)
+        XCTAssertEqual(segments.count, 3, "a CRLF table is a table, not text")
+        guard case .table(let table) = segments[1] else { return XCTFail("expected a table") }
+        XCTAssertEqual(table.header, ["項目", "値"])
+        XCTAssertEqual(table.rows, [["あ", "1"]])
+        XCTAssertTrue(table.trailingReturn, "the table knows it ended with CRLF")
+        var edited = table
+        edited.setCell("3", row: 0, column: 1)
+        XCTAssertEqual(edited.markdown, "| 項目 | 値 |\r\n| --- | --- |\r\n| あ | 3 |\r",
+                       "an edited CRLF table stays CRLF")
+        XCTAssertEqual(LAAMarkdownTable.from(LAAMarkdownParser.split(edited.markdown))?.rows, [["あ", "3"]])
+    }
+
+    @MainActor func testInsertingATableGoesIntoTheFocusedRun() {
+        let text = "# 見出し\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n末尾の段落\n"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        XCTAssertEqual(model.segments.count, 3, "text, table, text")
+        guard let trailing = model.segments.last, case .text(let trailingText) = trailing.content else {
+            return XCTFail("expected a trailing text run")
+        }
+        XCTAssertEqual(trailingText, "末尾の段落\n")
+        model.insertTable(selection: NSRange(location: 0, length: 0), into: trailing.id)
+        let sources = model.segments.map(\.content)
+        XCTAssertEqual(sources.count, 4, "the table split the focused run")
+        guard case .text(let untouched) = sources[0] else { return XCTFail("first run stays text") }
+        XCTAssertEqual(untouched, "# 見出し\n", "the run before the table is untouched")
+        guard case .table(let original) = sources[1] else { return XCTFail("the original table stays") }
+        XCTAssertEqual(original.header, ["a", "b"])
+        guard case .table(let inserted) = sources[2] else { return XCTFail("the new table is after the paragraph") }
+        XCTAssertEqual(inserted.header, ["見出し1", "見出し2"])
+        XCTAssertEqual(model.sourceText.hasSuffix("末尾の段落\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n|  |  |\n"), true,
+                       "the table lands under the trailing paragraph, not at the old run")
     }
 
     // MARK: IME

@@ -81,8 +81,7 @@ struct LAAMarkdownEditor: View {
     }
 
     private func insertTable() {
-        let selection = session.selection
-        model.insertTable(selection: selection)
+        model.insertTable(selection: session.selection, into: model.activeTextSegment)
         session.resignForStructureChange()
     }
 }

@@ -101,8 +101,9 @@ final class LAAMarkdownDocumentModel: ObservableObject {
 
     /// Puts a table where the caret is and splits the run around it, so the
     /// grid is editable immediately.
-    func insertTable(selection: NSRange) {
-        let id = activeTextSegment ?? segments.first(where: { if case .text = $0.content { return true }; return false })?.id
+    func insertTable(selection: NSRange, into segmentID: UUID? = nil) {
+        let id = segmentID ?? activeTextSegment
+            ?? segments.first(where: { if case .text = $0.content { return true }; return false })?.id
         guard let id, let index = segments.firstIndex(where: { $0.id == id }),
               case .text(let text) = segments[index].content else { return }
         let edit = LAAMarkdownFormat.insertTable(text: text, selection: selection)

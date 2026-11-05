@@ -62,6 +62,9 @@ struct LAAMarkdownTable: Equatable {
     var header: [String]
     var alignments: [Alignment]
     var rows: [[String]]
+    /// The table's lines ended with CRLF. Regenerated lines keep it, so
+    /// editing a table never mixes line endings into a CRLF note.
+    var trailingReturn = false
     /// The lines as they were read. Present until the table is edited, so an
     /// untouched table is written back byte for byte (padding included).
     var rawLines: [String]?
@@ -142,16 +145,20 @@ struct LAAMarkdownTable: Equatable {
         for row in rows {
             output.append("| " + row.map(Self.escape).joined(separator: " | ") + " |")
         }
-        return output
+        return trailingReturn ? output.map { $0 + "\r" } : output
     }
 
     var markdown: String { markdownLines.joined(separator: "\n") }
 
     /// A cell cannot hold a raw pipe (it would end the cell) or a newline (it
-    /// would end the row).
+    /// would end the row). A line break becomes `<br>`, the Markdown table's
+    /// own spelling for one, so the break is still rendered instead of being
+    /// silently flattened. A `<br>` already in the source is kept as written.
     private static func escape(_ cell: String) -> String {
         cell.replacingOccurrences(of: "|", with: "\\|")
-            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r\n", with: "<br>")
+            .replacingOccurrences(of: "\n", with: "<br>")
+            .replacingOccurrences(of: "\r", with: "<br>")
             .trimmingCharacters(in: .whitespaces)
     }
 
@@ -161,8 +168,12 @@ struct LAAMarkdownTable: Equatable {
 
     static func from(_ lines: [String]) -> LAAMarkdownTable? {
         guard lines.count >= 2 else { return nil }
-        let header = cells(in: lines[0])
-        let delimiter = cells(in: lines[1])
+        // A CRLF note hands each line over with its carriage return. Parse the
+        // content without it; the original lines stay in `rawLines`, so an
+        // untouched table is still written back exactly as it was read.
+        let content = lines.map(Self.strippingCarriageReturn)
+        let header = cells(in: content[0])
+        let delimiter = cells(in: content[1])
         guard !header.isEmpty, !delimiter.isEmpty, delimiter.allSatisfy({ isDelimiter($0) }) else { return nil }
         let alignments = delimiter.map { cell -> Alignment in
             let trimmed = cell.trimmingCharacters(in: .whitespaces)
@@ -177,8 +188,19 @@ struct LAAMarkdownTable: Equatable {
         }
         // An empty row is still a row: skipping it here would delete it the
         // first time any cell in the table is edited.
-        let rows = lines.dropFirst(2).map { cells(in: $0) }
-        return LAAMarkdownTable(header: header, alignments: alignments, rows: rows, rawLines: lines)
+        let rows = content.dropFirst(2).map { cells(in: $0) }
+        return LAAMarkdownTable(header: header, alignments: alignments, rows: rows,
+                                trailingReturn: lines.contains { $0.hasSuffix("\r") }, rawLines: lines)
+    }
+
+    private static func strippingCarriageReturn(_ line: String) -> String {
+        line.hasSuffix("\r") ? String(line.dropLast()) : line
+    }
+
+    private static func endsWithDelimiter(_ line: String) -> Bool {
+        guard line.hasSuffix("|") else { return false }
+        let backslashes = line.dropLast().reversed().prefix { $0 == "\\" }.count
+        return backslashes % 2 == 0
     }
 
     private static func isDelimiter(_ cell: String) -> Bool {
@@ -190,7 +212,8 @@ struct LAAMarkdownTable: Equatable {
 
     /// Splits on pipes that are not escaped, dropping the optional leading and
     /// trailing pipe. `\|` stays inside its cell.
-    static func cells(in line: String) -> [String] {
+    static func cells(in rawLine: String) -> [String] {
+        let line = strippingCarriageReturn(rawLine)
         var cells: [String] = []
         var current = ""
         var escaped = false
@@ -217,7 +240,10 @@ struct LAAMarkdownTable: Equatable {
         cells.append(current)
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.hasPrefix("|"), !cells.isEmpty { cells.removeFirst() }
-        if trimmed.hasSuffix("|"), !cells.isEmpty { cells.removeLast() }
+        // A trailing pipe ends the row only when it is not escaped: in
+        // `| a | b\|` the last pipe belongs to the cell (`b|`), and dropping
+        // it would lose that cell on the first edit.
+        if endsWithDelimiter(trimmed), !cells.isEmpty { cells.removeLast() }
         if cells.count == 1, cells[0].trimmingCharacters(in: .whitespaces).isEmpty { return [] }
         return cells.map { unescape($0) }
     }

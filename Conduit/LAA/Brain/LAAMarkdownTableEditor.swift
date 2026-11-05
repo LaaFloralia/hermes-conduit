@@ -112,10 +112,11 @@ struct LAAMarkdownTableEditor: View {
     }
 
     private func cell(row: Int, column: Int) -> some View {
-        TextField("", text: binding(row: row, column: column), axis: .vertical)
+        // Single line: a table row cannot hold a newline, and a multi-line
+        // field would let one be typed only to be rewritten on save.
+        TextField("", text: binding(row: row, column: column))
             .textFieldStyle(.plain)
             .font(.body)
-            .lineLimit(1...6)
             .focused($focused, equals: Cell(row: row, column: column))
             .padding(.horizontal, LAASpacing.x2)
             .padding(.vertical, LAASpacing.x2)

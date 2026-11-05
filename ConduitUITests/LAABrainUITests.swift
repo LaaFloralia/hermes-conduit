@@ -344,6 +344,40 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertEqual(raw.label, "- LIST-FIXTURE")
     }
 
+    func testInsertTableUsesTheFocusedRunAfterAnExistingTable() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launch()
+        openLocalCompany(app)
+        let note = app.staticTexts["Table"]
+        XCTAssertTrue(note.waitForExistence(timeout: 30))
+        note.tap()
+        let edit = app.buttons["laa.brain.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 20))
+        edit.tap()
+        let runs = app.textViews.matching(identifier: "laa.brain.edit.text")
+        XCTAssertTrue(runs.element(boundBy: 0).waitForExistence(timeout: 20))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "laa.markdown.table").count, 1)
+        // The paragraph after the existing table is its own run; focusing it
+        // must make that run the insertion target.
+        let trailing = runs.element(boundBy: runs.count - 1)
+        XCTAssertTrue(trailing.waitForExistence(timeout: 10))
+        trailing.tap()
+        app.buttons["laa.markdown.format.table"].tap()
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "laa.markdown.table").count, 2,
+                       "the inserted table joins the note")
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
+        app.buttons["laa.brain.rawToggle"].tap()
+        let raw = app.staticTexts["laa.brain.raw"]
+        XCTAssertTrue(raw.waitForExistence(timeout: 10))
+        XCTAssertTrue(raw.label.contains("# 表"), "the run before the table was not overwritten")
+        XCTAssertTrue(raw.label.contains("末尾の段落"), "the focused paragraph survives")
+        XCTAssertTrue(raw.label.contains("項目"), "the existing table survives")
+        XCTAssertTrue(raw.label.contains("あ"), "the existing table's cell survives")
+        XCTAssertTrue(raw.label.contains("見出し1"), "the new table was written")
+    }
+
     func testDailyShortcutWithoutVaultOffersFolderSelection() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture", "-laa-brain-daily-fixture"]
@@ -467,11 +501,18 @@ final class LAABrainUITests: XCTestCase {
         app.buttons["laa.brain.history.use"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertEqual(editor.value as? String, "INTERVENING-FIXTURE")
+        // Typing after the restore must extend the restored version, not the
+        // draft the editor was first opened with.
+        focusLocalEditor(editor)
+        editor.typeText("+AFTER-RESTORE")
         app.buttons["laa.brain.edit.save"].tap()
         let raw = app.buttons["laa.brain.rawToggle"]
         XCTAssertTrue(raw.waitForExistence(timeout: 15))
         raw.tap()
-        XCTAssertEqual(app.staticTexts["laa.brain.raw"].label, "INTERVENING-FIXTURE")
+        let restored = app.staticTexts["laa.brain.raw"].label
+        XCTAssertTrue(restored.contains("INTERVENING-FIXTURE"), "the restored version is what got saved")
+        XCTAssertTrue(restored.contains("AFTER-RESTORE"), "typing after the restore is kept")
+        XCTAssertFalse(restored.contains("MY-FIXTURE-DRAFT"), "the pre-restore draft is gone")
     }
 
     func testMissingStageRequiresExplicitReview() {

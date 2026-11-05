@@ -32,7 +32,7 @@ import Foundation
                     try Data("EXISTING-DAILY-FIXTURE".utf8).write(to: root.appendingPathComponent(LAABrainDailyNote.path()))
                 }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-table-fixture") {
-                    try Data("# 表\n\n| 項目 | 値 |\n| --- | --- |\n| あ | 1 |\n".utf8)
+                    try Data("# 表\n\n| 項目 | 値 |\n| --- | --- |\n| あ | 1 |\n\n末尾の段落\n".utf8)
                         .write(to: root.appendingPathComponent("Company/Table.md"))
                 }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-conflict-copy-fixture") {

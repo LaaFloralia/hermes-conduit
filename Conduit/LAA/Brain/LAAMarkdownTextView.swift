@@ -59,7 +59,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         var parent: LAAMarkdownTextView
         private weak var view: LAAMarkdownUITextView?
         private var lastCaretLine = NSNotFound
-        private var lastSelection = NSRange(location: 0, length: 0)
+        private var lastSelection: NSRange?
         private var styling = false
         var autoFocus = false
         private var didAutoFocus = false
@@ -82,6 +82,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                 self.selectionChanged(view)
             }
             restyle(view, full: true)
+            reportSelection(view)
             if autoFocus, !didAutoFocus {
                 didAutoFocus = true
                 Task { @MainActor [weak view] in view?.becomeFirstResponder() }
@@ -154,6 +155,9 @@ struct LAAMarkdownTextView: UIViewRepresentable {
 
         private func reportSelection(_ textView: UITextView) {
             let selection = textView.selectedRange
+            // nil until the first report: a segment that opens with the caret
+            // at (0,0) still has to hand its id to the model, or a table would
+            // be inserted into the segment that was focused before it.
             guard selection != lastSelection else { return }
             lastSelection = selection
             parent.onSelectionChange(selection)
