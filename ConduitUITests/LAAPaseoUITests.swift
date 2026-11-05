@@ -86,7 +86,7 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Chat"].isHittable)
         app.navigationBars.buttons.firstMatch.tap()
         capture(app, "back-to-list", "light")
-        for name in ["Chat", "Work", "Today", "Brain", "Studio"] {
+        for name in ["Chat", "Work", "Today", "Doc", "Studio"] {
             let visible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: app.buttons[name])
             XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, "Tab did not return: \(name)")
         }
@@ -132,7 +132,7 @@ final class LAAPaseoUITests: XCTestCase {
     }
 
     private func assertTabsVisible(_ app: XCUIApplication, context: String) {
-        for name in ["Chat", "Work", "Today", "Brain", "Studio"] {
+        for name in ["Chat", "Work", "Today", "Doc", "Studio"] {
             let visible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: app.buttons[name])
             XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, "Tab missing \(context): \(name)")
         }

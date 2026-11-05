@@ -44,7 +44,7 @@ struct LAATodayDesktopView: View {
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
-                        Button(action: openBrain) { Text(verbatim: "Brainを開く") }
+                        Button(action: openBrain) { Text(verbatim: "Docを開く") }
                             .laaGlassButton()
                             .padding(LAASpacing.x4)
                     }

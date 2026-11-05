@@ -460,7 +460,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets and Drive: `Conduit/LAA/Assets/`, `Conduit/LAA/Drive/`, `bridge/src/routes/drive.mjs`, `bridge/src/drive/`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`, `bridge/bench/README.md`, `docs/laa/DRIVE-PLAYER-API.md`
 - Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-v2.test.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
-- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainManageNoteView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
+- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainManageNoteView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`, `Conduit/LAA/Brain/LAAMarkdownModel.swift`, `Conduit/LAA/Brain/LAAMarkdownStyler.swift`, `Conduit/LAA/Brain/LAAMarkdownTextView.swift`, `Conduit/LAA/Brain/LAAMarkdownFormatBar.swift`, `Conduit/LAA/Brain/LAAMarkdownTableEditor.swift`, `Conduit/LAA/Brain/LAAMarkdownDocumentModel.swift`, `Conduit/LAA/Brain/LAAMarkdownEditor.swift`, `ConduitTests/LAAMarkdownEditorTests.swift`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 - LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `scripts/laa/mac-profiles.py`, `scripts/laa/test-mac-release.py`, `ConduitTests/LAAMacCatalystTests.swift`
 
@@ -589,6 +589,20 @@ App Store build · the Bridge API, Brain and Usage data contracts
   name in `.trash`, with original-path recovery history. A changed source stops
   the action and retains both versions. Relative links and inbound links are
   preserved verbatim, and the sheet explains they are not automatically updated.
+- The Doc tab (internal name `brain`, the vault keeps its folder) edits the
+  note's own Markdown with the formatted reading in place: heading marks and
+  list markers are hidden and drawn as glyphs, inline markers stay visible only
+  on the caret's line, and a table is a real editable grid. The format bar in
+  Liquid Glass changes the block under the caret (headings, bullet, numbered,
+  checkbox, quote, bold, italic, strike, code, table). Nothing is converted to
+  a private document model: an untouched block is written back byte for byte,
+  and syntax the editor does not render (frontmatter, `:::`, `%%`, HTML,
+  footnote definitions, pipes inside code fences) is preserved. Styling is
+  applied only to attributes and never while an IME composition is open, so
+  Japanese input, selection and undo stay the system's. Covered by
+  `ConduitTests/LAAMarkdownEditorTests.swift` (round trip, one-cell edits with
+  extra cells/empty rows/emoji/escapes, fenced pipes, block toggles, Return
+  continuation, the IME gate).
 - Editing keeps the latest unsaved buffer and its base in protected app-private
   storage after a 400 ms typing pause and when the app leaves the foreground.
   Reopening offers that buffer, or both versions if the vault changed. Successful
@@ -644,7 +658,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
-**Checked:** 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 

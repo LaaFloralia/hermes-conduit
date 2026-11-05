@@ -291,6 +291,59 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["laa.brain.raw"].label, "DAILY-FIXTURE")
     }
 
+    func testTableCellsKeepTwoEditsThroughSaveAndReload() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launch()
+        openLocalCompany(app)
+        let note = app.staticTexts["Table"]
+        XCTAssertTrue(note.waitForExistence(timeout: 30))
+        note.tap()
+        let edit = app.buttons["laa.brain.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 20))
+        edit.tap()
+        let first = app.descendants(matching: .any)["laa.markdown.table.cell.0.0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 20))
+        first.tap()
+        first.typeText("AAA")
+        let second = app.descendants(matching: .any)["laa.markdown.table.cell.1.0"]
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
+        if !second.isHittable { app.swipeUp() }
+        second.tap()
+        second.typeText("BBB")
+        XCTAssertTrue((first.value as? String ?? "").contains("AAA"), "the first cell keeps its edit")
+        XCTAssertTrue((second.value as? String ?? "").contains("BBB"), "the second cell takes its own edit")
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
+        app.buttons["laa.brain.rawToggle"].tap()
+        let raw = app.staticTexts["laa.brain.raw"]
+        XCTAssertTrue(raw.waitForExistence(timeout: 10))
+        XCTAssertTrue(raw.label.contains("AAA"), "the saved Markdown keeps the first cell")
+        XCTAssertTrue(raw.label.contains("BBB"), "the saved Markdown keeps the second cell")
+        XCTAssertTrue(raw.label.contains("項目") && raw.label.contains("値"), "the header survives the save")
+        XCTAssertTrue(raw.label.contains("1"), "the untouched cell survives the save")
+    }
+
+    func testEditorFormatsAListAndKeepsItOnSave() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-daily-fixture"]
+        app.launch()
+        let editor = app.textViews["laa.brain.edit.text"]
+        focusLocalEditor(editor)
+        editor.typeText("LIST-FIXTURE")
+        let bullet = app.buttons["laa.markdown.format.bullet"]
+        XCTAssertTrue(bullet.waitForExistence(timeout: 10))
+        bullet.tap()
+        let table = app.buttons["laa.markdown.format.table"]
+        XCTAssertTrue(table.exists)
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
+        app.buttons["laa.brain.rawToggle"].tap()
+        let raw = app.staticTexts["laa.brain.raw"]
+        XCTAssertTrue(raw.waitForExistence(timeout: 10))
+        XCTAssertEqual(raw.label, "- LIST-FIXTURE")
+    }
+
     func testDailyShortcutWithoutVaultOffersFolderSelection() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture", "-laa-brain-daily-fixture"]

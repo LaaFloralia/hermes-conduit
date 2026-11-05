@@ -100,7 +100,7 @@ struct LAATodayView: View {
                         day(Calendar.current.date(byAdding: .day, value: offset, to: range.start)!)
                     }
                 }
-                Button(action: openBrain) { Text(verbatim: "Brainを開く") }.laaGlassButton()
+                Button(action: openBrain) { Text(verbatim: "Docを開く") }.laaGlassButton()
             }.frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(LAASpacing.horizontal)
         }

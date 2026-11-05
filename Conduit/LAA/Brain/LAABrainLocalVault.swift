@@ -31,6 +31,10 @@ import Foundation
                     try FileManager.default.createDirectory(at: root.appendingPathComponent(LAABrainDailyNote.folder), withIntermediateDirectories: true)
                     try Data("EXISTING-DAILY-FIXTURE".utf8).write(to: root.appendingPathComponent(LAABrainDailyNote.path()))
                 }
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-table-fixture") {
+                    try Data("# 表\n\n| 項目 | 値 |\n| --- | --- |\n| あ | 1 |\n".utf8)
+                        .write(to: root.appendingPathComponent("Company/Table.md"))
+                }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-conflict-copy-fixture") {
                     try Data("CONFLICT-COPY-FIXTURE".utf8).write(to: root.appendingPathComponent("Company/Start.sync-conflict-20261101-ABC.md"))
                 }

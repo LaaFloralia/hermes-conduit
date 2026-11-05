@@ -26,7 +26,7 @@ final class LAAMacCatalystTests: XCTestCase {
         XCTAssertEqual(LAAMacSection.drive.tab, .source)
         XCTAssertEqual(Set(LAAMacSection.allCases.map(\.tab)), Set(LAATab.allCases))
         XCTAssertEqual(LAAMacSection.allCases.map(\.title),
-                       ["Chat", "Work", "Today", "Brain", "Studio", "Drive", "Usage"])
+                       ["Chat", "Work", "Today", "Doc", "Studio", "Drive", "Usage"])
         // The phone's five destinations are all reachable from the sidebar.
         XCTAssertTrue(Set(LAATab.destinations).isSubset(of: Set(LAAMacSection.allCases.map(\.tab))))
     }

@@ -38,7 +38,6 @@ struct LAABrainSaveEditor: View {
     @State private var exportDigest = ""
     @State private var showExport = false
     @State private var canExportDraft = false
-    @FocusState private var draftFocused: Bool
     #if DEBUG
     @State private var injectFixtureRace = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-race-fixture")
     @State private var injectFixtureMissingStage = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-missing-stage-fixture")
@@ -71,11 +70,9 @@ struct LAABrainSaveEditor: View {
                             Text(verbatim: "このアプリでは読めない形式の履歴があります。記録は残っています。")
                                 .foregroundStyle(LAAColor.attention)
                         }
-                        TextEditor(text: $draft)
-                            .focused($draftFocused)
-                            .font(.body.monospaced()).disabled(busy)
-                            .accessibilityIdentifier("laa.brain.edit.text")
-                            .padding(.horizontal, LAASpacing.x2)
+                        LAAMarkdownEditor(text: draft, autoFocus: autoFocus, isEnabled: !busy) { changed in
+                            draft = changed
+                        }
                         if canExportDraft {
                             Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
                                 .accessibilityIdentifier("laa.brain.edit.exportDraft")
@@ -121,7 +118,6 @@ struct LAABrainSaveEditor: View {
         .interactiveDismissDisabled()
         .task {
             await open()
-            if autoFocus && snapshot != nil && pending.isEmpty { draftFocused = true }
         }
         .task(id: draft) {
             guard !busy, snapshot != nil else { return }

@@ -9,11 +9,11 @@ final class LAAShellNavigationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]
         app.launch()
-        for name in ["Chat", "Today", "Brain", "Studio", "Work"] {
+        for name in ["Chat", "Today", "Doc", "Studio", "Work"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
         XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 10))
-        app.buttons["Brain"].tap()
+        app.buttons["Doc"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
         // Selecting a visible section centers it and reveals the next section.
