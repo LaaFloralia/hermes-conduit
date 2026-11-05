@@ -20,12 +20,12 @@ final class LAATodayUITests: XCTestCase {
         app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
         XCTAssertTrue(app.staticTexts["laa.today.title"].waitForExistence(timeout: 30))
-        for name in ["Chat", "Work", "Today", "Brain", "Studio"] {
+        for name in ["Chat", "Work", "Today", "Doc", "Studio"] {
             XCTAssertTrue(app.buttons[name].exists, "Missing tab \(name)")
         }
         XCTAssertFalse(app.buttons["Open tasks"].exists)
         XCTAssertFalse(app.buttons["オープンタスク"].exists)
-        XCTAssertTrue(app.buttons["Brainを開く"].exists)
+        XCTAssertTrue(app.buttons["Docを開く"].exists)
     }
 }
 #endif

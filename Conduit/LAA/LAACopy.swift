@@ -12,7 +12,7 @@ enum LAACopy {
         case .today: return "Today"
         case .studio: return "Studio"
         case .work: return "Work"
-        case .brain: return "Brain"
+        case .brain: return "Doc"
         case .source: return "Assets"
         case .usage: return "Usage"
         }
@@ -108,7 +108,7 @@ enum LAACopy {
         case .today: return "今日の予定を表示します。"
         case .studio: return "Studioの作品を表示します。"
         case .work: return "Projectやタスクを作ると、ここに並びます。"
-        case .brain: return "Brainに項目がありません。保存するとここに並びます。"
+        case .brain: return "Docに項目がありません。保存するとここに並びます。"
         case .source: return "まだ素材がありません。Drive・Inspiration・Studioの項目がここに並びます。"
         case .usage: return "利用枠・実利用・費用・Macの状態を、更新時刻と一緒に出します。"
         }

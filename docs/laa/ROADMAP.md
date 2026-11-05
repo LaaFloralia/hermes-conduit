@@ -6,7 +6,7 @@
 
 ## 決定と境界
 
-- 画面は「会話」「仕事」「Brain」「素材」「Usage」の5タブ。仕事にセッション／Project／タスク／ルーティン、素材にDrive／Inspiration／Studioを置く。設定と検索は各画面から開く。
+- 画面は「会話」「仕事」「Doc」「素材」「Usage」の5タブ（Docの内部名は`brain`）。仕事にセッション／Project／タスク／ルーティン、素材にDrive／Inspiration／Studioを置く。設定と検索は各画面から開く。
 - Mac mini上に**単一のLAA Bridgeサービス**を置き、既存Hermes Conduit pluginは会話・通話・通知の既存機能に使う。Bridgeは認証とAPI、既存サービスのアダプター、復帰可能なイベント配信を担当する。pluginにBrain・Drive・実行管理まで足すとHermesの更新とprofile単位の生存期間に全領域が結合する。逆にBridge内でHermes・Paseo・Kanban・Usage収集を再実装しない。既存 `laa-personal-agent`、daemon、cron、agent-control、Studio、Syncthingを段階的に接続する。サービス新設前に既存経路の実体とAPIを確認し、単一プロセス・明示的な権限分離で済むことを検証する。
 - 個人と社員のタスク・判断待ち・進捗の現行正本は**Linear**。Brain dailyは習慣・日誌で、タスク台帳ではない。Inboxの旧案にある「個人タスクはBrain正本」は現行 `hq/tools/LINEAR.md` より古く採用しない。Kanbanは担当だけでworkerを自動起動し得るため、社長タスクを複製しない。Linear代替は移行ゲート後に正本を切り替える。
 - Project（ジャンル・共通指示）、Workspace（repo／作業ディレクトリ／worktree）、Session（会話・担当・モデル）、Attempt（実行）を分ける。人が命名した名を優先し、自動命名と子の「子｜」を維持。社長・Ciel・定期処理が同じ契約を使う。

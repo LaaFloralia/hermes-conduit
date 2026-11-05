@@ -48,7 +48,7 @@ Studioブランド「LAA — Company Brand / 2026.10」v6を基準にする。�
 |---|---|
 | タブバー、チャットの戻る・社員情報・電話、通話操作、編集ツールバー、チャットの入力欄（＋・入力面・送信） | チャットの吹き出し、Brain本文、仕事詳細、Usageの数値、ウィジェット本文 |
 
-iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する。Chats・Today・Brain・Studioの見出しは共通（LAAの上にGeorgiaの画面名）とし、ナビゲーションバーのボタンはシステムのガラスにまとめる。検索欄・絞り込みチップ・操作ボタンは標準のガラス（`LAAGlass.swift`）、一覧の行・カード・本文は不透明に保つ。独自操作に必要な場合だけ `glassEffect` を `GlassEffectContainer` でまとめる。regularを既定とし、clearは写真・映像の上に限る。明るい写真上のclearには最低35%の暗い下地を敷く。透明度を下げる設定ではLight `#FFFDF8`／Dark `#172627` の不透明面にする。コントラストを上げる設定では文字・境界を強める。
+iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する。Chats・Today・Doc・Studioの見出しは共通（LAAの上にGeorgiaの画面名）とし、ナビゲーションバーのボタンはシステムのガラスにまとめる。検索欄・絞り込みチップ・操作ボタンは標準のガラス（`LAAGlass.swift`）、一覧の行・カード・本文は不透明に保つ。独自操作に必要な場合だけ `glassEffect` を `GlassEffectContainer` でまとめる。regularを既定とし、clearは写真・映像の上に限る。明るい写真上のclearには最低35%の暗い下地を敷く。透明度を下げる設定ではLight `#FFFDF8`／Dark `#172627` の不透明面にする。コントラストを上げる設定では文字・境界を強める。
 
 対象はiOS 17以降。iOS 17–25は標準のナビゲーションと `Material` を使い、不透明設定では同じ代替面にする。iOS 26専用APIとスクロール時のタブ縮小はavailabilityで分岐する。静止画の半透明色をLiquid Glassの実装と見なさない。
 
@@ -58,7 +58,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 |---|---|---|---|
 | 1 | Chats | Ciel、社員、グループ、最近 | `bubble.left.and.bubble.right` |
 | 2 | Work | Sessions、Projects、Tasks、Routines | `checklist` |
-| 3 | Brain | Recent、Folders、Tags、検索 | `doc.text` |
+| 3 | Doc | Recent、Folders、Tags、検索 | `doc.text` |
 | 4 | Assets | Drive、Inspiration、Studio | `photo.on.rectangle` |
 | 5 | Usage | サービスごとのAI利用枠・残高 | `gauge.medium` |
 
@@ -105,8 +105,10 @@ CallKitの純正画面には任意の3D・動画を置けない。アプリ内�
 | 画面 | 構成と操作 | データがない場合 |
 |---|---|---|
 | Work | `Sessions / Projects / Tasks / Routines` を切り替え、進行中と判断待ちを分ける。行には題名、種別、実際の担当を表示 | 0件、未接続、取得失敗を分ける。担当や状態を推測しない |
-| Brain | `Recent / Folders / Tags`、検索、文書行、フォルダ。本文は紙色の面 | 0件・未接続・競合を分け、競合は両版への導線を示す |
+| Doc | `Recent / Folders / Tags`、検索、文書行、フォルダ。本文は紙色の面。編集はMarkdownのまま、見出し・箇条書き・番号・チェック・引用・表を整形して表示し、上部のLiquid Glassの書式メニューで切り替える（2026-11-06 社長指示。タブ表示名はDoc、内部名と保管庫は`brain`のまま） | 0件・未接続・競合を分け、競合は両版への導線を示す |
 | Assets | `Drive / Inspiration / Studio`、検索、種類フィルター、画像・文書の一覧 | 未接続・取得失敗・未対応形式を区別し、開けない理由を示す |
+
+Docの編集画面は表を実表として編集し、未対応の記法（frontmatter・`:::`・`%%`・HTML・脚注定義・コードフェンス内の`|`）は消さずにそのまま保持する。保存は元のMarkdownで、無変更のブロックは1文字も書き換えない。
 
 見本の項目名・説明・人数・ファイルは仮データ。既存の接続先と権限で取得できるものを表示し、未実装の操作は完成したように見せない。
 

@@ -3,9 +3,9 @@ import Foundation
 
 extension LAACopy {
     enum Brain {
-        static let title = "Brain"
+        static let title = "Doc"
         static let subtitle = "Notes and ideas, close at hand."
-        static let search = "Search Brain"
+        static let search = "Search Doc"
         static let clearSearch = "Clear search"
         static let recent = "Recent"
         static let folders = "Folders"
