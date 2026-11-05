@@ -19,6 +19,7 @@ struct LAAWorkComposer: View {
     var accessibilityPrefix = "work.composer"
     var showsTextSize = true
     var onImage: ((UIImage) -> Void)? = nil
+    var headerAccessory: AnyView? = nil
 
     @State private var focus = false
     @State private var height = ComposerPasteTextView.minimumHeight
@@ -34,6 +35,7 @@ struct LAAWorkComposer: View {
             HStack {
                 Text(verbatim: placeholder).laaTextStyle(.body).fontWeight(.semibold)
                 Spacer()
+                headerAccessory
                 if showsTextSize {
                     Menu {
                         Picker(LAACopy.WorkTab.textSize, selection: $inputSize) {

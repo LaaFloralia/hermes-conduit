@@ -5,6 +5,22 @@ final class LAAPaseoUITests: XCTestCase {
     func testSessionListAndQuestionLight() throws { try verify("light") }
     func testSessionListAndQuestionDark() throws { try verify("dark") }
 
+    func testSessionHeaderIsTitleOnlyAndStopSitsBesideTextSize() throws {
+        let app = try launchFixture("light")
+        let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        row.tap()
+        let stop = app.buttons["work.session.stop"]
+        XCTAssertTrue(app.staticTexts["work.session.detail.title"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH '最終活動'")).firstMatch.exists)
+        app.swipeUp()
+        XCTAssertTrue(stop.waitForExistence(timeout: 15))
+        let textSize = app.buttons["work.composer.textSize"]
+        XCTAssertEqual(stop.frame.midY, textSize.frame.midY, accuracy: 8)
+        XCTAssertLessThanOrEqual(stop.frame.maxX, textSize.frame.minX)
+        capture(app, "session-detail", "light")
+    }
+
     func testSessionLeftSwipesKeepTheListOpen() throws {
         let app = try launchFixture("light")
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch

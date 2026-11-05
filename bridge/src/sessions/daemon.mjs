@@ -56,6 +56,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
       return (await activeWorkspaces(c)).map((entry) => ({
         id: entry?.id ?? entry?.workspace?.id,
         pinnedAt: entry?.pinnedAt ?? entry?.workspace?.pinnedAt ?? null,
+        title: entry?.title ?? entry?.workspace?.title ?? null,
       })).filter((row) => typeof row.id === 'string');
     }),
     /// A favourite the owner set in LAA is the workspace's pin in Paseo.

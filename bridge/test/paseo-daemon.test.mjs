@@ -175,6 +175,31 @@ function archiveFixture() {
   return { agents, calls, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
 }
 
+test('a parent left on its sent title shows the title Paseo gave its workspace', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-bridge-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const agents = [
+    { id: 'plain', title: '依頼の一行目', workspaceId: 'wks_a', labels: {} },
+    { id: 'named', title: 'エージェントの命名', workspaceId: 'wks_b', labels: {} },
+    { id: 'kid', title: '子｜作業', workspaceId: 'wks_a', labels: { 'paseo.parent-agent-id': 'plain' } },
+    { id: 'owner', title: '社長の名前', workspaceId: 'wks_c', labels: {} },
+  ].map((a) => ({ ...a, provider: 'dsh', status: 'idle', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' }));
+  const client = { close: async () => {}, fetchAgent: async ({ agentId }) => ({ agent: agents.find((a) => a.id === agentId) }),
+    fetchAgents: async () => ({ entries: agents.map((agent) => ({ agent })), pageInfo: { nextCursor: null } }),
+    fetchWorkspaces: async () => ({ entries: ['wks_a', 'wks_b', 'wks_c'].map((id) => ({ id, title: 'Paseoの題名' })) }) };
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }), adapter: {}, findWorkspace: async () => null, notify: async () => {} });
+  await service.syncDaemon();
+  store.update(daemonSessionID('plain'), (r) => { r.sentTitle = '依頼の一行目'; });
+  store.update(daemonSessionID('named'), (r) => { r.sentTitle = '依頼'; });
+  store.update(daemonSessionID('kid'), (r) => { r.sentTitle = '子｜作業'; });
+  store.update(daemonSessionID('owner'), (r) => { r.sentTitle = '社長の名前'; r.name = '社長の名前'; r.nameSource = 'owner'; });
+  await service.syncDaemon();
+  assert.equal(store.get(daemonSessionID('plain')).name, 'Paseoの題名');
+  assert.equal(store.get(daemonSessionID('named')).name, 'エージェントの命名');
+  assert.equal(store.get(daemonSessionID('kid')).name, '子｜作業');
+  assert.equal(store.get(daemonSessionID('owner')).name, '社長の名前');
+});
+
 test('archive reaches Paseo for the whole tree and clears the emptied workspace; restore brings back one row', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'paseo-bridge-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const f = archiveFixture();

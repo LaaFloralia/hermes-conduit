@@ -282,10 +282,9 @@ export function createSessionService({
       const agents = await daemon.list();
       // Paseo's pin belongs to the workspace. A failed read leaves every
       // local choice as it is rather than reading as "all unpinned".
-      const pins = await daemon.workspacePins().then(
-        (rows) => new Map(rows.map((row) => [row.id, row.pinnedAt != null])),
-        () => null,
-      );
+      const workspaces = await daemon.workspacePins().catch(() => null);
+      const pins = workspaces && new Map(workspaces.map((row) => [row.id, row.pinnedAt != null]));
+      const workspaceTitles = new Map((workspaces ?? []).map((row) => [row.id, row.title]));
       const known = new Map(sessionStore.all().map((r) => [r.delegate?.sessionId, r]));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
       const rows = agents.map((a) => {
@@ -293,10 +292,13 @@ export function createSessionService({
         const previous = known.get(a.id);
         const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
         const workspaceId = previous?.workspaceId ?? a.workspaceId ?? HOME_WORKSPACE_ID;
+        // Paseo titles the workspace from the request but leaves the agent with
+        // the title it was given, so a parent still on that title shows Paseo's.
+        const paseoTitle = previous?.sentTitle === a.title && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitles.get(a.workspaceId) : null;
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
           projectId: null, workspaceId, cwd: a.cwd,
-          name: a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
+          name: paseoTitle || a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
           requested: model, observed: state.modelCheck.observed, phase: state.phase,
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a

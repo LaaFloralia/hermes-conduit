@@ -11,6 +11,7 @@ struct LAAWorkMessageForm: View {
     let sessionID: String
     let mode: Mode
     let canStart: Bool
+    let headerAccessory: AnyView?
     let onSuccess: (LAAWorkSession) -> Void
     @State private var text = ""
     @State private var attachments: [Attachment] = []
@@ -21,11 +22,12 @@ struct LAAWorkMessageForm: View {
     @State private var error: String?
 
     init(sessionID: String, mode: Mode, drafts: ComposerDraftStore, canStart: Bool,
-         onSuccess: @escaping (LAAWorkSession) -> Void) {
+         headerAccessory: AnyView? = nil, onSuccess: @escaping (LAAWorkSession) -> Void) {
         self.sessionID = sessionID
         self.mode = mode
         self.drafts = drafts
         self.canStart = canStart
+        self.headerAccessory = headerAccessory
         self.onSuccess = onSuccess
     }
 
@@ -76,7 +78,7 @@ struct LAAWorkMessageForm: View {
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
                             onChange: saveDraft, onSubmit: submit,
                             accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer",
-                            onImage: mode == .followUp ? addImage : nil)
+                            onImage: mode == .followUp ? addImage : nil, headerAccessory: headerAccessory)
             if drafts.persistenceFailed {
                 Text(verbatim: "下書きを保存できません。送信せず、端末の保存状態を確認してください。")
                     .foregroundStyle(LAAColor.attention).laaTextStyle(.secondary)

@@ -52,9 +52,10 @@ struct LAAWorkSessionDetail: View {
                         Color.clear.frame(height: 1).id("conversation-end")
                             .onAppear { followsConversation = true }
                             .onDisappear { followsConversation = false }
-                        actions(session)
+                        if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                         LAAWorkMessageForm(sessionID: id, mode: .followUp, drafts: drafts,
-                                           canStart: ["awaiting_review", "running"].contains(session.phase) && !session.needsDecision) { _ in
+                                           canStart: ["awaiting_review", "running"].contains(session.phase) && !session.needsDecision,
+                                           headerAccessory: canInterrupt(session) ? AnyView(stopButton) : nil) { _ in
                             Task { await refreshSnapshot() }
                         }
                     } else if let failure {
@@ -117,18 +118,23 @@ struct LAAWorkSessionDetail: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 .accessibilityIdentifier("work.session.detail.title")
-            Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase) + " " + LAAWorkPresentation.phase(session.phase))
-                .foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(session.phase) ? LAAColor.attention : LAAColor.link)
-            Text(verbatim: session.observed?.model ?? session.requested?.model ?? "モデル未確認")
-                .foregroundStyle(LAAColor.secondaryText)
             if session.modelMismatch {
-                Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
-            } else if session.runtimeVerified != true {
-                Text(verbatim: "○ 実行時のモデルは未確認です。系統や設定の一致だけでは確定しません。")
-                    .foregroundStyle(LAAColor.secondaryText)
+                Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
-            Text(verbatim: "最終活動: " + LAAWorkPresentation.date(session.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-        }.laaTextStyle(.secondary).workCard()
+        }
+        .padding(LAASpacing.x4).frame(maxWidth: .infinity, alignment: .leading)
+        .laaGlass(in: RoundedRectangle(cornerRadius: LAARadius.card))
+    }
+
+    private func canInterrupt(_ session: LAAWorkSession) -> Bool {
+        pendingStop == nil && !["stop_unconfirmed", "stopped"].contains(session.phase)
+    }
+
+    private var stopButton: some View {
+        Button { beginStop() } label: { Text(verbatim: "中断") }
+            .buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
+            .accessibilityIdentifier("work.session.stop")
     }
 
     private func actions(_ session: LAAWorkSession) -> some View {
@@ -146,8 +152,6 @@ struct LAAWorkSessionDetail: View {
             } else if session.phase == "stopped" {
                 Text(verbatim: "停止したセッションの再開は現在利用できません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            } else {
-                Button { beginStop() } label: { Text(verbatim: "中断") }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
             }
             if let nextID = session.resumedTo {
                 NavigationLink(LAACopy.WorkTab.openSuccessor) {
