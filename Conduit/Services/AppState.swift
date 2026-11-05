@@ -4998,13 +4998,17 @@ final class AppState: ObservableObject {
     /// Rows Hermes answered with but this app could not read. Any makes the
     /// list partial, so no surface may call it complete.
     @Published private(set) var cronJobsSkipped = 0
-    /// The jobs and read state that belong to the connection on screen.
+    /// The jobs and read state that belong to the connection on screen: only
+    /// rows read through that very connection, so a reconnect shows loading
+    /// instead of the replaced connection's list.
     var activeProfileCronJobs: [CronJob] {
-        guard let active = activeCronJobsConnection, cronJobsRowsConnection?.owner == active.owner else { return [] }
+        guard CronJobsReadDecision.showsRows(rowsConnection: cronJobsRowsConnection,
+                                             activeConnection: activeCronJobsConnection) else { return [] }
         return cronJobs
     }
     var activeProfileCronJobsSkipped: Int {
-        guard let active = activeCronJobsConnection, cronJobsRowsConnection?.owner == active.owner else { return 0 }
+        guard CronJobsReadDecision.showsRows(rowsConnection: cronJobsRowsConnection,
+                                             activeConnection: activeCronJobsConnection) else { return 0 }
         return cronJobsSkipped
     }
     var activeProfileCronJobsPhase: CronJobsPhase {
@@ -5020,10 +5024,10 @@ final class AppState: ObservableObject {
     private func cronJobsConnection(bridge: DashboardTicketBridge?, client: HermesClient?) -> CronJobsConnection? {
         let owner = CronJobsOwner(dashboardID: activeDashboardID, profile: activeProfile)
         if let bridge {
-            return CronJobsConnection(kind: .dashboard, identity: ObjectIdentifier(bridge), owner: owner)
+            return CronJobsConnection(kind: .dashboard, owner: owner, object: bridge)
         }
         if let client {
-            return CronJobsConnection(kind: .client, identity: ObjectIdentifier(client), owner: owner)
+            return CronJobsConnection(kind: .client, owner: owner, object: client)
         }
         return nil
     }

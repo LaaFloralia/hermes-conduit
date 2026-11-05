@@ -356,12 +356,14 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNotEqual(LAACopy.chatsCronUnavailable, LAACopy.chatsCronNone)
     }
 
-    /// Stands in for a bridge or client instance: only its identity matters.
-    private func cronConnection(_ token: NSObject, dashboard: UUID?,
+    /// Stands in for a bridge or client instance: only its identity matters,
+    /// and a re-created connection is a new object.
+    private func cronConnection(_ object: NSObject, dashboard: UUID?,
                                 profile: String = "laa-ciel",
                                 kind: CronJobsConnection.Kind = .dashboard) -> CronJobsConnection {
-        CronJobsConnection(kind: kind, identity: ObjectIdentifier(token),
-                           owner: CronJobsOwner(dashboardID: dashboard, profile: profile))
+        CronJobsConnection(kind: kind,
+                           owner: CronJobsOwner(dashboardID: dashboard, profile: profile),
+                           object: object)
     }
 
     func testCronReadPublishesOnlyForTheConnectionItReadThrough() {
@@ -408,6 +410,24 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertFalse(CronJobsReadDecision.shouldReloadAfterDrop(owner: connection.owner,
                                                                  activeOwner: cronConnection(bridgeA, dashboard: UUID()).owner))
         XCTAssertFalse(CronJobsReadDecision.shouldReloadAfterDrop(owner: connection.owner, activeOwner: nil))
+    }
+
+    func testCronRowsShowOnlyForTheConnectionThatReadThem() {
+        let macA = UUID(uuidString: "11111111-1111-1111-1111-111111111111")
+        let bridgeA = NSObject()
+        let bridgeAReplaced = NSObject()
+        let connection = cronConnection(bridgeA, dashboard: macA)
+        let reconnected = cronConnection(bridgeAReplaced, dashboard: macA)
+
+        XCTAssertTrue(CronJobsReadDecision.showsRows(rowsConnection: connection, activeConnection: connection))
+        // Same dashboard and profile through a re-created bridge: the old rows
+        // are not this connection's, and the screen waits for its read.
+        XCTAssertFalse(CronJobsReadDecision.showsRows(rowsConnection: connection, activeConnection: reconnected))
+        XCTAssertFalse(CronJobsReadDecision.showsRows(rowsConnection: connection, activeConnection: nil))
+        XCTAssertFalse(CronJobsReadDecision.showsRows(rowsConnection: nil, activeConnection: connection))
+        // Hiding them while that read runs is a loading screen, not "no jobs".
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingConnection: reconnected, phaseConnection: reconnected,
+                                                  phase: .loading, activeConnection: reconnected), .loading)
     }
 
     func testCronPhaseNeverBorrowsAnotherConnectionsRead() {
