@@ -810,11 +810,12 @@ struct RoomRecipientRequest: Equatable {
 ///     the user's message
 enum GroupRoomReplyQuote {
     private static let prefix = "[Replying to "
+    private static let ownAuthor = "the user's earlier message"
 
-    static func outboundText(quoting text: String, author: String, message: String) -> String {
+    static func outboundText(quoting text: String, author: String, message: String, isOwnMessage: Bool = false) -> String {
         let quote = ChatQuote.blockquote(GroupRoomMentions.defanged(text))
         guard !quote.isEmpty else { return message }
-        let name = GroupRoomMentions.defanged(
+        let name = isOwnMessage ? ownAuthor : GroupRoomMentions.defanged(
             author.replacingOccurrences(of: "]", with: ")").replacingOccurrences(of: "\n", with: " ")
         )
         return "\(prefix)\(name)]\n\(quote)\n\n\(message)"
@@ -822,7 +823,7 @@ enum GroupRoomReplyQuote {
 
     /// Splits a sent message back into whose message it quoted, the quote
     /// and the user's own words, or nil when it is not a room reply.
-    static func parse(_ content: String) -> (author: String, quote: String, message: String)? {
+    static func parse(_ content: String) -> (author: String, quote: String, message: String, isOwnMessage: Bool)? {
         guard content.hasPrefix(prefix),
               let lineEnd = content.firstIndex(of: "\n") else { return nil }
         let header = content[..<lineEnd]
@@ -833,7 +834,8 @@ enum GroupRoomReplyQuote {
         return (
             GroupRoomMentions.refanged(author),
             GroupRoomMentions.refanged(body.quote),
-            body.message
+            body.message,
+            author == ownAuthor
         )
     }
 }

@@ -799,7 +799,8 @@ struct GroupUserBubble<Footer: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files, onAccent: true)
                     if let reply {
-                        ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author)
+                        ReplyReferenceQuoteCard(quote: reply.quote,
+                                                authorName: reply.isOwnMessage ? AppLocalization.string("You") : reply.author)
                     }
                     if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HugsIdealWidth {
@@ -841,6 +842,10 @@ struct GroupUserBubble<Footer: View>: View {
                     }
                     // Like a chat, Copy takes only what the user wrote.
                     if !ownText.isEmpty {
+#if LAA_BUILD
+                        GroupMessageQuoteButton(text: GroupRoomMentions.refanged(ownText),
+                                                authorName: AppLocalization.string("You"), isOwnMessage: true)
+#endif
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(ownText), label: .message)
                     }
                 }
@@ -1269,10 +1274,12 @@ struct GroupMessageQuoteButton: View {
     let authorName: String
     /// The author's tag: replying also addresses the next message to it.
     var authorHandle: String? = nil
+    var isOwnMessage = false
 
     var body: some View {
         Button {
-            appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle)
+            appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle,
+                                         isOwnMessage: isOwnMessage)
         } label: {
             Image(systemName: "quote.bubble")
                 .font(.footnote.weight(.semibold))

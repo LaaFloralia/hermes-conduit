@@ -22,6 +22,7 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
     /// parts so it can go back into the composer as the chip.
     var replyAuthor: String?
     var replyText: String?
+    var replyIsOwnMessage: Bool?
     let dashboardID: UUID
     let profile: String
     /// Every id its chat is known by. Empty for a New Chat.
@@ -45,7 +46,7 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
 
     var replyReference: ComposerReplyReference? {
         guard let replyAuthor, let replyText else { return nil }
-        return ComposerReplyReference(authorName: replyAuthor, text: replyText)
+        return ComposerReplyReference(authorName: replyAuthor, text: replyText, isOwnMessage: replyIsOwnMessage == true)
     }
 
     /// What goes to Hermes: the words, with the quoted reply when there is one.
@@ -74,6 +75,7 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
         self.draftText = draftText
         self.replyAuthor = replyReference?.authorName
         self.replyText = replyReference?.text
+        self.replyIsOwnMessage = replyReference?.isOwnMessage
         self.dashboardID = dashboardID
         self.profile = profile
         self.sessionIDs = sessionIDs
@@ -91,6 +93,7 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
         if combined.replyReference == nil, let moreReply {
             combined.replyAuthor = moreReply.authorName
             combined.replyText = moreReply.text
+            combined.replyIsOwnMessage = moreReply.isOwnMessage
         }
         return combined
     }

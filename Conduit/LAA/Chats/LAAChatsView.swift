@@ -42,10 +42,8 @@ struct LAAChatsView: View {
             case .failed(let message): groupsState = .failed(message)
             }
         }
-        var unread: [String: Int] = [:]
-        for person in people {
-            if let count = appState.unreadChatCount(profile: person.profile), count > 0 { unread[person.profile] = count }
-        }
+        let unread = appState.unreadChatCounts(profiles: Set(people.map(\.profile)))
+            .filter { $0.value > 0 }
         let runs = appState.sessions
             .filter { $0.source == .cron && !$0.isArchived }
             .sorted { ($0.lastActivityAt ?? 0) > ($1.lastActivityAt ?? 0) }

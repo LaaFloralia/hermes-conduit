@@ -1430,6 +1430,9 @@ struct UserBubble: View {
                 HStack(spacing: 2) {
                     Spacer(minLength: 0)
                     MessageTimestampLabel(timestamp: message.timestamp)
+#if LAA_BUILD
+                    ChatMessageQuoteButton(message: message)
+#endif
                     UserMessageCopyButton(message: message)
                 }
             }
@@ -1639,6 +1642,29 @@ struct UserMessageCopyButton: View {
     }
 }
 
+/// A visible reply action for either participant's message.
+struct ChatMessageQuoteButton: View {
+    let message: ChatMessage
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+
+    var body: some View {
+        Button {
+            rowActions.required.replyInComposer(to: message)
+        } label: {
+            Image(systemName: "quote.bubble")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .disabled(!rowState.canQuoteIntoComposer || !message.content.contains(where: { !$0.isWhitespace }))
+        .accessibilityLabel(AppLocalization.string("Quote"))
+        .accessibilityIdentifier("chat.message.quote.\(message.role == .user ? "user" : "assistant")")
+    }
+}
+
 /// A message steered into a running turn (issue #337). Right-aligned like
 /// the user's own bubble, but a lighter outlined surface with the steering
 /// glyph, so it reads as guidance delivered mid-turn rather than a new prompt.
@@ -1658,8 +1684,13 @@ struct SteerBubble: View {
                 )
                 .equatable()
 
-                MessageTimestampLabel(timestamp: message.timestamp)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(spacing: 2) {
+                    Spacer(minLength: 0)
+                    MessageTimestampLabel(timestamp: message.timestamp)
+#if LAA_BUILD
+                    ChatMessageQuoteButton(message: message)
+#endif
+                }
             }
         }
     }
@@ -1691,7 +1722,8 @@ struct SteerMessageContent: View, Equatable {
                 .accessibilityHidden(true)
             if let reply {
                 VStack(alignment: .leading, spacing: 8) {
-                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false)
+                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false,
+                                            authorName: reply.isOwnMessage ? AppLocalization.string("You") : nil)
                     MarkdownText(source: reply.message)
                 }
             } else {
@@ -1771,7 +1803,8 @@ struct UserMessageContent: View, Equatable {
         let voice = VoiceMessage.parse(text)
         VStack(alignment: .leading, spacing: 9) {
             if let reply {
-                ReplyReferenceQuoteCard(quote: reply.quote)
+                ReplyReferenceQuoteCard(quote: reply.quote,
+                                        authorName: reply.isOwnMessage ? AppLocalization.string("You") : nil)
             }
 
             if let voice {
@@ -2735,6 +2768,10 @@ struct AssistantBubble: View {
                 }
 
                 AssistantMessageActions(message: message)
+
+#if LAA_BUILD
+                ChatMessageQuoteButton(message: message)
+#endif
 
                 if message.role == .assistant {
                     ReadAloudButton(message: message, controller: readAloudController)

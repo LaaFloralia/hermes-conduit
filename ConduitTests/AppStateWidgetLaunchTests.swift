@@ -405,6 +405,86 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertTrue(appState.messages.contains(where: { $0.id == "resume-response" }), "the matching positive control must actually admit the response")
     }
 
+    func testWidgetResumeSupersededByNewNavigationDoesNotReportFailure() async throws {
+        let suite = "AppStateWidgetLaunchTests.resume-superseded.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000af")
+        let entered = WidgetLaunchTestGate()
+        let release = WidgetLaunchTestGate()
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: current.id, dashboards: [current]),
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    await entered.signal()
+                    await release.wait()
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        storedSessionId: sessionID,
+                        messages: [ChatMessage(id: "stale-response", role: .assistant, content: "Stale", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        _ = appState.handleScenePhase(.active)
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.widgetSettledCatalogOwner = workspace
+        appState.sessions = [session("requested-session")]
+        let reference = WidgetConversationReference(
+            kind: .dashboard, scopeProfile: "default", botName: nil, botLabel: nil,
+            sessionID: "requested-session", isUnverified: false
+        )
+        let lease = WidgetLaunchLease(isCurrent: { true })
+        let opening = Task { await appState.openWidgetConversation(reference, workspace: workspace, lease: lease) }
+        guard await waitForGate(entered, "widget resume never reached the suspended RPC") else { return }
+        appState.beginExplicitChatViewportTransition(ownedBy: lease)
+        await release.signal()
+
+        let outcome = await opening.value
+        XCTAssertEqual(outcome, .superseded)
+        XCTAssertFalse(appState.messages.contains(where: { $0.id == "stale-response" }))
+    }
+
+    func testUnreadCountsGroupLoadedRowsByProfileWithoutInventingEmptyProfiles() throws {
+        let suite = "AppStateWidgetLaunchTests.unread-counts.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000af")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.profiles = ["default", "laa-cmo", "laa-cfo", "laa-cio"]
+        var own = session("own")
+        own.isUnread = true
+        var archived = session("archived")
+        archived.isUnread = true
+        archived.isArchived = true
+        var otherInOwnList = session("other-own-list", profile: "laa-cmo")
+        otherInOwnList.isUnread = true
+        appState.sessions = [own, archived, otherInOwnList]
+        var cmo = session("cmo", profile: "laa-cmo")
+        cmo.isUnread = true
+        let cfo = session("cfo", profile: "laa-cfo")
+        var unknown = session("unknown", profile: "unlisted")
+        unknown.isUnread = true
+        appState.allProfilesCatalog = AllProfilesCatalog(
+            dashboardID: current.id, sessions: [cmo, cfo, unknown], isLoaded: true
+        )
+
+        let requested: Set<String> = ["default", "laa-cmo", "laa-cfo", "laa-cio"]
+        XCTAssertEqual(appState.unreadChatCounts(profiles: requested), ["default": 2, "laa-cmo": 1, "laa-cfo": 0])
+        appState.allProfilesCatalog.dashboardID = UUID()
+        XCTAssertEqual(appState.unreadChatCounts(profiles: requested), ["default": 1])
+    }
+
     func testWidgetProfileSwitchStopsAfterTicketMintWhenLeaseIsRevoked() async throws {
         let suite = "AppStateWidgetLaunchTests.profile-suspension.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

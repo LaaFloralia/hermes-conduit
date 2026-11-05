@@ -852,6 +852,15 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomReplyQuote.parse("plain message"))
     }
 
+    func testRoomCanQuoteOwnMessageWithoutAddressingQuotedMentions() throws {
+        let sent = GroupRoomReplyQuote.outboundText(quoting: "Ask @atlas", author: "You",
+                                                    message: "A correction", isOwnMessage: true)
+        let parsed = try XCTUnwrap(GroupRoomReplyQuote.parse(sent))
+        XCTAssertTrue(parsed.isOwnMessage)
+        XCTAssertEqual(parsed.quote, "Ask @atlas")
+        XCTAssertEqual(parsed.message, "A correction")
+    }
+
     func testRoomMentionScanNeedsALeadingBoundary() throws {
         let regex = try XCTUnwrap(GroupRoomMentions.mentionScanRegex)
         func tokens(_ text: String) -> [String] {

@@ -28,8 +28,6 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
     let employee: LAAWidgetEmployee
     let chat: WidgetLaunchLink
     let call: WidgetLaunchLink
-    let mediumChat: WidgetLaunchLink
-    let mediumCall: WidgetLaunchLink
     let usageLink: WidgetLaunchLink
     let usage: WidgetUsageSnapshot?
 
@@ -41,8 +39,6 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
         return Self(date: date, freshnessAnchor: freshnessAnchor ?? date, employee: employee,
              chat: LAAEmployeeWidgetLinks.link(employee: employee, action: .employeeChat, snapshot: snapshot),
              call: LAAEmployeeWidgetLinks.link(employee: employee, action: employee == .cielUncensored ? .employeeChat : .talk, snapshot: snapshot),
-             mediumChat: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .employeeChat, snapshot: snapshot),
-             mediumCall: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .talk, snapshot: snapshot),
              usageLink: WidgetLaunchLink(action: .usage, workspace: nil, reference: nil)!,
              usage: usage)
     }
@@ -127,14 +123,14 @@ struct LAAEmployeeWidgetView: View {
             VStack(spacing: LAASpacing.x1) {
                 GeometryReader { geometry in
                     ZStack(alignment: .topLeading) {
-                        employeeImage(LAAWidgetEmployee.ciel.heroImage)
+                        employeeImage(entry.employee.heroImage)
                             .scaledToFit()
                             .frame(width: geometry.size.height, height: geometry.size.height)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                             .accessibilityHidden(true)
                         HStack(spacing: LAASpacing.x2) {
                             companyIcon
-                            Text(verbatim: LAAWidgetEmployee.ciel.name).font(LAAType.employeeName)
+                            Text(verbatim: entry.employee.name).font(LAAType.employeeName)
                                 .foregroundStyle(LAAColor.text).lineLimit(1)
                         }
                     }
@@ -143,8 +139,10 @@ struct LAAEmployeeWidgetView: View {
                 // filled plate reads as a hazy glow on tinted and clear Home
                 // Screens.
                 HStack(spacing: LAASpacing.x2) {
-                    iconAction(entry.mediumCall.url, symbol: "phone.fill", label: LAACopy.widgetCall)
-                    iconAction(entry.mediumChat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat)
+                    if entry.employee != .cielUncensored {
+                        iconAction(entry.call.url, symbol: "phone.fill", label: LAACopy.widgetCall)
+                    }
+                    iconAction(entry.chat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -262,7 +260,7 @@ struct LAAEmployeeWidgetView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Ciel, \(label)")
+        .accessibilityLabel("\(entry.employee.name), \(label)")
     }
 
     private var small: some View {

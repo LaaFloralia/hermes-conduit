@@ -281,9 +281,8 @@ struct LAAChatsContent: View {
     }
 
     private func avatar(profile: String, name: String, size: CGFloat) -> some View {
-        let assets = StaffAssetResolver.bundled.resolve(profile: profile)
-        return Group {
-            if let url = assets.avatar, let image = UIImage(contentsOfFile: url.path) {
+        Group {
+            if let image = LAAChatsAvatarCache.image(profile: profile) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(verbatim: String(name.prefix(1))).laaTextStyle(.body).foregroundStyle(LAAColor.link)
@@ -507,8 +506,7 @@ struct LAAGroupFaces: View {
             if face.more > 0 {
                 Text(verbatim: "+\(face.more)").font(.system(size: diameter * 0.4, weight: .semibold))
                     .foregroundStyle(LAAColor.link)
-            } else if let url = face.profile.flatMap({ StaffAssetResolver.bundled.resolve(profile: $0).avatar }),
-                      let image = UIImage(contentsOfFile: url.path) {
+            } else if let image = face.profile.flatMap({ LAAChatsAvatarCache.image(profile: $0) }) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(verbatim: face.initial).font(.system(size: diameter * 0.45, weight: .medium))
@@ -520,6 +518,25 @@ struct LAAGroupFaces: View {
         .clipShape(Circle())
         // The page's own colour as a ring, so overlapping faces stay apart.
         .overlay(Circle().stroke(LAAColor.background, lineWidth: 1.5))
+    }
+}
+
+/// Staff art is bundled with the app and cannot change during its lifetime.
+/// Resolve each profile once and reuse the bounded, downsampled avatar cache
+/// instead of reading and decoding a 512px file on every chat-list redraw.
+@MainActor
+private enum LAAChatsAvatarCache {
+    private static var avatarURLs: [String: URL] = [:]
+    private static var lookedUp: Set<String> = []
+
+    static func image(profile: String) -> UIImage? {
+        let key = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard LAAStaff(profile: key) != nil else { return nil }
+        if lookedUp.insert(key).inserted {
+            avatarURLs[key] = StaffAssetResolver.bundled.resolve(profile: key).avatar
+        }
+        guard let url = avatarURLs[key] else { return nil }
+        return ProfileAvatarImageCache.image(at: url)
     }
 }
 

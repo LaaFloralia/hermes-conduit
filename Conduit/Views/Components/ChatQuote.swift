@@ -89,18 +89,21 @@ enum ReplyQuoteEnvelope {
     /// Protocol text, deliberately not localized: it is what Hermes and its
     /// model read, and what `parse` recognizes on reload.
     static let marker = "[Replying to your earlier message]"
+    static let ownMarker = "[Replying to my earlier message]"
 
-    static func outboundText(quoting reply: String, message: String) -> String {
+    static func outboundText(quoting reply: String, message: String, isOwnMessage: Bool = false) -> String {
         let quote = ChatQuote.blockquote(reply)
         guard !quote.isEmpty else { return message }
-        return "\(marker)\n\(quote)\n\n\(message)"
+        return "\(isOwnMessage ? ownMarker : marker)\n\(quote)\n\n\(message)"
     }
 
     /// Splits a sent message back into the quoted reply (unquoted) and the
     /// user's own words, or nil when `content` is not an envelope.
-    static func parse(_ content: String) -> (quote: String, message: String)? {
-        guard content.hasPrefix(marker + "\n") else { return nil }
-        var lines = content.dropFirst(marker.count + 1)
+    static func parse(_ content: String) -> (quote: String, message: String, isOwnMessage: Bool)? {
+        let isOwnMessage = content.hasPrefix(ownMarker + "\n")
+        let header = isOwnMessage ? ownMarker : marker
+        guard content.hasPrefix(header + "\n") else { return nil }
+        var lines = content.dropFirst(header.count + 1)
             .split(separator: "\n", omittingEmptySubsequences: false)[...]
         var quoted: [Substring] = []
         while let line = lines.first, line.hasPrefix(">") {
@@ -113,7 +116,7 @@ enum ReplyQuoteEnvelope {
             guard separator.isEmpty else { return nil }
             lines = lines.dropFirst()
         }
-        return (quoted.joined(separator: "\n"), lines.joined(separator: "\n"))
+        return (quoted.joined(separator: "\n"), lines.joined(separator: "\n"), isOwnMessage)
     }
 }
 
@@ -122,13 +125,25 @@ enum ReplyQuoteEnvelope {
 struct ComposerReplyReference: Codable, Equatable {
     let authorName: String
     let text: String
+    /// Optional to keep drafts saved before this field was added readable.
+    let isOwnMessage: Bool?
     /// Worked out once: the chip re-renders with every composer update.
     let excerpt: String
 
-    init(authorName: String, text: String) {
+    init(authorName: String, text: String, isOwnMessage: Bool = false) {
         self.authorName = authorName
         self.text = text
+        self.isOwnMessage = isOwnMessage ? true : nil
         self.excerpt = ChatQuote.excerpt(of: text)
+    }
+
+    static func reference(for message: ChatMessage, agentName: String) -> Self? {
+        let isOwnMessage = message.role == .user
+        let body = isOwnMessage ? (ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content) : message.content
+        let text = VoiceMessage.parse(body)?.transcript ?? body
+        guard text.contains(where: { !$0.isWhitespace }) else { return nil }
+        return Self(authorName: isOwnMessage ? AppLocalization.string("You") : agentName,
+                    text: text, isOwnMessage: isOwnMessage)
     }
 
     /// The text to submit for `draft`. A slash command is left alone: the
@@ -139,7 +154,8 @@ struct ComposerReplyReference: Codable, Equatable {
         replyingTo reference: ComposerReplyReference?
     ) -> String {
         guard let reference, appliesToDraft(draft, hasAttachments: hasAttachments) else { return draft }
-        return ReplyQuoteEnvelope.outboundText(quoting: reference.text, message: draft)
+        return ReplyQuoteEnvelope.outboundText(quoting: reference.text, message: draft,
+                                               isOwnMessage: reference.isOwnMessage == true)
     }
 
     /// False only for what AppState runs as a slash command: a `/` and a

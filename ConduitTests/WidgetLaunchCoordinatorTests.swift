@@ -4,6 +4,24 @@ import XCTest
 @MainActor
 final class WidgetLaunchCoordinatorTests: XCTestCase {
 
+    func testSupersededOperationEndsSilentlyWithoutClaimingSuccess() async throws {
+        var ended: [WidgetLaunchOutcome?] = []
+        var finished: [WidgetLaunchOutcome] = []
+        let coordinator = WidgetLaunchCoordinator(
+            now: { .zero }, prepare: { _, _ in .handled }, perform: { _, _ in .superseded },
+            finish: { finished.append($0) }, ended: { _, outcome in ended.append(outcome) }
+        )
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .resume, workspace: workspace,
+            reference: WidgetConversationReference(kind: .dashboard, scopeProfile: workspace.profile,
+                botName: nil, botLabel: nil, sessionID: "chat", isUnverified: false)))
+        coordinator.receive(link)
+        for _ in 0..<10_000 where coordinator.hasPendingRequest { await Task.yield() }
+        XCTAssertFalse(coordinator.hasPendingRequest)
+        XCTAssertEqual(ended.count, 1)
+        XCTAssertNil(ended.first!)
+        XCTAssertTrue(finished.isEmpty)
+    }
+
     /// A shared draft (#812) rides on a launch and needs to know which one
     /// ended: superseded (nil) or with its outcome.
     func testEndedSaysWhichLaunchEndedAndHow() async throws {

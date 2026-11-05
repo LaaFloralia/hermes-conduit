@@ -10,6 +10,23 @@ final class LAAChatDesignUITests: XCTestCase {
         return app
     }
 
+    func testQuoteBothParticipants() {
+        let app = launch()
+        let assistantQuote = app.buttons["chat.message.quote.assistant"].firstMatch
+        if !assistantQuote.isHittable { app.swipeUp() }
+        XCTAssertTrue(assistantQuote.waitForExistence(timeout: 10))
+        assistantQuote.tap()
+        let removeQuote = app.buttons["composer.reply-reference.remove"]
+        XCTAssertTrue(removeQuote.waitForExistence(timeout: 5))
+        removeQuote.tap()
+        for _ in 0..<3 where !app.buttons["chat.message.quote.user"].firstMatch.isHittable { app.swipeDown() }
+        let userQuote = app.buttons["chat.message.quote.user"].firstMatch
+        XCTAssertTrue(userQuote.waitForExistence(timeout: 5))
+        XCTAssertTrue(userQuote.isHittable)
+        userQuote.tap()
+        XCTAssertTrue(removeQuote.waitForExistence(timeout: 5))
+    }
+
     func testRichMessageCopyAndEditor() {
         let app = launch()
         XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 10))

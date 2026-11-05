@@ -98,6 +98,13 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
     }
 
+    func testMediumWidgetRendersSelectedEmployee() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        let ciel = try capture(style: .light, mode: .fullColor, name: "medium-ciel", now: now, employee: .ciel)
+        let monet = try capture(style: .light, mode: .fullColor, name: "medium-monet", now: now, employee: .cmo)
+        XCTAssertNotEqual(ciel, monet, "The selected employee must change the medium widget's appearance")
+    }
+
     func testSmallActionsOnWallpaperLightDarkAndTinted() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for mode in [WidgetRenderingMode.fullColor, .accented] {
@@ -128,7 +135,8 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
                          dynamicTypeSize: DynamicTypeSize = .large,
-                         checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0, wallpaper: Bool = false, small: Bool = false) throws -> Data {
+                         checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0, wallpaper: Bool = false, small: Bool = false,
+                         employee: LAAWidgetEmployee = .ciel) throws -> Data {
         let rows: [(String, String, WidgetUsageMeter.Unit, Double)] = [
             ("codex.quota.weekly", "Codex Weekly", .percent, 35),
             ("opencode-go.quota.weekly", "OpenCode Weekly", .percent, 72),
@@ -147,7 +155,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let usage = WidgetUsageSnapshot(meters: otherOnly ? [] : meters,
             checkedAt: now.addingTimeInterval(checkedAtOffset), hasOtherUsage: otherOnly)
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(unset ? nil : usage)
-        let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot,
+        let entry = LAAEmployeeWidgetEntry.make(employee: employee, snapshot: snapshot,
                                                 date: expired ? now.addingTimeInterval(600) : now)
         let widget = LAAEmployeeWidgetView(entry: entry, familyOverride: small ? .systemSmall : .systemMedium, renderingModeOverride: mode, renderedAtOverride: now.addingTimeInterval(renderedAtOffset))
             .frame(width: small ? 169 : 360, height: 169)
@@ -164,6 +172,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
             widget.background(style == .dark ? Color.black.opacity(0.88) : Color.white.opacity(0.88))
                 .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
         }.frame(width: wallpaper ? 440 : 360, height: wallpaper ? 300 : 169)
+            .ignoresSafeArea()
         let host = UIHostingController(rootView: screen)
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)

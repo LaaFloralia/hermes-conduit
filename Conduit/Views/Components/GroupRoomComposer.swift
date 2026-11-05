@@ -689,7 +689,8 @@ struct GroupRoomComposer: View {
         // The quoted message goes ahead of that; with nothing typed, the
         // chip waits for the next message.
         let quoted = reply.flatMap { reply in
-            hasText ? GroupRoomReplyQuote.outboundText(quoting: reply.text, author: reply.authorName, message: addressed) : nil
+            hasText ? GroupRoomReplyQuote.outboundText(quoting: reply.text, author: reply.authorName,
+                                                       message: addressed, isOwnMessage: reply.isOwnMessage == true) : nil
         }
         let text = quoted ?? addressed
         let sendsReply = quoted != nil

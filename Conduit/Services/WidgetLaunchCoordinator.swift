@@ -3,6 +3,8 @@ import Foundation
 enum WidgetLaunchOutcome: Equatable {
     case handled
     case deferred
+    /// A newer navigation took ownership; no error or completed launch.
+    case superseded
     case failed(String)
 }
 
@@ -274,6 +276,9 @@ final class WidgetLaunchCoordinator {
                 case .deferred:
                     self.settleDeferred(request)
                     return
+                case .superseded:
+                    self.supersede()
+                    return
                 case .failed:
                     self.terminate(request, outcome: outcome)
                     return
@@ -285,6 +290,8 @@ final class WidgetLaunchCoordinator {
             switch performed {
             case .deferred:
                 self.settleDeferred(request)
+            case .superseded:
+                self.supersede()
             case .handled, .failed:
                 self.terminate(request, outcome: performed)
             }

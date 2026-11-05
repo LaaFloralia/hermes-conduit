@@ -10816,15 +10816,11 @@ final class AppState: ObservableObject {
         composerQuoteRequest = ComposerQuoteRequest(content: .text(quote))
     }
 
-    /// A reply's Quote button: the whole reply rides along with the next
+    /// A message's Quote button: the whole message rides along with the next
     /// message, shown in the composer as a removable "Replying to…" chip.
     func replyInComposer(to message: ChatMessage) {
         guard canQuoteIntoComposer() else { return }
-        guard message.content.contains(where: { !$0.isWhitespace }) else { return }
-        let reference = ComposerReplyReference(
-            authorName: conversationAgentIdentity.name,
-            text: message.content
-        )
+        guard let reference = ComposerReplyReference.reference(for: message, agentName: conversationAgentIdentity.name) else { return }
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
     }
 
@@ -11637,10 +11633,10 @@ final class AppState: ObservableObject {
     /// A room message's Reply button: the whole message rides along with
     /// the next one, shown in the room composer as a "Replying to…" chip,
     /// and the bot that wrote it is picked in the "To" row.
-    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil) {
+    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil, isOwnMessage: Bool = false) {
         guard canQuoteIntoRoom(), text.contains(where: { !$0.isWhitespace }) else { return }
         roomQuoteRequest = ComposerQuoteRequest(
-            content: .reply(ComposerReplyReference(authorName: authorName, text: text))
+            content: .reply(ComposerReplyReference(authorName: authorName, text: text, isOwnMessage: isOwnMessage))
         )
         if let authorHandle { mentionInRoomComposer(handle: authorHandle) }
     }
@@ -22894,7 +22890,11 @@ final class AppState: ObservableObject {
                 return .deferred
             }
             if outcome != .opened { finishChatViewportTransition(generation: transition) }
-            return outcome == .opened ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            switch outcome {
+            case .opened: return .handled
+            case .superseded: return .superseded
+            case .failed: return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
         }
 
         guard let botName = reference.botName,
@@ -22935,7 +22935,11 @@ final class AppState: ObservableObject {
                 return .deferred
             }
             if outcome != .opened { finishChatViewportTransition(generation: transition) }
-            return outcome == .opened ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            switch outcome {
+            case .opened: return .handled
+            case .superseded: return .superseded
+            case .failed: return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
         } catch {
             return lease.isCurrent
                 ? .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
@@ -37861,26 +37865,30 @@ private enum AttachmentError: LocalizedError {
 // MARK: - All profiles in one Chats list
 
 extension AppState {
-    /// The profile a listed row belongs to: the one in use, or, for another
-    /// profile's row in the Chats list's All view, the listed profile its
-    /// tag names. A row tagged with a profile this dashboard doesn't list
-    /// stays with the one in use, as before All.
-    /// A profile's unread messages, for the chat list's badge. Another
-    /// profile's rows come from the loaded All catalog, which Hermes tags with
-    /// their profile; the profile in use also has its own list. Nil while
-    /// nothing carrying that profile is loaded, so unknown never reads as 0.
-    func unreadChatCount(profile: String) -> Int? {
-        var rows = profile == activeProfile ? sessions.filter { rowProfile($0) == profile } : []
-        if allProfilesCatalog.isLoaded, allProfilesCatalog.dashboardID == activeDashboardID {
-            rows += allProfilesCatalog.sessions.filter { rowProfile($0) == profile }
+    /// Read all displayed profiles in one pass instead of rescanning the
+    /// entire catalog once per employee on every chat-list redraw. Profiles
+    /// with no loaded rows remain absent rather than being reported as read.
+    func unreadChatCounts(profiles requested: Set<String>) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        func add(_ row: SessionSummary, profile: String) {
+            guard requested.contains(profile) else { return }
+            if counts[profile] == nil { counts[profile] = 0 }
+            if !row.isArchived {
+                counts[profile, default: 0] += chatReadState.unreadCount(row, profile: profile) ?? 0
+            }
         }
-        guard !rows.isEmpty else { return nil }
-        return rows
-            .filter { !$0.isArchived }
-            .compactMap { chatReadState.unreadCount($0, profile: profile) }
-            .reduce(0, +)
+        if requested.contains(activeProfile) {
+            for row in sessions where rowProfile(row) == activeProfile {
+                add(row, profile: activeProfile)
+            }
+        }
+        if allProfilesCatalog.isLoaded, allProfilesCatalog.dashboardID == activeDashboardID {
+            for row in allProfilesCatalog.sessions { add(row, profile: rowProfile(row)) }
+        }
+        return counts
     }
 
+    /// A listed row's profile; unknown tags stay with the active profile.
     func rowProfile(_ session: SessionSummary) -> String {
         guard let owner = session.profile,
               !sessionBelongsToProfile(session, profile: activeProfile),
