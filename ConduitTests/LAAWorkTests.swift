@@ -331,5 +331,71 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(restored.draft(for: key).attachments.first?.id, "image-1")
     }
 
+    func testRoutineReadFailureSeparatesAColdBridgeFromABrokenConnection() {
+        func http(_ status: Int, _ code: String?) -> LAABridgeHTTPError {
+            LAABridgeHTTPError(status: status, code: code, message: nil, retryable: true,
+                               details: nil, requestId: nil, currentETag: nil)
+        }
+        // The Bridge answers 503 while its first Console read runs: the list is
+        // coming, so this is neither "connection failed" nor "no routines".
+        XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: false, error: http(503, "routines_unavailable")), .warming)
+        XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: false, error: http(401, "unauthorized")), .unavailable)
+        XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: false, error: URLError(.timedOut)), .unavailable)
+        XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: true, error: http(503, "routines_unavailable")), .stale)
+        XCTAssertNotEqual(LAAWorkCatalogFailure.warming.message, LAAWorkCatalogFailure.unavailable.message)
+        XCTAssertFalse(LAAWorkCatalogFailure.warming.message.contains("定期実行はありません"))
+    }
+
+    func testChatScheduledSectionNeverCallsAnUnreadListEmpty() {
+        XCTAssertEqual(LAAChatsCron.loadState(.ready, connected: true), .ready)
+        XCTAssertEqual(LAAChatsCron.loadState(.loading, connected: true), .loading)
+        XCTAssertEqual(LAAChatsCron.loadState(.idle, connected: true), .loading)
+        XCTAssertEqual(LAAChatsCron.loadState(.loading, connected: false), .offline)
+        XCTAssertEqual(LAAChatsCron.loadState(.failed("x"), connected: true), .failed(LAACopy.chatsCronUnavailable))
+        XCTAssertTrue(LAACopy.chatsCronUnavailable.contains("取得できません"))
+        XCTAssertNotEqual(LAACopy.chatsCronUnavailable, LAACopy.chatsCronNone)
+    }
+
+    func testCronReadPublishesOnlyForTheConnectionOnScreen() {
+        let macA = CronJobsOwner(dashboardID: UUID(uuidString: "11111111-1111-1111-1111-111111111111"), profile: "laa-ciel")
+        let macB = CronJobsOwner(dashboardID: UUID(uuidString: "22222222-2222-2222-2222-222222222222"), profile: "laa-ciel")
+        // A read still running for the other Mac must not hold this one back.
+        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingOwner: macA, owner: macB))
+        XCTAssertTrue(CronJobsReadDecision.mayStart(loadingOwner: nil, owner: macA))
+        XCTAssertFalse(CronJobsReadDecision.mayStart(loadingOwner: macA, owner: macA))
+        XCTAssertTrue(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1, currentGeneration: 1))
+        // The same profile name on another Mac is another connection's list.
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macB, generation: 1, currentGeneration: 1))
+        // A job deleted while the read was in flight wins over that read.
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(owner: macA, activeOwner: macA, generation: 1, currentGeneration: 2))
+        XCTAssertFalse(CronJobsReadDecision.mayPublish(
+            owner: CronJobsOwner(dashboardID: nil, profile: "laa-cos"),
+            activeOwner: macA, generation: 1, currentGeneration: 1))
+    }
+
+    func testCronPhaseNeverBorrowsAnotherConnectionsRead() {
+        let macA = CronJobsOwner(dashboardID: UUID(uuidString: "11111111-1111-1111-1111-111111111111"), profile: "laa-ciel")
+        let macB = CronJobsOwner(dashboardID: UUID(uuidString: "22222222-2222-2222-2222-222222222222"), profile: "laa-ciel")
+        // Read on the other Mac, nothing running here: this Mac has not read.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macA, phase: .ready, activeOwner: macB), .idle)
+        // A read for the other Mac must not spin this one.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: macA, phaseOwner: macA, phase: .loading, activeOwner: macB), .idle)
+        // A superseded read that left `loading` behind does not spin forever.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macB, phase: .loading, activeOwner: macB), .idle)
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macA, phase: .loading, activeOwner: macB), .idle)
+        // Its own failure stands; another connection's does not.
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macB, phase: .failed("x"), activeOwner: macB), .failed("x"))
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: nil, phaseOwner: macA, phase: .failed("x"), activeOwner: macB), .idle)
+        XCTAssertEqual(CronJobsReadDecision.phase(loadingOwner: macB, phaseOwner: macA, phase: .ready, activeOwner: macB), .loading)
+    }
+
+    func testRoutinePageKeepsTheBridgesSkippedCount() throws {
+        let partial = Data(#"{"items":[],"nextCursor":null,"skipped":3,"fetchedAt":"2026-11-02T12:00:00Z"}"#.utf8)
+        let page = try JSONDecoder().decode(LAAWorkPage<LAAWorkRoutine>.self, from: partial)
+        XCTAssertEqual(page.skipped, 3, "a partial list must not decode as a whole one")
+        let whole = Data(#"{"items":[],"nextCursor":null}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(LAAWorkPage<LAAWorkRoutine>.self, from: whole).skipped)
+    }
+
 }
 #endif

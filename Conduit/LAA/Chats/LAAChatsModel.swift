@@ -38,9 +38,23 @@ struct LAAChatsSnapshot {
     var cronJobs: [CronJob] = []
     var cronRuns: [SessionSummary] = []
     var cronZoneLabel: String? = nil
+    /// Whether `cronJobs` was read. An unread or failed read is not "none".
+    var cronState: LAAChatsLoadState = .ready
     /// The profile whose Hermes connection produced these jobs; a job that
     /// runs in its own conversation belongs to it.
     var cronProfile: String = ""
+}
+
+/// What the Chats list says about scheduled jobs. Readiness and failure stay
+/// apart from an empty list, and an unread list is never "stopped".
+enum LAAChatsCron {
+    static func loadState(_ phase: CronJobsPhase, connected: Bool) -> LAAChatsLoadState {
+        switch phase {
+        case .ready: return .ready
+        case .failed: return .failed(LAACopy.chatsCronUnavailable)
+        case .loading, .idle: return connected ? .loading : .offline
+        }
+    }
 }
 
 /// Search only what the existing Hermes catalogs have actually returned.

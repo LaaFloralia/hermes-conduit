@@ -12,6 +12,53 @@
 
 import Foundation
 
+/// Whether the held job list was actually read. "No scheduled jobs" is only
+/// true on `.ready`: a failed or not-yet-made read must never be printed as an
+/// empty schedule, which reads as "everything stopped".
+enum CronJobsPhase: Equatable {
+    case idle
+    case loading
+    case ready
+    case failed(String)
+}
+
+/// The connection a job list belongs to. The same profile name on another
+/// Mac's dashboard is another connection's list, never this one's.
+struct CronJobsOwner: Equatable {
+    let dashboardID: UUID?
+    let profile: String
+}
+
+/// Which read may publish, and what the connection on screen may show. Kept
+/// apart from AppState so the switch rules are testable without a bridge.
+enum CronJobsReadDecision {
+    /// A read may start unless one for that same connection is already
+    /// running. Another connection's read never holds this one back, so a
+    /// switch during a load still reads the new owner.
+    static func mayStart(loadingOwner: CronJobsOwner?, owner: CronJobsOwner) -> Bool {
+        loadingOwner != owner
+    }
+
+    /// A read may publish only while the app still shows the dashboard and
+    /// profile it read for, and no job was deleted underneath it.
+    static func mayPublish(owner: CronJobsOwner, activeOwner: CronJobsOwner,
+                           generation: Int, currentGeneration: Int) -> Bool {
+        owner == activeOwner && generation == currentGeneration
+    }
+
+    /// The phase for the connection on screen: its own read wins, a read
+    /// still running for it shows loading, and another connection's readiness
+    /// or failure says nothing about it. A `loading` left behind by a read
+    /// that no longer runs must not spin forever, so it reads as unread.
+    static func phase(loadingOwner: CronJobsOwner?, phaseOwner: CronJobsOwner?,
+                      phase: CronJobsPhase, activeOwner: CronJobsOwner) -> CronJobsPhase {
+        if loadingOwner == activeOwner { return .loading }
+        guard phaseOwner == activeOwner else { return .idle }
+        if case .loading = phase { return .idle }
+        return phase
+    }
+}
+
 enum CronScheduleText {
     // MARK: Schedule
 

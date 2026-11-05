@@ -41,6 +41,31 @@ enum LAAWorkRoutineGrouping {
     }
 }
 
+/// What the routines list says when a read did not produce a list. The Bridge
+/// answers 503 while its first `laa-console jobs` run is still going, which is
+/// not the same as a broken connection or an empty schedule.
+enum LAAWorkCatalogFailure: Equatable {
+    case warming
+    case stale
+    case unavailable
+
+    static func classify(loaded: Bool, error: Error) -> LAAWorkCatalogFailure {
+        if loaded { return .stale }
+        if let http = error as? LAABridgeHTTPError, http.status == 503, http.code == "routines_unavailable" {
+            return .warming
+        }
+        return .unavailable
+    }
+
+    var message: String {
+        switch self {
+        case .warming: return "定期実行の一覧を準備しています。少し待つと表示されます。"
+        case .stale: return "最新の一覧を取得できません。前回の内容を表示しています。"
+        case .unavailable: return "一覧を取得できません。接続を確認してください。"
+        }
+    }
+}
+
 enum LAAWorkRoutineTime {
     static func date(_ text: String?) -> Date? {
         guard let text else { return nil }
@@ -74,6 +99,13 @@ struct LAAWorkCatalogView: View {
     @State private var loadID = UUID()
     @State private var deviceID: String?
     @State private var fetchedAt: Date?
+    /// Rows the Bridge skipped in the last routines read; any makes the list
+    /// partial, so the screen says so instead of calling it complete.
+    @State private var skipped = 0
+    /// A first read the Bridge was still preparing is asked again, so a cold
+    /// cache does not leave "could not load" on screen until someone taps.
+    @State private var retryTask: Task<Void, Never>?
+    @State private var retryToken = UUID()
 
     var body: some View {
         List {
@@ -82,6 +114,11 @@ struct LAAWorkCatalogView: View {
                 Button { Task { await load() } } label: { Text(verbatim: "読み直す") }
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }
+            if kind == .routines, skipped > 0 {
+                Text(verbatim: "一部の定期実行を読み取れませんでした（\(skipped)件）。この一覧は完全ではありません。")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    .accessibilityIdentifier("work.routines.partial")
+            }
             if kind == .routines, LAAWorkFreshness.isStale(fetchedAt) {
                 Text(verbatim: "最終取得 \(clock(fetchedAt))。最新ではない可能性があります。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -119,7 +156,7 @@ struct LAAWorkCatalogView: View {
                     } header: { Text(verbatim: category) }
                 }
             }
-            if loaded && !loading && failure == nil && (kind == .routines ? routines.isEmpty : skills.isEmpty) {
+            if showsEmptyState {
                 ContentUnavailableView {
                     Label { Text(verbatim: kind == .routines ? "定期実行はありません" : "スキルはありません") }
                     icon: { Image(systemName: kind == .routines ? "clock" : "sparkles") }
@@ -138,6 +175,15 @@ struct LAAWorkCatalogView: View {
         }
         .refreshable { await load() }
         .task(id: "\(bridge.revision)-\(kind == .routines)") { await load() }
+        .onDisappear { retryTask?.cancel(); retryTask = nil }
+    }
+
+    /// "No routines" is only true of a complete read: an unread, failed or
+    /// partly read list must not be printed as an empty schedule.
+    private var showsEmptyState: Bool {
+        guard loaded, !loading, failure == nil else { return false }
+        if kind == .routines { return skipped == 0 && routines.isEmpty }
+        return skills.isEmpty
     }
 
     private var displayedSkills: [LAAWorkSkill] {
@@ -190,31 +236,61 @@ struct LAAWorkCatalogView: View {
         }.laaTextStyle(.secondary)
     }
 
+    /// A read from the view (opening the list, pull, the refresh button): one
+    /// attempt plus a bounded retry chain while the Bridge builds its first
+    /// answer, so a cold cache is not left as "could not load".
     private func load() async {
+        retryTask?.cancel(); retryTask = nil
+        if let reason = await readList(), reason != .stale { scheduleRetry() }
+    }
+
+    /// One attempt. Returns why it failed, or nil when the list was read (or
+    /// the view moved on, which needs neither a message nor a retry).
+    private func readList() async -> LAAWorkCatalogFailure? {
         let epoch = UUID(); loadID = epoch
         let device = bridge.deviceID
-        if device != deviceID { routines = []; skills = []; loaded = false; fetchedAt = nil; deviceID = device }
-        guard bridge.status == .paired else { return }
+        if device != deviceID { routines = []; skills = []; loaded = false; fetchedAt = nil; skipped = 0; deviceID = device }
+        guard bridge.status == .paired else { return nil }
         loading = true; failure = nil
         defer { if loadID == epoch { loading = false } }
         do {
             if kind == .routines {
                 let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
-                guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
+                guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return nil }
                 guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
                 routines = page.items
+                skipped = max(0, page.skipped ?? 0)
                 fetchedAt = LAAWorkFreshness.date(page.fetchedAt)
             } else {
                 let page: LAAWorkPage<LAAWorkSkill> = try await bridge.read("/v1/skills")
-                guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
+                guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return nil }
                 guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
                 skills = page.items
             }
             loaded = true
-        } catch is CancellationError { return }
-        catch {
-            guard loadID == epoch, device == bridge.deviceID else { return }
-            failure = loaded ? "最新の一覧を取得できません。前回の内容を表示しています。" : "一覧を取得できません。接続を確認してください。"
+            return nil
+        } catch is CancellationError {
+            return nil
+        } catch {
+            guard loadID == epoch, device == bridge.deviceID else { return nil }
+            let reason = LAAWorkCatalogFailure.classify(loaded: loaded, error: error)
+            failure = reason.message
+            return reason
+        }
+    }
+
+    /// Two more asks cover the Bridge's cold-cache window (its first Console
+    /// read). A read answer stops the chain; leaving the screen cancels it.
+    private func scheduleRetry() {
+        retryTask?.cancel()
+        let token = UUID(); retryToken = token
+        retryTask = Task {
+            for seconds in [2.0, 6.0] {
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled, retryToken == token, !loaded else { return }
+                guard await readList() != nil else { return }
+                guard !Task.isCancelled, retryToken == token else { return }
+            }
         }
     }
 }
