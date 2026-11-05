@@ -264,7 +264,10 @@ struct LAAUsageView: View {
         return VStack(alignment: .leading, spacing: LAASpacing.x2) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: windowLabel(window)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    // One window needs no name: the card already says which service it is.
+                    if (item.detail?.windows?.count ?? 0) > 1 {
+                        Text(verbatim: windowLabel(window)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
                     if expired || stale {
                         Text(verbatim: expired ? "リセット時刻経過" : "更新待ち")
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)

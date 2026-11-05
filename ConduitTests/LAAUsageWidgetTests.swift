@@ -276,9 +276,9 @@ final class LAAUsageWidgetTests: XCTestCase {
                 "windowMinutes": minutes.map { $0 as Any } ?? NSNull(),
             ]))
         }
-        XCTAssertEqual(LAAUsageLabel.window(try window("週間", 10_080)), "Weekly")
-        XCTAssertEqual(LAAUsageLabel.window(try window("Weekly", 10_080)), "Weekly")
-        XCTAssertEqual(LAAUsageLabel.window(try window("週次プール", nil)), "Weekly")
+        XCTAssertEqual(LAAUsageLabel.window(try window("週間", 10_080)), "週間")
+        XCTAssertEqual(LAAUsageLabel.window(try window("Weekly", 10_080)), "週間")
+        XCTAssertEqual(LAAUsageLabel.window(try window("週次プール", nil)), "週間")
         XCTAssertEqual(LAAUsageLabel.window(try window("月間", 43_200)), AppLocalization.string("Monthly"))
         XCTAssertEqual(LAAUsageLabel.window(try window("Session", 300)), "Session")
         XCTAssertEqual(LAAUsageLabel.window(try window("Claude/GPT", nil)), "Claude/GPT")

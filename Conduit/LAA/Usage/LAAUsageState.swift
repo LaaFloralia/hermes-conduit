@@ -429,13 +429,13 @@ enum LAAUsageLabel {
     }
 
     /// Display name for one window. A duration the feed reports wins, so a 7-day
-    /// pool reads Weekly in every language whatever the proxy calls it.
+    /// pool reads 週間 whatever the proxy calls it.
     static func window(_ window: LAAUsageItem.Window) -> String {
         if let minutes = window.windowMinutes {
-            if minutes == 10_080 { return AppLocalization.string("Weekly") }
+            if minutes == 10_080 { return "週間" }
             if minutes == 43_200 { return AppLocalization.string("Monthly") }
         }
-        if isWeekly(window.label) { return AppLocalization.string("Weekly") }
+        if isWeekly(window.label) { return "週間" }
         if ["monthly", "月間", "マンスリー"].contains(window.label.lowercased()) {
             return AppLocalization.string("Monthly")
         }
