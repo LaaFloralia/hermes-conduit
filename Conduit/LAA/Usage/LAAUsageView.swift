@@ -185,7 +185,7 @@ struct LAAUsageView: View {
             } else if !state.isRefreshing {
                 caption(state.usage.error == nil ? LAACopy.notFetched : "利用できません。")
                 ForEach(LAAWidgetUsageBuilder.slots, id: \.provider) { slot in
-                    let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.groupLabel, items: [])
+                    let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.name, items: [])
                     if let url = group.serviceURL {
                         Link(destination: url) { Text(verbatim: group.label) }
                             .laaTextStyle(.body)
