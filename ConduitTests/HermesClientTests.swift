@@ -636,6 +636,98 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    /// A cron.list answer with one unreadable row is a partial list, not a
+    /// whole one: the readable jobs stay and the rest are counted.
+    func testCronJobsPageKeepsReadableRowsAndCountsTheRest() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let pageTask = Task<HermesClient.CronJobsPage, Error> { try await client.listCronJobsPage() }
+        try await sent.wait("the cron.list read to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "cron.list")
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": ["jobs": [
+            ["id": "job:a", "enabled": true],
+            ["id": 7],
+        ]]]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+
+        let page = try await awaitResult(of: pageTask, "the cron.list response")
+        XCTAssertEqual(page.jobs.map(\.id), ["job:a"])
+        XCTAssertEqual(page.skipped, 1, "an unreadable row must be counted, not hidden")
+        client.disconnect()
+    }
+
+    /// The older call keeps its shape: the readable jobs, nothing more.
+    func testListCronJobsStillReturnsTheReadableRows() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let jobsTask = Task<[CronJob], Error> { try await client.listCronJobs() }
+        try await sent.wait("the cron.list read to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": ["jobs": [
+            ["id": "job:a", "enabled": true, "name": "Daily"],
+            ["id": 7],
+        ]]]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+
+        let jobs = try await awaitResult(of: jobsTask, "the cron.list response")
+        XCTAssertEqual(jobs.map(\.id), ["job:a"])
+        XCTAssertEqual(jobs.first?.displayName, "Daily")
+        client.disconnect()
+    }
+
+    /// A reply without a job array is a changed shape, never an empty schedule.
+    func testCronListWithoutAJobArrayFailsInsteadOfReadingEmpty() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let pageTask = Task<HermesClient.CronJobsPage, Error> { try await client.listCronJobsPage() }
+        try await sent.wait("the cron.list read to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": ["ok": true]]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+
+        do {
+            _ = try await awaitResult(of: pageTask, "the cron.list response")
+            XCTFail("a document without jobs must not read as an empty schedule")
+        } catch HermesError.invalidResponse {
+            // expected
+        }
+        client.disconnect()
+    }
+
     func testSessionTitleReadIsSelfDescribingAboutProfile() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()

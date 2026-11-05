@@ -29,6 +29,25 @@ struct CronJobsOwner: Equatable {
     let profile: String
 }
 
+/// What a job-list answer actually contains. Only an empty array is "no
+/// scheduled jobs": a document without a job array, or one where no row
+/// decodes, is a failed read; some rows failing is a partial list with a count
+/// the screens have to show.
+enum CronJobsPayload {
+    enum Outcome {
+        case jobs([CronJob], skipped: Int)
+        case failed
+    }
+
+    static func decode(rows: [Any]?, decode: (Any) -> CronJob?) -> Outcome {
+        guard let rows else { return .failed }
+        if rows.isEmpty { return .jobs([], skipped: 0) }
+        let jobs = rows.compactMap(decode)
+        guard !jobs.isEmpty else { return .failed }
+        return .jobs(jobs, skipped: rows.count - jobs.count)
+    }
+}
+
 /// Which read may publish, and what the connection on screen may show. Kept
 /// apart from AppState so the switch rules are testable without a bridge.
 enum CronJobsReadDecision {
@@ -40,10 +59,19 @@ enum CronJobsReadDecision {
     }
 
     /// A read may publish only while the app still shows the dashboard and
-    /// profile it read for, and no job was deleted underneath it.
+    /// profile it read for, that dashboard's bridge is still the one it used,
+    /// and no job was deleted underneath it.
     static func mayPublish(owner: CronJobsOwner, activeOwner: CronJobsOwner,
-                           generation: Int, currentGeneration: Int) -> Bool {
-        owner == activeOwner && generation == currentGeneration
+                           generation: Int, currentGeneration: Int,
+                           connectionStillCurrent: Bool) -> Bool {
+        connectionStillCurrent && owner == activeOwner && generation == currentGeneration
+    }
+
+    /// A dropped read is asked again only while its connection is still the
+    /// one on screen: a re-created bridge for the same dashboard and profile
+    /// must reload, a switched-away owner has its own reader.
+    static func shouldReloadAfterDrop(owner: CronJobsOwner, activeOwner: CronJobsOwner) -> Bool {
+        owner == activeOwner
     }
 
     /// The phase for the connection on screen: its own read wins, a read

@@ -3341,10 +3341,27 @@ final class HermesClient: ObservableObject {
 
     // MARK: - Cron
 
+    /// Hermes' job list: the rows that decoded and the rows that did not, so a
+    /// partial answer is never presented as the whole schedule.
+    struct CronJobsPage {
+        let jobs: [CronJob]
+        let skipped: Int
+    }
+
     func listCronJobs() async throws -> [CronJob] {
+        try await listCronJobsPage().jobs
+    }
+
+    func listCronJobsPage() async throws -> CronJobsPage {
         let result = try await rpc("cron.list")
-        let arr = result.objectValue?["jobs"]?.arrayValue ?? result.arrayValue ?? []
-        return arr.compactMap { try? JSONDecoder().decode(CronJob.self, from: JSONSerialization.data(withJSONObject: $0.anyValue)) }
+        // A reply without a job array is not an empty schedule.
+        guard let arr = result.objectValue?["jobs"]?.arrayValue ?? result.arrayValue else {
+            throw HermesError.invalidResponse
+        }
+        let jobs = arr.compactMap { try? JSONDecoder().decode(CronJob.self, from: JSONSerialization.data(withJSONObject: $0.anyValue)) }
+        // Every row undecodable is a changed shape, not an empty list.
+        guard arr.isEmpty || !jobs.isEmpty else { throw HermesError.invalidResponse }
+        return CronJobsPage(jobs: jobs, skipped: arr.count - jobs.count)
     }
 
     func cronRuns() async throws -> [CronRun] {
