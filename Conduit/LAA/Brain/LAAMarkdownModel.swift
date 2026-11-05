@@ -276,7 +276,12 @@ enum LAAMarkdownParser {
         var offset = 0
         var frontmatterOpen = false
 
-        for (index, line) in rawLines.enumerated() {
+        for (index, rawLine) in rawLines.enumerated() {
+            // A CRLF note ends each line with a carriage return. The line's
+            // kind and ranges are read without it; the offsets still count it,
+            // so every line starts where it does in the file.
+            let rawLength = (rawLine as NSString).length
+            let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
             let length = (line as NSString).length
             let range = NSRange(location: offset, length: length)
             let leading = leadingWhitespace(line)
@@ -327,7 +332,7 @@ enum LAAMarkdownParser {
             }
             result.append(LAAMarkdownLine(range: range, text: line, kind: kind,
                                           markerRange: markerRange, contentRange: contentRange, indent: indent))
-            offset += length + 1
+            offset += rawLength + 1
         }
         return result
     }

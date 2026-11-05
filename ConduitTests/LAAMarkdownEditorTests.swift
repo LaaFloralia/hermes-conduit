@@ -374,6 +374,17 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
                        "the table lands under the trailing paragraph, not at the old run")
     }
 
+    func testCRLFLineKindsIgnoreTheCarriageReturn() {
+        let lines = LAAMarkdownParser.lines(in: "---\r\ntitle: x\r\n---\r\n# 見出し\r\n- 箇条書き\r\n---\r\n")
+        XCTAssertEqual(lines[0].kind, .frontmatter)
+        XCTAssertEqual(lines[2].kind, .frontmatter)
+        XCTAssertEqual(lines[3].kind, .heading(level: 1))
+        XCTAssertEqual(lines[3].content, "見出し", "no carriage return in the content")
+        XCTAssertEqual(lines[4].kind, .bullet)
+        XCTAssertEqual(lines[5].kind, .rule)
+        XCTAssertEqual(lines[5].range.location, 35, "offsets still count the carriage returns")
+    }
+
     // MARK: IME
 
     @MainActor func testStylingWaitsForTheIMECompositionToEnd() {
