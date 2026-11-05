@@ -285,6 +285,8 @@ export function createSessionService({
       const workspaces = await daemon.workspacePins().catch(() => null);
       const pins = workspaces && new Map(workspaces.map((row) => [row.id, row.pinnedAt != null]));
       const workspaceTitles = new Map((workspaces ?? []).map((row) => [row.id, row.title]));
+      const parents = new Map();
+      for (const a of agents) if (!a.labels?.['paseo.parent-agent-id']) parents.set(a.workspaceId, (parents.get(a.workspaceId) ?? 0) + 1);
       const known = new Map(sessionStore.all().map((r) => [r.delegate?.sessionId, r]));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
       const rows = agents.map((a) => {
@@ -293,8 +295,10 @@ export function createSessionService({
         const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
         const workspaceId = previous?.workspaceId ?? a.workspaceId ?? HOME_WORKSPACE_ID;
         // Paseo titles the workspace from the request but leaves the agent with
-        // the title it was given, so a parent still on that title shows Paseo's.
-        const paseoTitle = previous?.sentTitle === a.title && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitles.get(a.workspaceId) : null;
+        // the title it was given, so the one parent in a workspace shows Paseo's
+        // unless the agent named itself after a title the Bridge sent.
+        const renamed = previous?.sentTitle !== undefined && previous.sentTitle !== a.title;
+        const paseoTitle = !renamed && parents.get(a.workspaceId) === 1 && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitles.get(a.workspaceId) : null;
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
           projectId: null, workspaceId, cwd: a.cwd,

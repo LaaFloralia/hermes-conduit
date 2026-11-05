@@ -182,10 +182,13 @@ test('a parent left on its sent title shows the title Paseo gave its workspace',
     { id: 'named', title: 'エージェントの命名', workspaceId: 'wks_b', labels: {} },
     { id: 'kid', title: '子｜作業', workspaceId: 'wks_a', labels: { 'paseo.parent-agent-id': 'plain' } },
     { id: 'owner', title: '社長の名前', workspaceId: 'wks_c', labels: {} },
+    { id: 'native', title: 'Paseoで作成', workspaceId: 'wks_d', labels: {} },
+    { id: 'shared-1', title: '共有一', workspaceId: 'wks_e', labels: {} },
+    { id: 'shared-2', title: '共有二', workspaceId: 'wks_e', labels: {} },
   ].map((a) => ({ ...a, provider: 'dsh', status: 'idle', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' }));
   const client = { close: async () => {}, fetchAgent: async ({ agentId }) => ({ agent: agents.find((a) => a.id === agentId) }),
     fetchAgents: async () => ({ entries: agents.map((agent) => ({ agent })), pageInfo: { nextCursor: null } }),
-    fetchWorkspaces: async () => ({ entries: ['wks_a', 'wks_b', 'wks_c'].map((id) => ({ id, title: 'Paseoの題名' })) }) };
+    fetchWorkspaces: async () => ({ entries: ['wks_a', 'wks_b', 'wks_c', 'wks_d', 'wks_e'].map((id) => ({ id, title: 'Paseoの題名' })) }) };
   const store = createSessionStore({ file: join(dir, 'sessions.json') });
   const service = createSessionService({ sessionStore: store, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }), adapter: {}, findWorkspace: async () => null, notify: async () => {} });
   await service.syncDaemon();
@@ -198,6 +201,8 @@ test('a parent left on its sent title shows the title Paseo gave its workspace',
   assert.equal(store.get(daemonSessionID('named')).name, 'エージェントの命名');
   assert.equal(store.get(daemonSessionID('kid')).name, '子｜作業');
   assert.equal(store.get(daemonSessionID('owner')).name, '社長の名前');
+  assert.equal(store.get(daemonSessionID('native')).name, 'Paseoの題名');
+  assert.equal(store.get(daemonSessionID('shared-1')).name, '共有一');
 });
 
 test('archive reaches Paseo for the whole tree and clears the emptied workspace; restore brings back one row', async (t) => {
