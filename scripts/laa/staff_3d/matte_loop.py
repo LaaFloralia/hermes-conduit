@@ -67,7 +67,7 @@ def build(k, src, crop=(720, 280, 0), cut_scale=None, cut_at=None):
     ff("-loop", "1", "-framerate", "24", "-i", shadow, "-framerate", "24", "-i", f"{out}/mix/%03d.png", "-filter_complex",
        "[0:v]format=rgba[s];[1:v]format=rgba[f];[s][f]overlay=shortest=1:format=rgb,format=rgba", "-start_number", "0", f"{seq}/%03d.png")
     mov = f"{out}/{k}-idle-512.mov"
-    ff("-framerate", "24", "-i", f"{seq}/%03d.png", "-c:v", "hevc_videotoolbox", "-alpha_quality", "0.9", "-q:v", "62", "-tag:v", "hvc1", "-pix_fmt", "bgra", mov)
+    ff("-framerate", "24", "-i", f"{seq}/%03d.png", "-vf", "format=gbrap,premultiply=inplace=1,format=bgra", "-c:v", "hevc_videotoolbox", "-alpha_quality", "0.9", "-q:v", "62", "-tag:v", "hvc1", "-pix_fmt", "bgra", mov)
     shutil.copy(f"{seq}/000.png", f"{out}/{k}-avatar-512.png")
     # hero from the original still at full resolution, same framing as the loop
     r = 2 * INSET / cw

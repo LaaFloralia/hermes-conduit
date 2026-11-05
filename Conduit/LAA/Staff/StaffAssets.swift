@@ -44,6 +44,7 @@ struct StaffAssets: Equatable {
     var avatar: URL?
     var hero: URL?
     var loop: URL?
+    var turn: URL?
     var defaultMark: URL?
 }
 
@@ -61,21 +62,18 @@ struct StaffAssetResolver {
             return StaffAssets(defaultMark: present(root.appendingPathComponent("callkit-icon-template-120.png")))
         }
         guard let staff = LAAStaff(profile: normalized) else { return StaffAssets() }
-        let staffDirectory = root.appendingPathComponent("staff", isDirectory: true)
-        // The former Ciel is only a fallback if the entire adopted set is absent.
-        let directory: URL
-        let assetName = staff.rawValue
-        if !exists(staffDirectory), assetName == "ciel" {
-            directory = root.appendingPathComponent("ciel", isDirectory: true)
-        } else {
-            directory = staffDirectory.appendingPathComponent(assetName, isDirectory: true)
-        }
-        let name = assetName
+        let name = staff.rawValue
+        let directory = root.appendingPathComponent("staff/\(name)", isDirectory: true)
         return StaffAssets(
             avatar: present(directory.appendingPathComponent("\(name)-avatar-512.png")),
             hero: present(directory.appendingPathComponent("\(name)-hero-1024.png")),
-            loop: present(directory.appendingPathComponent("\(name)-idle-512.mov"))
+            loop: present(directory.appendingPathComponent("\(name)-idle-512.mov")),
+            turn: present(directory.appendingPathComponent("\(name)-turn.heic"))
         )
+    }
+
+    func isMascot(_ url: URL) -> Bool {
+        url.path.hasPrefix(root.appendingPathComponent("staff", isDirectory: true).path)
     }
 
     private func present(_ url: URL) -> URL? { exists(url) ? url : nil }

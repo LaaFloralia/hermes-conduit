@@ -89,23 +89,9 @@ struct LAAEmployeeCallView: View {
     }
 
     private func avatar(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
-        let level = Self.level(snapshot.audioLevel)
-        return ZStack {
-            Circle()
-                .fill(LAAColor.surface)
-                .frame(width: 270, height: 270)
-            StaffAvatarView(profile: snapshot.context.profile, name: snapshot.context.name, size: 270,
-                            activity: snapshot.speaking ? .lively : .resting)
-                .scaleEffect(x: reduceMotion ? 1 : 1 + CGFloat(level) * 0.05,
-                             y: reduceMotion ? 1 : 1 - CGFloat(level) * 0.05, anchor: .bottom)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
-            Circle()
-                .strokeBorder(LAAColor.selectionFill, lineWidth: 14)
-                .frame(width: 298, height: 298)
-                .scaleEffect(reduceMotion ? 1 : 1 + CGFloat(level) * 0.08)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
-        }
-        .frame(width: 300, height: 300)
+        StaffMascotView(profile: snapshot.context.profile, name: snapshot.context.name, size: 330,
+                        activity: snapshot.speaking ? .lively : .resting, level: Self.level(snapshot.audioLevel))
+            .frame(width: 340, height: 340)
     }
 
     static func level(_ value: Float?) -> Float {

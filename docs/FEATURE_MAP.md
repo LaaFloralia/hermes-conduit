@@ -377,7 +377,7 @@ GPT-Live on the ChatGPT plan · native CallKit presentation · the upstream App 
 build (keeps its own chat and call controls)
 
 **Code**
-- Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `project-laa.yml`, `project-personal.yml`
+- Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `Conduit/LAA/Staff/StaffMascotView.swift`, `project-laa.yml`, `project-personal.yml`
 - Chat header, composer controls, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
 - Call state, existing voice adapter, controls, route labels, return bar and voice settings: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/VoiceSettingsView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
@@ -387,7 +387,7 @@ build (keeps its own chat and call controls)
 
 **Rulings**
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
-- The staff are the nine adopted mascots. Each has a muted alpha loop in the chat header and on the call. The loop runs at 1.4x while the employee answers in chat or speaks on a call. The classic voice engine has no speaking state, so its call stays at normal speed and reacts through the microphone level. The mascot squashes with the same level as the ring.
+- The staff are the nine adopted mascots, drawn with no disc or ring around them. Each has a muted alpha loop in the chat header and on the call. On the call and in the employee details a drag turns the mascot through 360 degrees of pre-rendered frames; a flick carries on, and left alone it comes back to face the viewer and the loop resumes. It turns left and right only. An employee's picture everywhere in the app is the bundled mascot, not the Hermes profile picture. The loop runs at 1.4x while the employee answers in chat or speaks on a call. The classic voice engine has no speaking state, so its call stays at normal speed and reacts through the microphone level. The mascot squashes with the same level as the ring.
 - The muted loop runs only while visible and active, after disconnecting from system audio. Reduce Motion, Low Power Mode, scrolling and platforms unable to disconnect use the still, so opening a chat does not take over another app's audio.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
 - The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui). At 375 points and accessibility text sizes, the employee name takes priority over the decorative avatar and status; the full status stays in its accessible label and detail sheet. Back keeps its native control and interactive pop gesture.
@@ -408,12 +408,12 @@ build (keeps its own chat and call controls)
 **Open gaps**
 - Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks; the UI flow tests use a fake control because CallKit does not run in the simulator.
 - Check on a physical iPhone that music continues when opening a chat and the mascot loop displays correctly, including its speed-up while answering and speaking.
-- Mac Catalyst keeps the mascot still, because the idle audio rule has no disconnect there; on a call only the level squash moves it.
+- Mac Catalyst keeps the mascot still, because the idle audio rule has no disconnect there; on a call only the level squash moves it. The turn does not touch audio and works there too (not yet run on a Mac).
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
 - A real GPT-Live conversation and microphone route on Mac still need an authenticated device check.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-11-06, laa/staff-mascot-1106 (mascot assets, active speed; physical iPhone pending); 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-11-06, laa/staff-3d-1106 (360-degree turn on the simulator; physical iPhone pending); 2026-11-06, laa/staff-mascot-1106 (mascot assets, active speed; physical iPhone pending); 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
