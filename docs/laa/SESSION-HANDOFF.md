@@ -2,7 +2,7 @@
 
 最初に読む入口。社長の呼び名は「AIアプリ」「LAAアプリ」。ここには現行の進め方と状態だけを置き、経緯はgit logとLinearに任せる。古くなった記述は書き足さずに置き換える。
 
-最終更新: 2026-11-03（TestFlight内部配信、Mac mini導入、BridgeとAI Usageの本番表示を確認）
+最終更新: 2026-11-05（Workのアーカイブ連動と子エージェントの開閉をTestFlightへ配信）
 
 ## 位置づけ
 
@@ -62,9 +62,11 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 - 既知の失敗: `LAA 16 Pro Max`（英語（米国））の `ConnectionSetupUITests` 5件。master `156c096d` と候補の同一smokeで両方同じ5件だけが失敗し、`ProfilePickerUITests` は候補・masterとも3件成功（統合1102で確認）。
 - Mac版の署名と公証は親だけが `scripts/laa/mac-release.sh` で行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。更新時は通常終了後のプロセス消滅を待ってから入れ替える。画面の再取得はアプリを起動することがあるため、終了の判定には使わない。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
-- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは **2611031110**（master `740f7014`、2026-11-03 20:29 JSTにアップロード、`VALID`・`IN_BETA_TESTING`・`LAA Internal` を確認。ウィジェットのproviderフィルタにnanoGPTを追加し、GPT API・Claude APIの行を残高から今月の使用額へ変え、画面の残高「未取得」行を請求ページの注記に置き換えた）。**2611031024**（master `5b29f95b`）は画面だけnanoGPTが出てウィジェットに出なかった。**2611030952**（master `0a42f336`）は画面側の固定リストにnanoGPTが無く表示されなかった。前の **2611030910**（master `4c4c34ba`）と **2611030011**（master `d787a4ba`）はそのまま残る。署名用秘密はxcodebuildへ引き継がず、終了時にDerivedDataと一時署名ファイルを清掃する。
+- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みの最新は **2611051323**（master `12287615`、2026-11-05にアップロード、`VALID`・LAA Internalを確認。下記「現在の状態」の11/5項目を含む）。その前は **2611031110**（master `740f7014`、2026-11-03 20:29 JSTにアップロード、`VALID`・`IN_BETA_TESTING`・`LAA Internal` を確認。ウィジェットのproviderフィルタにnanoGPTを追加し、GPT API・Claude APIの行を残高から今月の使用額へ変え、画面の残高「未取得」行を請求ページの注記に置き換えた）。**2611031024**（master `5b29f95b`）は画面だけnanoGPTが出てウィジェットに出なかった。**2611030952**（master `0a42f336`）は画面側の固定リストにnanoGPTが無く表示されなかった。前の **2611030910**（master `4c4c34ba`）と **2611030011**（master `d787a4ba`）はそのまま残る。署名用秘密はxcodebuildへ引き継がず、終了時にDerivedDataと一時署名ファイルを清掃する。
 
-## 現在の状態（2026-11-03）
+## 現在の状態（2026-11-05）
+
+- Workのアーカイブは親子ごとPaseoへ反映する（master `12287615`）。実行中・判断待ちを含む親子は `session_running` で拒否する（Paseoのアーカイブは実行中のターンを中断し、ラベル付きの子も閉じるため）。空になったワークスペースもPaseoでアーカイブするが、worktreeは実ファイルを消すので対象外。戻すは選んだ行だけで、子はアーカイブに残す。LAAだけでアーカイブされていた14件と空のワークスペース2件は、Paseo実機へ反映済み（戻す→再アーカイブの往復も確認）。プロジェクトのアーカイブはBridge内だけで、属するセッションは変えない。子エージェントは親の下に畳み、隠れた判断待ちは親へ出す。Bridge 613/613、LAA単体・UI 31/31＋追加UI 2/2、スモーク695/695（masterも同数成功）、personal Release成功。実機とMac版への配信は未了。
 
 - Workの一覧で行を左へスワイプすると詳細も開いていた（BUS-358）を直した（master `4c4c34ba`）。行のタップをスワイプ行のジェスチャーへ移し、ドラッグを優先、部分スワイプはピン、通常のタップは詳細、縦スクロールは一覧、を維持する。VoiceOverは1行をボタンとして読み、ピン・アーカイブをアクションに持つ。シミュレーター（LAA 16 Pro Max・iOS 27.0）で `LAAPaseoUITests` 7件と `LAAShellNavigationUITests` 4件が成功。既定スキームのsmokeはmasterと候補が同じ5件（`ConnectionSetupUITests`）だけ失敗し、unit **687/687**、personal iOS Releaseも成功した。詳細から戻った後の下部タブ欠落（BUS-360）はシミュレーターでは再現せず、詳細の戻る・左端スワイプの戻る・スクロール後の戻るの3経路でタブが戻ることを確認した。左スワイプで詳細が開く経路自体を消した。配信後の実機受入は社長が行う（エージェント側の実機確認は行わない）。
 - 11/3の候補をmaster `d787a4ba`へ統合した。通知の会話名・本文、人物別未読件数、担当者別の定期実行と次回時刻、Work内のAI Usage、ピン留め上段・左スワイプ、Paseoの固定との同期、Brain索引、Date弱リンクの修正を含む。Bridge **556/556**、LAA単体 **180/180**、personal iOS Release、配信アーカイブの本体・拡張・Watch **6本のDate検査**が成功。master比較スモークは2437件中2432件成功、既知5件から新規失敗なし。FEATURE_MAPは106節/1673パス。UI初回93件は66成功・5失敗・22除外、失敗5件の再試験で3件成功。Shellは画面外ボタンのタップで2回失敗し、効果のなかった471f0d5cは未統合。見えているWork項目を順に選ぶ試験へ置き換え、該当1件が成功（build/test exit 0、xcresult 1成功・0失敗・0除外）。アプリ本体の変更はない。日誌はシート表示後の入力フォーカス失敗で実機確認を残す。高負荷の影響が有力だが合格扱いにはしない。
