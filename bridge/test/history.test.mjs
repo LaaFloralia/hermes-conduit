@@ -31,6 +31,19 @@ test('conversation exposes only user and assistant messages and closes the clien
   assert.equal(closed, true);
 });
 
+test('only the first user message loses the delivered context', async () => {
+  const delivered = 'Working directory: /x — use this absolute path.\n\n';
+  const connect = async () => ({
+    fetchAgentTimeline: async (id) => ({ agentId: id, entries: [
+      { item: { type: 'user_message', text: `${delivered}最初` } },
+      { item: { type: 'user_message', text: `${delivered}次` } },
+    ] }),
+    close: async () => {},
+  });
+  const messages = await readConversation('agent', connect);
+  assert.deepEqual(messages.map(({ text }) => text), ['最初', `${delivered}次`]);
+});
+
 test('conversation rejects another agent and closes the client', async () => {
   let closed = false;
   const connect = async () => ({ fetchAgentTimeline: async () => ({ agentId: 'other', entries: [] }), close: async () => { closed = true; } });
