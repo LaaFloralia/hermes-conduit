@@ -53,73 +53,64 @@ final class LAAUsageWidgetTests: XCTestCase {
             item("codex", windows: [weekly(35)]),
             item("opencode-go", windows: [weekly(72), weekly(40, minutes: 300, label: "5時間")]),
         ]
-        let weekly = "Weekly"
         let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
         // Liquid AI stays on the screen; the widget shows the eight above it.
         XCTAssertEqual(result.meters.map(\.label),
-                       ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" }
-                       + ["Venice", "Magnific", "GPT API Monthly", "Claude API Monthly"])
-        XCTAssertEqual(result.meters.map(\.unit), [.percent, .percent, .percent, .usd, .credits, .usd, .usd])
-        XCTAssertEqual(result.meters.map(\.amount), [35, 72, 62, 9, 2100, 0.96, 17.25])
+                       ["Codex", "OpenCode", "Claude", "Magnific", "GPT API", "Claude API", "Venice"])
+        XCTAssertEqual(result.meters.map(\.unit), [.percent, .percent, .percent, .credits, .usd, .usd, .usd])
+        XCTAssertEqual(result.meters.map(\.amount), [35, 72, 62, 2100, 21.8, 42.5, 9])
         XCTAssertTrue(result.meters.allSatisfy(\.available))
         XCTAssertEqual(result.checkedAt, now)
-        // Neither API publishes a balance, so the month's spend is the reading.
-        XCTAssertEqual(result.meters.filter { $0.id.hasPrefix("provider.openai-api.") }.map(\.id), ["provider.openai-api.cost-month"])
-        XCTAssertEqual(result.meters.filter { $0.id.hasPrefix("provider.claude-api.") }.map(\.id), ["provider.claude-api.cost-month"])
+        // The API rows are the amount left, never the month's spend.
+        XCTAssertEqual(result.meters.filter { $0.id.hasPrefix("provider.openai-api.") }.map(\.id), ["provider.openai-api.balance"])
+        XCTAssertEqual(result.meters.filter { $0.id.hasPrefix("provider.claude-api.") }.map(\.id), ["provider.claude-api.balance"])
     }
 
-    func testAPIProviderShowsItsMonthSpendAndNotItsUnpublishedBalance() throws {
+    func testAPIProviderShowsItsBalanceAndNotItsMonthSpend() throws {
         let items = try [
             item("openai-api", kind: "cost-month", label: "GPT API", value: 0.96, unit: "usd",
                  detail: ["sourceLag": "undisclosed", "periodTimezone": "UTC"]),
             item("openai-api", kind: "balance", label: "GPT API", value: 21.8, unit: "usd"),
             unavailable("claude-api", kind: "balance", label: "Claude API"),
         ]
-        let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
-        let api = result.meters.filter { $0.label.hasSuffix("Monthly") }
-        XCTAssertEqual(api.map(\.id), ["provider.openai-api.cost-month", "provider.claude-api.cost-month"])
+        let api = LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.filter { $0.label.hasSuffix("API") }
+        XCTAssertEqual(api.map(\.id), ["provider.openai-api.balance", "provider.claude-api.balance"])
         XCTAssertEqual(api.map(\.available), [true, false])
-        XCTAssertEqual(api.map(\.amount), [0.96, 0])
+        XCTAssertEqual(api.map(\.amount), [21.8, 0])
     }
 
-    func testAPIBalancesNeverFillTheMonthSpendRow() throws {
-        let stale = try item("openai-api", kind: "balance", label: "GPT API", value: 21.8, unit: "usd",
-                             observedAt: "2026-10-30T23:40:00Z")
-        let manual = try item("claude-api", kind: "balance", label: "Claude API", value: 58.51, unit: "usd",
-                              detail: ["sourceKind": "verified"])
+    func testABillingPageBalanceShowsBelowZeroWithItsDate() throws {
+        let unpaid = try item("claude-api", kind: "balance", label: "Claude API", value: -0.19, unit: "usd",
+                              observedAt: "2026-10-01T00:00:00Z", detail: ["sourceKind": "verified"])
+        let meter = try XCTUnwrap(LAAWidgetUsageBuilder.make(items: [unpaid], receivedAt: now).meters
+            .first { $0.id == "provider.claude-api.balance" })
+        XCTAssertEqual(meter.amount, -0.19)
+        XCTAssertEqual(meter.verified, true)
+        XCTAssertTrue(meter.hasRecordedValue(at: now))
+        XCTAssertFalse(meter.isPast(at: now))
+    }
+
+    func testAYenBalanceNeverFillsADollarRow() throws {
         let yen = try item("claude-api", kind: "balance", label: "Claude API", value: 3000, unit: "jpy",
                            detail: ["currency": "JPY"])
-        let meters = LAAWidgetUsageBuilder.make(items: [stale, manual], receivedAt: now).meters
-        XCTAssertEqual(meters.filter { $0.label.hasSuffix("Monthly") }.map(\.available), [false, false])
-        XCTAssertEqual(meters.filter { $0.label.hasSuffix("Monthly") }.map(\.id),
-                       ["provider.openai-api.cost-month", "provider.claude-api.cost-month"])
-        // A yen balance is not a dollar reading: no number rather than a wrong unit.
-        let yenMeter = LAAWidgetUsageBuilder.make(items: [yen], receivedAt: now).meters
-            .first { $0.id == "provider.claude-api.cost-month" }
-        XCTAssertEqual(yenMeter?.available, false)
+        XCTAssertEqual(LAAWidgetUsageBuilder.make(items: [yen], receivedAt: now).meters
+            .first { $0.id == "provider.claude-api.balance" }?.available, false)
     }
 
-    func testALegacyCostSnapshotFillsTheMonthSpendRow() throws {
+    func testALegacyCostSnapshotIsNotDrawnAsABalance() throws {
         let legacy = WidgetUsageSnapshot(meters: [
             WidgetUsageMeter(id: "provider.openai-api.cost-month", label: "GPT API", unit: .usd, amount: 0.96,
                              observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil,
                              stale: false, retained: false),
-            WidgetUsageMeter(id: "provider.claude-api.cost-month", label: "Claude API", unit: .usd, amount: 17.25,
-                             observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil,
-                             stale: false, retained: false),
         ], checkedAt: now)
-        XCTAssertEqual(legacy.displayableMeters.map(\.id),
-                       ["provider.openai-api.cost-month", "provider.claude-api.cost-month"])
-        let result = LAAWidgetUsageBuilder.make(items: [], receivedAt: now, previous: legacy)
-        XCTAssertEqual(result.meters.map(\.id), ["provider.openai-api.cost-month", "provider.claude-api.cost-month"])
-        XCTAssertEqual(result.meters.map(\.available), [true, true])
-        XCTAssertEqual(result.meters.map(\.amount), [0.96, 17.25])
+        XCTAssertTrue(legacy.displayableMeters.isEmpty)
+        XCTAssertEqual(LAAWidgetUsageBuilder.make(items: [], receivedAt: now, previous: legacy).meters.map(\.available), [false, false])
     }
 
     func testWeeklyWindowIsChosenOverALowerFiveHourWindow() throws {
         let items = try [item("codex", windows: [weekly(5, minutes: 300, label: "Session"), weekly(80)])]
         let meter = try XCTUnwrap(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.first)
-        XCTAssertEqual(meter.label, "Codex " + "Weekly")
+        XCTAssertEqual(meter.label, "Codex")
         XCTAssertEqual(meter.amount, 80)
     }
 
@@ -127,17 +118,15 @@ final class LAAUsageWidgetTests: XCTestCase {
         let items = try [
             item("codex", windows: [weekly(44)]),
             unavailable("opencode-go"),
-            unavailable("claude-api", kind: "cost-month"),
-            item("openai-api", kind: "cost-month", label: "GPT API", value: 2, unit: "usd",
-                 detail: ["sourceLag": "undisclosed"]),                        // spend is not a balance
+            unavailable("claude-api", kind: "balance"),
+            item("openai-api", kind: "balance", label: "GPT API", value: 2, unit: "usd"),
             item("claude", observedAt: "2026-10-30T20:00:00Z", windows: [weekly(90)]), // older than the window
         ]
         let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
-        let weekly = "Weekly"
         XCTAssertEqual(result.meters.map(\.label),
-                       ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" } + ["GPT API Monthly", "Claude API Monthly"])
+                       ["Codex", "OpenCode", "Claude", "GPT API", "Claude API"])
         XCTAssertEqual(result.meters.map(\.id), ["provider.codex.quota.weekly", "provider.opencode-go.quota.weekly",
-            "provider.claude.quota.weekly", "provider.openai-api.cost-month", "provider.claude-api.cost-month"])
+            "provider.claude.quota.weekly", "provider.openai-api.balance", "provider.claude-api.balance"])
         XCTAssertEqual(result.meters.map(\.available), [true, false, false, true, false])
         XCTAssertEqual(result.meters.first?.amount, 44)
         XCTAssertEqual(result.checkedAt, now)
@@ -150,9 +139,9 @@ final class LAAUsageWidgetTests: XCTestCase {
             item("google-flow", kind: "credits", label: "Google Flow", value: 0, unit: "credits"),
             item("claude", windows: [weekly(20)]),
         ]
-        // The API rows show the month's spend and stay listed when it cannot be read.
+        // The API rows stay listed when their balance cannot be read.
         XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.map(\.label),
-                       ["Claude " + "Weekly", "GPT API " + "Monthly", "Claude API " + "Monthly"])
+                       ["Claude", "GPT API", "Claude API"])
     }
 
     func testLastKnownValuesSurviveMissingRowsWithoutChangingTheirTime() throws {
@@ -220,8 +209,8 @@ final class LAAUsageWidgetTests: XCTestCase {
     func testSnapshotContainsOnlySummaryFields() throws {
         let summary = LAAWidgetUsageBuilder.make(items: [
             try item("claude", windows: [weekly(42)]),
-            try item("openai-api", kind: "cost-month", label: "GPT API", value: 21.8, unit: "usd"),
-            try unavailable("claude-api", kind: "cost-month", label: "Claude API"),
+            try item("openai-api", kind: "balance", label: "GPT API", value: 21.8, unit: "usd"),
+            try unavailable("claude-api", kind: "balance", label: "Claude API"),
         ], receivedAt: now)
         let encoded = try JSONEncoder().encode(summary)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
@@ -254,15 +243,15 @@ final class LAAUsageWidgetTests: XCTestCase {
         let items = try [unavailable("fal"), unavailable("venice"), unavailable("jev"), unavailable("google-cloud"),
                          unavailable("google-flow"), unavailable("magnific", label: "Magnific"),
                          unavailable("antigravity"), unavailable("codex"), unavailable("claude")]
-        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.venice",
-            "provider.magnific"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).first?.label, "Codex Weekly")
+        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.magnific",
+            "provider.venice"])
+        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).first?.label, "Codex")
         let liquid = try item("liquid", kind: "usage", label: "Liquid AI", value: 1, unit: "tokens")
         XCTAssertEqual(LAAUsageGroup.consoleGroups([liquid]).map(\.label), ["Liquid AI"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode Weekly"])
+        XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
         let widget = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
         XCTAssertEqual(widget.meters.map(\.label),
-                       ["Codex Weekly", "Claude Weekly", "GPT API Monthly", "Claude API Monthly"])
+                       ["Codex", "Claude", "GPT API", "Claude API"])
         XCTAssertTrue(widget.meters.allSatisfy { !$0.available })
         XCTAssertEqual(WidgetUsageSnapshot(meters: widget.meters, checkedAt: nil).displayableMeters.count, widget.meters.count)
         let retired = ["jev", "google-cloud", "google-flow", "fal", "antigravity"]
