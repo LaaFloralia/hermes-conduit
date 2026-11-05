@@ -37,6 +37,8 @@ struct LAAEmployeeCallSnapshot: Equatable {
     var usesSystemRoutePicker = false
     /// nil means the active voice engine has no measured level available.
     var audioLevel: Float? = nil
+    /// The employee is talking now; only the live engines report this.
+    var speaking = false
     /// A server may not apply the requested voice; do not hide that fact.
     var voiceNote: String? = nil
 }

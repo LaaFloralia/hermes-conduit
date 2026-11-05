@@ -94,7 +94,11 @@ struct LAAEmployeeCallView: View {
             Circle()
                 .fill(LAAColor.surface)
                 .frame(width: 270, height: 270)
-            StaffAvatarView(profile: snapshot.context.profile, name: snapshot.context.name, size: 270)
+            StaffAvatarView(profile: snapshot.context.profile, name: snapshot.context.name, size: 270,
+                            activity: snapshot.speaking ? .lively : .resting)
+                .scaleEffect(x: reduceMotion ? 1 : 1 + CGFloat(level) * 0.05,
+                             y: reduceMotion ? 1 : 1 - CGFloat(level) * 0.05, anchor: .bottom)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
             Circle()
                 .strokeBorder(LAAColor.selectionFill, lineWidth: 14)
                 .frame(width: 298, height: 298)

@@ -81,6 +81,19 @@ struct StaffAssetResolver {
     private func present(_ url: URL) -> URL? { exists(url) ? url : nil }
 }
 
+/// How the mascot's loop runs: `lively` while the employee is answering in
+/// chat or speaking on a call, `resting` the rest of the time.
+enum StaffAvatarActivity: Equatable {
+    case resting, lively
+
+    var playbackRate: Float {
+        switch self {
+        case .resting: return 1
+        case .lively: return 1.4
+        }
+    }
+}
+
 struct StaffAvatarPlaybackPolicy: Equatable {
     var visible: Bool
     var active: Bool

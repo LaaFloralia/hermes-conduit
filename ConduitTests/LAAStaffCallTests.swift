@@ -199,6 +199,7 @@ final class LAAStaffCallTests: XCTestCase {
         await fulfillment(of: [connected], timeout: 5)
         XCTAssertEqual(snapshots.last?.context.conversationID, "new-chat")
         XCTAssertEqual(snapshots.last?.audioLevel, 0.4)
+        XCTAssertEqual(snapshots.last?.speaking, false)
         XCTAssertEqual(snapshots.last?.usesSystemRoutePicker, true)
         XCTAssertNotNil(snapshots.last?.connectedAt)
         XCTAssertEqual(fake.beginCount, 1)
@@ -208,10 +209,12 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(fake.speaker, true)
         fake.voiceStatus.muted = false
         fake.voiceStatus.level = nil
+        fake.voiceStatus.speaking = true
         fake.voiceStatus.voiceNote = "選んだ声を確認できません"
         fake.changed.send()
         await fulfillment(of: [updated], timeout: 5)
         XCTAssertNil(snapshots.last?.audioLevel)
+        XCTAssertEqual(snapshots.last?.speaking, true)
         XCTAssertEqual(snapshots.last?.voiceNote, "選んだ声を確認できません")
         fake.voiceStatus.phase = .ended
         fake.changed.send()
@@ -415,10 +418,14 @@ final class LAAStaffCallTests: XCTestCase {
             let assets = StaffAssetResolver.bundled.resolve(profile: "laa-\(staff.rawValue)")
             XCTAssertNotNil(assets.avatar, "Missing avatar for \(staff.rawValue)")
             XCTAssertNotNil(assets.hero, "Missing hero for \(staff.rawValue)")
-            if staff == .cielUncensored { XCTAssertNil(assets.loop) }
-            else { XCTAssertNotNil(assets.loop, "Missing loop for \(staff.rawValue)") }
+            XCTAssertNotNil(assets.loop, "Missing loop for \(staff.rawValue)")
         }
         XCTAssertNotNil(StaffAssetResolver.bundled.resolve(profile: "default").defaultMark)
+    }
+
+    func testTheLoopRunsFasterWhileTheEmployeeIsActive() {
+        XCTAssertEqual(StaffAvatarActivity.resting.playbackRate, 1)
+        XCTAssertGreaterThan(StaffAvatarActivity.lively.playbackRate, StaffAvatarActivity.resting.playbackRate)
     }
 
     func testLoopRequiresEveryPlaybackCondition() {

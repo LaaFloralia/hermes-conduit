@@ -94,7 +94,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 
 ## Call：アプリ内通話
 
-`Chat` の電話とウィジェットの `Call` は、選んだ社員と会話を引き継ぐ。中央に直径270ptを上限とする社員の3Dレンダー、社員名、実際の状態と通話時間。下に `Mute`、`Speaker`、`Chat`、`End` の順で配置する。`Chat` は通話を切らず元の会話を開き、`End` は終了する。
+`Chat` の電話とウィジェットの `Call` は、選んだ社員と会話を引き継ぐ。中央に直径270ptを上限とする社員マスコット、社員名、実際の状態と通話時間。下に `Mute`、`Speaker`、`Chat`、`End` の順で配置する。`Chat` は通話を切らず元の会話を開き、`End` は終了する。
 
 接続中・接続済み・再接続・失敗・終了、マイク許可、音声経路を区別する。GPT-Liveを使う設計だが、社員別の声は利用可能な選択肢と既存接続方式を実装時に確認し、未対応なら共通の利用可能な声とする。画面の `GPT Live` は表示例。既存の送信先同意、ChatGPTプラン／APIの課金表示、利用経路の確認を省かない。
 
@@ -141,30 +141,28 @@ CallKitの純正画面には任意の3D・動画を置けない。アプリ内�
 
 会話・グループごとに背景を保存する。既定は紙（Ivory）、選択肢は紙・青緑の夜・墨・端末の写真。写真の減光は0〜60%、ぼかしは0〜20pt。写真上の操作層には上記のGlass規則を適用する。文字が4.5:1を満たせないときは暗い下地を追加し、それでも足りなければ不透明な操作面に戻す。吹き出し自体は背景に関係なく常に不透明。
 
-画面遷移・シートはシステム既定。送信・通話開始の状態変化はspring（response 0.35、dampingFraction 0.85）を基準とする。社員像の待機ループは2秒・30fps、呼吸1回と首の小さな揺れ。音量リングは1.00〜1.08倍、120msで平滑化する。Reduce Motion、低電力モード、画面外ではループを止め、1コマ目に戻す。表情で感情を断定せず、瞼の骨やブレンドシェイプがない素材に瞬きを追加しない。
+画面遷移・シートはシステム既定。送信・通話開始の状態変化はspring（response 0.35、dampingFraction 0.85）を基準とする。社員マスコットのループは約4秒・24fpsで、チャット上部と通話で再生する。チャットの応答中と通話で話している間は1.4倍速にする。音量リングは1.00〜1.08倍、120msで平滑化する。通話の像は同じ音量で下端を支点に最大5%つぶれる。Reduce Motion、低電力モード、画面外ではループを止め、1コマ目に戻す。表情で感情を断定しない。
 
 ## アプリアイコンと社員素材
 
 アイコン原本はStudioブランドの「配信用 — PWA 1024 / any」。`Conduit/Resources/AppIcon-LAA.icon` は青緑の地に螺旋・四分円・円弧の3層、iOS 26未満は `Conduit/Resources/Assets.xcassets/AppIcon-LAA.appiconset` を使う。LAA用署名overlayで `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA` を指定し、上流のアイコン設定は維持する。既存の `ictool`・`actool` 検証は実機表示の確認を意味しない。
 
-社員像は社長が採用した既存の8人の3Dレンダーを使う。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。
+社員像は社長が2026-11-06に採用した9体のマスコットを使う（人物像から置き換えた）。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。
 
 | ファイル | 用途 |
 |---|---|
 | `<id>-hero-1024.png` | 透過静止画。通話、正方形ウィジェット、必要時の連絡先写真 |
 | `<id>-avatar-512.png` | ループの1コマ目。一覧、チャット上部、静止時 |
-| `<id>-idle-512.mov` | HEVCアルファ付き、512²、2秒、30fps。チャット上部・通話中の待機 |
+| `<id>-idle-512.mov` | HEVCアルファ付き、512²、約4秒、24fps。チャット上部・通話 |
 
-IDは `ciel`、`argus`、`cfo`（Morgan）、`cio`（Sherlock）、`cmo`（Monet）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）。Talosの原本は骨がないため、既存の小さな動きと静止画を使う。`docs/laa/assets/ciel/` の旧2.5Dは3D素材を読めない場合の予備として残す。
+IDは `ciel`（白鳥）、`ciel-uncensored`（黒鳥）、`argus`（ふくろう）、`cfo`（Morgan）、`cio`（Sherlock）、`cmo`（Monet）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。`docs/laa/assets/ciel/` の旧2.5Dは素材を読めない時の予備として残す。
 
-## 社員3Dの制作手順
+## 社員マスコットの制作手順
 
-原本はHPの採用済みGLB（読むだけ。HP側を書き換えない）。7人は `hp/public/models/characters/fal-20260922/<id>-rigged.glb`（24骨、Meshy生成に骨とウェイトを転写）、Talosは `local-20261012/cso-masked.glb`（骨なし）。
+採用した静止画は生成画像で、立体モデルはない。動画生成で動かし、背景を抜いて使う。Blenderの毛の試作は採用画より質が下がり、1コマ約8秒かかった。
 
-1. テクスチャの読める形へ：rigged版はKTX2（Basis）で、Blenderが読めない。6人は同じ形状・骨・ウェイトのWebP版 `<id>-rigged-web.glb` を使う。CielはWebP版がないため、`scripts/laa/staff_3d/ktx2_to_png_glb.mjs` でKTX2をPNGに書き換えた作業用コピーを作る（形状・骨・動きのバイトは変えない。HPの `public/three/basis/` の変換器を使う）。
-2. レンダー：`Blender -b --factory-startup -P scripts/laa/staff_3d/render.py -- --glb <glb> --out <dir> --id <id> --frame-h 0.55`（Blender 5.2、Cycles・Metal、64サンプル＋ノイズ除去、Standard表示、透過）。全員で同じ正射影カメラ・照明を使う。ループは縦0.55m、静止画は0.66mの範囲を写し、頭頂を上端から8%に合わせる（画像上で実測して補正）。照明は左上の柔らかい主光、右の弱い補助光、後ろの冷たい縁取り光で、紙・青緑・墨の上で輪郭が読めるようにした。
-3. 姿勢：原本の頭は下向き・横に傾いているため、首と頭の骨で傾きを水平に戻し（`head_end` から自動計算）、目線を8度上げる。モデル自体は変えない。
-4. 動き：同じ骨で、呼吸1回（背骨3本と肩を余弦で）、首と頭の小さな揺れ（位相をずらした正弦）を60コマに付ける。0コマ目と60コマ目が一致するので継ぎ目なく回る。骨のないTalosには、レンダー用の場面だけに4本の骨（高さで重みを付ける）を足して同じ動きを付ける。瞬きは、どのモデルにも瞼の骨・ブレンドシェイプがないため入れない。
-5. 書出し：`ffmpeg -framerate 30 -i idle-%03d.png -c:v hevc_videotoolbox -alpha_quality 0.9 -q:v 70 -tag:v hvc1 -pix_fmt bgra <id>-idle-512.mov`。アルファは `swift scripts/laa/staff_3d/verify_alpha.swift <mov>` で確かめる（AVFoundationの `ContainsAlphaChannel` と、復号した1コマ目の角のアルファ0）。
-6. 確認：44pt・270ptの円で、紙・青緑・墨・写真の上に並べる。継ぎ目、首と髪のゆがみ、1コマ目の静止画を見る。
-7. RealityKit用：`Blender -b -P scripts/laa/staff_3d/to_usdz.py -- <PNG版glb> <id>.usdz` で骨付きUSDZ（約11〜13MB、`usdchecker --arkit` 合格）を作れる。容量が大きいためrepoには置かない。口の動き・表情には、口と瞼のブレンドシェイプを持つモデルが必要で、作るかどうかは社長の判断とする。
+1. Studioの `studio_image_cutout` で採用画を切り抜く。外周幅の対角が760pxになるよう拡大し、1280×720の単色地の中央へ置いて開始フレームにする。地は像にない色にする（既定は緑、Adaはマゼンタ、Morganは空色）。
+2. Flow（Omni 1.1 Flash、720p・4秒）で、同じ画像を開始と終了に入れて生成する。依頼文は固定カメラ・主な動き一つ・最初の姿勢へ戻る・地は平らで影なし、を書く。Flowの枠が尽きた時はMagnificのKling 2.6へ回す。Veo 3.1 Liteは漫画の線が出たため使わない。Klingは開始と終了が同じだと動きが小さくなることがある。その場合は終了画像を外し、前半を順再生と逆再生でつなぐ。5秒の素材は4秒へ縮める。
+3. `python3 scripts/laa/staff_3d/matte_loop.py <作業フォルダ> <id> <動画>` で、色抜き、輪郭を2px削って地の色を除去、466pxへ縮小して512の中央へ置く（動いても円で切れない）、影の追加、末尾10コマを1コマ目へ寄せる、HEVCアルファの書出し、静止画の書出しを行う。
+4. アルファは `swift scripts/laa/staff_3d/verify_alpha.swift <mov>` で確かめる。全コマの輪郭を重ねて円の外に出ないこと、継ぎ目、38pt・44pt・270ptを明暗の地で見る。
+5. 元の動画はStudio作品「LAAアプリ｜社員マスコット」（`cf51462f-250f-413b-9f6e-b41540841fec`）に入れる。

@@ -178,13 +178,8 @@ private struct VirtualDriveMedia {
     static func loadFixtures() throws -> [Int: VirtualDriveMedia] {
         let fixturesURL = try XCTUnwrap(Bundle(for: LAADriveRangeTests.self).url(forResource: "laa-drive-seek-fixtures", withExtension: "json"))
         let fixtures = try JSONDecoder().decode(Fixtures.self, from: Data(contentsOf: fixturesURL))
-        let movie = try Data(contentsOf: Bundle.main.bundleURL.appendingPathComponent("staff/ciel/ciel-idle-512.mov"))
-        // The bundled QuickTime movie's mdat payload starts after ftyp/wide/mdat.
-        guard movie.count >= 36 + fixtures.payloadLength,
-              String(data: movie[32..<36], encoding: .ascii) == "mdat" else {
-            throw NSError(domain: "Drive fixture source changed", code: 1)
-        }
-        let payload = movie.subdata(in: 36..<(36 + fixtures.payloadLength))
+        let payloadURL = try XCTUnwrap(Bundle(for: LAADriveRangeTests.self).url(forResource: "laa-drive-seek-payload", withExtension: "bin"))
+        let payload = try Data(contentsOf: payloadURL)
         let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
         guard digest == fixtures.payloadSHA256 else { throw NSError(domain: "Drive fixture payload changed", code: 1) }
         return try Dictionary(uniqueKeysWithValues: fixtures.files.map { file in

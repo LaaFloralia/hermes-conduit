@@ -1,22 +1,22 @@
-# 社員像（実3D）
+# 社員マスコット
 
-2026-10-29に社長が8人の社員像として採用した。旧2.5DのCiel（`../ciel/`）は既定から外し、3Dの素材が読めない時の予備として残す。作り方は [DESIGN.md「社員3Dの制作手順」](../../DESIGN.md#社員3dの制作手順)。
+2026-11-06に社長が9体を採用した。人物の3D像は既定から外し、旧2.5DのCiel（`../ciel/`）だけ素材を読めない時の予備に残す。作り方は [DESIGN.md「社員マスコットの制作手順」](../../DESIGN.md#社員マスコットの制作手順)。
 
-各フォルダに `<id>-idle-512.mov`（2.0秒・30fps・60コマ、HEVCアルファ hvc1、512²）、`<id>-avatar-512.png`（ループの1コマ目）、`<id>-hero-1024.png`（胸から上の透過静止画）がある。全員を同じ正射影カメラ・照明で描き、頭頂は上端から8%（レンダー時に実測）。
+各フォルダに `<id>-idle-512.mov`（3.96秒・24fps・95コマ、HEVCアルファ hvc1、512²）、`<id>-avatar-512.png`（ループの1コマ目）、`<id>-hero-1024.png`（透過静止画）がある。
 
-アルファの確認：`scripts/laa/staff_3d/verify_alpha.swift` で8本ともAVFoundationの `ContainsAlphaChannel` が true、復号した1コマ目の角のアルファ0・中心253を確かめた。PNGは全て `hasAlpha: yes`。継ぎ目（59→0コマ目の差）は、どれも通常のコマ間の差の範囲に収まる。
+確認（2026-11-06）：`scripts/laa/staff_3d/verify_alpha.swift` で9本とも `ContainsAlphaChannel` が true、角のアルファ0。全コマの輪郭を重ねて、512の円の外へ出ないことを確かめた。Argusだけ途中で翼を広げるが、円の内側に収まる。継ぎ目は生成の始点と終点でPSNR 40〜47dB、さらに末尾10コマを1コマ目へ寄せた。黒鳥は順再生と逆再生なので始点と終点が一致する。
 
-| id | 名前 | mov | avatar | hero | 長さ | アルファ | 使用 | 注記 |
-|---|---|---:|---:|---:|---|---|---|---|
-| ciel | Ciel | 331 KB | 274 KB | 911 KB | 2.0秒 | 確認済み | 可 | HPの3D版Ciel（銀のボブ、眼鏡なし）で、旧2.5Dの姿（黒の長髪、眼鏡）とは別の意匠。原本のKTX2をPNGに変換したコピーから描画 |
-| argus | Argus | 311 KB | 253 KB | 858 KB | 2.0秒 | 確認済み | 可 | |
-| cfo | Morgan | 374 KB | 264 KB | 883 KB | 2.0秒 | 確認済み | 可 | |
-| cio | Sherlock | 293 KB | 250 KB | 845 KB | 2.0秒 | 確認済み | 可 | |
-| cmo | Monet | 318 KB | 262 KB | 861 KB | 2.0秒 | 確認済み | 可 | |
-| cos | Merlin | 339 KB | 285 KB | 961 KB | 2.0秒 | 確認済み | 可 | |
-| cto | Ada | 301 KB | 246 KB | 836 KB | 2.0秒 | 確認済み | 可 | |
-| cso | Talos | 262 KB | 227 KB | 773 KB | 2.0秒 | 確認済み | 可（静止画と、ごく小さな動き） | 原本に骨がないため、レンダー用の場面だけに4本の骨を足して動かした（原本は変えない）。面を覆う仮面のモデルで、髪と上着の形が粗い。作り直さない |
+| id | 名前 | 像 | mov | avatar | hero | 動きの生成 |
+|---|---|---|---:|---:|---:|---|
+| ciel | Ciel | 白鳥 | 352 KB | 129 KB | 623 KB | Flow Omni 1.1 Flash |
+| ciel-uncensored | Ciel（無検閲） | 黒鳥 | 657 KB | 151 KB | 696 KB | Kling 2.6（順再生＋逆再生） |
+| argus | Argus | ふくろう | 370 KB | 195 KB | 973 KB | Flow Omni 1.1 Flash |
+| cfo | Morgan | サフラン色の丸屋根 | 323 KB | 181 KB | 848 KB | Flow Omni 1.1 Flash |
+| cio | Sherlock | テラコッタの卵 | 533 KB | 205 KB | 911 KB | Flow Omni 1.1 Flash |
+| cmo | Monet | 藤色の花 | 547 KB | 181 KB | 828 KB | Flow Omni 1.1 Flash |
+| cos | Merlin | すもも色の帽子と巻き髭 | 343 KB | 160 KB | 684 KB | Flow Omni 1.1 Flash |
+| cso | Talos | 錫色の盾 | 497 KB | 194 KB | 891 KB | Kling 2.6 |
+| cto | Ada | 青緑のクッション | 436 KB | 208 KB | 1021 KB | Flow Omni 1.1 Flash |
 
-- 瞬きなし：8体とも瞼の骨・ブレンドシェイプを持たない。
-- 黒い服（Ciel・Sherlock・Ada・Talos）は、墨の地では肩の輪郭が沈む。顔は44ptでも読める。
-- RealityKit用の骨付きUSDZ（Talos以外の7体、約11〜13MB、`usdchecker --arkit` 合格）は容量が大きいためrepoに置かない。手順7で作り直せる。
+- 元の動画と採用画はStudio作品「LAAアプリ｜社員マスコット」（`cf51462f-250f-413b-9f6e-b41540841fec`）にある。
+- 黒鳥は暗い地で体が沈むが、冠・くちばし・目と毛の輪郭で読める。

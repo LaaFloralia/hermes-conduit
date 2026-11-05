@@ -45,6 +45,22 @@ final class LAAStaffAvatarAudioTests: XCTestCase {
 
     // MARK: - The start order
 
+    func testChangingTheSpeedBeforeTheDisconnectDoesNotStartTheVideo() async {
+        let player = RecordingQueuePlayer()
+        let releases = ContinuationBox()
+        let loop = makeLoop(players: [player], releases: releases)
+
+        loop.play(URL(fileURLWithPath: "/tmp/idle.mov"))
+        loop.setRate(StaffAvatarActivity.lively.playbackRate)
+        await waitUntil { releases.items.count == 1 }
+
+        XCTAssertEqual(player.playCount, 0)
+        XCTAssertEqual(player.rate, 0, "setting rate on a connected player would start it")
+        XCTAssertEqual(player.defaultRate, StaffAvatarActivity.lively.playbackRate)
+        releases.items[0].resume()
+        await waitUntil { player.playCount == 1 }
+    }
+
     func testTheVideoWaitsForTheDisconnectBeforeItPlays() async {
         let player = RecordingQueuePlayer()
         let releases = ContinuationBox()

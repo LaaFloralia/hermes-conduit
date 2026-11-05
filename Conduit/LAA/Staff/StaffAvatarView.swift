@@ -51,6 +51,7 @@ struct StaffAvatarView: View {
     var fallbackURL: URL? = nil
     var size: CGFloat = 40
     var scrolling = false
+    var activity: StaffAvatarActivity = .resting
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -79,6 +80,7 @@ struct StaffAvatarView: View {
         .onAppear { visible = true; syncPlayback() }
         .onDisappear { visible = false; loop.stop() }
         .onChange(of: policy) { _, _ in syncPlayback() }
+        .onChange(of: activity) { _, _ in loop.setRate(activity.playbackRate) }
         .onChange(of: profile) { _, _ in loop.stop(); syncPlayback() }
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
             lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -101,6 +103,7 @@ struct StaffAvatarView: View {
     private func syncPlayback() {
         let audio = StaffAvatarIdleAudioPolicy.current(shouldPlay: policy.shouldPlay)
         guard audio.startsVideo, let url = assets.loop else { loop.stop(); return }
+        loop.setRate(activity.playbackRate)
         loop.play(url)
     }
 }
@@ -116,6 +119,7 @@ final class StaffAvatarLoop: ObservableObject {
     /// Bumped by every start and stop: a disconnect that completes after the
     /// avatar moved on must not start playback.
     private var generation = 0
+    private var rate: Float = 1
 
     private let makePlayer: () -> AVQueuePlayer
     private let makeLooper: (AVQueuePlayer, URL) -> AVPlayerLooper?
@@ -153,6 +157,7 @@ final class StaffAvatarLoop: ObservableObject {
         let player = makePlayer()
         player.isMuted = true
         player.preventsDisplaySleepDuringVideoPlayback = false
+        player.defaultRate = rate
         looper = makeLooper(player, url)
         currentURL = url
         self.player = player
@@ -164,6 +169,15 @@ final class StaffAvatarLoop: ObservableObject {
             self.readyToPlay = true
             self.player?.play()
         }
+    }
+
+    /// Setting `rate` starts a player, so a start still waiting for the
+    /// disconnect only records the speed; its `play()` picks it up.
+    func setRate(_ rate: Float) {
+        self.rate = rate
+        guard let player else { return }
+        player.defaultRate = rate
+        if readyToPlay, player.timeControlStatus != .paused { player.rate = rate }
     }
 
     func stop() {

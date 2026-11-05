@@ -33,7 +33,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
 
     private var header: some View {
         LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
-                          status: status, isObscured: calls.isShowingCall,
+                          status: status, activity: appState.isBusy ? .lively : .resting,
+                          isObscured: calls.isShowingCall,
                           voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected,
                           compact: (LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth) ?? 200) < 140 || dynamicTypeSize.isAccessibilitySize)
             .laaPhotoGlassScope()
@@ -152,6 +153,7 @@ struct LAAEmployeeHeader: View {
     let name: String
     var avatarURL: URL? = nil
     let status: String
+    var activity: StaffAvatarActivity = .resting
     var isObscured = false
     var voiceSetting: Binding<String>? = nil
     var voiceSettingEnabled = true
@@ -164,7 +166,7 @@ struct LAAEmployeeHeader: View {
             HStack(spacing: 8) {
                 if !compact {
                     StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 38,
-                                    scrolling: showDetails || isObscured)
+                                    scrolling: showDetails || isObscured, activity: activity)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name).font(.custom("Georgia", size: 16, relativeTo: .headline))

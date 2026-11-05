@@ -9,6 +9,7 @@ struct LAAEmployeeVoiceStatus: Equatable {
     var speaker = false
     var nativeRoute = false
     var level: Float?
+    var speaking = false
     var voiceNote: String? = nil
 }
 
@@ -143,7 +144,7 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
         let next = LAAEmployeeCallSnapshot(context: context, phase: phase, connectedAt: connectedAt,
                                            muted: status.muted, speaker: status.speaker,
                                            usesSystemRoutePicker: status.nativeRoute, audioLevel: status.level,
-                                           voiceNote: status.voiceNote)
+                                           speaking: status.speaking, voiceNote: status.voiceNote)
         guard next != lastSnapshot else { return }
         lastSnapshot = next
         onUpdate?(next)
@@ -261,6 +262,7 @@ private extension LAAEmployeeVoiceHost {
     static func status(_ app: AppState, audio: VoiceAudioSessionCoordinator) -> LAAEmployeeVoiceStatus {
         let phase: LAAEmployeeCallPhase
         var level: Float?
+        var speaking = false
         if app.showVoiceSheet {
             if case .failed = app.voiceConversationController.state,
                !app.voiceConversationController.failedForAudioInterruption {
@@ -271,20 +273,25 @@ private extension LAAEmployeeVoiceHost {
             }
         } else if app.showGeminiLiveSheet {
             phase = livePhase(app.geminiLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
+            speaking = app.geminiLiveController.phase == .speaking
         } else if app.showQwenLiveSheet {
             phase = livePhase(app.qwenLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
+            speaking = app.qwenLiveController.phase == .speaking
         } else if app.showGrokLiveSheet {
             phase = livePhase(app.grokLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
+            speaking = app.grokLiveController.phase == .speaking
         } else if app.showLocalLiveSheet {
             phase = livePhase(app.localLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
+            speaking = app.localLiveController.phase == .speaking
         } else if app.showGPTLiveSheet {
             phase = gptPhase(app.gptLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
+            speaking = app.gptLiveController.phase == .speaking
         } else {
             phase = .ended
         }
         return LAAEmployeeVoiceStatus(phase: phase, muted: app.nativeCallVoiceMuted ?? false,
                                       speaker: audio.conversationSpeakerChosen,
-                                      nativeRoute: audio.isInNativeCall, level: level,
+                                      nativeRoute: audio.isInNativeCall, level: level, speaking: speaking,
                                       voiceNote: app.showGPTLiveSheet ? app.gptLiveController.voiceNote : nil)
     }
 
