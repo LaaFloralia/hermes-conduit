@@ -134,6 +134,8 @@ enum LAAUsageFreshness {
     /// One answer for the app list and the widget: a reading that is stale, or
     /// whose shape the app cannot vouch for, carries no number.
     static func isPast(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
+        // A billing-page balance has no feed freshness: its date is shown instead.
+        if item.detail?.sourceKind == "verified", item.kind == "balance", item.unit == "usd" { return false }
         if isStale(item, at: now) { return true }
         if item.kind == "cost" {
             let lag: String

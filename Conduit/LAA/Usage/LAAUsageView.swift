@@ -162,10 +162,9 @@ struct LAAUsageView: View {
                                     .multilineTextAlignment(.trailing)
                             }
                         }
-                        if group.items.isEmpty { caption("使用額を取得できません。") }
+                        if group.items.isEmpty { caption("残量を取得できません。") }
                         ForEach(group.items) { item in usageItem(item) }
                         if let url = LAAUsageGroup.billingURL(for: Self.apiBalanceID(group.id)) {
-                            caption("残高は各社APIで公開されていません。")
                             Link(destination: url) { Text(verbatim: LAACopy.usageBilling) }
                                 .laaTextStyle(.secondary)
                                 .frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -206,7 +205,10 @@ struct LAAUsageView: View {
     @ViewBuilder
     private func usageItem(_ item: LAAUsageItem) -> some View {
         let warning = past(item)
-        if item.availability != "available" || warning {
+        if item.availability == "available", item.kind == "balance", item.detail?.sourceKind == "verified" {
+            metric("残り", value(item.availableValue, unit: "usd"), prominent: true)
+            caption("請求画面の確認値 · 確認 " + time(LAAUsageItem.date(item.observedAt)))
+        } else if item.availability != "available" || warning {
             caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
         } else if item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
@@ -219,11 +221,6 @@ struct LAAUsageView: View {
                     caption("取得 " + clockTime(LAAUsageItem.date(credits.updatedAt)) + " · 枠の%とは別単位")
                 }
             }
-        } else if item.kind == "cost" {
-            metric(item.id.hasSuffix("cost-today") ? "使用額（今日・UTC）" : "使用額（今月・UTC）", value(item.availableValue, unit: "usd"), warning: false, prominent: true)
-            let lag = item.id.hasPrefix("provider.claude-api.")
-                ? "反映は通常5分程度遅れ（Anthropic公表）" : "反映の遅れは非公表（OpenAI）"
-            caption("取得 " + clockTimeJST(LAAUsageItem.date(item.observedAt)) + " 日本時間 · UTC 0時区切り · " + lag)
         } else if item.id == "provider.liquid.usage" {
             metric("記録済み費用", money(item.detail?.recordedCostUsd, precision: 12), warning: warning, prominent: true)
             if let input = item.detail?.models?.first?.inputTokens { metric("記録済み入力", value(input, unit: "tokens"), warning: warning) }
@@ -253,11 +250,11 @@ struct LAAUsageView: View {
                 }
             }
         }
-        if item.availability == "available" && !warning {
+        if item.availability == "available" && !warning && item.detail?.sourceKind != "verified" {
             flags(item)
             if let renews = LAAUsageItem.date(item.detail?.renewsAt) { caption("更新予定 " + time(renews)) }
             if let expires = item.detail?.expiresOnUtc { caption("有効期限 " + expires + " UTC") }
-            if item.kind != "cost" { caption("取得 " + clockTime(LAAUsageItem.date(item.observedAt))) }
+            caption("取得 " + clockTime(LAAUsageItem.date(item.observedAt)))
         }
     }
 
@@ -319,7 +316,7 @@ struct LAAUsageView: View {
     }
 
     private func groupWarning(_ group: LAAUsageGroup) -> String? {
-        if group.items.contains(where: { LAAUsageFreshness.isStale($0, at: evaluatedAt) && $0.availability == "available" }) { return "更新待ち" }
+        if group.items.contains(where: { LAAUsageFreshness.isStale($0, at: evaluatedAt) && $0.availability == "available" && $0.detail?.sourceKind != "verified" }) { return "更新待ち" }
         if group.items.contains(where: { $0.kind == "quota" && ($0.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0, at: evaluatedAt) } }) { return "一部の枠がリセット済み" }
         if group.items.contains(where: { $0.availability == "available" && ($0.isExpired(now: evaluatedAt) || needsRenewal($0)) }) { return "期限・追加項目 要確認" }
         if group.items.contains(where: { $0.availability == "available" && $0.detail?.sourceKind != "verified" && $0.detail?.freshUntil == nil }) { return "旧Bridge・鮮度は目安" }
@@ -381,7 +378,9 @@ struct LAAUsageView: View {
         let shown = number > 0 && number < 0.000001 && unit != "percent" ? "<0.000001" : digits
         switch unit {
         case "percent": return shown + "%"
-        case "usd": return shown.hasPrefix("<") ? "<$0.000001" : "$" + shown
+        case "usd":
+            if shown.hasPrefix("-") { return "-$" + shown.dropFirst() }
+            return shown.hasPrefix("<") ? "<$0.000001" : "$" + shown
         case "jpy": return shown.hasPrefix("<") ? "<¥0.000001" : "¥" + shown
         case "credits": return shown + " credits"
         case "count": return shown + " 回"

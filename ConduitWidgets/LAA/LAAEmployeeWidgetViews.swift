@@ -243,7 +243,7 @@ struct LAAEmployeeWidgetView: View {
     static func valueText(_ meter: WidgetUsageMeter) -> String {
         switch meter.unit {
         case .percent: return percentageText(meter.amount)
-        case .usd: return "$" + meter.amount.formatted(.number.precision(.fractionLength(2)))
+        case .usd: return (meter.amount < 0 ? "-$" : "$") + abs(meter.amount).formatted(.number.precision(.fractionLength(2)))
         case .credits: return meter.amount.formatted(.number.precision(.fractionLength(0...2))) + " credits"
         }
     }

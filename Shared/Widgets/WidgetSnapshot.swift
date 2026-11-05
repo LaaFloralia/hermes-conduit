@@ -148,7 +148,7 @@ struct WidgetWorkspaceSnapshot: Codable, Hashable {
 }
 
 #if LAA_BUILD
-/// One widget row. A quota row carries a percentage; the API cost and Liquid
+/// One widget row. A quota row carries a percentage; the API balance and Liquid
 /// usage rows carry US dollars. A row whose reading is missing keeps its place
 /// with no number, so the owner still sees that the item was not fetched.
 struct WidgetUsageMeter: Codable, Equatable, Identifiable {
@@ -211,7 +211,8 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     var remainingPercent: Double? { available && unit == .percent ? amount : nil }
 
     func hasRecordedValue(at date: Date) -> Bool {
-        guard available, amount.isFinite, amount >= 0, verified != true,
+        // Only a billing-page balance is a verified reading, and it can be negative.
+        guard available, amount.isFinite, verified == true ? unit == .usd : amount >= 0,
               let observedAt, !(date.addingTimeInterval(120) < observedAt) else { return false }
         return unit != .percent || amount <= 100
     }
@@ -245,7 +246,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         guard available, !stale, let observedAt,
               !(min(anchor ?? date, date).addingTimeInterval(120) < observedAt) else { return true }
         if resetsAt.map({ !(date < $0) }) == true { return true }
-        if verified == true { return true }
+        if verified == true { return unit != .usd }
         let limit = min(observedAt, anchor ?? date, date).addingTimeInterval(10 * 60)
         return !(date < min(freshUntil ?? limit, limit))
     }
@@ -267,16 +268,14 @@ struct WidgetUsageSnapshot: Codable, Equatable {
 
     /// Rows saved by an older build keep their bytes but never render: a retired
     /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here. Venice
-    /// shows its balance only. The two API rows show the month's spend, so a
-    /// snapshot still holding their balance (`provider.<id>.balance`, which
-    /// neither API publishes) is dropped instead of drawn as 未取得.
+    /// shows its balance only, and so do the two API rows: a snapshot still
+    /// holding their monthly spend is dropped instead of drawn as a balance.
     var displayableMeters: [WidgetUsageMeter] {
         meters.filter { meter in
             let parts = meter.id.split(separator: ".")
             guard parts.count >= 2, Self.shownProviders.contains(String(parts[1])) else { return false }
             let provider = String(parts[1])
-            if provider == "venice" { return meter.id == "provider.venice.balance" }
-            if provider == "openai-api" || provider == "claude-api" { return meter.id == "provider.\(provider).cost-month" }
+            if ["venice", "openai-api", "claude-api"].contains(provider) { return meter.id == "provider.\(provider).balance" }
             return true
         }
     }

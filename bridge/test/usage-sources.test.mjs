@@ -485,6 +485,20 @@ test('the storage-guard status file is read as written, and bad files stay unava
 });
 
 
+test('an API balance is the billing-page reading, below zero too, whether or not the costs were read', () => {
+  const items = usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:00:00Z', stale: false, providers: [
+    { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
+      balance: { amount: -0.19, confirmedAt: '2026-10-20T14:24:00Z' } },
+    { id: 'openai-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed', balance: null },
+  ] }, { now: Date.parse('2026-10-29T05:00:00Z') });
+  const claude = byId(items, 'provider.claude-api.balance');
+  assert.equal(claude.availability, 'available');
+  assert.equal(claude.value, -0.19);
+  assert.equal(claude.observedAt, '2026-10-20T14:24:00Z');
+  assert.equal(claude.detail.sourceKind, 'verified');
+  assert.equal(byId(items, 'provider.openai-api.balance').availability, 'unavailable');
+});
+
 test('Venice USD and Magnific credits keep their units and priority, without Antigravity', () => {
   const items = projection([
     { id: 'magnific', kind: 'unitCredits', available: true, source: 'live',
@@ -496,7 +510,7 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
       windows: [{ label: 'Weekly', remaining: 90 }] },
   ]);
   assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 9),
-    ['codex', 'opencode-go', 'claude', 'nanogpt', 'venice', 'magnific', 'openai-api', 'claude-api', 'liquid']);
+    ['codex', 'opencode-go', 'claude', 'nanogpt', 'magnific', 'openai-api', 'claude-api', 'liquid', 'venice']);
   assert.equal(items.some(item => item.id.startsWith('provider.antigravity.')), false);
   const venice = byId(items, 'provider.venice.balance');
   assert.equal(venice.unit, 'usd');

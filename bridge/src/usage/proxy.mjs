@@ -31,20 +31,19 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 
 // Fixed order, so the list is stable between polls and between providers that
 // appear and disappear. Labels match the Console collector's code-owned names.
-// The owner's priority (2026-11-01): the weekly quotas, then the API balances
-// and costs, then the recorded Liquid usage. Jev, Google Cloud and Google Flow
+// The owner's priority (2026-11-05): the quotas, then the API balances and
+// costs, the recorded Liquid usage, and Venice last. Jev, Google Cloud and Google Flow
 // are retired: the proxy no longer reads them, and a cached row never brings
 // them back.
 //
 // The two API providers carry a balance item beside their cost items. Neither
-// provider publishes an automatic balance today; the balance item then reports
-// `not_auto` with no value, and the cost item stays what it is, an amount used.
+// publishes a balance, so the item is the billing-page reading the proxy passes
+// as `balance`, marked verified; the cost item stays an amount used.
 export const USAGE_PROVIDERS = Object.freeze([
   { id: 'codex', label: 'Codex', kind: 'quota' },
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
   { id: 'nanogpt', label: 'nanoGPT', kind: 'quota' },
-  { id: 'venice', label: 'Venice', kind: 'balance' },
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
   { id: 'openai-api', label: 'GPT API', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
@@ -53,6 +52,7 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
   { id: 'liquid', label: 'Liquid AI', kind: 'usage' },
+  { id: 'venice', label: 'Venice', kind: 'balance' },
   { id: 'deepseek', label: 'DeepSeek API', kind: 'balance' },
   { id: 'grok-bot', label: 'Grok Bot', kind: 'quota' },
   { id: 'refuseless', label: 'Refuseless', kind: 'balance' },
@@ -238,6 +238,15 @@ function quotaItem(row, provider, context) {
   });
 }
 
+// A billing page can read below zero: an unpaid balance is still the balance.
+function confirmedBalanceItem(balance, provider) {
+  const amount = finiteNumber(balance.amount, { min: Number.MIN_SAFE_INTEGER });
+  const confirmedAt = isoTime(balance.confirmedAt);
+  if (amount === null || confirmedAt === null) return unavailableItem({ ...baseOf(provider), unit: 'usd', reason: 'not_auto' });
+  return availableItem({ ...baseOf(provider), unit: 'usd', value: amount, observedAt: confirmedAt, stale: false, expired: false,
+    detail: { sourceKind: 'verified', currency: 'USD' } });
+}
+
 function balanceItem(row, provider, context) {
   const currency = row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' ? 'USD' : null;
   const amount = finiteNumber(row.amount);
@@ -391,6 +400,7 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
   return USAGE_PROVIDERS.map((provider) => {
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
+    if (provider.kind === 'balance' && row.balance) return confirmedBalanceItem(row.balance, provider);
     const prior = observationAnchors.get(provider.id);
     const rowReceivedAt = prior?.observedAt === Date.parse(row.updatedAt) ? Math.min(prior.receivedAt, receivedAt) : receivedAt;
     const context = { now, fetchedAt, receivedAt: rowReceivedAt, autoStaleMs: autoLimit };
