@@ -43,8 +43,8 @@ struct StaffAvatarIdleAudioPolicy: Equatable {
 }
 
 /// Each visible avatar owns its own muted looper; the idle audio policy above
-/// keeps it from taking another app's audio. The still underneath is also the
-/// Reduce Motion fallback.
+/// keeps it from taking another app's audio. The still shows until the video's
+/// first frame is on screen, and is also the Reduce Motion fallback.
 struct StaffAvatarView: View {
     let profile: String
     let name: String
@@ -57,6 +57,7 @@ struct StaffAvatarView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @State private var videoOnScreen = false
     @StateObject private var loop = StaffAvatarLoop()
 
     private var assets: StaffAssets { StaffAssetResolver.bundled.resolve(profile: profile) }
@@ -69,9 +70,11 @@ struct StaffAvatarView: View {
     var body: some View {
         ZStack {
             still
+                .opacity(policy.showsStill(videoOnScreen: videoOnScreen) ? 1 : 0)
             if let player = loop.player, policy.shouldPlay {
-                StaffVideoLayer(player: player)
+                StaffVideoLayer(player: player) { videoOnScreen = $0 }
                     .accessibilityHidden(true)
+                    .onDisappear { videoOnScreen = false }
             }
         }
         .frame(width: size, height: size)
@@ -81,7 +84,7 @@ struct StaffAvatarView: View {
         .onDisappear { visible = false; loop.stop() }
         .onChange(of: policy) { _, _ in syncPlayback() }
         .onChange(of: activity) { _, _ in loop.setRate(activity.playbackRate) }
-        .onChange(of: profile) { _, _ in loop.stop(); syncPlayback() }
+        .onChange(of: profile) { _, _ in videoOnScreen = false; loop.stop(); syncPlayback() }
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
             lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
@@ -211,15 +214,34 @@ final class StaffAvatarLoop: ObservableObject {
 
 private struct StaffVideoLayer: UIViewRepresentable {
     let player: AVQueuePlayer
+    let onReadyForDisplay: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> PlayerView {
         let view = PlayerView()
         view.isOpaque = false
         view.backgroundColor = .clear
         view.layerPlayer.videoGravity = .resizeAspectFill
         view.layerPlayer.player = player
+        let coordinator = context.coordinator
+        coordinator.onReadyForDisplay = onReadyForDisplay
+        coordinator.observation = view.layerPlayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { layer, _ in
+            let ready = layer.isReadyForDisplay
+            DispatchQueue.main.async { coordinator.onReadyForDisplay?(ready) }
+        }
         return view
     }
-    func updateUIView(_ view: PlayerView, context: Context) { view.layerPlayer.player = player }
+
+    func updateUIView(_ view: PlayerView, context: Context) {
+        context.coordinator.onReadyForDisplay = onReadyForDisplay
+        view.layerPlayer.player = player
+    }
+
+    final class Coordinator {
+        var observation: NSKeyValueObservation?
+        var onReadyForDisplay: ((Bool) -> Void)?
+    }
 
     final class PlayerView: UIView {
         override class var layerClass: AnyClass { AVPlayerLayer.self }

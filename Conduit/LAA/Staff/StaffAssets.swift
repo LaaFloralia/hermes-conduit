@@ -105,5 +105,11 @@ struct StaffAvatarPlaybackPolicy: Equatable {
     var shouldPlay: Bool {
         visible && active && !reduceMotion && !lowPower && !scrolling && hasLoop
     }
+
+    /// The video is transparent around the mascot, so a still left underneath
+    /// shows through it as a second, unmoving mascot.
+    func showsStill(videoOnScreen: Bool) -> Bool {
+        !(shouldPlay && videoOnScreen)
+    }
 }
 #endif

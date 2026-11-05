@@ -2,7 +2,7 @@
 
 最初に読む入口。社長の呼び名は「AIアプリ」「LAAアプリ」。ここには現行の進め方と状態だけを置き、経緯はgit logとLinearに任せる。古くなった記述は書き足さずに置き換える。
 
-最終更新: 2026-11-06（Work詳細の整理とAI Usageの残量表示をTestFlightへ配信）
+最終更新: 2026-11-06（社員を動く9体のマスコットへ差し替え）
 
 ## 位置づけ
 
@@ -64,8 +64,9 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
 - TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みの最新は **2611051513**（master `f450d90c`、2026-11-06にアップロード、`VALID`・`IN_BETA_TESTING`・LAA Internalを確認）。その前は **2611051323**（master `12287615`）、**2611031110**（master `740f7014`、2026-11-03 20:29 JSTにアップロード、`VALID`・`IN_BETA_TESTING`・`LAA Internal` を確認。ウィジェットのproviderフィルタにnanoGPTを追加し、GPT API・Claude APIの行を残高から今月の使用額へ変え、画面の残高「未取得」行を請求ページの注記に置き換えた）。**2611031024**（master `5b29f95b`）は画面だけnanoGPTが出てウィジェットに出なかった。**2611030952**（master `0a42f336`）は画面側の固定リストにnanoGPTが無く表示されなかった。前の **2611030910**（master `4c4c34ba`）と **2611030011**（master `d787a4ba`）はそのまま残る。署名用秘密はxcodebuildへ引き継がず、終了時にDerivedDataと一時署名ファイルを清掃する。
 
-## 現在の状態（2026-11-05）
+## 現在の状態（2026-11-06）
 
+- 社員の見た目を人の画像から独自の9体のマスコットへ替えた（Ciel=白鳥、Ada、Morgan、Monet、Merlin、Sherlock、Argus=ふくろう、Talos=盾、Ciel（無検閲）=黒鳥）。全員に待機ループがあり、会話の応答中と通話の発話中は1.4倍で再生し、通話は音量でも伸縮する。視差軽減・省電力・スクロール中・非表示・iOS 26以下・Macは従来どおり静止画で、Macの通話は音量の伸縮だけ動く。制作手順は `docs/laa/DESIGN.md` の「社員マスコットの制作手順」、素材は `docs/laa/assets/staff/README.md`。実機の動きは社長の確認待ち。
 - Workの詳細は見出しを名前だけのLiquid Glassにし、中断を `ぁあ` の左へ移した。LAAアプリ発の本人の会話は `plainPrompt` で入力文だけを届け、一覧の名前はPaseoがワークスペースへ付けた題名へ追従する（本人の命名は保持）。AI UsageはGPT API・Claude APIを使用額ではなく残量で表示する。各社は残高APIを公開していないため、値はHQ `catalog.verifiedMoney` の請求画面確認値で、確認日時を出す（自動更新なし。請求画面を確認したら台帳を更新する）。見出しの `Weekly` を外し、単独枠はカード内の枠名も出さず、複数枠は `週間` と表示する。表示順はVeniceを最後へ移した。
 - Workのアーカイブは親子ごとPaseoへ反映する（master `12287615`）。実行中・判断待ちを含む親子は `session_running` で拒否する（Paseoのアーカイブは実行中のターンを中断し、ラベル付きの子も閉じるため）。空になったワークスペースもPaseoでアーカイブするが、worktreeは実ファイルを消すので対象外。戻すは選んだ行だけで、子はアーカイブに残す。LAAだけでアーカイブされていた14件と空のワークスペース2件は、Paseo実機へ反映済み（戻す→再アーカイブの往復も確認）。プロジェクトのアーカイブはBridge内だけで、属するセッションは変えない。子エージェントは親の下に畳み、隠れた判断待ちは親へ出す。Bridge 613/613、LAA単体・UI 31/31＋追加UI 2/2、スモーク695/695（masterも同数成功）、personal Release成功。実機とMac版への配信は未了。
 

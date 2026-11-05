@@ -428,6 +428,15 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertGreaterThan(StaffAvatarActivity.lively.playbackRate, StaffAvatarActivity.resting.playbackRate)
     }
 
+    func testTheStillLeavesOnlyOnceTheVideoIsOnScreen() {
+        var policy = StaffAvatarPlaybackPolicy(visible: true, active: true, reduceMotion: false,
+                                               lowPower: false, scrolling: false, hasLoop: true)
+        XCTAssertTrue(policy.showsStill(videoOnScreen: false))
+        XCTAssertFalse(policy.showsStill(videoOnScreen: true))
+        policy.scrolling = true
+        XCTAssertTrue(policy.showsStill(videoOnScreen: true))
+    }
+
     func testLoopRequiresEveryPlaybackCondition() {
         var policy = StaffAvatarPlaybackPolicy(visible: true, active: true, reduceMotion: false,
                                                lowPower: false, scrolling: false, hasLoop: true)
