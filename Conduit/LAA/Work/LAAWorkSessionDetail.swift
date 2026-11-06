@@ -80,10 +80,10 @@ struct LAAWorkSessionDetail: View {
                         Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
                         Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
                     } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
-                    // The very bottom includes the follow-up field and the
-                    // model bar. Opening always lands here (also with an empty
-                    // or unavailable history); later arrivals follow only while
-                    // this sentinel is on screen.
+                    // The end of the scrollable page, including the follow-up
+                    // field and the model bar. New arrivals follow only while
+                    // this sentinel is on screen; a short page that fits needs
+                    // no scrolling at all.
                     Color.clear.frame(height: 1).id("bottom-end")
                         .onAppear {
                             followsConversation = true
