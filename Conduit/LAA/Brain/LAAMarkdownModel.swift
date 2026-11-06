@@ -635,10 +635,15 @@ enum LAAMarkdownFormat {
         let targets = linesTouched(by: selection, in: lines, text: text)
         let applies = !targets.isEmpty && targets.allSatisfy { self.block(of: $0) == block }
         let replacement = applies ? Block.body : block
+        // A caret on an empty line is a place to start a list (a new note is
+        // one empty line), so the marker can be added there. A blank line
+        // inside a longer selection is the space between paragraphs and is
+        // left alone.
+        let mayFillBlank = targets.count == 1
         let source = NSMutableString(string: text)
         var delta = 0
         for line in targets.sorted(by: { $0.range.location < $1.range.location }) {
-            if line.kind == .blank { continue }
+            if line.kind == .blank, !mayFillBlank { continue }
             var number = 1
             if case .ordered(let existing) = line.kind { number = existing }
             let markerRange = line.markerInDocument
@@ -660,9 +665,12 @@ enum LAAMarkdownFormat {
         let lines = LAAMarkdownParser.lines(in: text)
         let targets = linesTouched(by: selection, in: lines, text: text)
         let source = NSMutableString(string: text)
+        // Same rule as `setBlock`: a single empty line can take a checkbox;
+        // blank lines inside a larger selection are paragraph spacing.
+        let mayFillBlank = targets.count == 1
         var delta = 0
         for line in targets.sorted(by: { $0.range.location < $1.range.location }) {
-            guard line.kind != .blank else { continue }
+            guard line.kind != .blank || mayFillBlank else { continue }
             let markerRange = line.markerInDocument
             let replacement: String
             if case .checkbox(let checked) = line.kind {
@@ -779,7 +787,10 @@ enum LAAMarkdownFormat {
 
     /// Puts a table under the caret's line (or replaces an empty line) and
     /// leaves the caret after it, so the grid appears where the person was
-    /// writing.
+    /// writing. A caret inside a table means under the whole table, and a
+    /// blank line is kept between the new table and an adjacent one: two
+    /// tables written directly after each other read back as a single table,
+    /// with the second one's header as rows.
     static func insertTable(text: String, selection: NSRange, columns: Int = 2) -> LAAMarkdownEdit {
         let source = text as NSString
         let count = max(1, columns)
@@ -788,16 +799,65 @@ enum LAAMarkdownFormat {
                                      rows: [Array(repeating: "", count: count)], rawLines: nil)
         table.normalise()
         let block = table.markdown
-        let line = lineRanges(in: text, selection: selection)[0]
+        var line = lineRanges(in: text, selection: selection)[0]
         let lineText = source.substring(with: line).trimmingCharacters(in: .whitespaces)
+        let caretInTable = lineText.hasPrefix("|")
+        // A caret in a table row puts the table after the table, not inside it.
+        if caretInTable { line = endOfTableRun(from: line, in: source) }
+        let needsBlankBefore = caretInTable || isTableRow(before: line, in: source)
+        let needsBlankAfter = isTableRow(after: line, in: source)
+        let lead = needsBlankBefore ? "\n" : ""
+        let trail = needsBlankAfter ? "\n" : ""
         if lineText.isEmpty {
-            return LAAMarkdownEdit(text: source.replacingCharacters(in: line, with: block),
-                                   selection: NSRange(location: line.location + (block as NSString).length, length: 0))
+            let replacement = lead + block + trail
+            return LAAMarkdownEdit(text: source.replacingCharacters(in: line, with: replacement),
+                                   selection: NSRange(location: line.location + (block as NSString).length + (lead as NSString).length,
+                                                      length: 0))
         }
-        let insertion = "\n" + block
+        let insertion = "\n" + lead + block + trail
         let at = line.location + line.length
         return LAAMarkdownEdit(text: source.replacingCharacters(in: NSRange(location: at, length: 0), with: insertion),
-                               selection: NSRange(location: at + (insertion as NSString).length, length: 0))
+                               selection: NSRange(location: at + (insertion as NSString).length - (trail as NSString).length,
+                                                  length: 0))
+    }
+
+    /// The last line of the table the caret is in.
+    private static func endOfTableRun(from line: NSRange, in source: NSString) -> NSRange {
+        var cursor = line
+        while true {
+            let next = NSMaxRange(cursor) + 1
+            guard next < source.length else { return cursor }
+            var start = 0
+            var end = 0
+            var contentsEnd = 0
+            source.getLineStart(&start, end: &end, contentsEnd: &contentsEnd, for: NSRange(location: next, length: 0))
+            let text = source.substring(with: NSRange(location: start, length: contentsEnd - start))
+            guard text.trimmingCharacters(in: .whitespaces).hasPrefix("|") else { return cursor }
+            cursor = NSRange(location: start, length: contentsEnd - start)
+        }
+    }
+
+    private static func isTableRow(before line: NSRange, in source: NSString) -> Bool {
+        guard line.location > 0 else { return false }
+        var start = 0
+        var end = 0
+        var contentsEnd = 0
+        source.getLineStart(&start, end: &end, contentsEnd: &contentsEnd,
+                            for: NSRange(location: line.location - 1, length: 0))
+        guard contentsEnd <= line.location - 1 else { return false }
+        let text = source.substring(with: NSRange(location: start, length: contentsEnd - start))
+        return text.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+    }
+
+    private static func isTableRow(after line: NSRange, in source: NSString) -> Bool {
+        let next = NSMaxRange(line) + 1
+        guard next < source.length else { return false }
+        var start = 0
+        var end = 0
+        var contentsEnd = 0
+        source.getLineStart(&start, end: &end, contentsEnd: &contentsEnd, for: NSRange(location: next, length: 0))
+        let text = source.substring(with: NSRange(location: start, length: contentsEnd - start))
+        return text.trimmingCharacters(in: .whitespaces).hasPrefix("|")
     }
 
     /// Which block a whole line shows, for the format bar's selected state.

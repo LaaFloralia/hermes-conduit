@@ -596,6 +596,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   Liquid Glass changes the block under the caret (headings, bullet, numbered,
   checkbox, quote, bold, italic, strike, code, table). Nothing is converted to
   a private document model: an untouched block is written back byte for byte,
+  and a note that ends on a table row gets an empty text run after it (so the
+  caret and the format bar have somewhere to go) which adds no bytes while it
+  stays empty,
   and syntax the editor does not render (frontmatter, `:::`, `%%`, HTML,
   footnote definitions, pipes inside code fences) is preserved. Styling is
   applied only to attributes and never while an IME composition is open, so

@@ -14,6 +14,15 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         }
         let id: UUID
         var content: Content
+        /// An empty run offered after a table that ends the note, so there is
+        /// somewhere to put the caret and keep writing. While it stays empty it
+        /// is not part of the saved text, and saving does not add a newline.
+        var isTrailingEntry = false
+
+        var isEmptyText: Bool {
+            if case .text(let text) = content { return text.isEmpty }
+            return false
+        }
     }
 
     private(set) var segments: [Segment]
@@ -31,9 +40,10 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     }
 
     /// The document text, rebuilt through the parser so it always joins the
-    /// same way it was split.
+    /// same way it was split. An untouched trailing entry contributes nothing,
+    /// so opening and saving a table-only note writes the same bytes back.
     var sourceText: String {
-        LAAMarkdownParser.text(from: segments.map { segment -> LAAMarkdownSegment in
+        LAAMarkdownParser.text(from: segments.filter { !($0.isTrailingEntry && $0.isEmptyText) }.map { segment -> LAAMarkdownSegment in
             switch segment.content {
             case .text(let text): return .text(text)
             case .table(let table): return .table(table)
@@ -53,12 +63,19 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     }
 
     private static func build(_ text: String) -> [Segment] {
-        LAAMarkdownParser.segments(in: text).map { segment in
+        var result = LAAMarkdownParser.segments(in: text).map { segment -> Segment in
             switch segment {
             case .text(let text): return Segment(id: UUID(), content: .text(text))
             case .table(let table): return Segment(id: UUID(), content: .table(table))
             }
         }
+        // A note that ends on a table row has no text run after it, so the
+        // caret has nowhere to go and the toolbar has no run to insert into.
+        // Offer an empty one; it disappears from the saved text while empty.
+        if case .table? = result.last?.content {
+            result.append(Segment(id: UUID(), content: .text(""), isTrailingEntry: true))
+        }
+        return result
     }
 
     func segment(_ id: UUID) -> Segment? { segments.first { $0.id == id } }
@@ -94,19 +111,31 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     func removeTable(_ id: UUID) {
         guard let index = segments.firstIndex(where: { $0.id == id }) else { return }
         segments.remove(at: index)
-        if segments.isEmpty { segments = [Segment(id: UUID(), content: .text(""))] }
+        if segments.isEmpty { segments = [Segment(id: UUID(), content: .text(""), isTrailingEntry: true)] }
+        ensureTrailingEntry()
         onChange(sourceText)
         revision += 1
     }
 
     /// Puts a table where the caret is and splits the run around it, so the
-    /// grid is editable immediately.
+    /// grid is editable immediately. A table written straight after another
+    /// one reads back as a single table, so a blank line is kept between the
+    /// runs that hold them — the document is only split at table boundaries,
+    /// and the neighbouring table is in the next run.
     func insertTable(selection: NSRange, into segmentID: UUID? = nil) {
         let id = segmentID ?? activeTextSegment
             ?? segments.first(where: { if case .text = $0.content { return true }; return false })?.id
         guard let id, let index = segments.firstIndex(where: { $0.id == id }),
               case .text(let text) = segments[index].content else { return }
-        let edit = LAAMarkdownFormat.insertTable(text: text, selection: selection)
+        var edit = LAAMarkdownFormat.insertTable(text: text, selection: selection)
+        if index > 0, isTable(segments[index - 1]), Self.startsWithTableRow(edit.text) {
+            edit = LAAMarkdownEdit(text: "\n" + edit.text,
+                                   selection: NSRange(location: edit.selection.location + 1,
+                                                      length: edit.selection.length))
+        }
+        if index + 1 < segments.count, isTable(segments[index + 1]), Self.endsWithTableRow(edit.text) {
+            edit = LAAMarkdownEdit(text: edit.text + "\n", selection: edit.selection)
+        }
         let replacement = LAAMarkdownParser.segments(in: edit.text).map { segment -> Segment in
             switch segment {
             case .text(let text): return Segment(id: UUID(), content: .text(text))
@@ -117,8 +146,34 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         if case .text(let first)? = segments.first?.content, first.isEmpty, segments.count > 1 {
             segments.removeFirst()
         }
+        ensureTrailingEntry()
         onChange(sourceText)
         revision += 1
+    }
+
+    /// A note that ends on a table row has no run for the caret: after a table
+    /// is added or removed, put the empty entry back. It costs no bytes while
+    /// it stays empty, so an untouched save is unchanged.
+    private func ensureTrailingEntry() {
+        if case .table? = segments.last?.content {
+            segments.append(Segment(id: UUID(), content: .text(""), isTrailingEntry: true))
+        }
+    }
+
+    private func isTable(_ segment: Segment) -> Bool {
+        if case .table = segment.content { return true }
+        return false
+    }
+
+    private static func startsWithTableRow(_ text: String) -> Bool {
+        guard let first = LAAMarkdownParser.split(text).first else { return false }
+        return first.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+    }
+
+    private static func endsWithTableRow(_ text: String) -> Bool {
+        guard let last = LAAMarkdownParser.split(text).last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+        else { return false }
+        return last.trimmingCharacters(in: .whitespaces).hasPrefix("|")
     }
 }
 #endif

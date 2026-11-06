@@ -34,6 +34,10 @@ import Foundation
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-table-fixture") {
                     try Data("# 表\n\n| 項目 | 値 |\n| --- | --- |\n| あ | 1 |\n\n末尾の段落\n".utf8)
                         .write(to: root.appendingPathComponent("Company/Table.md"))
+                    // No trailing newline: a note that ends on its table row
+                    // must still take text after it without gaining a newline.
+                    try Data("| a | b |\n| --- | --- |\n| 1 | 2 |".utf8)
+                        .write(to: root.appendingPathComponent("Company/OnlyTable.md"))
                 }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-conflict-copy-fixture") {
                     try Data("CONFLICT-COPY-FIXTURE".utf8).write(to: root.appendingPathComponent("Company/Start.sync-conflict-20261101-ABC.md"))
