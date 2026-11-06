@@ -797,6 +797,11 @@ enum LAAMarkdownFormat {
     /// blank line is kept between the new table and an adjacent one: two
     /// tables written directly after each other read back as a single table,
     /// with the second one's header as rows.
+    ///
+    /// A caret inside a fenced code block means after the block: code is
+    /// verbatim, so a table written into it would stay code and split the
+    /// block. A fence that was never closed has no place after it that is not
+    /// still code, so the note is returned unchanged.
     static func insertTable(text: String, selection: NSRange, columns: Int = 2) -> LAAMarkdownEdit {
         let source = text as NSString
         let count = max(1, columns)
@@ -806,6 +811,11 @@ enum LAAMarkdownFormat {
         table.normalise()
         let block = table.markdown
         var line = lineRanges(in: text, selection: selection)[0]
+        switch fencedPosition(text: text, line: line) {
+        case .afterClosing(let closing): line = closing
+        case .unclosed: return LAAMarkdownEdit(text: text, selection: selection)
+        case .outside: break
+        }
         let lineText = source.substring(with: line).trimmingCharacters(in: .whitespaces)
         let caretInTable = lineText.hasPrefix("|")
         // A caret in a table row puts the table after the table, not inside it.
@@ -815,9 +825,15 @@ enum LAAMarkdownFormat {
         let lead = needsBlankBefore ? "\n" : ""
         let trail = needsBlankAfter ? "\n" : ""
         if lineText.isEmpty {
-            let replacement = lead + block + trail
+            // A CRLF note hands the line over with its carriage return, so the
+            // line after it is empty for NSString but not for the parser,
+            // which splits on "\n". Without a line feed of its own the block
+            // would be glued to the previous line and read back as prose.
+            let separator = lead.isEmpty && needsLineFeed(after: line, in: source) ? "\n" : ""
+            let replacement = separator + lead + block + trail
             return LAAMarkdownEdit(text: source.replacingCharacters(in: line, with: replacement),
-                                   selection: NSRange(location: line.location + (block as NSString).length + (lead as NSString).length,
+                                   selection: NSRange(location: line.location + (separator as NSString).length
+                                                       + (block as NSString).length + (lead as NSString).length,
                                                       length: 0))
         }
         let insertion = "\n" + lead + block + trail
@@ -864,6 +880,53 @@ enum LAAMarkdownFormat {
         source.getLineStart(&start, end: &end, contentsEnd: &contentsEnd, for: NSRange(location: next, length: 0))
         let text = source.substring(with: NSRange(location: start, length: contentsEnd - start))
         return text.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+    }
+
+    private enum FencedPosition {
+        case outside
+        /// The closing fence of the block the caret is in.
+        case afterClosing(NSRange)
+        /// The fence never closes, so everything after it is code.
+        case unclosed
+    }
+
+    /// Where a table has to go when the caret's line is inside a fenced code
+    /// block: after the block's closing fence, or nowhere at all while the
+    /// fence is still open. The block's own lines are never an insertion
+    /// point.
+    private static func fencedPosition(text: String, line: NSRange) -> FencedPosition {
+        let lines = LAAMarkdownParser.lines(in: text)
+        guard let caret = lines.firstIndex(where: { $0.range.location == line.location }) else { return .outside }
+        var open: Int?
+        var blocks: [(open: Int, close: Int?)] = []
+        for index in lines.indices {
+            guard case .fence = lines[index].kind else { continue }
+            if let start = open {
+                blocks.append((start, index))
+                open = nil
+            } else {
+                open = index
+            }
+        }
+        if let start = open { blocks.append((start, nil)) }
+        for block in blocks {
+            if let close = block.close {
+                if caret >= block.open, caret <= close { return .afterClosing(lines[close].range) }
+            } else if caret >= block.open {
+                return .unclosed
+            }
+        }
+        return .outside
+    }
+
+    /// An empty line that starts right after the carriage return of a CRLF
+    /// line. `lineRanges` sees the CR as the line break, but the Markdown
+    /// parser splits on "\n" only, so a block written here needs its own line
+    /// feed to stay on a line of its own.
+    private static func needsLineFeed(after line: NSRange, in source: NSString) -> Bool {
+        guard line.length == 0, line.location > 0, line.location <= source.length else { return false }
+        guard source.character(at: line.location - 1) == 0x0D else { return false }
+        return line.location == source.length || source.character(at: line.location) != 0x0A
     }
 
     /// Which block a whole line shows, for the format bar's selected state.
