@@ -63,6 +63,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         private var styling = false
         var autoFocus = false
         private var didAutoFocus = false
+        private var adoptGeneration = 0
         private var pendingHeight: CGFloat?
 
         init(parent: LAAMarkdownTextView) {
@@ -129,11 +130,19 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         // MARK: Helpers
 
         /// Called from `updateUIView`: publishing a draft change inside a view
-        /// update is not allowed, so the report lands on the next turn.
+        /// update is not allowed, so the report lands on the next turn. It
+        /// reads the text when it lands — never a value captured here — and a
+        /// superseded or mid-composition report is dropped, so input that
+        /// arrives first is not rolled back to an older draft.
         func adoptLiveText(_ textView: UITextView) {
-            let text = textView.text ?? ""
-            Task { @MainActor [weak self] in
-                self?.parent.onTextChange(text)
+            adoptGeneration += 1
+            let generation = adoptGeneration
+            Task { @MainActor [weak self, weak textView] in
+                guard let self, let textView,
+                      let markdown = textView as? LAAMarkdownUITextView,
+                      generation == self.adoptGeneration,
+                      let text = markdown.settledTextForAdoption() else { return }
+                self.parent.onTextChange(text)
             }
         }
 
@@ -357,6 +366,14 @@ final class LAAMarkdownUITextView: UITextView {
     /// False while an IME composes: restyling or replacing characters then
     /// would abandon the conversion the person is in the middle of.
     var acceptsLiveStyling: Bool { markedTextRange == nil }
+
+    /// The text this view may publish right now. Nil while an IME composes or
+    /// once the view has left the hierarchy: publishing either would overwrite
+    /// a newer draft.
+    func settledTextForAdoption() -> String? {
+        guard window != nil, acceptsLiveStyling else { return nil }
+        return text
+    }
 
     init() {
         super.init(frame: .zero, textContainer: nil)

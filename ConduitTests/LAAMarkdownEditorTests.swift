@@ -618,6 +618,49 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         XCTAssertEqual(saved.markdownCell(row: 0, column: 1), "1")
     }
 
+    // MARK: Deferred reports cannot roll a newer draft back
+
+    @MainActor func testAdoptionReadsTheLiveTextAndSkipsComposition() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let view = LAAMarkdownUITextView()
+        window.addSubview(view)
+        XCTAssertNotNil(view.window, "the view is in the hierarchy")
+        view.text = "新しい入力"
+        XCTAssertEqual(view.settledTextForAdoption(), "新しい入力",
+                       "the report reads the text when it lands, not when it was queued")
+        view.setMarkedText("かな", selectedRange: NSRange(location: 2, length: 0))
+        XCTAssertNil(view.settledTextForAdoption(), "a composition in progress is never published")
+        view.unmarkText()
+        XCTAssertEqual(view.settledTextForAdoption(), "新しい入力")
+        view.removeFromSuperview()
+        XCTAssertNil(view.settledTextForAdoption(), "a view that left the hierarchy publishes nothing")
+    }
+
+    @MainActor func testAReportFromASegmentThatNoLongerExistsIsDropped() {
+        let model = LAAMarkdownDocumentModel(text: "古い内容") { _ in }
+        let staleID = model.segments[0].id
+        // A restored version rebuilds the runs; the old view can still send a
+        // report for the segment it was created for.
+        model.reload("履歴から復元した内容")
+        model.updateText(staleID, text: "古い内容に追記")
+        XCTAssertEqual(model.sourceText, "履歴から復元した内容",
+                       "a report from the old run cannot overwrite the restored note")
+        model.updateText(model.segments[0].id, text: "履歴から復元した内容に追記")
+        XCTAssertEqual(model.sourceText, "履歴から復元した内容に追記")
+    }
+
+    @MainActor func testANewerReportIsNotReplacedByAnOlderOne() {
+        // The document model only ever stores what it is told; the guard that
+        // keeps an older draft from landing lives with the view (it reads the
+        // live text). What the model owes is that the newest text wins.
+        let model = LAAMarkdownDocumentModel(text: "最初") { _ in }
+        let id = model.segments[0].id
+        model.updateText(id, text: "最初と追記")
+        model.updateText(id, text: "最初と追記と続き")
+        XCTAssertEqual(model.sourceText, "最初と追記と続き")
+        XCTAssertEqual(model.segments.count, 1)
+    }
+
     // MARK: IME
 
     @MainActor func testStylingWaitsForTheIMECompositionToEnd() {
