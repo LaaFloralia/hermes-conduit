@@ -39,6 +39,10 @@ const longMessages = Array.from({ length: 40 }, (_, index) => ({
 }));
 longMessages.push({ id: 'fixture-image', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID] });
 const conversationFor = (id) => id === SESSION_IDS.long ? longMessages : [];
+// What the app actually fetched, as opposed to what the fixture holds. The UI
+// test waits for this before asserting the scroll position, so a stopped
+// client cannot pass by accident.
+let lastServed = 0;
 const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null;
 
 const api = http.createServer(async (req, res) => {
@@ -115,7 +119,12 @@ const api = http.createServer(async (req, res) => {
     if (!session) { res.writeHead(404); return res.end(); }
     const leaf = sessionMatch[2] ?? '';
     if (leaf === '' && req.method === 'GET') return send(res, 200, session);
-    if (leaf === 'conversation') return send(res, 200, { items: conversationFor(session.id), nextCursor: null, sources: null, total: null, fetchedAt: null });
+    if (leaf === 'conversation') {
+      const items = conversationFor(session.id);
+      const result = send(res, 200, { items, nextCursor: null, sources: null, total: null, fetchedAt: null });
+      if (session.id === SESSION_IDS.long) lastServed = items.length;
+      return result;
+    }
     if (leaf === 'events') {
       // Keep the app's long poll from spinning while the fixture is open.
       await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -151,6 +160,7 @@ const control = http.createServer((req, res) => {
     reset();
     longMessages.length = 41;
     advanced = 0;
+    lastServed = 0;
   }
   if (req.url === '/advance') {
     advanced += 1;
@@ -158,6 +168,6 @@ const control = http.createServer((req, res) => {
       text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z' });
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ messages: longMessages.length }));
+  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed }));
 });
 api.listen(19584, '127.0.0.1'); control.listen(19585, '127.0.0.1');
