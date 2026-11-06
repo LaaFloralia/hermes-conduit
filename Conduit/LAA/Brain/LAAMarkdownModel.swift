@@ -151,19 +151,46 @@ struct LAAMarkdownTable: Equatable {
     var markdown: String { markdownLines.joined(separator: "\n") }
 
     /// A cell cannot hold a raw pipe (it would end the cell) or a newline (it
-    /// would end the row). A line break becomes `<br>`, the Markdown table's
-    /// own spelling for one, so the break is still rendered instead of being
-    /// silently flattened. A `<br>` already in the source is kept as written.
+    /// would end the row). Writing doubles every backslash and escapes every
+    /// pipe, so the value round trips whatever backslashes it already has:
+    /// escaping a pipe that already had one backslash must not leave an even
+    /// count, which the reader would take for a cell boundary. A line break
+    /// becomes `<br>`, the Markdown table's own spelling for one, so the break
+    /// is still rendered instead of being silently flattened. A `<br>` already
+    /// in the source is kept as written.
     private static func escape(_ cell: String) -> String {
-        cell.replacingOccurrences(of: "|", with: "\\|")
-            .replacingOccurrences(of: "\r\n", with: "<br>")
-            .replacingOccurrences(of: "\n", with: "<br>")
-            .replacingOccurrences(of: "\r", with: "<br>")
-            .trimmingCharacters(in: .whitespaces)
+        var output = ""
+        for character in cell {
+            switch character {
+            case "\\": output += "\\\\"
+            case "|": output += "\\|"
+            case "\n", "\r": output += "<br>"
+            default: output.append(character)
+            }
+        }
+        return output.trimmingCharacters(in: .whitespaces)
     }
 
+    /// The inverse of `escape`: `\\` is a literal backslash and `\|` a literal
+    /// pipe, as in Markdown elsewhere. Any other backslash is kept as written,
+    /// so a Windows path or an escape this app does not know survives.
     static func unescape(_ cell: String) -> String {
-        cell.replacingOccurrences(of: "\\|", with: "|").trimmingCharacters(in: .whitespaces)
+        var output = ""
+        var index = cell.startIndex
+        while index < cell.endIndex {
+            let character = cell[index]
+            if character == "\\" {
+                let next = cell.index(after: index)
+                if next < cell.endIndex, cell[next] == "\\" || cell[next] == "|" {
+                    output.append(cell[next])
+                    index = cell.index(after: next)
+                    continue
+                }
+            }
+            output.append(character)
+            index = cell.index(after: index)
+        }
+        return output.trimmingCharacters(in: .whitespaces)
     }
 
     static func from(_ lines: [String]) -> LAAMarkdownTable? {
@@ -211,31 +238,36 @@ struct LAAMarkdownTable: Equatable {
     }
 
     /// Splits on pipes that are not escaped, dropping the optional leading and
-    /// trailing pipe. `\|` stays inside its cell.
+    /// trailing pipe. `\|` becomes a pipe and `\\` a backslash as the cell is
+    /// read, so the value matches what `escape` writes.
     static func cells(in rawLine: String) -> [String] {
         let line = strippingCarriageReturn(rawLine)
         var cells: [String] = []
         var current = ""
-        var escaped = false
         // Character, not UTF-16 code unit: an emoji or any non-BMP character
         // is two units, and splitting one of them would corrupt the cell.
-        for character in line {
-            if escaped {
-                current.append(character)
-                escaped = false
-                continue
-            }
+        var index = line.startIndex
+        while index < line.endIndex {
+            let character = line[index]
             if character == "\\" {
+                let next = line.index(after: index)
+                if next < line.endIndex, line[next] == "\\" || line[next] == "|" {
+                    current.append(line[next])
+                    index = line.index(after: next)
+                    continue
+                }
                 current.append(character)
-                escaped = true
+                index = next
                 continue
             }
             if character == "|" {
                 cells.append(current)
                 current = ""
+                index = line.index(after: index)
                 continue
             }
             current.append(character)
+            index = line.index(after: index)
         }
         cells.append(current)
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -245,7 +277,7 @@ struct LAAMarkdownTable: Equatable {
         // it would lose that cell on the first edit.
         if endsWithDelimiter(trimmed), !cells.isEmpty { cells.removeLast() }
         if cells.count == 1, cells[0].trimmingCharacters(in: .whitespaces).isEmpty { return [] }
-        return cells.map { unescape($0) }
+        return cells.map { $0.trimmingCharacters(in: .whitespaces) }
     }
 }
 
