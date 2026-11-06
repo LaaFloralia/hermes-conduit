@@ -114,6 +114,11 @@ final class LAAWorkSessionUITests: XCTestCase {
         open(emptyID, app)
         XCTAssertTrue(app.staticTexts["会話はまだありません。"].waitForExistence(timeout: 20))
         XCTAssertTrue(wait(field(app), hittable: true))
+        // A page that fits must stay at the top: a bottom-aligned short page
+        // would push the heading and the composer down (the reported bug).
+        let heading = app.staticTexts["work.session.detail.title"].firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 10))
+        XCTAssertLessThan(heading.frame.minY, 300)
         XCTAssertTrue(app.navigationBars["空の会話"].exists)
     }
 
@@ -129,6 +134,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         let app = try launchFixture()
         open(longID, app)
         XCTAssertTrue(wait(field(app), hittable: true))
+        // The long transcript opens at its bottom, not only "somewhere visible".
+        XCTAssertGreaterThan(field(app).frame.minY, 400)
         XCTAssertTrue(app.descendants(matching: .any)["work.session.settings"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["work.session.fast"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 20))
