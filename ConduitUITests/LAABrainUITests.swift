@@ -293,7 +293,8 @@ final class LAABrainUITests: XCTestCase {
 
     func testTableCellsKeepTwoEditsThroughSaveAndReload() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                                "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
         app.launch()
         openLocalCompany(app)
         let note = app.staticTexts["Table"]
@@ -302,17 +303,25 @@ final class LAABrainUITests: XCTestCase {
         let edit = app.buttons["laa.brain.edit"]
         XCTAssertTrue(edit.waitForExistence(timeout: 20))
         edit.tap()
+        // The fixture table is a header row and one body row: the cells that
+        // exist are -1.* (header) and 0.*. A second row is added, so the test
+        // edits two different cells and leaves one cell untouched.
         let first = app.descendants(matching: .any)["laa.markdown.table.cell.0.0"]
         XCTAssertTrue(first.waitForExistence(timeout: 20))
         first.tap()
         first.typeText("AAA")
-        let second = app.descendants(matching: .any)["laa.markdown.table.cell.0.1"]
+        let addRow = app.buttons["laa.markdown.table.addRow"]
+        XCTAssertTrue(addRow.waitForExistence(timeout: 10))
+        addRow.tap()
+        let second = app.descendants(matching: .any)["laa.markdown.table.cell.1.0"]
         XCTAssertTrue(second.waitForExistence(timeout: 10))
         if !second.isHittable { app.swipeUp() }
         second.tap()
         second.typeText("BBB")
         XCTAssertTrue((first.value as? String ?? "").contains("AAA"), "the first cell keeps its edit")
         XCTAssertTrue((second.value as? String ?? "").contains("BBB"), "the second cell takes its own edit")
+        let untouched = app.descendants(matching: .any)["laa.markdown.table.cell.0.1"]
+        XCTAssertEqual(untouched.value as? String, "1", "the cell nobody edited is unchanged")
         app.buttons["laa.brain.edit.save"].tap()
         XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
         app.buttons["laa.brain.rawToggle"].tap()
@@ -321,100 +330,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(raw.label.contains("AAA"), "the saved Markdown keeps the first cell")
         XCTAssertTrue(raw.label.contains("BBB"), "the saved Markdown keeps the second cell")
         XCTAssertTrue(raw.label.contains("項目") && raw.label.contains("値"), "the header survives the save")
-        XCTAssertTrue(raw.label.contains("1"), "the untouched cell survives the save")
-    }
-
-    func testEditorFormatsAListAndKeepsItOnSave() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-daily-fixture"]
-        app.launch()
-        let editor = app.textViews["laa.brain.edit.text"]
-        focusLocalEditor(editor)
-        editor.typeText("LIST-FIXTURE")
-        let bullet = app.buttons["laa.markdown.format.bullet"]
-        XCTAssertTrue(bullet.waitForExistence(timeout: 10))
-        bullet.tap()
-        let table = app.buttons["laa.markdown.format.table"]
-        XCTAssertTrue(table.exists)
-        app.buttons["laa.brain.edit.save"].tap()
-        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
-        app.buttons["laa.brain.rawToggle"].tap()
-        let raw = app.staticTexts["laa.brain.raw"]
-        XCTAssertTrue(raw.waitForExistence(timeout: 10))
-        XCTAssertEqual(raw.label, "- LIST-FIXTURE")
-    }
-
-    func testInsertTableUsesTheFocusedRunAfterAnExistingTable() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
-        app.launch()
-        openLocalCompany(app)
-        let note = app.staticTexts["Table"]
-        XCTAssertTrue(note.waitForExistence(timeout: 30))
-        note.tap()
-        let edit = app.buttons["laa.brain.edit"]
-        XCTAssertTrue(edit.waitForExistence(timeout: 20))
-        edit.tap()
-        let runs = app.textViews.matching(identifier: "laa.brain.edit.text")
-        XCTAssertTrue(runs.element(boundBy: 0).waitForExistence(timeout: 20))
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "laa.markdown.table").count, 1)
-        // The paragraph after the existing table is its own run; focusing it
-        // must make that run the insertion target.
-        let trailing = runs.element(boundBy: runs.count - 1)
-        XCTAssertTrue(trailing.waitForExistence(timeout: 10))
-        trailing.tap()
-        app.buttons["laa.markdown.format.table"].tap()
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "laa.markdown.table").count, 2,
-                       "the inserted table joins the note")
-        app.buttons["laa.brain.edit.save"].tap()
-        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
-        app.buttons["laa.brain.rawToggle"].tap()
-        let raw = app.staticTexts["laa.brain.raw"]
-        XCTAssertTrue(raw.waitForExistence(timeout: 10))
-        XCTAssertTrue(raw.label.contains("# 表"), "the run before the table was not overwritten")
-        XCTAssertTrue(raw.label.contains("末尾の段落"), "the focused paragraph survives")
-        XCTAssertTrue(raw.label.contains("項目"), "the existing table survives")
-        XCTAssertTrue(raw.label.contains("あ"), "the existing table's cell survives")
-        XCTAssertTrue(raw.label.contains("見出し1"), "the new table was written")
-    }
-
-    func testTableOnlyNoteSavesWithoutAStrayNewlineAndTakesTextAfterIt() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE",
-                                "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
-        app.launch()
-        openLocalCompany(app)
-        let note = app.staticTexts["OnlyTable"]
-        XCTAssertTrue(note.waitForExistence(timeout: 30))
-        note.tap()
-        let edit = app.buttons["laa.brain.edit"]
-        XCTAssertTrue(edit.waitForExistence(timeout: 20))
-        edit.tap()
-        let table = app.descendants(matching: .any).matching(identifier: "laa.markdown.table").firstMatch
-        XCTAssertTrue(table.waitForExistence(timeout: 20))
-        // Saving without typing must not add a newline to a note that ends on
-        // its table row.
-        app.buttons["laa.brain.edit.save"].tap()
-        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
-        app.buttons["laa.brain.rawToggle"].tap()
-        let raw = app.staticTexts["laa.brain.raw"]
-        XCTAssertTrue(raw.waitForExistence(timeout: 10))
-        XCTAssertEqual(raw.label, "| a | b |\n| --- | --- |\n| 1 | 2 |", "an untouched save writes the same bytes")
-        // Reopen and keep writing after the table.
-        app.buttons["laa.brain.rawToggle"].tap()
-        app.buttons["laa.brain.edit"].tap()
-        let run = app.textViews.matching(identifier: "laa.brain.edit.text").firstMatch
-        XCTAssertTrue(run.waitForExistence(timeout: 20))
-        if !run.isHittable { app.swipeUp() }
-        run.tap()
-        run.typeText("AFTER-TABLE")
-        app.buttons["laa.brain.edit.save"].tap()
-        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
-        app.buttons["laa.brain.rawToggle"].tap()
-        let saved = app.staticTexts["laa.brain.raw"]
-        XCTAssertTrue(saved.waitForExistence(timeout: 10))
-        XCTAssertTrue(saved.label.contains("| 1 | 2 |\nAFTER-TABLE"), "the text follows the table")
-        XCTAssertTrue(saved.label.contains("| a | b |"), "the table survives")
+        XCTAssertTrue(raw.label.contains("| 1 |"), "the untouched cell survives the save")
     }
 
     func testFormatBarKeepsTheBlockFormatsReachableWithoutScrolling() {

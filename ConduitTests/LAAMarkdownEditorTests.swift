@@ -594,6 +594,30 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         XCTAssertEqual(model.sourceText, "本文")
     }
 
+    @MainActor func testTwoCellEditsAndAnAddedRowKeepTheRestOnReload() {
+        let source = "| 項目 | 値 |\n| --- | --- |\n| あ | 1 |\n"
+        let model = LAAMarkdownDocumentModel(text: source) { _ in }
+        guard let id = model.segments.first(where: { if case .table = $0.content { return true } else { return false } })?.id,
+              var table = model.table(id) else { return XCTFail("expected a table") }
+        table.setCell("あAAA", row: 0, column: 0)
+        model.updateTable(id, table: table)
+        table.addRow()
+        model.updateTableStructure(id, table: table)
+        table.setCell("BBB", row: 1, column: 0)
+        model.updateTable(id, table: table)
+
+        guard let saved = LAAMarkdownTable.from(LAAMarkdownParser.split(model.sourceText)) else {
+            return XCTFail("the saved table parses")
+        }
+        XCTAssertEqual(saved.header, ["項目", "値"], "the header is untouched")
+        XCTAssertEqual(saved.rows[0], ["あAAA", "1"], "the first cell keeps its edit, its neighbour is unchanged")
+        XCTAssertEqual(saved.rows[1], ["BBB", ""], "the added row keeps its own edit")
+        XCTAssertEqual(saved.rows.count, 2, "a trailing newline is not a row")
+        // The cells nobody edited keep the exact Markdown they were read with.
+        XCTAssertEqual(saved.markdownCell(row: -1, column: 0), "項目")
+        XCTAssertEqual(saved.markdownCell(row: 0, column: 1), "1")
+    }
+
     // MARK: IME
 
     @MainActor func testStylingWaitsForTheIMECompositionToEnd() {
