@@ -113,13 +113,21 @@ struct LAAChatsView: View {
         }
         .task(id: "\(appState.activeDashboardID?.uuidString ?? "-")|\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)|\(shown)") {
             guard shown else { return }
-            await appState.loadSessionCatalogIfNeeded()
-            if appState.isConnected {
-                await appState.refreshBotRoster()
-                await appState.refreshGroupChatSupport()
-                await appState.loadCronJobsIfNeeded()
-                await readRooms()
+            // The catalog, the roster and the routines are independent reads:
+            // start them together instead of waiting for each round trip in
+            // turn. The group capability is its own read, and the rooms need
+            // it, so those two stay in order. The same data is read as
+            // before; only the waiting overlaps.
+            async let catalog: Void = appState.loadSessionCatalogIfNeeded()
+            guard appState.isConnected else {
+                await catalog
+                return
             }
+            async let roster: Void = appState.refreshBotRoster()
+            async let routines: Void = appState.loadCronJobsIfNeeded()
+            await appState.refreshGroupChatSupport()
+            async let rooms: Void = readRooms()
+            _ = await (catalog, roster, routines, rooms)
         }
         .task(id: "\(appState.activeProfile)|\(shown)") {
             guard shown else { return }
@@ -153,9 +161,18 @@ struct LAAChatsView: View {
               let dashboard = appState.activeDashboardID else { return }
         let read = UUID()
         groupReadID = read
-        if groupReadDashboard != dashboard { loadedRooms = [] }
-        groupReadDashboard = dashboard
-        groupReadState = .loading
+        if groupReadDashboard != dashboard {
+            // Another dashboard's rooms are not this one's, and neither is
+            // its readiness: an empty list must never read as loaded.
+            loadedRooms = []
+            groupReadDashboard = dashboard
+            groupReadState = .loading
+        } else if groupReadState != .ready {
+            // A ready list already on screen stays while it refreshes: going
+            // back to loading would blank the section and redraw the whole
+            // list. The read still runs on every entry, so a new room arrives.
+            groupReadState = .loading
+        }
         do {
             let result = try await client.groupsList()
             guard !Task.isCancelled, groupReadID == read, appState.client === client,
