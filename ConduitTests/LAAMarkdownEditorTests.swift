@@ -416,6 +416,44 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         }
     }
 
+    func testEditingOneCellKeepsAnotherCellsMarkdownEscapes() {
+        let source = "| \\*literal\\* | other |\n| --- | --- |\n| 1 | 2 |"
+        guard let table = LAAMarkdownTable.from(LAAMarkdownParser.split(source)) else {
+            return XCTFail("the table parses")
+        }
+        XCTAssertEqual(table.header[0], "\\*literal\\*", "the escaped star reads as written")
+        var edited = table
+        edited.setCell("changed", row: 0, column: 1)
+        XCTAssertTrue(edited.markdown.contains("\\*literal\\*"),
+                      "the untouched cell keeps its single backslashes")
+        XCTAssertFalse(edited.markdown.contains("\\\\*literal"),
+                       "the untouched cell is not re-escaped")
+        XCTAssertEqual(LAAMarkdownTable.from(LAAMarkdownParser.split(edited.markdown))?.header[0],
+                       "\\*literal\\*", "the escape survives a save and reload")
+
+        // An edited cell keeps its own escape too: only what the row needs is
+        // added.
+        var typed = LAAMarkdownTable(header: ["h"], alignments: [.none], rows: [["a"]], rawLines: nil)
+        typed.setCell("\\*literal\\*", row: 0, column: 0)
+        XCTAssertTrue(typed.markdown.contains("\\*literal\\*"), "an edited cell keeps its escape")
+        XCTAssertFalse(typed.markdown.contains("\\\\*literal"), "an edited cell is not over-escaped")
+
+        // Adding and removing rows or columns carries the raw text with the
+        // cells that remain.
+        var shifted = table
+        shifted.addColumn()
+        XCTAssertEqual(shifted.markdownCell(row: -1, column: 0), "\\*literal\\*", "an added column keeps the header raw")
+        shifted.setCell("x", row: 0, column: 1)
+        shifted.addRow()
+        XCTAssertTrue(shifted.markdown.contains("\\*literal\\*"), "adding rows keeps the escaped header")
+        var removed = table
+        removed.addColumn()
+        removed.removeColumn(1)
+        XCTAssertEqual(removed.markdownCell(row: -1, column: 0), "\\*literal\\*", "removing a column keeps the raw")
+        removed.removeRow(0)
+        XCTAssertEqual(removed.markdownCell(row: -1, column: 0), "\\*literal\\*", "removing a row keeps the header raw")
+    }
+
     // MARK: IME
 
     @MainActor func testStylingWaitsForTheIMECompositionToEnd() {
