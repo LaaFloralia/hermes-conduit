@@ -124,10 +124,13 @@ struct LAAWorkSessionDetail: View {
                     .onChange(of: proxy.size.height) { _, height in viewportHeight = height }
             })
             .modifier(LAAWorkScrollHeightReader { height in
+                // Only growth matters here: a late image or a freshly measured
+                // lazy row must still reach the bottom even after the first
+                // placement. Scrolling itself does not change the content size,
+                // and a real drag is excluded inside updateContentFit.
+                let grew = height > scrollContentHeight + 1
                 scrollContentHeight = height
-                // Geometry also changes while the owner scrolls; only the
-                // initial placement may react here or it would fight the drag.
-                if !didInitialScroll { updateContentFit(scroll) }
+                if !didInitialScroll || grew { updateContentFit(scroll) }
             })
             .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in userDragged = true })
             .refreshable { await refreshSnapshot() }
@@ -169,11 +172,11 @@ struct LAAWorkSessionDetail: View {
     /// A user drag stops all automatic placement.
     private func updateContentFit(_ scroll: ScrollViewProxy) {
         guard historyLoaded, viewportHeight > 0, contentHeight > 0 else { return }
-        // The lazy stack's background can report only the part laid out so
-        // far; the scroll geometry (iOS 18) reports the whole content, and a
-        // long message list is a safe fallback on older systems.
+        // Measured height only. A row count cannot tell a tall page: several
+        // tool runs collapse into one short row, and a short page must never
+        // receive the bottom placement that leaves blank space above.
         let measured = max(contentHeight, scrollContentHeight)
-        let tall = measured > viewportHeight + 1 || messages.count >= 6
+        let tall = measured > viewportHeight + 1
         guard !userDragged else { return }
         if tall {
             let firstPlacement = !didInitialScroll
