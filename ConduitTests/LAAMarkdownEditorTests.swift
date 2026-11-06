@@ -256,7 +256,7 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
     func testBackslashesAndPastedNewlinesStayInTheirCell() {
         let slashes = "| a\\\\b | c\\|d |\n| --- | --- |\n| 1 | 2 |"
         let reloaded = editAndReload(slashes, row: 0, column: 0, value: "z")
-        XCTAssertEqual(reloaded?.header[0], "a\\\\b", "a literal backslash survives")
+        XCTAssertEqual(reloaded?.header[0], "a\\b", "a doubled backslash reads as one backslash")
         XCTAssertEqual(reloaded?.header[1], "c|d", "an escaped pipe survives")
         XCTAssertEqual(reloaded?.rows[0], ["z", "2"])
 
@@ -383,6 +383,37 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         XCTAssertEqual(lines[4].kind, .bullet)
         XCTAssertEqual(lines[5].kind, .rule)
         XCTAssertEqual(lines[5].range.location, 35, "offsets still count the carriage returns")
+    }
+
+    func testEveryBackslashCountBeforeAPipeRoundTrips() {
+        // Typed values: 0–5 backslashes before a pipe.
+        for count in 0...5 {
+            let value = "a" + String(repeating: "\\", count: count) + "|b"
+            var table = LAAMarkdownTable(header: ["h", "keep"], alignments: [.none, .none],
+                                         rows: [[value, "x"]], rawLines: nil)
+            table.setCell("y", row: 0, column: 1)
+            let reloaded = LAAMarkdownTable.from(LAAMarkdownParser.split(table.markdown))
+            XCTAssertEqual(reloaded?.rows.count, 1, "row count stays 1 for \(count) backslashes")
+            XCTAssertEqual(reloaded?.rows[0].count, 2, "cell count stays 2 for \(count) backslashes")
+            XCTAssertEqual(reloaded?.rows[0][0], value, "\(count) backslashes and a pipe round trip")
+            XCTAssertEqual(reloaded?.rows[0][1], "y", "the edited neighbour is kept for \(count)")
+        }
+
+        // The same value read from an existing note: escaping writes 2n+1
+        // backslashes, so another cell's edit must not re-split the row.
+        for count in 0...5 {
+            let encoded = "a" + String(repeating: "\\", count: 2 * count + 1) + "|b"
+            let source = "| h | keep |\n| --- | --- |\n| \(encoded) | x |"
+            guard let table = LAAMarkdownTable.from(LAAMarkdownParser.split(source)) else {
+                return XCTFail("existing table parses for \(count)")
+            }
+            XCTAssertEqual(table.rows[0].count, 2, "existing row keeps 2 cells for \(count)")
+            var edited = table
+            edited.setCell("y", row: 0, column: 1)
+            let reparsed = LAAMarkdownTable.from(LAAMarkdownParser.split(edited.markdown))
+            XCTAssertEqual(reparsed?.rows[0].count, 2, "existing cell count stable for \(count)")
+            XCTAssertEqual(reparsed?.rows[0][0], table.rows[0][0], "existing cell value stable for \(count)")
+        }
     }
 
     // MARK: IME
