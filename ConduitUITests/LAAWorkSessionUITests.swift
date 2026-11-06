@@ -148,7 +148,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         fixture("/hold-image")
         open(longID, app)
         XCTAssertTrue(wait(field(app), hittable: true))
-        app.scrollViews.firstMatch.swipeDown()
+        // One screen up: the composer is out of view while the image row is
+        // still close enough for the lazy stack to keep it alive.
         app.scrollViews.firstMatch.swipeDown()
         XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
         XCTAssertEqual(fixture("/state")?["images"] as? Int ?? -1, 0)
