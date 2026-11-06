@@ -378,6 +378,45 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(raw.label.contains("見出し1"), "the new table was written")
     }
 
+    func testTableOnlyNoteSavesWithoutAStrayNewlineAndTakesTextAfterIt() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                                "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launch()
+        openLocalCompany(app)
+        let note = app.staticTexts["OnlyTable"]
+        XCTAssertTrue(note.waitForExistence(timeout: 30))
+        note.tap()
+        let edit = app.buttons["laa.brain.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 20))
+        edit.tap()
+        let table = app.descendants(matching: .any).matching(identifier: "laa.markdown.table").firstMatch
+        XCTAssertTrue(table.waitForExistence(timeout: 20))
+        // Saving without typing must not add a newline to a note that ends on
+        // its table row.
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
+        app.buttons["laa.brain.rawToggle"].tap()
+        let raw = app.staticTexts["laa.brain.raw"]
+        XCTAssertTrue(raw.waitForExistence(timeout: 10))
+        XCTAssertEqual(raw.label, "| a | b |\n| --- | --- |\n| 1 | 2 |", "an untouched save writes the same bytes")
+        // Reopen and keep writing after the table.
+        app.buttons["laa.brain.rawToggle"].tap()
+        app.buttons["laa.brain.edit"].tap()
+        let run = app.textViews.matching(identifier: "laa.brain.edit.text").firstMatch
+        XCTAssertTrue(run.waitForExistence(timeout: 20))
+        if !run.isHittable { app.swipeUp() }
+        run.tap()
+        run.typeText("AFTER-TABLE")
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
+        app.buttons["laa.brain.rawToggle"].tap()
+        let saved = app.staticTexts["laa.brain.raw"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        XCTAssertTrue(saved.label.contains("| 1 | 2 |\nAFTER-TABLE"), "the text follows the table")
+        XCTAssertTrue(saved.label.contains("| a | b |"), "the table survives")
+    }
+
     func testDailyShortcutWithoutVaultOffersFolderSelection() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture", "-laa-brain-daily-fixture"]

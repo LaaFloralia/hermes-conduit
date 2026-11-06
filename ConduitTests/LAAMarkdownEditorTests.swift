@@ -506,6 +506,94 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         XCTAssertEqual(removed.markdownCell(row: -1, column: 0), "\\*literal\\*", "removing a row keeps the header raw")
     }
 
+    // MARK: A note that ends on a table
+
+    @MainActor func testTableOnlyNoteKeepsItsBytesAndTakesTextAfterIt() {
+        let text = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        XCTAssertEqual(model.segments.count, 2, "the table and an entry after it")
+        guard let entry = model.segments.last, entry.isTrailingEntry else {
+            return XCTFail("expected an empty entry after the table")
+        }
+        XCTAssertEqual(model.sourceText, text, "an empty entry adds no bytes")
+        model.updateText(entry.id, text: "")
+        XCTAssertEqual(model.sourceText, text, "leaving it empty keeps the note unchanged")
+        model.updateText(entry.id, text: "続き")
+        XCTAssertEqual(model.sourceText, text + "\n続き", "text after the table is separated by one newline")
+        let reloaded = LAAMarkdownDocumentModel(text: model.sourceText) { _ in }
+        XCTAssertEqual(reloaded.sourceText, model.sourceText)
+        XCTAssertEqual(reloaded.segments.count, 2, "the saved note reads back as a table and text")
+    }
+
+    @MainActor func testNoteEndingOnATableOffersAnEntryAndTheToolbarUsesIt() {
+        let text = "# 見出し\n\n| a | b |\n| --- | --- |"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        XCTAssertEqual(model.sourceText, text, "opening it changes nothing")
+        guard let entry = model.segments.last, entry.isTrailingEntry else {
+            return XCTFail("expected an empty entry after the last table")
+        }
+        model.insertTable(selection: NSRange(location: 0, length: 0), into: entry.id)
+        XCTAssertTrue(model.sourceText.hasPrefix(text + "\n\n| 見出し1 | 見出し2 |"),
+                      "the toolbar's table lands after the existing table")
+        let tables = LAAMarkdownParser.segments(in: model.sourceText).filter {
+            if case .table = $0 { return true } else { return false }
+        }
+        XCTAssertEqual(tables.count, 2, "both tables survive a reload")
+    }
+
+    @MainActor func testNoteEndingOnATableWithANewlineAppendsAfterIt() {
+        let text = "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        XCTAssertEqual(model.sourceText, text)
+        guard let run = model.segments.last else { return XCTFail("expected a run") }
+        XCTAssertFalse(run.isTrailingEntry, "the newline already gives the caret a place")
+        model.updateText(run.id, text: "続き")
+        XCTAssertEqual(model.sourceText, text + "続き")
+    }
+
+    @MainActor func testInsertingATableFromTheEntryKeepsARunForWhatFollows() {
+        let text = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        guard let entry = model.segments.last, entry.isTrailingEntry else {
+            return XCTFail("expected an empty entry after the table")
+        }
+        model.insertTable(selection: NSRange(location: 0, length: 0), into: entry.id)
+        XCTAssertEqual(model.sourceText,
+                       text + "\n\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |",
+                       "the new table follows the existing one, separated by a blank line")
+        // The note now ends on the new table: a run must exist to keep writing
+        // without saving and reopening.
+        guard let follow = model.segments.last, case .text(let empty) = follow.content else {
+            return XCTFail("no run after the new table")
+        }
+        XCTAssertTrue(empty.isEmpty)
+        XCTAssertTrue(follow.isTrailingEntry)
+        XCTAssertEqual(model.sourceText,
+                       text + "\n\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |",
+                       "the empty run still costs no bytes")
+        model.updateText(follow.id, text: "続き")
+        XCTAssertEqual(model.sourceText,
+                       text + "\n\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n続き")
+        let reloaded = LAAMarkdownParser.segments(in: model.sourceText)
+        XCTAssertEqual(reloaded.count, 4, "table, blank line, table, text — after a reload")
+    }
+
+    @MainActor func testRemovingTheLastTableLeavesAnEntryAndNoStrayBytes() {
+        let text = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        guard let tableID = model.segments.first(where: { if case .table = $0.content { return true } else { return false } })?.id else {
+            return XCTFail("expected a table")
+        }
+        model.removeTable(tableID)
+        XCTAssertEqual(model.sourceText, "", "nothing is left to write")
+        guard let run = model.segments.last, case .text = run.content else {
+            return XCTFail("the empty document keeps a run")
+        }
+        XCTAssertTrue(run.isTrailingEntry)
+        model.updateText(run.id, text: "本文")
+        XCTAssertEqual(model.sourceText, "本文")
+    }
+
     // MARK: IME
 
     @MainActor func testStylingWaitsForTheIMECompositionToEnd() {
