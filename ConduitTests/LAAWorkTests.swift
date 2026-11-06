@@ -331,5 +331,28 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(restored.draft(for: key).attachments.first?.id, "image-1")
     }
 
+    func testAppliedModelAndFastComeFromTheDaemonNotTheRequest() throws {
+        let data = Data(#"{"id":"s","name":"短い題名","nameSource":"agent","requestId":"s","workspaceId":"w","profile":"opus-xhigh","requested":{"provider":"claude","model":"claude-opus-5-5","effort":"xhigh"},"observed":{"provider":"claude","model":"claude-opus-5-5","effort":"xhigh"},"runtimeVerified":true,"observedFast":false,"capabilities":{"effort":true},"phase":"awaiting_review","createdAt":"2026-11-06T00:00:00Z","updatedAt":"2026-11-06T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
+        let session = try JSONDecoder().decode(LAAWorkSession.self, from: data)
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(#"{"profiles":[{"id":"opus-xhigh","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"xhigh","fast":true},{"id":"opus-high","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"high","fast":true}],"defaultProfile":"opus-xhigh","defaultMode":"bypass"}"#.utf8))
+        XCTAssertEqual(LAAWorkSessionStyle.appliedModel(session, options: options), "Opus 5.5 XHigh")
+        XCTAssertEqual(LAAWorkSessionStyle.effortChoices(session, options: options), ["high", "xhigh"])
+        XCTAssertEqual(session.observedFast, false)
+        XCTAssertEqual(session.capabilities?.effort, true)
+
+        // No observation and no Fast value: the detail shows nothing rather
+        // than presenting the request as the current setting.
+        let unknown = try JSONDecoder().decode(LAAWorkSession.self, from: Data(#"{"id":"u","name":"u","requestId":"u","workspaceId":"w","profile":"opus-high","requested":{"provider":"claude","model":"claude-opus-5-5","effort":"high"},"observed":null,"observedFast":null,"capabilities":{"effort":false},"phase":"created","createdAt":"2026-11-06T00:00:00Z","updatedAt":"2026-11-06T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8))
+        XCTAssertNil(LAAWorkSessionStyle.appliedModel(unknown, options: options))
+        XCTAssertTrue(LAAWorkSessionStyle.effortChoices(unknown, options: options).isEmpty)
+        XCTAssertNil(unknown.observedFast)
+        XCTAssertEqual(unknown.capabilities?.effort, false)
+
+        // A known model whose applied effort is missing says so; it does not
+        // borrow the requested effort.
+        let noEffort = try JSONDecoder().decode(LAAWorkSession.self, from: Data(#"{"id":"e","name":"e","requestId":"e","workspaceId":"w","profile":"opus-high","requested":{"provider":"claude","model":"claude-opus-5-5","effort":"high"},"observed":{"provider":"claude","model":"claude-opus-5-5"},"observedFast":true,"capabilities":{"effort":true},"phase":"running","createdAt":"2026-11-06T00:00:00Z","updatedAt":"2026-11-06T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8))
+        XCTAssertEqual(LAAWorkSessionStyle.appliedModel(noEffort, options: options), "Opus 5.5 推論未確認")
+    }
+
 }
 #endif

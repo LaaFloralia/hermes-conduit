@@ -63,6 +63,8 @@ struct LAAWorkSessionDecision: View {
         }
         .disabled(sending)
         .workCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("work.session.decision")
         .task(id: sessionID) { await load() }
     }
     private func answer(_ id: String, _ index: Int) -> Binding<String> {

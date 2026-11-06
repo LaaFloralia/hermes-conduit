@@ -393,6 +393,27 @@ enum LAAWorkSessionStyle {
         return model.map { [$0, effort(session.requested?.effort)].compactMap { $0 }.joined(separator: " ") }
     }
 
+    /// What the daemon reports as applied, not what the Bridge requested. Nil
+    /// while nothing has been observed, so the detail can say so instead of
+    /// presenting a request as the current setting.
+    static func appliedModel(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
+        guard let observed = session.observed, let model = observed.model, !model.isEmpty else { return nil }
+        let label = options?.profiles.first { $0.provider == observed.provider && $0.model == model }?.label
+        return [shortLabel(label ?? model), effort(observed.effort) ?? "推論未確認"].joined(separator: " ")
+    }
+
+    /// The effort values the daemon can apply to the observed model, in the same
+    /// order as the new-session picker. Empty when the model is unknown or the
+    /// model table has no matching profile: no menu is offered from a guess.
+    static func effortChoices(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> [String] {
+        guard let options, let observed = session.observed, let model = observed.model else { return [] }
+        let values = Set(options.profiles
+            .filter { $0.provider == observed.provider && $0.model == model }
+            .map(\.effort))
+        let rank = ["low", "medium", "high", "xhigh", "max"]
+        return values.sorted { (rank.firstIndex(of: $0) ?? 9) < (rank.firstIndex(of: $1) ?? 9) }
+    }
+
     static func statusColor(_ phase: String) -> Color {
         switch phase {
         case "awaiting_decision", "stop_unconfirmed", "error": return LAAColor.attention

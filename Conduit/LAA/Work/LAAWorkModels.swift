@@ -194,6 +194,11 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
         let available: Bool
         let code: String?
     }
+    /// What the Bridge and its daemon can actually do to this session. A
+    /// missing or false value means no control is offered.
+    struct Capabilities: Codable, Hashable {
+        let effort: Bool?
+    }
     let id: String
     let name: String
     let nameSource: String?
@@ -224,6 +229,10 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     let mode: String?
     let fast: Bool?
     let worktree: Bool?
+    /// The provider's own Fast value, when it reports one. `fast` is only what
+    /// the Bridge requested at start, so it is not shown as the current state.
+    let observedFast: Bool?
+    let capabilities: Capabilities?
 
     var isFavorite: Bool { favorite == true }
     var isArchived: Bool { archivedAt != nil }
