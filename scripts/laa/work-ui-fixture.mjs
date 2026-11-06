@@ -7,10 +7,44 @@ const reset = () => { tasks = [
 ]; };
 reset();
 const send = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
+
+// Work sessions for the scroll/header tests. Three states on one fixture:
+// empty, waiting for a decision, and a long transcript with an image.
+const SESSION_IDS = { empty: 'ses_1111111111111111', decision: 'ses_2222222222222222', long: 'ses_3333333333333333', stale: 'ses_4444444444444444' };
+const IMAGE_ID = 'a'.repeat(64);
+const FIXTURE_IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const fixtureModel = { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' };
+const fixtureSession = (id, name, phase, pending = null) => ({
+  id, name, nameSource: 'agent', delegateSessionId: `agent-${id}`, requestId: id,
+  parentId: null, projectId: null, workspaceId: 'ws_fixture', cwd: '/Users/laa', profile: 'opus-high',
+  requested: fixtureModel, observed: fixtureModel, runtimeVerified: true, phase, pending,
+  resumedFrom: null, resumedTo: null, instructionVersion: null, instructionHash: null,
+  createdAt: '2026-11-06T00:00:00Z', updatedAt: '2026-11-06T00:00:00Z', observedAt: '2026-11-06T00:00:00Z',
+  events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' },
+  observation: { available: true, code: null }, favorite: false, archivedAt: null,
+  mode: 'bypass', fast: false, worktree: false, observedFast: true, capabilities: { effort: true },
+});
+const sessions = [
+  fixtureSession(SESSION_IDS.empty, '空の会話', 'awaiting_review'),
+  fixtureSession(SESSION_IDS.decision, '判断待ち', 'awaiting_decision', { count: 1, kinds: ['question'] }),
+  fixtureSession(SESSION_IDS.long, '長い履歴', 'awaiting_review'),
+  // The last read could not reach Paseo: values are the last confirmed ones.
+  { ...fixtureSession(SESSION_IDS.stale, '観測失敗', 'awaiting_review'),
+    observation: { available: false, code: 'paseo_unavailable' } },
+];
+const longText = (index) => `## 見出し ${index}\n\n${'本文をここに置きます。'.repeat(12)}\n\n\`\`\`\nlet value = ${index}\n\`\`\`\n\n末尾の行です。  `;
+const longMessages = Array.from({ length: 40 }, (_, index) => ({
+  id: `fixture-${index}`, role: index % 2 === 0 ? 'user' : 'assistant',
+  text: index === 0 ? '最初の依頼です。' : longText(index), timestamp: '2026-11-06T00:00:00Z',
+}));
+longMessages.push({ id: 'fixture-image', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID] });
+const conversationFor = (id) => id === SESSION_IDS.long ? longMessages : [];
+const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null;
+
 const api = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   const path = url.pathname;
-  if (path === '/v1/devices/enroll') { req.resume(); return send(res, 201, { deviceId: 'work-fixture', token: 'fixture-token', scopes: ['tasks:read', 'tasks:write', 'sessions:read', 'calendar:read', 'calendar:write'] }); }
+  if (path === '/v1/devices/enroll') { req.resume(); return send(res, 201, { deviceId: 'work-fixture', token: 'fixture-token', scopes: ['tasks:read', 'tasks:write', 'sessions:read', 'sessions:write', 'calendar:read', 'calendar:write'] }); }
   if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); return res.end(); }
   if (path === '/v1/linear-owner-tasks' && req.method === 'GET') return send(res, 200, { items: tasks.filter(t => Boolean(t.archivedAt) === (url.searchParams.get('archived') === 'only')), nextCursor: null });
   if (path.startsWith('/v1/linear-owner-tasks') && ['POST', 'PATCH', 'DELETE'].includes(req.method)) {
@@ -63,7 +97,47 @@ const api = http.createServer(async (req, res) => {
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     return send(res, 200, { id: 'fixture-event-1', title: 'デザイン確認', start: start.toISOString(), end: end.toISOString(), allDay: false, location: 'LAA', calendarId: 'primary', etag: '"fixture-1"', description: 'MacのToday確認用の予定' });
   }
-  if (path === '/v1/projects' || path === '/v1/sessions') return send(res, 200, { items: [], nextCursor: null });
+  if (path === '/v1/projects') return send(res, 200, { items: [], nextCursor: null });
+  if (path === '/v1/sessions') {
+    const archived = url.searchParams.get('archived') === 'only';
+    return send(res, 200, { items: archived ? [] : sessions, nextCursor: null });
+  }
+  if (path === '/v1/session-options') return send(res, 200, {
+    profiles: [
+      { id: 'opus-high', label: 'Claude Opus 5.5', provider: 'claude', model: 'claude-opus-5-5', effort: 'high', fast: true },
+      { id: 'opus-xhigh', label: 'Claude Opus 5.5', provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh', fast: true },
+    ],
+    defaultProfile: 'opus-high', defaultMode: 'bypass',
+  });
+  const sessionMatch = path.match(/^\/v1\/sessions\/(ses_[0-9a-f]{16})(?:\/(conversation|events|decision|images\/[a-f0-9]{64}))?$/);
+  if (sessionMatch) {
+    const session = sessionFor(sessionMatch[1]);
+    if (!session) { res.writeHead(404); return res.end(); }
+    const leaf = sessionMatch[2] ?? '';
+    if (leaf === '' && req.method === 'GET') return send(res, 200, session);
+    if (leaf === 'conversation') return send(res, 200, { items: conversationFor(session.id), nextCursor: null, sources: null, total: null, fetchedAt: null });
+    if (leaf === 'events') {
+      // Keep the app's long poll from spinning while the fixture is open.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return send(res, 200, { items: [], nextCursor: 'fixture', oldestSeq: 1, headSeq: 1, resyncRequired: false, resyncReason: null });
+    }
+    if (leaf === 'decision') return send(res, 200, {
+      requests: [{ id: 'fixture-question', kind: 'question', name: 'request_user_input_async', detail: '',
+        questions: [{ question: 'どちらにしますか？', options: ['A', 'B'] }] }],
+      requestHash: 'fixture-hash', expiresAt: Date.now() + 300000,
+    });
+    if (leaf.startsWith('images/')) return send(res, 200, { data: FIXTURE_IMAGE, mimeType: 'image/png' });
+  }
+  if (/^\/v1\/sessions\/ses_[0-9a-f]{16}$/.test(path) && req.method === 'PATCH') {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const session = sessionFor(path.split('/').at(-1));
+    if (!session) { res.writeHead(404); return res.end(); }
+    if (raw) {
+      const body = JSON.parse(raw);
+      if (body.effort) session.observed = { ...session.observed, effort: body.effort };
+    }
+    return send(res, 200, session);
+  }
   res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'fixture_unavailable', message: 'Fixture unavailable', retryable: false }, requestId: 'fixture' }));
 });
 const control = http.createServer((req, res) => { if (req.url === '/reset') reset(); res.end('ok'); });

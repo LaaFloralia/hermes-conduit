@@ -31,6 +31,7 @@ import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
 import { readConversation } from './history.mjs';
+import { settleLocalImages } from './local-images.mjs';
 import { daemonSessionID, snapshot } from './daemon.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 
@@ -294,17 +295,25 @@ export function createSessionService({
         const previous = known.get(a.id);
         const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
         const workspaceId = previous?.workspaceId ?? a.workspaceId ?? HOME_WORKSPACE_ID;
+        // A failed workspace read must not fall back to the agent's long prompt:
+        // keep the title a previous successful read confirmed.
+        const workspaceTitle = workspaceTitles.get(a.workspaceId) ?? previous?.workspaceTitle ?? null;
+        const rootAgents = parents.get(a.workspaceId) ?? 0;
         // Paseo titles the workspace from the request but leaves the agent with
         // the title it was given, so the one parent in a workspace shows Paseo's
         // unless the agent named itself after a title the Bridge sent.
         const renamed = previous?.sentTitle !== undefined && previous.sentTitle !== a.title;
-        const paseoTitle = !renamed && parents.get(a.workspaceId) === 1 && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitles.get(a.workspaceId) : null;
+        const paseoTitle = !renamed && rootAgents === 1 && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitle : null;
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
           projectId: null, workspaceId, cwd: a.cwd,
           name: paseoTitle || a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
+          // The detail read (applyObservation) uses the same two fields to reach
+          // the same name, so a list row and its detail cannot disagree.
+          workspaceTitle, workspaceRootCount: rootAgents,
           requested: model, observed: state.modelCheck.observed, phase: state.phase,
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
+          observedFast: fastValue(state.features),
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
           // favourite the owner set here survives a Paseo that has no pin yet.
           favorite: pins?.get(workspaceId) === true ? true : undefined, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
@@ -389,7 +398,19 @@ export function createSessionService({
     const record = requireSession(id);
     const messages = await history(record.delegate.sessionId);
     const references = images.references(id);
-    return messages.map((message) => ({ ...message, images: references[message.id] ?? [] }));
+    // One batch for the whole page: a poll naming the same 215 pictures must
+    // not open or rewrite the index 215 times.
+    const paths = messages.flatMap((message) => (Array.isArray(message.localImages) ? message.localImages : []));
+    const resolved = images.registerLocalBatch?.(id, paths) ?? [];
+    let cursor = 0;
+    return messages.map((message) => {
+      const local = Array.isArray(message.localImages) ? message.localImages : [];
+      const localIDs = local.map(() => resolved[cursor++] ?? null);
+      const { localImages: _localImages, ...visible } = message;
+      const text = settleLocalImages(visible.text, local, localIDs);
+      const ids = [...new Set([...localIDs.filter(Boolean), ...(references[message.id] ?? [])])];
+      return { ...visible, text, images: ids };
+    });
   }
 
   async function sendMessage({ id, body = {}, key }) {
@@ -445,8 +466,21 @@ export function createSessionService({
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
     const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
     const name = body.name === undefined ? undefined : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
-    if (favorite === undefined && archived === undefined && name === undefined) {
-      throw badRequest('payload_invalid', 'favorite, archived or name is required');
+    const effort = body.effort === undefined ? undefined : parseEffort(body.effort);
+    if (favorite === undefined && archived === undefined && name === undefined && effort === undefined) {
+      throw badRequest('payload_invalid', 'favorite, archived, name or effort is required');
+    }
+    if (effort !== undefined) {
+      if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
+        throw new BridgeError(409, 'effort_unsupported', 'effort can only be changed for a Paseo session');
+      }
+      if (existing.stopRequestedAt || ['stopped', 'stop_unconfirmed'].includes(existing.phase)) {
+        throw conflict('session_stopped', 'the session is stopped; change effort after it is running again');
+      }
+      // Do it before any local field so a refused provider change cannot leave
+      // a half-applied PATCH. The read-back inside setThinking is the proof.
+      const status = await daemon.setThinking(existing.delegate.sessionId, effort);
+      applyObservation(id, status);
     }
     // A workspace's pin is where Paseo keeps the same choice. Sessions in the
     // home workspace, and a daemon that is not connected, keep the Bridge-only
@@ -690,11 +724,31 @@ export function createSessionService({
         record.runtimeVerified = status.modelCheck.runtimeVerified === true;
       }
       if (status.daemonStatus) record.daemonStatus = status.daemonStatus;
-      // Agents name their own conversation after the first answer (HQ
-      // PASEO-HERMES.md). Follow that name unless the owner chose one.
+      // A successful observation that does not report the provider toggle
+      // clears the remembered value: "unknown now" must not stay "was on".
+      // Sources that never report features (no key) and failed observations
+      // leave it alone.
+      if (Object.hasOwn(status, 'features')) record.observedFast = fastValue(status.features);
+      // The list row and the detail header must show one name. Paseo names the
+      // workspace from the request, so the single root agent in a workspace
+      // takes that title; an agent that renamed itself (HQ PASEO-HERMES.md) or
+      // the owner's own name wins. syncDaemon applies the same rule.
       const title = typeof status.title === 'string' ? status.title.trim() : '';
-      if (title !== '' && title !== record.sentTitle && title !== record.name && record.nameSource !== 'owner') {
-        record.name = title.length > MAX_NAME_LENGTH ? [...title].slice(0, MAX_NAME_LENGTH).join('') : title;
+      const freshWorkspaceTitle = typeof status.workspaceTitle === 'string' ? status.workspaceTitle.trim() : '';
+      // A workspace lookup that failed says nothing about the name. Keep the
+      // last confirmed title instead of reverting to the agent's long prompt;
+      // only a successful, non-empty read replaces it.
+      if (freshWorkspaceTitle !== '') record.workspaceTitle = freshWorkspaceTitle;
+      const workspaceTitle = freshWorkspaceTitle || record.workspaceTitle || '';
+      const renamed = record.sentTitle !== undefined && record.sentTitle !== title;
+      const useWorkspaceTitle = record.nameSource !== 'owner'
+        && record.parentId == null
+        && record.workspaceRootCount === 1
+        && workspaceTitle !== ''
+        && !renamed;
+      const nextName = useWorkspaceTitle ? workspaceTitle : title;
+      if (nextName !== '' && nextName !== record.name && record.nameSource !== 'owner') {
+        record.name = nextName.length > MAX_NAME_LENGTH ? [...nextName].slice(0, MAX_NAME_LENGTH).join('') : nextName;
         record.nameSource = 'agent';
         events.push({ type: 'session.renamed', payload: { name: record.name, nameSource: 'agent' } });
       }
@@ -743,6 +797,15 @@ export function createSessionService({
       observed: record.observed ?? null,
       modelCheck: record.modelCheck ?? null,
       runtimeVerified: record.runtimeVerified === true,
+      // Only the provider's own toggle value is exposed; the Bridge's request
+      // (`fast`) is not proof that Fast is on now.
+      observedFast: typeof record.observedFast === 'boolean' ? record.observedFast : null,
+      // Offered only when the daemon advertises the operation and this session
+      // runs through the daemon (the delegation adapter cannot change effort).
+      capabilities: {
+        effort: daemon !== null && typeof record.delegate?.sessionId === 'string'
+          && daemon.capabilities?.().effortUpdate === true,
+      },
       phase: record.phase,
       daemonStatus: record.daemonStatus ?? null,
       version: record.version,
@@ -885,6 +948,22 @@ function parseFast(raw) {
 function parseBoolean(raw, field) {
   if (typeof raw !== 'boolean') throw badRequest('payload_invalid', `${field} must be a boolean`);
   return raw;
+}
+
+// A Paseo thinking option id (`low`…`max`). The daemon validates it against the
+// provider; this only keeps an arbitrary string out of the daemon request.
+function parseEffort(raw) {
+  if (typeof raw !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(raw)) {
+    throw badRequest('payload_invalid', 'effort must be a thinking option id');
+  }
+  return raw;
+}
+
+// Paseo reports provider toggles (Fast) with their actual value. Absent means
+// unknown: never derive a displayed setting from the Bridge's request.
+export function fastValue(features) {
+  const row = Array.isArray(features) ? features.find((feature) => feature?.id === 'fast_mode') : null;
+  return typeof row?.value === 'boolean' ? row.value : null;
 }
 
 function parseRequestId(raw) {

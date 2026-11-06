@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeError } from '../errors.mjs';
+import { splitLocalImages } from './local-images.mjs';
 
 const DELIVERY_PREAMBLE = /^(?:Origin \/ owner: laa-bridge\n[^]*?\n|Working directory: [^\n]* — use this absolute path[^\n]*\n)\n/;
 const USER_REQUEST = /^<project_(?:instructions|files) [^]*?<user_request>\n([^]*)\n<\/user_request>$/;
@@ -27,7 +28,16 @@ export async function readConversation(agentId, connect = defaultConnect) {
       const item = entry?.item;
       if (item?.type === 'tool_call' && typeof item.callId === 'string' && typeof item.name === 'string') return [{ id: `tool:${item.callId}`, role: 'tool', text: item.name, toolName: item.name, toolStatus: item.status, timestamp: entry.timestamp ?? null }];
       if (!['user_message', 'assistant_message'].includes(item?.type) || typeof item.text !== 'string') return [];
-      return [{ id: item.clientMessageId ?? item.messageId ?? `${index}`, role: item.type === 'user_message' ? 'user' : 'assistant', text: entry === firstUser ? ownerText(item.text) : item.text, timestamp: entry.timestamp ?? null }];
+      // A local picture is shown as an image, not as its markdown placeholder;
+      // the service registers only paths that pass the attachment boundary.
+      const { text, paths } = splitLocalImages(entry === firstUser ? ownerText(item.text) : item.text);
+      return [{
+        id: item.clientMessageId ?? item.messageId ?? `${index}`,
+        role: item.type === 'user_message' ? 'user' : 'assistant',
+        text,
+        timestamp: entry.timestamp ?? null,
+        ...(paths.length > 0 ? { localImages: paths } : {}),
+      }];
     });
   } catch {
     throw new BridgeError(503, 'conversation_unavailable', 'conversation history is unavailable', { retryable: true });

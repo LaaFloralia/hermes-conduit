@@ -1,21 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { daemonAdapter, daemonSessionID, pendingHash } from '../src/sessions/daemon.mjs';
-import { createSessionService } from '../src/sessions/service.mjs';
+import { createSessionService, fastValue } from '../src/sessions/service.mjs';
 import { createSessionStore } from '../src/sessions/store.mjs';
 import { readConversation } from '../src/sessions/history.mjs';
+import { sessionImageStore } from '../src/sessions/images.mjs';
+import { inspectLocalImage, readLocalImage, settleLocalImages, splitLocalImages } from '../src/sessions/local-images.mjs';
 import { startBridge } from './helpers.mjs';
 import { createOwnerNotifier } from '../src/notify/index.mjs';
 
-function fixture() {
-  const calls = [], rows = [{ id: 'parent', title: '親', provider: 'codex', model: 'gpt-6.1-sol', effectiveThinkingOptionId: 'high', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z', status: 'running', labels: {} },
-    { id: 'child', title: '子', provider: 'dsh', model: '["opencode-go","deepseek-v4.1-flash"]', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z', status: 'idle', labels: { 'paseo.parent-agent-id': 'parent' } }];
+function fixture(options = {}) {
+  const calls = [], rows = [{ id: 'parent', title: '親', workspaceId: options.workspaceId, provider: 'codex', model: 'gpt-6.1-sol', effectiveThinkingOptionId: 'high', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z', status: 'running', labels: {} },
+    { id: 'child', title: '子', workspaceId: 'ws-child', provider: 'dsh', model: '["opencode-go","deepseek-v4.1-flash"]', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z', status: 'idle', labels: { 'paseo.parent-agent-id': 'parent' } }];
+  const workspaces = options.workspaceTitle
+    ? [{ id: options.workspaceId, title: options.workspaceTitle, pinnedAt: null }]
+    : [];
   const client = { close: async () => {}, fetchAgent: async ({ agentId }) => ({ agent: rows.find((a) => a.id === agentId) }),
+    getLastServerInfoMessage: () => ({ features: options.serverFeatures ?? { agentThinkingUpdate: true } }),
+    fetchWorkspaces: async () => ({ entries: workspaces, pageInfo: { nextCursor: null } }),
     fetchAgents: async ({ page }) => { calls.push(['list', page.cursor]); return page.cursor ? { entries: [{ agent: rows[1] }], pageInfo: { nextCursor: null } } : { entries: [{ agent: rows[0] }], pageInfo: { nextCursor: 'next' } }; },
     sendMessage: async (...args) => calls.push(['send', ...args]), cancelAgent: async (id) => { calls.push(['cancel', id]); rows[0].status = 'idle'; },
+    setAgentThinkingOption: async (id, effort) => {
+      calls.push(['effort', id, effort]);
+      if (options.effortRejected) throw new Error('provider refused');
+      if (!options.effortNoop) rows.find((a) => a.id === id).effectiveThinkingOptionId = effort;
+    },
     respondToPermissionAndWait: async (id, request, response) => { calls.push(['reply', id, request, response]); rows.find((a) => a.id === id).pendingPermissions = []; },
   };
   return { rows, calls, client, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
@@ -262,4 +274,240 @@ test('a session Paseo brought back leaves the LAA archive too', async (t) => {
   f.agents[2].archivedAt = null;
   await service.syncDaemon();
   assert.equal(store.get(daemonSessionID('other')).archivedAt, null);
+});
+
+test('a list row and its detail use the same Paseo workspace title', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-name-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture({ workspaceTitle: '短い題名', workspaceId: 'ws-parent' });
+  f.rows[0].title = 'LAAアプリの各社員やっぱり人ではなく、とても長い依頼文';
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {}, observationTtlMs: 0 });
+  await service.listSessions();
+  const id = daemonSessionID('parent');
+  assert.equal(store.get(id).name, '短い題名');
+  // The detail read used to overwrite this with the agent's long prompt.
+  const detail = await service.getSession(id);
+  assert.equal(detail.session.name, '短い題名');
+  assert.equal(store.get(id).name, '短い題名');
+
+  // An agent that renamed itself after the Bridge's title wins in both places.
+  store.update(id, (record) => { record.sentTitle = 'LAA｜送った題名'; return []; });
+  f.rows[0].title = 'エージェントが付けた名前';
+  assert.equal((await service.getSession(id)).session.name, 'エージェントが付けた名前');
+  await service.syncDaemon();
+  assert.equal(store.get(id).name, 'エージェントが付けた名前');
+  assert.equal((await service.listSessions()).items.find((row) => row.id === id).name, 'エージェントが付けた名前');
+});
+
+test('a failed workspace lookup keeps the last confirmed title in list and detail', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-name-down-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture({ workspaceTitle: '短い題名', workspaceId: 'ws-parent' });
+  f.rows[0].title = 'LAAアプリの各社員やっぱり人ではなく、とても長い依頼文';
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {}, observationTtlMs: 0 });
+  await service.listSessions();
+  const id = daemonSessionID('parent');
+  assert.equal(store.get(id).name, '短い題名');
+
+  // The very first detail read cannot reach the workspace directory. The saved
+  // name must stay; the long agent title must not come back.
+  f.client.fetchWorkspaces = async () => { throw new Error('workspace directory down'); };
+  assert.equal((await service.getSession(id)).session.name, '短い題名');
+  await service.syncDaemon();
+  assert.equal(store.get(id).name, '短い題名');
+  assert.equal((await service.listSessions()).items.find((row) => row.id === id).name, '短い題名');
+
+  // A later successful read with a new title replaces it everywhere.
+  f.client.fetchWorkspaces = async () => ({ entries: [{ id: 'ws-parent', title: '新しい短名', pinnedAt: null }], pageInfo: { nextCursor: null } });
+  await service.syncDaemon();
+  assert.equal(store.get(id).name, '新しい短名');
+  assert.equal((await service.getSession(id)).session.name, '新しい短名');
+});
+
+test('Fast is cleared when a later successful observation stops reporting it, and kept on failure', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-fast-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture({ workspaceTitle: '短い題名', workspaceId: 'ws-parent' });
+  // The shape Paseo actually returns for an Opus agent.
+  f.rows[0].features = [{ type: 'toggle', id: 'fast_mode', label: 'Fast',
+    description: 'Lower latency Opus responses at higher token cost', tooltip: 'Toggle fast mode', icon: 'zap', value: true }];
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {}, observationTtlMs: 0 });
+  await service.listSessions();
+  const id = daemonSessionID('parent');
+  assert.equal(service.view(store.get(id)).observedFast, true);
+  await service.getSession(id);
+  assert.equal(service.view(store.get(id)).observedFast, true);
+
+  // A normal observation with no toggle reported is "unknown now", not "on".
+  f.rows[0].features = [];
+  await service.getSession(id);
+  assert.equal(service.view(store.get(id)).observedFast, null);
+
+  f.rows[0].features = [{ id: 'fast_mode', value: false }];
+  await service.getSession(id);
+  assert.equal(service.view(store.get(id)).observedFast, false);
+
+  // A failed observation says nothing about the setting: keep the last value.
+  f.client.fetchAgent = async () => { throw new Error('daemon down'); };
+  const failed = await service.getSession(id);
+  assert.equal(failed.observation.available, false);
+  assert.equal(service.view(store.get(id)).observedFast, false);
+
+  assert.equal(fastValue([{ type: 'toggle', id: 'fast_mode', label: 'Fast', value: true }]), true);
+  assert.equal(fastValue([{ id: 'fast_mode' }]), null);
+  assert.equal(fastValue(null), null);
+});
+
+test('effort changes use the daemon, are verified by read-back, and are refused when unsupported', async (t) => {
+  const make = async (options = {}, withDaemon = true) => {
+    const dir = mkdtempSync(join(tmpdir(), 'paseo-effort-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const f = fixture(options);
+    const store = createSessionStore({ file: join(dir, 'sessions.json') });
+    const service = createSessionService({
+      sessionStore: store, daemon: withDaemon ? f.daemon : null, adapter: {},
+      findWorkspace: async () => null, notify: async () => {},
+    });
+    await service.listSessions();
+    return { f, store, service, id: daemonSessionID('parent') };
+  };
+
+  const ok = await make();
+  assert.equal(ok.service.view((await ok.service.getSession(ok.id)).session).capabilities.effort, true);
+  assert.equal(ok.service.view((await ok.service.getSession(ok.id)).session).observed.effort, 'high');
+  const updated = await ok.service.updateSession({ id: ok.id, body: { effort: 'low' } });
+  assert.equal(ok.service.view(updated.session).observed.effort, 'low');
+  assert.deepEqual(ok.f.calls.find((call) => call[0] === 'effort'), ['effort', 'parent', 'low']);
+
+  const noop = await make({ effortNoop: true });
+  await assert.rejects(noop.service.updateSession({ id: noop.id, body: { effort: 'low' } }), { code: 'effort_not_applied' });
+  const refused = await make({ effortRejected: true });
+  await assert.rejects(refused.service.updateSession({ id: refused.id, body: { effort: 'low' } }), { code: 'effort_rejected' });
+  const unsupported = await make({ serverFeatures: {} });
+  assert.equal(unsupported.service.view((await unsupported.service.getSession(unsupported.id)).session).capabilities.effort, false);
+  await assert.rejects(unsupported.service.updateSession({ id: unsupported.id, body: { effort: 'low' } }), { code: 'effort_unsupported' });
+  const adapterOnly = await make({}, false);
+  adapterOnly.store.create({ record: {
+    id: adapterOnly.id, requestId: 'paseo-parent', name: '親', nameSource: 'agent', parentId: null,
+    projectId: null, workspaceId: 'home', cwd: '/Users/laa', profile: 'codex',
+    requested: { provider: 'codex', model: 'gpt', effort: 'high' }, observed: null,
+    phase: 'created', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
+    delegate: { sessionId: 'parent' },
+  } });
+  await assert.rejects(adapterOnly.service.updateSession({ id: adapterOnly.id, body: { effort: 'low' } }), { code: 'effort_unsupported' });
+  await assert.rejects(ok.service.updateSession({ id: ok.id, body: { effort: '../etc/passwd' } }), { status: 400 });
+});
+
+test("only a session's own checked Paseo attachment is served as its image", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-local-images-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const root = realpathSync(dir);
+  const attachments = join(root, 'paseo-attachments-fixture'); mkdirSync(attachments);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const okPath = join(attachments, 'ok.png'); writeFileSync(okPath, png);
+  const outside = join(root, 'outside.png'); writeFileSync(outside, png);
+  const wrongMagic = join(attachments, 'wrong.png'); writeFileSync(wrongMagic, Buffer.from('not an image'));
+  const travel = join(attachments, '..', '..', 'outside.png');
+  const linked = join(attachments, 'linked.png'); symlinkSync(okPath, linked);
+  const big = join(attachments, 'big.png'); writeFileSync(big, png); truncateSync(big, 8 * 1024 * 1024 + 1);
+  const nested = join(attachments, 'nested'); mkdirSync(nested);
+  const nestedPath = join(nested, 'ok.png'); writeFileSync(nestedPath, png);
+  const inspect = (path) => inspectLocalImage(path, { tempRoot: root });
+  assert.equal(inspect(okPath)?.mimeType, 'image/png');
+  assert.equal(inspect(outside), null);
+  assert.equal(inspect(travel), null);
+  assert.equal(inspect(linked), null);
+  assert.equal(inspect(wrongMagic), null);
+  assert.equal(inspect(big), null);
+  assert.equal(inspect(nestedPath), null);
+  assert.equal(inspect('/etc/passwd'), null);
+
+  // The read is bounded by the checked size: growth between fstat and read is
+  // refused, as is a file that shrinks during the read.
+  assert.deepEqual(Buffer.from(readLocalImage(okPath, { tempRoot: root }).data), png);
+  assert.equal(readLocalImage(okPath, {
+    tempRoot: root,
+    beforeRead: () => appendFileSync(okPath, Buffer.from([0])),
+  }), null);
+  writeFileSync(okPath, png);
+  assert.equal(readLocalImage(okPath, {
+    tempRoot: root,
+    beforeRead: () => truncateSync(okPath, 2),
+  }), null);
+  writeFileSync(okPath, png);
+
+  const split = splitLocalImages(`前\n\n![Image](file://${okPath})\n\n後`);
+  assert.deepEqual(split.paths, [okPath]);
+  assert.equal(settleLocalImages(split.text, split.paths, ['id']), '前\n\n\n\n後');
+  assert.equal(settleLocalImages(split.text, split.paths, [null]), '前\n\n（画像を表示できません）\n\n後');
+  // Text without an image marker is returned byte for byte: code fences,
+  // trailing spaces and blank lines are the model's, not ours to normalise.
+  const untouched = '```swift\nlet a = 1  \n\n\nlet b = 2\n```\n\n\n';
+  assert.equal(settleLocalImages(untouched, [], []), untouched);
+  const mixed = '```\n  x  \n\n\n```\n\u0000LAAIMG0\u0000\n\nend  ';
+  assert.equal(settleLocalImages(mixed, ['p'], ['id']), '```\n  x  \n\n\n```\n\n\nend  ');
+  assert.deepEqual(splitLocalImages('![Image](https://example.com/a.png)'), { text: '![Image](https://example.com/a.png)', paths: [] });
+
+  const f = fixture();
+  const store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const images = sessionImageStore(join(dir, 'images'), { inspect, inspectTtlMs: 0, readLocal: (path) => readLocalImage(path, { tempRoot: root }) });
+  const plain = '```swift\nlet a = 1  \n\n\nlet b = 2\n```\n\n\n';
+  const history = async () => [
+    { id: 'm1', role: 'assistant', text: `できました。\u0000LAAIMG0\u0000`, localImages: [okPath] },
+    { id: 'm2', role: 'user', text: 'ありがとう' },
+    { id: 'm3', role: 'assistant', text: plain },
+  ];
+  const service = createSessionService({
+    sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {},
+    images, history,
+  });
+  await service.syncDaemon();
+  const id = daemonSessionID('parent');
+  const messages = await service.conversation(id);
+  assert.equal(messages[0].text, 'できました。');
+  assert.equal(messages[1].text, 'ありがとう');
+  assert.equal(messages[2].text, plain);
+  assert.equal(messages[0].localImages, undefined);
+  assert.equal(messages[0].images.length, 1);
+  const image = service.image(id, messages[0].images[0]);
+  assert.equal(image.mimeType, 'image/png');
+  assert.deepEqual(Buffer.from(image.data, 'base64'), png);
+  // Another session cannot read the id.
+  assert.throws(() => service.image(daemonSessionID('child'), messages[0].images[0]), { code: 'not_found' });
+
+  // A second poll with the same picture does not rewrite the index.
+  const indexFile = join(dir, 'images', `${id}.json`);
+  const indexBefore = readFileSync(indexFile, 'utf8');
+  await service.conversation(id);
+  assert.equal(readFileSync(indexFile, 'utf8'), indexBefore);
+
+  // Bytes replaced after registration: refused at read time, and the text keeps
+  // a visible fallback instead of silently dropping the picture.
+  writeFileSync(okPath, Buffer.from('replaced'));
+  assert.throws(() => service.image(id, messages[0].images[0]), { code: 'not_found' });
+  const fallback = await service.conversation(id);
+  assert.equal(fallback[0].images.length, 0);
+  assert.equal(fallback[0].text, 'できました。（画像を表示できません）');
+
+  // A symlink in the attachment directory is never served.
+  rmSync(okPath); symlinkSync(outside, okPath);
+  const linkedPoll = await service.conversation(id);
+  assert.equal(linkedPoll[0].images.length, 0);
+  assert.match(linkedPoll[0].text, /画像を表示できません/);
+
+  // A parent directory swapped for a symlink to another directory is outside
+  // the Paseo attachment root, even though the file name still looks right.
+  rmSync(attachments, { recursive: true, force: true });
+  const other = join(root, 'other-attachments'); mkdirSync(other);
+  writeFileSync(join(other, 'ok.png'), png);
+  symlinkSync(other, attachments);
+  const swapped = await service.conversation(id);
+  assert.equal(swapped[0].images.length, 0);
+  assert.match(swapped[0].text, /画像を表示できません/);
+
+  // Restored, then grown past the limit: the read checks the descriptor's size.
+  rmSync(attachments); mkdirSync(attachments); writeFileSync(okPath, png);
+  const restored = await service.conversation(id);
+  assert.equal(restored[0].images.length, 1);
+  truncateSync(okPath, 8 * 1024 * 1024 + 1);
+  assert.throws(() => service.image(id, restored[0].images[0]), { code: 'not_found' });
+  assert.deepEqual(readFileSync(outside), png);
 });

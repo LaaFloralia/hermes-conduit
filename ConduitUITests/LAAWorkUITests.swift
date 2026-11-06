@@ -31,6 +31,14 @@ final class LAAWorkUITests: XCTestCase {
         return element.isHittable
     }
 
+    private func openSession(_ app: XCUIApplication, id: String) -> Bool {
+        guard waitUntilReady(app.buttons["work.sessions.new"]) else { return false }
+        let row = app.staticTexts["work.session.\(id)"].firstMatch
+        guard row.waitForExistence(timeout: 30), reveal(row, in: app) else { return false }
+        row.tap()
+        return app.navigationBars.firstMatch.waitForExistence(timeout: 30)
+    }
+
     private func openScratchSession(_ app: XCUIApplication) -> Bool {
         guard waitUntilReady(app.buttons["work.sessions.new"]) else { return false }
         let row: XCUIElement
@@ -566,6 +574,53 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["work.project.newSession"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["手法メモ v3.md"].waitForExistence(timeout: 30))
         shot("project")
+    }
+
+    /// An empty conversation still opens on its follow-up field, and a session
+    /// waiting for the owner opens on the decision rather than on old history.
+    func testEmptyAndWaitingDecisionSessionsOpenInPlace() throws {
+        let empty = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_EMPTY_SESSION_ID"] ?? ""
+        let waiting = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_DECISION_SESSION_ID"] ?? ""
+        guard !empty.isEmpty || !waiting.isEmpty else {
+            throw XCTSkip("Set LAA_WORK_LIVE_EMPTY_SESSION_ID or LAA_WORK_LIVE_DECISION_SESSION_ID.")
+        }
+        let app = launchWork()
+        if !empty.isEmpty {
+            XCTAssertTrue(openSession(app, id: empty))
+            XCTAssertTrue(app.staticTexts["会話はまだありません。"].waitForExistence(timeout: 20))
+            XCTAssertTrue(app.descendants(matching: .any)["work.composer.field"].firstMatch.isHittable)
+            app.navigationBars.firstMatch.buttons.firstMatch.tap()
+        }
+        if !waiting.isEmpty {
+            XCTAssertTrue(openSession(app, id: waiting))
+            // A waiting decision still opens at the bottom; the field explains
+            // why it cannot send, and the decision itself is reachable above.
+            let field = app.descendants(matching: .any)["work.composer.field"].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 20))
+            XCTAssertTrue(field.isHittable)
+            XCTAssertTrue(app.staticTexts["判断待ち・停止中は追加送信できません。状態を確認してください。"].exists)
+        }
+    }
+
+    /// Opening a session lands on its latest turn with the follow-up field and
+    /// the model bar on screen. Scrolling up to read history must stop the
+    /// follow, so a later poll cannot pull the owner back to the bottom.
+    func testSessionOpensAtTheComposerAndStopsFollowingWhileReadingHistory() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SCROLL"] == "1" else {
+            throw XCTSkip("Set LAA_WORK_LIVE_SCROLL=1 with a long live session.")
+        }
+        let app = launchWork()
+        guard openScratchSession(app) else { XCTFail("The live session did not open."); return }
+        let field = app.descendants(matching: .any)["work.composer.field"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        XCTAssertTrue(field.isHittable)
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.settings"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.fast"].exists)
+        app.scrollViews.firstMatch.swipeDown()
+        app.scrollViews.firstMatch.swipeDown()
+        XCTAssertFalse(field.isHittable)
+        Thread.sleep(forTimeInterval: 4)
+        XCTAssertFalse(field.isHittable)
     }
 }
 #endif

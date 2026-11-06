@@ -19,6 +19,11 @@ struct LAAWorkSessionDetail: View {
     @State private var historyGapSeen = false
     @State private var observationEpoch = 0
     @State private var followsConversation = true
+    @State private var didInitialScroll = false
+    @State private var historyLoaded = false
+    @State private var options: LAAWorkSessionOptions?
+    @State private var changingEffort = false
+    @State private var effortNotice: String?
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
 
     init(id: String, projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore) {
@@ -49,30 +54,44 @@ struct LAAWorkSessionDetail: View {
                         }
                         if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 }.id("decision-start") }
                         conversation
-                        Color.clear.frame(height: 1).id("conversation-end")
-                            .onAppear { followsConversation = true }
-                            .onDisappear { followsConversation = false }
                         if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                         LAAWorkMessageForm(sessionID: id, mode: .followUp, drafts: drafts,
                                            canStart: ["awaiting_review", "running"].contains(session.phase) && !session.needsDecision,
                                            headerAccessory: canInterrupt(session) ? AnyView(stopButton) : nil) { _ in
                             Task { await refreshSnapshot() }
                         }
+                        LAAWorkSessionControls(session: session, options: options,
+                                               changing: $changingEffort, notice: $effortNotice) {
+                            _ = await refreshSnapshot()
+                        }
                     } else if let failure {
                         Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
                         Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
                     } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+                    // The very bottom includes the follow-up field and the
+                    // model bar. Opening always lands here (also with an empty
+                    // or unavailable history); later arrivals follow only while
+                    // this sentinel is on screen.
+                    Color.clear.frame(height: 1).id("bottom-end")
+                        .onAppear { followsConversation = true }
+                        .onDisappear { followsConversation = false }
                 }
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                 .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
             }
             .refreshable { await refreshSnapshot() }
+            .onChange(of: historyLoaded) { _, _ in placeInitialScroll(scroll) }
             .onChange(of: session?.needsDecision) { _, waiting in
+                guard didInitialScroll else { placeInitialScroll(scroll); return }
                 if waiting == true { scroll.scrollTo("decision-start", anchor: .top) }
             }
+            .onChange(of: messages.count) { _, _ in
+                guard didInitialScroll else { placeInitialScroll(scroll); return }
+                if followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
+            }
             .onChange(of: messages.last?.text) { _, _ in
-                if followsConversation && session?.needsDecision != true { scroll.scrollTo("conversation-end", anchor: .bottom) }
+                if followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
             }
             }
         }
@@ -80,7 +99,23 @@ struct LAAWorkSessionDetail: View {
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(LAAColor.background, for: .navigationBar)
         .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
+        .task {
+            if options == nil { options = try? await bridge.read("/v1/session-options") }
+        }
+    }
+
+    /// Opening a session lands at the very bottom: the follow-up field and the
+    /// model bar, whether the history is empty, unavailable or long, and also
+    /// when a decision is waiting (the owner can still scroll up to it). Once
+    /// placed, only messages that arrive while the bottom sentinel is on screen
+    /// pull the view along.
+    private func placeInitialScroll(_ scroll: ScrollViewProxy) {
+        guard !didInitialScroll, historyLoaded else { return }
+        didInitialScroll = true
+        DispatchQueue.main.async { scroll.scrollTo("bottom-end", anchor: .bottom) }
     }
 
     private var conversation: some View {
@@ -114,6 +149,9 @@ struct LAAWorkSessionDetail: View {
         }.workCard()
     }
 
+    /// The same short name the list shows. The navigation bar repeats it and
+    /// stays fixed while the conversation scrolls; this card is the heading at
+    /// the top of the transcript.
     private func sessionHeader(_ session: LAAWorkSession) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
@@ -196,7 +234,11 @@ struct LAAWorkSessionDetail: View {
         messages = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages") ?? []
         cursor = nil
         events.removeAll()
-        guard await refreshSnapshot(), let initial = session else { return }
+        let loaded = await refreshSnapshot()
+        // Even when the detail or history read failed, opening is done: the
+        // view can now place itself at the bottom instead of staying at the top.
+        historyLoaded = true
+        guard loaded, let initial = session else { return }
         var afterSeq: Int? = max(0, initial.events.oldestSeq - 1)
         var consecutiveGaps = 0
         while !Task.isCancelled {

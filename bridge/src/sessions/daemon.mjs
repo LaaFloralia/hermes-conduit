@@ -17,9 +17,22 @@ const isBusy = (a) => Boolean(a.activeTurn || a.pendingPermissions?.length) || !
 
 export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() } = {}) {
   const decisions = new Map();
+  // What the running daemon advertises. A hard-coded capability would offer an
+  // operation this daemon cannot perform.
+  let serverFeatures = {};
+  // Paseo titles the workspace, not the agent; the detail read needs the same
+  // title its list row uses (see syncDaemon and applyObservation).
+  let workspaceCache = { at: -Infinity, titles: new Map() };
   async function call(fn) {
     let client;
-    try { client = await connect(); return await fn(client); }
+    try {
+      client = await connect();
+      try {
+        const features = client.getLastServerInfoMessage?.()?.features;
+        if (features && typeof features === 'object') serverFeatures = features;
+      } catch {}
+      return await fn(client);
+    }
     catch (error) {
       if (error instanceof BridgeError) throw error;
       throw new BridgeError(503, 'paseo_unavailable', 'Paseo could not confirm the operation', { retryable: true });
@@ -48,7 +61,27 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
     if (!Array.isArray(page?.entries)) throw new Error('invalid workspace directory');
     return page.entries;
   }
+  async function workspaceTitles(c) {
+    if (now() - workspaceCache.at < 30_000) return workspaceCache.titles;
+    const rows = await activeWorkspaces(c);
+    workspaceCache = {
+      at: now(),
+      titles: new Map(rows
+        .map((entry) => [entry?.id ?? entry?.workspace?.id, entry?.title ?? entry?.workspace?.title ?? null])
+        .filter(([id]) => typeof id === 'string')),
+    };
+    return workspaceCache.titles;
+  }
+  async function statusOf(client, a) {
+    const title = await workspaceTitles(client)
+      .then((titles) => titles.get(a.workspaceId) ?? null)
+      .catch(() => null);
+    return { ...snapshot(a, now()), workspaceTitle: title };
+  }
   return {
+    /// The daemon's own feature flags, so the Bridge can tell "not supported"
+    /// from "failed" instead of offering an operation that cannot work.
+    capabilities: () => ({ effortUpdate: serverFeatures.agentThinkingUpdate === true }),
     list: () => call(directory),
     /// Paseo's own pins, so a workspace pinned in Paseo reads as a favourite
     /// here. Nothing is invented when the read fails: the caller sees null.
@@ -101,7 +134,25 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
       if (a.workspaceId && !active.some((entry) => entry.id === a.workspaceId)) await c.restoreWorkspace(a.workspaceId);
       await c.refreshAgent(id);
     }),
-    status: (id) => call(async (c) => snapshot(await agent(c, id), now())),
+    status: (id) => call(async (c) => statusOf(c, await agent(c, id))),
+    /// Change the reasoning effort of a running session. The daemon applies the
+    /// provider's thinking option; the read-back is the only proof it did.
+    setThinking: (id, effort) => call(async (c) => {
+      if (c.getLastServerInfoMessage?.()?.features?.agentThinkingUpdate !== true) {
+        throw new BridgeError(409, 'effort_unsupported', 'this Paseo daemon cannot change effort');
+      }
+      await agent(c, id);
+      try {
+        await c.setAgentThinkingOption(id, effort);
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        throw new BridgeError(409, 'effort_rejected', 'Paseo rejected the effort change');
+      }
+      const after = await agent(c, id);
+      const applied = after.effectiveThinkingOptionId ?? after.thinkingOptionId ?? null;
+      if (applied !== effort) throw new BridgeError(409, 'effort_not_applied', 'Paseo did not apply the effort');
+      return statusOf(c, after);
+    }),
     send: (id, { text, messageId, images }) => call(async (c) => {
       const a = await agent(c, id);
       if (a.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
@@ -153,10 +204,17 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
 }
 export function snapshot(a, now) {
   const pending = a.pendingPermissions ?? [];
-  const observed = { provider: a.provider, model: a.runtimeInfo?.model ?? a.model ?? null, effort: a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null };
+  const effort = a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null;
+  const observed = { provider: a.provider, model: a.runtimeInfo?.model ?? a.model ?? null, effort };
   return { title: a.title, daemonStatus: a.status,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
-    pending, modelCheck: { observed, runtimeVerified: Boolean(a.runtimeInfo?.model && a.runtimeInfo?.effort) },
+    pending,
+    // The runtime reports model/mode in `runtimeInfo` and the applied thinking
+    // option separately; checking `runtimeInfo.effort` alone could never verify.
+    modelCheck: { observed, runtimeVerified: Boolean(a.runtimeInfo?.model && effort) },
+    // Toggle features (Fast) carry their actual provider value. Nothing here is
+    // derived from the Bridge's request.
+    features: Array.isArray(a.features) ? a.features.map((f) => ({ id: f?.id ?? null, value: f?.value })) : null,
     updatedAt: a.updatedAt, observedAt: now };
 }
 function decisionView(p) {

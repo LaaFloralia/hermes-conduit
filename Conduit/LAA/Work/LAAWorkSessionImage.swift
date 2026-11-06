@@ -10,7 +10,7 @@ struct LAAWorkSessionImage: View {
     @State private var failed = false
     var body: some View {
         Group {
-            if let image { Image(uiImage: image).resizable().scaledToFit().accessibilityLabel(Text(verbatim: "添付画像")) }
+            if let image { Image(uiImage: image).resizable().scaledToFit().accessibilityLabel(Text(verbatim: "添付画像")).accessibilityIdentifier("work.session.image") }
             else if failed { Text(verbatim: "画像を取得できません。") }
             else { ProgressView() }
         }.task(id: imageID) {

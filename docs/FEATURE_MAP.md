@@ -688,7 +688,7 @@ store · the session and project API · the owner-task API · Console job observ
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
 - Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkToolRunTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
-  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
+  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
 - Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
   `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`,
@@ -3983,8 +3983,8 @@ and rollback instructions · the upstream App Store build
 **Siblings:** Work sessions and projects · session detail and model verification · Bridge session options, PATCH and project files · the HQ delegation wrapper (mode and fast) · upstream chats
 
 **Code**
-- Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
-- Directory, decisions, images and notifications: `bridge/src/sessions/daemon.mjs`, `bridge/src/sessions/images.mjs`, `bridge/src/notify/index.mjs`, `bridge/src/notify/deliver.py`, `Conduit/LAA/Work/LAAWorkSessionCache.swift`, `Conduit/LAA/Work/LAAWorkSessionDecision.swift`, `Conduit/LAA/Work/LAAWorkSessionImage.swift`, `bridge/test/paseo-daemon.test.mjs`, `ConduitUITests/LAAPaseoUITests.swift`, `scripts/laa/paseo-ui-fixture.mjs`
+- Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
+- Directory, decisions, images and notifications: `bridge/src/sessions/daemon.mjs`, `bridge/src/sessions/images.mjs`, `bridge/src/sessions/local-images.mjs`, `bridge/src/sessions/history.mjs`, `bridge/src/notify/index.mjs`, `bridge/src/notify/deliver.py`, `Conduit/LAA/Work/LAAWorkSessionCache.swift`, `Conduit/LAA/Work/LAAWorkSessionDecision.swift`, `Conduit/LAA/Work/LAAWorkSessionImage.swift`, `bridge/test/paseo-daemon.test.mjs`, `ConduitUITests/LAAPaseoUITests.swift`, `scripts/laa/paseo-ui-fixture.mjs`
 - Bridge: `bridge/src/sessions/service.mjs`, `bridge/src/sessions/options.mjs`, `bridge/src/routes/sessions.mjs`, `bridge/src/routes/projects.mjs`
 - Routines: `bridge/src/routes/routines.mjs`, `bridge/test/routines.test.mjs`
 - Tests: `ConduitTests/LAAWorkTests.swift`, `bridge/test/sessions.test.mjs`, `bridge/test/session-options.test.mjs`
