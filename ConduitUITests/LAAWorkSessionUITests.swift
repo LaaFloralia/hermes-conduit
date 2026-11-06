@@ -10,10 +10,21 @@ final class LAAWorkSessionUITests: XCTestCase {
     private let longID = "ses_3333333333333333"
     private let staleID = "ses_4444444444444444"
 
+    /// The reset endpoint is reached off the main thread: a synchronous
+    /// `Data(contentsOf:)` here raises the UI-unresponsiveness runtime warning.
+    private func resetFixture() throws {
+        let done = expectation(description: "fixture reset")
+        var status: Int?
+        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19585/reset")!) { _, response, _ in
+            status = (response as? HTTPURLResponse)?.statusCode
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        guard status == 200 else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
+    }
+
     private func launchFixture() throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:19585/reset")!)) != nil else {
-            throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
-        }
+        try resetFixture()
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",

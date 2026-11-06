@@ -80,6 +80,11 @@ struct LAAWorkSessionDetail: View {
                 .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
             }
+            // While the owner is at the bottom, keep the bottom anchored as
+            // late content (an image finishing its download) grows the page.
+            // Scrolling up clears the anchor, so reading history is not pulled
+            // back by a later poll.
+            .defaultScrollAnchor(followsConversation ? .bottom : nil)
             .refreshable { await refreshSnapshot() }
             .onChange(of: historyLoaded) { _, _ in placeInitialScroll(scroll) }
             .onChange(of: session?.needsDecision) { _, waiting in
@@ -115,7 +120,16 @@ struct LAAWorkSessionDetail: View {
     private func placeInitialScroll(_ scroll: ScrollViewProxy) {
         guard !didInitialScroll, historyLoaded else { return }
         didInitialScroll = true
-        DispatchQueue.main.async { scroll.scrollTo("bottom-end", anchor: .bottom) }
+        DispatchQueue.main.async {
+            scroll.scrollTo("bottom-end", anchor: .bottom)
+            // Pictures finish after the first layout and move the bottom down.
+            // Re-place once they have had a moment, unless the owner already
+            // scrolled away.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                guard followsConversation else { return }
+                scroll.scrollTo("bottom-end", anchor: .bottom)
+            }
+        }
     }
 
     private var conversation: some View {
