@@ -6,7 +6,7 @@ const reset = () => { tasks = [
   { id: 'dce58a26-2f89-4d6a-b78e-01d07d485dbd', identifier: 'BUS-TEST2', title: '今週の振り返りをまとめる', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-01T00:00:00Z', url: null },
 ]; };
 reset();
-const send = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
+const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
 
 // Work sessions for the scroll/header tests. Three states on one fixture:
 // empty, waiting for a decision, and a long transcript with an image.
@@ -43,6 +43,21 @@ const conversationFor = (id) => id === SESSION_IDS.long ? longMessages : [];
 // test waits for this before asserting the scroll position, so a stopped
 // client cannot pass by accident.
 let lastServed = 0;
+let imagesServed = 0;
+// A held image request lets a test start reading history before the picture
+// arrives, instead of racing a fixed delay.
+let imageHold = null;
+const holdImages = () => {
+  if (imageHold) return;
+  let release;
+  const promise = new Promise((resolve) => { release = resolve; });
+  imageHold = { promise, release };
+};
+const releaseImages = () => {
+  if (!imageHold) return;
+  imageHold.release();
+  imageHold = null;
+};
 const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null;
 
 const api = http.createServer(async (req, res) => {
@@ -136,10 +151,14 @@ const api = http.createServer(async (req, res) => {
       requestHash: 'fixture-hash', expiresAt: Date.now() + 300000,
     });
     if (leaf.startsWith('images/')) {
-      // Deliberately slower than the first layout and the 0.6s re-scroll, so a
-      // passing scroll test proves the bottom anchor survives late content.
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      return send(res, 200, { data: FIXTURE_IMAGE, mimeType: 'image/png' });
+      // Deliberately slower than the first layout and both re-placement
+      // timers. A passing test therefore proves the content-size follow,
+      // not a lucky delay. A held request is released by the test.
+      if (imageHold) await imageHold.promise;
+      else await new Promise((resolve) => setTimeout(resolve, 8000));
+      imagesServed += 1;
+      return send(res, 200, { data: FIXTURE_IMAGE, mimeType: 'image/png' },
+        { 'Cache-Control': 'no-store' });
     }
   }
   if (/^\/v1\/sessions\/ses_[0-9a-f]{16}$/.test(path) && req.method === 'PATCH') {
@@ -157,17 +176,21 @@ const api = http.createServer(async (req, res) => {
 let advanced = 0;
 const control = http.createServer((req, res) => {
   if (req.url === '/reset') {
+    releaseImages();
     reset();
     longMessages.length = 41;
     advanced = 0;
     lastServed = 0;
+    imagesServed = 0;
   }
+  if (req.url === '/hold-image') holdImages();
+  if (req.url === '/release-image') releaseImages();
   if (req.url === '/advance') {
     advanced += 1;
     longMessages.push({ id: `fixture-advanced-${advanced}`, role: 'assistant',
       text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z' });
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed }));
+  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed }));
 });
 api.listen(19584, '127.0.0.1'); control.listen(19585, '127.0.0.1');
