@@ -1,6 +1,13 @@
 #if LAA_BUILD
 import SwiftUI
 
+private struct LAAWorkContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct LAAWorkSessionDetail: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
@@ -22,6 +29,9 @@ struct LAAWorkSessionDetail: View {
     @State private var didInitialScroll = false
     @State private var historyLoaded = false
     @State private var userDragged = false
+    @State private var contentHeight: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+    @State private var contentTall = true
     @State private var options: LAAWorkSessionOptions?
     @State private var changingEffort = false
     @State private var effortNotice: String?
@@ -44,6 +54,7 @@ struct LAAWorkSessionDetail: View {
             ScrollViewReader { scroll in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    Color.clear.frame(height: 0).id("top-start")
                     if let session {
                         sessionHeader(session)
                         if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention).workCard() }
@@ -85,25 +96,35 @@ struct LAAWorkSessionDetail: View {
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                 .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
+                // The transcript's own height, used to tell a short page (no
+                // scrolling needed) from a long one (open at the bottom).
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: LAAWorkContentHeightKey.self, value: proxy.size.height)
+                })
             }
-            // Until the owner drags the transcript, keep the bottom anchored:
-            // a picture that finishes after the first layout must not leave the
-            // composer below the screen. A drag removes the anchor until the
-            // owner returns to the bottom, so reading history is not pulled
-            // back by a later poll.
-            .defaultScrollAnchor(userDragged ? nil : .bottom)
+            .background(GeometryReader { proxy in
+                Color.clear
+                    .onAppear { viewportHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, height in viewportHeight = height }
+            })
+            .defaultScrollAnchor(initialAnchor)
             .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in userDragged = true })
             .refreshable { await refreshSnapshot() }
-            .onChange(of: historyLoaded) { _, _ in placeInitialScroll(scroll) }
+            .onPreferenceChange(LAAWorkContentHeightKey.self) { height in
+                contentHeight = height
+                updateContentFit(scroll)
+            }
+            .onChange(of: viewportHeight) { _, _ in updateContentFit(scroll) }
+            .onChange(of: historyLoaded) { _, _ in updateContentFit(scroll) }
             .onChange(of: session?.needsDecision) { _, waiting in
-                guard didInitialScroll else { placeInitialScroll(scroll); return }
-                if waiting == true { scroll.scrollTo("decision-start", anchor: .top) }
+                if didInitialScroll, waiting == true, !userDragged { scroll.scrollTo("decision-start", anchor: .top) }
             }
             .onChange(of: messages.count) { _, _ in
-                guard didInitialScroll else { placeInitialScroll(scroll); return }
+                guard didInitialScroll else { return }
                 if !userDragged && followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
             }
             .onChange(of: messages.last?.text) { _, _ in
+                guard didInitialScroll else { return }
                 if !userDragged && followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
             }
             }
@@ -120,24 +141,20 @@ struct LAAWorkSessionDetail: View {
         }
     }
 
-    /// Opening a session lands at the very bottom: the follow-up field and the
-    /// model bar, whether the history is empty, unavailable or long, and also
-    /// when a decision is waiting (the owner can still scroll up to it). Once
-    /// placed, only messages that arrive while the bottom sentinel is on screen
-    /// pull the view along.
-    private func placeInitialScroll(_ scroll: ScrollViewProxy) {
-        guard !didInitialScroll, historyLoaded else { return }
-        didInitialScroll = true
-        DispatchQueue.main.async {
-            scroll.scrollTo("bottom-end", anchor: .bottom)
-            // Correct the initial position even if a late image briefly
-            // removed the bottom sentinel. Only a real drag cancels these.
-            for delay in [0.6, 2.0] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    guard !userDragged else { return }
-                    scroll.scrollTo("bottom-end", anchor: .bottom)
-                }
-            }
+    /// A page taller than the viewport opens at its bottom; a shorter page
+    /// stays at the top, because bottom-aligning a page that fits is what
+    /// pushed the composer below the screen. A user drag removes the anchor.
+    private var initialAnchor: UnitPoint? {
+        userDragged ? nil : (contentTall ? .bottom : .top)
+    }
+
+    private func updateContentFit(_ scroll: ScrollViewProxy) {
+        guard historyLoaded, viewportHeight > 0, contentHeight > 0 else { return }
+        contentTall = contentHeight > viewportHeight + 1
+        if contentTall {
+            didInitialScroll = true
+        } else if !userDragged {
+            DispatchQueue.main.async { scroll.scrollTo("top-start", anchor: .top) }
         }
     }
 
