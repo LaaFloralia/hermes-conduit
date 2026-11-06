@@ -1664,7 +1664,8 @@ enum MarkdownTableLayout {
         rows: [[String]],
         availableWidth: CGFloat,
         references: MarkdownReferenceContext = .empty,
-        chatTextSize: ChatTextAppearance = .default
+        chatTextSize: ChatTextAppearance = .default,
+        usesLAARichContentStyle: Bool = false
     ) -> [CGFloat] {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         guard columnCount > 0 else { return [] }
@@ -1681,6 +1682,7 @@ enum MarkdownTableLayout {
                 UIApplication.shared.preferredContentSizeCategory.rawValue,
                 chatTextSize.cacheIdentity,
                 String(format: "%.1f", availableWidth),
+                usesLAARichContentStyle ? "laa" : "conduit",
                 references.definitionsMarkdown
             ]
                 + headers
@@ -1694,11 +1696,13 @@ enum MarkdownTableLayout {
 
         var ideals = [CGFloat](repeating: 0, count: columnCount)
         for (index, header) in headers.enumerated() {
-            ideals[index] = max(ideals[index], idealWidth(of: header, font: headerFont, references: references))
+            ideals[index] = max(ideals[index], idealWidth(of: header, font: headerFont, references: references,
+                                                           usesLAARichContentStyle: usesLAARichContentStyle))
         }
         for row in rows {
             for (index, cell) in row.enumerated() where index < columnCount {
-                ideals[index] = max(ideals[index], idealWidth(of: cell, font: bodyFont, references: references))
+                ideals[index] = max(ideals[index], idealWidth(of: cell, font: bodyFont, references: references,
+                                                               usesLAARichContentStyle: usesLAARichContentStyle))
             }
         }
 
@@ -1765,8 +1769,13 @@ enum MarkdownTableLayout {
     /// bridged with the cell font), so the shared column widths and the
     /// rendered wrapping agree — including message-level reference links,
     /// which measure as their resolved labels.
-    private static func idealWidth(of source: String, font: UIFont, references: MarkdownReferenceContext) -> CGFloat {
-        let bridged = NSMutableAttributedString(
+    private static func idealWidth(
+        of source: String,
+        font: UIFont,
+        references: MarkdownReferenceContext,
+        usesLAARichContentStyle: Bool
+    ) -> CGFloat {
+        var content = NSAttributedString(
             attributedString: SelectableTextView.bridge(
                 InlineMarkdownContent.attributed(source: source, references: references),
                 defaultFont: font,
@@ -1774,6 +1783,13 @@ enum MarkdownTableLayout {
                 linkColor: .link
             )
         )
+#if LAA_BUILD
+        // LAA draws an external-link indicator after the label. The cell
+        // renders it, so the column must be measured with it: measuring the
+        // bare label leaves "↗" to wrap onto a line of its own.
+        if usesLAARichContentStyle { content = LAALinkDecoration.addingIndicators(to: content) }
+#endif
+        let bridged = NSMutableAttributedString(attributedString: content)
         let fullRange = NSRange(location: 0, length: bridged.length)
         if fullRange.length > 0 {
             bridged.addAttribute(
@@ -1845,8 +1861,20 @@ struct MarkdownTable: View {
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
 
     private var selectsText: Bool { !drawsPlainCells || selectionTurnedOn }
+
+    /// The cell's own link decoration is part of what a column must fit.
+    private var usesLAARichContentStyle: Bool {
+#if LAA_BUILD
+        laaRichContentStyle
+#else
+        false
+#endif
+    }
 
     private var columnWidths: [CGFloat] {
         MarkdownTableLayout.columnWidths(
@@ -1854,7 +1882,8 @@ struct MarkdownTable: View {
             rows: rows,
             availableWidth: availableWidth,
             references: references,
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
     }
 
@@ -2099,8 +2128,21 @@ struct LargeMarkdownTable: View {
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
 
     private var selectsText: Bool { !drawsPlainCells || selectionTurnedOn }
+
+    /// Kept identical to `MarkdownTable`: crossing the size threshold must
+    /// not change whether a link's indicator fits its column.
+    private var usesLAARichContentStyle: Bool {
+#if LAA_BUILD
+        laaRichContentStyle
+#else
+        false
+#endif
+    }
 
     init(
         headers: [String],
@@ -2143,7 +2185,8 @@ struct LargeMarkdownTable: View {
             },
             availableWidth: availableWidth,
             references: references,
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
     }
 

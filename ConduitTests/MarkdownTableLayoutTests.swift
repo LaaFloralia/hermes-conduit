@@ -214,8 +214,9 @@ final class MarkdownTableLayoutTests: XCTestCase {
 
     /// Regression, rendered: through the full MarkdownText chain, a
     /// reference-style link cell renders its resolved label as a link, and
-    /// the column is sized to the label — identical to a table whose cell
-    /// contains the label literally.
+    /// the column is sized to exactly what the cell draws — including the
+    /// LAA build's external-link indicator — not to the raw `[label][id]`
+    /// syntax and not to a bare label the cell never shows.
     @MainActor
     func testRenderedReferenceLinkTableSizesColumnAtLabelWidth() throws {
         let withLink = """
@@ -225,30 +226,37 @@ final class MarkdownTableLayoutTests: XCTestCase {
 
         [1]: https://example.com/handbook
         """
-        let literal = """
-        | Name | Docs |
-        |---|---|
-        | Alpha | Handbook |
-        """
         let (linkHost, linkWindow) = renderedTableHost(source: withLink)
-        let (literalHost, literalWindow) = renderedTableHost(source: literal)
-        defer { linkWindow.isHidden = true; literalWindow.isHidden = true }
+        defer { linkWindow.isHidden = true }
 
         let linkCell = try XCTUnwrap(
-            allTextViews(in: linkHost.view).first { $0.attributedText.string == "Handbook" },
+            allTextViews(in: linkHost.view).first { $0.attributedText.string.hasPrefix("Handbook") },
             "The reference link must render as its resolved label"
         )
+        XCTAssertFalse(linkCell.attributedText.string.contains("[1]"),
+                       "The raw reference syntax must not reach the cell")
         let link = try XCTUnwrap(
             linkCell.attributedText.attribute(.link, at: 0, effectiveRange: nil) as? URL,
             "The resolved label must carry the definition's URL"
         )
         XCTAssertEqual(link.absoluteString, "https://example.com/handbook")
 
+        // Measure against the text the cell actually draws: the LAA build
+        // appends its external-link indicator to the label.
+        let renderedLabel = linkCell.attributedText.string
+        let literal = """
+        | Name | Docs |
+        |---|---|
+        | Alpha | \(renderedLabel) |
+        """
+        let (literalHost, literalWindow) = renderedTableHost(source: literal)
+        defer { literalWindow.isHidden = true }
+
         let literalCell = try XCTUnwrap(
-            allTextViews(in: literalHost.view).first { $0.attributedText.string == "Handbook" }
+            allTextViews(in: literalHost.view).first { $0.attributedText.string == renderedLabel }
         )
         XCTAssertEqual(linkCell.bounds.width, literalCell.bounds.width, accuracy: 1,
-                       "The link column must be sized to the resolved label, not the raw [label][id] syntax")
+                       "The link column must be sized to the rendered label, not the raw [label][id] syntax")
     }
 
     /// QA fixture: a genuinely wide table still scrolls horizontally.
