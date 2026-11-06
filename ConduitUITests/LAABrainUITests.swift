@@ -306,7 +306,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(first.waitForExistence(timeout: 20))
         first.tap()
         first.typeText("AAA")
-        let second = app.descendants(matching: .any)["laa.markdown.table.cell.1.0"]
+        let second = app.descendants(matching: .any)["laa.markdown.table.cell.0.1"]
         XCTAssertTrue(second.waitForExistence(timeout: 10))
         if !second.isHittable { app.swipeUp() }
         second.tap()
@@ -415,6 +415,30 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(saved.waitForExistence(timeout: 10))
         XCTAssertTrue(saved.label.contains("| 1 | 2 |\nAFTER-TABLE"), "the text follows the table")
         XCTAssertTrue(saved.label.contains("| a | b |"), "the table survives")
+    }
+
+    func testFormatBarKeepsTheBlockFormatsReachableWithoutScrolling() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                                "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launch()
+        openLocalCompany(app)
+        let note = app.staticTexts["Table"]
+        XCTAssertTrue(note.waitForExistence(timeout: 30))
+        note.tap()
+        let edit = app.buttons["laa.brain.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 20))
+        edit.tap()
+        // The owner's formats and the table action must be tappable on the
+        // 440pt screen without scrolling the bar first.
+        for identifier in ["laa.markdown.format.heading", "laa.markdown.format.bullet",
+                           "laa.markdown.format.ordered", "laa.markdown.format.checkbox",
+                           "laa.markdown.format.table"] {
+            let button = app.buttons[identifier]
+            XCTAssertTrue(button.waitForExistence(timeout: 20), identifier)
+            XCTAssertTrue(button.isHittable, "\(identifier) is reachable without scrolling")
+            XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX, "\(identifier) is inside the screen")
+        }
     }
 
     func testDailyShortcutWithoutVaultOffersFolderSelection() {

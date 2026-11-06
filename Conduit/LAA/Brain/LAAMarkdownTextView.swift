@@ -82,7 +82,12 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                 self.selectionChanged(view)
             }
             restyle(view, full: true)
-            reportSelection(view)
+            // Reporting from inside a view update would publish the format
+            // bar's state mid-update; do it on the next run loop turn.
+            Task { @MainActor [weak self, weak view] in
+                guard let self, let view else { return }
+                self.reportSelection(view)
+            }
             if autoFocus, !didAutoFocus {
                 didAutoFocus = true
                 Task { @MainActor [weak view] in view?.becomeFirstResponder() }
@@ -123,8 +128,13 @@ struct LAAMarkdownTextView: UIViewRepresentable {
 
         // MARK: Helpers
 
+        /// Called from `updateUIView`: publishing a draft change inside a view
+        /// update is not allowed, so the report lands on the next turn.
         func adoptLiveText(_ textView: UITextView) {
-            parent.onTextChange(textView.text)
+            let text = textView.text ?? ""
+            Task { @MainActor [weak self] in
+                self?.parent.onTextChange(text)
+            }
         }
 
         private func sendText(_ textView: UITextView) {
@@ -163,7 +173,10 @@ struct LAAMarkdownTextView: UIViewRepresentable {
             parent.onSelectionChange(selection)
             if let view = textView as? LAAMarkdownUITextView {
                 view.session?.caretMoved(in: view)
-                view.session?.updateBlock(view)
+                Task { @MainActor [weak view] in
+                    guard let view else { return }
+                    view.session?.updateBlock(view)
+                }
             }
         }
 
