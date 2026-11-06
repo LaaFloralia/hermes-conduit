@@ -69,20 +69,43 @@ struct LAAWorkSessionDetail: View {
             LAAColor.background.ignoresSafeArea()
             ScrollViewReader { scroll in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    Color.clear.frame(height: 0).id("top-start")
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    // Only the transcript is lazy. The composer and the bottom
+                    // sentinel are ordinary children, so scrollTo always has a
+                    // real target instead of a position inside a lazy estimate.
+                    LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
+                        Color.clear.frame(height: 0).id("top-start")
+                        if let session {
+                            sessionHeader(session)
+                            if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention).workCard() }
+                            if let failure {
+                                VStack(alignment: .leading) {
+                                    Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
+                                    Button(LAACopy.WorkTab.reconnect) { observationEpoch += 1 }
+                                }.workCard()
+                            }
+                            if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 }.id("decision-start") }
+                            if conversationUnavailable {
+                                Text(verbatim: "会話履歴を取得できません。更新して再確認してください。")
+                                    .foregroundStyle(LAAColor.attention)
+                            } else if messages.isEmpty {
+                                Text(verbatim: "会話はまだありません。").foregroundStyle(LAAColor.secondaryText)
+                            }
+                            ForEach(LAAWorkToolRuns.groups(messages)) { group in
+                                switch group.kind {
+                                case .message:
+                                    if let message = group.messages.first { messageCard(message) }
+                                case .tools:
+                                    LAAWorkToolRunsView(tools: group.messages)
+                                }
+                            }
+                            if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
+                        } else if let failure {
+                            Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
+                            Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
+                        } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+                    }
                     if let session {
-                        sessionHeader(session)
-                        if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention).workCard() }
-                        if let failure {
-                            VStack(alignment: .leading) {
-                                Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
-                                Button(LAACopy.WorkTab.reconnect) { observationEpoch += 1 }
-                            }.workCard()
-                        }
-                        if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 }.id("decision-start") }
-                        conversation
-                        if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                         LAAWorkMessageForm(sessionID: id, mode: .followUp, drafts: drafts,
                                            canStart: ["awaiting_review", "running"].contains(session.phase) && !session.needsDecision,
                                            headerAccessory: canInterrupt(session) ? AnyView(stopButton) : nil) { _ in
@@ -92,19 +115,12 @@ struct LAAWorkSessionDetail: View {
                                                changing: $changingEffort, notice: $effortNotice) {
                             _ = await refreshSnapshot()
                         }
-                    } else if let failure {
-                        Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
-                        Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
-                    } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
-                    // The end of the scrollable page, including the follow-up
-                    // field and the model bar. New arrivals follow only while
-                    // this sentinel is on screen; a short page that fits needs
-                    // no scrolling at all.
+                    }
+                    // The end of the page, outside the lazy transcript. New
+                    // arrivals follow only while this sentinel is on screen.
                     Color.clear.frame(height: 1).id("bottom-end")
                         .onAppear {
                             followsConversation = true
-                            // Back at the bottom: the initial anchor may apply
-                            // again on the next content change.
                             userDragged = false
                         }
                         .onDisappear { followsConversation = false }
@@ -112,7 +128,7 @@ struct LAAWorkSessionDetail: View {
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                 .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
-                // The transcript's own height, used to tell a short page (no
+                // The page's own height, used to tell a short page (no
                 // scrolling needed) from a long one (open at the bottom).
                 .background(GeometryReader { proxy in
                     Color.clear.preference(key: LAAWorkContentHeightKey.self, value: proxy.size.height)
@@ -179,40 +195,10 @@ struct LAAWorkSessionDetail: View {
         let tall = measured > viewportHeight + 1
         guard !userDragged else { return }
         if tall {
-            let firstPlacement = !didInitialScroll
             didInitialScroll = true
             DispatchQueue.main.async { scroll.scrollTo("bottom-end", anchor: .bottom) }
-            if firstPlacement {
-                // Pictures and the composer settle after the first layout; put
-                // the page back at the bottom once they have.
-                for delay in [0.6, 2.0] {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        guard !userDragged else { return }
-                        scroll.scrollTo("bottom-end", anchor: .bottom)
-                    }
-                }
-            }
         } else {
             DispatchQueue.main.async { scroll.scrollTo("top-start", anchor: .top) }
-        }
-    }
-
-    private var conversation: some View {
-        LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
-            if conversationUnavailable {
-                Text(verbatim: "会話履歴を取得できません。更新して再確認してください。")
-                    .foregroundStyle(LAAColor.attention)
-            } else if messages.isEmpty {
-                Text(verbatim: "会話はまだありません。") .foregroundStyle(LAAColor.secondaryText)
-            }
-            ForEach(LAAWorkToolRuns.groups(messages)) { group in
-                switch group.kind {
-                case .message:
-                    if let message = group.messages.first { messageCard(message) }
-                case .tools:
-                    LAAWorkToolRunsView(tools: group.messages)
-                }
-            }
         }
     }
 

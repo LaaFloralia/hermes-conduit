@@ -66,6 +66,17 @@ final class LAAWorkSessionUITests: XCTestCase {
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
+    /// Wait for the fixture to have delivered the real image bytes, not just
+    /// for an image view to exist in the hierarchy.
+    private func waitForImageDelivery(atLeast count: Int = 1, timeout: TimeInterval = 25) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (fixture("/state")?["images"] as? Int ?? 0) >= count { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
 
     /// A new message arriving while the owner reads older turns must not pull
     /// the transcript back to the bottom.
@@ -130,6 +141,30 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["判断待ち"].exists)
     }
 
+    /// A picture that arrives while the owner is reading older turns must not
+    /// pull the transcript back to the bottom.
+    func testLateImageWhileReadingHistoryDoesNotPullBack() throws {
+        let app = try launchFixture()
+        fixture("/hold-image")
+        open(longID, app)
+        XCTAssertTrue(wait(field(app), hittable: true))
+        // One screen up: the composer is out of view while the image row is
+        // still close enough for the lazy stack to keep it alive.
+        app.scrollViews.firstMatch.swipeDown()
+        XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
+        XCTAssertEqual(fixture("/state")?["images"] as? Int ?? -1, 0)
+        fixture("/release-image")
+        XCTAssertTrue(waitForImageDelivery(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.5)
+        // The fixture counter proves delivery; this proves the app decoded it
+        // while the reader was away from the bottom.
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 10),
+                      "The released image was not decoded in the app")
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertFalse(field(app).isHittable)
+        XCTAssertTrue(app.navigationBars["長い履歴"].exists)
+    }
+
     func testLongHistoryOpensAtTheBottomAndKeepsThePlace() throws {
         let app = try launchFixture()
         open(longID, app)
@@ -138,7 +173,13 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertGreaterThan(field(app).frame.minY, 400)
         XCTAssertTrue(app.descendants(matching: .any)["work.session.settings"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["work.session.fast"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 20))
+        // The fixture holds the image for 8s; after the real bytes arrive the
+        // composer must still be on screen and at the bottom.
+        XCTAssertTrue(waitForImageDelivery(timeout: 25))
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(field(app), hittable: true, timeout: 5))
+        XCTAssertGreaterThan(field(app).frame.minY, 400)
         XCTAssertTrue(app.navigationBars["長い履歴"].exists)
 
         // Reading older turns takes the field off screen; a later events poll
