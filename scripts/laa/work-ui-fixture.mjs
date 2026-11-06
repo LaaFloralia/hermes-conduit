@@ -126,7 +126,12 @@ const api = http.createServer(async (req, res) => {
         questions: [{ question: 'どちらにしますか？', options: ['A', 'B'] }] }],
       requestHash: 'fixture-hash', expiresAt: Date.now() + 300000,
     });
-    if (leaf.startsWith('images/')) return send(res, 200, { data: FIXTURE_IMAGE, mimeType: 'image/png' });
+    if (leaf.startsWith('images/')) {
+      // Deliberately slower than the first layout and the 0.6s re-scroll, so a
+      // passing scroll test proves the bottom anchor survives late content.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return send(res, 200, { data: FIXTURE_IMAGE, mimeType: 'image/png' });
+    }
   }
   if (/^\/v1\/sessions\/ses_[0-9a-f]{16}$/.test(path) && req.method === 'PATCH') {
     let raw = ''; for await (const chunk of req) raw += chunk;
@@ -140,5 +145,19 @@ const api = http.createServer(async (req, res) => {
   }
   res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'fixture_unavailable', message: 'Fixture unavailable', retryable: false }, requestId: 'fixture' }));
 });
-const control = http.createServer((req, res) => { if (req.url === '/reset') reset(); res.end('ok'); });
+let advanced = 0;
+const control = http.createServer((req, res) => {
+  if (req.url === '/reset') {
+    reset();
+    longMessages.length = 41;
+    advanced = 0;
+  }
+  if (req.url === '/advance') {
+    advanced += 1;
+    longMessages.push({ id: `fixture-advanced-${advanced}`, role: 'assistant',
+      text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z' });
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ messages: longMessages.length }));
+});
 api.listen(19584, '127.0.0.1'); control.listen(19585, '127.0.0.1');
