@@ -78,11 +78,19 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
         let before = fixture("/state")?["messages"] as? Int ?? 0
         fixture("/advance")
-        let after = fixture("/state")?["messages"] as? Int ?? 0
-        XCTAssertEqual(after, before + 1)
-        // The events poll refreshes the conversation, so the new row is really
-        // in the list; the reader's place must still hold.
-        Thread.sleep(forTimeInterval: 4)
+        let expected = fixture("/state")?["messages"] as? Int ?? 0
+        XCTAssertEqual(expected, before + 1)
+        // Wait until the fixture has actually delivered the conversation that
+        // contains the new row. A client that stopped polling must fail here,
+        // not pass because only the fixture's counter advanced.
+        var served = fixture("/state")?["served"] as? Int ?? 0
+        let deadline = Date().addingTimeInterval(12)
+        while served < expected, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.5)
+            served = fixture("/state")?["served"] as? Int ?? 0
+        }
+        XCTAssertEqual(served, expected, "The app did not fetch the conversation after /advance")
+        Thread.sleep(forTimeInterval: 1.0)
         XCTAssertFalse(field(app).isHittable)
         XCTAssertTrue(app.navigationBars["長い履歴"].exists)
     }
