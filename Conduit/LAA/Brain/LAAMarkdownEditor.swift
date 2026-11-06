@@ -51,7 +51,6 @@ struct LAAMarkdownEditor: View {
             session.resignForStructureChange()
             model.reload(newValue)
         }
-        .accessibilityIdentifier("laa.markdown.editor")
     }
 
     @ViewBuilder private func segmentView(_ segment: LAAMarkdownDocumentModel.Segment) -> some View {

@@ -345,15 +345,30 @@ final class LAABrainUITests: XCTestCase {
         let edit = app.buttons["laa.brain.edit"]
         XCTAssertTrue(edit.waitForExistence(timeout: 20))
         edit.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["laa.markdown.formatBar"].waitForExistence(timeout: 20),
+                      "the bar is its own element")
         // The owner's formats and the table action must be tappable on the
-        // 440pt screen without scrolling the bar first.
+        // 440pt screen without scrolling the bar first, and each must keep its
+        // own identifier (a container identifier used to hide them).
         for identifier in ["laa.markdown.format.heading", "laa.markdown.format.bullet",
                            "laa.markdown.format.ordered", "laa.markdown.format.checkbox",
                            "laa.markdown.format.table"] {
             let button = app.buttons[identifier]
-            XCTAssertTrue(button.waitForExistence(timeout: 20), identifier)
+            XCTAssertTrue(button.waitForExistence(timeout: 20), "\(identifier) keeps its identifier")
             XCTAssertTrue(button.isHittable, "\(identifier) is reachable without scrolling")
             XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX, "\(identifier) is inside the screen")
+            XCTAssertEqual(button.label, expectedLabel(identifier), "\(identifier) is the right control")
+        }
+    }
+
+    private func expectedLabel(_ identifier: String) -> String {
+        switch identifier {
+        case "laa.markdown.format.heading": return "見出し"
+        case "laa.markdown.format.bullet": return "箇条書き"
+        case "laa.markdown.format.ordered": return "番号付きリスト"
+        case "laa.markdown.format.checkbox": return "チェックボックス"
+        case "laa.markdown.format.table": return "表を挿入"
+        default: return ""
         }
     }
 

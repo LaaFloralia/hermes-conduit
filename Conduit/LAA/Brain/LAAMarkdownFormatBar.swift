@@ -97,6 +97,11 @@ struct LAAMarkdownFormatBar: View {
             .padding(.vertical, LAASpacing.x2)
         }
         .frame(height: LAAMarkdownBarMetrics.height)
+        // `contain` keeps the bar itself addressable while each button keeps
+        // its own identifier: a bare identifier on a container is inherited by
+        // its direct children, which hid the pinned table button from tests
+        // and VoiceOver alike.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.markdown.formatBar")
     }
 
