@@ -635,6 +635,8 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         // Committing it keeps the characters that were being converted.
         view.unmarkText()
         let committed = view.settledTextForAdoption() ?? ""
+        XCTAssertEqual(committed, "新しい入力かな",
+                       "the committed text has no lost, duplicated or reordered characters")
         XCTAssertTrue(committed.contains("かな"), "the committed characters are published")
         XCTAssertTrue(committed.contains("新しい入力"), "the text before the composition is kept")
         XCTAssertNotEqual(committed, "新しい入力", "the composition was committed, not dropped")
