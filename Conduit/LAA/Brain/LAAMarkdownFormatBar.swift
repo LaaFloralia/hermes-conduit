@@ -4,6 +4,12 @@ import SwiftUI
 /// The Liquid Glass format menu above the editor. It acts on the caret and
 /// selection of the text run that has focus, the way a word processor's
 /// toolbar does, and shows which block the caret is in.
+/// One row of glass controls, tall enough for a 44pt target.
+private enum LAAMarkdownBarMetrics {
+    static let content: CGFloat = 36
+    static let height: CGFloat = 54
+}
+
 struct LAAMarkdownFormatBar: View {
     @ObservedObject var session: LAAMarkdownEditingSession
 
@@ -18,15 +24,9 @@ struct LAAMarkdownFormatBar: View {
 
     private var items: [Item] {
         let block = session.block
+        // The owner's block formats come first, so they stay on a 440pt screen
+        // without scrolling; the character formats follow.
         return [
-            Item(id: "bold", label: "B", symbol: "bold", accessibility: "太字",
-                 action: .inline("**"), selected: false),
-            Item(id: "italic", label: "I", symbol: "italic", accessibility: "斜体",
-                 action: .inline("*"), selected: false),
-            Item(id: "strike", label: "S", symbol: "strikethrough", accessibility: "取り消し線",
-                 action: .inline("~~"), selected: false),
-            Item(id: "code", label: "`", symbol: "chevron.left.forwardslash.chevron.right", accessibility: "コード",
-                 action: .inline("`"), selected: false),
             Item(id: "bullet", label: "•", symbol: "list.bullet", accessibility: "箇条書き",
                  action: .block(.bullet), selected: block == .bullet),
             Item(id: "ordered", label: "1.", symbol: "list.number", accessibility: "番号付きリスト",
@@ -34,52 +34,69 @@ struct LAAMarkdownFormatBar: View {
             Item(id: "checkbox", label: "☑", symbol: "checklist", accessibility: "チェックボックス",
                  action: .checkbox, selected: block == .checkbox),
             Item(id: "quote", label: "❝", symbol: "text.quote", accessibility: "引用",
-                 action: .block(.quote), selected: block == .quote)
+                 action: .block(.quote), selected: block == .quote),
+            Item(id: "bold", label: "B", symbol: "bold", accessibility: "太字",
+                 action: .inline("**"), selected: false),
+            Item(id: "italic", label: "I", symbol: "italic", accessibility: "斜体",
+                 action: .inline("*"), selected: false),
+            Item(id: "strike", label: "S", symbol: "strikethrough", accessibility: "取り消し線",
+                 action: .inline("~~"), selected: false),
+            Item(id: "code", label: "`", symbol: "chevron.left.forwardslash.chevron.right", accessibility: "コード",
+                 action: .inline("`"), selected: false)
         ]
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: LAASpacing.x2) {
-                headingMenu
-                Divider().frame(height: 22)
-                ForEach(items) { item in
-                    Button { session.apply(item.action) } label: {
-                        Group {
-                            if item.id == "bold" || item.id == "italic" {
-                                Text(verbatim: item.label).font(.callout.weight(.semibold))
-                            } else if item.id == "strike" {
-                                Text(verbatim: item.label).strikethrough()
-                            } else if item.id == "code" {
-                                Text(verbatim: item.label).font(.system(.callout, design: .monospaced))
-                            } else {
-                                Text(verbatim: item.label).font(.callout.weight(.semibold))
+        // The bar is one row tall: a horizontal ScrollView would otherwise
+        // take half the sheet. The table action sits outside it, pinned to the
+        // trailing edge, so it is reachable on a 440pt screen without
+        // scrolling the formats.
+        HStack(spacing: LAASpacing.x2) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LAASpacing.x2) {
+                    headingMenu
+                    Divider().frame(height: 22)
+                    ForEach(items) { item in
+                        Button { session.apply(item.action) } label: {
+                            Group {
+                                if item.id == "bold" || item.id == "italic" {
+                                    Text(verbatim: item.label).font(.callout.weight(.semibold))
+                                } else if item.id == "strike" {
+                                    Text(verbatim: item.label).strikethrough()
+                                } else if item.id == "code" {
+                                    Text(verbatim: item.label).font(.system(.callout, design: .monospaced))
+                                } else {
+                                    Text(verbatim: item.label).font(.callout.weight(.semibold))
+                                }
                             }
+                            .frame(minWidth: LAAMarkdownBarMetrics.content, minHeight: LAAMarkdownBarMetrics.content)
+                            .padding(.horizontal, LAASpacing.x1)
+                            .contentShape(Rectangle())
                         }
-                        .frame(minWidth: LAASpacing.minimumTouchTarget - 8, minHeight: 30)
-                        .padding(.horizontal, LAASpacing.x1)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .laaGlass(in: .capsule, selected: item.selected)
+                        .accessibilityLabel(Text(verbatim: item.accessibility))
+                        .accessibilityIdentifier("laa.markdown.format.\(item.id)")
                     }
-                    .buttonStyle(.plain)
-                    .laaGlass(in: .capsule, selected: item.selected)
-                    .accessibilityLabel(Text(verbatim: item.accessibility))
-                    .accessibilityIdentifier("laa.markdown.format.\(item.id)")
                 }
-                Divider().frame(height: 22)
-                Button { session.apply(.table) } label: {
-                    Image(systemName: "tablecells").font(.callout.weight(.semibold))
-                        .frame(minWidth: LAASpacing.minimumTouchTarget - 8, minHeight: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .laaGlass(in: .capsule)
-                .accessibilityLabel(Text(verbatim: "表を挿入"))
-                .accessibilityIdentifier("laa.markdown.format.table")
+                .padding(.leading, LAASpacing.x4)
+                .padding(.vertical, LAASpacing.x2)
             }
-            .padding(.horizontal, LAASpacing.x4)
+            .frame(height: LAAMarkdownBarMetrics.height)
+            .scrollClipDisabled()
+            Button { session.apply(.table) } label: {
+                Image(systemName: "tablecells").font(.callout.weight(.semibold))
+                    .frame(minWidth: LAAMarkdownBarMetrics.content, minHeight: LAAMarkdownBarMetrics.content)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .laaGlass(in: .capsule)
+            .accessibilityLabel(Text(verbatim: "表を挿入"))
+            .accessibilityIdentifier("laa.markdown.format.table")
+            .padding(.trailing, LAASpacing.x4)
             .padding(.vertical, LAASpacing.x2)
         }
-        .scrollClipDisabled()
+        .frame(height: LAAMarkdownBarMetrics.height)
         .accessibilityIdentifier("laa.markdown.formatBar")
     }
 

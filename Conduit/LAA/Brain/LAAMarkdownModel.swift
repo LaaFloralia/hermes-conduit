@@ -238,7 +238,13 @@ struct LAAMarkdownTable: Equatable {
         return output.trimmingCharacters(in: .whitespaces)
     }
 
-    static func from(_ lines: [String]) -> LAAMarkdownTable? {
+    static func from(_ sourceLines: [String]) -> LAAMarkdownTable? {
+        // A blank line after the last row is not a row. A line that still has
+        // pipes (`|  |  |`) is, and is kept.
+        var lines = sourceLines
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty, !last.contains("|") {
+            lines.removeLast()
+        }
         guard lines.count >= 2 else { return nil }
         // A CRLF note hands each line over with its carriage return. Parse the
         // content without it; the original lines stay in `rawLines`, so an

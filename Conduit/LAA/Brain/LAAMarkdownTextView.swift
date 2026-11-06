@@ -63,6 +63,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         private var styling = false
         var autoFocus = false
         private var didAutoFocus = false
+        private var adoptGeneration = 0
         private var pendingHeight: CGFloat?
 
         init(parent: LAAMarkdownTextView) {
@@ -82,7 +83,12 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                 self.selectionChanged(view)
             }
             restyle(view, full: true)
-            reportSelection(view)
+            // Reporting from inside a view update would publish the format
+            // bar's state mid-update; do it on the next run loop turn.
+            Task { @MainActor [weak self, weak view] in
+                guard let self, let view else { return }
+                self.reportSelection(view)
+            }
             if autoFocus, !didAutoFocus {
                 didAutoFocus = true
                 Task { @MainActor [weak view] in view?.becomeFirstResponder() }
@@ -123,8 +129,21 @@ struct LAAMarkdownTextView: UIViewRepresentable {
 
         // MARK: Helpers
 
+        /// Called from `updateUIView`: publishing a draft change inside a view
+        /// update is not allowed, so the report lands on the next turn. It
+        /// reads the text when it lands — never a value captured here — and a
+        /// superseded or mid-composition report is dropped, so input that
+        /// arrives first is not rolled back to an older draft.
         func adoptLiveText(_ textView: UITextView) {
-            parent.onTextChange(textView.text)
+            adoptGeneration += 1
+            let generation = adoptGeneration
+            Task { @MainActor [weak self, weak textView] in
+                guard let self, let textView,
+                      let markdown = textView as? LAAMarkdownUITextView,
+                      generation == self.adoptGeneration,
+                      let text = markdown.settledTextForAdoption() else { return }
+                self.parent.onTextChange(text)
+            }
         }
 
         private func sendText(_ textView: UITextView) {
@@ -163,7 +182,10 @@ struct LAAMarkdownTextView: UIViewRepresentable {
             parent.onSelectionChange(selection)
             if let view = textView as? LAAMarkdownUITextView {
                 view.session?.caretMoved(in: view)
-                view.session?.updateBlock(view)
+                Task { @MainActor [weak view] in
+                    guard let view else { return }
+                    view.session?.updateBlock(view)
+                }
             }
         }
 
@@ -344,6 +366,14 @@ final class LAAMarkdownUITextView: UITextView {
     /// False while an IME composes: restyling or replacing characters then
     /// would abandon the conversion the person is in the middle of.
     var acceptsLiveStyling: Bool { markedTextRange == nil }
+
+    /// The text this view may publish right now. Nil while an IME composes or
+    /// once the view has left the hierarchy: publishing either would overwrite
+    /// a newer draft.
+    func settledTextForAdoption() -> String? {
+        guard window != nil, acceptsLiveStyling else { return nil }
+        return text
+    }
 
     init() {
         super.init(frame: .zero, textContainer: nil)

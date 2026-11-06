@@ -121,6 +121,7 @@ struct LAAMarkdownTableEditor: View {
             .padding(.horizontal, LAASpacing.x2)
             .padding(.vertical, LAASpacing.x2)
             .frame(width: cellWidth, alignment: .leading)
+            .frame(minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
             .background(LAAColor.surface)
             .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 0.5) }
             .overlay(alignment: .trailing) { Rectangle().fill(LAAColor.separator).frame(width: 0.5) }
