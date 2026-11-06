@@ -155,6 +155,11 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertEqual(fixture("/state")?["images"] as? Int ?? -1, 0)
         fixture("/release-image")
         XCTAssertTrue(waitForImageDelivery(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.5)
+        // The fixture counter proves delivery; this proves the app decoded it
+        // while the reader was away from the bottom.
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 10),
+                      "The released image was not decoded in the app")
         Thread.sleep(forTimeInterval: 1.0)
         XCTAssertFalse(field(app).isHittable)
         XCTAssertTrue(app.navigationBars["長い履歴"].exists)
