@@ -9,6 +9,7 @@ enum WidgetLaunchUITestFixture {
     static let urlArgument = "-CONDUIT_UI_TEST_WIDGET_URL"
     static let deliveryArgument = "-CONDUIT_UI_TEST_WIDGET_DELIVERY"
     static let holdReadinessArgument = "-CONDUIT_UI_TEST_WIDGET_HOLD_READINESS"
+    static let sourceProfileArgument = "-CONDUIT_UI_TEST_WIDGET_SOURCE_PROFILE"
     static let deliveryButtonID = "widgetUITestDeliverURL"
     static let workspaceOutcomeID = "widgetUITestWorkspace"
     static let conversationOutcomeID = "widgetUITestConversation"
@@ -72,15 +73,22 @@ enum WidgetLaunchUITestFixture {
         let suiteName = "WidgetLaunchUITestFixture"
         guard let defaults = UserDefaults(suiteName: suiteName) else { return nil }
         defaults.removePersistentDomain(forName: suiteName)
-        defaults.set(profile, forKey: "conduit.activeProfile")
-        defaults.set([profile, "staging"], forKey: "conduit.knownProfiles.v1")
+        let sourceProfile: String
+        if let index = arguments.firstIndex(of: sourceProfileArgument), arguments.indices.contains(index + 1) {
+            sourceProfile = arguments[index + 1]
+        } else {
+            sourceProfile = profile
+        }
+        let seededProfiles = sourceProfile == profile ? [profile, "staging"] : [sourceProfile, profile, "staging"]
+        defaults.set(sourceProfile, forKey: "conduit.activeProfile")
+        defaults.set(seededProfiles, forKey: "conduit.knownProfiles.v1")
 
         let dashboard = SavedDashboard(
             id: dashboardID,
             label: "UI Test Workspace",
             normalizedURL: dashboardURL
         )
-        let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
+        let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: sourceProfile)
         let requestedSession = SessionSummary(
             id: sessionID,
             storedSessionId: sessionID,
@@ -103,7 +111,7 @@ enum WidgetLaunchUITestFixture {
             model: "Hermes",
             updatedLabel: "",
             lastActivityAt: 1,
-            profile: profile,
+            profile: sourceProfile,
             source: .chat,
             isActive: false,
             isArchived: false,
@@ -117,7 +125,9 @@ enum WidgetLaunchUITestFixture {
             holdsReadiness: holdReadiness
         )
         let resumeOperations = ChatResumeLifecycleOperations(
+            connectClient: { _ in },
             loadCatalog: { _, _ in try await catalog.rows() },
+            mintTicket: { _ in "widget-ui-test-ticket" },
             openSessionWithProfile: { client, requestedID, _, requestedProfile in
                 guard (requestedProfile ?? client.profile) == profile, requestedID == sessionID else {
                     throw WidgetUITestFixtureError.unexpectedResume
@@ -136,7 +146,10 @@ enum WidgetLaunchUITestFixture {
             },
             refreshContext: { _, _ in },
             verifyTransportHealth: { _ in },
-            probeActiveSessions: { _ in [] }
+            probeActiveSessions: { _ in [] },
+            loadBusyInputMode: { _ in },
+            loadProfileDisplayPreferences: {},
+            loadSlashCommands: {}
         )
 
         let draftStore: ComposerDraftStore?
@@ -165,8 +178,8 @@ enum WidgetLaunchUITestFixture {
             composerDraftStore: draftStore
         )
         guard let connection = appState.connection else { return nil }
-        appState.client = HermesClient(connection: connection, profile: profile)
-        appState.profiles = [profile, "staging"]
+        appState.client = HermesClient(connection: connection, profile: sourceProfile)
+        appState.profiles = seededProfiles
         appState.sessions = [currentSession, requestedSession]
         appState.widgetSettledCatalogOwner = holdReadiness ? nil : workspace
         appState.widgetSessionCreatorOverride = { _, _ in

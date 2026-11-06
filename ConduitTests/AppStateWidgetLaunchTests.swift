@@ -522,6 +522,139 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNotEqual(appState.turnState, .synchronizing, "the previous profile gets its turn state back")
     }
 
+    func testNewWidgetTargetWaitsForAnInFlightProfileSwitch() async throws {
+        let suite = "AppStateWidgetLaunchTests.switch-in-flight.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000e1")
+        let ticketEntered = WidgetLaunchTestGate()
+        let ticketRelease = WidgetLaunchTestGate()
+        let state = AppState(
+            defaults: defaults, loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: current.id, dashboards: [current]),
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(mintTicket: { _ in
+                await ticketEntered.signal()
+                await ticketRelease.wait()
+                return "ticket"
+            }),
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        _ = state.handleScenePhase(.active)
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.isConnected = true
+        state.profiles = ["default", "work", "staging"]
+        var firstCurrent = true
+        let first = Task { await state.switchProfileForWidget(to: "work", lease: WidgetLaunchLease(isCurrent: { firstCurrent })) }
+        guard await waitForGate(ticketEntered, "first profile switch never began") else { return }
+        firstCurrent = false
+        let next = try XCTUnwrap(WidgetLaunchLink(
+            action: .newChat,
+            workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "staging"),
+            reference: nil
+        ))
+
+        let outcome = await state.prepareWidgetLaunch(next, lease: WidgetLaunchLease(isCurrent: { true }))
+        XCTAssertEqual(outcome, .deferred, "a switch still finishing is not a missing workspace")
+        XCTAssertEqual(state.activeProfile, "default")
+        await ticketRelease.signal()
+        _ = await first.value
+    }
+
+    func testLatestWidgetTargetOpensAfterSupersededProfileSwitchFinishes() async throws {
+        let suite = "AppStateWidgetLaunchTests.switch-retry.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000e2")
+        let ticketEntered = WidgetLaunchTestGate()
+        let ticketRelease = WidgetLaunchTestGate()
+        var ticketRequests = 0
+        let state = AppState(
+            defaults: defaults, loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: current.id, dashboards: [current]),
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in }, loadCatalog: { _, _ in [] }, mintTicket: { _ in
+                    ticketRequests += 1
+                    if ticketRequests == 1 {
+                        await ticketEntered.signal()
+                        await ticketRelease.wait()
+                    }
+                    return "ticket"
+                },
+                verifyTransportHealth: { _ in }, probeActiveSessions: { _ in [] },
+                loadBusyInputMode: { _ in }, loadProfileDisplayPreferences: {}, loadSlashCommands: {}
+            ),
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        _ = state.handleScenePhase(.active)
+        state.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.isConnected = true
+        state.profiles = ["default", "work", "staging"]
+        state.widgetSessionCreatorOverride = { client, _ in
+            ("created-\(client.profile)", "created-\(client.profile)", client.profile)
+        }
+        let first = try XCTUnwrap(WidgetLaunchLink(action: .open,
+            workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "work"), reference: nil))
+        let latest = try XCTUnwrap(WidgetLaunchLink(action: .open,
+            workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "staging"), reference: nil))
+
+        state.widgetLaunchCoordinator.receive(first)
+        guard await waitForGate(ticketEntered, "first profile switch never began") else { return }
+        state.widgetLaunchCoordinator.receive(latest)
+        for _ in 0..<100 { await Task.yield() }
+        XCTAssertEqual(state.widgetLaunchCoordinator.pendingLink, latest)
+        XCTAssertNil(state.errorMessage)
+        await ticketRelease.signal()
+        guard await waitUntil("latest target did not open after the switch finished", {
+            !state.widgetLaunchCoordinator.hasPendingRequest
+        }) else { return }
+
+        XCTAssertEqual(state.activeProfile, "staging")
+        XCTAssertEqual(ticketRequests, 2)
+        XCTAssertNil(state.errorMessage)
+    }
+
+    func testTicketFailureKeepsTheCurrentConnectionAndReportsItsCause() async throws {
+        let suite = "AppStateWidgetLaunchTests.ticket-failure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000e3")
+        let state = AppState(
+            defaults: defaults, loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: current.id, dashboards: [current]),
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(mintTicket: { _ in
+                throw URLError(.timedOut)
+            }),
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        _ = state.handleScenePhase(.active)
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        let oldClient = HermesClient(connection: connection, profile: "default")
+        state.connection = connection
+        state.client = oldClient
+        state.isConnected = true
+        state.profiles = ["default", "work"]
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .open,
+            workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "work"), reference: nil))
+
+        let outcome = await state.prepareWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true }))
+
+        guard case .failed(let message) = outcome else { return XCTFail("ticket failure must be reported") }
+        XCTAssertNotEqual(message, AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        XCTAssertTrue(state.client === oldClient, "the original client was never replaced")
+        XCTAssertTrue(state.isConnected)
+        XCTAssertEqual(state.connection, connection)
+        XCTAssertEqual(state.activeProfile, "default")
+        XCTAssertNotEqual(state.turnState, .synchronizing)
+    }
+
     func testWidgetVoiceCapabilityWaitStopsBeforeSessionCreationAfterRevocation() async throws {
         let suite = "AppStateWidgetLaunchTests.voice-capability-suspension.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

@@ -59,6 +59,11 @@ extension AppState {
             return .handled
         }
 
+        // A profile's client and identity can be between owners while the
+        // previous switch is still finishing. Wait even when the desired
+        // profile currently appears selected; its switch may yet roll back.
+        guard !isProfileSwitching else { return .deferred }
+
         if workspace.dashboardID != activeDashboardID {
             await switchDashboard(to: workspace.dashboardID, widgetLease: lease)
             guard lease.isCurrent else { return .deferred }
@@ -96,9 +101,18 @@ extension AppState {
                 : .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
         }
         if activeProfile != workspace.profile {
+            let previousError = errorMessage
             let switched = await switchProfileForWidget(to: workspace.profile, lease: lease)
             guard lease.isCurrent else { return .deferred }
             guard switched, activeProfile == workspace.profile else {
+                if let errorMessage, errorMessage != previousError {
+                    return .failed(errorMessage)
+                }
+                #if LAA_BUILD
+                if LAAWidgetEmployee.forProfile(workspace.profile) != nil {
+                    return .failed("社員のチャットを開けませんでした。もう一度お試しください。")
+                }
+                #endif
                 return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
             }
         }

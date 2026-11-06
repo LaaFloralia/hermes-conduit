@@ -16,6 +16,7 @@ final class WidgetLaunchUITests: XCTestCase {
         static let coldWidgetURL = "-CONDUIT_UI_TEST_WIDGET_URL"
         static let widgetDeliveryMode = "-CONDUIT_UI_TEST_WIDGET_DELIVERY"
         static let holdWidgetReadiness = "-CONDUIT_UI_TEST_WIDGET_HOLD_READINESS"
+        static let sourceProfile = "-CONDUIT_UI_TEST_WIDGET_SOURCE_PROFILE"
         static let persistentDraft = "-CONDUIT_UI_TEST_PERSISTENT_DRAFTS"
         static let deliverWidgetURL = "widgetUITestDeliverURL"
 
@@ -77,6 +78,22 @@ final class WidgetLaunchUITests: XCTestCase {
     }
 
     #if LAA_BUILD
+    func testEmployeeRowOpensAnotherProfilesConversation() throws {
+        let profile = "laa-cfo"
+        let app = launchApp(warmURL: employeeURL(action: "employeeChat", profile: profile), sourceProfile: "laa-ciel")
+        let employee = app.buttons["laa.chats.person.\(profile)"]
+        app.returnToV2Tabs(revealing: employee)
+        XCTAssertTrue(employee.waitForExistence(timeout: 15), tree(app))
+        XCTAssertTrue(employee.isEnabled, tree(app))
+
+        employee.tap()
+
+        let conversation = app.otherElements[Identity.conversationOutcome]
+        XCTAssertTrue(conversation.waitForExistence(timeout: 20), tree(app))
+        XCTAssertEqual(app.otherElements[Identity.workspaceOutcome].value as? String, profile)
+        XCTAssertEqual(conversation.value as? String, Identity.sessionID)
+    }
+
     func testEveryEmployeeLinkReachesItsConversationAndVoicePath() throws {
         for employee in ["ciel", "argus", "cfo", "cio", "cmo", "cos", "cto", "cso"] {
             let profile = "laa-\(employee)"
@@ -258,6 +275,7 @@ final class WidgetLaunchUITests: XCTestCase {
     }
 
     private func launchApp(coldURL: URL? = nil, warmURL: URL? = nil, holdReadiness: Bool = false,
+                           sourceProfile: String? = nil,
                            persistentDraftID: UUID? = nil, unknownDelivery: Bool = false) -> XCUIApplication {
         precondition(coldURL == nil || warmURL == nil, "Choose cold or warm fixture delivery")
         let app = XCUIApplication()
@@ -273,6 +291,9 @@ final class WidgetLaunchUITests: XCTestCase {
         }
         if holdReadiness {
             app.launchArguments.append(Identity.holdWidgetReadiness)
+        }
+        if let sourceProfile {
+            app.launchArguments += [Identity.sourceProfile, sourceProfile]
         }
         if let persistentDraftID {
             app.launchArguments += [Identity.persistentDraft, persistentDraftID.uuidString]

@@ -732,7 +732,16 @@ final class AppState: ObservableObject {
     /// Each photo's colors, kept while the photos stay the same, so a pick
     /// (a color drag sets one per tick) never samples the photos again.
     private var profileGlowPalettes: (avatarRevision: Int, byURL: [URL: [ProfileGlowRGB]]) = (0, [:])
-    @Published private(set) var isProfileSwitching = false
+    @Published private(set) var isProfileSwitching = false {
+        didSet {
+            // A newer widget or employee tap can arrive while the previous
+            // profile switch is finishing. Retry that queued destination when
+            // it can safely take ownership of the connection.
+            if oldValue && !isProfileSwitching {
+                widgetLaunchCoordinator.readinessChanged()
+            }
+        }
+    }
     @Published private(set) var appIconChoice: AppIconChoice
     @Published private(set) var dashboardTicketBridge: DashboardTicketBridge?
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
@@ -30876,6 +30885,24 @@ final class AppState: ObservableObject {
             // the chat; only the chat and the error are left to that one.
             guard ownsChat || adoptedTarget else {
                 restorePreviousApprovalState()
+                return false
+            }
+            if !adoptedTarget {
+                // Ticket acquisition failed before the old connection was
+                // replaced. Keep that working connection and transcript;
+                // disconnecting them here turns a temporary failure into an
+                // unnecessary reconnect for the next employee tap.
+                restorePreviousApprovalState()
+                if ownsChat {
+                    if !(error is CancellationError), (error as? URLError)?.code != .cancelled,
+                       widgetLease?.isCurrent != false {
+                        errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: error))")
+                    }
+                    if turnState == .synchronizing {
+                        turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+                    }
+                    finishChatViewportTransition(generation: transitionGeneration)
+                }
                 return false
             }
             if ownsChat {
