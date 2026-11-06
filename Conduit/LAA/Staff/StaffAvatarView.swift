@@ -78,7 +78,6 @@ struct StaffAvatarView: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
         .accessibilityHidden(true)
         .onAppear { visible = true; syncPlayback() }
         .onDisappear { visible = false; loop.stop() }
@@ -98,6 +97,7 @@ struct StaffAvatarView: View {
                 .foregroundStyle(LAAColors.teal)
                 .padding(size * 0.20)
                 .background(LAAColors.surface)
+                .clipShape(Circle())
         } else {
             ProfileAvatarView(profile: profile, displayName: name, url: fallbackURL, size: size)
         }

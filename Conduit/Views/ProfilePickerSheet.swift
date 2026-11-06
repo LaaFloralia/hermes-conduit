@@ -367,6 +367,20 @@ private struct ProfilePickerRow: View {
     }
 }
 
+private struct ProfileAvatarFrame: ViewModifier {
+    let framed: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if framed {
+            content
+                .clipShape(Circle())
+                .overlay { Circle().strokeBorder(Color.conduitAccent.opacity(0.28), lineWidth: 1) }
+        } else {
+            content
+        }
+    }
+}
+
 struct ProfileAvatarView: View {
     let profile: String
     let displayName: String
@@ -375,6 +389,15 @@ struct ProfileAvatarView: View {
     /// transcript's bot face sizes itself to it.
     static let defaultSize: CGFloat = 30
     var size: CGFloat = ProfileAvatarView.defaultSize
+    /// A mascot is cut out and stands on its own, with no disc around it.
+    private var isMascot: Bool { url.map(Self.isMascot) ?? false }
+    static func isMascot(_ url: URL) -> Bool {
+#if LAA_BUILD
+        StaffAssetResolver.bundled.isMascot(url)
+#else
+        false
+#endif
+    }
     private var initials: String {
         let letters = displayName.split(separator: " ").prefix(2).compactMap(\.first)
         return letters.isEmpty ? "H" : String(letters).uppercased()
@@ -396,7 +419,6 @@ struct ProfileAvatarView: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay { Circle().strokeBorder(Color.conduitAccent.opacity(0.28), lineWidth: 1) }
+        .modifier(ProfileAvatarFrame(framed: !isMascot))
     }
 }

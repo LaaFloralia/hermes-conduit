@@ -160,13 +160,17 @@ struct LAAEmployeeHeader: View {
     var compact = false
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
+    private static let mascotSize: CGFloat = 54
 
     var body: some View {
         Button { showDetails = true } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if !compact {
-                    StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 38,
+                    // Outside the pill and taller than it: the mascot stands
+                    // in the bar on its own, with nothing drawn around it.
+                    StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: Self.mascotSize,
                                     scrolling: showDetails || isObscured, activity: activity)
+                        .frame(height: LAASpacing.minimumTouchTarget)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name).font(.custom("Georgia", size: 16, relativeTo: .headline))
@@ -174,8 +178,8 @@ struct LAAEmployeeHeader: View {
                         .multilineTextAlignment(compact ? .center : .leading)
                     if !compact { Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
                 }
+                .modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
             }
-            .modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
             .frame(minHeight: LAASpacing.minimumTouchTarget)
         }
         .buttonStyle(.plain)
@@ -193,19 +197,18 @@ private struct LAAEmployeeHeaderGlass: ViewModifier {
     let clear: Bool
 
     @ViewBuilder func body(content: Content) -> some View {
-        // 2pt vertical padding keeps the 38pt avatar inside the bar's 44pt
-        // control height, so the pill, Back and the call capsule share a
-        // center line.
+        // The pill holds only the name: Back, the pill and the call capsule
+        // share a center line.
         if clear {
             content
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), interactive: false)
         } else {
             content
                 .padding(.horizontal, LAASpacing.x2)
-                .padding(.vertical, 2)
+                .padding(.vertical, 5)
                 .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.06), interactive: false)
         }
     }
@@ -223,7 +226,7 @@ private struct LAAStaffDetailView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
-                StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 156, scrolling: true)
+                StaffMascotView(profile: profile, name: name, fallbackURL: avatarURL, size: 220)
                 Text(name).font(.custom("Georgia", size: 26, relativeTo: .title))
                 if let role = LAAStaff(profile: profile)?.role { Text(role).font(.subheadline) }
                 Text(status).font(.caption).foregroundStyle(.secondary)

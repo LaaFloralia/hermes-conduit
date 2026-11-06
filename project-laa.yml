@@ -73,9 +73,6 @@ targets:
       - path: docs/laa/assets/staff
         type: folder
         buildPhase: resources
-      - path: docs/laa/assets/ciel
-        type: folder
-        buildPhase: resources
       - path: docs/laa/assets/callkit-icon-template-120.png
         buildPhase: resources
     # The app embeds the Watch app and the three extensions that sign with

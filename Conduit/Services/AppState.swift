@@ -12724,7 +12724,12 @@ final class AppState: ObservableObject {
     }
 
     func profileAvatarURL(for profile: String) -> URL? {
-        profileAvatarURLs[profile]
+#if LAA_BUILD
+        // Every employee wears the bundled mascot, whatever picture the
+        // profile still holds in Hermes.
+        if let mascot = StaffAssetResolver.bundled.resolve(profile: profile).avatar { return mascot }
+#endif
+        return profileAvatarURLs[profile]
     }
 
     /// Each profile's backdrop glow color from its pick or its photo

@@ -4944,8 +4944,10 @@ struct ConduitAgentMark: View {
     private var mark: some View {
         face
             .overlay {
-                Circle()
-                    .strokeBorder((glow ?? .conduitAccent).opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
+                if identity.photoURL.map(ProfileAvatarView.isMascot) != true {
+                    Circle()
+                        .strokeBorder((glow ?? .conduitAccent).opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
+                }
             }
     }
 

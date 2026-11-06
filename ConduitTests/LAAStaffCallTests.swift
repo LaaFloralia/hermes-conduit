@@ -1,4 +1,6 @@
 #if LAA_BUILD
+import AVFoundation
+import ImageIO
 import XCTest
 import AVFAudio
 import Combine
@@ -392,25 +394,23 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertFalse(harness.appState.showVoiceSheet)
     }
 
-    func testBundledAssetsAndFallbackWhenEntireSetMissing() {
+    func testBundledAssetsResolveOnlyWhatIsPresent() {
         let root = URL(fileURLWithPath: "/test-bundle", isDirectory: true)
         let paths: Set<String> = ["/test-bundle/staff", "/test-bundle/staff/ciel/ciel-avatar-512.png",
                                   "/test-bundle/staff/ciel/ciel-idle-512.mov",
-                                  "/test-bundle/ciel/ciel-avatar-512.png",
+                                  "/test-bundle/staff/ciel/ciel-turn.heic",
                                   "/test-bundle/callkit-icon-template-120.png"]
         let resolver = StaffAssetResolver(root: root, exists: { paths.contains($0.path) })
         let ciel = resolver.resolve(profile: "laa-ciel")
         XCTAssertEqual(ciel.avatar?.path, "/test-bundle/staff/ciel/ciel-avatar-512.png")
         XCTAssertNotNil(ciel.loop)
+        XCTAssertNotNil(ciel.turn)
+        XCTAssertNil(resolver.resolve(profile: "laa-cfo").turn)
         XCTAssertNil(resolver.resolve(profile: "laa-ciel-uncensored").avatar)
         XCTAssertNil(ciel.hero)
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").avatar)
         XCTAssertNotNil(resolver.resolve(profile: "default").defaultMark)
         XCTAssertEqual(resolver.resolve(profile: "unknown"), StaffAssets())
-
-        let old = StaffAssetResolver(root: root, exists: { paths.subtracting(["/test-bundle/staff"]).contains($0.path) })
-        XCTAssertEqual(old.resolve(profile: "laa-ciel").avatar?.path, "/test-bundle/ciel/ciel-avatar-512.png")
-        XCTAssertNil(old.resolve(profile: "laa-cfo").avatar)
     }
 
     func testAdoptedStaffAssetsAreInTheAppBundle() {
@@ -419,6 +419,7 @@ final class LAAStaffCallTests: XCTestCase {
             XCTAssertNotNil(assets.avatar, "Missing avatar for \(staff.rawValue)")
             XCTAssertNotNil(assets.hero, "Missing hero for \(staff.rawValue)")
             XCTAssertNotNil(assets.loop, "Missing loop for \(staff.rawValue)")
+            XCTAssertNotNil(assets.turn, "Missing turn for \(staff.rawValue)")
         }
         XCTAssertNotNil(StaffAssetResolver.bundled.resolve(profile: "default").defaultMark)
     }
@@ -426,6 +427,94 @@ final class LAAStaffCallTests: XCTestCase {
     func testTheLoopRunsFasterWhileTheEmployeeIsActive() {
         XCTAssertEqual(StaffAvatarActivity.resting.playbackRate, 1)
         XCTAssertGreaterThan(StaffAvatarActivity.lively.playbackRate, StaffAvatarActivity.resting.playbackRate)
+    }
+
+    func testEveryMascotTurnsThroughItsWholeSetOfTransparentFrames() throws {
+        for staff in LAAStaff.allCases {
+            let url = try XCTUnwrap(StaffAssetResolver.bundled.resolve(profile: "laa-\(staff.rawValue)").turn)
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+            XCTAssertEqual(CGImageSourceGetCount(source), 60, staff.rawValue)
+            for index in [0, 30, 59] {
+                let frame = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, index, nil))
+                XCTAssertEqual(frame.width, 768, staff.rawValue)
+                XCTAssertNotEqual(frame.alphaInfo, .none, staff.rawValue)
+                XCTAssertNotEqual(frame.alphaInfo, .noneSkipFirst, staff.rawValue)
+            }
+        }
+    }
+
+    /// AVFoundation composites HEVC alpha as premultiplied; straight colour
+    /// shows as a white rim around the mascot on a light background.
+    func testEveryLoopIsPremultiplied() async throws {
+        for staff in LAAStaff.allCases {
+            let url = try XCTUnwrap(StaffAssetResolver.bundled.resolve(profile: "laa-\(staff.rawValue)").loop)
+            let asset = AVURLAsset(url: url)
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            let track = try XCTUnwrap(tracks.first)
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            ])
+            reader.add(output)
+            XCTAssertTrue(reader.startReading())
+            let sample = try XCTUnwrap(output.copyNextSampleBuffer())
+            let buffer = try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))
+            CVPixelBufferLockBaseAddress(buffer, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+            let base = try XCTUnwrap(CVPixelBufferGetBaseAddress(buffer)).assumingMemoryBound(to: UInt8.self)
+            var edge = 0, brighterThanAlpha = 0
+            for y in 0..<CVPixelBufferGetHeight(buffer) {
+                let row = base + y * CVPixelBufferGetBytesPerRow(buffer)
+                for x in 0..<CVPixelBufferGetWidth(buffer) {
+                    let pixel = row + x * 4
+                    guard pixel[3] > 20, pixel[3] < 235 else { continue }
+                    edge += 1
+                    if max(pixel[0], pixel[1], pixel[2]) > pixel[3] &+ 8 { brighterThanAlpha += 1 }
+                }
+            }
+            XCTAssertGreaterThan(edge, 0, staff.rawValue)
+            XCTAssertLessThan(Double(brighterThanAlpha) / Double(edge), 0.06, staff.rawValue)
+        }
+    }
+
+    func testTheMascotTurnsAllTheWayRoundAndComesBackTheShortWay() {
+        var spin = StaffTurnSpin()
+        spin.drag(dx: 1.1 / StaffTurnSpin.turnsPerPoint)
+        XCTAssertGreaterThan(spin.turn, 1)
+        XCTAssertEqual(spin.frame(of: 60), 6)
+        spin.release(velocityX: 0)
+        XCTAssertFalse(spin.isFacingFront)
+        for _ in 0..<600 { spin.advance(by: 1.0 / 60) }
+        XCTAssertEqual(spin.turn, 1, accuracy: 0.01)
+        XCTAssertTrue(spin.isFacingFront)
+        XCTAssertEqual(spin.frame(of: 60), 0)
+    }
+
+    func testTurningBackwardsKeepsTheFrameInRange() {
+        var spin = StaffTurnSpin()
+        spin.drag(dx: -0.25 / StaffTurnSpin.turnsPerPoint)
+        XCTAssertEqual(spin.frame(of: 60), 45)
+        spin.drag(dx: 0.2499 / StaffTurnSpin.turnsPerPoint)
+        XCTAssertEqual(spin.frame(of: 60), 0)
+    }
+
+    func testAFlickCarriesOnAndNothingMovesWhileHeld() {
+        var spin = StaffTurnSpin()
+        spin.drag(dx: 10)
+        let held = spin.turn
+        spin.advance(by: 1)
+        XCTAssertEqual(spin.turn, held)
+        spin.release(velocityX: 300)
+        spin.advance(by: 0.1)
+        XCTAssertGreaterThan(spin.turn, held)
+    }
+
+    func testAnEmployeeWearsTheMascotWhateverHermesHolds() {
+        let resolver = StaffAssetResolver.bundled
+        let mascot = try? XCTUnwrap(resolver.resolve(profile: "laa-ciel").avatar)
+        XCTAssertEqual(AppState().profileAvatarURL(for: "laa-ciel"), mascot)
+        XCTAssertTrue(mascot.map(resolver.isMascot) ?? false)
+        XCTAssertFalse(resolver.isMascot(URL(fileURLWithPath: "/tmp/avatar.png")))
     }
 
     func testTheStillLeavesOnlyOnceTheVideoIsOnScreen() {
