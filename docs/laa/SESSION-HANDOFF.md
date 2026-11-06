@@ -66,7 +66,7 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 
 ## 現在の状態（2026-11-06）
 
-- iPhone指摘修正をコードmaster `3590f6ee`へ統合し、Bridgeを再起動してhealthを確認した。Chat遷移・引用・一覧の負荷、定期実行の取得状態、DocのMarkdown編集、Work詳細の題名・画像・設定表示・末尾表示、社員ウィジェットを修正。Bridge **625/625**、LAA統合 **365/365**、既定schemeのunit **1685/1685**・UI再試験 **8/8**、personal Releaseが成功。既定schemeの初回UIはランナー起動待ちで中断したため再試験した。保存ログは `work/laa-app-fixes-20261106/`。実機の日本語入力・ウィジェット・Chatの体感速度と、修正後の定期通知到達は未確認（BUS-357、363〜371）。COS・CTOは配送待ちを30分に延長したが、過去の配送未達4件は再送していない。11/6のメール確認1件は3回失敗しproviderの詳細理由は未確定。次のCOS・CTO定期実行は11/7 03:00。
+- iPhone指摘修正をコードmaster `3590f6ee`へ統合し、Bridgeを再起動してhealthを確認した。Chat遷移・引用・一覧の負荷、定期実行の取得状態、DocのMarkdown編集、Work詳細の題名・画像・設定表示・末尾表示、社員ウィジェットを修正。Bridge **625/625**、LAA統合 **365/365**、既定schemeのunit **1685/1685**・UI再試験 **8/8**、personal Releaseが成功。既定schemeの初回UIはランナー起動待ちで中断したため再試験した。保存ログは `work/laa-app-fixes-20261106/`。実機の日本語入力・ウィジェット・Chatの体感速度と、修正後の定期通知到達は未確認（BUS-357、363〜371）。COS・CTOは配送待ちを30分に延長したが、過去の配送未達4件は再送していない。11/6のメール確認1件は3回失敗しproviderの詳細理由は未確定。両社員の次の定期実行は11/7 03:00で、未達だったCTOの環境点検自体は11/13 02:30。
 
 - 社員の見た目を独自の9体のマスコットへ替えた。Cielは青い白鳥、Argusは孔雀。全員、通話と社員の詳細で指で360度回せる（`Conduit/LAA/Staff/StaffMascotView.swift`。Klingの周回動画から作った60コマで、3Dモデルではない）。チャット上部は54ptで名前のガラスの外へ出し、通話の円と外周リングは外した。処理中の行や一覧もHermesの画像ではなく同梱のマスコットを使う（`profileAvatarURL`）。制作手順は `docs/laa/DESIGN.md`、素材は `docs/laa/assets/staff/README.md`。実機の回り心地は社長の確認待ち。
 - Workの詳細は見出しを名前だけのLiquid Glassにし、中断を `ぁあ` の左へ移した。LAAアプリ発の本人の会話は `plainPrompt` で入力文だけを届け、一覧の名前はPaseoがワークスペースへ付けた題名へ追従する（本人の命名は保持）。AI UsageはGPT API・Claude APIを使用額ではなく残量で表示する。各社は残高APIを公開していないため、値はHQ `catalog.verifiedMoney` の請求画面確認値で、確認日時を出す（自動更新なし。請求画面を確認したら台帳を更新する）。見出しの `Weekly` を外し、単独枠はカード内の枠名も出さず、複数枠は `週間` と表示する。表示順はVeniceを最後へ移した。
