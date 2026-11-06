@@ -1,6 +1,22 @@
 #if LAA_BUILD
 import SwiftUI
 
+private struct LAAWorkScrollHeightReader: ViewModifier {
+    let onChange: (CGFloat) -> Void
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height
+            } action: { _, height in
+                onChange(height)
+            }
+        } else {
+            content
+        }
+    }
+}
+
 private struct LAAWorkContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -30,8 +46,8 @@ struct LAAWorkSessionDetail: View {
     @State private var historyLoaded = false
     @State private var userDragged = false
     @State private var contentHeight: CGFloat = 0
+    @State private var scrollContentHeight: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0
-    @State private var contentTall = true
     @State private var options: LAAWorkSessionOptions?
     @State private var changingEffort = false
     @State private var effortNotice: String?
@@ -107,7 +123,12 @@ struct LAAWorkSessionDetail: View {
                     .onAppear { viewportHeight = proxy.size.height }
                     .onChange(of: proxy.size.height) { _, height in viewportHeight = height }
             })
-            .defaultScrollAnchor(initialAnchor)
+            .modifier(LAAWorkScrollHeightReader { height in
+                scrollContentHeight = height
+                // Geometry also changes while the owner scrolls; only the
+                // initial placement may react here or it would fight the drag.
+                if !didInitialScroll { updateContentFit(scroll) }
+            })
             .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in userDragged = true })
             .refreshable { await refreshSnapshot() }
             .onPreferenceChange(LAAWorkContentHeightKey.self) { height in
@@ -120,6 +141,7 @@ struct LAAWorkSessionDetail: View {
                 if didInitialScroll, waiting == true, !userDragged { scroll.scrollTo("decision-start", anchor: .top) }
             }
             .onChange(of: messages.count) { _, _ in
+                updateContentFit(scroll)
                 guard didInitialScroll else { return }
                 if !userDragged && followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
             }
@@ -141,19 +163,33 @@ struct LAAWorkSessionDetail: View {
         }
     }
 
-    /// A page taller than the viewport opens at its bottom; a shorter page
-    /// stays at the top, because bottom-aligning a page that fits is what
-    /// pushed the composer below the screen. A user drag removes the anchor.
-    private var initialAnchor: UnitPoint? {
-        userDragged ? nil : (contentTall ? .bottom : .top)
-    }
-
+    /// A page taller than the viewport is placed at its bottom explicitly; a
+    /// shorter page stays at the top. An anchor cannot do this: a bottom anchor
+    /// on a tall lazy stack can land in a blank region before its rows exist.
+    /// A user drag stops all automatic placement.
     private func updateContentFit(_ scroll: ScrollViewProxy) {
         guard historyLoaded, viewportHeight > 0, contentHeight > 0 else { return }
-        contentTall = contentHeight > viewportHeight + 1
-        if contentTall {
+        // The lazy stack's background can report only the part laid out so
+        // far; the scroll geometry (iOS 18) reports the whole content, and a
+        // long message list is a safe fallback on older systems.
+        let measured = max(contentHeight, scrollContentHeight)
+        let tall = measured > viewportHeight + 1 || messages.count >= 6
+        guard !userDragged else { return }
+        if tall {
+            let firstPlacement = !didInitialScroll
             didInitialScroll = true
-        } else if !userDragged {
+            DispatchQueue.main.async { scroll.scrollTo("bottom-end", anchor: .bottom) }
+            if firstPlacement {
+                // Pictures and the composer settle after the first layout; put
+                // the page back at the bottom once they have.
+                for delay in [0.6, 2.0] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        guard !userDragged else { return }
+                        scroll.scrollTo("bottom-end", anchor: .bottom)
+                    }
+                }
+            }
+        } else {
             DispatchQueue.main.async { scroll.scrollTo("top-start", anchor: .top) }
         }
     }
