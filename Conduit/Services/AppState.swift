@@ -283,6 +283,19 @@ struct GroupChatLifecycleOperations {
     static let live = GroupChatLifecycleOperations()
 }
 
+/// What one room-list read produced. A failure is its own answer, so a first
+/// read that failed is never presented as a read that found no rooms;
+/// `AppState.groupRooms` keeps the last list either way.
+enum GroupRoomsRead: Equatable {
+    /// No connection, no group support, or no read was started.
+    case unavailable
+    case read([GroupRoom])
+    case failed(String)
+    case cancelled
+    /// Another dashboard or room epoch took over while the read ran.
+    case superseded
+}
+
 /// Raw result of fetching a session's persisted history — the dashboard
 /// messages endpoint's JSON payload exactly as returned, still to be parsed
 /// by AppState's production normalizer path.
@@ -11887,63 +11900,84 @@ final class AppState: ObservableObject {
     }
 
     /// Probe `groups.capabilities` and, when the foundation methods are
-    /// advertised, refresh the room list. Called alongside the bot roster
+    /// advertised, refresh the room list once. Called alongside the bot roster
     /// refresh; a gateway that lacks the method is a supported outcome, not
     /// an error. The response is epoch- AND dashboard-fenced: an in-flight
     /// probe must never resurrect the outgoing server's phase on the new
     /// dashboard's surface.
-    func refreshGroupChatSupport() async {
+    ///
+    /// The rooms this read found are returned so a surface that shows them
+    /// (the Chats list) does not have to ask the gateway for the same list a
+    /// second time.
+    @discardableResult
+    func refreshGroupChatSupport() async -> GroupRoomsRead {
         guard let client, isConnected else {
             groupChatPhase = .idle
-            return
+            return .unavailable
         }
         let epoch = groupRoomEpoch
         let dashboard = activeDashboardID
         do {
             let capabilities = try await groupsCapabilities(client)
-            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return }
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return .superseded }
             groupCapabilities = capabilities
             guard capabilities.foundationSupported else {
                 groupChatPhase = .gatewayUnsupported
                 groupRooms = []
-                return
+                return .unavailable
             }
             groupChatPhase = .available
-            await refreshGroupRooms()
+            return await refreshGroupRooms()
         } catch is CancellationError {
-            return
+            return .cancelled
         } catch {
-            guard groupRoomEpoch == epoch, activeDashboardID == dashboard, !Task.isCancelled else { return }
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard, !Task.isCancelled else { return .superseded }
             if HermesClient.isMissingRPCMethod(error) {
                 groupCapabilities = nil
                 groupChatPhase = .gatewayUnsupported
                 groupRooms = []
+                return .unavailable
             } else if groupChatPhase != .available {
-                groupChatPhase = .failed(message: UserFacingError.message(for: error))
+                let message = UserFacingError.message(for: error)
+                groupChatPhase = .failed(message: message)
+                return .failed(message)
             }
             // A transient failure while already .available keeps the last
-            // known rooms and phase — same contract as the roster notice.
+            // known rooms and phase — same contract as the roster notice. The
+            // room list itself is still worth reading.
+            return await refreshGroupRooms()
         }
     }
 
-    func refreshGroupRooms() async {
-        guard groupChatPhase == .available, let client, isConnected else { return }
+    /// Reads the room list for the connection on screen. A failure keeps the
+    /// last known list and answers `.failed`, so a surface can tell "could
+    /// not read" from "no rooms"; `.superseded` says another dashboard or
+    /// room epoch took over and the answer is not this surface's to show.
+    @discardableResult
+    func refreshGroupRooms() async -> GroupRoomsRead {
+        guard groupChatPhase == .available, let client, isConnected else { return .unavailable }
         let epoch = groupRoomEpoch
+        let dashboard = activeDashboardID
         do {
             let (rooms, nextOffset) = try await groupsList(client)
-            guard groupRoomEpoch == epoch else { return }
-            groupRooms = rooms.filter { !$0.isDisbanded }
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return .superseded }
+            guard !Task.isCancelled else { return .cancelled }
+            let listed = rooms.filter { !$0.isDisbanded }
+            groupRooms = listed
             // Only a complete list proves a room is gone: a partial page
             // (next_offset set) must not drop another room's retry key.
             if nextOffset == nil {
-                pruneRoomStores(liveRoomIDs: Set(groupRooms.map(\.roomID)))
+                pruneRoomStores(liveRoomIDs: Set(listed.map(\.roomID)))
             }
             await refreshGroupRoomPictures()
+            return .read(listed)
         } catch is CancellationError {
-            return
+            return .cancelled
         } catch {
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard, !Task.isCancelled else { return .superseded }
             // Keep the last known room list; the roster surfaces the probe
             // failure path, and a stale room row is safer than an empty one.
+            return .failed(UserFacingError.message(for: error))
         }
     }
 

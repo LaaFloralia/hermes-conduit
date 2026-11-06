@@ -115,9 +115,9 @@ struct LAAChatsView: View {
             guard shown else { return }
             // The catalog, the roster and the routines are independent reads:
             // start them together instead of waiting for each round trip in
-            // turn. The group capability is its own read, and the rooms need
-            // it, so those two stay in order. The same data is read as
-            // before; only the waiting overlaps.
+            // turn. The group capability and the room list are one read (the
+            // list is only read when the gateway advertises groups), and that
+            // read's own rooms are what this list shows.
             async let catalog: Void = appState.loadSessionCatalogIfNeeded()
             guard appState.isConnected else {
                 await catalog
@@ -125,9 +125,8 @@ struct LAAChatsView: View {
             }
             async let roster: Void = appState.refreshBotRoster()
             async let routines: Void = appState.loadCronJobsIfNeeded()
-            await appState.refreshGroupChatSupport()
-            async let rooms: Void = readRooms()
-            _ = await (catalog, roster, routines, rooms)
+            await readRooms()
+            _ = await (catalog, roster, routines)
         }
         .task(id: "\(appState.activeProfile)|\(shown)") {
             guard shown else { return }
@@ -147,17 +146,19 @@ struct LAAChatsView: View {
         guard appState.isConnected else { return }
         await appState.loadSessions(forceRefresh: true)
         await appState.refreshBotRoster()
-        await appState.refreshGroupChatSupport()
         await appState.loadCronJobs()
         await readRooms()
         if appState.isAllProfilesChatsOn { appState.refreshAllProfilesCatalog() }
     }
 
-    /// AppState retains its last room list on a failed refresh without
-    /// reporting that read's result. Use the same client to confirm this
-    /// read, so a failed first read is never presented as an empty list.
+    /// The room section's one read: the same probe-and-list call the group
+    /// screens use, so the rooms on screen are the rooms this read found.
+    /// The outcome is kept apart from an empty list: a failed first read is
+    /// `.failed` (with the last list, if any, left on screen), never "no
+    /// rooms". A read whose epoch, dashboard or connection changed, or that
+    /// was cancelled, is not adopted.
     private func readRooms() async {
-        guard appState.groupChatPhase == .available, let client = appState.client,
+        guard appState.isConnected, let client = appState.client,
               let dashboard = appState.activeDashboardID else { return }
         let read = UUID()
         groupReadID = read
@@ -173,18 +174,19 @@ struct LAAChatsView: View {
             // list. The read still runs on every entry, so a new room arrives.
             groupReadState = .loading
         }
-        do {
-            let result = try await client.groupsList()
-            guard !Task.isCancelled, groupReadID == read, appState.client === client,
-                  appState.activeDashboardID == dashboard else { return }
-            loadedRooms = result.rooms.filter { !$0.isDisbanded }
+        let outcome = await appState.refreshGroupChatSupport()
+        guard !Task.isCancelled, groupReadID == read, appState.client === client,
+              appState.activeDashboardID == dashboard else { return }
+        switch outcome {
+        case .read(let rooms):
+            loadedRooms = rooms
             groupReadState = .ready
-        } catch is CancellationError {
-            return
-        } catch {
-            guard !Task.isCancelled, groupReadID == read, appState.client === client,
-                  appState.activeDashboardID == dashboard else { return }
-            groupReadState = .failed(UserFacingError.message(for: error))
+        case .failed(let message):
+            groupReadState = .failed(message)
+        case .unavailable, .cancelled, .superseded:
+            // The snapshot's own state (offline, unsupported) or a newer read
+            // owns the section; this answer is not the one to show.
+            break
         }
     }
 
