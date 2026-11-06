@@ -121,13 +121,17 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     /// grid is editable immediately. A table written straight after another
     /// one reads back as a single table, so a blank line is kept between the
     /// runs that hold them — the document is only split at table boundaries,
-    /// and the neighbouring table is in the next run.
-    func insertTable(selection: NSRange, into segmentID: UUID? = nil) {
+    /// and the neighbouring table is in the next run. Returns false when the
+    /// caret is in a fence that never closes: the table would still be code
+    /// there, so the note is left exactly as it was.
+    @discardableResult
+    func insertTable(selection: NSRange, into segmentID: UUID? = nil) -> Bool {
         let id = segmentID ?? activeTextSegment
             ?? segments.first(where: { if case .text = $0.content { return true }; return false })?.id
         guard let id, let index = segments.firstIndex(where: { $0.id == id }),
-              case .text(let text) = segments[index].content else { return }
+              case .text(let text) = segments[index].content else { return false }
         var edit = LAAMarkdownFormat.insertTable(text: text, selection: selection)
+        guard edit.text != text else { return false }
         if index > 0, isTable(segments[index - 1]), Self.startsWithTableRow(edit.text) {
             edit = LAAMarkdownEdit(text: "\n" + edit.text,
                                    selection: NSRange(location: edit.selection.location + 1,
@@ -149,6 +153,7 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         ensureTrailingEntry()
         onChange(sourceText)
         revision += 1
+        return true
     }
 
     /// A note that ends on a table row has no run for the caret: after a table

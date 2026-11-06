@@ -618,6 +618,59 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         XCTAssertEqual(saved.markdownCell(row: 0, column: 1), "1")
     }
 
+    // MARK: A table beside a CRLF line or a code fence
+
+    @MainActor func testTableAtTheEndOfACRLFRunStaysATable() {
+        let source = "a\r\n| 項目 | 値 |\r\n| --- | --- |\r\n| 1 | 2 |\r\n"
+        let model = LAAMarkdownDocumentModel(text: source) { _ in }
+        guard let run = model.segments.first, case .text(let text) = run.content else {
+            return XCTFail("expected the run before the table")
+        }
+        XCTAssertEqual(text, "a\r", "the run ends with the line's carriage return")
+        XCTAssertTrue(model.insertTable(selection: NSRange(location: 2, length: 0), into: run.id))
+        XCTAssertEqual(model.sourceText,
+                       "a\r\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n\n| 項目 | 値 |\r\n| --- | --- |\r\n| 1 | 2 |\r\n",
+                       "the table gets the line feed the CRLF run does not carry, and the note keeps its bytes")
+        let tables = LAAMarkdownParser.segments(in: model.sourceText).filter {
+            if case .table = $0 { return true } else { return false }
+        }
+        XCTAssertEqual(tables.count, 2, "the inserted table reads back as a table")
+    }
+
+    @MainActor func testTableInsideAClosedFenceGoesAfterTheBlock() {
+        let source = "```swift\nlet x = 1\n```\n\n本文\n"
+        let expected = "```swift\nlet x = 1\n```\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n\n本文\n"
+        // The code line, then the closing fence itself: both are inside the
+        // block, and code is never an insertion point.
+        for caret in [12, 21] {
+            let model = LAAMarkdownDocumentModel(text: source) { _ in }
+            guard let run = model.segments.first else { return XCTFail("expected a run") }
+            XCTAssertTrue(model.insertTable(selection: NSRange(location: caret, length: 0), into: run.id))
+            XCTAssertEqual(model.sourceText, expected, "the block is unchanged and the table follows it (caret \(caret))")
+        }
+    }
+
+    @MainActor func testTableAfterAClosedFenceAtTheEndKeepsTheNotesEnd() {
+        let source = "```\na\n```\n"
+        let model = LAAMarkdownDocumentModel(text: source) { _ in }
+        guard let run = model.segments.first else { return XCTFail("expected a run") }
+        XCTAssertTrue(model.insertTable(selection: NSRange(location: 5, length: 0), into: run.id))
+        XCTAssertEqual(model.sourceText,
+                       "```\na\n```\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n",
+                       "the table follows the fence and the note's final newline is kept")
+    }
+
+    @MainActor func testTableInsideAnUnclosedFenceChangesNothing() {
+        let source = "```\n| a | b |\n| --- | --- |\n"
+        let model = LAAMarkdownDocumentModel(text: source) { _ in }
+        guard let run = model.segments.first else { return XCTFail("expected a run") }
+        XCTAssertFalse(model.insertTable(selection: NSRange(location: 8, length: 0), into: run.id),
+                       "there is no place after an unclosed fence that is not still code")
+        XCTAssertEqual(model.sourceText, source, "the note is byte for byte what it was")
+        XCTAssertEqual(model.revision, 0, "nothing is republished")
+        XCTAssertEqual(model.segments.count, 1)
+    }
+
     // MARK: Deferred reports cannot roll a newer draft back
 
     @MainActor func testAdoptionReadsTheLiveTextAndSkipsComposition() {
