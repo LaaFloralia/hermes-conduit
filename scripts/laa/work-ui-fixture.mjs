@@ -44,6 +44,7 @@ const conversationFor = (id) => id === SESSION_IDS.long ? longMessages : [];
 // client cannot pass by accident.
 let lastServed = 0;
 let imagesServed = 0;
+let resetGeneration = 0;
 // A held image request lets a test start reading history before the picture
 // arrives, instead of racing a fixed delay.
 let imageHold = null;
@@ -135,9 +136,12 @@ const api = http.createServer(async (req, res) => {
     const leaf = sessionMatch[2] ?? '';
     if (leaf === '' && req.method === 'GET') return send(res, 200, session);
     if (leaf === 'conversation') {
+      // A request left over from the previous /reset must not update the new
+      // test's delivery count when it finally lands.
+      const generation = resetGeneration;
       const items = conversationFor(session.id);
       const result = send(res, 200, { items, nextCursor: null, sources: null, total: null, fetchedAt: null });
-      if (session.id === SESSION_IDS.long) lastServed = items.length;
+      if (generation === resetGeneration && session.id === SESSION_IDS.long) lastServed = items.length;
       return result;
     }
     if (leaf === 'events') {
@@ -154,9 +158,13 @@ const api = http.createServer(async (req, res) => {
       // Deliberately slower than the first layout and both re-placement
       // timers. A passing test therefore proves the content-size follow,
       // not a lucky delay. A held request is released by the test.
+      const generation = resetGeneration;
       if (imageHold) await imageHold.promise;
       else await new Promise((resolve) => setTimeout(resolve, 8000));
-      imagesServed += 1;
+      // Count only a delivery belonging to the current fixture generation;
+      // /reset releases old held requests, and their late completion must not
+      // be mistaken for the new test's image.
+      if (generation === resetGeneration) imagesServed += 1;
       return send(res, 200, { data: FIXTURE_IMAGE, mimeType: 'image/png' },
         { 'Cache-Control': 'no-store' });
     }
@@ -176,6 +184,7 @@ const api = http.createServer(async (req, res) => {
 let advanced = 0;
 const control = http.createServer((req, res) => {
   if (req.url === '/reset') {
+    resetGeneration += 1;
     releaseImages();
     reset();
     longMessages.length = 41;
