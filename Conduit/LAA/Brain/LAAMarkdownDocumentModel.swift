@@ -100,13 +100,24 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     }
 
     /// Puts a table where the caret is and splits the run around it, so the
-    /// grid is editable immediately.
+    /// grid is editable immediately. A table written straight after another
+    /// one reads back as a single table, so a blank line is kept between the
+    /// runs that hold them — the document is only split at table boundaries,
+    /// and the neighbouring table is in the next run.
     func insertTable(selection: NSRange, into segmentID: UUID? = nil) {
         let id = segmentID ?? activeTextSegment
             ?? segments.first(where: { if case .text = $0.content { return true }; return false })?.id
         guard let id, let index = segments.firstIndex(where: { $0.id == id }),
               case .text(let text) = segments[index].content else { return }
-        let edit = LAAMarkdownFormat.insertTable(text: text, selection: selection)
+        var edit = LAAMarkdownFormat.insertTable(text: text, selection: selection)
+        if index > 0, isTable(segments[index - 1]), Self.startsWithTableRow(edit.text) {
+            edit = LAAMarkdownEdit(text: "\n" + edit.text,
+                                   selection: NSRange(location: edit.selection.location + 1,
+                                                      length: edit.selection.length))
+        }
+        if index + 1 < segments.count, isTable(segments[index + 1]), Self.endsWithTableRow(edit.text) {
+            edit = LAAMarkdownEdit(text: edit.text + "\n", selection: edit.selection)
+        }
         let replacement = LAAMarkdownParser.segments(in: edit.text).map { segment -> Segment in
             switch segment {
             case .text(let text): return Segment(id: UUID(), content: .text(text))
@@ -119,6 +130,22 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         }
         onChange(sourceText)
         revision += 1
+    }
+
+    private func isTable(_ segment: Segment) -> Bool {
+        if case .table = segment.content { return true }
+        return false
+    }
+
+    private static func startsWithTableRow(_ text: String) -> Bool {
+        guard let first = LAAMarkdownParser.split(text).first else { return false }
+        return first.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+    }
+
+    private static func endsWithTableRow(_ text: String) -> Bool {
+        guard let last = LAAMarkdownParser.split(text).last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+        else { return false }
+        return last.trimmingCharacters(in: .whitespaces).hasPrefix("|")
     }
 }
 #endif

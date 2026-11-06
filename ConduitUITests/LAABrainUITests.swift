@@ -293,7 +293,7 @@ final class LAABrainUITests: XCTestCase {
 
     func testTableCellsKeepTwoEditsThroughSaveAndReload() {
         let app = XCUIApplication()
-        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
         app.launch()
         openLocalCompany(app)
         let note = app.staticTexts["Table"]
@@ -346,7 +346,7 @@ final class LAABrainUITests: XCTestCase {
 
     func testInsertTableUsesTheFocusedRunAfterAnExistingTable() {
         let app = XCUIApplication()
-        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
         app.launch()
         openLocalCompany(app)
         let note = app.staticTexts["Table"]

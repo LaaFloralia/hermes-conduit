@@ -360,18 +360,70 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         guard let trailing = model.segments.last, case .text(let trailingText) = trailing.content else {
             return XCTFail("expected a trailing text run")
         }
-        XCTAssertEqual(trailingText, "末尾の段落\n")
-        model.insertTable(selection: NSRange(location: 0, length: 0), into: trailing.id)
-        let sources = model.segments.map(\.content)
-        XCTAssertEqual(sources.count, 4, "the table split the focused run")
-        guard case .text(let untouched) = sources[0] else { return XCTFail("first run stays text") }
+        XCTAssertEqual(trailingText, "\n末尾の段落\n", "the run after the table starts with the blank line")
+        // The caret at the end of the paragraph puts the table after it.
+        model.insertTable(selection: NSRange(location: 6, length: 0), into: trailing.id)
+        XCTAssertEqual(model.segments.count, 5, "the table split the focused run")
+        guard case .text(let untouched) = model.segments[0].content else { return XCTFail("first run stays text") }
         XCTAssertEqual(untouched, "# 見出し\n", "the run before the table is untouched")
-        guard case .table(let original) = sources[1] else { return XCTFail("the original table stays") }
+        guard case .table(let original) = model.segments[1].content else { return XCTFail("the original table stays") }
         XCTAssertEqual(original.header, ["a", "b"])
-        guard case .table(let inserted) = sources[2] else { return XCTFail("the new table is after the paragraph") }
+        guard case .text(let paragraph) = model.segments[2].content else { return XCTFail("the paragraph stays text") }
+        XCTAssertEqual(paragraph, "\n末尾の段落", "the paragraph is not rewritten")
+        guard case .table(let inserted) = model.segments[3].content else { return XCTFail("the new table follows it") }
         XCTAssertEqual(inserted.header, ["見出し1", "見出し2"])
-        XCTAssertEqual(model.sourceText.hasSuffix("末尾の段落\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n|  |  |\n"), true,
-                       "the table lands under the trailing paragraph, not at the old run")
+        XCTAssertEqual(model.sourceText,
+                       "# 見出し\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n末尾の段落\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n",
+                       "the table lands after the trailing paragraph, not at the old run")
+        XCTAssertEqual(LAAMarkdownParser.segments(in: model.sourceText).count, 5,
+                       "the saved note reads back with both tables")
+    }
+
+    @MainActor func testInsertingOnTheBlankLineKeepsABlankLineBeforeTheTable() {
+        let text = "# 見出し\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n末尾の段落\n"
+        let model = LAAMarkdownDocumentModel(text: text) { _ in }
+        guard let trailing = model.segments.last, case .text(let trailingText) = trailing.content else {
+            return XCTFail("expected a trailing text run")
+        }
+        // A caret on the blank line right after the table: the new table must
+        // not touch the existing one, or the two would read back as one.
+        model.insertTable(selection: NSRange(location: 0, length: 0), into: trailing.id)
+        XCTAssertEqual(trailingText, "\n末尾の段落\n")
+        let reparsed = LAAMarkdownParser.segments(in: model.sourceText)
+        XCTAssertEqual(reparsed.count, 5, "blank line, table, blank line, table, text")
+        let tables = reparsed.compactMap { segment -> LAAMarkdownTable? in
+            if case .table(let table) = segment { return table }
+            return nil
+        }
+        XCTAssertEqual(tables.count, 2, "the two tables stay separate")
+        XCTAssertEqual(tables.first?.header, ["a", "b"], "the existing table is unchanged")
+        XCTAssertEqual(tables.last?.header, ["見出し1", "見出し2"])
+        XCTAssertTrue(model.sourceText.contains("| 1 | 2 |\n\n| 見出し1"),
+                      "a blank line separates the tables")
+        XCTAssertTrue(model.sourceText.hasSuffix("末尾の段落\n"), "the paragraph stays after the tables")
+    }
+
+    func testToolbarAddsAMarkerToAnEmptyLine() {
+        XCTAssertEqual(LAAMarkdownFormat.setBlock(.bullet, text: "", selection: NSRange(location: 0, length: 0)).text,
+                       "- ")
+        XCTAssertEqual(LAAMarkdownFormat.setBlock(.ordered, text: "", selection: NSRange(location: 0, length: 0)).text,
+                       "1. ")
+        XCTAssertEqual(LAAMarkdownFormat.toggleCheckbox(text: "", selection: NSRange(location: 0, length: 0)).text,
+                       "- [ ] ")
+        XCTAssertEqual(LAAMarkdownFormat.setBlock(.heading2, text: "\n", selection: NSRange(location: 0, length: 0)).text,
+                       "## \n")
+
+        // An empty line inside a note takes a marker; its neighbours do not.
+        XCTAssertEqual(LAAMarkdownFormat.setBlock(.bullet, text: "a\n\nb", selection: NSRange(location: 2, length: 0)).text,
+                       "a\n- \nb")
+        // A blank line inside a longer selection is paragraph spacing: it is
+        // left as it is.
+        XCTAssertEqual(LAAMarkdownFormat.setBlock(.bullet, text: "a\n\nb", selection: NSRange(location: 0, length: 4)).text,
+                       "- a\n\n- b")
+        // Choosing the same block again clears the marker, including on a line
+        // that was empty before.
+        let bullet = LAAMarkdownFormat.setBlock(.bullet, text: "", selection: NSRange(location: 0, length: 0))
+        XCTAssertEqual(LAAMarkdownFormat.setBlock(.bullet, text: bullet.text, selection: bullet.selection).text, "")
     }
 
     func testCRLFLineKindsIgnoreTheCarriageReturn() {
