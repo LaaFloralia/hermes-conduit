@@ -10,10 +10,23 @@ final class LAAWorkSessionUITests: XCTestCase {
     private let longID = "ses_3333333333333333"
     private let staleID = "ses_4444444444444444"
 
+    /// The fixture control endpoint is reached off the main thread: a
+    /// synchronous `Data(contentsOf:)` here raises the UI-unresponsiveness
+    /// runtime warning.
+    @discardableResult
+    private func fixture(_ path: String) -> [String: Any]? {
+        let done = expectation(description: "fixture \(path)")
+        var payload: [String: Any]?
+        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19585\(path)")!) { data, _, _ in
+            if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        return payload
+    }
+
     private func launchFixture() throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:19585/reset")!)) != nil else {
-            throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
-        }
+        guard fixture("/reset") != nil else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
@@ -53,6 +66,26 @@ final class LAAWorkSessionUITests: XCTestCase {
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
+
+    /// A new message arriving while the owner reads older turns must not pull
+    /// the transcript back to the bottom.
+    func testNewMessageWhileReadingHistoryKeepsThePlace() throws {
+        let app = try launchFixture()
+        open(longID, app)
+        XCTAssertTrue(wait(field(app), hittable: true))
+        app.scrollViews.firstMatch.swipeDown()
+        app.scrollViews.firstMatch.swipeDown()
+        XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
+        let before = fixture("/state")?["messages"] as? Int ?? 0
+        fixture("/advance")
+        let after = fixture("/state")?["messages"] as? Int ?? 0
+        XCTAssertEqual(after, before + 1)
+        // The events poll refreshes the conversation, so the new row is really
+        // in the list; the reader's place must still hold.
+        Thread.sleep(forTimeInterval: 4)
+        XCTAssertFalse(field(app).isHittable)
+        XCTAssertTrue(app.navigationBars["長い履歴"].exists)
+    }
 
     /// A failed observation keeps the last values in hand, but the bar says they
     /// are not current instead of presenting them as the live setting.

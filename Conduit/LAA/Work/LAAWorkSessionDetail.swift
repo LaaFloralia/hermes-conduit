@@ -21,6 +21,7 @@ struct LAAWorkSessionDetail: View {
     @State private var followsConversation = true
     @State private var didInitialScroll = false
     @State private var historyLoaded = false
+    @State private var userDragged = false
     @State private var options: LAAWorkSessionOptions?
     @State private var changingEffort = false
     @State private var effortNotice: String?
@@ -73,13 +74,25 @@ struct LAAWorkSessionDetail: View {
                     // or unavailable history); later arrivals follow only while
                     // this sentinel is on screen.
                     Color.clear.frame(height: 1).id("bottom-end")
-                        .onAppear { followsConversation = true }
+                        .onAppear {
+                            followsConversation = true
+                            // Back at the bottom: the initial anchor may apply
+                            // again on the next content change.
+                            userDragged = false
+                        }
                         .onDisappear { followsConversation = false }
                 }
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                 .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
             }
+            // Until the owner drags the transcript, keep the bottom anchored:
+            // a picture that finishes after the first layout must not leave the
+            // composer below the screen. A drag removes the anchor until the
+            // owner returns to the bottom, so reading history is not pulled
+            // back by a later poll.
+            .defaultScrollAnchor(userDragged ? nil : .bottom)
+            .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in userDragged = true })
             .refreshable { await refreshSnapshot() }
             .onChange(of: historyLoaded) { _, _ in placeInitialScroll(scroll) }
             .onChange(of: session?.needsDecision) { _, waiting in
@@ -88,10 +101,10 @@ struct LAAWorkSessionDetail: View {
             }
             .onChange(of: messages.count) { _, _ in
                 guard didInitialScroll else { placeInitialScroll(scroll); return }
-                if followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
+                if !userDragged && followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
             }
             .onChange(of: messages.last?.text) { _, _ in
-                if followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
+                if !userDragged && followsConversation && session?.needsDecision != true { scroll.scrollTo("bottom-end", anchor: .bottom) }
             }
             }
         }
@@ -115,7 +128,17 @@ struct LAAWorkSessionDetail: View {
     private func placeInitialScroll(_ scroll: ScrollViewProxy) {
         guard !didInitialScroll, historyLoaded else { return }
         didInitialScroll = true
-        DispatchQueue.main.async { scroll.scrollTo("bottom-end", anchor: .bottom) }
+        DispatchQueue.main.async {
+            scroll.scrollTo("bottom-end", anchor: .bottom)
+            // Correct the initial position even if a late image briefly
+            // removed the bottom sentinel. Only a real drag cancels these.
+            for delay in [0.6, 2.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard !userDragged else { return }
+                    scroll.scrollTo("bottom-end", anchor: .bottom)
+                }
+            }
+        }
     }
 
     private var conversation: some View {
