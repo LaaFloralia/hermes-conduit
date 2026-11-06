@@ -626,12 +626,20 @@ func testHeaderEditPastTheHeaderWidthGrowsItSafely() {
         window.addSubview(view)
         XCTAssertNotNil(view.window, "the view is in the hierarchy")
         view.text = "新しい入力"
+        view.selectedRange = NSRange(location: (view.text as NSString).length, length: 0)
         XCTAssertEqual(view.settledTextForAdoption(), "新しい入力",
                        "the report reads the text when it lands, not when it was queued")
+        // A composition is in progress: nothing may be published yet.
         view.setMarkedText("かな", selectedRange: NSRange(location: 2, length: 0))
         XCTAssertNil(view.settledTextForAdoption(), "a composition in progress is never published")
+        // Committing it keeps the characters that were being converted.
         view.unmarkText()
-        XCTAssertEqual(view.settledTextForAdoption(), "新しい入力")
+        let committed = view.settledTextForAdoption() ?? ""
+        XCTAssertEqual(committed, "新しい入力かな",
+                       "the committed text has no lost, duplicated or reordered characters")
+        XCTAssertTrue(committed.contains("かな"), "the committed characters are published")
+        XCTAssertTrue(committed.contains("新しい入力"), "the text before the composition is kept")
+        XCTAssertNotEqual(committed, "新しい入力", "the composition was committed, not dropped")
         view.removeFromSuperview()
         XCTAssertNil(view.settledTextForAdoption(), "a view that left the hierarchy publishes nothing")
     }
