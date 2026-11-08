@@ -26,7 +26,7 @@ import Darwin
     @Published private(set) var location: Location?
     private var locationBookmark: URL? { location.map { bookmarkURL.deletingLastPathComponent().appendingPathComponent("vault-\($0.rawValue).bookmark") } }
 
-    static func userHomeDirectory() -> URL? {
+    nonisolated static func userHomeDirectory() -> URL? {
         #if targetEnvironment(macCatalyst)
         guard let entry = getpwuid(getuid()), let path = entry.pointee.pw_dir, path.pointee != 0 else { return nil }
         return URL(fileURLWithPath: String(cString: path), isDirectory: true)
