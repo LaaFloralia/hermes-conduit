@@ -65,12 +65,14 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         let stale = name == "stale"
         let observed = formatter.string(from: now.addingTimeInterval(stale ? -3600 : -5))
         let freshUntil = formatter.string(from: now.addingTimeInterval(stale ? -3000 : 595))
-        let ssdFree = name == "critical" ? 30 * gib : name == "warning" ? 60 * gib : 412 * gib
+        let ssdFree = name == "critical" ? 30 * gib : name == "warning" ? 60 * gib : 100 * gib
         let ssdStatus = name == "critical" ? "critical" : name == "warning" ? "warning" : "normal"
         let readings: [(String, String, Double, Double, String, Double?, Double?)] = [
-            ("capacity.mac-mini.memory", "memory", 64 * gib, 38 * gib, "unknown", nil, nil),
-            ("capacity.mac-mini.ssd", "ssd", 1024 * gib, ssdFree, ssdStatus, 80 * gib, 40 * gib),
-            ("capacity.google-drive", "google-storage", 2e12, 1.4e12, "unknown", nil, nil),
+            ("capacity.mac-mini.memory", "memory", 24 * gib, 6 * gib, "unknown", nil, nil),
+            ("capacity.mac-mini.ssd", "ssd", 460 * gib, ssdFree, ssdStatus, 80 * gib, 40 * gib),
+            ("capacity.google-drive", "google-storage", 30 * gib, 28 * gib, "normal", 3 * gib, 0.6 * gib),
+            ("capacity.macbook.memory", "memory", 16 * gib, 4 * gib, "unknown", nil, nil),
+            ("capacity.macbook.ssd", "ssd", 460 * gib, 312 * gib, "normal", 80 * gib, 40 * gib),
         ]
         var rows: [[String: Any]] = readings.map { id, type, total, free, status, warning, critical in
             name == "unavailable"
@@ -82,7 +84,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
                    "detail": ["totalBytes": total, "availableBytes": free, "freshUntil": freshUntil, "resourceType": type,
                               "status": status, "warningFreeBytes": (warning as Any?) ?? NSNull(), "criticalFreeBytes": (critical as Any?) ?? NSNull()]]
         }
-        rows += ["capacity.macbook.memory", "capacity.macbook.ssd", "capacity.icloud"].map { id in
+        rows += ["capacity.icloud"].map { id in
             ["id": id, "kind": "capacity", "label": id, "value": NSNull(), "unit": "bytes", "source": "unsupported",
              "observedAt": NSNull(), "availability": "unavailable", "nullReason": "unsupported",
              "stale": false, "estimated": false, "expired": false]
