@@ -36,7 +36,16 @@ final class LAAWorkRefUITests: XCTestCase {
     }
 
     private func searchField(_ app: XCUIApplication) -> XCUIElement {
+        LAAWorkRefUITests.openSearch(app)
+    }
+
+    /// iOS 26 shows the search minimized as a toolbar button until tapped.
+    static func openSearch(_ app: XCUIApplication) -> XCUIElement {
         let field = app.searchFields.firstMatch
+        if !field.waitForExistence(timeout: 3) || !field.isHittable {
+            let button = app.buttons["Search"].firstMatch
+            if button.waitForExistence(timeout: 5) { button.tap() }
+        }
         return field.exists ? field : app.textFields["Search"].firstMatch
     }
 
@@ -170,7 +179,7 @@ final class LAAWorkRefSnapshotTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 20))
         // The phone's search only exists from this candidate on; master shows
         // the same list, so the capture still names the state.
-        let field = app.searchFields.firstMatch
+        let field = LAAWorkRefUITests.openSearch(app)
         if field.exists {
             field.tap(); field.typeText("t12")
             Thread.sleep(forTimeInterval: 1)

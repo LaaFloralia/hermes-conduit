@@ -195,17 +195,20 @@ struct LAAWorkHub: View {
         .accessibilityIdentifier("work.section.\(value.rawValue)")
     }
 }
-/// The phone's search as the system drawer, present only on the list
-/// sections. Applied as one modifier so the toolbar keeps its buttons.
+/// The phone's search, present only on the list sections. On iOS 26 it is
+/// the system's minimized search button, so Work keeps its large title like
+/// the other tabs; earlier systems use the drawer under the title.
 private struct LAAWorkSearchField: ViewModifier {
     let enabled: Bool
     @Binding var text: String
 
     @ViewBuilder func body(content: Content) -> some View {
-        if enabled {
-            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always))
-        } else {
+        if !enabled {
             content
+        } else if #available(iOS 26.0, *) {
+            content.searchable(text: $text).searchToolbarBehavior(.minimize)
+        } else {
+            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always))
         }
     }
 }
