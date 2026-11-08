@@ -1,6 +1,6 @@
-# AI Usage・Mac状態のデータ契約
+# Usage・Mac状態のデータ契約
 
-2026-11-03更新。AI Usageは自動取得した現在の値だけを扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
+2026-11-08更新。UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
 
 ## 1. 指標と取得元
 

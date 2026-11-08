@@ -1,4 +1,5 @@
 import { statfs } from 'node:fs/promises';
+import { userInfo } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -71,9 +72,18 @@ export function parseMacBookCapacity(output) {
   };
 }
 
-export async function readMacBookCapacity({ exec = execFileAsync } = {}) {
+export async function readMacBookCapacity({ exec = execFileAsync, env = process.env } = {}) {
   try {
-    const { stdout } = await exec('/Users/laa/.config/laa/op-run-batch.sh', [template, script], { timeout: 35_000, maxBuffer: 64 * 1024 });
+    const { stdout } = await exec('/Users/laa/.config/laa/op-run-batch.sh', [template, script], {
+      timeout: 35_000,
+      maxBuffer: 64 * 1024,
+      env: {
+        ...env,
+        PATH: `/opt/homebrew/bin:${env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'}`,
+        USER: env.USER || userInfo().username,
+        HOME: env.HOME || userInfo().homedir,
+      },
+    });
     return parseMacBookCapacity(stdout);
   } catch {
     throw new Error('MacBook capacity unavailable');
