@@ -528,8 +528,11 @@ App Store build · the Bridge API, Brain and Usage data contracts
   area access by naming that audience. A denied device sees a localized Mac
   grant instruction. Owner search stays local and Bridge
   searches never re-rank with a model. Hidden paths and trash remain excluded.
-- Brain opens the Mac Bridge when no security-scoped folder is selected;
-  choosing the SyncTrain folder enables local, offline browsing. The local
+- On iPhone, Brain opens the Mac Bridge when no security-scoped folder is selected;
+  choosing the SyncTrain folder enables local, offline browsing. On Mac, Doc
+  switches between separately bookmarked `~/Brain` and `~/hq`.
+  It preserves the legacy bookmark and migrates a recognized selection without
+  replacing a separately saved bookmark; it refuses the home folder. The local
   list shows folders (including empty ones) and Markdown notes. The user can
   browse, search, read and create folders or new notes with Markdown content.
   New notes journal their draft and use exclusive atomic creation, with an
@@ -559,7 +562,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   the month folder and an empty note exclusively if absent, never replaces an
   existing note, and refuses a linked Brain instead of writing a second daily
   folder at the selected root. A pending request waits for local folder access
-  and for any open editor to close.
+  and for any open editor to close. On Mac it first selects the saved Brain
+  bookmark; if unavailable, it prompts for Brain and never writes into HQ.
 - Assets Drive uses the paired `media:read` Bridge and Google Drive API for My Drive,
   shared drives, shared items, recent, starred, full-text search, folders, paging and
   bounded thumbnails. Protected local metadata appears before refresh. Images,

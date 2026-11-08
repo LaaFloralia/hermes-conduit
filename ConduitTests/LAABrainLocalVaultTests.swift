@@ -23,6 +23,144 @@ final class LAABrainLocalVaultTests: XCTestCase {
         try? FileManager.default.removeItem(at: outside)
     }
 
+    #if targetEnvironment(macCatalyst)
+    @MainActor func testMacBookmarksMigrateAndSwitchWithoutLosingLegacyOrScope() throws {
+        let brain = root.appendingPathComponent("Brain", isDirectory: true)
+        let hq = root.appendingPathComponent("hq", isDirectory: true)
+        let store = root.appendingPathComponent("bookmarks", isDirectory: true)
+        try FileManager.default.createDirectory(at: brain, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: hq, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+        let legacy = try brain.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let legacyURL = store.appendingPathComponent("vault.bookmark")
+        try legacy.write(to: legacyURL)
+        let suite = "LAABrainLocalVaultTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var acquired: [String] = []; var released: [String] = []
+        let vault = LAABrainLocalVault(bookmarkDirectory: store, preferences: defaults, homeDirectory: root,
+            beginScope: { acquired.append($0.lastPathComponent); return true },
+            endScope: { released.append($0.lastPathComponent) })
+        XCTAssertEqual(vault.location, .brain)
+        XCTAssertEqual(try vault.snapshot().standardizedFileURL, brain.standardizedFileURL)
+        XCTAssertEqual(try Data(contentsOf: legacyURL), legacy)
+        XCTAssertTrue(vault.hasBookmark(.brain))
+        vault.select(.hq)
+        XCTAssertEqual(defaults.string(forKey: "laa.brain.mac.location"), "Brain")
+        XCTAssertEqual(released, ["Brain"])
+        XCTAssertFalse(vault.isReady)
+        try vault.connect(hq)
+        XCTAssertEqual(vault.location, .hq)
+        XCTAssertTrue(vault.hasBookmark(.hq))
+        XCTAssertEqual(defaults.string(forKey: "laa.brain.mac.location"), "HQ")
+        XCTAssertTrue(vault.prepareDaily())
+        XCTAssertEqual(released, ["Brain", "hq"])
+        XCTAssertEqual(try vault.snapshot().standardizedFileURL, brain.standardizedFileURL)
+        let daily = try LAABrainDailyNote.open(root: vault.snapshot())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: brain.appendingPathComponent(daily).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: hq.appendingPathComponent("daily journal").path))
+        XCTAssertEqual(acquired, ["Brain", "hq", "Brain"])
+        XCTAssertEqual(try Data(contentsOf: legacyURL), legacy)
+    }
+
+    @MainActor func testMacMigrationDoesNotReplaceExistingBookmarkAndMissingBrainCannotOpenDaily() throws {
+        let brain = root.appendingPathComponent("Brain", isDirectory: true)
+        let other = root.appendingPathComponent("other/Brain", isDirectory: true)
+        let store = root.appendingPathComponent("bookmarks", isDirectory: true)
+        for directory in [brain, other, store] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let original = try brain.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let existing = try other.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        try original.write(to: store.appendingPathComponent("vault.bookmark"))
+        let newURL = store.appendingPathComponent("vault-Brain.bookmark")
+        try existing.write(to: newURL)
+        let suite = "LAABrainLocalVaultTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let vault = LAABrainLocalVault(bookmarkDirectory: store, preferences: defaults, homeDirectory: root,
+                                      beginScope: { _ in true }, endScope: { _ in })
+        XCTAssertEqual(try Data(contentsOf: newURL), existing)
+        XCTAssertFalse(vault.isReady)
+        XCTAssertThrowsError(try vault.snapshot())
+        vault.select(.hq)
+        XCTAssertFalse(vault.prepareDaily())
+        XCTAssertEqual(vault.location, .brain)
+        XCTAssertThrowsError(try vault.snapshot())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("daily journal").path))
+    }
+
+    @MainActor func testFailedScopeDoesNotPersistNewActiveLocation() throws {
+        let brain = root.appendingPathComponent("Brain", isDirectory: true)
+        let hq = root.appendingPathComponent("hq", isDirectory: true)
+        let store = root.appendingPathComponent("bookmarks", isDirectory: true)
+        for directory in [brain, hq, store] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        for (url, name) in [(brain, "Brain"), (hq, "HQ")] {
+            try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+                .write(to: store.appendingPathComponent("vault-\(name).bookmark"))
+        }
+        let suite = "LAABrainLocalVaultTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("Brain", forKey: "laa.brain.mac.location")
+        var released: [String] = []
+        let vault = LAABrainLocalVault(bookmarkDirectory: store, preferences: defaults, homeDirectory: root,
+            beginScope: { $0.lastPathComponent != "hq" }, endScope: { released.append($0.lastPathComponent) })
+        XCTAssertTrue(vault.isReady)
+        vault.select(.hq)
+        XCTAssertEqual(vault.state, .needsAccess)
+        XCTAssertEqual(defaults.string(forKey: "laa.brain.mac.location"), "Brain")
+        XCTAssertEqual(released, ["Brain"])
+        XCTAssertTrue(vault.prepareDaily())
+        XCTAssertEqual(vault.location, .brain)
+    }
+
+    @MainActor func testMacRejectsHomeAndMismatchedLocation() throws {
+        let suite = "LAABrainLocalVaultTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let vault = LAABrainLocalVault(bookmarkDirectory: root, preferences: defaults, homeDirectory: root,
+                                       beginScope: { _ in true }, endScope: { _ in })
+        vault.select(.brain)
+        XCTAssertThrowsError(try vault.connect(root))
+        XCTAssertThrowsError(try vault.connect(root.deletingLastPathComponent()))
+        let hq = root.appendingPathComponent("hq", isDirectory: true)
+        try FileManager.default.createDirectory(at: hq, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try vault.connect(hq))
+        XCTAssertFalse(vault.hasBookmark(.brain))
+        XCTAssertFalse(vault.isReady)
+        let noHome = LAABrainLocalVault(bookmarkDirectory: root, preferences: defaults, homeDirectory: nil,
+                                        beginScope: { _ in true }, endScope: { _ in })
+        noHome.select(.hq)
+        XCTAssertThrowsError(try noHome.connect(hq))
+        XCTAssertFalse(noHome.isReady)
+    }
+
+    @MainActor func testUnknownLegacyBookmarkIsPreservedButNeverOpened() throws {
+        let unknown = root.appendingPathComponent("unknown", isDirectory: true)
+        let store = root.appendingPathComponent("bookmarks", isDirectory: true)
+        try FileManager.default.createDirectory(at: unknown, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+        let data = try unknown.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let legacy = store.appendingPathComponent("vault.bookmark")
+        try data.write(to: legacy)
+        let suite = "LAABrainLocalVaultTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var scopeCalls = 0
+        let vault = LAABrainLocalVault(bookmarkDirectory: store, preferences: defaults, homeDirectory: root,
+            beginScope: { _ in scopeCalls += 1; return true }, endScope: { _ in })
+        XCTAssertEqual(vault.state, .needsAccess)
+        XCTAssertNil(vault.location)
+        XCTAssertEqual(scopeCalls, 0)
+        XCTAssertEqual(try Data(contentsOf: legacy), data)
+        XCTAssertFalse(vault.prepareDaily())
+        XCTAssertThrowsError(try vault.snapshot())
+    }
+    #endif
+
     func testEnumeratesOnlyNotesInsideSelectedFolder() throws {
         let files = try LAABrainVaultIO.files(root: root)
         XCTAssertEqual(files.map(\.path), ["Folder/日本語.md"])
