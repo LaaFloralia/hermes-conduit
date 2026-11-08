@@ -68,6 +68,23 @@ test('voice scopes are opt-in and never part of the default grant', () => {
 
 // --- polish ---------------------------------------------------------------
 
+test('summary is scoped, bounded, text-only and reaches the summary worker', async (t) => {
+  const { api, token } = await bridge(t, { worker: stubWorker() });
+  const path = '/v1/voice/summarize';
+  assert.equal((await api.request(path, { method: 'POST', body: { text: '本文' } })).status, 401);
+  const noScope = await api.token([]);
+  assert.equal((await api.request(path, { method: 'POST', token: noScope, body: { text: '本文' } })).status, 403);
+  const res = await api.request(path, { method: 'POST', token, body: { text: '本文', language: 'ja' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.text, 'summary: 本文');
+  assert.equal(res.body.data.model, 'qwen3-4b');
+  assert.deepEqual(api.store.read().idempotency, {});
+  for (const body of [{ text: 'あ'.repeat(2001) }, { text: '本文', language: 'en' },
+                      { text: '本文', messages: [] }]) {
+    assert.equal((await api.request(path, { method: 'POST', token, body })).status, 400);
+  }
+});
+
 test('unauthenticated callers get 401 before anything else', async (t) => {
   const { api } = await bridge(t, { worker: stubWorker() });
   const res = await api.request('/v1/voice/polish', { method: 'POST', body: { text: 'こんにちは' } });

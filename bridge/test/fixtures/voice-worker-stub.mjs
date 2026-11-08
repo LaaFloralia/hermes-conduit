@@ -144,7 +144,7 @@ lines.on('line', (line) => {
     process.stdout.write(`${JSON.stringify({
       id: message.id,
       ok: true,
-      text: `polished: ${message.text}`,
+      text: `${message.kind === 'summarize' ? 'summary' : 'polished'}: ${message.text}`,
     })}\n`);
   }, wait);
 });
