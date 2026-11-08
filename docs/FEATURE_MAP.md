@@ -537,10 +537,13 @@ App Store build · the Bridge API, Brain and Usage data contracts
   billing link (`platform.openai.com` / `platform.claude.com`). A cached
   `cost-month` from an older widget snapshot is neither drawn nor reused, and a
   manually entered balance is not shown as current.
-- Every Usage meter is one `LAAUsageMeter`: a 6-point capsule in the link
-  colour, or the attention colour past a warning, with the warning tick on
-  capacity meters. Window, balance, monthly and capacity bars share that one
-  thickness (the owner, 2026-11-09: the meters' thickness varied).
+- Every Usage meter is one `LAAUsageMeter`: an 8-point capsule track in the
+  link colour, or the attention colour past a warning. Window, balance, monthly
+  and capacity bars share that one thickness (the owner, 2026-11-09: the meters'
+  thickness varied). The warning tick on capacity meters is drawn as an overlay
+  (2×14pt) so a row with a mark is exactly as tall as one without; the component
+  is 14pt for every row. The Settings button is the hosting screen's: Usage
+  inside Work does not add a second gear beside Work's own (`showsSettingsButton`).
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
   area access by naming that audience. A denied device sees a localized Mac
@@ -704,6 +707,8 @@ The LAA build's Work hub contains the owner's Linear tasks, sessions, projects, 
 
 Short numbers (refs) give each task, session, project, routine and skill a spoken alias (`T12`, `S5`, `P3`, `R2`, `K7`). The Bridge owns the registry, decorates list and detail responses with `ref` and resolves `GET /v1/refs/{ref}`; the `laa-bridge ref`/`refs` CLI reads the same file while the server is down. Ref display, VoiceOver and search in the app are a separate LAA app task.
 
+A session's heading is the bar's own: the name on the employee chat's small glass, with the short number and the phase under it, and the transcript has no heading card (a request/observation mismatch stands at its top instead). Mac uses its window title rather than a second pill. Opening a conversation lands on its end without a scroll: the remembered copy places the page before the Mac answers, growth (a late picture, a measured lazy row) is followed until the owner drags, and a waiting decision stays where it was moved. Tool calls are not part of the transcript, so no `実行 N件` row is drawn. The follow-up field is one 36pt row under the text — picture, model · effort, Fast, stop while a turn runs, Send — and only the model name truncates; Work offers no dictation. Fast is shown only when the daemon reports a value, pressable only when the Bridge advertises `capabilities.fast`, and read-only otherwise; a failed observation keeps the last value with `最終確認`.
+
 A parent session's children stay folded under it until opened; a folded child waiting for a decision shows on the parent. Archiving a session archives its children and reaches Paseo, along with a workspace left empty (never a worktree, which would delete files); a tree with a running or undecided agent is refused, and restoring brings back only the chosen row. Projects archive and restore on the Bridge only, and their sessions stay as they are.
 
 **Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
@@ -713,7 +718,8 @@ store · the session and project API · the owner-task API · Console job observ
 - Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkRef.swift` (short numbers, label and the one search rule),
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
-  `Conduit/LAA/Work/LAAWorkCopy.swift`, `Conduit/LAA/Work/LAAWorkToolRuns.swift`
+  `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`,
+  `Conduit/LAA/Work/LAAWorkCopy.swift`
 - Mac Catalyst list/detail columns: `Conduit/LAA/Mac/LAADesktopLayout.swift`,
   `Conduit/LAA/Work/LAAWorkDesktop.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`,
   `Conduit/LAA/Today/LAAWorkHub.swift`; tests: `ConduitTests/LAAWorkDesktopTests.swift`,
@@ -729,9 +735,9 @@ store · the session and project API · the owner-task API · Console job observ
 - Short numbers (refs): `bridge/src/refs/registry.mjs`, `bridge/src/refs/service.mjs`, `bridge/src/refs/items.mjs`, `bridge/src/refs/routes.mjs`, `bridge/src/refs/cli.mjs`, `bridge/src/refs/present.mjs`, `bridge/test/refs.test.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md` §9
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
-- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAWorkToolRunTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`,
-  `ConduitUITests/LAAWorkRefUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
+  `ConduitUITests/LAAWorkRefUITests.swift`, `ConduitUITests/LAAWorkShotsUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
 - Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
   `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`,

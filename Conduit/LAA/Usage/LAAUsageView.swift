@@ -19,10 +19,13 @@ struct LAAUsageView: View {
     @State private var evaluatedAt = Date()
     @State private var showsUnconnected = false
     private let automaticallyRefresh: Bool
+    /// Work shows Usage inside its own bar, which already carries Settings.
+    private let showsSettingsButton: Bool
     let onRequestSettings: () -> Void
-    init(state: LAAUsageState, onRequestSettings: @escaping () -> Void) {
+    init(state: LAAUsageState, showsSettingsButton: Bool = true, onRequestSettings: @escaping () -> Void) {
         self.onRequestSettings = onRequestSettings
         self.automaticallyRefresh = true
+        self.showsSettingsButton = showsSettingsButton
         _state = ObservedObject(wrappedValue: state)
     }
 
@@ -30,6 +33,7 @@ struct LAAUsageView: View {
     init(snapshotState: LAAUsageState, onRequestSettings: @escaping () -> Void = {}) {
         self.onRequestSettings = onRequestSettings
         self.automaticallyRefresh = false
+        self.showsSettingsButton = true
         _state = ObservedObject(wrappedValue: snapshotState)
     }
     #endif
@@ -68,7 +72,9 @@ struct LAAUsageView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            if showsSettingsButton {
+                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            }
         }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .onAppear {
@@ -555,7 +561,9 @@ struct LAAUsageView: View {
 }
 
 /// The Usage screen's one meter: AI limits, balances and storage share its
-/// track, height and colors, so every bar on the screen reads the same.
+/// track, height and colors, so every bar on the screen reads the same. The
+/// threshold tick is drawn over the track rather than laid out with it: it was
+/// the extra height of that tick that made the rows with a mark twice as thick.
 struct LAAUsageMeter: View {
     /// 0...1; values outside are clamped.
     let fraction: Double
@@ -565,25 +573,31 @@ struct LAAUsageMeter: View {
     /// A nonzero amount keeps a sliver visible even when it rounds to nothing.
     var showsSliver = true
 
-    static let height: CGFloat = 6
+    static let height: CGFloat = 8
+    /// Tall enough for the tick, which stands 3pt above and below the track.
+    static let totalHeight: CGFloat = 14
 
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let clamped = fraction.isFinite ? min(max(fraction, 0), 1) : 0
             ZStack(alignment: .leading) {
-                Capsule().fill(LAAColor.subtleSurface)
+                Capsule().fill(LAAColor.subtleSurface).frame(height: Self.height)
                 Capsule().fill(alert ? LAAColor.attention : LAAColor.link)
-                    .frame(width: max(width * clamped, showsSliver && clamped > 0 ? Self.height : 0))
+                    .frame(width: max(width * clamped, showsSliver && clamped > 0 ? Self.height : 0),
+                           height: Self.height)
+            }
+            .frame(width: width, height: Self.height)
+            .frame(maxHeight: .infinity, alignment: .center)
+            .overlay(alignment: .leading) {
                 if let tick, tick > 0, tick < 1 {
-                    Rectangle().fill(LAAColor.secondaryText)
-                        .frame(width: 1, height: Self.height + 6)
-                        .offset(x: width * tick)
+                    Capsule().fill(LAAColor.secondaryText.opacity(0.55))
+                        .frame(width: 2, height: Self.totalHeight)
+                        .offset(x: width * tick - 1)
                 }
             }
         }
-        .frame(height: Self.height)
-        .padding(.vertical, 3)
+        .frame(height: Self.totalHeight)
         .accessibilityElement()
     }
 }

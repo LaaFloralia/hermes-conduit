@@ -517,5 +517,46 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkSessionStyle.appliedModel(noEffort, options: options), "Opus 5.5 推論未確認")
     }
 
+    /// The Fast pill: hidden when the model has no Fast, pressable only when
+    /// the Bridge advertises the toggle, read-only when the last read failed.
+    func testFastPillVisibilityAndPressability() throws {
+        // Observed, and the Bridge accepts a change.
+        let on = try XCTUnwrap(LAAWorkFastControl.display(observing: true, observed: true, capable: true))
+        XCTAssertEqual(on, LAAWorkFastControl.Display(value: true, current: true, canToggle: true))
+        XCTAssertEqual(LAAWorkFastControl.valueText(on), "オン")
+        XCTAssertEqual(LAAWorkFastControl.hint(on), "Fastの切り替え")
+
+        // No Fast at all for this model: nothing to show.
+        XCTAssertNil(LAAWorkFastControl.display(observing: true, observed: nil, capable: true))
+        XCTAssertNil(LAAWorkFastControl.display(observing: false, observed: nil, capable: true))
+
+        // Fast exists, but this Bridge/session cannot change it.
+        let readOnly = try XCTUnwrap(LAAWorkFastControl.display(observing: true, observed: false, capable: false))
+        XCTAssertEqual(readOnly, LAAWorkFastControl.Display(value: false, current: true, canToggle: false))
+        XCTAssertEqual(LAAWorkFastControl.valueText(readOnly), "オフ")
+        XCTAssertFalse(readOnly.canToggle)
+        // An older Bridge that never sent `capabilities.fast` is the same.
+        XCTAssertEqual(LAAWorkFastControl.display(observing: true, observed: false, capable: nil)?.canToggle, false)
+
+        // The daemon is unreachable: the last value stays, unpressed, and its
+        // freshness is in the value/hint rather than in the word on screen.
+        let last = try XCTUnwrap(LAAWorkFastControl.display(observing: false, observed: true, capable: true))
+        XCTAssertEqual(last, LAAWorkFastControl.Display(value: true, current: false, canToggle: false))
+        XCTAssertEqual(LAAWorkFastControl.valueText(last), "最終確認: オン")
+        XCTAssertEqual(LAAWorkFastControl.hint(last), "最後に確認した値です。現在値は未確認です。")
+    }
+
+    func testCapabilitiesFastIsOptional() throws {
+        func session(_ capabilities: String) throws -> LAAWorkSession {
+            try JSONDecoder().decode(LAAWorkSession.self, from: Data(#"{"id":"s","name":"s","requestId":"s","workspaceId":"w","profile":"p","observed":{"provider":"claude","model":"claude-opus-5-5","effort":"high"},"observedFast":true,\#(capabilities),"phase":"running","createdAt":"2026-11-06T00:00:00Z","updatedAt":"2026-11-06T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8))
+        }
+        XCTAssertEqual(try session(#""capabilities":{"effort":true,"fast":true}"#).capabilities?.fast, true)
+        XCTAssertEqual(try session(#""capabilities":{"effort":true,"fast":false}"#).capabilities?.fast, false)
+        // An older Bridge omits the field: read as unknown, not as false.
+        XCTAssertNil(try session(#""capabilities":{"effort":true}"#).capabilities?.fast)
+        // A session answer with no capabilities at all still decodes.
+        XCTAssertNil(try session(#""capabilities":null"#).capabilities)
+    }
+
 }
 #endif

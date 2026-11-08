@@ -88,7 +88,7 @@ struct LAAWorkHub: View {
                 case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings, query: search)
                 case .routines: LAAWorkCatalogView(kind: .routines, query: search).id(section)
                 case .skills: LAAWorkCatalogView(kind: .skills, query: search).id(section)
-                case .usage: LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+                case .usage: LAAUsageView(state: usageState, showsSettingsButton: false, onRequestSettings: onRequestSettings)
                 }
             }
         }
@@ -158,7 +158,7 @@ struct LAAWorkHub: View {
         case .projects: LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0)
         case .routines: LAAWorkDesktopCatalogView(kind: .routines)
         case .skills: LAAWorkDesktopCatalogView(kind: .skills)
-        case .usage: LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+        case .usage: LAAUsageView(state: usageState, showsSettingsButton: false, onRequestSettings: onRequestSettings)
         }
     }
 

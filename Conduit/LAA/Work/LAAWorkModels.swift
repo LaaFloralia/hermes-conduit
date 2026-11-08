@@ -241,6 +241,9 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     /// missing or false value means no control is offered.
     struct Capabilities: Codable, Hashable {
         let effort: Bool?
+        /// The daemon accepts `PATCH /v1/sessions/:id {"fast": …}` for this
+        /// session. An older Bridge omits it, so the Fast pill only reads.
+        let fast: Bool?
     }
     let id: String
     let name: String

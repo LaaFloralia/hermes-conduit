@@ -78,8 +78,10 @@ final class LAAWorkRefUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["work.session.\(id)"].exists)
         }
         app.staticTexts["work.session.ses_1111111111111111"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["work.session.detail.title"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["work.ref.S1"].exists)
+        // The short number sits in the bar's heading pill, not in the page.
+        let header = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ AND label CONTAINS 'S1'", "work.session.detail.title")).firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
         app.navigationBars.buttons.firstMatch.tap()
 
         // Projects: the row and the project's own page.

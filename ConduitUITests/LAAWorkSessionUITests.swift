@@ -3,12 +3,19 @@ import XCTest
 
 /// Session detail placement, against the synthetic Work fixture
 /// (`scripts/laa/work-ui-fixture.mjs`) instead of a live Mac conversation.
-/// The fixture serves an empty session, a waiting decision and a long history.
+/// The fixture serves an empty session, a waiting decision, a long history
+/// (65 turns, two pictures, tool calls) and the Fast variants.
 final class LAAWorkSessionUITests: XCTestCase {
     private let emptyID = "ses_1111111111111111"
     private let decisionID = "ses_2222222222222222"
     private let longID = "ses_3333333333333333"
     private let staleID = "ses_4444444444444444"
+    private let runningID = "ses_5555555555555555"
+    private let noFastID = "ses_6666666666666666"
+    private let readOnlyFastID = "ses_7777777777777777"
+    private let decisionLongID = "ses_8888888888888888"
+    /// The fixture's last turn; it is the marker for "the page is at its end".
+    private let lastTurn = "S62M"
 
     /// The fixture control endpoint is reached off the main thread: a
     /// synchronous `Data(contentsOf:)` here raises the UI-unresponsiveness
@@ -25,13 +32,13 @@ final class LAAWorkSessionUITests: XCTestCase {
         return payload
     }
 
-    private func launchFixture() throws -> XCUIApplication {
+    private func launchFixture(extra: [String] = []) throws -> XCUIApplication {
         guard fixture("/reset") != nil else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", "light",
-                               "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
+                               "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"] + extra
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19584"
         app.launch()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
@@ -46,13 +53,29 @@ final class LAAWorkSessionUITests: XCTestCase {
         return app
     }
 
-    private func open(_ id: String, _ app: XCUIApplication) {
-        app.buttons["work.section.sessions"].tap()
+    private func tapRow(_ id: String, _ app: XCUIApplication) {
         let row = app.staticTexts["work.session.\(id)"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20))
-        if !row.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        var swipes = 0
+        while !row.isHittable && swipes < 4 { app.scrollViews.firstMatch.swipeUp(); swipes += 1 }
         row.tap()
-        XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(header(app).waitForExistence(timeout: 20))
+    }
+
+    private func open(_ id: String, _ app: XCUIApplication) {
+        app.buttons["work.section.sessions"].tap()
+        tapRow(id, app)
+    }
+
+    private func header(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["work.session.detail.title"].firstMatch
+    }
+
+    /// The combined pill when the name Text is merged into it: match on the
+    /// label rather than on which of the two elements came first.
+    private func headerContaining(_ text: String, _ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "work.session.detail.title", text)).firstMatch
     }
 
     private func field(_ app: XCUIApplication) -> XCUIElement {
@@ -77,6 +100,27 @@ final class LAAWorkSessionUITests: XCTestCase {
         return false
     }
 
+    /// Markdown is drawn in a selectable text view, so the last turn is a
+    /// text view's value, not a static text.
+    private func lastTurn(_ app: XCUIApplication) -> XCUIElement {
+        app.textViews.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", lastTurn, lastTurn)).firstMatch
+    }
+
+    /// Opening a long conversation must land on its end without a scroll, and
+    /// the row under it must be ready to send.
+    private func assertOpensAtTheBottom(_ app: XCUIApplication, run: String) {
+        let last = lastTurn(app)
+        XCTAssertTrue(last.waitForExistence(timeout: 20), "the last turn never arrived: " + run)
+        XCTAssertTrue(wait(last, hittable: true, timeout: 10), "the last turn is not on screen: " + run)
+        let send = app.buttons["work.composer.send"].firstMatch
+        XCTAssertTrue(send.waitForExistence(timeout: 10), run)
+        XCTAssertTrue(field(app).isHittable, "the composer is not on screen: " + run)
+        // A draft makes Send live; it must be reachable without scrolling.
+        field(app).tap()
+        field(app).typeText("x")
+        XCTAssertTrue(wait(send, hittable: true, timeout: 5), "Send is not reachable: " + run)
+        XCTAssertTrue(send.isEnabled, "Send did not become ready: " + run)
+    }
 
     /// A new message arriving while the owner reads older turns must not pull
     /// the transcript back to the bottom.
@@ -103,7 +147,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertEqual(served, expected, "The app did not fetch the conversation after /advance")
         Thread.sleep(forTimeInterval: 1.0)
         XCTAssertFalse(field(app).isHittable)
-        XCTAssertTrue(app.navigationBars["長い履歴"].exists)
+        XCTAssertTrue(header(app).exists)
     }
 
     /// A failed observation keeps the last values in hand, but the bar says they
@@ -127,10 +171,10 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(wait(field(app), hittable: true))
         // A page that fits must stay at the top: a bottom-aligned short page
         // would push the heading and the composer down (the reported bug).
-        let heading = app.staticTexts["work.session.detail.title"].firstMatch
-        XCTAssertTrue(heading.waitForExistence(timeout: 10))
-        XCTAssertLessThan(heading.frame.minY, 300)
-        XCTAssertTrue(app.navigationBars["空の会話"].exists)
+        let title = header(app)
+        XCTAssertTrue(title.exists)
+        XCTAssertLessThan(title.frame.minY, 300, "the heading belongs in the bar, above the page")
+        XCTAssertTrue(headerContaining("空の会話", app).exists, "the bar must name the conversation")
     }
 
     func testWaitingDecisionOpensAtTheComposer() throws {
@@ -138,7 +182,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         open(decisionID, app)
         XCTAssertTrue(wait(field(app), hittable: true))
         XCTAssertTrue(app.staticTexts["判断待ち・停止中は追加送信できません。状態を確認してください。"].exists)
-        XCTAssertTrue(app.navigationBars["判断待ち"].exists)
+        XCTAssertTrue(headerContaining("判断待ち", app).exists)
     }
 
     /// A picture that arrives while the owner is reading older turns must not
@@ -162,7 +206,7 @@ final class LAAWorkSessionUITests: XCTestCase {
                       "The released image was not decoded in the app")
         Thread.sleep(forTimeInterval: 1.0)
         XCTAssertFalse(field(app).isHittable)
-        XCTAssertTrue(app.navigationBars["長い履歴"].exists)
+        XCTAssertTrue(header(app).exists)
     }
 
     func testLongHistoryOpensAtTheBottomAndKeepsThePlace() throws {
@@ -171,16 +215,19 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(wait(field(app), hittable: true))
         // The long transcript opens at its bottom, not only "somewhere visible".
         XCTAssertGreaterThan(field(app).frame.minY, 400)
-        XCTAssertTrue(app.descendants(matching: .any)["work.session.settings"].exists)
+        let model = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ OR identifier == %@",
+                        "work.session.effort", "work.session.model")).firstMatch
+        XCTAssertTrue(model.waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["work.session.fast"].waitForExistence(timeout: 10))
-        // The fixture holds the image for 8s; after the real bytes arrive the
-        // composer must still be on screen and at the bottom.
+        // The fixture holds the pictures for 8s; after the real bytes arrive
+        // the composer must still be on screen and at the bottom.
         XCTAssertTrue(waitForImageDelivery(timeout: 25))
         Thread.sleep(forTimeInterval: 1.0)
         XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 10))
         XCTAssertTrue(wait(field(app), hittable: true, timeout: 5))
         XCTAssertGreaterThan(field(app).frame.minY, 400)
-        XCTAssertTrue(app.navigationBars["長い履歴"].exists)
+        XCTAssertTrue(header(app).exists)
 
         // Reading older turns takes the field off screen; a later events poll
         // must not pull the view back to the bottom.
@@ -189,7 +236,182 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
         Thread.sleep(forTimeInterval: 3.5)
         XCTAssertFalse(field(app).isHittable)
-        XCTAssertTrue(app.navigationBars["長い履歴"].exists)
+        XCTAssertTrue(header(app).exists)
+    }
+
+    // MARK: - Opening placement, five runs in each condition
+
+    /// (a) The app remembers the conversation: the page can be placed before
+    /// the Mac answers.
+    func testLongHistoryOpensAtTheBottomWithACachedConversation() throws {
+        // One warm launch writes the app's saved copy; the five runs below
+        // are cold launches that already have it.
+        let warm = try launchFixture()
+        open(longID, warm)
+        XCTAssertTrue(wait(field(warm), hittable: true))
+        warm.terminate()
+        for run in 1...5 {
+            let app = try launchFixture()
+            open(longID, app)
+            assertOpensAtTheBottom(app, run: "cached \(run)")
+            app.terminate()
+        }
+    }
+
+    /// (b) No saved copy: the page is placed when the history first arrives.
+    func testLongHistoryOpensAtTheBottomWithoutACache() throws {
+        for run in 1...5 {
+            let app = try launchFixture(extra: ["-LAA_UI_TEST_CLEAR_WORK_STORE"])
+            open(longID, app)
+            assertOpensAtTheBottom(app, run: "no cache \(run)")
+            app.terminate()
+        }
+    }
+
+    /// (c) The Mac takes two seconds to answer the conversation read.
+    func testLongHistoryOpensAtTheBottomWhenTheConversationIsSlow() throws {
+        for run in 1...5 {
+            let app = try launchFixture(extra: ["-LAA_UI_TEST_CLEAR_WORK_STORE"])
+            fixture("/slow-conversation/on")
+            open(longID, app)
+            assertOpensAtTheBottom(app, run: "slow \(run)")
+            app.terminate()
+        }
+    }
+
+    // MARK: - The row and the heading
+
+    /// One row under the field: picture, model, Fast, stop while running, Send.
+    func testFollowUpRowKeepsEveryControlOnOneLine() throws {
+        let app = try launchFixture()
+        open(runningID, app)
+        let photo = app.buttons["work.composer.photo"].firstMatch
+        let model = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ OR identifier == %@",
+                        "work.session.effort", "work.session.model")).firstMatch
+        let fast = app.descendants(matching: .any)["work.session.fast"].firstMatch
+        let stop = app.buttons["work.session.stop"].firstMatch
+        let send = app.buttons["work.composer.send"].firstMatch
+        for element in [photo, model, fast, stop, send] {
+            XCTAssertTrue(element.waitForExistence(timeout: 15), element.debugDescription)
+            XCTAssertTrue(element.isHittable, element.debugDescription)
+        }
+        // One line: every control shares the row's centre.
+        let midY = photo.frame.midY
+        for element in [model, fast, stop, send] {
+            XCTAssertEqual(element.frame.midY, midY, accuracy: 2, "not on the row: \(element.debugDescription)")
+        }
+        // The model name is the only thing that gives way.
+        XCTAssertLessThanOrEqual(model.frame.maxX, fast.frame.minX + 1)
+        XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX - 4)
+        XCTAssertGreaterThan(photo.frame.minX, 4)
+        // The values stay whole: only the model text truncates.
+        XCTAssertEqual(fast.label, "Fastモード")
+        XCTAssertEqual(send.label, "Send")
+        XCTAssertEqual(stop.label, "中断")
+        // No dictation control anywhere on this screen.
+        XCTAssertFalse(app.buttons["音声入力"].exists)
+        XCTAssertFalse(app.buttons["音声入力を停止"].exists)
+    }
+
+    /// A model with no Fast shows no pill; one the Bridge will not change shows
+    /// the value without a tap.
+    func testFastPillHidesOrOnlyReadsWhereItCannotChange() throws {
+        let app = try launchFixture()
+        open(noFastID, app)
+        XCTAssertTrue(wait(field(app), hittable: true))
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertFalse(app.descendants(matching: .any)["work.session.fast"].exists,
+                       "a model without Fast must not show the pill")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        tapRow(readOnlyFastID, app)
+        let fast = app.descendants(matching: .any)["work.session.fast"].firstMatch
+        XCTAssertTrue(fast.waitForExistence(timeout: 15))
+        XCTAssertEqual(fast.value as? String, "オン")
+        XCTAssertFalse(app.buttons["work.session.fast"].exists, "a value the Bridge cannot change must not be a button")
+        XCTAssertEqual(fast.label, "Fastモード")
+        // The mismatch between request and observation is at the top of the
+        // conversation, where the heading card used to be.
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.modelMismatch"].waitForExistence(timeout: 10))
+    }
+
+    /// Where the Bridge advertises the toggle, the pill changes the session.
+    func testFastPillTogglesWhereTheBridgeAllowsIt() throws {
+        let app = try launchFixture()
+        open(runningID, app)
+        let fast = app.buttons["work.session.fast"].firstMatch
+        XCTAssertTrue(fast.waitForExistence(timeout: 15))
+        XCTAssertEqual(fast.value as? String, "オフ")
+        fast.tap()
+        let on = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "オン"), object: fast)
+        XCTAssertEqual(XCTWaiter.wait(for: [on], timeout: 15), .completed, "the Fast change was not read back")
+    }
+
+    /// The heading is the bar's pill: the name, then the short number and the
+    /// phase. The transcript has no heading card of its own.
+    func testHeadingIsTheBarPillWithoutTheCard() throws {
+        let app = try launchFixture()
+        open(longID, app)
+        let title = header(app)
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        XCTAssertLessThan(title.frame.minY, 120, "the heading must sit in the navigation bar")
+        for part in ["長い履歴", "S3", "確認待ち"] {
+            XCTAssertTrue(headerContaining(part, app).exists, "the bar must read " + part)
+        }
+        // The old card's ref label is gone from the page.
+        XCTAssertFalse(app.staticTexts["work.ref.S3"].exists)
+    }
+
+    /// Tool calls stay out of the transcript: no "実行 N件" row, and the
+    /// messages around them still read in order.
+    func testToolCallsShowNoRunRow() throws {
+        let app = try launchFixture()
+        open(longID, app)
+        XCTAssertTrue(wait(field(app), hittable: true))
+        XCTAssertFalse(app.descendants(matching: .any)["work.toolRuns"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '実行 '")).firstMatch.exists)
+        XCTAssertTrue(lastTurn(app).exists)
+    }
+
+    /// A waiting decision is where the page stays, even when a late row or a
+    /// picture makes the transcript taller underneath it.
+    func testWaitingDecisionStaysOnTheDecisionWhenThePageGrows() throws {
+        let app = try launchFixture()
+        fixture("/hold-image")
+        open(decisionLongID, app)
+        // The first turn carries a picture, so a held image is released into
+        // a row the parked page has already measured.
+        let question = app.staticTexts["どちらにしますか？"].firstMatch
+        XCTAssertTrue(question.waitForExistence(timeout: 20))
+        XCTAssertTrue(wait(question, hittable: true, timeout: 10))
+        // At the decision, not at the end of the conversation.
+        XCTAssertFalse(field(app).isHittable)
+        // The two pictures land after the placement; the page grows.
+        fixture("/release-image")
+        XCTAssertTrue(waitForImageDelivery(timeout: 15))
+        Thread.sleep(forTimeInterval: 2.0)
+        XCTAssertTrue(question.isHittable, "the decision was pushed away by a height change")
+        XCTAssertFalse(field(app).isHittable)
+    }
+
+    /// Usage inside Work already has Work's Settings button; its own would be
+    /// a second gear beside it.
+    func testUsageInsideWorkHasOneSettingsButton() throws {
+        let app = try launchFixture()
+        let usage = app.buttons["work.section.usage"]
+        var moves = 0
+        while usage.exists && usage.frame.maxX > app.frame.width - 8 && moves < 6 {
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: app.frame.width - 60, dy: usage.frame.midY))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -300, dy: 0)),
+                        withVelocity: XCUIGestureVelocity(500), thenHoldForDuration: 0.1)
+            moves += 1
+        }
+        usage.tap()
+        XCTAssertTrue(app.staticTexts["AI"].waitForExistence(timeout: 20))
+        let gears = app.buttons.matching(identifier: "laa.settings.open")
+        XCTAssertEqual(gears.count, 1, "Usage inside Work must not add a second Settings button")
     }
 }
 #endif

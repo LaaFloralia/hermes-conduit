@@ -4,10 +4,6 @@ import SwiftUI
 /// The Bridge uses the existing IME-safe field and full editor; it never sends
 /// through ComposerBar or the Hermes AppState.
 struct LAAWorkComposer: View {
-    @EnvironmentObject private var appState: AppState
-    @StateObject private var dictation = ComposerDictationService()
-    @State private var dictationPrefix = ""
-    @State private var dictatedText: String?
     @Binding var text: String
     @Binding var revision: UInt64
     let placeholder: String
@@ -20,6 +16,9 @@ struct LAAWorkComposer: View {
     var showsTextSize = true
     var onImage: ((UIImage) -> Void)? = nil
     var headerAccessory: AnyView? = nil
+    /// The follow-up field under a conversation: one line, no heading and no
+    /// send row, because the conversation's own row carries them.
+    var compact = false
 
     @State private var focus = false
     @State private var height = ComposerPasteTextView.minimumHeight
@@ -32,75 +31,19 @@ struct LAAWorkComposer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack {
-                Text(verbatim: placeholder).laaTextStyle(.body).fontWeight(.semibold)
-                Spacer()
-                headerAccessory
-                if showsTextSize {
-                    Menu {
-                        Picker(LAACopy.WorkTab.textSize, selection: $inputSize) {
-                            ForEach(ChatTextSize.allCases, id: \.rawValue) { size in
-                                Text(verbatim: size.displayName).tag(size.rawValue)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "textformat.size")
-                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                    }
-                        .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.textSize))
-                        .accessibilityIdentifier("\(accessibilityPrefix).textSize")
-                }
-                Button { fullEditor = true } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                }
-                    .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.fullEditor))
-                    .accessibilityIdentifier("\(accessibilityPrefix).expand")
-            }
-            ZStack(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text(verbatim: placeholder).foregroundStyle(LAAColor.secondaryText)
-                        .padding(.horizontal, LAASpacing.x2).padding(.vertical, LAASpacing.x2).allowsHitTesting(false)
-                }
-                ComposerPasteTextView(
-                    text: $text, isFocused: $focus, measuredHeight: $height, enabled: enabled,
-                    onPastedImage: { image in
-                        if let onImage, let decoded = UIImage(data: image.data) { onImage(decoded) } else { warning = "この入力欄では画像を添付できません。" }
-                    },
-                    onPastedImageError: { _ in warning = "画像を追加できません。" },
-                    editorIdentity: editorIdentity,
-                    inputTextSize: ChatTypography.inputSize(rawValue: inputSize),
-                    programmaticRevision: revision
-                )
-                .frame(height: height)
-                .accessibilityIdentifier("\(accessibilityPrefix).field")
-            }
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-            .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
+            if !compact { header }
+            field
             if let warning { Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-            HStack {
-                dictateButton
-                Spacer()
-                Button(action: onSubmit) {
-                    Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
-                }
-                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
-                    .foregroundStyle(LAAColor.filledButtonText).disabled(!canSubmit)
-                    .accessibilityIdentifier("\(accessibilityPrefix).send")
-            }
+            if !compact { sendRow }
         }
-        .onChange(of: text) { _, value in
-            if dictation.isDictating && dictatedText != value { dictation.yieldToTyping() }
-            onChange(value)
-        }
-        .onDisappear { dictation.cancel() }
+        .onChange(of: text) { _, value in onChange(value) }
         .sheet(isPresented: $fullEditor, onDismiss: { revision &+= 1 }) {
             ComposerFullEditor(
                 text: $text, placeholder: placeholder, programmaticRevision: revision,
                 fieldIdentifier: "\(accessibilityPrefix).fullEditor.field", enabled: enabled,
                 onUserEdit: { _ in }, onCollapse: { fullEditor = false },
                 canSubmitFromReturn: false, onSubmitFromReturn: { false },
-                attachments: { EmptyView() }, dictateButton: { dictateButton },
+                attachments: { EmptyView() }, dictateButton: { EmptyView() },
                 actionButton: {
                     Button { fullEditor = false; onSubmit() } label: {
                         Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -111,32 +54,83 @@ struct LAAWorkComposer: View {
             ).tint(LAAColor.link)
         }
     }
-    private var dictateButton: some View {
-        Button {
-            if dictation.isDictating { dictation.stop(); return }
-            guard let token = dictation.reserveStart() else { return }
-            dictationPrefix = text
-            dictatedText = nil
-            dictation.onTranscript = { transcript in
-                guard ComposerDictation.draftIsAsDictationLeftIt(text, prefix: dictationPrefix, lastWrite: dictatedText) else {
-                    dictation.cancel(); return
+
+    private var header: some View {
+        HStack {
+            Text(verbatim: placeholder).laaTextStyle(.body).fontWeight(.semibold)
+            Spacer()
+            headerAccessory
+            if showsTextSize {
+                Menu {
+                    Picker(LAACopy.WorkTab.textSize, selection: $inputSize) {
+                        ForEach(ChatTextSize.allCases, id: \.rawValue) { size in
+                            Text(verbatim: size.displayName).tag(size.rawValue)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "textformat.size")
+                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
                 }
-                let next = ComposerDictation.draft(before: dictationPrefix, dictated: transcript)
-                dictatedText = next
-                text = next
-                revision &+= 1
+                    .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.textSize))
+                    .accessibilityIdentifier("\(accessibilityPrefix).textSize")
             }
-            dictation.onFailure = { warning = $0 }
-            Task {
-                do { try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() }) }
-                catch { warning = UserFacingError.message(for: error) }
-            }
-        } label: {
-            Image(systemName: dictation.isDictating ? "stop.circle" : "mic")
-                .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+            expandButton
         }
-        .disabled(!enabled || dictation.isStarting || appState.isVoiceInUse)
-        .accessibilityLabel(Text(verbatim: dictation.isDictating ? "音声入力を停止" : "音声入力"))
+    }
+
+    private var field: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text(verbatim: placeholder).foregroundStyle(LAAColor.secondaryText)
+                    .padding(.horizontal, LAASpacing.x2).padding(.vertical, LAASpacing.x2).allowsHitTesting(false)
+            }
+            ComposerPasteTextView(
+                text: $text, isFocused: $focus, measuredHeight: $height, enabled: enabled,
+                onPastedImage: { image in
+                    if let onImage, let decoded = UIImage(data: image.data) { onImage(decoded) } else { warning = "この入力欄では画像を添付できません。" }
+                },
+                onPastedImageError: { _ in warning = "画像を追加できません。" },
+                editorIdentity: editorIdentity,
+                inputTextSize: ChatTypography.inputSize(rawValue: inputSize),
+                programmaticRevision: revision
+            )
+            .frame(height: height)
+            // The compact field carries the expand control in its top-right
+            // corner, so the text stops short of it instead of running under it.
+            .padding(.trailing, compact ? LAASpacing.minimumTouchTarget : 0)
+            .accessibilityIdentifier("\(accessibilityPrefix).field")
+        }
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
+        .overlay(alignment: .topTrailing) {
+            if compact { expandButton }
+        }
+    }
+
+    private var sendRow: some View {
+        HStack {
+            Spacer()
+            Button(action: onSubmit) {
+                Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
+            }
+                .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                .foregroundStyle(LAAColor.filledButtonText).disabled(!canSubmit)
+                .accessibilityIdentifier("\(accessibilityPrefix).send")
+        }
+    }
+
+    /// The full editor's one control: a small glyph with the minimum touch
+    /// target around it, whichever row it is drawn in.
+    private var expandButton: some View {
+        Button { fullEditor = true } label: {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(LAAColor.secondaryText)
+                .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                .contentShape(Rectangle())
+        }
+            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.fullEditor))
+            .accessibilityIdentifier("\(accessibilityPrefix).expand")
     }
 
 }
@@ -161,6 +155,13 @@ enum LAAWorkDrafts {
             .appendingPathComponent("drafts-v1.json")
     }
     @MainActor static func makeStore(fileURL: URL = LAAWorkDrafts.fileURL) -> ComposerDraftStore {
+        #if DEBUG
+        // The UI tests need a launch with no remembered conversation and no
+        // draft; the store is otherwise carried across launches on purpose.
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CLEAR_WORK_STORE") {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        #endif
         let store = ComposerDraftStore(capacity: .max, fileURL: fileURL)
         // Retired Linear writes cannot be repeated or reconciled by this version.
         // Remove their local records before the store is exposed to the UI.

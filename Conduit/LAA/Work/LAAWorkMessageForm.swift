@@ -11,7 +11,11 @@ struct LAAWorkMessageForm: View {
     let sessionID: String
     let mode: Mode
     let canStart: Bool
-    let headerAccessory: AnyView?
+    /// The model · Fast pills, from the session's controls: the follow-up row
+    /// keeps them beside the picture, Send and the stop button.
+    let settingsRow: AnyView?
+    let interrupt: AnyView?
+    let actionNotice: String?
     let onSuccess: (LAAWorkSession) -> Void
     @State private var text = ""
     @State private var attachments: [Attachment] = []
@@ -22,12 +26,15 @@ struct LAAWorkMessageForm: View {
     @State private var error: String?
 
     init(sessionID: String, mode: Mode, drafts: ComposerDraftStore, canStart: Bool,
-         headerAccessory: AnyView? = nil, onSuccess: @escaping (LAAWorkSession) -> Void) {
+         settingsRow: AnyView? = nil, interrupt: AnyView? = nil, actionNotice: String? = nil,
+         onSuccess: @escaping (LAAWorkSession) -> Void) {
         self.sessionID = sessionID
         self.mode = mode
         self.drafts = drafts
         self.canStart = canStart
-        self.headerAccessory = headerAccessory
+        self.settingsRow = settingsRow
+        self.interrupt = interrupt
+        self.actionNotice = actionNotice
         self.onSuccess = onSuccess
     }
 
@@ -39,6 +46,79 @@ struct LAAWorkMessageForm: View {
     }
     private var path: String { "/v1/sessions/\(sessionID)/\(mode == .resume ? "resume" : "messages")" }
     private var promptPlaceholder: String { mode == .resume ? "続きの指示" : "追加の指示" }
+    private var composerPrefix: String { mode == .resume ? "work.resume.composer" : "work.composer" }
+    private var canSubmit: Bool {
+        canStart && !sending && pending == nil && !drafts.persistenceFailed
+            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    private var canAttach: Bool { !sending && pending == nil && attachments.count < 4 }
+
+    /// The follow-up row, in the order the owner reads it: the picture, the
+    /// model and Fast, then the stop and Send at the trailing edge. Everything
+    /// is 36pt on the same glass; only the model name gives way when narrow.
+    private var actionRow: some View {
+        HStack(spacing: LAASpacing.x2) {
+            photoButton
+            if let settingsRow { settingsRow }
+            Spacer(minLength: LAASpacing.x2)
+            if let interrupt { interrupt }
+            sendButton
+        }
+    }
+
+    private var photoButton: some View {
+        PhotosPicker(selection: $photo, matching: .images) {
+            Image(systemName: "photo")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(canAttach ? LAAColor.text : LAAColor.secondaryText)
+                .frame(width: 36, height: 36)
+                .conduitGlassControl(cornerRadius: 18, interactive: canAttach)
+        }
+        .disabled(!canAttach)
+        .accessibilityLabel(Text(verbatim: "画像を添付"))
+        .accessibilityIdentifier("work.composer.photo")
+    }
+
+    private var sendButton: some View {
+        Button(action: submit) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(canSubmit ? LAAColor.link : LAAColor.secondaryText)
+                .frame(width: 36, height: 36)
+                .conduitGlassControl(cornerRadius: 18, tint: canSubmit ? LAAColor.link.opacity(0.12) : .clear,
+                                     interactive: canSubmit)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSubmit)
+        .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.send))
+        .accessibilityIdentifier("\(composerPrefix).send")
+    }
+
+    /// Attached pictures stay above the field as small removable chips.
+    private var chips: some View {
+        HStack(spacing: LAASpacing.x2) {
+            ForEach(attachments) { attachment in
+                Button {
+                    attachments.removeAll { $0.id == attachment.id }
+                    saveDraft(text)
+                } label: {
+                    HStack(spacing: LAASpacing.x1) {
+                        Text(verbatim: attachment.name).lineLimit(1)
+                        Image(systemName: "xmark.circle")
+                    }
+                    .laaTextStyle(.secondary)
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .padding(.horizontal, LAASpacing.x2)
+                    .frame(minHeight: 28)
+                    .background(LAAColor.subtleSurface, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: attachment.name + "を外す"))
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityIdentifier("work.composer.attachments")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
@@ -63,22 +143,18 @@ struct LAAWorkMessageForm: View {
                 Text(verbatim: "判断待ち・停止中は追加送信できません。状態を確認してください。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if mode == .followUp {
-                HStack {
-                    PhotosPicker(selection: $photo, matching: .images) { Label { Text(verbatim: "画像を添付") } icon: { Image(systemName: "photo") } }
-                        .disabled(sending || pending != nil || attachments.count >= 4)
-                    ForEach(attachments) { attachment in
-                        Button { attachments.removeAll { $0.id == attachment.id }; saveDraft(text) } label: {
-                            Label { Text(verbatim: attachment.name) } icon: { Image(systemName: "xmark.circle") }
-                        }
-                    }
-                }.laaTextStyle(.secondary)
-            }
+            if mode == .followUp && !attachments.isEmpty { chips }
             LAAWorkComposer(text: $text, revision: $revision, placeholder: promptPlaceholder,
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
                             onChange: saveDraft, onSubmit: submit,
                             accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer",
-                            onImage: mode == .followUp ? addImage : nil, headerAccessory: headerAccessory)
+                            onImage: mode == .followUp ? addImage : nil,
+                            compact: mode == .followUp)
+            if mode == .followUp { actionRow }
+            if let actionNotice {
+                Text(verbatim: actionNotice).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if drafts.persistenceFailed {
                 Text(verbatim: "下書きを保存できません。送信せず、端末の保存状態を確認してください。")
                     .foregroundStyle(LAAColor.attention).laaTextStyle(.secondary)

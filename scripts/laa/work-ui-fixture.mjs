@@ -10,10 +10,14 @@ const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Con
 
 // Work sessions for the scroll/header tests. Three states on one fixture:
 // empty, waiting for a decision, and a long transcript with an image.
-const SESSION_IDS = { empty: 'ses_1111111111111111', decision: 'ses_2222222222222222', long: 'ses_3333333333333333', stale: 'ses_4444444444444444' };
+const SESSION_IDS = { empty: 'ses_1111111111111111', decision: 'ses_2222222222222222', long: 'ses_3333333333333333',
+  stale: 'ses_4444444444444444', running: 'ses_5555555555555555', noFast: 'ses_6666666666666666', readOnlyFast: 'ses_7777777777777777',
+  decisionLong: 'ses_8888888888888888' };
 const SESSION_REFS = {
   ses_1111111111111111: 'S1', ses_2222222222222222: 'S2',
   ses_3333333333333333: 'S3', ses_4444444444444444: 'S4',
+  ses_5555555555555555: 'S5', ses_6666666666666666: 'S6', ses_7777777777777777: 'S7',
+  ses_8888888888888888: 'S8',
 };
 const IMAGE_ID = 'a'.repeat(64);
 const FIXTURE_IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -26,8 +30,11 @@ const fixtureSession = (id, name, phase, pending = null) => ({
   createdAt: '2026-11-06T00:00:00Z', updatedAt: '2026-11-06T00:00:00Z', observedAt: '2026-11-06T00:00:00Z',
   events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' },
   observation: { available: true, code: null }, favorite: false, archivedAt: null,
-  mode: 'bypass', fast: false, worktree: false, observedFast: true, capabilities: { effort: true },
+  mode: 'bypass', fast: false, worktree: false, observedFast: true, capabilities: { effort: true, fast: true },
 });
+// The row's own session: running (so it carries the stop control) and on a
+// model the options table does not know, so its name is the long raw one.
+const longModel = { provider: 'other', model: 'claude-opus-5-5', effort: 'max' };
 const sessions = [
   fixtureSession(SESSION_IDS.empty, '空の会話', 'awaiting_review'),
   fixtureSession(SESSION_IDS.decision, '判断待ち', 'awaiting_decision', { count: 1, kinds: ['question'] }),
@@ -35,14 +42,40 @@ const sessions = [
   // The last read could not reach Paseo: values are the last confirmed ones.
   { ...fixtureSession(SESSION_IDS.stale, '観測失敗', 'awaiting_review'),
     observation: { available: false, code: 'paseo_unavailable' } },
+  { ...fixtureSession(SESSION_IDS.running, '実行中の長い名前の会話', 'running'),
+    requested: longModel, observed: longModel, observedFast: false },
+  // The daemon reports no Fast value for this model: no pill at all.
+  { ...fixtureSession(SESSION_IDS.noFast, 'Fastなし', 'awaiting_review'), observedFast: null },
+  // A model with Fast, but this Bridge may not change it: read-only pill.
+  // Its applied effort differs from the request, so the mismatch shows.
+  { ...fixtureSession(SESSION_IDS.readOnlyFast, 'Fast変更不可', 'awaiting_review'),
+    observed: { provider: 'claude', model: 'claude-opus-5-5', effort: 'max' },
+    observedFast: true, capabilities: { effort: true, fast: false } },
+  // Waiting for a decision at the top of a long transcript.
+  fixtureSession(SESSION_IDS.decisionLong, '判断待ち・長い履歴', 'awaiting_decision', { count: 1, kinds: ['question'] }),
 ];
 const longText = (index) => `## 見出し ${index}\n\n${'本文をここに置きます。'.repeat(12)}\n\n\`\`\`\nlet value = ${index}\n\`\`\`\n\n末尾の行です。  `;
-const longMessages = Array.from({ length: 40 }, (_, index) => ({
+const shortText = (index) => `短い返答 ${index}。`;
+// Sixty-plus turns, long and short mixed, with two pictures low enough to be
+// on screen when the conversation opens at its bottom.
+const longMessages = Array.from({ length: 60 }, (_, index) => ({
   id: `fixture-${index}`, role: index % 2 === 0 ? 'user' : 'assistant',
-  text: index === 0 ? '最初の依頼です。' : longText(index), timestamp: '2026-11-06T00:00:00Z',
+  text: index === 0 ? '最初の依頼です。' : index % 3 === 0 ? shortText(index) : longText(index),
+  timestamp: '2026-11-06T00:00:00Z',
+  // One picture near the top, for a page parked on a decision card: it is
+  // measured while the owner reads the question.
+  images: index === 1 ? [IMAGE_ID] : undefined,
 }));
 longMessages.push({ id: 'fixture-image', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID] });
-const conversationFor = (id) => id === SESSION_IDS.long ? longMessages : [];
+const LAST_TEXT = '最後のメッセージ S62M';
+longMessages.push({ id: 'fixture-last', role: 'assistant', text: LAST_TEXT, timestamp: '2026-11-06T00:00:00Z' });
+longMessages.push({ id: 'fixture-image-2', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID] });
+// Tool calls are part of the Bridge's conversation but not of what the owner
+// reads: the detail must show the messages and no "実行 N件" row.
+longMessages.splice(30, 0,
+  { id: 'fixture-tool-1', role: 'tool', text: 'ls -la', toolName: 'shell', toolStatus: 'completed', timestamp: '2026-11-06T00:00:00Z' },
+  { id: 'fixture-tool-2', role: 'tool', text: 'grep Work', toolName: 'grep', toolStatus: 'failed', timestamp: '2026-11-06T00:00:00Z' });
+const conversationFor = (id) => [SESSION_IDS.long, SESSION_IDS.decisionLong].includes(id) ? longMessages : [];
 // What the app actually fetched, as opposed to what the fixture holds. The UI
 // test waits for this before asserting the scroll position, so a stopped
 // client cannot pass by accident.
@@ -53,8 +86,14 @@ const PROJECT = {
   version: 1, etag: '"fixture-project-1"', updatedAt: '2026-11-06T00:00:00Z', archivedAt: null,
   fileCount: 0, files: [],
 };
+// A PATCH changes a session in place; /reset puts the seed values back so one
+// test's toggle cannot leak into the next one's assertions.
+const sessionSeed = JSON.parse(JSON.stringify(sessions));
 let lastServed = 0;
 let imagesServed = 0;
+// A slow Mac: the conversation answer takes two seconds, as on a real cold
+// read. The session detail stays fast, so the page can be placed before it.
+let conversationDelay = 0;
 let resetGeneration = 0;
 // A held image request lets a test start reading history before the picture
 // arrives, instead of racing a fixed delay.
@@ -137,6 +176,8 @@ const settleDecision = (decision) => {
 const api = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   const path = url.pathname;
+  // The usage read is worth watching while the fixture serves it.
+  if (path.startsWith('/v1/usage')) console.log('usage', req.method, req.url, req.headers.authorization ? 'auth' : 'no-auth');
   if (path === '/v1/devices/enroll') { req.resume(); return send(res, 201, { deviceId: 'work-fixture', token: 'fixture-token', scopes: ['tasks:read', 'tasks:write', 'sessions:read', 'sessions:write', 'calendar:read', 'calendar:write'] }); }
   if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); return res.end(); }
   if (path === '/v1/linear-owner-tasks' && req.method === 'GET') return send(res, 200, { items: tasks.filter(t => Boolean(t.archivedAt) === (url.searchParams.get('archived') === 'only')), nextCursor: null });
@@ -216,6 +257,34 @@ const api = http.createServer(async (req, res) => {
     return send(res, 200, { id: 'fixture-event-1', title: 'デザイン確認', start: start.toISOString(), end: end.toISOString(), allDay: false, location: 'LAA', calendarId: 'primary', etag: '"fixture-1"', description: 'MacのToday確認用の予定' });
   }
   if (path === '/v1/projects') return send(res, 200, { items: [PROJECT], nextCursor: null });
+  if (path === '/v1/usage') {
+    // Capacity and one AI window: enough for the bars, the tick and the
+    // Settings button check on the Usage screen inside Work.
+    const gib = 1073741824;
+    const at = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
+    const capacity = (id, used, free, total, status, warning, critical) => ({
+      id, kind: 'capacity', label: id, value: used, unit: 'bytes', source: 'filesystem',
+      observedAt: at(2), availability: 'available', stale: false, estimated: false, expired: false,
+      detail: { totalBytes: total, availableBytes: free, status,
+        warningFreeBytes: warning, criticalFreeBytes: critical } });
+    return send(res, 200, { items: [
+      // One AI window keeps the section honest; the capacity card is what the
+      // screenshots compare, so it sits right under it.
+      { id: 'provider.claude.weekly', kind: 'quota', label: 'Claude', value: 62, unit: 'percent',
+        source: 'codexbar-usage-proxy', observedAt: at(3), availability: 'available', stale: false,
+        estimated: false, expired: false,
+        detail: { sourceKind: 'proxy', freshUntil: at(-58),
+          windows: [{ label: 'weekly', remainingPercent: 62, resetsAt: at(-600), windowMinutes: 10080 }] } },
+      capacity('capacity.mac-mini.memory', 18 * gib, 6 * gib, 24 * gib, 'unknown', null, null),
+      capacity('capacity.mac-mini.ssd', 360 * gib, 100 * gib, 460 * gib, 'normal', 80 * gib, 40 * gib),
+      capacity('capacity.google-drive', 2 * gib, 28 * gib, 30 * gib, 'normal', 3 * gib, 0.6 * gib),
+      capacity('capacity.macbook.memory', 12 * gib, 4 * gib, 16 * gib, 'unknown', null, null),
+      capacity('capacity.macbook.ssd', 148 * gib, 312 * gib, 460 * gib, 'normal', 80 * gib, 40 * gib),
+      { id: 'capacity.icloud', kind: 'capacity', label: 'iCloud', value: null, unit: 'bytes',
+        source: 'filesystem', observedAt: null, availability: 'unavailable', nullReason: 'unsupported',
+        stale: false, estimated: false, expired: false },
+    ], nextCursor: null, fetchedAt: at(1) });
+  }
   if (path === '/v1/sessions') {
     const archived = url.searchParams.get('archived') === 'only';
     return send(res, 200, { items: archived ? [] : sessions, nextCursor: null });
@@ -237,6 +306,7 @@ const api = http.createServer(async (req, res) => {
       // A request left over from the previous /reset must not update the new
       // test's delivery count when it finally lands.
       const generation = resetGeneration;
+      if (conversationDelay) await new Promise((resolve) => setTimeout(resolve, conversationDelay));
       const items = conversationFor(session.id);
       const result = send(res, 200, { items, nextCursor: null, sources: null, total: null, fetchedAt: null });
       if (generation === resetGeneration && session.id === SESSION_IDS.long) lastServed = items.length;
@@ -274,6 +344,7 @@ const api = http.createServer(async (req, res) => {
     if (raw) {
       const body = JSON.parse(raw);
       if (body.effort) session.observed = { ...session.observed, effort: body.effort };
+      if (typeof body.fast === 'boolean') session.observedFast = body.fast;
     }
     return send(res, 200, session);
   }
@@ -285,7 +356,12 @@ const control = http.createServer((req, res) => {
     resetGeneration += 1;
     releaseImages();
     reset();
-    longMessages.length = 41;
+    sessions.forEach((session, index) => {
+      Object.keys(session).forEach((key) => { delete session[key] });
+      Object.assign(session, JSON.parse(JSON.stringify(sessionSeed[index])));
+    });
+    longMessages.length = 65;
+    conversationDelay = 0;
     advanced = 0;
     lastServed = 0;
     imagesServed = 0;
@@ -295,6 +371,8 @@ const control = http.createServer((req, res) => {
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/hold-image') holdImages();
+  if (req.url === '/slow-conversation/on') conversationDelay = 2000;
+  if (req.url === '/slow-conversation/off') conversationDelay = 0;
   if (req.url === '/release-image') releaseImages();
   if (req.url === '/advance') {
     advanced += 1;

@@ -5,19 +5,26 @@ final class LAAPaseoUITests: XCTestCase {
     func testSessionListAndQuestionLight() throws { try verify("light") }
     func testSessionListAndQuestionDark() throws { try verify("dark") }
 
-    func testSessionHeaderIsTitleOnlyAndStopSitsBesideTextSize() throws {
+    /// The conversation's name lives in the bar, and the field under it is the
+    /// one-line row: no heading card, no second title, no dictation.
+    func testSessionHeaderIsTheBarAndTheRowIsOneLine() throws {
         let app = try launchFixture("light")
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        let stop = app.buttons["work.session.stop"]
-        XCTAssertTrue(app.staticTexts["work.session.detail.title"].waitForExistence(timeout: 15))
+        let title = app.descendants(matching: .any)["work.session.detail.title"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        XCTAssertLessThan(title.frame.minY, 120, "the heading belongs in the navigation bar")
         XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH '最終活動'")).firstMatch.exists)
-        app.swipeUp()
+        XCTAssertFalse(app.buttons["音声入力"].exists, "the follow-up field has no dictation")
+        XCTAssertFalse(app.buttons["work.composer.textSize"].exists, "the compact field has no heading row")
+        XCTAssertTrue(app.buttons["work.composer.photo"].waitForExistence(timeout: 15))
+        let send = app.buttons["work.composer.send"].firstMatch
+        XCTAssertTrue(send.exists)
+        // This session is running, so the stop control shares Send's row.
+        let stop = app.buttons["work.session.stop"].firstMatch
         XCTAssertTrue(stop.waitForExistence(timeout: 15))
-        let textSize = app.buttons["work.composer.textSize"]
-        XCTAssertEqual(stop.frame.midY, textSize.frame.midY, accuracy: 8)
-        XCTAssertLessThanOrEqual(stop.frame.maxX, textSize.frame.minX)
+        XCTAssertEqual(stop.frame.midY, send.frame.midY, accuracy: 2)
         capture(app, "session-detail", "light")
     }
 
@@ -32,7 +39,7 @@ final class LAAPaseoUITests: XCTestCase {
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -90, dy: 0)),
                     withVelocity: XCUIGestureVelocity(120), thenHoldForDuration: 0.3)
         capture(app, "partial-swipe", "light")
-        XCTAssertFalse(app.navigationBars["移行の動作確認"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["work.sessions.new"].isHittable, "A partial swipe must not open the session")
         XCTAssertTrue(waitForFavorite(true), "A partial swipe must not change the pin")
 
@@ -40,14 +47,15 @@ final class LAAPaseoUITests: XCTestCase {
         let fullEnd = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: y))
         fullStart.press(forDuration: 0.1, thenDragTo: fullEnd, withVelocity: XCUIGestureVelocity(900), thenHoldForDuration: 0.1)
         capture(app, "full-swipe", "light")
-        XCTAssertFalse(app.navigationBars["移行の動作確認"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 2))
         XCTAssertTrue(waitForFavorite(false), "A full swipe must pin or unpin without opening the session")
         XCTAssertTrue(app.buttons["work.sessions.new"].isHittable, "A full swipe must not open the session")
 
         let moved = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(moved.waitForExistence(timeout: 10))
         moved.tap()
-        XCTAssertTrue(app.navigationBars["移行の動作確認"].waitForExistence(timeout: 15), "A plain tap must still open the session")
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 15),
+                      "A plain tap must still open the session")
     }
 
     func testProjectOpensAndArchivesWithASwipe() throws {
@@ -82,7 +90,7 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["Chat"].isHittable)
         row.tap()
-        XCTAssertTrue(app.navigationBars["移行の動作確認"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["Chat"].isHittable)
         app.navigationBars.buttons.firstMatch.tap()
         capture(app, "back-to-list", "light")
@@ -99,7 +107,7 @@ final class LAAPaseoUITests: XCTestCase {
         let last = app.staticTexts["work.session.ses_0000000000000016"].firstMatch
         XCTAssertFalse(last.isHittable)
         for _ in 0..<4 where !last.isHittable { app.swipeUp() }
-        XCTAssertFalse(app.navigationBars["移行の動作確認"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].exists)
         XCTAssertTrue(last.isHittable, "The row gesture must allow the surrounding page to scroll")
         XCTAssertTrue(waitForFavorite(true))
     }
@@ -109,7 +117,7 @@ final class LAAPaseoUITests: XCTestCase {
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        XCTAssertTrue(app.navigationBars["移行の動作確認"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 15))
         // The device report followed a horizontal drag, so cover the
         // interactive edge-swipe back gesture as well as the Back button.
         let edge = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 2, dy: app.frame.midY))
@@ -124,7 +132,7 @@ final class LAAPaseoUITests: XCTestCase {
         let row = app.staticTexts["work.session.ses_0000000000000003"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        XCTAssertTrue(app.navigationBars["追加の確認 1"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 15))
         app.navigationBars.buttons.firstMatch.tap()
         app.swipeDown()
         capture(app, "scrolled-back", "light")
@@ -183,7 +191,8 @@ final class LAAPaseoUITests: XCTestCase {
         let disclosure = app.buttons["work.session.ses_1111111111111111.children"]
         disclosure.tap()
         XCTAssertTrue(child.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.navigationBars["移行の動作確認"].exists, "Opening the children must not open the parent")
+        XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].exists,
+                       "Opening the children must not open the parent")
         capture(app, "list-open", appearance)
         child.tap()
         let question = app.staticTexts["どちらの構成で進めますか？"]

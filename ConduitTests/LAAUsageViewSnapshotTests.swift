@@ -46,6 +46,23 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
     }
 
+    /// The threshold tick used to be a laid-out sibling of the track, so a row
+    /// with a mark was taller than one without. It is drawn over the track now.
+    func testMeterHeightIsTheSameWithAndWithoutATick() {
+        for tick in [nil, 0.35, 0.9] as [Double?] {
+            let host = UIHostingController(rootView: LAAUsageMeter(fraction: 0.6, tick: tick).frame(width: 240))
+            host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 60)
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            let measured = host.view.systemLayoutSizeFitting(
+                CGSize(width: 240, height: UIView.layoutFittingCompressedSize.height)).height
+            XCTAssertEqual(measured, LAAUsageMeter.totalHeight, accuracy: 0.5,
+                           "tick \(String(describing: tick)) changed the meter's height")
+        }
+        XCTAssertEqual(LAAUsageMeter.totalHeight, LAAUsageMeter.height + 2 * 3,
+                       "the 8pt track keeps 3pt above and below for the 14pt tick")
+    }
+
     func testCapacityStatesLightAndDark() async throws {
         for name in ["normal", "warning", "critical", "stale", "unavailable"] {
             for style in [UIUserInterfaceStyle.light, .dark] {
