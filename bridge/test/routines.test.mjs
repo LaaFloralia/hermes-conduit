@@ -10,7 +10,7 @@ test('routine endpoint requires read access and projects only public fields', as
   const token = await bridge.token();
   const response = await bridge.request('/v1/routines', { token });
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null, ref: 'R1' }]);
+  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null, ...Object.fromEntries(['runId', 'reasonCode', 'observationStatus', 'scheduledAt', 'expectedRunAt', 'startedAt', 'finishedAt', 'notificationAcceptedAt', 'notificationSentAt', 'notificationReceivedAt'].map((key) => [key, null])), ref: 'R1' }]);
 });
 
 test('unavailable routine source returns an error rather than an empty list', async (t) => {
@@ -206,4 +206,26 @@ test('a failed console read keeps the previous observations instead of a 503', a
   assert.equal(kept.body.data.fetchedAt, first.body.data.fetchedAt);
   await delay(100);
   assert.equal(calls, 2);
+});
+
+
+test('execution evidence crosses Console to LAA without private output', () => {
+  for (const [reasonCode, businessStatus, notificationStatus] of [
+    ['observed', 'completed', 'accepted'], ['result_needs_attention', 'failed', 'accepted'],
+    ['observed', 'completed', 'not_received'], ['schedule_overdue', 'unknown', 'unknown'],
+    ['read_unavailable', 'unknown', 'unknown'],
+  ]) {
+    const reading = { enabled: true, runId: 'execution-12345678', reasonCode, businessStatus, notificationStatus,
+      scheduledAt: '2026-11-08T00:00:00Z', startedAt: '2026-11-08T00:00:01Z', finishedAt: '2026-11-08T00:01:00Z',
+      notificationSentAt: null, notificationReceivedAt: null, privateOutput: 'PRIVATE-MAIL' };
+    const row = projectRoutines({ data: [{ id: 'job:test', name: 'fixture', triggerKind: 'scheduled', reading }] })[0];
+    assert.equal(row.runId, reading.runId);
+    assert.equal(row.reasonCode, reasonCode);
+    assert.equal(row.businessStatus, businessStatus);
+    assert.equal(row.notificationStatus, notificationStatus);
+    assert.equal(row.startedAt, reading.startedAt);
+    assert.equal(row.notificationReceivedAt, null);
+    assert.equal(JSON.stringify(row).includes('PRIVATE-MAIL'), false);
+    if (['schedule_overdue', 'read_unavailable'].includes(reasonCode)) assert.equal(row.state, 'error');
+  }
 });
