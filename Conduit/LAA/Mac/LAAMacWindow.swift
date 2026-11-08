@@ -32,14 +32,22 @@ enum LAAMacWindow {
     /// desktop layout is designed for without driving the window from
     /// outside. A release build has no such argument.
     static var requestedFrame: CGSize? {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: "-laa-mac-window"),
-              index + 1 < arguments.count else { return nil }
-        let parts = arguments[index + 1].lowercased().split(separator: "x")
-        guard parts.count == 2,
+        guard let parts = argument(after: "-laa-mac-window")?.lowercased().split(separator: "x"),
+              parts.count == 2,
               let width = Double(parts[0]), let height = Double(parts[1]),
               width >= 600, height >= 400 else { return nil }
         return CGSize(width: width, height: height)
+    }
+
+    /// `-laa-mac-snapshot <file.png>` has the window draw itself into that
+    /// file once it has settled at its size, for `mac-screens.sh
+    /// --self-render` where the session may not record the screen.
+    static var snapshotPath: String? { argument(after: "-laa-mac-snapshot") }
+
+    private static func argument(after flag: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+        return arguments[index + 1]
     }
     #endif
 }
@@ -80,10 +88,32 @@ struct LAAMacWindowConstraints: UIViewRepresentable {
 
         private func requestFrame(_ scene: UIWindowScene) {
             #if DEBUG
+            scheduleSnapshot()
             guard let size = LAAMacWindow.requestedFrame else { return }
             scene.requestGeometryUpdate(.Mac(systemFrame: CGRect(origin: CGPoint(x: 80, y: 80), size: size)))
             #endif
         }
+
+        #if DEBUG
+        private var snapshotScheduled = false
+
+        /// Once, after the geometry request and the first content have
+        /// landed: drawn at the Mac's Retina pixels (two per Mac point).
+        private func scheduleSnapshot() {
+            guard !snapshotScheduled, let path = LAAMacWindow.snapshotPath else { return }
+            snapshotScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                guard let window = self?.window else { return }
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 2 * LAAMacWindow.scale
+                format.opaque = true
+                let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+                    _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                try? image.pngData()?.write(to: URL(fileURLWithPath: path), options: .atomic)
+            }
+        }
+        #endif
     }
 }
 #endif

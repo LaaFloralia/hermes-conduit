@@ -295,23 +295,10 @@ struct LAAUsageView: View {
         .accessibilityIdentifier("laa.capacity.\(item.id)")
     }
 
-    /// A thin used-bytes track; the tick marks where the warning threshold begins.
+    /// Used bytes on the screen's one meter; the tick marks where the warning threshold begins.
     private func capacityMeter(_ reading: LAACapacityReading, alert: Bool) -> some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            ZStack(alignment: .leading) {
-                Capsule().fill(LAAColor.subtleSurface)
-                Capsule().fill(alert ? LAAColor.attention : LAAColor.link)
-                    .frame(width: max(width * min(max(reading.usedFraction, 0), 1), reading.usedBytes > 0 ? 4 : 0))
-                if let tick = reading.warningFraction, tick > 0, tick < 1 {
-                    Rectangle().fill(LAAColor.secondaryText)
-                        .frame(width: 1, height: 10)
-                        .offset(x: width * tick)
-                }
-            }
-        }
-        .frame(height: 4)
-        .padding(.vertical, 3)
+        LAAUsageMeter(fraction: reading.usedFraction, alert: alert, tick: reading.warningFraction,
+                      showsSliver: reading.usedBytes > 0)
     }
 
     private func capacityWarning(_ reading: LAACapacityReading, item: LAAUsageItem) -> String? {
@@ -376,7 +363,9 @@ struct LAAUsageView: View {
         } else if item.kind == "balance" {
             metric("残り", value(item.availableValue, unit: item.detail?.creditUnit ?? item.unit), warning: warning, prominent: true)
             if let granted = item.detail?.grantedAmount, granted > 0, let remaining = item.availableValue {
-                ProgressView(value: min(max(remaining / granted, 0), 1)).tint(warning ? LAAColor.attention : LAAColor.link)
+                LAAUsageMeter(fraction: remaining / granted, alert: warning)
+                    .accessibilityLabel(Text(verbatim: item.label + " 残り"))
+                    .accessibilityValue(Text(verbatim: value(min(max(remaining / granted, 0), 1) * 100, unit: "percent")))
                 caption("付与 " + value(granted, unit: item.detail?.creditUnit ?? item.unit))
             }
             if let daily = item.detail?.dailyRemaining { metric("今日の残り", value(daily, unit: item.detail?.creditUnit ?? "credits"), warning: warning) }
@@ -386,7 +375,9 @@ struct LAAUsageView: View {
             if let usd = item.detail?.usd, item.unit != "usd" { metric("USD", value(usd, unit: "usd"), warning: warning) }
             if let monthly = item.detail?.monthlyRemainingPercent {
                 metric("月間の残り", value(monthly, unit: "percent"), warning: warning)
-                ProgressView(value: monthly, total: 100).tint(warning ? LAAColor.attention : LAAColor.link)
+                LAAUsageMeter(fraction: monthly / 100, alert: warning)
+                    .accessibilityLabel(Text(verbatim: item.label + " 月間の残り"))
+                    .accessibilityValue(Text(verbatim: value(monthly, unit: "percent")))
             }
             ForEach(Array((item.detail?.components ?? []).enumerated()), id: \.offset) { _, component in
                 metric(componentLabel(component.kind), value(component.amount, unit: item.id == "provider.venice.balance" ? "credits" : item.unit), warning: warning || reachedUTCDate(component.expiresOnUtc))
@@ -424,8 +415,7 @@ struct LAAUsageView: View {
                     .font(LAAType.usageValue).foregroundStyle(expired || stale ? LAAColor.attention : LAAColor.text)
             }
             if !expired && !stale, let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) {
-                ProgressView(value: remaining, total: 100)
-                    .tint(expired || stale ? LAAColor.attention : LAAColor.link)
+                LAAUsageMeter(fraction: remaining / 100, alert: false)
                     .accessibilityLabel(Text(verbatim: item.label + " " + windowLabel(window) + " 残り"))
                     .accessibilityValue(Text(verbatim: value(remaining, unit: "percent")))
             }
@@ -561,6 +551,40 @@ struct LAAUsageView: View {
 
     private func refresh() async {
         await state.refreshAndPublish(bridge: bridge)
+    }
+}
+
+/// The Usage screen's one meter: AI limits, balances and storage share its
+/// track, height and colors, so every bar on the screen reads the same.
+struct LAAUsageMeter: View {
+    /// 0...1; values outside are clamped.
+    let fraction: Double
+    var alert = false
+    /// Where a threshold begins, drawn as a short tick across the track.
+    var tick: Double? = nil
+    /// A nonzero amount keeps a sliver visible even when it rounds to nothing.
+    var showsSliver = true
+
+    static let height: CGFloat = 6
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let clamped = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+            ZStack(alignment: .leading) {
+                Capsule().fill(LAAColor.subtleSurface)
+                Capsule().fill(alert ? LAAColor.attention : LAAColor.link)
+                    .frame(width: max(width * clamped, showsSliver && clamped > 0 ? Self.height : 0))
+                if let tick, tick > 0, tick < 1 {
+                    Rectangle().fill(LAAColor.secondaryText)
+                        .frame(width: 1, height: Self.height + 6)
+                        .offset(x: width * tick)
+                }
+            }
+        }
+        .frame(height: Self.height)
+        .padding(.vertical, 3)
+        .accessibilityElement()
     }
 }
 #endif

@@ -94,6 +94,28 @@ final class WidgetLaunchUITests: XCTestCase {
         XCTAssertEqual(conversation.value as? String, Identity.sessionID)
     }
 
+    /// The tap answers at once: the employee's opening screen shows while the
+    /// launch waits, and Back returns to the list instead of to a chat.
+    func testEmployeeRowShowsOpeningScreenWhileTheChatLoads() throws {
+        let profile = "laa-cfo"
+        let app = launchApp(warmURL: employeeURL(action: "employeeChat", profile: profile), holdReadiness: true,
+                            sourceProfile: "laa-monet")
+        let employee = app.buttons["laa.chats.person.\(profile)"]
+        app.returnToV2Tabs(revealing: employee)
+        XCTAssertTrue(employee.waitForExistence(timeout: 15), tree(app))
+
+        employee.tap()
+
+        let opening = app.descendants(matching: .any)["laa.chats.opening"]
+        XCTAssertTrue(opening.waitForExistence(timeout: 3), tree(app))
+        let back = app.navigationBars.buttons.matching(NSPredicate(
+            format: "identifier == 'BackButton' OR label == 'Back' OR label == 'Chats'")).firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5), tree(app))
+        back.tap()
+        XCTAssertTrue(employee.waitForExistence(timeout: 10), tree(app))
+        XCTAssertFalse(opening.exists, tree(app))
+    }
+
     func testEveryEmployeeLinkReachesItsConversationAndVoicePath() throws {
         for employee in ["monet", "argus", "cfo", "cio", "cos", "cto", "cso"] {
             let profile = "laa-\(employee)"

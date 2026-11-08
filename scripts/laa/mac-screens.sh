@@ -5,7 +5,7 @@
 #   scripts/laa/mac-screens.sh [--owner shell] [--out DIR] [--fixture work]
 #                              [--address URL] [--sections chats,work,...]
 #                              [--sizes 900x600,1280x820,1680x1050]
-#                              [--schemes light,dark] [--skip-build]
+#                              [--schemes light,dark] [--skip-build] [--self-render]
 #                              [--app-args "-flag value"] [--app-env "K=V K2=V2"]
 #
 # --app-args adds launch arguments, --app-env adds environment variables. The
@@ -34,7 +34,10 @@
 # and
 # the section from -laa-mac-section, so no window automation is needed: the
 # captures are the same every run. Each shot is a window capture
-# (screencapture -l), so the desktop behind it never appears.
+# (screencapture -l), so the desktop behind it never appears. --self-render
+# has the window draw itself instead (DEBUG -laa-mac-snapshot), for a session
+# without the screen-recording permission screencapture needs; it shows the
+# app's content without the title bar.
 #
 # Sections whose screens need a Bridge fixture: pass --fixture <name> to start
 # scripts/laa/<name>-ui-fixture.mjs and point the app at it with --address.
@@ -56,6 +59,7 @@ SCHEMES=light,dark
 APP_ARGS=""
 APP_ENV=""
 SKIP_BUILD=0
+SELF_RENDER=0
 DEV_ID=com.laa-inc.laa.macdev
 DEV_NAME="LAA"
 DERIVED="$ROOT/.deriveddata-macdev"
@@ -76,6 +80,7 @@ while [ $# -gt 0 ]; do
     --app-args) APP_ARGS=$2; shift 2 ;;
     --app-env) APP_ENV=$2; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --self-render) SELF_RENDER=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -167,9 +172,10 @@ build() {
 }
 
 launch() {
-  local section=$1 scheme=$2 size=$3
+  local section=$1 scheme=$2 size=$3 file=$4
   local args=(-laa-mac-section "$section" -laa-mac-window "$size"
               -conduit.themePreference "$scheme")
+  [ "$SELF_RENDER" = 1 ] && args+=(-laa-mac-snapshot "$file")
   [ -n "$ADDRESS" ] && export LAA_BRIDGE_DEFAULT_ADDRESS="$ADDRESS"
   local extra=()
   [ -n "$APP_ARGS" ] && read -r -a extra <<< "$APP_ARGS"
@@ -214,7 +220,9 @@ shots=0
 for section in "${section_list[@]}"; do
   for scheme in "${scheme_list[@]}"; do
     for size in "${size_list[@]}"; do
-      launch "$section" "$scheme" "$size"
+      file="$OUT/$OWNER/$section-${size}-$scheme.png"
+      rm -f "$file"
+      launch "$section" "$scheme" "$size" "$file"
       # Wait for the window, then for it to take the requested size: the
       # geometry request lands a moment after the window appears.
       want_w=${size%x*}
@@ -239,8 +247,12 @@ for section in "${section_list[@]}"; do
         stop_app
         continue
       fi
-      file="$OUT/$OWNER/$section-${size}-$scheme.png"
-      screencapture -x -o -l "$id" "$file"
+      if [ "$SELF_RENDER" = 1 ]; then
+        # The window writes the file a few seconds after it settles.
+        for _ in $(seq 1 60); do [ -s "$file" ] && break; sleep 0.5; done
+      else
+        screencapture -x -o -l "$id" "$file"
+      fi
       if [ -s "$file" ]; then
         shots=$((shots + 1))
         echo "$file"

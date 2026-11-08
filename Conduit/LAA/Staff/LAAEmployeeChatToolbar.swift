@@ -160,7 +160,8 @@ struct LAAEmployeeHeader: View {
     var compact = false
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
-    private static let mascotSize: CGFloat = 54
+    /// The mascot is the bar's one picture: larger than the controls around it.
+    private static let mascotSize: CGFloat = 66
 
     var body: some View {
         Button { showDetails = true } label: {

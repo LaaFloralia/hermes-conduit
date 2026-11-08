@@ -27,9 +27,15 @@ final class LAAShellNavigationUITests: XCTestCase {
         // Unpaired, AI usage waits for the Mac like the other Work sections.
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 10))
         app.buttons["Studio"].tap()
+        // Studio opens on its Studio page; Drive is the page beside it, not a pushed screen.
+        XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 10))
+        let studio = app.buttons["studio.section.studio"]
+        XCTAssertTrue(studio.waitForExistence(timeout: 10))
+        XCTAssertTrue(studio.isSelected)
         let drive = app.buttons["studio.drive"]
         XCTAssertTrue(drive.waitForExistence(timeout: 10)); drive.tap()
-        XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(drive.isSelected)
+        XCTAssertFalse(studio.isSelected)
         let settings = app.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 10)); settings.tap()
         XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))

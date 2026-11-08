@@ -6104,6 +6104,10 @@ final class AppState: ObservableObject {
     /// shows as its chat, except during a call, which refuses it. A Talk on
     /// its way shows its call screen.
     func widgetLaunchPendingLinkChanged(_ link: WidgetLaunchLink?) {
+        #if LAA_BUILD
+        let opening = link?.action == .employeeChat && !isVoiceCallInProgress ? link?.workspace?.profile : nil
+        if opening != laaOpeningEmployeeChat { laaOpeningEmployeeChat = opening }
+        #endif
         if link?.action == .talk {
             presentWaitingCallIfNeeded()
         } else {
@@ -24495,6 +24499,12 @@ final class AppState: ObservableObject {
     }
     /// The app's own New Chat is creating its chat right now.
     @Published private(set) var isStartingNewChat = false
+    #if LAA_BUILD
+    /// The employee whose chat a tap (the Chats list or a widget) is opening.
+    /// The chat screen shows at once with this employee while the profile
+    /// switch and the catalog read finish (LAAEmployeeChatOpening).
+    @Published private(set) var laaOpeningEmployeeChat: String?
+    #endif
 
     var showsPendingNewChat: Bool { pendingNewChat != nil }
 

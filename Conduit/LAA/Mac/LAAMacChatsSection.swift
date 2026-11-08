@@ -19,8 +19,8 @@ struct LAAMacChatsSection: View {
     /// conversation is open.
     private var selection: LAAChatsListSelection {
         LAAChatsListSelection(
-            profile: conversationShown && appState.activeRoomSurface == nil
-                ? appState.conversationIdentityProfile : nil,
+            profile: appState.laaOpeningEmployeeChat ?? (conversationShown && appState.activeRoomSurface == nil
+                ? appState.conversationIdentityProfile : nil),
             roomID: conversationShown ? appState.activeRoomSurface?.room.roomID : nil,
             focusSearch: commands.focusSearch,
             reload: commands.reload,
@@ -64,6 +64,12 @@ struct LAAMacChatsSection: View {
             guard id != nil else { return }
             conversationShown = true
         }
+        // A tapped employee answers at once in the detail column; the chat
+        // underneath stays covered (not counted as seen) until the switch
+        // lands and the launch uncovers it.
+        .onChange(of: appState.laaOpeningEmployeeChat, initial: true) { _, opening in
+            if opening != nil, !appState.showSidebar { appState.showSidebar = true }
+        }
         .onChange(of: appState.showSidebar) { _, covered in
             if covered {
                 conversationShown = false
@@ -94,6 +100,16 @@ struct LAAMacChatsSection: View {
 
     @ViewBuilder
     private var detail: some View {
+        if let opening = appState.laaOpeningEmployeeChat {
+            LAAEmployeeChatOpeningView(profile: opening)
+                .modifier(LAAMacFlatTopEdge())
+        } else {
+            conversationDetail
+        }
+    }
+
+    @ViewBuilder
+    private var conversationDetail: some View {
         switch LAAMacChatDetail.resolve(shown: conversationShown, hasConversation: hasConversation) {
         case .conversation:
             V2ConversationScreen()

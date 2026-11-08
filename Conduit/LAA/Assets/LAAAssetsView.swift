@@ -15,6 +15,8 @@ struct LAAAssetsView: View {
     @State private var uploadFolderID: String?
     @State private var driveRevision = 0
     @State private var studioSelected = false
+    @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private let initialStudioSection: Int
     @State private var showPairing = false
     @State private var selected: LAADriveSelection?
@@ -57,6 +59,10 @@ struct LAAAssetsView: View {
             Task { await thumbnailCache.removeAll() }
         }
         .onDisappear { folderTask?.cancel() }
+        // A Drive link (laa://assets) opens the Studio tab on its Drive page.
+        .onChange(of: linkRequest.generation) { _, _ in
+            if linkRequest.url?.host == "assets" { studioSelected = false }
+        }
         .confirmationDialog("Save this folder offline?", isPresented: $confirmFolder, titleVisibility: .visible) {
             Button("Save files") { if let folderPlan { saveFolder(folderPlan) } }
             Button("Cancel", role: .cancel) { folderPlan = nil }
@@ -97,8 +103,8 @@ struct LAAAssetsView: View {
 
     // MARK: Desktop (Mac) list and preview
 
-    /// The Mac shell gives Assets its own sidebar entry, so the phone's
-    /// Drive/Inspiration/Studio segment bar has nothing left to switch here.
+    /// The Mac shell gives Drive its own sidebar entry, so the phone's
+    /// Studio/Drive segment bar has nothing left to switch here.
     private var desktopContent: some View {
         LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
             desktopList
@@ -235,37 +241,44 @@ struct LAAAssetsView: View {
         }
     }
 
+    /// The Studio tab's own title, like the other tabs' headings.
     private var heading: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
-            Text(verbatim: LAACopy.Assets.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("laa.assets.title")
-            Text(verbatim: LAACopy.Assets.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-        }
+        LAATabHeading(title: LAATab.studio.title, identifier: "laa.assets.title")
     }
 
+    /// Studio and Drive as the tab's two pages, in the Work tab's pill style.
     private var segments: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: LAASpacing.x2) {
-                segment(LAACopy.Assets.drive, selected: !studioSelected) { studioSelected = false }
-                segment(LAACopy.Assets.inspiration, selected: false, action: {}).disabled(true)
-                    .accessibilityHint(Text(verbatim: LAACopy.Assets.unavailable))
-                segment(LAACopy.Assets.studio, selected: studioSelected) { studioSelected = true }
-            }
+        HStack(spacing: LAASpacing.x2) {
+            segment(LAACopy.Assets.studio, symbol: "sparkles.rectangle.stack", selected: studioSelected,
+                    identifier: "studio.section.studio") { studioSelected = true }
+            segment(LAACopy.Assets.drive, symbol: "folder", selected: !studioSelected,
+                    identifier: "studio.drive") { studioSelected = false }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("studio.segment")
     }
 
-    private func segment(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(verbatim: title).laaTextStyle(.secondary).fontWeight(selected ? .semibold : .regular)
-                .foregroundStyle(selected ? LAAColor.filledButtonText : LAAColor.secondaryText)
-                .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
-                .background(selected ? LAAColor.filledButton : LAAColor.subtleSurface,
-                            in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+    @ViewBuilder
+    private func segment(_ title: String, symbol: String, selected: Bool, identifier: String,
+                         action: @escaping () -> Void) -> some View {
+        let button = Button(action: action) {
+            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
+                .laaTextStyle(.secondary)
+                .fontWeight(selected ? .semibold : .regular)
+                .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
+                .padding(.horizontal, LAASpacing.x4)
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
-        }.buttonStyle(.plain)
-            .accessibilityAddTraits(selected ? .isSelected : [])
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: title))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier(identifier)
+        if #available(iOS 26.0, *), !reduceTransparency {
+            button.glassEffect(.regular.tint(selected ? LAAColor.selectionFill : .clear).interactive(), in: .capsule)
+        } else {
+            button.background(selected ? LAAColor.selectionFill : LAAColor.surface, in: Capsule())
+        }
     }
 
     private var connection: some View {

@@ -69,8 +69,9 @@ final class LAAAssetsUITests: XCTestCase {
         let folder = item("folder1", in: app)
         XCTAssertTrue(folder.waitForExistence(timeout: 30))
         XCTAssertTrue(folder.isEnabled)
-        XCTAssertFalse(app.buttons["Inspiration"].isEnabled)
-        XCTAssertTrue(app.scrollViews.buttons["Studio"].firstMatch.isEnabled)
+        // Studio and Drive are the Studio tab's two pages; Drive is the one showing.
+        XCTAssertTrue(app.buttons["studio.drive"].isSelected)
+        XCTAssertTrue(app.buttons["studio.section.studio"].isEnabled)
         XCTAssertTrue(item("image1", in: app).isEnabled)
         folder.tap()
         XCTAssertTrue(item("doc2", in: app).waitForExistence(timeout: 10))

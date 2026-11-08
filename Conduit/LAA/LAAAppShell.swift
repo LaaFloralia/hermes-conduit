@@ -115,7 +115,23 @@ struct LAAAppShell: View {
                 values: .init(isTabActive: selectedTab == .chats, isRootCovered: !chatsPath.isEmpty)
             ))
             .onChange(of: conversationVisible, initial: true) { _, visible in
-                if appState.showSidebar == visible { appState.showSidebar = !visible }
+                // An opening chat keeps the list "covered": the chat underneath
+                // isn't on screen yet, so it isn't counted as seen.
+                let covered = !visible || appState.laaOpeningEmployeeChat != nil
+                if appState.showSidebar != covered { appState.showSidebar = covered }
+                if !visible { appState.laaCancelOpeningEmployeeChat() }
+            }
+            // A tapped employee's chat shows at once; the conversation replaces
+            // the opening screen when the switch lands (LAAConversationRoute).
+            .onChange(of: appState.laaOpeningEmployeeChat, initial: true) { old, new in
+                if new != nil {
+                    appState.requestSettingsDismissal()
+                    openConversation()
+                } else if old != nil, appState.showSidebar, conversationVisible {
+                    // Still covered: the launch ended without opening a chat
+                    // (its failure is a notice), so return to the list.
+                    closeConversation()
+                }
             }
             .onChange(of: appState.showSidebar) { _, covered in
                 if !covered, !conversationVisible {
@@ -213,40 +229,11 @@ struct LAAAppShell: View {
                                              initialEventID: workLinkRequest.calendarEvent?.id, initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
                                     .id(workLinkRequest.generation)
                             } else if tab == .studio {
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                                        LAATabHeading(title: LAATab.studio.title)
-                                        // Drive keeps one entry inside the five tabs: the
-                                        // Assets screen stays reachable without a sixth tab.
-                                        NavigationLink {
-                                            LAAAssetsView(onRequestSettings: onRequestSettings)
-                                        } label: {
-                                            HStack(spacing: LAASpacing.x3) {
-                                                Image(systemName: "folder")
-                                                    .foregroundStyle(LAAColor.link)
-                                                VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                                                    Text(verbatim: "Drive")
-                                                    Text(verbatim: "Google Driveのファイルを開く、アップロードする")
-                                                        .laaTextStyle(.secondary)
-                                                        .foregroundStyle(LAAColor.secondaryText)
-                                                }
-                                                Spacer(minLength: 0)
-                                                Image(systemName: "chevron.right")
-                                                    .foregroundStyle(LAAColor.secondaryText)
-                                            }
-                                            .padding(LAASpacing.x4)
-                                            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                                        }
-                                        .buttonStyle(.plain)
-                                        .accessibilityLabel(Text(verbatim: "Drive"))
-                                        .accessibilityIdentifier("studio.drive")
-                                        LAAStudioHomeView()
-                                    }.padding(LAASpacing.horizontal)
-                                }
-                                .background(LAAColor.background.ignoresSafeArea())
-                                .navigationBarTitleDisplayMode(.inline)
-                                .toolbarBackground(.hidden, for: .navigationBar)
-                                .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
+                                // Studio and Drive are the tab's two pages: one
+                                // switch at the top instead of a link to a second screen.
+                                // A Drive link that arrives first opens it on Drive.
+                                LAAAssetsView(onRequestSettings: onRequestSettings,
+                                              initialStudioSelected: workLinkRequest.url?.host != "assets")
                             } else if tab == .usage {
                                 LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                             } else if tab == .work {
@@ -277,8 +264,7 @@ struct LAAAppShell: View {
                     .navigationDestination(for: V2Route.self) { route in
                         switch route {
                         case .conversation:
-                            V2ConversationScreen()
-                                .toolbar(.hidden, for: .tabBar)
+                            LAAConversationRoute()
                         case .project(let project):
                             V2ProjectPage(project: project)
                         case .artifacts:

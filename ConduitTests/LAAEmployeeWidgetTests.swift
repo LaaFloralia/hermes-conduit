@@ -103,6 +103,45 @@ final class LAAEmployeeWidgetTests: XCTestCase {
         XCTAssertEqual(state.activeProfile, "laa-monet")
     }
 
+    /// A tapped employee's chat shows at once (the opening screen) while the
+    /// launch waits; backing out drops the launch so it can't come back later.
+    func testEmployeeChatOpensAtOnceAndBackingOutDropsTheLaunch() throws {
+        let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "https://widget-test.invalid")
+        let state = try makeState(dashboards: [dashboard])
+        state.setActiveProfileForTesting("laa-monet")
+        state.isConnected = false
+        state.isConnecting = true
+        let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-cso")
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+
+        XCTAssertTrue(state.routeWidgetLaunchURL(link.url))
+        XCTAssertEqual(state.laaOpeningEmployeeChat, "laa-cso")
+
+        state.laaCancelOpeningEmployeeChat()
+        XCTAssertNil(state.laaOpeningEmployeeChat)
+        XCTAssertNil(state.widgetLaunchCoordinator.pendingLink)
+    }
+
+    func testOnlyEmployeeChatLaunchesShowTheOpeningScreen() throws {
+        let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "https://widget-test.invalid")
+        let state = try makeState(dashboards: [dashboard])
+        let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-argus")
+        let newChat = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+        let chat = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+
+        state.widgetLaunchPendingLinkChanged(newChat)
+        XCTAssertNil(state.laaOpeningEmployeeChat, "a New Chat shows as its own pending chat")
+        XCTAssertEqual(state.pendingNewChat, workspace)
+        state.widgetLaunchPendingLinkChanged(chat)
+        XCTAssertEqual(state.laaOpeningEmployeeChat, "laa-argus")
+        XCTAssertNil(state.pendingNewChat)
+        state.widgetLaunchPendingLinkChanged(nil)
+        XCTAssertNil(state.laaOpeningEmployeeChat)
+        // Nothing pending: there is no launch to drop.
+        state.laaCancelOpeningEmployeeChat()
+        XCTAssertNil(state.laaOpeningEmployeeChat)
+    }
+
     private func makeState(dashboards: [SavedDashboard]) throws -> AppState {
         let suite = "LAAEmployeeWidgetTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

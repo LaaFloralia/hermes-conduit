@@ -21,6 +21,7 @@ extension LAACopy {
     static let chatsCancel = "Cancel"
     static let chatsNoResults = "一致する項目がありません。"
     static let chatsLoading = "読み込み中…"
+    static let chatsOpening = "チャットを開いています…"
     static let chatsOffline = "Macに接続できません。"
     static let chatsIncomplete = "一部の項目を検索できません。接続を確認してください。"
     static let chatsNoGroups = "グループはまだありません。"

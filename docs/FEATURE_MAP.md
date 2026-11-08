@@ -391,6 +391,7 @@ build (keeps its own chat and call controls)
 - The muted loop runs only while visible and active, after disconnecting from system audio. Reduce Motion, Low Power Mode, scrolling and platforms unable to disconnect use the still, so opening a chat does not take over another app's audio.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
 - The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui). At 375 points and accessibility text sizes, the employee name takes priority over the decorative avatar and status; the full status stays in its accessible label and detail sheet. Back keeps its native control and interactive pop gesture.
+- The header's mascot is 66 points, larger than the 44-point controls beside it: it stands taller than the bar's slot without changing the bar's height. The Chats list draws Monet at 56 points and each employee at 48 (the owner, 2026-11-09: the characters larger in chat).
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
@@ -413,7 +414,7 @@ build (keeps its own chat and call controls)
 - A real GPT-Live conversation and microphone route on Mac still need an authenticated device check.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-11-06, laa/staff-3d-1106 (360-degree turn on the simulator; physical iPhone pending); 2026-11-06, laa/staff-mascot-1106 (mascot assets, active speed; physical iPhone pending); 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (larger header and list mascots; @@CHECK@@); 2026-11-06, laa/staff-3d-1106 (360-degree turn on the simulator; physical iPhone pending); 2026-11-06, laa/staff-mascot-1106 (mascot assets, active speed; physical iPhone pending); 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -533,6 +534,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   billing link (`platform.openai.com` / `platform.claude.com`). A cached
   `cost-month` from an older widget snapshot is neither drawn nor reused, and a
   manually entered balance is not shown as current.
+- Every Usage meter is one `LAAUsageMeter`: a 6-point capsule in the link
+  colour, or the attention colour past a warning, with the warning tick on
+  capacity meters. Window, balance, monthly and capacity bars share that one
+  thickness (the owner, 2026-11-09: the meters' thickness varied).
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
   area access by naming that audience. A denied device sees a localized Mac
@@ -580,7 +585,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   default. A lost chunk or final response queries Google’s received offset before
   resuming; completion is retained until the one-hour session expiry. Closing the
   upload view or restarting Bridge does not preserve the session.
-  Inspiration remains disabled. Google consent is an operator prerequisite.
+  Google consent is an operator prerequisite.
 - Assets Studio lists works and requests, preserves unsent or uncertain drafts,
   and supports typed approvals and stopping through the scoped Bridge. Studio
   remains the executor; media and Drive delivery are linked from the work.
@@ -594,6 +599,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   through one Studio adapter; its shared transport retains both the Drive
   version check and Studio's optional timeout.
   The v2 app screens, real intake and iPhone playback remain to be verified.
+- The Studio tab holds Studio and Drive as its two pages under one Studio
+  heading, switched by a Studio | Drive pill bar in the Work hub's style. It
+  opens on Studio, and a Drive link (`laa://assets`) opens it on Drive. The
+  former Drive card that pushed a second screen and the disabled Inspiration
+  chip are gone; the Mac keeps Studio and Drive as two sidebar sections (the
+  owner, 2026-11-09).
 - Brain keeps Recent, Tags, conflict copies and an image-note Gallery as
   secondary local views; its Bridge source retains Recent and Folders.
   The Gallery reuses the note attachment resolver and shows one cover per
@@ -644,7 +655,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   not have sufficient contrast in dark mode; their screen tasks should use the
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
-- Work routines and Assets Inspiration remain unavailable. Drive's iOS build,
+- Work routines remain unavailable. Drive's iOS build,
   simulator UI, PiP, AirPlay with the authenticated resource loader, fullscreen
   rotation, audio interruptions, macOS permission and real Drive device behavior
   still need their respective tests. File attributes do not guarantee an atomic
@@ -676,7 +687,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
-**Checked:** 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter; @@CHECK@@); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
@@ -3974,6 +3985,7 @@ and rollback instructions · the upstream App Store build
 
 **Code**
 - Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
+- Opening screen: `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/Services/AppState.swift` (`laaOpeningEmployeeChat`), `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Mac/LAAMacChatsSection.swift`
 - Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/Resources/LAAStaff.xcassets/LAAWidgetCompanyIcon.imageset/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
 - Snapshot reload and notice: `Shared/Widgets/WidgetSnapshot.swift`, `Shared/Widgets/WidgetSnapshotStore.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
@@ -3983,12 +3995,13 @@ and rollback instructions · the upstream App Store build
 - Monet and Monet（無検閲） replace the former two swans and the former marketing employee identity; the uncensored employee is text-only. Retired profile IDs are not mapped to new identities. When authoritative discovery reports the saved active profile absent, the app falls back to default; a stale widget link reports an unavailable workspace. The system handling of a previously saved widget selection still needs iPhone acceptance.
 - iPhone acceptance: check Monet and Monet（無検閲） names and mascots in Chats and staff details, turn animation, call and text-only behavior, Watch and shortcuts, and reconfigure any existing employee widget whose selection no longer resolves.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
+- A Chat link shows that employee's opening screen (mascot, name, role and チャットを開いています…) the moment it is taken, on the phone's chat route and in the Mac's detail column, until the profile switch and the chat's read land. Leaving it drops the launch, so a late switch doesn't bring the chat back; a failed launch returns to the list with its notice. Call and New chat links don't show it (the owner, 2026-11-09: a tap didn't open the chat at once).
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen; @@CHECK@@); 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 
@@ -4016,13 +4029,13 @@ and rollback instructions · the upstream App Store build
 **Siblings:** employee widget Chat and existing conversation links · hosted group rooms and group creation · the LAA settings entry · the upstream Chats list and its search · iPhone and iPad · accessibility and offline copies
 
 **Code**
-- List, search and real-state mapping: `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Chats/LAAChatsModel.swift`, `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Chats/LAAChatsCopy.swift`, `Conduit/LAA/LAAAppShell.swift`
+- List, search and real-state mapping: `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Chats/LAAChatsModel.swift`, `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Chats/LAAChatsCopy.swift`, `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/LAA/LAAAppShell.swift`
 - Employee routing and room data: `Conduit/Services/AppState+WidgetLaunch.swift`, `Shared/Widgets/LAAEmployeeWidget.swift`, `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/Services/AppState.swift`
 - Tests: `ConduitTests/LAAChatsTests.swift`, `ConduitUITests/LAAChatsUITests.swift`, `Conduit/LAA/Chats/LAAChatsFixtureView.swift`
 
 **Rulings**
 - New chat and Settings share one glass in the navigation bar and search is a glass capsule; rows stay opaque (2026-11-02).
-- The LAA list shows Monet, every available employee and every hosted room, none folded behind a See all; it has no Recent section (the owner, 2026-11-02; conversations are in Work › Sessions). A room's icon overlaps its members' faces. Employee taps use the widget's saved-or-latest chat route; room taps keep their existing identity. Search covers names, roles, rooms and room members, and distinguishes an incomplete room read from no matches.
+- The LAA list shows Monet, every available employee and every hosted room, none folded behind a See all; it has no Recent section (the owner, 2026-11-02; conversations are in Work › Sessions). A room's icon overlaps its members' faces. Employee taps use the widget's saved-or-latest chat route and answer at once with the employee's opening screen (LAA employee widget); room taps keep their existing identity. Search covers names, roles, rooms and room members, and distinguishes an incomplete room read from no matches.
 - Employee rows show an unread badge (up to 99+) from the current profile's sessions or the already-loaded all-profile catalog for the same dashboard. Message counts and the device's seen watermark give the count; a known unread flag without a count displays 1, while an unloaded profile has no number. Opening chats uses the existing read-state tracking.
 - The connected profile's scheduled jobs show their destination, schedule, next time and enabled state, with links to its last five execution chats. Work's Routines catalog supplies the cross-profile destination groups. The creation actions keep the existing Hermes flows and explain unavailable actions.
 
@@ -4031,7 +4044,7 @@ and rollback instructions · the upstream App Store build
 - The LAA redesign does not expose the upstream list's filters, full-text message search, archived sheet, pin ordering, project and artifact controls on this screen. The existing underlying records and links are retained.
 - Dynamic Type, VoiceOver, reduced transparency, small screens, and the employee and group routes require physical iPhone verification.
 
-**Checked:** 2026-11-03, unread badges and scheduled-chat history; consolidated LAA unit tests 180/180 passed, physical acceptance pending.  2026-11-02, laa/glass (bar and search glass); 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen, larger faces; @@CHECK@@); 2026-11-03, unread badges and scheduled-chat history; consolidated LAA unit tests 180/180 passed, physical acceptance pending.  2026-11-02, laa/glass (bar and search glass); 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
 
 ## LAA v2 chat presentation
 
@@ -4134,16 +4147,17 @@ Google data remains a signed-build gate.
 - Shell, sidebar, commands and window: `Conduit/LAA/Mac/LAAMacShell.swift`, `Conduit/LAA/Mac/LAAMacSidebar.swift`, `Conduit/LAA/Mac/LAAMacSection.swift`, `Conduit/LAA/Mac/LAAMacCommands.swift`, `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAADesktopLayout.swift`
 - Chat in two columns: `Conduit/LAA/Mac/LAAMacChatsSection.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Chats/LAAChatsModel.swift`, `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
 - Entry points: `Conduit/ConduitApp.swift` (window and `.commands`), `Conduit/Views/RootView.swift` (`shellSurface`)
-- Screenshots: `scripts/laa/mac-screens.sh`
+- Screenshots: `scripts/laa/mac-screens.sh`, `Conduit/LAA/Mac/LAAMacWindow.swift` (DEBUG `-laa-mac-snapshot`)
 - Tests: `ConduitTests/LAAMacCatalystTests.swift`, `ConduitUITests/LAAMacShellUITests.swift`
 
 **Rulings**
 - Catalyst keeps "Scale Interface to Match iPad": one UIKit point is drawn at about 0.77 Mac points, so the desktop sizes are divided by that (1280×820 becomes 1662×1065). Optimize for Mac is not switched on (the parent, 2026-11-03).
 - The Mac window is a `NavigationSplitView` — sidebar of Chat, Work, Today, Brain, Studio, Drive and Usage, with the Mac's connection state and Settings beneath — beside a detail column each section fills. The phone keeps its `TabView` unchanged. Sections branch on `laaDesktop`, never on the size class, because the shell hands the reused iPhone screens a compact size class inside the columns.
 - The window opens at 1280×820 Mac points, keeps a 900×600 minimum and has no maximum below the display: full screen and Split View work. The earlier 623-point content cap, the compact size class at the root and the `.contentSize` resizability are gone.
-- Selecting a chat row switches the detail column; it never pushes. The selected row keeps `LAAColor.selectionFill` behind `LAAColor.link` (the same pair as the sidebar), not the system accent fill, and a room's row is marked instead of a person's while a room is open. The conversation sits at `LAADesktopMetrics.readingWidth`.
+- Selecting a chat row switches the detail column; it never pushes. An employee's row is selected at once and the column shows the opening screen until the chat lands. The selected row keeps `LAAColor.selectionFill` behind `LAAColor.link` (the same pair as the sidebar), not the system accent fill, and a room's row is marked instead of a person's while a room is open. The conversation sits at `LAADesktopMetrics.readingWidth`.
 - The menu bar carries Go (⌘1–⌘7, ⌃⌘S), Chat (⌘F, ⌘R, Close Conversation), New Chat (⌘N) and Settings (⌘,). Escape closes the open chat. Arrow keys walk the sidebar and the chat list; Return opens the focused row.
 - Sign-in stays in the Chat section, where the phone's Chats tab shows it, rather than covering the window: the other sections keep their own unpaired states.
+- `mac-screens.sh --self-render` has the window draw itself into the shot (DEBUG `-laa-mac-snapshot`, at the Mac's Retina pixels) for a session without the screen-recording permission `screencapture` needs; the shot has no title bar.
 
 **Open gaps**
 - The chat list's right-click menu is not added: the rows have no per-row operation today beyond opening them, so there is nothing to repeat. Hover tooltips use `help`; VoiceOver names and the selected trait are set.
@@ -4151,7 +4165,7 @@ Google data remains a signed-build gate.
 - Selecting a chat row and seeing the conversation needs a live Hermes dashboard; the rule is unit-tested and the live path is the parent's Bridge check.
 - Each section's own Mac layout (Work, Today, Brain, Studio, Drive) is recorded in that section's entry.
 
-**Checked:** 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen in the detail column, self-rendered shots; @@CHECK@@); 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
 
 ## LAA Mac desktop Brain, Studio and Drive
 

@@ -6,13 +6,9 @@ import UIKit
 
 extension LAACopy {
     enum Assets {
-        static var title: String { AppLocalization.string("Assets") }
-        static var subtitle: String { AppLocalization.string("Everything you have made and saved.") }
         static var drive: String { AppLocalization.string("Drive") }
-        static var inspiration: String { AppLocalization.string("Inspiration") }
         static var studio: String { AppLocalization.string("Studio") }
         static var search: String { AppLocalization.string("Search assets") }
-        static var unavailable: String { AppLocalization.string("Inspiration is not available yet.") }
         static var configureDrive: String { AppLocalization.string("Google Drive for desktop is unavailable on the Mac.") }
         static var scope: String { AppLocalization.string("This device needs the media:read permission.") }
         static var empty: String { AppLocalization.string("No items found.") }

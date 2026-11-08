@@ -164,7 +164,7 @@ struct LAAChatsContent: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(LAACopy.chatsMonet)
             Button { openPerson(monet) } label: {
-                personRow(monet, size: 48, selected: isSelected("person.\(monet.profile)"))
+                personRow(monet, size: 56, selected: isSelected("person.\(monet.profile)"))
                     .padding(LAASpacing.x3)
                     .background(isSelected("person.\(monet.profile)") ? LAAColor.selectionFill : LAAColor.surface,
                                 in: RoundedRectangle(cornerRadius: LAARadius.card))
@@ -187,7 +187,7 @@ struct LAAChatsContent: View {
                 note(LAACopy.chatsNoEmployees)
             } else {
                 ForEach(employees) { employee in
-                    Button { openPerson(employee) } label: { personRow(employee, size: 40, selected: isSelected("person.\(employee.profile)")) }
+                    Button { openPerson(employee) } label: { personRow(employee, size: 48, selected: isSelected("person.\(employee.profile)")) }
                         .buttonStyle(.plain)
                         .disabled(!employee.available)
                         .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))

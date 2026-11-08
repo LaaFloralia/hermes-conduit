@@ -87,17 +87,6 @@ enum LAACopy {
 
     static let bridgeNotPairedBody = "この端末はMacとペアリングされていません。"
 
-    // MARK: Segments
-
-    static func segments(_ tab: LAATab) -> [String] {
-        switch tab {
-        case .work: return ["Sessions", "Projects", "Tasks", "Routines"]
-        case .brain: return ["Recent", "Folders", "Tags"]
-        case .source: return ["Drive", "Inspiration", "Studio"]
-        case .chats, .today, .studio, .usage: return []
-        }
-    }
-
     // MARK: A tab's own line about what it will hold
 
     /// What the tab will show once the Bridge is paired, one line, so an
