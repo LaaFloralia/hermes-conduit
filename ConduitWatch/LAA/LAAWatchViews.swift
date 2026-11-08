@@ -96,9 +96,9 @@ private struct LAAWatchEmployee: View {
                         ScrollView { VStack(alignment: .leading) { Text(recent.transcript ?? ""); Text(recent.reply ?? "") } }.navigationTitle(staff.name)
                     } label: {
                         VStack(alignment: .leading) {
-                            Text(recent.transcript ?? "").lineLimit(1).foregroundStyle(.secondary)
-                            Text(recent.reply ?? "").lineLimit(3)
-                        }.font(.caption)
+                            Text(recent.transcript ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            Text(recent.reply ?? "").font(.body).lineLimit(3)
+                        }
                     }
                 }
             }
@@ -122,9 +122,12 @@ private struct LAAWatchRecording: View {
                             .accessibilityLabel(Text(verbatim: "録音中"))
                         Text(verbatim: "0:\(String(format: "%02d", voice.elapsed)) / 0:\(LAAWatchAsk.maxSeconds)").font(.caption.monospacedDigit())
                         Button("Done") { voice.done() }.tint(accent).laaPrimaryAction()
-                        Button { voice.cancel(); voice.showing = false } label: { Text(verbatim: "Cancel") }
                         Button { voice.showTextEntry() } label: { Text(verbatim: "Aa") }.accessibilityLabel(Text(verbatim: "文字入力"))
                     } else if let state = voice.state {
+                        if state.phase == .answered, let transcript = state.transcript, !transcript.isEmpty {
+                            Text(transcript).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         Text(message(state)).font(.body).frame(maxWidth: .infinity, alignment: .leading)
                         if state.phase.isFinal { Button { Task { await voice.start() } } label: { Text(verbatim: "もう一度") }.tint(accent) }
                     } else { ProgressView() }
