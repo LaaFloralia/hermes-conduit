@@ -414,7 +414,7 @@ build (keeps its own chat and call controls)
 - A real GPT-Live conversation and microphone route on Mac still need an authenticated device check.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (larger header and list mascots; @@CHECK@@); 2026-11-06, laa/staff-3d-1106 (360-degree turn on the simulator; physical iPhone pending); 2026-11-06, laa/staff-mascot-1106 (mascot assets, active speed; physical iPhone pending); 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (larger header and list mascots; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-06, laa/staff-3d-1106 (360-degree turn on the simulator; physical iPhone pending); 2026-11-06, laa/staff-mascot-1106 (mascot assets, active speed; physical iPhone pending); 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -696,7 +696,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter, light labels on prominent buttons; @@CHECK@@); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter, light labels on prominent buttons; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
@@ -3818,7 +3818,7 @@ on top
 - The Mac Catalyst window's actual dimensions, safe area and title bar still need measurement on the Mac; the unit test checks constants only.
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-11-09, laa/app-polish-1109 (the LAA Mac Chat column takes the chat's own readable column; @@CHECK@@); 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
+**Checked:** 2026-11-09, laa/app-polish-1109 (the LAA Mac Chat column takes the chat's own readable column; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 
@@ -3956,7 +3956,7 @@ point at the map and its check
 - If `redact_content` is enabled, a push that bypasses the notification extension can still show the upstream redacted approval text. The parent reports that the current Mac configuration has `redact_content=false` for every profile (2026-11-01).
 - Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 (Settings trailing-most on Work, brand test aligned to the LAA plugin wording; @@CHECK@@); 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
+**Checked:** 2026-11-09, laa/app-polish-1109 (Settings trailing-most on Work, brand test aligned to the LAA plugin wording; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
 
 ## LAA all-profile notification pairing
 
@@ -4011,7 +4011,7 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen; @@CHECK@@); 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 
@@ -4054,7 +4054,7 @@ and rollback instructions · the upstream App Store build
 - The LAA redesign does not expose the upstream list's filters, full-text message search, archived sheet, pin ordering, project and artifact controls on this screen. The existing underlying records and links are retained.
 - Dynamic Type, VoiceOver, reduced transparency, small screens, and the employee and group routes require physical iPhone verification.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen, larger faces; @@CHECK@@); 2026-11-03, unread badges and scheduled-chat history; consolidated LAA unit tests 180/180 passed, physical acceptance pending.  2026-11-02, laa/glass (bar and search glass); 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen, larger faces; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-03, unread badges and scheduled-chat history; consolidated LAA unit tests 180/180 passed, physical acceptance pending.  2026-11-02, laa/glass (bar and search glass); 2026-11-02, laa/chat-ui (no Recent, everything listed, member faces); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
 
 ## LAA v2 chat presentation
 
@@ -4175,7 +4175,7 @@ Google data remains a signed-build gate.
 - Selecting a chat row and seeing the conversation needs a live Hermes dashboard; the rule is unit-tested and the live path is the parent's Bridge check.
 - Each section's own Mac layout (Work, Today, Brain, Studio, Drive) is recorded in that section's entry.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen in the detail column, the conversation across it, list widths, self-rendered shots; @@CHECK@@); 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen in the detail column, the conversation across it, list widths, self-rendered shots; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
 
 ## LAA Mac desktop Brain, Studio and Drive
 
@@ -4202,7 +4202,7 @@ Google data remains a signed-build gate.
 - The parent runs the consolidated iPhone compact regression and the Mac UI tests. Physical Mac and iPhone confirmation of the three screens is pending.
 - Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column is 380 UIKit points at most (about 293 Mac points), which no four-column row fits.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on 92d8dcb5 (Doc opens and leaves notes in the detail column, list widths; @@CHECK@@); 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
+**Checked:** 2026-11-09, laa/app-polish-1109 on 92d8dcb5 (Doc opens and leaves notes in the detail column, list widths; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
 
 ## LAA Watch employee voice
 
