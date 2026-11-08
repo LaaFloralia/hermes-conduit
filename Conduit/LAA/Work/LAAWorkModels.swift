@@ -55,6 +55,8 @@ struct LAAWorkRoutine: Decodable, Identifiable {
     var state: String? = nil
     var businessStatus: String? = nil
     var notificationStatus: String? = nil
+    /// The short number the owner says ("R7"). Absent from an older Bridge.
+    var ref: String? = nil
 
     func previousRunSummary(timeZone: TimeZone = .current) -> String {
         let status = businessStatus == nil || businessStatus == "unknown" ? result : businessStatus
@@ -108,6 +110,8 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let archivedAt: String?
     let fileCount: Int?
     let files: [LAAWorkProjectFile]?
+    /// The short number the owner says ("P2"). Absent from an older Bridge.
+    let ref: String?
 
     var isArchived: Bool { archivedAt != nil }
 
@@ -116,7 +120,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let hasInstructionBody: Bool
     enum CodingKeys: String, CodingKey {
         case id, name, nameSource, instructionRef, instructionHash, instructionVersion
-        case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files
+        case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files, ref
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
@@ -135,6 +139,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         archivedAt = try box.decodeIfPresent(String.self, forKey: .archivedAt)
         fileCount = try box.decodeIfPresent(Int.self, forKey: .fileCount)
         files = try box.decodeIfPresent([LAAWorkProjectFile].self, forKey: .files)
+        ref = try box.decodeIfPresent(String.self, forKey: .ref)
     }
 }
 
@@ -236,6 +241,8 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     /// the Bridge requested at start, so it is not shown as the current state.
     let observedFast: Bool?
     let capabilities: Capabilities?
+    /// The short number the owner says ("S4"). Absent from an older Bridge.
+    let ref: String?
 
     var isFavorite: Bool { favorite == true }
     var isArchived: Bool { archivedAt != nil }

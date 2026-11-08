@@ -9,6 +9,8 @@ struct LAAWorkSkill: Decodable, Identifiable {
     let category: String?
     let summary: String?
     let detail: String?
+    /// The short number the owner says ("K3"). Absent from an older Bridge.
+    let ref: String?
 
     var group: String { category ?? "その他" }
     var explanation: String { summary ?? description }
@@ -90,6 +92,8 @@ enum LAAWorkRoutineTime {
 struct LAAWorkCatalogView: View {
     enum Kind { case routines, skills }
     let kind: Kind
+    /// The Work hub's search on the phone; the Mac column keeps its own field.
+    var query = ""
     @EnvironmentObject private var bridge: LAABridgeSession
     @State private var routines: [LAAWorkRoutine] = []
     @State private var skills: [LAAWorkSkill] = []
@@ -125,14 +129,14 @@ struct LAAWorkCatalogView: View {
                     .accessibilityIdentifier("work.routines.fetchedAt")
             }
             if kind == .routines {
-                ForEach(LAAWorkRoutineGrouping.groups(routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" })) { group in
+                ForEach(LAAWorkRoutineGrouping.groups(shownRoutines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" })) { group in
                     Section {
                         ForEach(group.routines) { routine in routineRow(routine) }
                     } header: {
                         Text(verbatim: group.destination).accessibilityIdentifier("work.routines.group")
                     }
                 }
-                let services = routines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
+                let services = shownRoutines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
                 if !services.isEmpty {
                     DisclosureGroup {
                         ForEach(services) { routine in routineRow(routine) }
@@ -147,7 +151,10 @@ struct LAAWorkCatalogView: View {
                                 LAAWorkSkillDetail(skill: skill)
                             } label: {
                                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                                    Text(verbatim: skill.name).fontWeight(.medium)
+                                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                        LAAWorkRefLabel(ref: skill.ref)
+                                        Text(verbatim: skill.name).fontWeight(.medium)
+                                    }
                                     Text(verbatim: skill.explanation.isEmpty ? "説明なし" : skill.explanation)
                                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
                                 }.padding(.vertical, LAASpacing.x2)
@@ -158,7 +165,8 @@ struct LAAWorkCatalogView: View {
             }
             if showsEmptyState {
                 ContentUnavailableView {
-                    Label { Text(verbatim: kind == .routines ? "定期実行はありません" : "スキルはありません") }
+                    Label { Text(verbatim: filtering ? (kind == .routines ? "一致する定期実行はありません" : "一致するスキルはありません")
+                                                     : (kind == .routines ? "定期実行はありません" : "スキルはありません")) }
                     icon: { Image(systemName: kind == .routines ? "clock" : "sparkles") }
                 }.listRowBackground(Color.clear)
             }
@@ -178,17 +186,30 @@ struct LAAWorkCatalogView: View {
         .onDisappear { retryTask?.cancel(); retryTask = nil }
     }
 
+    private var filtering: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     /// "No routines" is only true of a complete read: an unread, failed or
     /// partly read list must not be printed as an empty schedule.
     private var showsEmptyState: Bool {
         guard loaded, !loading, failure == nil else { return false }
-        if kind == .routines { return skipped == 0 && routines.isEmpty }
-        return skills.isEmpty
+        if kind == .routines { return skipped == 0 && shownRoutines.isEmpty }
+        return displayedSkills.isEmpty
+    }
+
+    /// The routines the hub's search left, on the phone. A search by short
+    /// number also finds a routine whose name says nothing about it.
+    private var shownRoutines: [LAAWorkRoutine] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return routines }
+        return routines.filter {
+            LAAWorkRef.matches(query, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""])
+        }
     }
 
     private var displayedSkills: [LAAWorkSkill] {
         var names = Set<String>()
-        return skills.filter { names.insert($0.name).inserted }.sorted { $0.name < $1.name }
+        return skills
+            .filter { LAAWorkRef.matches(query, ref: $0.ref, text: [$0.name, $0.explanation]) }
+            .filter { names.insert($0.name).inserted }.sorted { $0.name < $1.name }
     }
 
     private var skillGroups: [String] {
@@ -202,7 +223,10 @@ struct LAAWorkCatalogView: View {
 
     private func routineRow(_ routine: LAAWorkRoutine) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: routine.name).fontWeight(.semibold)
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                LAAWorkRefLabel(ref: routine.ref)
+                Text(verbatim: routine.name).fontWeight(.semibold)
+            }
             Text(verbatim: routine.schedule ?? "時刻未確認").foregroundStyle(LAAColor.link)
             detail("次回", LAAWorkRoutineTime.next(routine.nextRunAt))
             detail("配信先チャット", routine.destination ?? "設定なし・未確認")
@@ -299,6 +323,7 @@ private struct LAAWorkSkillDetail: View {
     var body: some View {
         List {
             Section {
+                LAAWorkRefLabel(ref: skill.ref)
                 Text(verbatim: skill.explanation.isEmpty ? "説明なし" : skill.explanation).fontWeight(.medium)
                 if let detail = skill.detail, !detail.isEmpty, detail != skill.explanation { Text(verbatim: detail) }
             } header: { Text(verbatim: skill.group) }

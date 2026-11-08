@@ -32,6 +32,7 @@ import { dirname, join } from 'node:path';
 import { badRequest, BridgeError, conflict, markBeforeWrite, notFound } from '../errors.mjs';
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
+import { projectRefItem } from '../refs/items.mjs';
 
 const PROJECT_SCHEMA = 2;
 const NAME_MAX = 80;
@@ -131,8 +132,24 @@ function migrateLegacyProjects(file) {
 
 // --- routes -----------------------------------------------------------------
 
-export function createProjectRoutes({ projects, now = () => Date.now() }) {
+export function createProjectRoutes({ projects, now = () => Date.now(), refs = null }) {
   const releasesReservation = (error) => error?.writeStarted === false;
+
+  function decorate(item) {
+    return refs ? { ...item, ref: refs.refFor('project', item.id) } : item;
+  }
+  function assign(project) {
+    if (!refs || !project) return;
+    refs.assign('project', project.id, project.name, projectRefItem(project).external);
+  }
+  function observeVisible() {
+    if (!refs) return;
+    try {
+      refs.observe('project', projects.list().filter((project) => !project.archivedAt).map(projectRefItem));
+    } catch {
+      // Reconcile never fails the list response it decorates.
+    }
+  }
 
   function requireProject(id) {
     const project = projects.get(id);
@@ -175,10 +192,11 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       .sort((a, b) => (a.updatedAt === b.updatedAt ? a.id.localeCompare(b.id) : b.updatedAt.localeCompare(a.updatedAt)))
       .map((project) => view(project));
     const page = items.slice(offset, offset + limit);
+    observeVisible();
     return {
       status: 200,
       data: {
-        items: page,
+        items: page.map(decorate),
         nextCursor: offset + limit < items.length ? encodeCursor(offset + limit) : null,
       },
     };
@@ -186,7 +204,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
 
   function get({ params }) {
     const project = requireProject(params[0]);
-    return { status: 200, data: detail(project), headers: { etag: etagFor(project.version) } };
+    return { status: 200, data: decorate(detail(project)), headers: { etag: etagFor(project.version) } };
   }
 
   function versions({ params }) {
@@ -238,7 +256,8 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       return record;
     });
 
-    return { status: 201, data: detail(project), headers: { etag: etagFor(project.version) } };
+    assign(project);
+    return { status: 201, data: decorate(detail(project)), headers: { etag: etagFor(project.version) } };
   }
 
   function patch({ device, rawBody, params, req }) {
@@ -341,7 +360,8 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       throw error;
     }
 
-    return { status: 200, data: detail(updated), headers: { etag: etagFor(updated.version) } };
+    if (archivedChanged) observeVisible();
+    return { status: 200, data: decorate(detail(updated)), headers: { etag: etagFor(updated.version) } };
   }
 
   function addFile({ device, rawBody, params }) {
@@ -401,7 +421,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       rmSync(path, { force: true });
       throw err;
     }
-    return { status: 201, data: detail(updated), headers: { etag: etagFor(updated.version) } };
+    return { status: 201, data: decorate(detail(updated)), headers: { etag: etagFor(updated.version) } };
   }
 
   function removeFile({ device, params }) {
@@ -425,7 +445,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       return record;
     });
     rmSync(entry.path, { force: true });
-    return { status: 200, data: detail(updated), headers: { etag: etagFor(updated.version) } };
+    return { status: 200, data: decorate(detail(updated)), headers: { etag: etagFor(updated.version) } };
   }
 
   return [

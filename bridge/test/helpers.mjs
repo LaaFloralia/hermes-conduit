@@ -12,7 +12,7 @@ import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { grantStudio, issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, decisions = null, brain = null, usage = null, studio = null, ownerTasks = null, linearOwnerTasks = null, skills = null, routines = null, calendar = null, instructions = null, voice = null, rejectedUploadDrainer, log = null } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, decisions = null, brain = null, usage = null, studio = null, ownerTasks = null, linearOwnerTasks = null, skills = null, routines = null, calendar = null, instructions = null, voice = null, rejectedUploadDrainer, log = null, refs = null } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
@@ -20,6 +20,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
 
   const workspaceRoots = workspace?.roots ?? [join(dir, 'workspaces')];
   for (const root of workspaceRoots) mkdirSync(root, { recursive: true });
+  const refsService = typeof refs === 'function' ? refs(stateDir) : refs;
   const routeOptions = {
     workspaces: { ...(workspace ?? {}), roots: workspaceRoots },
     ...(tasks ? { tasks } : {}),
@@ -36,6 +37,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     ...(calendar ? { calendar } : {}),
     ...(instructions ? { instructions } : {}),
     ...(voice ? { voice } : {}),
+    ...(refsService ? { refs: refsService } : {}),
   };
 
   let bridge = createBridge({ store, testEndpoints, drive, now: clock, log, routeOptions, ...(rejectedUploadDrainer ? { rejectedUploadDrainer } : {}) });
@@ -60,6 +62,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     dir,
     stateDir,
     store,
+    refs: refsService,
     get base() {
       return `http://127.0.0.1:${address.port}`;
     },

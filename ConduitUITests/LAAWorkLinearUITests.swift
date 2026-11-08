@@ -36,9 +36,11 @@ final class LAAWorkLinearUITests: XCTestCase {
 
     func testCreateEditArchiveAndRestoreOwnerTasks() throws {
         let app = try launch()
-        XCTAssertFalse(app.buttons["今週の振り返りをまとめる"].exists)
+        // Tasks is the default section now, so both open tasks are listed.
+        // A row's label carries its short number, so match the title row.
+        XCTAssertTrue(taskRow(app, "今週の振り返りをまとめる").waitForExistence(timeout: 10))
         app.buttons["work.section.tasks"].tap()
-        XCTAssertTrue(app.buttons["今週の振り返りをまとめる"].waitForExistence(timeout: 10))
+        XCTAssertTrue(taskRow(app, "今週の振り返りをまとめる").waitForExistence(timeout: 10))
         app.buttons["work.linear.add"].tap()
         let title = app.textFields["work.linear.title"].firstMatch
         let editor = title.exists ? title : app.textViews["work.linear.title"].firstMatch
@@ -122,7 +124,7 @@ final class LAAWorkLinearUITests: XCTestCase {
 
     private func capture(_ appearance: String) throws {
         let app = try launch(appearance)
-        for section in ["priority", "tasks", "sessions", "projects", "routines", "skills"] {
+        for section in ["tasks", "sessions", "projects", "routines", "skills"] {
             selectSection(app, section)
             let ready = section == "routines" ? "朝の確認" : section == "skills" ? "weekly-report" : "次の打ち合わせを確認する"
             if section == "sessions" || section == "projects" {

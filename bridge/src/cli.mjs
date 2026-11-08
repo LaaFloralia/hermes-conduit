@@ -22,6 +22,7 @@ import { createStore } from './store.mjs';
 import { grantInstructions, grantScopes, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
 import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
+import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -43,6 +44,7 @@ Usage:
   laa-bridge status [--json]               local health check of the running service
   laa-bridge tasks <add|list|get|update|status|import-linear|backup|restore>
                                            owner tasks (same store as the app; see below)
+  ${REFS_USAGE}
   laa-bridge version
 
 ${TASKS_USAGE}
@@ -279,6 +281,12 @@ if (flags.help) {
     break;
   case 'tasks':
     process.exitCode = await tasksCommand(positional, flags);
+    break;
+  case 'ref':
+    process.exitCode = refsCommand(['ref', ...positional], flags);
+    break;
+  case 'refs':
+    process.exitCode = refsCommand(['refs', ...positional], flags);
     break;
   case 'version':
     process.stdout.write(`${VERSION}\n`);

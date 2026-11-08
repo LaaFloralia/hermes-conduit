@@ -1,6 +1,6 @@
 # LAA Bridge（Mac側サービスの骨格）
 
-`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・社長のLinearタスク（`/v1/linear-owner-tasks` の一覧／作成／更新／アーカイブ／復元）・Skills・routines・Calendar予定（`/v1/calendar/events`）・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）・社長タスク（`/v1/owner-tasks`。保存・操作台帳・CLI・Linear からの一度限りの取込み）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
+`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・社長のLinearタスク（`/v1/linear-owner-tasks` の一覧／作成／更新／アーカイブ／復元）・Skills・routines・Calendar予定（`/v1/calendar/events`）・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）・社長タスク（`/v1/owner-tasks`。保存・操作台帳・CLI・Linear からの一度限りの取込み）・番号（`/v1/refs` と `laa-bridge ref`/`refs`）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
@@ -137,6 +137,8 @@ Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 | `POST /v1/linear-owner-tasks/{id}/archive`・`/restore` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{id,archived}`。担当・状態を保ってアーカイブ／復元。旧DELETE・completed指定は受け付けない |
 | `GET /v1/skills` | Bearer + `sessions:read` | `{items:[{id,name,description,source,category,summary,detail,metadataKnown}]}`。分類・日本語説明は名前別メタデータ、未登録は「その他」と元の説明。SKILL.md本文は返さない。読取失敗は503 |
 | `GET /v1/routines` | Bearer + `sessions:read` | Console `jobs` の名前・予定・配信先・状態・直近実行・結果・`triggerKind`。定期実行以外は別枠。未観測はnull、読取失敗は503 |
+| `GET /v1/refs?kind=` | Bearer + `tasks:read`（task）／`sessions:read`（他） | 保持中の短い番号 `{items:[{ref,kind,key,title,external}],observedAt,fetchedAt}`。種類ごとに `n` 順 |
+| `GET /v1/refs/{ref}` | 同上（refの種類による） | `{ref,kind,status:"active"|"released",holder,previous}`。未知で履歴なしは404 `ref_unknown`、形式不正は400 `ref_invalid` |
 | `GET /v1/calendar/events?start=&end=` | Bearer + `calendar:read` | RFC3339の42日以内 → `{items:[予定詳細],source,start,end}`。設定・認可・API失敗は503で、空の予定にしない |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
 | `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。本文は含めない。`limit`（1–100、既定50）と `cursor` |
@@ -280,6 +282,35 @@ Workタブは社長本人のLinear課題だけを扱う。team（key BUS、name 
 作成はクライアント生成のUUID v4を `id` に使う。同じUUID・同じ内容の再送は既存課題を返す。PATCHとarchive/restoreは、最後に読んだ `updatedAt` を `If-Match` に要求する。欠落は428、不一致は412。PATCHは題名・説明・期限・優先度だけを扱い、アーカイブ済みは409を返す。
 
 画面の削除は確認後に `POST /{id}/archive` で `issueArchive`、戻す操作は `POST /{id}/restore` で `issueUnarchive` を呼ぶ。担当・状態は変更しない。`success:true` を成功根拠とし、不明時は本人担当・ゴミ箱以外の課題を再読取して目的のアーカイブ状態と一致した場合だけ成功にする。`null`・ゴミ箱・壊れた応答を成功根拠にしない。旧DELETEとcompleted指定は受け付けない。
+
+## 番号（refs）
+
+社長が「T12をやって」のように短い番号でタスク・セッション・プロジェクト・定期実行・スキルを指すための別名。識別子そのもの（Linear ID、session id、project id、routine id、スキル名）は変えない。
+
+| 種類 | 接頭辞 | 対象 | key |
+|---|---|---|---|
+| task | `T` | `/v1/linear-owner-tasks` の未完了一覧に出る社長のLinear課題 | Linear issue id（小文字） |
+| session | `S` | 既定の `/v1/sessions` 一覧に出るセッション（アーカイブを除く。親子とも） | session id |
+| project | `P` | アーカイブされていない `/v1/projects` | project id |
+| routine | `R` | `/v1/routines` の行 | routine id |
+| skill | `K` | `/v1/skills` のスキル（ClaudeとHermesの同名は1つ） | frontmatter name（小文字） |
+
+- 保存は `<state dir>/refs.json`（0600、schema付き、atomic replace + lock）。`title` は200文字までの題名だけで、説明・プロンプト・スキル本文は保存しない。壊れたファイルは黙って初期化せず、読み書きを拒否する。
+- 割当は、同じkeyが以前持っていた番号が空いていればその番号、なければ「保持されておらず、別のkeyが24時間以内に解放していない最小の番号」。履歴は30日で削除する。初回は種類ごとに古い順（taskは `BUS-12`→`BUS-130` の番号順）。
+- 解放は、Bridge経由のアーカイブ・削除・完了・取消・再割当の即時と、その種類の**完全で成功した**読み取りから消えた時だけ。失敗・部分・ページ途中の読み取りでは解放しない。
+- 一覧・詳細のitemに `"ref": "T12" | null` を足す（taskのアーカイブ一覧は常にnull）。同期はsession/project/skillが60秒、routineが既存キャッシュ、taskが5分（全ページ読めた時だけ完全）。同期の失敗は一覧応答を失敗させない。
+- 解決の入力はNFKC・空白/`-`/`_`除去・大文字化の後に `^([TSPRK])0*([1-9][0-9]{0,4})$`。`t12`・`Ｔ１２`・`T-12`・`T 12` を受け付ける。`GET /v1/refs/<ref>` は `{ref,kind,status,holder,previous}` を返し、未知で履歴なしは404 `ref_unknown`。`previous` は30日以内の解放履歴（新しい順）。
+
+```sh
+laa-bridge ref t-12
+# T12 タスク「契約内容を確認する」 Linear BUS-123 https://linear.app/laa/issue/BUS-123
+laa-bridge ref T12 --json
+# {"ref":"T12",...,"brief":"T12＝社長のタスク「契約内容を確認する」（Linear BUS-123 …）。最初にLinearで本文とコメントを読んでから進める。"}
+laa-bridge refs --kind task
+laa-bridge refs --json
+```
+
+CLIは `refs.json` を直接読み、サーバー停止中も動く。書き込みは一切しない。試験は `test/refs.test.mjs`（割当・冷却・復帰・完全読取り時だけ解放・初回順序・正規化・30日履歴・スキル統合・破損ファイル・HTTPとCLI）。
 
 ## 社長タスク（`/v1/owner-tasks`）
 

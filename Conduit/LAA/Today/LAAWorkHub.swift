@@ -12,16 +12,17 @@ struct LAAWorkHub: View {
     // refreshes on appear. The shell's instance keeps the main Usage tab.
     @StateObject private var usageState = LAAUsageState()
     @StateObject private var decisions = LAADecisionBoard()
-    @State private var section: Section = .priority
+    @State private var section: Section = .tasks
     @State private var showPairing = false
+    /// The phone's one search: it filters whichever section is showing.
+    @State private var search = ""
 
     enum Section: String, CaseIterable, Identifiable {
-        case decisions, priority, tasks, sessions, projects, routines, skills, usage
+        case decisions, tasks, sessions, projects, routines, skills, usage
         var id: String { rawValue }
         var title: String {
             switch self {
             case .decisions: AppLocalization.string("Decisions")
-            case .priority: AppLocalization.string("Work priorities")
             case .tasks: AppLocalization.string("Tasks")
             case .sessions: AppLocalization.string("Sessions")
             case .projects: AppLocalization.string("Projects")
@@ -33,7 +34,6 @@ struct LAAWorkHub: View {
         var desktopTitle: String {
             switch self {
             case .decisions: AppLocalization.string("Decisions")
-            case .priority: AppLocalization.string("Priority")
             case .tasks: AppLocalization.string("Tasks")
             case .sessions: AppLocalization.string("Sessions")
             case .projects: AppLocalization.string("Projects")
@@ -85,16 +85,19 @@ struct LAAWorkHub: View {
             } else {
                 switch section {
                 case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
-                case .priority, .tasks:
-                    LAALinearTasksView(drafts: drafts, priorityOnly: section == .priority)
-                case .sessions: LAAWorkView(embeddedSection: 0, onRequestSettings: onRequestSettings)
-                case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings)
-                case .routines: LAAWorkCatalogView(kind: .routines).id(section)
-                case .skills: LAAWorkCatalogView(kind: .skills).id(section)
+                case .tasks: LAALinearTasksView(drafts: drafts, query: search)
+                case .sessions: LAAWorkView(embeddedSection: 0, onRequestSettings: onRequestSettings, query: search)
+                case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings, query: search)
+                case .routines: LAAWorkCatalogView(kind: .routines, query: search).id(section)
+                case .skills: LAAWorkCatalogView(kind: .skills, query: search).id(section)
                 case .usage: LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                 }
             }
         }
+        // One native search for the whole hub, as the standard drawer under
+        // the title. Usage has nothing to filter, so it carries no field.
+        .modifier(LAAWorkSearchField(enabled: section != .usage && section != .decisions, text: $search))
+        .onChange(of: section) { _, _ in search = "" }
     }
 
     private var desktopBody: some View {
@@ -152,8 +155,7 @@ struct LAAWorkHub: View {
     @ViewBuilder private var desktopSection: some View {
         switch section {
         case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
-        case .priority: LAALinearTasksView(drafts: drafts, priorityOnly: true)
-        case .tasks: LAALinearTasksView(drafts: drafts, priorityOnly: false)
+        case .tasks: LAALinearTasksView(drafts: drafts)
         case .sessions: LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0)
         case .projects: LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0)
         case .routines: LAAWorkDesktopCatalogView(kind: .routines)
@@ -198,6 +200,23 @@ struct LAAWorkHub: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(value == section ? .isSelected : [])
         .accessibilityIdentifier("work.section.\(value.rawValue)")
+    }
+}
+/// The phone's search, present only on the list sections. On iOS 26 it is
+/// the system's minimized search button, so Work keeps its large title like
+/// the other tabs; earlier systems use the drawer under the title.
+private struct LAAWorkSearchField: ViewModifier {
+    let enabled: Bool
+    @Binding var text: String
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if !enabled {
+            content
+        } else if #available(iOS 26.0, *) {
+            content.searchable(text: $text).searchToolbarBehavior(.minimize)
+        } else {
+            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always))
+        }
     }
 }
 #endif

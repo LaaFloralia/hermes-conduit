@@ -219,6 +219,7 @@ struct LAAWorkSessionDetail: View {
     /// the top of the transcript.
     private func sessionHeader(_ session: LAAWorkSession) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            LAAWorkRefLabel(ref: session.ref)
             Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 .accessibilityIdentifier("work.session.detail.title")
             if session.modelMismatch {

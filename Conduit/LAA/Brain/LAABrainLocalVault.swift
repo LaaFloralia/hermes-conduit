@@ -28,8 +28,9 @@ import Foundation
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-daily-existing-fixture") {
-                    try FileManager.default.createDirectory(at: root.appendingPathComponent(LAABrainDailyNote.folder), withIntermediateDirectories: true)
-                    try Data("EXISTING-DAILY-FIXTURE".utf8).write(to: root.appendingPathComponent(LAABrainDailyNote.path()))
+                    let daily = root.appendingPathComponent(try LAABrainDailyNote.path(root: root))
+                    try FileManager.default.createDirectory(at: daily.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try Data("EXISTING-DAILY-FIXTURE".utf8).write(to: daily)
                 }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-table-fixture") {
                     try Data("# 表\n\n| 項目 | 値 |\n| --- | --- |\n| あ | 1 |\n\n末尾の段落\n".utf8)

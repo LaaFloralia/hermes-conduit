@@ -7,18 +7,13 @@ final class LAALinearTaskTests: XCTestCase {
         LAALinearTask(id: UUID().uuidString, identifier: "BUS-1", title: "確認", description: nil,
                       dueDate: dueDate, priority: priority, status: status, stateName: "Todo", updatedAt: "now", url: nil)
     }
-    func testPriorityIncludesUrgentHighAndTodayOrOverdueOnly() {
-        let today = "2026-11-02"
-        XCTAssertTrue(task(priority: 1).needsAttention(today: today))
-        XCTAssertTrue(task(priority: 2).needsAttention(today: today))
-        XCTAssertTrue(task(dueDate: today).needsAttention(today: today))
-        XCTAssertTrue(task(dueDate: "2026-11-01").needsAttention(today: today))
-        XCTAssertFalse(task(priority: 3, dueDate: "2026-11-03").needsAttention(today: today))
-        XCTAssertFalse(task().needsAttention(today: today))
-    }
-    func testClosedTasksNeverAppearInPriority() {
-        XCTAssertFalse(task(priority: 1, dueDate: "2020-01-01", status: "done").needsAttention(today: "2026-11-02"))
-        XCTAssertFalse(task(priority: 2, status: "canceled").needsAttention(today: "2026-11-02"))
+    /// The Priority tab is gone, so the list is every open task; closed ones
+    /// never appear.
+    func testOnlyOpenTasksAreListed() {
+        XCTAssertTrue(task(priority: 1, dueDate: "2020-01-01").isOpen)
+        XCTAssertTrue(task(priority: 3, dueDate: "2026-11-03").isOpen)
+        XCTAssertFalse(task(priority: 1, status: "done").isOpen)
+        XCTAssertFalse(task(priority: 2, status: "canceled").isOpen)
     }
     func testTodayUsesCalendarDayAtOwnerTimezoneBoundary() throws {
         let at = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-01T16:00:00Z"))
@@ -48,7 +43,6 @@ final class LAALinearTaskTests: XCTestCase {
         current.archivedAt = "now"
         XCTAssertTrue(archive.isReflected(in: current))
         XCTAssertFalse(restore.isReflected(in: current))
-        XCTAssertFalse(current.needsAttention(today: "2026-11-02"))
         XCTAssertFalse(LAALinearTaskMutation(method: "DELETE", id: current.id, body: nil, version: "now").isValid)
     }
     @MainActor func testRestartDiscardsRetiredLinearIntentsAndKeepsCurrentOperations() throws {

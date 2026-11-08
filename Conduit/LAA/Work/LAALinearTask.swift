@@ -13,12 +13,11 @@ struct LAALinearTask: Codable, Identifiable, Equatable {
     var updatedAt: String
     var url: String?
     var archivedAt: String? = nil
+    /// The short number the owner says ("T12"). Absent from an older Bridge.
+    var ref: String? = nil
 
     var isArchived: Bool { archivedAt != nil }
     var isOpen: Bool { !isArchived && status != "done" && status != "canceled" }
-    func needsAttention(today: String) -> Bool {
-        isOpen && (priority == 1 || priority == 2 || dueDate.map { $0 <= today } == true)
-    }
     static func today(_ date: Date = Date(), timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
