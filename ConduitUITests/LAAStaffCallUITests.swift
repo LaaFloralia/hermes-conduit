@@ -8,7 +8,8 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.employee.call"].waitForExistence(timeout: 10))
         app.buttons["laa.employee.header"].tap()
         XCTAssertTrue(app.staticTexts["社長秘書・総合アドバイザー"].waitForExistence(timeout: 5))
-        app.buttons["閉じる"].tap()
+        // The sheet localizes its close label, and the gate's simulator is English.
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["閉じる", "Close"])).firstMatch.tap()
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["laa.call.name"].exists)

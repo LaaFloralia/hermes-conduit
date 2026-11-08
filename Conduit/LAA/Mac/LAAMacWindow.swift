@@ -44,6 +44,10 @@ enum LAAMacWindow {
     /// --self-render` where the session may not record the screen.
     static var snapshotPath: String? { argument(after: "-laa-mac-snapshot") }
 
+    /// `-laa-mac-snapshot-delay <seconds>`: how long it waits first (6 by
+    /// default), for a fixture whose chat opens later.
+    static var snapshotDelay: Double { argument(after: "-laa-mac-snapshot-delay").flatMap(Double.init) ?? 6 }
+
     private static func argument(after flag: String) -> String? {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
@@ -102,7 +106,7 @@ struct LAAMacWindowConstraints: UIViewRepresentable {
         private func scheduleSnapshot() {
             guard !snapshotScheduled, let path = LAAMacWindow.snapshotPath else { return }
             snapshotScheduled = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + LAAMacWindow.snapshotDelay) { [weak self] in
                 guard let window = self?.window else { return }
                 let format = UIGraphicsImageRendererFormat()
                 format.scale = 2 * LAAMacWindow.scale

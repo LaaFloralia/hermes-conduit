@@ -132,7 +132,7 @@ struct LAAUsageView: View {
                 .foregroundStyle(LAAColor.text)
             if bridge.status != .keychainError {
                 Button { showPairing = true } label: { Text(verbatim: LAACopy.usageConnect) }
-                    .buttonStyle(.borderedProminent)
+                    .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("laa.bridge.openPairing")
             }
         }

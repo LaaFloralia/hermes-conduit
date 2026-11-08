@@ -45,12 +45,22 @@ final class LAAMacCatalystTests: XCTestCase {
     func testDesktopMetricsLeaveRoomForBothColumns() {
         XCTAssertGreaterThanOrEqual(LAADesktopMetrics.listMinWidth, 300)
         XCTAssertGreaterThan(LAADesktopMetrics.listIdealWidth, LAADesktopMetrics.listMinWidth)
-        XCTAssertGreaterThanOrEqual(LAADesktopMetrics.listMaxWidth, LAADesktopMetrics.listIdealWidth)
         XCTAssertGreaterThan(LAADesktopMetrics.readingWidth, LAADesktopMetrics.documentWidth)
         // The smallest window still fits the narrowest list and a column of
         // readable text beside it.
         XCTAssertGreaterThan(LAAMacWindow.minimumWidth,
                              LAADesktopMetrics.listMinWidth + 1 + LAADesktopMetrics.gridItemMinWidth)
+    }
+
+    /// A list keeps its own width on a roomy window and gives way on a
+    /// narrow one, never below the minimum: the 1280, 1024 and 900 pt
+    /// windows' sections, sidebar aside.
+    func testListColumnGivesWayOnNarrowWindows() {
+        let ideal = LAADesktopMetrics.listIdealWidth
+        XCTAssertEqual(LAADesktopMetrics.listWidth(ideal, available: 1412), ideal)
+        XCTAssertEqual(LAADesktopMetrics.listWidth(ideal, available: 1080), 324)
+        XCTAssertEqual(LAADesktopMetrics.listWidth(ideal, available: 919), LAADesktopMetrics.listMinWidth)
+        XCTAssertEqual(LAADesktopMetrics.listWidth(440, available: 2000), 440)
     }
 
     /// The detail column holds a conversation only while one is open and the

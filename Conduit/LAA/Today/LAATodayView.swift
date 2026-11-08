@@ -114,7 +114,7 @@ struct LAATodayView: View {
                 Text(verbatim: "接続すると予定を確認・編集できます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
-                    .buttonStyle(.borderedProminent)
+                    .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("work.connect")
             }
             .padding(LAASpacing.horizontal)

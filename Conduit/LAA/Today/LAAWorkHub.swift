@@ -57,9 +57,7 @@ struct LAAWorkHub: View {
         .foregroundStyle(LAAColor.text)
         .navigationTitle(Text(verbatim: laaDesktop ? "" : "Work"))
         .navigationBarTitleDisplayMode(laaDesktop ? .inline : .large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
-        }
+        .modifier(LAAWorkToolbar(onRequestSettings: onRequestSettings))
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .task(id: bridge.revision) { if await decisions.loadForDefaultSection(bridge) { section = .decisions } }
@@ -172,7 +170,7 @@ struct LAAWorkHub: View {
                 Text(verbatim: LAABridgeError.keychain.japaneseText)
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Button { bridge.retryReadingCredentialsIfNeeded() } label: { Text(verbatim: "もう一度読み込む") }
-                    .buttonStyle(.borderedProminent)
+                    .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("work.retry-credentials")
             } else {
                 Text(verbatim: "Macに接続してください").fontWeight(.semibold)
@@ -181,7 +179,7 @@ struct LAAWorkHub: View {
                      "接続するとタスクやセッションを確認できます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
-                    .buttonStyle(.borderedProminent)
+                    .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("work.connect")
             }
         }
@@ -213,6 +211,28 @@ struct LAAWorkHub: View {
         .accessibilityIdentifier("work.section.\(value.rawValue)")
     }
 }
+/// Settings at the bar's trailing end, where every tab has it. On iOS 26
+/// the minimized search sits before it rather than after, which pushed
+/// Settings inward on Work alone.
+private struct LAAWorkToolbar: ViewModifier {
+    let onRequestSettings: () -> Void
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.toolbar {
+                DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
+                // Its own glass, the same as on the other tabs.
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            }
+        } else {
+            content.toolbar {
+                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            }
+        }
+    }
+}
+
 /// The phone's search, present only on the list sections. On iOS 26 it is
 /// the system's minimized search button, so Work keeps its large title like
 /// the other tabs; earlier systems use the drawer under the title.

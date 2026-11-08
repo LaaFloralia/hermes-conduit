@@ -23,15 +23,19 @@ private struct LAAGlassControl<S: Shape>: ViewModifier {
 private struct LAAGlassButton: ViewModifier {
     let prominent: Bool
 
+    // A prominent button sets its own label colour: a screen's text colour
+    // would otherwise reach the label and sit dark on the fill.
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             if prominent {
                 content.buttonStyle(.glassProminent).tint(LAAColor.filledButton)
+                    .foregroundStyle(LAAColor.filledButtonText)
             } else {
                 content.buttonStyle(.glass)
             }
         } else if prominent {
             content.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                .foregroundStyle(LAAColor.filledButtonText)
         } else {
             content.buttonStyle(.bordered)
         }

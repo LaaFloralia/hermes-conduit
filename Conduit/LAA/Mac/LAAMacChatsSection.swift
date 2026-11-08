@@ -118,8 +118,11 @@ struct LAAMacChatsSection: View {
                 .environment(\.v2Shell, V2ShellContext(
                     values: .init(isTabActive: true, isRootCovered: false, isSplit: true)
                 ))
+                // The whole column, as beside the list on an iPad: the
+                // screen keeps its transcript and composer to the chat's
+                // readable column (readableChatColumn), which widens with
+                // the window, while its backdrop and bar fill the column.
                 .environment(\.horizontalSizeClass, .compact)
-                .laaReadableWidth(LAADesktopMetrics.readingWidth)
                 .modifier(LAAMacFlatTopEdge())
                 .accessibilityIdentifier("laa.mac.conversation")
                 .onKeyPress(.escape) {

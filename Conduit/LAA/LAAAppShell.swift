@@ -114,12 +114,14 @@ struct LAAAppShell: View {
                 },
                 values: .init(isTabActive: selectedTab == .chats, isRootCovered: !chatsPath.isEmpty)
             ))
-            .onChange(of: conversationVisible, initial: true) { _, visible in
+            .onChange(of: conversationVisible, initial: true) { wasVisible, visible in
                 // An opening chat keeps the list "covered": the chat underneath
                 // isn't on screen yet, so it isn't counted as seen.
                 let covered = !visible || appState.laaOpeningEmployeeChat != nil
                 if appState.showSidebar != covered { appState.showSidebar = covered }
-                if !visible { appState.laaCancelOpeningEmployeeChat() }
+                // Only leaving drops it: a cold widget launch opens its chat
+                // before the screen is up, and must not cancel itself.
+                if wasVisible, !visible { appState.laaCancelOpeningEmployeeChat() }
             }
             // A tapped employee's chat shows at once; the conversation replaces
             // the opening screen when the switch lands (LAAConversationRoute).

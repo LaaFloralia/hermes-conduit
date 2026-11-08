@@ -476,7 +476,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   Studio share one heading (LAA over a Georgia title) under a bare bar whose
   buttons are system glass; their search fields, filter chips and action
   buttons are standard glass (`Conduit/LAA/Design/LAAGlass.swift`), while rows, cards and note
-  bodies stay opaque. For the Conduit
+  bodies stay opaque. A prominent button (`laaGlassButton(prominent:)`, the
+  connect and primary actions on every tab) sets its own light label, so a
+  screen's text colour never lands dark on its fill (2026-11-09: Work's and
+  Doc's Connect read dark on teal). For the Conduit
   notifier only, LAA shows version and connection as read-only status and
   suppresses update prompts and actions in the shell, Settings and plugin
   catalog; the server decides updates. The Conduit finish-setup card is also
@@ -693,7 +696,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter; @@CHECK@@); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter, light labels on prominent buttons; @@CHECK@@); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
@@ -3783,7 +3786,8 @@ where a phone layout would otherwise run the whole window.
 **Siblings:** chat surfaces (chats, project chats, Bot Chat and group rooms
 share the chat screen, so its column) · the chat beside the list and with the
 list hidden · the drawer shell's chat (Appearance, V2 off, with or without
-the persistent sidebar) · Settings' pages · a Chats or Bots list shown alone ·
+the persistent sidebar) · the LAA Mac window's Chat detail column
+(`LAAMacChatsSection`, no cap of its own) · Settings' pages · a Chats or Bots list shown alone ·
 the call screens (Classic, live calls, live voice consent) · the sign-in
 screens (their own column) · cards and pictures whose kept heights depend on
 the column's width (see Cards drawn in web pages) · the chat's text on a
@@ -3814,7 +3818,7 @@ on top
 - The Mac Catalyst window's actual dimensions, safe area and title bar still need measurement on the Mac; the unit test checks constants only.
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
+**Checked:** 2026-11-09, laa/app-polish-1109 (the LAA Mac Chat column takes the chat's own readable column; @@CHECK@@); 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 
@@ -3933,7 +3937,7 @@ point at the map and its check
 
 **Code**
 - LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `scripts/laa/brand-copy.json`, `scripts/laa/check-brand-bundle.py`, `scripts/laa/testflight.sh`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
-- Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
+- Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Today/LAAWorkHub.swift` (LAAWorkToolbar), `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
 - Widgets, Watch and sharing: `ConduitWidgets/LauncherWidgets.swift`, `ConduitWidgets/HermesTurnLiveActivity.swift`, `ConduitWatch/WatchTheme.swift`, `ConduitWatch/ConduitWatchShortcuts.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`, `Conduit/LAA/Design/LAAColorValues.swift`, `assets/laa/LAAAccent.xcassets/Contents.json`
 - Static voice copy and redacted notifications: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/SpeechServerSpeech.swift`, `Conduit/Voice/VoiceBackgroundJobs.swift`, `Shared/WatchVoice/WatchCallAnswer.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Shared/Notifications/NotificationCopy.swift`, `ConduitNotificationService/NotificationService.swift`
 - Tests: `scripts/tests/test_laa_brand_bundle.py`, `scripts/tests/test_laa_brand_bundle_check.py`, `ConduitTests/LAABuildBrandTests.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
@@ -3946,13 +3950,13 @@ point at the map and its check
 - App-owned display copy calls the app LAA, the execution engine Work, and profiles AI employees; named employees such as Monet retain their names. Catalog lookup keys, identifiers, protocols and upstream license text stay unchanged. English fallback values cover Localizable and AppShortcuts in every branded bundle.
 - The archive inspector checks visible bundle names, localization values and App Intents metadata for upstream product names in the app and embedded targets before TestFlight export. It does not inspect arbitrary runtime content or prove that Swift source literals never reach the screen.
 - Data & licenses includes the original app and Liquid Orb MIT notices from `assets/laa/LAAOpenSourceNotices.txt`; the archive inspector requires the shipped copy to match. This is not an audit of every dependency's license.
-- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
+- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. It is the bar's trailing-most button on every tab: on iOS 26 Work's minimized search sits before it (2026-11-09: placed after it, the search had pushed Settings inward on Work alone). Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
 
 **Open gaps**
 - If `redact_content` is enabled, a push that bypasses the notification extension can still show the upstream redacted approval text. The parent reports that the current Mac configuration has `redact_content=false` for every profile (2026-11-01).
 - Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
 
-**Checked:** 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
+**Checked:** 2026-11-09, laa/app-polish-1109 (Settings trailing-most on Work, brand test aligned to the LAA plugin wording; @@CHECK@@); 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
 
 ## LAA all-profile notification pairing
 
@@ -4001,7 +4005,7 @@ and rollback instructions · the upstream App Store build
 - Monet and Monet（無検閲） replace the former two swans and the former marketing employee identity; the uncensored employee is text-only. Retired profile IDs are not mapped to new identities. When authoritative discovery reports the saved active profile absent, the app falls back to default; a stale widget link reports an unavailable workspace. The system handling of a previously saved widget selection still needs iPhone acceptance.
 - iPhone acceptance: check Monet and Monet（無検閲） names and mascots in Chats and staff details, turn animation, call and text-only behavior, Watch and shortcuts, and reconfigure any existing employee widget whose selection no longer resolves.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
-- A Chat link shows that employee's opening screen (mascot, name, role and チャットを開いています…) the moment it is taken, on the phone's chat route and in the Mac's detail column, until the profile switch and the chat's read land. Leaving it drops the launch, so a late switch doesn't bring the chat back; a failed launch returns to the list with its notice. Call and New chat links don't show it (the owner, 2026-11-09: a tap didn't open the chat at once).
+- A Chat link shows that employee's opening screen (mascot, name, role and チャットを開いています…) the moment it is taken, on the phone's chat route and in the Mac's detail column, until the profile switch and the chat's read land. Leaving it (the chat route going from shown to gone) drops the launch, so a late switch doesn't bring the chat back; a cold launch from a widget, whose chat isn't on screen yet, keeps it. A failed launch returns to the list with its notice. Call and New chat links don't show it (the owner, 2026-11-09: a tap didn't open the chat at once).
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
@@ -4160,10 +4164,10 @@ Google data remains a signed-build gate.
 - Catalyst keeps "Scale Interface to Match iPad": one UIKit point is drawn at about 0.77 Mac points, so the desktop sizes are divided by that (1280×820 becomes 1662×1065). Optimize for Mac is not switched on (the parent, 2026-11-03).
 - The Mac window is a `NavigationSplitView` — sidebar of Chat, Work, Today, Brain, Studio, Drive and Usage, with the Mac's connection state and Settings beneath — beside a detail column each section fills. The phone keeps its `TabView` unchanged. Sections branch on `laaDesktop`, never on the size class, because the shell hands the reused iPhone screens a compact size class inside the columns.
 - The window opens at 1280×820 Mac points, keeps a 900×600 minimum and has no maximum below the display: full screen and Split View work. The earlier 623-point content cap, the compact size class at the root and the `.contentSize` resizability are gone.
-- Selecting a chat row switches the detail column; it never pushes. An employee's row is selected at once and the column shows the opening screen until the chat lands. The selected row keeps `LAAColor.selectionFill` behind `LAAColor.link` (the same pair as the sidebar), not the system accent fill, and a room's row is marked instead of a person's while a room is open. The conversation sits at `LAADesktopMetrics.readingWidth`.
+- Selecting a chat row switches the detail column; it never pushes. An employee's row is selected at once and the column shows the opening screen until the chat lands. The selected row keeps `LAAColor.selectionFill` behind `LAAColor.link` (the same pair as the sidebar), not the system accent fill, and a room's row is marked instead of a person's while a room is open. The conversation fills the detail column, as beside the list on an iPad: its backdrop and bar span the column, and its transcript and composer keep to the chat's readable column (`readableChatColumn`), which widens with the window and steps its text up (2026-11-09, the owner: the Mac chat read as a phone-sized panel; it had been capped at `LAADesktopMetrics.readingWidth`).
 - The menu bar carries Go (⌘1–⌘7, ⌃⌘S), Chat (⌘F, ⌘R, Close Conversation), New Chat (⌘N) and Settings (⌘,). Escape closes the open chat. Arrow keys walk the sidebar and the chat list; Return opens the focused row.
 - Sign-in stays in the Chat section, where the phone's Chats tab shows it, rather than covering the window: the other sections keep their own unpaired states.
-- `mac-screens.sh --self-render` has the window draw itself into the shot (DEBUG `-laa-mac-snapshot`, at the Mac's Retina pixels) for a session without the screen-recording permission `screencapture` needs; the shot has no title bar.
+- `mac-screens.sh --self-render` has the window draw itself into the shot (DEBUG `-laa-mac-snapshot`, at the Mac's Retina pixels, after `-laa-mac-snapshot-delay` seconds, 6 by default) for a session without the screen-recording permission `screencapture` needs; the shot has no title bar. The dev window runs with a home folder of its own (`CFFIXED_USER_HOME`): unsandboxed, the fixtures' file reads otherwise reached the real Documents folder and waited on the system's permission prompt, so no window appeared.
 
 **Open gaps**
 - The chat list's right-click menu is not added: the rows have no per-row operation today beyond opening them, so there is nothing to repeat. Hover tooltips use `help`; VoiceOver names and the selected trait are set.
@@ -4171,7 +4175,7 @@ Google data remains a signed-build gate.
 - Selecting a chat row and seeing the conversation needs a live Hermes dashboard; the rule is unit-tested and the live path is the parent's Bridge check.
 - Each section's own Mac layout (Work, Today, Brain, Studio, Drive) is recorded in that section's entry.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen in the detail column, self-rendered shots; @@CHECK@@); 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
+**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen in the detail column, the conversation across it, list widths, self-rendered shots; @@CHECK@@); 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
 
 ## LAA Mac desktop Brain, Studio and Drive
 
@@ -4186,6 +4190,7 @@ Google data remains a signed-build gate.
 
 **Rulings**
 - The Mac branch is `laaDesktop`, never the size class: the shell keeps the reused phone screens in a compact size class inside each column.
+- A list column is its own width (`listIdealWidth`, Today's 440) once the window has room and 30% of a narrower section, never under `listMinWidth` (`LAADesktopMetrics.listWidth`). It used to be a min–max range, which a stack sets at its maximum, so every list sat at 460 (2026-11-09).
 - The list column keeps the phone's search, source switching, filters and existing Bridge calls; choosing a row fills the detail column instead of pushing. The selection stays highlighted, rows highlight on hover, and each row carries a `.help` tooltip.
 - Brain keeps folder browsing inside the list with a clickable breadcrumb, and a note's wiki links open in the detail column. So do a new note, a moved or renamed note and a gallery pick: the Mac never pushes a page over the list. A note moved or sent to the trash leaves the column and the list reloads (2026-11-09: a trashed note stayed selected and read as unavailable). Create, save, pin, conflict copies, recovery and the `brain:write` boundary are unchanged.
 - Studio lists Works, Requests and Library; the works gallery in the detail column is an adaptive grid with `LAADesktopMetrics.gridItemMinWidth`, and a chosen work opens its existing detail, preview and export rows. Library uses the wide column.
@@ -4195,9 +4200,9 @@ Google data remains a signed-build gate.
 
 **Open gaps**
 - The parent runs the consolidated iPhone compact regression and the Mac UI tests. Physical Mac and iPhone confirmation of the three screens is pending.
-- Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column tops out at 460 UIKit points (about 354 Mac points), which no four-column row fits.
+- Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column is 380 UIKit points at most (about 293 Mac points), which no four-column row fits.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on 92d8dcb5 (Doc opens and leaves notes in the detail column; @@CHECK@@); 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
+**Checked:** 2026-11-09, laa/app-polish-1109 on 92d8dcb5 (Doc opens and leaves notes in the detail column, list widths; @@CHECK@@); 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
 
 ## LAA Watch employee voice
 

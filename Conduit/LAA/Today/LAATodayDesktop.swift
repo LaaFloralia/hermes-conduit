@@ -202,7 +202,7 @@ struct LAATodayDesktopView: View {
                     .font(.system(size: 36, weight: .light)).foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: message).multilineTextAlignment(.center).foregroundStyle(LAAColor.text)
                 Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "再読み込み") }
-                    .buttonStyle(.borderedProminent)
+                    .laaGlassButton(prominent: true)
             }
             .padding(LAASpacing.x8).frame(maxWidth: 560)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

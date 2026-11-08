@@ -19,13 +19,21 @@ extension EnvironmentValues {
 enum LAADesktopMetrics {
     static let listMinWidth: CGFloat = 320
     static let listIdealWidth: CGFloat = 380
-    static let listMaxWidth: CGFloat = 460
-    /// Conversation transcripts and composers.
+    /// The share of a section's width its list takes on a narrow window.
+    static let listShare: CGFloat = 0.3
+    /// A Work session's transcript.
     static let readingWidth: CGFloat = 880
     /// Notes, documents and task details.
     static let documentWidth: CGFloat = 820
     /// Card grids such as Studio works and Usage providers.
     static let gridItemMinWidth: CGFloat = 300
+
+    /// The list column for `available` points: its own `width` once the
+    /// window has room, a smaller share of a narrow one (never under the
+    /// minimum), so the detail beside it keeps a readable width.
+    static func listWidth(_ width: CGFloat, available: CGFloat) -> CGFloat {
+        min(width, max(listMinWidth, (available * listShare).rounded(.down)))
+    }
 }
 
 /// A list column beside its detail, separated by a hairline. The list keeps
@@ -36,18 +44,22 @@ struct LAAMacListDetail<List: View, Detail: View>: View {
     @ViewBuilder var detail: () -> Detail
 
     var body: some View {
-        HStack(spacing: 0) {
-            list()
-                .frame(minWidth: LAADesktopMetrics.listMinWidth, idealWidth: listWidth,
-                       maxWidth: LAADesktopMetrics.listMaxWidth, maxHeight: .infinity)
-                .background(LAAColor.background)
-            Rectangle()
-                .fill(LAAColor.separator)
-                .frame(width: 1)
-                .accessibilityHidden(true)
-            detail()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(LAAColor.surface)
+        // A set width rather than a min–max range: in a stack a range takes
+        // its maximum, which left every list at its widest.
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                list()
+                    .frame(width: LAADesktopMetrics.listWidth(listWidth, available: proxy.size.width))
+                    .frame(maxHeight: .infinity)
+                    .background(LAAColor.background)
+                Rectangle()
+                    .fill(LAAColor.separator)
+                    .frame(width: 1)
+                    .accessibilityHidden(true)
+                detail()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(LAAColor.surface)
+            }
         }
     }
 }

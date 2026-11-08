@@ -114,7 +114,7 @@ final class LAATabModelTests: XCTestCase {
     func testProductBrandChangesOnlyDisplayCopy() {
         XCTAssertEqual(LAAProductBrand.display("Hermes Conduit"), "LAA")
         XCTAssertEqual(LAAProductBrand.display("Conduit-chan"), "Monet")
-        XCTAssertEqual(LAAProductBrand.display("Conduit plugin"), "connection service")
+        XCTAssertEqual(LAAProductBrand.display("Conduit plugin"), "LAA plugin")
         XCTAssertEqual(LAAProductBrand.display("Conduit · conduit://widget"), "LAA · conduit://widget")
     }
 

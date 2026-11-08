@@ -148,6 +148,7 @@ write_spec() {
 }
 
 build() {
+  mkdir -p "$DERIVED"
   write_spec || { echo "could not write $SPEC" >&2; exit 1; }
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate --spec "$SPEC" >/dev/null || exit 1
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -182,8 +183,12 @@ launch() {
   local pair
   for pair in $APP_ENV; do export "${pair?}"; done
   # A dev window is a fresh process every shot: no window state carries over
-  # from the previous size or scheme.
-  "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$DERIVED/app.log" 2>&1 &
+  # from the previous size or scheme. Its home is a folder of its own: the dev
+  # build has no sandbox, so the fixtures' file reads would otherwise reach the
+  # real Documents folder and wait on the system's permission prompt.
+  mkdir -p "$DERIVED/home"
+  CFFIXED_USER_HOME="$DERIVED/home" \
+    "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$DERIVED/app.log" 2>&1 &
   APP_PID=$!
 }
 
