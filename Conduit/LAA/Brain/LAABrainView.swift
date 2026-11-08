@@ -241,7 +241,7 @@ struct LAABrainView: View {
                         } else if local.location != nil {
                             Text("フォルダを選んでください。")
                         } else {
-                            Text("Brain または HQ を選んでください。")
+                            Text(verbatim: "Brain または HQ を選んでください。")
                         }
                         #else
                         if local.isSelected {
@@ -422,7 +422,7 @@ struct LAABrainView: View {
                 if let location = local.location { Text(verbatim: location.rawValue).laaTextStyle(.secondary) }
             }
             if local.location != nil {
-                Button("フォルダを選び直す") { chooseFolder = true }
+                Button { chooseFolder = true } label: { Text(verbatim: "フォルダを選び直す") }
                     .disabled(dailyBlocked || dailyOpening)
                     .accessibilityIdentifier("laa.brain.chooseFolder")
             }
@@ -555,7 +555,7 @@ struct LAABrainView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             #if targetEnvironment(macCatalyst)
             if local.location == nil {
-                Text("Brain または HQ を選んでください。")
+                Text(verbatim: "Brain または HQ を選んでください。")
             } else {
                 Text(verbatim: LAABrainVaultError.access.message).foregroundStyle(LAAColor.attention)
                 Button("フォルダを選ぶ") { chooseFolder = true }.laaGlassButton(prominent: true)

@@ -59,7 +59,7 @@ enum LAAWorkCatalogFailure: Equatable {
         return .unavailable
     }
 
-    var message: String {
+    var japaneseText: String {
         switch self {
         case .warming: return "定期実行の一覧を準備しています。少し待つと表示されます。"
         case .stale: return "最新の一覧を取得できません。前回の内容を表示しています。"
@@ -308,7 +308,7 @@ struct LAAWorkCatalogView: View {
         } catch {
             guard loadID == epoch, device == bridge.deviceID else { return nil }
             let reason = LAAWorkCatalogFailure.classify(loaded: loaded, error: error)
-            failure = reason.message
+            failure = reason.japaneseText
             return reason
         }
     }

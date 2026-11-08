@@ -342,7 +342,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: false, error: http(401, "unauthorized")), .unavailable)
         XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: false, error: URLError(.timedOut)), .unavailable)
         XCTAssertEqual(LAAWorkCatalogFailure.classify(loaded: true, error: http(503, "routines_unavailable")), .stale)
-        XCTAssertNotEqual(LAAWorkCatalogFailure.warming.message, LAAWorkCatalogFailure.unavailable.message)
+        XCTAssertNotEqual(LAAWorkCatalogFailure.warming.japaneseText, LAAWorkCatalogFailure.unavailable.japaneseText)
         XCTAssertFalse(LAAWorkCatalogFailure.warming.message.contains("定期実行はありません"))
     }
 

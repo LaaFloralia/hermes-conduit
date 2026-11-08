@@ -545,7 +545,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   searches never re-rank with a model. Hidden paths and trash remain excluded.
 - On iPhone, Brain opens the Mac Bridge when no security-scoped folder is selected;
   choosing the SyncTrain folder enables local, offline browsing. On Mac, Doc
-  switches between separately bookmarked `~/Brain` and `~/hq`.
+  switches between separately bookmarked ~/Brain and ~/hq folders.
   It preserves the legacy bookmark and migrates a recognized selection without
   replacing a separately saved bookmark; it refuses the home folder. The local
   list shows folders (including empty ones) and Markdown notes. The user can
