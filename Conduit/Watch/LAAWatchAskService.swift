@@ -150,7 +150,7 @@ final class LAAWatchAskService {
 
     private func prune() {
         let now = Date()
-        for (id, expiry) in expires where expiry <= now {
+        for (id, expiry) in expires where !(now < expiry) {
             states[id] = nil
             expires[id] = nil
         }
