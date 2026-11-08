@@ -86,7 +86,7 @@ final class LAACapacityModelTests: XCTestCase {
                       freshUntil: Date = Date().addingTimeInterval(595)) throws -> LAAUsageItem {
         let formatter = ISO8601DateFormatter()
         var detail: [String: Any] = ["availableBytes": free, "freshUntil": formatter.string(from: freshUntil),
-                                     "status": status, "warningFreeBytes": warning ?? NSNull(), "criticalFreeBytes": critical ?? NSNull()]
+                                     "status": status, "warningFreeBytes": (warning as Any?) ?? NSNull(), "criticalFreeBytes": (critical as Any?) ?? NSNull()]
         if !omitTotal { detail["totalBytes"] = total }
         let row: [String: Any] = ["id": id, "kind": "capacity", "label": id, "value": used ?? total - free, "unit": unit,
                                   "source": "filesystem", "observedAt": formatter.string(from: observed),

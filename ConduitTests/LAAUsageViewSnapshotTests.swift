@@ -80,7 +80,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
                 : ["id": id, "kind": "capacity", "label": id, "value": total - free, "unit": "bytes", "source": "filesystem",
                    "observedAt": observed, "availability": "available", "stale": stale, "estimated": false, "expired": false,
                    "detail": ["totalBytes": total, "availableBytes": free, "freshUntil": freshUntil, "resourceType": type,
-                              "status": status, "warningFreeBytes": warning ?? NSNull(), "criticalFreeBytes": critical ?? NSNull()]]
+                              "status": status, "warningFreeBytes": (warning as Any?) ?? NSNull(), "criticalFreeBytes": (critical as Any?) ?? NSNull()]]
         }
         rows += ["capacity.macbook.memory", "capacity.macbook.ssd", "capacity.icloud"].map { id in
             ["id": id, "kind": "capacity", "label": id, "value": NSNull(), "unit": "bytes", "source": "unsupported",
