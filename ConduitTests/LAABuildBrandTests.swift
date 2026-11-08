@@ -59,6 +59,8 @@ final class LAABuildBrandTests: XCTestCase {
         XCTAssertEqual(AppLocalization.string("LAA profile", language: .localization("ja")), "AI社員")
         XCTAssertEqual(AppLocalization.string("Calls from Hermes", language: .localization("en")), "Calls from LAA")
         XCTAssertEqual(AppLocalization.string("Ask Hermes", table: "AppShortcuts", language: .localization("en")), "Ask LAA")
+        XCTAssertEqual(AppLocalization.string("Hermes wants to talk", language: .localization("ja")), "LAAが話したがっています")
+        XCTAssertEqual(AppLocalization.string("Tap to talk to Hermes.", language: .localization("ja")), "タップしてLAAと話す")
     }
 
     func testTheRedactedApprovalKeepsTheNotifiersTextAndIsBrandedForDisplay() {
