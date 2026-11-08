@@ -125,13 +125,15 @@ struct LAAEmployeeWidgetView: View {
                     ZStack(alignment: .topLeading) {
                         employeeImage(entry.employee.heroImage)
                             .scaledToFit()
-                            .frame(width: geometry.size.height, height: geometry.size.height)
+                            .frame(width: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)),
+                                   height: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                             .accessibilityHidden(true)
                         HStack(spacing: LAASpacing.x2) {
                             companyIcon
                             Text(verbatim: entry.employee.name).font(LAAType.employeeName)
                                 .foregroundStyle(LAAColor.text).lineLimit(1)
+                                .minimumScaleFactor(entry.employee == .monetUncensored ? 0.55 : 1)
                         }
                     }
                 }
