@@ -287,7 +287,7 @@ export function createBridge({
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
     ...driveRoutes({ adapter: drive === undefined ? createGoogleDrive() : drive, now, log }),
-    ...businessRoutes({ store, now, options: { ...routeOptions,
+    ...businessRoutes({ store, now, options: { ...routeOptions, log,
       sessions: { ...routeOptions.sessions, registerCleanup: (fn) => cleanup.push(fn) },
       calendar: { ...routeOptions.calendar, registerCleanup: (fn) => cleanup.push(fn) },
       usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) },

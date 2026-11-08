@@ -667,6 +667,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 The LAA build's Work hub contains priority tasks, the owner's Linear tasks, sessions, projects, routines and read-only skills. AI usage is opened from Settings.
 
+Short numbers (refs) give each task, session, project, routine and skill a spoken alias (`T12`, `S5`, `P3`, `R2`, `K7`). The Bridge owns the registry, decorates list and detail responses with `ref` and resolves `GET /v1/refs/{ref}`; the `laa-bridge ref`/`refs` CLI reads the same file while the server is down. Ref display, VoiceOver and search in the app are a separate LAA app task.
+
 A parent session's children stay folded under it until opened; a folded child waiting for a decision shows on the parent. Archiving a session archives its children and reaches Paseo, along with a workspace left empty (never a worktree, which would delete files); a tree with a running or undecided agent is refused, and restoring brings back only the chosen row. Projects archive and restore on the Bridge only, and their sessions stay as they are.
 
 **Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
@@ -688,6 +690,7 @@ store · the session and project API · the owner-task API · Console job observ
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
 - Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/src/routes/skill-metadata.mjs`, `bridge/src/routes/routines.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`, `bridge/test/routines.test.mjs`
+- Short numbers (refs): `bridge/src/refs/registry.mjs`, `bridge/src/refs/service.mjs`, `bridge/src/refs/items.mjs`, `bridge/src/refs/routes.mjs`, `bridge/src/refs/cli.mjs`, `bridge/src/refs/present.mjs`, `bridge/test/refs.test.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md` §9
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
 - Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkToolRunTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,

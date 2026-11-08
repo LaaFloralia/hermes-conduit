@@ -347,6 +347,15 @@ export function createSessionService({
     return { session: requireSession(id) };
   }
 
+  // The default list's live set without syncDaemon or pagination: the refs
+  // reconcile needs a local, complete read, and the visibility rule must stay
+  // the same one `listSessions` applies to an unfiltered list.
+  function visibleRecords() {
+    return sessionStore.all().filter((record) =>
+      (daemon !== null || !isWorktree(record))
+      && !record.archivedAt && !record.daemonArchivedAt);
+  }
+
   async function listSessions(query = {}) {
     await syncDaemon();
     const limit = parseLimit(query.limit);
@@ -838,6 +847,7 @@ export function createSessionService({
     decision,
     reply,
     listSessions,
+    visibleRecords,
     getSession,
     conversation,
     image: (id, imageID) => { requireSession(id); return images.read(id, imageID); },

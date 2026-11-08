@@ -11,9 +11,30 @@
 // expires with the 24-hour journal; expiry or a pruned gap is a 410 so the
 // client re-reads instead of assuming it saw everything.
 
+import { sessionRefItem } from '../refs/items.mjs';
 import { parseObjectBody } from './state-file.mjs';
 
-export function createSessionRoutes({ sessions, sessionOptions }) {
+export function createSessionRoutes({ sessions, sessionOptions, refs = null }) {
+  function refItem(record) {
+    return sessionRefItem(record, refs?.refFor);
+  }
+  function decorate(view) {
+    return refs ? { ...view, ref: refs.refFor('session', view.id) } : view;
+  }
+  function assign(record) {
+    if (!refs || !record) return;
+    refs.assign('session', record.id, record.name, refItem(record).external);
+  }
+  // The local store is the complete live set (same visibility as the default
+  // list), so a successful list request is also a safe release point.
+  function observeVisible() {
+    if (!refs || typeof sessions.visibleRecords !== 'function') return;
+    try {
+      refs.observe('session', sessions.visibleRecords().map(refItem));
+    } catch {
+      // Reconcile never fails the list response it decorates.
+    }
+  }
   async function list({ req }) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const page = await sessions.listSessions({
@@ -27,15 +48,17 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
       archived: url.searchParams.get('archived'),
       scope: url.searchParams.get('scope'),
     });
+    observeVisible();
     return {
       status: 200,
-      data: { items: page.items.map(sessions.view), nextCursor: page.nextCursor },
+      data: { items: page.items.map(sessions.view).map(decorate), nextCursor: page.nextCursor },
     };
   }
 
   async function create({ device, rawBody }) {
     const result = await sessions.createSession({ deviceId: device.id, body: parseObjectBody(rawBody) });
-    return { status: result.created ? 201 : 200, data: sessions.view(result.session) };
+    assign(result.session);
+    return { status: result.created ? 201 : 200, data: decorate(sessions.view(result.session)) };
   }
 
   async function detail({ params }) {
@@ -43,7 +66,7 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
     return {
       status: 200,
       data: {
-        ...sessions.view(result.session),
+        ...decorate(sessions.view(result.session)),
         observation: result.observation,
       },
     };
@@ -55,18 +78,22 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
       body: parseObjectBody(rawBody),
       key: req.headers['idempotency-key'],
     });
-    return { status: 202, data: sessions.view(result.session) };
+    return { status: 202, data: decorate(sessions.view(result.session)) };
   }
 
   async function update({ params, rawBody }) {
-    const result = await sessions.updateSession({ id: params[0], body: parseObjectBody(rawBody) });
-    return { status: 200, data: sessions.view(result.session) };
+    const body = parseObjectBody(rawBody);
+    const result = await sessions.updateSession({ id: params[0], body });
+    // Archive takes the children with it and restore brings one row back:
+    // re-read the complete visible set so both are released/assigned now.
+    if (body.archived !== undefined) observeVisible();
+    return { status: 200, data: decorate(sessions.view(result.session)) };
   }
 
   async function decision({ params }) { return { status: 200, data: await sessions.decision(params[0]) }; }
   async function reply({ params, rawBody }) {
     const result = await sessions.reply({ id: params[0], body: parseObjectBody(rawBody) });
-    return { status: 200, data: sessions.view(result.session) };
+    return { status: 200, data: decorate(sessions.view(result.session)) };
   }
 
   async function options() {
@@ -75,7 +102,7 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
 
   async function stop({ params }) {
     const result = await sessions.stopSession(params[0]);
-    return { status: 200, data: sessions.view(result.session) };
+    return { status: 200, data: decorate(sessions.view(result.session)) };
   }
 
   async function resume({ device, req, params, rawBody }) {
@@ -85,9 +112,10 @@ export function createSessionRoutes({ sessions, sessionOptions }) {
       key: req.headers['idempotency-key'],
       deviceId: device?.id,
     });
+    assign(result.session);
     return {
       status: result.created ? 201 : 200,
-      data: { ...sessions.view(result.session), resumedFrom: result.resumedFrom },
+      data: { ...decorate(sessions.view(result.session)), resumedFrom: result.resumedFrom },
     };
   }
 

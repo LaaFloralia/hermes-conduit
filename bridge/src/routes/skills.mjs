@@ -23,6 +23,7 @@ import { join, resolve, sep } from 'node:path';
 import { describeSkill } from './skill-metadata.mjs';
 import { BridgeError } from '../errors.mjs';
 import { resolveBrainRoot } from '../config.mjs';
+import { skillRefItems } from '../refs/items.mjs';
 
 const SKILL_FILE = 'SKILL.md';
 const MAX_SKILLS = 500;
@@ -139,6 +140,8 @@ export function createSkillIndex({
   brainRoots = defaultBrainRoots(),
   maxSkills = MAX_SKILLS,
 } = {}) {
+  let truncated = false;
+
   async function visit({ root, rel, name, depth, items, deny }) {
     const path = join(root.dir, rel);
     let real;
@@ -180,7 +183,7 @@ export function createSkillIndex({
     const entries = await listDirectory(real);
     if (!entries) return;
     for (const entry of entries.filter((item) => !item.name.startsWith('.')).sort(byName)) {
-      if (items.length >= maxSkills) return;
+      if (items.length >= maxSkills) { truncated = true; return; }
       await visit({ root, rel: `${rel}/${entry.name}`, name: entry.name, depth: depth + 1, items, deny });
     }
   }
@@ -197,27 +200,43 @@ export function createSkillIndex({
         }
       }));
       const items = [];
+      truncated = false;
       for (const root of roots) {
-        if (items.length >= maxSkills) break;
+        if (items.length >= maxSkills) { truncated = true; break; }
         const entries = await listDirectory(root.dir);
         if (!entries) continue;
         for (const entry of entries.filter((item) => !item.name.startsWith('.')).sort(byName)) {
-          if (items.length >= maxSkills) break;
+          if (items.length >= maxSkills) { truncated = true; break; }
           await visit({ root, rel: entry.name, name: entry.name, depth: 1, items, deny });
         }
       }
       items.sort((a, b) => (a.source === b.source ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : (a.source < b.source ? -1 : 1)));
-      return { items };
+      return { items, complete: !truncated };
     },
   };
 }
 
-export function skillRoutes({ roots, brainRoots, maxSkills } = {}) {
+export function skillRoutes({ roots, brainRoots, maxSkills, refs = null } = {}) {
   const index = createSkillIndex({ roots, brainRoots, maxSkills });
+  if (refs) {
+    refs.registerSource('skill', async () => {
+      const outcome = await index.list();
+      return outcome.complete ? skillRefItems(outcome.items) : null;
+    });
+  }
 
   async function list() {
     const outcome = await index.list();
-    return { status: 200, data: { items: outcome.items, nextCursor: null } };
+    // A successful, untruncated listing is the complete skill set: Claude and
+    // Hermes rows of one skill share a single ref, and both rows carry it.
+    if (refs && outcome.complete !== false) refs.observe('skill', skillRefItems(outcome.items));
+    const items = refs
+      ? outcome.items.map((item) => ({
+        ...item,
+        ref: refs.refFor('skill', String(item.name ?? '').trim().toLowerCase()),
+      }))
+      : outcome.items;
+    return { status: 200, data: { items, nextCursor: null } };
   }
 
   return [
