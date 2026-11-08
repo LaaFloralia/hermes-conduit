@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeError, badRequest, conflict } from '../errors.mjs';
+import { fastTarget, fastValue } from './features.mjs';
 
 export async function connectDaemon() {
   const { connectToDaemon } = await import('/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js');
@@ -83,6 +84,17 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
     /// from "failed" instead of offering an operation that cannot work.
     capabilities: () => ({ effortUpdate: serverFeatures.agentThinkingUpdate === true }),
     list: () => call(directory),
+    /// Whether Paseo still holds this agent. Only Paseo's own 404 is "gone";
+    /// every other failure is "unknown" and must leave the record alone.
+    exists: (id) => call(async (c) => {
+      try {
+        await agent(c, id);
+        return true;
+      } catch (error) {
+        if (error instanceof BridgeError && error.status === 404) return false;
+        throw error;
+      }
+    }),
     /// Paseo's own pins, so a workspace pinned in Paseo reads as a favourite
     /// here. Nothing is invented when the read fails: the caller sees null.
     workspacePins: () => call(async (c) => {
@@ -153,6 +165,23 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
       if (applied !== effort) throw new BridgeError(409, 'effort_not_applied', 'Paseo did not apply the effort');
       return statusOf(c, after);
     }),
+    /// Change Fast on a running session. Claude has a boolean toggle and Codex a
+    /// speed select; the provider's own read-back is the only proof it applied.
+    setFast: (id, value) => call(async (c) => {
+      const before = await agent(c, id);
+      const target = fastTarget(before.features);
+      if (!target) throw new BridgeError(409, 'fast_unsupported', 'this provider has no Fast setting');
+      const next = target.featureId === 'service_tier' ? (value ? target.fastId : 'default') : value;
+      try {
+        await c.setAgentFeature(id, target.featureId, next);
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        throw new BridgeError(409, 'fast_rejected', 'Paseo rejected the Fast change');
+      }
+      const after = await agent(c, id);
+      if (fastValue(after.features) !== value) throw new BridgeError(409, 'fast_not_applied', 'Paseo did not apply the Fast change');
+      return statusOf(c, after);
+    }),
     send: (id, { text, messageId, images }) => call(async (c) => {
       const a = await agent(c, id);
       if (a.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
@@ -212,9 +241,13 @@ export function snapshot(a, now) {
     // The runtime reports model/mode in `runtimeInfo` and the applied thinking
     // option separately; checking `runtimeInfo.effort` alone could never verify.
     modelCheck: { observed, runtimeVerified: Boolean(a.runtimeInfo?.model && effort) },
-    // Toggle features (Fast) carry their actual provider value. Nothing here is
-    // derived from the Bridge's request.
-    features: Array.isArray(a.features) ? a.features.map((f) => ({ id: f?.id ?? null, value: f?.value })) : null,
+    // Toggle/select features (Fast) carry their actual provider value, and a
+    // select also names its options. Nothing here is derived from the Bridge's
+    // request.
+    features: Array.isArray(a.features) ? a.features.map((f) => ({
+      id: f?.id ?? null, type: f?.type ?? null, label: f?.label ?? null, value: f?.value,
+      options: Array.isArray(f?.options) ? f.options.map((o) => ({ id: o?.id ?? null, label: o?.label ?? null })) : undefined,
+    })) : null,
     updatedAt: a.updatedAt, observedAt: now };
 }
 function decisionView(p) {
