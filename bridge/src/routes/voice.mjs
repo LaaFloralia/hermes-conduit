@@ -1,4 +1,4 @@
-// The voice endpoints: POST /v1/voice/polish and POST /v1/voice/transcribe.
+// The voice endpoints: POST /v1/voice/{polish,summarize,transcribe}.
 //
 // These are the only Bridge endpoints that accept the owner's speech, so their
 // contract is deliberately narrow:
@@ -7,7 +7,7 @@
 //     `voice:transcribe`), and neither is part of the default grant (BRIDGE §9).
 //     A device gets one only when an operator pairs or re-pairs it with
 //     `--scopes voice:polish` / `--scopes voice:transcribe`.
-//   * The polish body is `{text, language?}`; the transcribe body is
+//   * The polish and summary body is `{text, language?}`; the transcribe body is
 //     `{pcm16, sampleRate, language?}`. A model name, chat messages, a prompt or
 //     an unknown field is refused, so neither endpoint can be turned into a
 //     general model proxy.
@@ -20,6 +20,7 @@
 // Responses repeat no part of the request:
 //
 //   polish      {text, model: 'qwen3-4b'} or {text: '', nothing: true, model}
+//   summarize   {text, model: 'qwen3-4b'}; same opt-in text scope, Japanese only
 //   transcribe  {text, model: 'haas-ja-v1.0-q8_0'}
 //
 // `nothing` is additive for polish: existing clients that only read `text`
@@ -37,6 +38,7 @@ import { BridgeError, badRequest } from '../errors.mjs';
 import { VoiceWorkerError } from '../voice/worker.mjs';
 
 const POLISH_MODEL = 'qwen3-4b';
+const SUMMARY_MAX_CHARS = 2000;
 const TRANSCRIBE_MODEL = 'haas-ja-v1.0-q8_0';
 const LANGUAGES = new Set(['ja', 'zh', 'en', 'auto']);
 // The recogniser is Japanese-only; accepting another language would silently
@@ -225,6 +227,21 @@ export function voiceRoutes({
         }
         const text = typeof result?.text === 'string' ? result.text.trim() : '';
         if (text === '' || text.length > maxOutputChars) throw badReply();
+        return { status: 200, data: { text, model: POLISH_MODEL } };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/v1/voice/summarize',
+      auth: true,
+      scope: 'voice:polish',
+      idempotent: false,
+      async handler({ rawBody, res }) {
+        const payload = validatePolish(parseObject(rawBody, POLISH_FIELDS), Math.min(maxChars, SUMMARY_MAX_CHARS));
+        if (payload.language !== 'ja') throw badRequest('payload_invalid', 'summary requires ja');
+        const result = await run(worker, { kind: 'summarize', ...payload }, { res, timeoutMs });
+        const text = typeof result?.text === 'string' ? result.text.trim() : '';
+        if (result?.nothing === true || text === '' || text.length > maxOutputChars) throw badReply();
         return { status: 200, data: { text, model: POLISH_MODEL } };
       },
     },

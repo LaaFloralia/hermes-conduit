@@ -8,6 +8,8 @@ struct LAAWorkProjectsSection: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let refreshID: Int
+    /// The Work hub's search on the phone.
+    var query = ""
 
     @State private var projects: [LAAWorkProject] = []
     @State private var failure: String?
@@ -24,13 +26,13 @@ struct LAAWorkProjectsSection: View {
                 .accessibilityIdentifier("work.projects.new")
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && projects.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
-            if projects.isEmpty && !loading && failure == nil {
+            if visibleProjects.isEmpty && !loading && failure == nil {
                 Text(verbatim: showArchived ? "アーカイブしたプロジェクトはありません。" : "名前・指示・資料をまとめ、その中でセッションを始められます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if !projects.isEmpty {
+            if !visibleProjects.isEmpty {
                 VStack(spacing: 0) {
-                    ForEach(projects) { project in
+                    ForEach(visibleProjects) { project in
                         LAAWorkSwipeRow(id: project.id, openID: $openRow,
                                         leading: .init(title: project.isArchived ? "戻す" : "アーカイブ",
                                                        systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox",
@@ -39,8 +41,11 @@ struct LAAWorkProjectsSection: View {
                             HStack(spacing: LAASpacing.x3) {
                                 Image(systemName: "folder").foregroundStyle(LAAColor.link).frame(width: 22)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
-                                        .foregroundStyle(LAAColor.text).lineLimit(1)
+                                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                        LAAWorkRefLabel(ref: project.ref)
+                                        Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
+                                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                                    }
                                     Text(verbatim: summary(project)).laaTextStyle(.secondary)
                                         .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                                 }
@@ -58,7 +63,7 @@ struct LAAWorkProjectsSection: View {
                             }
                         }
                         .accessibilityIdentifier("work.project.\(project.id)")
-                        if project.id != projects.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 50) }
+                        if project.id != visibleProjects.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 50) }
                     }
                 }
                 .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
@@ -84,6 +89,10 @@ struct LAAWorkProjectsSection: View {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
         .task(id: "\(bridge.revision)-\(refreshID)-\(editorID)-\(showArchived)") { await load() }
+    }
+
+    private var visibleProjects: [LAAWorkProject] {
+        projects.filter { LAAWorkRef.matches(query, ref: $0.ref, text: [$0.name]) }
     }
 
     private func summary(_ project: LAAWorkProject) -> String {
@@ -150,8 +159,11 @@ struct LAAWorkProjectHome: View {
             LAAColor.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                    Text(verbatim: project.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                        .accessibilityAddTraits(.isHeader)
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                        LAAWorkRefLabel(ref: project.ref)
+                        Text(verbatim: project.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     if let error { LAAWorkFailure(text: error) { Task { await load() } } }
                     LAAWorkPrimaryButton(title: "このプロジェクトで開始", systemImage: "plus") { showLauncher = true }
                         .accessibilityIdentifier("work.project.newSession")

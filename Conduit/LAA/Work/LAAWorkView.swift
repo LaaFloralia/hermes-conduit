@@ -5,10 +5,13 @@ struct LAAWorkView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let onRequestSettings: () -> Void
     let embeddedSection: Int?
+    /// The Work hub's search on the phone.
+    let query: String
 
-    init(embeddedSection: Int? = nil, onRequestSettings: @escaping () -> Void) {
+    init(embeddedSection: Int? = nil, onRequestSettings: @escaping () -> Void, query: String = "") {
         self.embeddedSection = embeddedSection
         self.onRequestSettings = onRequestSettings
+        self.query = query
         _section = State(initialValue: embeddedSection ?? 0)
     }
 
@@ -180,11 +183,11 @@ struct LAAWorkView: View {
     }
 
     private var sessionList: some View {
-        LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
+        LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID, query: query).environmentObject(bridge)
     }
 
     private var projectList: some View {
-        LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
+        LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: query).environmentObject(bridge)
     }
 
     @MainActor private func load() async {

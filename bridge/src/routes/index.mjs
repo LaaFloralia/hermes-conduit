@@ -37,6 +37,12 @@ import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
 import { deviceRoutes } from './devices.mjs';
+import { createDecisionStore } from '../decisions/store.mjs';
+import { createDecisionService } from '../decisions/service.mjs';
+import { createDecisionRoutes } from './decisions.mjs';
+import { createRefService } from '../refs/service.mjs';
+import { projectRefItem, sessionRefItem } from '../refs/items.mjs';
+import { refRoutes } from '../refs/routes.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -46,16 +52,34 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   // endpoints use, so a session can never point outside the allowlisted roots.
   const workspaceService = workspaceOptions.service ?? workspaceServiceFromOptions({ now, ...workspaceOptions });
   const sessionOptions = options.sessions ?? {};
+  // One registry per state directory. An injected instance lets a test drive
+  // observation directly; the server-owned one reconciles itself in live mode.
+  const refs = options.refs ?? createRefService({
+    file: `${store.dir}/refs.json`,
+    now,
+    live: sessionOptions.live === true,
+    log: options.log ?? null,
+  });
 
   const sessionStore = createSessionStore({
     file: `${store.dir}/sessions.json`,
     now,
     retentionMs: sessionOptions.eventRetentionMs,
   });
-  const sessionService = sessionOptions.service ?? createSessionService({
+  const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
+  let sessionService;
+  const decisionsOptions = options.decisions ?? {};
+  const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
+  const decisions = decisionsOptions.service ?? createDecisionService({
+    refs: (kind, key) => refs.refFor(kind, key), observeRefs: () => refs.observeSource('decision'),
+    ...decisionsOptions, store: decisionStore, sessionStore,
+    sessions: { syncDaemon: () => sessionService.syncDaemon(), decision: (id) => sessionService.decision(id) }, daemon, now,
+  });
+  sessionService = sessionOptions.service ?? createSessionService({
     ...sessionOptions,
     sessionStore,
-    daemon: sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null),
+    daemon,
+    decisions,
     retentionMs: sessionOptions.eventRetentionMs,
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
@@ -65,6 +89,17 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     resolveProjectFiles: sessionOptions.resolveProjectFiles ?? ((project) => projectStore.filesFor(project)),
     now,
   });
+
+  refs.registerSource('session', () => sessionService.visibleRecords()
+    .map((record) => sessionRefItem(record, refs.refFor)));
+  refs.registerSource('project', () => projectStore.list()
+    .filter((project) => !project.archivedAt)
+    .map(projectRefItem));
+  // A decision holds its J number while the owner still has to act on it:
+  // open, or answered but not delivered. Delivery or withdrawal releases it.
+  refs.registerSource('decision', () => decisionStore.all()
+    .filter((d) => d.status === 'open' || (d.status === 'answered' && d.delivery?.state === 'failed'))
+    .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
   if (!sessionOptions.service && sessionOptions.live) {
     const timer = setInterval(() => { sessionService.syncDaemon().catch(() => {}); }, 5000);
@@ -94,14 +129,17 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     calendarOptions.registerCleanup?.(() => clearInterval(timer));
   }
 
-  return [
+  sessionOptions.registerCleanup?.(() => refs.stop());
+
+  const routes = [
+    ...createDecisionRoutes({ service: decisions }),
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
-    ...linearOwnerTaskRoutes(options.linearOwnerTasks ?? {}),
+    ...linearOwnerTaskRoutes({ ...(options.linearOwnerTasks ?? {}), refs }),
     ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
-    ...skillRoutes(options.skills ?? {}),
+    ...skillRoutes({ ...(options.skills ?? {}), refs }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...brainRoutes({ store, now, options: options.brain ?? {} }),
-    ...createProjectRoutes({ projects: projectStore, now }),
+    ...createProjectRoutes({ projects: projectStore, now, refs }),
     ...createWorkspaceRoutes({
       workspaceStore,
       service: workspaceService,
@@ -111,11 +149,12 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     }),
     ...createSessionRoutes({
       sessions: sessionService,
+      refs,
       sessionOptions: sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() }),
     }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
-    ...routineRoutes(options.routines ?? {}),
+    ...routineRoutes({ ...(options.routines ?? {}), refs }),
     ...calendarRoutes({ ...calendarOptions, service: calendarService }),
     // Disabled in production pending independent review; explicit injection is for tests.
     ...(options.instructions?.enabled === true
@@ -123,5 +162,10 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       : []),
     ...voiceRoutes(options.voice ?? {}),
     ...deviceRoutes({ store, now }),
+    ...refRoutes({ refs }),
   ];
+  // Start after every factory has registered its source: the first live pass
+  // must cover all five kinds, not only sessions and projects.
+  refs.start();
+  return routes;
 }

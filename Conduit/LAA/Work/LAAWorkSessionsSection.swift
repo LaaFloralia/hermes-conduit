@@ -8,6 +8,8 @@ struct LAAWorkSessionsSection: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let refreshID: Int
+    /// The Work hub's search on the phone; nil keeps this list's own field.
+    var query: String? = nil
 
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @State private var search = ""
@@ -23,7 +25,8 @@ struct LAAWorkSessionsSection: View {
     @State private var openRow: String?
     @State private var expanded = Set<String>()
 
-    private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var searchText: String { query ?? search }
+    private var searching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
@@ -32,8 +35,10 @@ struct LAAWorkSessionsSection: View {
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && sessions.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
 
-            TextField("", text: $search, prompt: Text(verbatim: "セッションを検索"))
-                .textFieldStyle(.roundedBorder).accessibilityIdentifier("work.sessions.search")
+            if query == nil {
+                TextField("", text: $search, prompt: Text(verbatim: "セッションを検索"))
+                    .textFieldStyle(.roundedBorder).accessibilityIdentifier("work.sessions.search")
+            }
             let matches = filteredSessions
             let visible = LAAWorkSessionOrder.rows(matches)
             let children = LAAWorkSessionOrder.descendants(matches)
@@ -136,8 +141,11 @@ struct LAAWorkSessionsSection: View {
     }
 
     private var filteredSessions: [LAAWorkSession] {
-        guard !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return sessions }
-        var ids = Set(sessions.filter { ($0.name + " " + ($0.observed?.model ?? $0.requested?.model ?? "")).localizedCaseInsensitiveContains(search) }.map(\.id))
+        guard searching else { return sessions }
+        var ids = Set(sessions.filter {
+            LAAWorkRef.matches(searchText, ref: $0.ref,
+                               text: [$0.name, $0.observed?.model ?? $0.requested?.model ?? ""])
+        }.map(\.id))
         for session in sessions where ids.contains(session.id) {
             var parent = session.parentId
             var seen = Set<String>()
@@ -252,6 +260,7 @@ struct LAAWorkSessionRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: LAASpacing.x1) {
+                    LAAWorkRefLabel(ref: session.ref)
                     Text(verbatim: session.name).laaTextStyle(.body).fontWeight(.semibold)
                         .foregroundStyle(LAAColor.text).lineLimit(1)
                         .accessibilityIdentifier("work.session.\(session.id)")

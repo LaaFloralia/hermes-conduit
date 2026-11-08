@@ -6,12 +6,16 @@ struct LAAPersonalTaskDetailView: View {
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
+    /// The list row's short number; this route does not carry one itself.
+    let ref: String?
     @State private var task: LAAPersonalTask?
     @State private var viewerId: String?
     @State private var error: String?
     @State private var showEdit = false
 
-    init(id: String, drafts: ComposerDraftStore) { self.id = id; self.drafts = drafts }
+    init(id: String, drafts: ComposerDraftStore, ref: String? = nil) {
+        self.id = id; self.drafts = drafts; self.ref = ref
+    }
 
     var body: some View {
         ZStack {
@@ -26,7 +30,13 @@ struct LAAPersonalTaskDetailView: View {
                     if let task {
                         Text(verbatim: task.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                             .accessibilityIdentifier("work.task.detail.title")
-                        Text(verbatim: task.sourceId).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        // The short number the owner says, then Linear's own
+                        // identifier.
+                        Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .laaTextStyle(.secondary).monospacedDigit()
+                            .foregroundStyle(LAAColor.secondaryText)
+                            .accessibilityIdentifier("work.task.detail.ref")
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
                             Text(verbatim: "状態: \(task.status?.name ?? "未確認")")
                             Text(verbatim: "担当: \(task.owner?.name ?? "未設定")")
@@ -76,6 +86,11 @@ struct LAAPersonalTaskDetailView: View {
             if let task, let viewerId { LAAPersonalTaskEditor(task: task, viewerId: viewerId, drafts: drafts).environmentObject(bridge) }
         }
         .task(id: "\(id):\(bridge.revision)") { task = nil; viewerId = nil; await load() }
+    }
+
+    /// `linear:BUS-123` → `BUS-123`; the identifier itself is kept as is.
+    private func identifier(_ sourceId: String) -> String {
+        sourceId.hasPrefix("linear:") ? String(sourceId.dropFirst("linear:".count)) : sourceId
     }
 
     @MainActor private func load() async {

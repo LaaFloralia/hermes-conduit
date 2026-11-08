@@ -13,7 +13,7 @@ final class LAAWorkUITests: XCTestCase {
             app.launchArguments += ["-conduit.themePreference", appearance]
         }
         app.launch()
-        XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         return app
     }
 
@@ -109,8 +109,8 @@ final class LAAWorkUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
-        XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 30))
-        for name in ["priority", "tasks", "sessions", "projects", "routines", "skills"] {
+        XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
+        for name in ["tasks", "sessions", "projects", "routines", "skills"] {
             let segment = app.buttons["work.section.\(name)"]
             if !segment.isHittable { app.scrollViews["work.segment"].swipeLeft() }
             XCTAssertTrue(segment.exists)

@@ -14,6 +14,7 @@ import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { createReadCache } from '../cache.mjs';
 import { BridgeError } from '../errors.mjs';
+import { routineRefItem } from '../refs/items.mjs';
 const exec = promisify(execFile);
 
 const ROLE_NAMES = Object.freeze({ ciel: 'Ciel', cos: 'Merlin', cto: 'Ada', cfo: 'Morgan',
@@ -77,9 +78,18 @@ export function routineRoutes({
     const { stdout } = await exec('/Users/laa/.local/bin/laa-console', ['jobs'], { timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: consoleEnv() });
     return JSON.parse(stdout);
   },
-  freshMs = 60000, firstWaitMs = 3000, retryMs = 15000, now = () => Date.now(),
+  freshMs = 60000, firstWaitMs = 3000, retryMs = 15000, now = () => Date.now(), refs = null,
 } = {}) {
   const cache = createReadCache({ read: async () => projectRoutineRows(await read()), freshMs, waitMs: 0, firstWaitMs, now });
+  if (refs) {
+    // A skipped row means the Console answer was partly unusable, so it is not
+    // a complete set and must not release a number.
+    refs.registerSource('routine', () => {
+      const entry = cache.peek();
+      if (entry === null || entry.value.skipped > 0) return null;
+      return entry.value.items.map(routineRefItem);
+    });
+  }
   // A cold cache retries until the first read lands, so a warm that failed at
   // startup does not leave the app with a 503 until its next manual refresh.
   let retryTimer = null;
@@ -102,6 +112,10 @@ export function routineRoutes({
       keepWarm();
       throw new BridgeError(503, 'routines_unavailable', 'routine observations unavailable', { retryable: true });
     }
-    return { status: 200, data: { items: entry.value.items, skipped: entry.value.skipped, nextCursor: null, fetchedAt: new Date(entry.fetchedAt).toISOString() } };
+    if (refs && entry.value.skipped === 0) refs.observe('routine', entry.value.items.map(routineRefItem));
+    const items = refs
+      ? entry.value.items.map((item) => ({ ...item, ref: refs.refFor('routine', item.id) }))
+      : entry.value.items;
+    return { status: 200, data: { items, skipped: entry.value.skipped, nextCursor: null, fetchedAt: new Date(entry.fetchedAt).toISOString() } };
   } }];
 }
