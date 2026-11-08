@@ -31,7 +31,7 @@ import Darwin
         guard let entry = getpwuid(getuid()), let path = entry.pointee.pw_dir, path.pointee != 0 else { return nil }
         return URL(fileURLWithPath: String(cString: path), isDirectory: true)
         #else
-        return FileManager.default.homeDirectoryForCurrentUser
+        return nil
         #endif
     }
 
