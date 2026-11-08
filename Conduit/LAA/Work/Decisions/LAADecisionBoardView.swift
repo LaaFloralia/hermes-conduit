@@ -91,11 +91,14 @@ struct LAADecisionBoardView: View {
                 HStack(alignment: .center, spacing: LAASpacing.x3) {
                     badge(item)
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        Text(verbatim: item.title)
-                            .laaTextStyle(.body).fontWeight(.semibold)
-                            .foregroundStyle(LAAColor.text)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
+                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                            if item.kind == .board { LAAWorkRefLabel(ref: item.ref) }
+                            Text(verbatim: item.title)
+                                .laaTextStyle(.body).fontWeight(.semibold)
+                                .foregroundStyle(LAAColor.text)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
                         if let meta = Self.meta(item) {
                             Text(meta).laaTextStyle(.secondary).lineLimit(1)
                         }

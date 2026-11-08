@@ -180,7 +180,9 @@ enum LAADecisionCopy {
 
     /// VoiceOver: 「判断、<title>、推奨 <label>」.
     static func accessibilityLabel(_ item: LAADecision, now: Date = Date()) -> String {
-        var parts = ["判断", item.title]
+        var parts = ["判断"]
+        if item.kind == .board, let ref = LAAWorkRef.display(item.ref) { parts.append(ref) }
+        parts.append(item.title)
         if let answer = item.answer { parts.append("回答 \(answer.label)") }
         else if let label = item.recommended?.label { parts.append("推奨 \(label)") }
         if item.deliveryFailed { parts.append(notDelivered) }

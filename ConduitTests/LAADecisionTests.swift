@@ -94,6 +94,12 @@ final class LAADecisionTests: XCTestCase {
                                  delivery: .init(state: "failed", attempts: 1, deliveredAt: nil, error: "agent_archived"))
         XCTAssertEqual(String(try XCTUnwrap(LAADecisionBoardView.meta(failed, now: now)).characters), "週報｜作成 · 回答 Driveに保存")
         XCTAssertEqual(LAADecisionCopy.accessibilityLabel(failed, now: now), "判断、週報の送り先を決める、回答 Driveに保存、届いていません、週報｜作成")
+        // With numbers: the decision's J leads VoiceOver, the source's S leads the source line.
+        let numbered = LAADecision(id: "dec_3", ref: "J3", title: "名刺の紙を選ぶ", summary: "",
+                                   options: [.init(label: "マットな白", recommended: true)],
+                                   source: .init(paseoAgentId: "a", sessionId: "ses_0000000000000001", name: "Studio｜名刺"), sourceRef: "S5")
+        XCTAssertEqual(String(try XCTUnwrap(LAADecisionBoardView.meta(numbered, now: now)).characters), "S5 · Studio｜名刺 · 推奨 マットな白")
+        XCTAssertEqual(LAADecisionCopy.accessibilityLabel(numbered, now: now), "判断、J3、名刺の紙を選ぶ、推奨 マットな白、S5 · Studio｜名刺")
         // A bare record still reads: no empty separators.
         XCTAssertNil(LAADecisionBoardView.meta(LAADecision(id: "x", title: "t", summary: ""), now: now))
     }

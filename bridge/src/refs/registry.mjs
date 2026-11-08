@@ -20,10 +20,10 @@ export const REFS_SCHEMA = 1;
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const HISTORY_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAX_N = 99999;
-export const KINDS = Object.freeze(['task', 'session', 'project', 'routine', 'skill']);
-export const PREFIX = Object.freeze({ task: 'T', session: 'S', project: 'P', routine: 'R', skill: 'K' });
-export const KIND_BY_PREFIX = Object.freeze({ T: 'task', S: 'session', P: 'project', R: 'routine', K: 'skill' });
-const PREFIX_PATTERN = /^([TSPRK])0*([1-9][0-9]{0,4})$/;
+export const KINDS = Object.freeze(['task', 'session', 'project', 'routine', 'skill', 'decision']);
+export const PREFIX = Object.freeze({ task: 'T', session: 'S', project: 'P', routine: 'R', skill: 'K', decision: 'J' });
+export const KIND_BY_PREFIX = Object.freeze({ T: 'task', S: 'session', P: 'project', R: 'routine', K: 'skill', J: 'decision' });
+const PREFIX_PATTERN = /^([TSPRKJ])0*([1-9][0-9]{0,4})$/;
 
 export class RefInputError extends Error {
   constructor(message = 'ref must look like T12') {
@@ -76,7 +76,7 @@ export function orderRefItems(kind, items) {
     let primary = 0;
     if (kind === 'task') {
       primary = parseIdentifierNumber(x.external?.linear) - parseIdentifierNumber(y.external?.linear);
-    } else if (kind === 'session' || kind === 'project') {
+    } else if (kind === 'session' || kind === 'project' || kind === 'decision') {
       primary = String(x.createdAt ?? '').localeCompare(String(y.createdAt ?? ''));
     }
     if (primary !== 0) return primary;
@@ -91,7 +91,7 @@ export function createRefRegistry({ file, now = () => Date.now() }) {
   const state = createJsonFile({
     file,
     schema: REFS_SCHEMA,
-    initial: () => ({ records: [], observedAt: { task: null, session: null, project: null, routine: null, skill: null } }),
+    initial: () => ({ records: [], observedAt: { task: null, session: null, project: null, routine: null, skill: null, decision: null } }),
   });
 
   // List decoration asks for one ref per row; parse the file once per change

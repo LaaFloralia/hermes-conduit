@@ -9,7 +9,7 @@ import { KINDS, RefInputError, createRefRegistry, normalizeRefInput } from './re
 import { briefFor, formatRefLine, formatResultLine } from './present.mjs';
 
 export const REFS_USAGE = `laa-bridge ref  <ref> [--json]       resolve a short number (read-only)
-  laa-bridge refs [--kind task|session|project|routine|skill] [--json]
+  laa-bridge refs [--kind task|session|project|routine|skill|decision] [--json]
                                             numbers currently held`;
 
 function print(line) {

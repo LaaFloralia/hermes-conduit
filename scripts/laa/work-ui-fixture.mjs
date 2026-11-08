@@ -76,7 +76,8 @@ const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null
 // usual first section for the other Work tests; a test switches it on with
 // /decisions/normal, /decisions/empty or /decisions/unsupported (an older
 // Bridge without the route), and /decisions/fail-next makes the next answer
-// stay undelivered. ref and sourceRef stay null, as on the Bridge today.
+// stay undelivered. The first decision carries J1/S4; the others keep ref and
+// sourceRef null, as an older Bridge sends.
 const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02', failed: 'dec_0000000000000a03' };
 let decisionMode = 'off';
 let failNextDelivery = false;
@@ -85,7 +86,7 @@ const iso = (offsetHours) => new Date(Date.now() + offsetHours * 3600 * 1000).to
 const resetDecisions = () => {
   decisionMode = 'off'; failNextDelivery = false;
   decisions = [
-    { id: DECISION_IDS.hp, ref: null, status: 'open', title: 'HPの公開日を決める',
+    { id: DECISION_IDS.hp, ref: 'J1', status: 'open', title: 'HPの公開日を決める',
       summary: '新しいHPは公開できる状態です。告知の準備に合わせて公開日を1つ選んでください。選んだ日に合わせて告知文と予約投稿を整えます。',
       options: [
         { label: '11月15日（土）に公開', detail: '準備は完了。告知は前日に出します。', recommended: true },
@@ -93,7 +94,7 @@ const resetDecisions = () => {
         { label: '公開を保留する', detail: null, recommended: false },
       ],
       allowOther: true, impact: '公開日に合わせてSNSの告知予約が決まります。', deadline: iso(5),
-      source: { paseoAgentId: 'agent-fixture-hp', sessionId: null, name: 'HP｜公開準備' }, sourceRef: null,
+      source: { paseoAgentId: 'agent-fixture-hp', sessionId: null, name: 'HP｜公開準備' }, sourceRef: 'S4',
       createdAt: iso(-2), updatedAt: iso(-2), answer: null, delivery: null },
     { id: DECISION_IDS.card, ref: null, status: 'open', title: '名刺の紙を選ぶ',
       summary: '試し刷りの2種から選んでください。',

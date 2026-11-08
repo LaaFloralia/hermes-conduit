@@ -69,8 +69,10 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
   let sessionService;
   const decisionsOptions = options.decisions ?? {};
+  const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
   const decisions = decisionsOptions.service ?? createDecisionService({
-    ...decisionsOptions, store: decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now }), sessionStore,
+    refs: (kind, key) => refs.refFor(kind, key), observeRefs: () => refs.observeSource('decision'),
+    ...decisionsOptions, store: decisionStore, sessionStore,
     sessions: { syncDaemon: () => sessionService.syncDaemon(), decision: (id) => sessionService.decision(id) }, daemon, now,
   });
   sessionService = sessionOptions.service ?? createSessionService({
@@ -93,6 +95,11 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   refs.registerSource('project', () => projectStore.list()
     .filter((project) => !project.archivedAt)
     .map(projectRefItem));
+  // A decision holds its J number while the owner still has to act on it:
+  // open, or answered but not delivered. Delivery or withdrawal releases it.
+  refs.registerSource('decision', () => decisionStore.all()
+    .filter((d) => d.status === 'open' || (d.status === 'answered' && d.delivery?.state === 'failed'))
+    .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
   if (!sessionOptions.service && sessionOptions.live) {
     const timer = setInterval(() => { sessionService.syncDaemon().catch(() => {}); }, 5000);

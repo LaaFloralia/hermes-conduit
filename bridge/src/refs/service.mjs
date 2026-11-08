@@ -7,7 +7,7 @@
 
 import { KINDS, createRefRegistry } from './registry.mjs';
 
-const LOCAL_KINDS = Object.freeze(['session', 'project', 'skill']);
+const LOCAL_KINDS = Object.freeze(['session', 'project', 'skill', 'decision']);
 const LOCAL_INTERVAL_MS = 60_000;
 const TASK_INTERVAL_MS = 300_000;
 

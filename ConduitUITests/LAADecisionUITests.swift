@@ -68,7 +68,7 @@ final class LAADecisionUITests: XCTestCase {
         let app = try launch(board: "normal")
         XCTAssertTrue(row(hpID, app).waitForExistence(timeout: 20), "The hub did not open on the board")
         XCTAssertTrue(app.buttons["work.section.decisions"].isSelected)
-        XCTAssertTrue(row(hpID, app).label.hasPrefix("判断、HPの公開日を決める、推奨 11月15日（土）に公開"))
+        XCTAssertTrue(row(hpID, app).label.hasPrefix("判断、J1、HPの公開日を決める、推奨 11月15日（土）に公開"))
         XCTAssertTrue(app.buttons["work.decision.retry.\(failedID)"].exists, "A failed delivery shows its retry on the row")
         screenshot("ui-decisions-list-light", app)
 

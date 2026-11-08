@@ -8,6 +8,7 @@ export const KIND_LABEL = Object.freeze({
   project: 'プロジェクト',
   routine: '定期実行',
   skill: 'スキル',
+  decision: '判断',
 });
 
 function externalLine(kind, external = {}) {
@@ -53,6 +54,9 @@ export function briefFor(result) {
   }
   if (record.kind === 'session') {
     return `${record.ref}＝Workのセッション「${title}」（Paseo ${record.external?.paseoAgentId ?? ''}）。`;
+  }
+  if (record.kind === 'decision') {
+    return `${record.ref}＝判断ボードの判断「${title}」（laa-bridge decide status ${record.key}）。`;
   }
   return `${record.ref}＝${KIND_LABEL[record.kind] ?? record.kind}「${title}」。`;
 }

@@ -12,6 +12,7 @@ import { createSessionService } from '../src/sessions/service.mjs';
 import { daemonAdapter, daemonSessionID } from '../src/sessions/daemon.mjs';
 import { BridgeError } from '../src/errors.mjs';
 import { startBridge } from './helpers.mjs';
+import { createRefService } from '../src/refs/service.mjs';
 
 const cli = fileURLToPath(new URL('../bin/laa-bridge', import.meta.url));
 const request = (extra = {}) => ({ title: '公開日を決める', summary: '公開準備が完了しました。日付を選んでください。',
@@ -260,10 +261,12 @@ test('HTTP integration: CLI file + native questions, existing reply tickets, fai
     respondToPermissionAndWait: async (id, requestId, response) => { replied.push({ id, requestId, response }); agents[1].pendingPermissions = []; },
     close: async () => {},
   }) });
-  const h = await startBridge({ sessions: { daemon, notify: async () => {} }, decisions: { notify: async (e) => { notifications.push(e); return { delivered: true }; } } });
+  const h = await startBridge({ sessions: { daemon, notify: async () => {} }, decisions: { notify: async (e) => { notifications.push(e); return { delivered: true }; } },
+    refs: (stateDir) => createRefService({ file: join(stateDir, 'refs.json') }) });
   t.after(() => h.close());
   const token = await h.token();
   await h.request('/v1/sessions', { token });
+  await h.refs.observeSource('session');
   const added = runCli(h.stateDir, ['add', '--title', '公開日', '--summary', '公開日を選んでください', '--option', '明日', '--option', '来週', '--agent', 'board-agent', '--request-id', 'http-cli', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const r = JSON.parse(added.stdout).decision;
@@ -272,6 +275,11 @@ test('HTTP integration: CLI file + native questions, existing reply tickets, fai
   assert.equal(board.status, 200); assert.equal(board.body.data.items.length, 2);
   assert.equal(board.body.data.items.find((i) => i.kind === 'session').summary, 'どちらにしますか');
   assert.equal(notifications.filter((n) => n.kind === 'decision.new').length, 1);
+  // The decision holds J1 from the first sync, and the notice carries it.
+  const boardItem = board.body.data.items.find((i) => i.kind === 'board');
+  assert.equal(boardItem.ref, 'J1'); assert.match(boardItem.sourceRef, /^S\d+$/);
+  assert.equal(notifications.find((n) => n.kind === 'decision.new').title, '判断 J1: 公開日');
+  assert.equal(h.refs.resolve('j1').holder.kind, 'decision');
   const native = daemonSessionID('native-agent');
   const ticket = (await h.request(`/v1/sessions/${native}/decision`, { token })).body.data;
   const reply = await h.request(`/v1/sessions/${native}/reply`, { method: 'POST', token, key: 'native-answer', body: { requestHash: ticket.requestHash, expiresAt: ticket.expiresAt, requestId: 'question-1', decision: 'answer', answers: { '0': 'B' } } });
@@ -284,6 +292,9 @@ test('HTTP integration: CLI file + native questions, existing reply tickets, fai
   assert.equal(sent[0].options.activeTurnBehavior, 'steer'); assert.equal(sent[0].options.messageId, `${r.id}:answer:2`);
   assert(!sent[0].message.includes('補足:'));
   assert.equal((await h.request('/v1/decisions', { token })).body.data.items.length, 0);
+  // Delivered: the board no longer holds it, so J1 is released.
+  await h.refs.observeSource('decision');
+  assert.equal(h.refs.refFor('decision', r.id), null); assert.equal(h.refs.resolve('J1').status, 'released');
   assert.equal(JSON.parse(runCli(h.stateDir, ['status', r.id, '--json']).stdout).decision.delivery.state, 'delivered');
 });
 

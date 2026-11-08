@@ -2,7 +2,7 @@ import { daemonSessionID } from '../sessions/daemon.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 
 export function createDecisionService({ store, sessionStore = null, sessions = null, daemon = null, notify = notifyOwner,
-  refs = null, now = () => Date.now() }) {
+  refs = null, observeRefs = null, now = () => Date.now() }) {
   const sessionRef = (id) => refs?.('session', id) ?? null;
   function view(record) {
     const { requestId, ...visible } = record;
@@ -15,13 +15,15 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     if (syncing) return syncing;
     syncing = (async () => {
       store.prune();
+      // Number new decisions before announcing them, so the notice carries J….
+      await observeRefs?.();
       for (let r of store.all()) {
         // An interrupted Bridge must not leave an accepted answer pending forever.
         if (r.delivery?.state === 'pending' && now() - Date.parse(r.updatedAt) > 60_000) r = store.settle(r.id, r.delivery.messageId, 'failed', 'delivery_unconfirmed');
         const key = r.status === 'open' ? 'new' : r.delivery?.state === 'failed' ? `failed:${r.delivery.attempts}` : null;
         if (!notify || !key || store.notificationDone(r.id, key)) continue;
         const failed = key.startsWith('failed:');
-        const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}: ${r.title}`,
+        const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}${refs?.('decision', r.id) ? ` ${refs('decision', r.id)}` : ''}: ${r.title}`,
           body: failed ? '回答を保存しました。判断ボードから再送してください。' : r.options.find((o) => o.recommended) ? `推奨: ${r.options.find((o) => o.recommended).label}` : r.summary.slice(0, 160),
           deepLink: `laa://work/decisions/${r.id}`, dedupeKey: `${r.id}:${key}` });
         // The existing notifier owns queued retries and durable deduplication.

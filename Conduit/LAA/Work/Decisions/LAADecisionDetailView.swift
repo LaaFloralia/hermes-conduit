@@ -82,10 +82,16 @@ struct LAADecisionDetailView: View {
 
     // MARK: Header
 
+    /// "J3 · S5 · <conversation>": the decision's own number leads, like a task's T12.
+    private var headerMeta: String? {
+        let parts = [item.kind == .board ? LAAWorkRef.display(item.ref) : nil, item.sourceLine].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            if let source = item.sourceLine {
-                Text(verbatim: source).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+            if let source = headerMeta {
+                Text(verbatim: source).laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }
             Text(verbatim: item.title)
                 .font(.title2.weight(.semibold))

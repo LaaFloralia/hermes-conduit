@@ -17,7 +17,7 @@ enum LAAWorkRef {
     /// The canonical ref when the whole text is one (`T012` → `T12`), else nil.
     static func parse(_ text: String) -> String? {
         let value = normalise(text)
-        guard let match = value.range(of: "^[TSPRK]0*[1-9][0-9]{0,4}$", options: .regularExpression) else { return nil }
+        guard let match = value.range(of: "^[TSPRKJ]0*[1-9][0-9]{0,4}$", options: .regularExpression) else { return nil }
         let raw = String(value[match])
         let number = raw.drop { !$0.isNumber }
         guard let digits = Int(number) else { return nil }
