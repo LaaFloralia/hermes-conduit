@@ -136,3 +136,13 @@ test('MacBook single-flight, five minute cache, freshness, partial and failure a
   const failed = create({ macbook: async () => { throw new Error('timeout'); } }); t.after(failed.close); failed.read(); await failed.refresh(3);
   result = byId(failed.read()); assert.equal(result.get('capacity.macbook.memory').value, null); assert.equal(result.get('capacity.macbook.ssd').value, null);
 });
+
+test('MacBook credential helper receives its CLI path and login identity under launchd', async () => {
+  let options;
+  await readMacBookCapacity({ env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' }, exec: async (_cmd, _args, opts) => { options = opts; return { stdout: macbookOutput }; } });
+  assert.ok(options.env.PATH.split(':').includes('/opt/homebrew/bin'));
+  assert.ok(options.env.USER);
+  assert.ok(options.env.HOME.startsWith('/'));
+  assert.equal(options.env.OP_SERVICE_ACCOUNT_TOKEN, undefined);
+  assert.equal(options.env.MACBOOK_PASSWORD, undefined);
+});
