@@ -380,6 +380,17 @@ enum WatchVoiceWire {
         /// and control it from its call screen (`callOnPhone`); nil from
         /// an older Watch, which can't.
         case callsToken(token: String?, key: String? = nil, engine: String? = nil, phoneHeadset: Bool? = nil)
+        #if LAA_BUILD
+        /// A Watch call through the host's audio bridge to one AI employee
+        /// (a `laa-…` profile), wherever the iPhone's chat is. Answered as
+        /// `bridgeStart` is; never answers a call from Hermes.
+        case bridgeStartFor(callID: UInt32, version: Int, engine: String, profile: String)
+        /// LAA Voice typed or dictated on the Watch (LAAWatchAsk); the
+        /// answer is `laaAskState`. Spoken asks come as a file transfer.
+        case laaAskText(requestID: String, profile: String?, text: String)
+        /// Where an ask is now; the answer is `laaAskState`.
+        case laaAskStatus(requestID: String)
+        #endif
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)
@@ -402,6 +413,11 @@ enum WatchVoiceWire {
         /// answered its own ring, so the voice plays on the headset, and
         /// the Watch's call screen keeps Mute and End (HermesRingControl).
         case callOnPhone(callID: UInt32)
+        #if LAA_BUILD
+        /// An LAA Voice ask's state: pushed as it changes, and the answer
+        /// to `laaAskText` and `laaAskStatus`.
+        case laaAskState(LAAWatchAsk.State)
+        #endif
     }
 
     static func encode(_ message: Message) -> [String: Any] {
