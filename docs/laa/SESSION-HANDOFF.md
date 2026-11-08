@@ -66,7 +66,7 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 
 ## 現在の状態（2026-11-08）
 
-- Usageの **2611080958** は配信済み。Usage関連46/46、Bridge 675/675、既定schemeの候補698/698、personal Releaseが成功した（比較masterは693/698、既知の接続画面5件だけ失敗）。容量5指標の取得元は直接確認済みだが、本番HTTPへの反映確認は未了。Bridgeは番号担当 `2c9436d4` が、Usage合流・Voice workerの実配置/self-test・社長の対象別承認が揃った後に1回だけ再起動する。iPhoneの見え方は社長の受入待ち（BUS-333）。証跡はHQ `logs/2026-11-08-usage/verification.json` と `evidence.zip`。
+- Usageの **2611080958** は配信済み。Usage関連46/46、Bridge 675/675、既定schemeの候補698/698、personal Releaseが成功した（比較masterは693/698、既知の接続画面5件だけ失敗）。19:23のBridge再起動後、MacBookのみ常駐環境で1Password CLIが見つからず取得不能だったため、取得子プロセスのPATH・USER・HOMEを補う修正 `6d3603a4` を合流した。Bridge 676/676と最小環境での実SSH読取が成功し、継続承認に基づく19:28の反映再起動後、認証付き本番HTTPで容量5指標の最新値とiCloud未対応を確認した。確認用端末は直後に失効済み。iPhoneの見え方は社長の受入待ち（BUS-333）。証跡はHQ `logs/2026-11-08-usage/verification.json` と `evidence.zip`。
 
 - 判断ボードはmaster `4038f19b` へ統合済み（2026-11-08）。Work「判断」にCLI投稿とnative質問を集め、選択を元の会話へ届けて読み戻す。判断はJ、依頼元は表示時のS番号。LAA関連76成功・0失敗・既存の実Bridgeペアリング2件は除外、比較smokeは候補698/698、masterは既知の接続画面5件だけ失敗、personal Releaseと最終Bridge665/665が成功。証跡はHQ `logs/2026-11-08-decision-board/verification.json` と同フォルダの `evidence.zip`。HQ規則は `09e4e38` に保存済み。TestFlight **2611080958**（master `b5d5eb6c`）で配信済み。Bridge実適用は「LAA｜番号での管理」（2c9436d4）が、Voiceの新worker実配置/self-test完了を確かめてから1回行う（社長承認は2026-11-08に済み）。既存の `LAA_VOICE_WORKER` 設定は維持する。実機での通知→判断→回答→元会話の再開は未確認。
 
