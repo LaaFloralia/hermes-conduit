@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -333,6 +333,22 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
   assert.equal(runCli(f.dir, ['withdraw', answered.id, '--reason', '解決']).status, 4);
   writeFileSync(f.store.file, '{bad');
   assert.equal(runCli(f.dir, ['list', '--json']).status, 6);
+});
+
+test('real CLI: shows the J number the server assigned and accepts it for status, without writing refs.json', (t) => {
+  const f = fixture(t);
+  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'cli-ref', '--json']);
+  assert.equal(added.status, 0, added.stderr);
+  const id = JSON.parse(added.stdout).decision.id;
+  assert.equal(JSON.parse(added.stdout).decision.ref, null);
+  assert.equal(existsSync(join(f.dir, 'refs.json')), false, 'the CLI never creates the registry');
+  // The server numbers it (here: the same registry the server uses).
+  createRefService({ file: join(f.dir, 'refs.json') }).observe('decision', [{ key: id, title: '番号', createdAt: new Date().toISOString(), external: {} }]);
+  const status = runCli(f.dir, ['status', 'j1', '--json']);
+  assert.equal(status.status, 0, status.stderr);
+  assert.equal(JSON.parse(status.stdout).decision.id, id);
+  assert.equal(JSON.parse(status.stdout).decision.ref, 'J1');
+  assert.equal(JSON.parse(runCli(f.dir, ['list', '--json']).stdout).items[0].ref, 'J1');
 });
 
 test('real concurrent CLI writers keep one record for one idempotency key', async (t) => {

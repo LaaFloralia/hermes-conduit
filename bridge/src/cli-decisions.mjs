@@ -4,6 +4,7 @@ import { createDecisionService } from './decisions/service.mjs';
 import { createSessionStore } from './sessions/store.mjs';
 import { exitCodeFor } from './cli-tasks.mjs';
 import { BridgeError } from './errors.mjs';
+import { createRefRegistry, normalizeRefInput } from './refs/registry.mjs';
 
 export const DECISIONS_USAGE = `laa-bridge decide — 判断ボード
   decide add --title <t> --summary <s> --option <label>[::<detail>] (2..6)
@@ -19,7 +20,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
   const writeErr = io.writeErr ?? ((s) => process.stderr.write(s));
   const usage = (message) => { throw new BridgeError(428, 'usage_error', message); };
   try {
-    const [sub, id] = argv;
+    const [sub, given] = argv;
     if (!sub || sub === 'help') { write(DECISIONS_USAGE); return 0; }
     const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id json', status: 'json', withdraw: 'reason json', list: 'json' };
     if (!allowed[sub]) usage('unknown decide subcommand');
@@ -27,7 +28,16 @@ export async function decisionsCommand(argv, flags, io = {}) {
     for (const flag of Object.keys(flags)) if (!allowed[sub].split(' ').includes(flag)) usage(`unknown flag --${flag}`);
     const requireFlag = (key) => { if (typeof flags[key] !== 'string' || !flags[key]) usage(`--${key} is required`); return flags[key]; };
     const dir = resolveStateDir();
-    const service = createDecisionService({ store: createDecisionStore({ dir }), sessionStore: createSessionStore({ file: `${dir}/sessions.json` }), notify: null });
+    // Numbers are read from the server's refs.json, never written here, so the
+    // output carries the same J/S numbers the app shows and `status J3` works.
+    const registry = createRefRegistry({ file: `${dir}/refs.json` });
+    const refs = (kind, key) => { try { return registry.refFor(kind, key); } catch { return null; } };
+    const service = createDecisionService({ store: createDecisionStore({ dir }), sessionStore: createSessionStore({ file: `${dir}/sessions.json` }), notify: null, refs });
+    let id = given;
+    const asRef = typeof given === 'string' ? normalizeRefInput(given) : null;
+    if (asRef?.kind === 'decision') {
+      try { id = registry.resolve(asRef.ref).holder?.key ?? given; } catch { id = given; }
+    }
     let result;
     if (sub === 'add') {
       for (const key of ['title', 'summary', 'request-id']) requireFlag(key);
