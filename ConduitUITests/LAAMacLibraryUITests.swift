@@ -34,8 +34,12 @@ final class LAAMacLibraryUITests: XCTestCase {
         openSection(app, "brain")
         let brain = app.buttons["laa.brain.note"].firstMatch
         XCTAssertTrue(brain.waitForExistence(timeout: 30))
+        app.buttons["laa.brain.location.Brain"].tap()
+        XCTAssertTrue(app.staticTexts["BrainOnly"].waitForExistence(timeout: 15))
         brain.tap()
         XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 15))
+        app.buttons["laa.brain.location.HQ"].tap()
+        XCTAssertTrue(app.staticTexts["HQOnly"].waitForExistence(timeout: 15))
         app.buttons["laa.brain.location.HQ"].tap()
         XCTAssertTrue(app.staticTexts["HQOnly"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["laa.brain.rawToggle"].exists)

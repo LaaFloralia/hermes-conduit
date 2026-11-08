@@ -410,6 +410,7 @@ struct LAABrainView: View {
             HStack {
                 ForEach(LAABrainLocalVault.Location.allCases, id: \.rawValue) { target in
                     Button(target.rawValue) {
+                        guard local.location != target || !local.isReady else { return }
                         resetLocalNavigation()
                         local.select(target)
                         if !local.isReady { chooseFolder = true }
