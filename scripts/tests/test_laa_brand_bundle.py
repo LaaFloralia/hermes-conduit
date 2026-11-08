@@ -35,7 +35,7 @@ class LAABrandBundleTests(unittest.TestCase):
             plural.write_bytes(plistlib.dumps(original).decode("utf-8").encode("utf-16"))
             brand.brand_bundle(bundle, "notification", ROOT)
             result = plistlib.loads(plural.read_bytes())
-            self.assertEqual(result, brand.values_only(original, locale="en"))
+            self.assertEqual(result, brand.display_aliases(brand.values_only(original, locale="en")))
             self.assertEqual(result["%lld Conduit items"]["NSStringLocalizedFormatKey"], "%#@items@")
             self.assertEqual(result["%lld Conduit items"]["items"]["other"], "%lld LAA items")
 
@@ -271,17 +271,53 @@ class LAABrandBundleTests(unittest.TestCase):
                 self.assertEqual(self.read_bundle(bundle), before)
 
     def test_agent_and_connection_copy_keeps_format_arguments(self):
-        self.assertEqual(brand.display("Connect to Hermes server %@", "Connect to Hermes server %@"), "Connect to Mac %@")
-        self.assertEqual(brand.display("Hermes replied to %@", "Hermes replied to %@"), "Ciel replied to %@")
-        self.assertEqual(brand.display("Hermesサーバーが応答しました", "Hermes server replied"), "Macが応答しました")
+        self.assertEqual(brand.display("Connect to Hermes server %@", "Connect to Hermes server %@"), "Connect to LAA server %@")
+        self.assertEqual(brand.display("Hermes replied to %@", "Hermes replied to %@"), "LAA replied to %@")
+        self.assertEqual(brand.display("Hermesサーバーが応答しました", "Hermes server replied"), "LAAサーバーが応答しました")
 
     def test_english_copy_can_name_the_agent_and_mac_in_the_same_sentence(self):
         source = "Hermes replies. The Hermes notifier plugin runs on your Hermes server."
         self.assertEqual(brand.values_only({source: source})[source],
-                         "Ciel replies. The connection service runs on your Mac.")
+                         "LAA replies. The LAA plugin runs on your LAA server.")
         source = "Your Hermes server doesn't offer voice. Update Hermes to use Voice."
         self.assertEqual(brand.values_only({source: source})[source],
-                         "Your Mac doesn't offer voice. Update the connection service to use Voice.")
+                         "Your LAA server doesn't offer voice. Update LAA to use Voice.")
+
+    def test_owner_facing_names_in_english_and_japanese(self):
+        samples = {
+            "Talk to Hermes": "Talk to LAA",
+            "Hermes wants to talk": "LAA wants to talk",
+            "Calls from Hermes": "Calls from LAA",
+            "Ask Hermes": "Ask LAA",
+            "Conduit plugin": "LAA plugin",
+            "Conduitプラグインを更新": "LAAの連携プラグインを更新",
+            "Hermesのプロファイル": "AI社員",
+            "Paseoの状態を確認してください。": "Workの状態を確認してください。",
+        }
+        for original, expected in samples.items():
+            with self.subTest(original=original):
+                self.assertEqual(brand.display(original), expected)
+        self.assertEqual(brand.display("Ciel"), "Ciel")
+
+    def test_intent_aliases_reuse_japanese_translation_without_changing_lookup_keys(self):
+        original = {"Tell Hermes": "Hermesに伝える", "LAA profile": "LAAプロファイル"}
+        values = brand.display_aliases(brand.values_only(original, locale="ja"))
+        self.assertEqual(values["Tell LAA"], "LAAに伝える")
+        self.assertEqual(values["Tell Hermes"], "LAAに伝える")
+        self.assertEqual(values["AI employee"], "AI社員")
+        self.assertEqual(brand.display_aliases(values), values)
+        explicit = {"Talk to Hermes": "LAA と話す", "Talk to LAA": "LAAと話す"}
+        self.assertEqual(brand.display_aliases(explicit)["Talk to LAA"], "LAAと話す")
+
+    def test_english_fallback_also_brands_shortcut_catalogs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.make_app_bundle(Path(tmp))
+            brand.brand_bundle(bundle, "app", ROOT)
+            values = plistlib.loads((bundle / "en.lproj/AppShortcuts.strings").read_bytes())
+            self.assertEqual(values["Ask Hermes"], "Ask LAA")
+            self.assertEqual(values["Talk to Conduit"], "Talk to LAA")
+            self.assertTrue(all("Hermes" not in value and "Conduit" not in value
+                                for value in values.values()))
 
     def test_all_catalog_translations_keep_format_arguments(self):
         for file in ("Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings"):

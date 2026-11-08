@@ -14,10 +14,10 @@ struct ConduitWatchShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: TalkToHermesIntent(),
             phrases: [
-                "Talk to Ciel in \(.applicationName)",
+                "Talk to LAA in \(.applicationName)",
                 "Start a \(.applicationName) call",
             ],
-            shortTitle: "Talk to Ciel",
+            shortTitle: "Talk to LAA",
             systemImageName: "waveform"
         )
         #else

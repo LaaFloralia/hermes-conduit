@@ -1,7 +1,7 @@
-# LAA Conduit project rules
+# LAA app project rules
 
 - Start with `docs/laa/SESSION-HANDOFF.md`: current state, team, the owner's open issues and the merge gate. The owner calls this project "AIアプリ" or "LAAアプリ".
-- Staffing (the owner, 2026-11-02): the parent keeps the model the owner selected for it. Delegated work goes to the official DSH DeepSeek V4.1 Flash at High or above, run as a subagent inside the parent's own workspace and session (`hq/tools/PASEO-HERMES.md`); no child-only workspace, detach or independent CLI worker. Independent review is not the default: only record overwrites or deletions, auth and secrets, and money, when the parent decides a second lineage is needed. No Claude subagents except design-worker. Terra is only for a simple task whose result the parent can check directly.
+- Staffing (the owner, 2026-11-08): the parent keeps the model the owner selected for it. 委譲は /Users/laa/hq/guide/models.md の分担表に従う。 Delegated work runs as a subagent in the parent's own workspace and session (`hq/tools/RUNTIME.md`); no child-only workspace, detach or independent CLI worker. Independent review is not the default: only record overwrites or deletions, auth and secrets, and money, when the parent decides a second lineage is needed.
 - Design and verify for the owner's single-screen iPhone 16 Pro Max (440 × 956 pt). The owner does not use iPhone Duo; do not test on it.
 - Simulators on this Mac: the `LAA 16 Pro Max` simulator (iOS 27.0, the owner's device) is the default for UI tests and screenshots. Keep the compact 440 × 956 pt snapshot tests, such as `LAACompactChatSnapshotTests`, and confirm on the real device through TestFlight. Do not add simulator runtimes without the parent session's approval.
 - Across the shared Mac, one `xcodebuild` runs at a time (`build-slot.sh`, `-jobs 4`, currently max 1), and its own simulator is booted only for that run and shut down immediately after testing. Check `laa-storage-guard status` and keep at least 80 GiB free.
@@ -12,4 +12,4 @@
 - GitHub CI currently does not run on pushes to master (BUS-323). Until it does, and whenever GitHub Actions is unavailable, gate on the local master-based smoke with no new failures and a local personal Release build: generate `project-personal.yml` and build for generic iOS with `CODE_SIGNING_ALLOWED=NO`.
 - The parent session runs TestFlight uploads because it holds the required secrets.
 - Install launchd services such as the push relay (`scripts/laa/relay-install.sh`) only from the main checkout `/Users/laa/dev/hermes-conduit`, never from a worktree; worktrees are removed after merges.
-- Conduit plugin updates are decided by the daily HQ routine in `hq/tools/CONDUIT-UPDATE.md`. The LAA build shows no plugin update notices.
+- Upstream `Conduit` plugin updates are decided by the daily HQ routine in `hq/tools/APP-UPDATE.md`. The LAA build shows no plugin update notices.

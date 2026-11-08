@@ -37,9 +37,9 @@ enum ShortcutEventKindEntity: String, AppEnum {
 @available(iOS 16.0, *)
 struct LogToHermesIntent: AppIntent {
     #if LAA_BUILD
-    static let title: LocalizedStringResource = "Log to Ciel"
+    static let title: LocalizedStringResource = "Log to LAA"
     static let description = IntentDescription(
-        "Keep information from an automation for Ciel to look up later. Ciel does not reply, and sign-in codes are never kept."
+        "Keep information from an automation for LAA to look up later. LAA does not reply, and sign-in codes are never kept."
     )
     #else
     static let title: LocalizedStringResource = "Log to Hermes"
@@ -64,7 +64,7 @@ struct LogToHermesIntent: AppIntent {
     #if LAA_BUILD
     @Parameter(
         title: "Details",
-        requestValueDialog: "What should Ciel keep?",
+        requestValueDialog: "What should LAA keep?",
         inputConnectionBehavior: .connectToPreviousIntentResult
     )
     var details: String?
@@ -91,7 +91,7 @@ struct LogToHermesIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary {
         #if LAA_BUILD
-        Summary("Log \(\.$details) to Ciel as \(\.$kind)") {
+        Summary("Log \(\.$details) to LAA as \(\.$kind)") {
             \.$source
             \.$subject
             \.$amount

@@ -9,7 +9,7 @@ import Foundation
 @available(iOS 16.0, *)
 struct ConduitProfileEntity: AppEntity, Identifiable {
     #if LAA_BUILD
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "LAA profile")
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "AI employee")
     #else
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conduit profile")
     #endif
@@ -158,10 +158,10 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: SendToHermesIntent(),
             phrases: [
-                "Ask Ciel in \(.applicationName)",
-                "Send to Ciel in \(.applicationName)"
+                "Ask LAA in \(.applicationName)",
+                "Send to LAA in \(.applicationName)"
             ],
-            shortTitle: "Ask Ciel",
+            shortTitle: "Ask LAA",
             systemImageName: "paperplane.fill"
         )
         #else

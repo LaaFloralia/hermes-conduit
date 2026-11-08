@@ -15,8 +15,8 @@ import Foundation
 
 struct TalkToHermesIntent: AppIntent {
     #if LAA_BUILD
-    static let title: LocalizedStringResource = "Talk to Ciel"
-    static let description = IntentDescription("Starts a voice call to Ciel on your Watch.")
+    static let title: LocalizedStringResource = "Talk to LAA"
+    static let description = IntentDescription("Starts a voice call to LAA on your Watch.")
     #else
     static let title: LocalizedStringResource = "Talk to Hermes"
     static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
@@ -46,8 +46,8 @@ struct TalkToHermesIntent: AppIntent {
 /// handler set rather than in the widget extension.
 struct OpenTalkToHermesIntent: OpenIntent {
     #if LAA_BUILD
-    static let title: LocalizedStringResource = "Talk to Ciel"
-    static let description = IntentDescription("Starts a voice call to Ciel on your Watch.")
+    static let title: LocalizedStringResource = "Talk to LAA"
+    static let description = IntentDescription("Starts a voice call to LAA on your Watch.")
     #else
     static let title: LocalizedStringResource = "Talk to Hermes"
     static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
@@ -55,7 +55,7 @@ struct OpenTalkToHermesIntent: OpenIntent {
     static let isDiscoverable: Bool = false
 
     #if LAA_BUILD
-    @Parameter(title: "Talk to Ciel")
+    @Parameter(title: "Talk to LAA")
     var target: WatchCallTarget
     #else
     @Parameter(title: "Talk to Hermes")
@@ -76,9 +76,9 @@ enum WatchCallTarget: String, AppEnum {
     case call
 
     #if LAA_BUILD
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Ciel"
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to LAA"
     static let caseDisplayRepresentations: [WatchCallTarget: DisplayRepresentation] = [
-        .call: "Talk to Ciel",
+        .call: "Talk to LAA",
     ]
     #else
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Hermes"

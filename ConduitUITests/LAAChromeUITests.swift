@@ -67,6 +67,7 @@ final class LAAChromeUITests: XCTestCase {
                 capture("chrome-\(tab.lowercased())-\(appearance)")
                 settings.tap()
                 XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10), tab)
+                if tab == "Chat" { capture("chrome-settings-\(appearance)") }
                 app.buttons["Close Settings"].tap()
             }
             // Usage is a Settings page now, not a tab.
