@@ -12,6 +12,7 @@
 // on a Bridge-mediated archive/delete. A failed or paginated read never calls
 // `observeComplete`, which is why this module has no partial-read entry point.
 
+import { statSync } from 'node:fs';
 import { StateFileError } from '../routes/state-file.mjs';
 import { createJsonFile } from '../routes/state-file.mjs';
 
@@ -93,13 +94,25 @@ export function createRefRegistry({ file, now = () => Date.now() }) {
     initial: () => ({ records: [], observedAt: { task: null, session: null, project: null, routine: null, skill: null } }),
   });
 
+  // List decoration asks for one ref per row; parse the file once per change
+  // instead of once per row. Callers of readDoc never mutate the result.
+  let cached = null;
   function readDoc() {
+    let stamp = null;
+    try {
+      const info = statSync(file);
+      stamp = `${info.ino}:${info.size}:${info.mtimeMs}`;
+    } catch {
+      // Missing file: fall through to the store, which returns the initial doc.
+    }
+    if (stamp !== null && cached?.stamp === stamp) return cached.doc;
     const doc = state.read();
     // A document that is valid JSON but not a registry is corrupt in the same
     // way: refuse it instead of starting over and handing out numbers twice.
     if (!Array.isArray(doc.records) || !doc.observedAt || typeof doc.observedAt !== 'object') {
       throw new StateFileError('state_corrupt', 'refs registry has an unexpected shape');
     }
+    cached = stamp === null ? null : { stamp, doc };
     return doc;
   }
 
