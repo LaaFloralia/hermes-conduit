@@ -37,6 +37,9 @@ import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
 import { deviceRoutes } from './devices.mjs';
+import { createDecisionStore } from '../decisions/store.mjs';
+import { createDecisionService } from '../decisions/service.mjs';
+import { createDecisionRoutes } from './decisions.mjs';
 import { createRefService } from '../refs/service.mjs';
 import { projectRefItem, sessionRefItem } from '../refs/items.mjs';
 import { refRoutes } from '../refs/routes.mjs';
@@ -63,10 +66,20 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     now,
     retentionMs: sessionOptions.eventRetentionMs,
   });
-  const sessionService = sessionOptions.service ?? createSessionService({
+  const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
+  let sessionService;
+  const decisionsOptions = options.decisions ?? {};
+  const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
+  const decisions = decisionsOptions.service ?? createDecisionService({
+    refs: (kind, key) => refs.refFor(kind, key), observeRefs: () => refs.observeSource('decision'),
+    ...decisionsOptions, store: decisionStore, sessionStore,
+    sessions: { syncDaemon: () => sessionService.syncDaemon(), decision: (id) => sessionService.decision(id) }, daemon, now,
+  });
+  sessionService = sessionOptions.service ?? createSessionService({
     ...sessionOptions,
     sessionStore,
-    daemon: sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null),
+    daemon,
+    decisions,
     retentionMs: sessionOptions.eventRetentionMs,
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
@@ -82,6 +95,11 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   refs.registerSource('project', () => projectStore.list()
     .filter((project) => !project.archivedAt)
     .map(projectRefItem));
+  // A decision holds its J number while the owner still has to act on it:
+  // open, or answered but not delivered. Delivery or withdrawal releases it.
+  refs.registerSource('decision', () => decisionStore.all()
+    .filter((d) => d.status === 'open' || (d.status === 'answered' && d.delivery?.state === 'failed'))
+    .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
   if (!sessionOptions.service && sessionOptions.live) {
     const timer = setInterval(() => { sessionService.syncDaemon().catch(() => {}); }, 5000);
@@ -114,6 +132,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   sessionOptions.registerCleanup?.(() => refs.stop());
 
   const routes = [
+    ...createDecisionRoutes({ service: decisions }),
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...linearOwnerTaskRoutes({ ...(options.linearOwnerTasks ?? {}), refs }),
     ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),

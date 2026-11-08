@@ -55,12 +55,46 @@ struct LAAWorkRoutine: Decodable, Identifiable {
     var state: String? = nil
     var businessStatus: String? = nil
     var notificationStatus: String? = nil
+    var runId: String? = nil
+    var reasonCode: String? = nil
+    var observationStatus: String? = nil
+    var scheduledAt: String? = nil
+    var expectedRunAt: String? = nil
+    var startedAt: String? = nil
+    var finishedAt: String? = nil
+    var notificationAcceptedAt: String? = nil
+    var notificationSentAt: String? = nil
+    var notificationReceivedAt: String? = nil
     /// The short number the owner says ("R7"). Absent from an older Bridge.
     var ref: String? = nil
+
+    static func recordedTime(_ value: String?) -> String {
+        guard let date = LAAWorkFreshness.date(value) else { return "未確認" }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "ja_JP")
+        format.dateFormat = "M月d日 H:mm"
+        return format.string(from: date)
+    }
+
+    var notificationSummary: String? {
+        switch notificationStatus {
+        case "accepted": "チャット受付済み・端末受信未確認"
+        case "delivered": "送信済み・端末受信未確認"
+        case "read_back": "端末受信確認済み"
+        case "not_received": "通知未到達"
+        case "failed", "error", "partial", "timeout": "配信失敗"
+        case "suppressed": "通知なし"
+        default: nil
+        }
+    }
 
     func previousRunSummary(timeZone: TimeZone = .current) -> String {
         let status = businessStatus == nil || businessStatus == "unknown" ? result : businessStatus
         let outcome: String
+        switch reasonCode ?? "" {
+        case "schedule_overdue": outcome = "予定超過・結果なし"
+        case "read_unavailable": outcome = "取得不能"
+        default:
         switch status {
         case "success", "ok", "succeeded", "completed": outcome = "完了"
         case "running": outcome = "実行中"
@@ -70,8 +104,9 @@ struct LAAWorkRoutine: Decodable, Identifiable {
         case "timeout": outcome = "業務時間切れ"
         default: outcome = "未確認"
         }
+        }
         var results = [outcome]
-        if ["failed", "error", "partial", "timeout"].contains(notificationStatus ?? "") { results.append("配信失敗") }
+        if let notification = notificationSummary { results.append(notification) }
         guard let lastRunAt else { return results == ["未確認"] ? "未確認" : "時刻未確認・" + results.joined(separator: "・") }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

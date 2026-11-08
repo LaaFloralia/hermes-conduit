@@ -137,7 +137,7 @@ struct LAAWorkView: View {
                     Text(verbatim: routine.name).fontWeight(.semibold)
                     Text(verbatim: "次回: " + (routine.nextRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
                     Text(verbatim: "前回: " + (routine.lastRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
-                    Text(verbatim: "結果: " + (routine.result ?? "未確認"))
+                    Text(verbatim: "結果: " + routine.previousRunSummary())
                 }.laaTextStyle(.secondary).workCard()
             }
         }

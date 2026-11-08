@@ -46,6 +46,52 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
     }
 
+    func testCapacityStatesLightAndDark() async throws {
+        for name in ["normal", "warning", "critical", "stale", "unavailable"] {
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let state = LAAUsageState()
+                let items = try fixture(stale: false) + capacityFixture(name)
+                await state.refreshUsage { items }
+                try capture(state: state, paired: true, style: style,
+                            name: "usage-capacity-\(name)-\(style == .dark ? "dark" : "light")")
+            }
+        }
+    }
+
+    private func capacityFixture(_ name: String) throws -> [LAAUsageItem] {
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
+        let gib = 1_073_741_824.0
+        let stale = name == "stale"
+        let observed = formatter.string(from: now.addingTimeInterval(stale ? -3600 : -5))
+        let freshUntil = formatter.string(from: now.addingTimeInterval(stale ? -3000 : 595))
+        let ssdFree = name == "critical" ? 30 * gib : name == "warning" ? 60 * gib : 100 * gib
+        let ssdStatus = name == "critical" ? "critical" : name == "warning" ? "warning" : "normal"
+        let readings: [(String, String, Double, Double, String, Double?, Double?)] = [
+            ("capacity.mac-mini.memory", "memory", 24 * gib, 6 * gib, "unknown", nil, nil),
+            ("capacity.mac-mini.ssd", "ssd", 460 * gib, ssdFree, ssdStatus, 80 * gib, 40 * gib),
+            ("capacity.google-drive", "google-storage", 30 * gib, 28 * gib, "normal", 3 * gib, 0.6 * gib),
+            ("capacity.macbook.memory", "memory", 16 * gib, 4 * gib, "unknown", nil, nil),
+            ("capacity.macbook.ssd", "ssd", 460 * gib, 312 * gib, "normal", 80 * gib, 40 * gib),
+        ]
+        var rows: [[String: Any]] = readings.map { id, type, total, free, status, warning, critical in
+            name == "unavailable"
+                ? ["id": id, "kind": "capacity", "label": id, "value": NSNull(), "unit": "bytes", "source": "filesystem",
+                   "observedAt": NSNull(), "availability": "unavailable", "nullReason": "fetch_failed",
+                   "stale": false, "estimated": false, "expired": false]
+                : ["id": id, "kind": "capacity", "label": id, "value": total - free, "unit": "bytes", "source": "filesystem",
+                   "observedAt": observed, "availability": "available", "stale": stale, "estimated": false, "expired": false,
+                   "detail": ["totalBytes": total, "availableBytes": free, "freshUntil": freshUntil, "resourceType": type,
+                              "status": status, "warningFreeBytes": (warning as Any?) ?? NSNull(), "criticalFreeBytes": (critical as Any?) ?? NSNull()]]
+        }
+        rows += ["capacity.icloud"].map { id in
+            ["id": id, "kind": "capacity", "label": id, "value": NSNull(), "unit": "bytes", "source": "unsupported",
+             "observedAt": NSNull(), "availability": "unavailable", "nullReason": "unsupported",
+             "stale": false, "estimated": false, "expired": false]
+        }
+        return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
+    }
+
     private func fixture(stale: Bool, balanceOnly: Bool = false, extrasOnly: Bool = false, costOnly: Bool = false) throws -> [LAAUsageItem] {
         let now = Date()
         let formatter = ISO8601DateFormatter()

@@ -134,6 +134,16 @@ function pagesOf(vmStat, name) {
   return match ? Number(match[1]) : null;
 }
 
+export function availableMemoryBytes(vmStat, total) {
+  const pageSize = finiteNumber(Number(/page size of (\d+) bytes/.exec(vmStat ?? '')?.[1]), { min: 1 });
+  const free = pagesOf(vmStat ?? '', 'free');
+  const inactive = pagesOf(vmStat ?? '', 'inactive');
+  const speculative = pagesOf(vmStat ?? '', 'speculative') ?? 0;
+  if (pageSize === null || free === null || inactive === null || !Number.isSafeInteger(total) || total <= 0) return null;
+  const available = (free + inactive + speculative) * pageSize;
+  return Number.isSafeInteger(available) ? Math.min(total, available) : null;
+}
+
 function swapBytes(swapUsage) {
   const match = /used\s*=\s*([\d.]+)([KMG])/i.exec(swapUsage ?? '');
   if (!match) return null;
@@ -154,15 +164,9 @@ async function memoryItem({ exec, platform, observedAt }) {
   } catch {
     return unavailableMemory('fetch_failed');
   }
-  const pageSize = finiteNumber(Number(/page size of (\d+) bytes/.exec(vmStat ?? '')?.[1]), { min: 1 });
-  const free = pagesOf(vmStat ?? '', 'free');
-  const inactive = pagesOf(vmStat ?? '', 'inactive');
-  const speculative = pagesOf(vmStat ?? '', 'speculative') ?? 0;
   const total = osTotalmem();
-  if (pageSize === null || free === null || inactive === null || !Number.isFinite(total)) {
-    return unavailableMemory('fetch_failed');
-  }
-  const availableBytes = Math.min(total, (free + inactive + speculative) * pageSize);
+  const availableBytes = availableMemoryBytes(vmStat, total);
+  if (availableBytes === null) return unavailableMemory('fetch_failed');
   const detail = {
     totalBytes: total,
     availableBytes,

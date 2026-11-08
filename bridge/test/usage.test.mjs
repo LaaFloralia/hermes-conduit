@@ -26,7 +26,7 @@ function assertItemShape(item, where) {
   const at = `${where} ${item?.id ?? '(no id)'}`;
   assert.ok(item && typeof item === 'object' && !Array.isArray(item), `${at}: item must be an object`);
   assert.ok(typeof item.id === 'string' && item.id.length > 0, `${at}: id`);
-  assert.ok([...ITEM_KINDS, ...HOST_ITEM_KINDS].includes(item.kind), `${at}: kind ${item.kind}`);
+  assert.ok([...ITEM_KINDS, ...HOST_ITEM_KINDS, 'capacity'].includes(item.kind), `${at}: kind ${item.kind}`);
   assert.ok(typeof item.label === 'string' && item.label.length > 0, `${at}: label`);
   assert.ok(item.value === null || (typeof item.value === 'number' && Number.isFinite(item.value)), `${at}: value`);
   assert.ok(ITEM_UNITS.includes(item.unit), `${at}: unit ${item.unit}`);
@@ -239,7 +239,7 @@ test('an unreachable proxy is a 200 with unavailable items, never zeros', async 
   const res = await api.request('/v1/usage', { token });
   assert.equal(res.status, 200);
   assert.ok(res.body.data.items.length >= 13);
-  for (const item of res.body.data.items) {
+  for (const item of res.body.data.items.filter(item => item.kind !== 'capacity')) {
     assert.equal(item.availability, 'unavailable');
     assert.equal(item.value, null);
     assert.equal(item.nullReason, 'fetch_failed');
@@ -255,14 +255,14 @@ test('a future-dated or malformed feed is discarded', async (t) => {
   const token = await api.token(usageRead.scopes);
   const res = await api.request('/v1/usage', { token });
   assert.equal(res.status, 200);
-  assert.ok(res.body.data.items.every((item) => item.availability === 'unavailable'));
+  assert.ok(res.body.data.items.filter(item => item.kind !== 'capacity').every((item) => item.availability === 'unavailable'));
 
   const other = await bridgeWithFeed(feed({ version: 2 }));
   t.after(() => other.close());
   const token2 = await other.token(usageRead.scopes);
   const res2 = await other.request('/v1/usage', { token: token2 });
   assert.equal(res2.status, 200);
-  assert.ok(res2.body.data.items.every((item) => item.value === null));
+  assert.ok(res2.body.data.items.filter(item => item.kind !== 'capacity').every((item) => item.value === null));
 });
 
 test('mac status returns CPU, memory and the storage-guard reading', async (t) => {
@@ -362,6 +362,16 @@ test('a slow proxy read never holds a usage response', async (t) => {
     assert.ok(elapsed < 50, `the ${attempt} response took ${elapsed} ms`);
     assert.deepEqual(Object.keys(response.body.data).sort(), ['fetchedAt', 'items', 'nextCursor']);
     assert.equal(response.body.data.fetchedAt, null, 'nothing has been read yet');
-    assert.ok(response.body.data.items.every((item) => item.availability === 'unavailable'));
+    assert.ok(response.body.data.items.filter(item => item.kind !== 'capacity').every((item) => item.availability === 'unavailable'));
   }
+});
+
+
+test('usage exposes injected capacity even when the feed fails', async t => {
+  const fixtureItem = { id: 'capacity.macbook.memory', kind: 'capacity', label: 'MacBook · Memory', value: 60, unit: 'bytes', source: 'fixture', observedAt: '2026-10-29T04:49:24Z', availability: 'available', stale: false, estimated: false, expired: false, detail: { totalBytes: 100, availableBytes: 40 } };
+  const api = await startBridge({ now: () => NOW, usage: { fetcher: async () => { throw Error('offline'); }, capacitySource: { read: () => [fixtureItem], close() {} } } });
+  t.after(() => api.close());
+  const token = await api.token(usageRead.scopes);
+  const result = await api.request('/v1/usage', { token });
+  assert.deepEqual(result.body.data.items.find(item => item.id === fixtureItem.id), fixtureItem);
 });

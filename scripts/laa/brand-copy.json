@@ -1,4 +1,20 @@
 {
+  "usage": {
+    "en": "Usage",
+    "de": "Usage",
+    "es": "Usage",
+    "fr": "Usage",
+    "id": "Usage",
+    "it": "Usage",
+    "ja": "Usage",
+    "ko": "Usage",
+    "pl": "Usage",
+    "pt-BR": "Usage",
+    "ru": "Usage",
+    "tr": "Usage",
+    "zh-Hans": "Usage",
+    "zh-Hant": "Usage"
+  },
   "check_mac": {
     "en": "Check the Mac's connection and try again.",
     "de": "Prüfe die Verbindung des Mac und versuche es erneut.",

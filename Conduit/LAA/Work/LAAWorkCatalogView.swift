@@ -231,7 +231,17 @@ struct LAAWorkCatalogView: View {
             detail("次回", LAAWorkRoutineTime.next(routine.nextRunAt))
             detail("配信先チャット", routine.destination ?? "設定なし・未確認")
             detail("状態", stateLabel(routine.state))
-            detail("前回", routine.previousRunSummary(), singleLine: true)
+            detail("前回", routine.previousRunSummary())
+            if routine.runId != nil || routine.reasonCode != nil {
+                DisclosureGroup("実行の記録") {
+                    detail("予定", LAAWorkRoutine.recordedTime(routine.expectedRunAt ?? routine.scheduledAt))
+                    detail("開始", LAAWorkRoutine.recordedTime(routine.startedAt))
+                    detail("終了", LAAWorkRoutine.recordedTime(routine.finishedAt))
+                    detail("チャット受付", LAAWorkRoutine.recordedTime(routine.notificationAcceptedAt))
+                    detail("送信", LAAWorkRoutine.recordedTime(routine.notificationSentAt))
+                    detail("端末受信", LAAWorkRoutine.recordedTime(routine.notificationReceivedAt))
+                }
+            }
         }.padding(.vertical, LAASpacing.x2).listRowBackground(LAAColor.surface)
     }
 

@@ -12,7 +12,7 @@ import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { grantStudio, issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null, studio = null, ownerTasks = null, linearOwnerTasks = null, skills = null, routines = null, calendar = null, instructions = null, voice = null, rejectedUploadDrainer, log = null, refs = null } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, decisions = null, brain = null, usage = null, studio = null, ownerTasks = null, linearOwnerTasks = null, skills = null, routines = null, calendar = null, instructions = null, voice = null, rejectedUploadDrainer, log = null, refs = null } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
@@ -25,8 +25,10 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     workspaces: { ...(workspace ?? {}), roots: workspaceRoots },
     ...(tasks ? { tasks } : {}),
     ...(sessions ? { sessions } : {}),
+    ...(decisions ? { decisions } : {}),
     ...(brain ? { brain } : {}),
-    ...(usage ? { usage } : {}),
+    // Tests never run the real Google or MacBook authentication helpers.
+    usage: { capacitySource: { read: () => [], close() {} }, ...(usage ?? {}) },
     ...(studio ? { studio } : {}),
     ...(ownerTasks ? { ownerTasks } : {}),
     ...(linearOwnerTasks ? { linearOwnerTasks } : {}),

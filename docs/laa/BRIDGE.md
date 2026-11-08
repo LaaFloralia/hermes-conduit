@@ -117,6 +117,8 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 
 本書の案を次の点で簡素化して採用する。ここに書いた内容が上の節と食い違う場合はこの節を優先する。
 
+- Decision board (2026-11-08): shell agents post through `laa-bridge decide`; the Bridge owns bounded decision records in a locked, atomic 0600 `decisions.json`, retaining closed history for 30 days. `/v1/decisions` merges open records, failed answer deliveries and native pending sessions. Reading requires `sessions:read`; answer/retry require `sessions:write` (the existing native reply scope), a device request ID and `Idempotency-Key`. Answers resume the source agent through the existing daemon `send` with stable per-attempt IDs, then read the agent back before reporting delivery. Failures preserve the answer, notify once per attempt and require explicit retry. Sources without a Paseo agent read stored answers by CLI. Native questions retain the existing decision/reply endpoints. Existing five-second sync detects CLI posts and suppresses `session.finished` while their session has an open board decision. References are resolved at read time through the shared registry: decision `J` and source session `S` (see §9); standalone services without that dependency return null. API/CLI details: `bridge/README.md`. Production restart and iPhone notification acceptance remain parent-owned gates.
+
 - 端末認証：要求ごとの署名・nonce台帳は採らない。Tailscale Serve のTLS、tailnetのACL（社長の端末のみ）、端末ごとの256bitランダムトークン（iOS Keychain、ThisDeviceOnly）、変更系の `Idempotency-Key` で足りる。単一利用者の閉じたtailnetで、署名の追加コストに見合う脅威がないため。トークンはBridgeにhashだけを保存する。
 - 登録と失効：Mac側のCLI（`laa-bridge pair` / `revoke`）が10分有効・1回限りのペアリングコードを出し、アプリで入力またはQR読取する。CLIはエージェントも実行してよく、コードはチャット・ログへ出さず、Mac画面かアプリへの直接表示だけにする。
 - 初期scope：社長の端末には `sessions:*`、`tasks:*`、`brain:read`、`media:read`、`photos:select`、`usage:read`、`archives:read`、`archives:create` を付与する。`brain:write`、`gui:operate`、`archives:restore`、`devices:admin` は各ゲートを満たすまで付与しない。
@@ -136,12 +138,13 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 社長が「T12をやって」のように短い番号でタスク・セッション・プロジェクト・定期実行・スキルを指せるようにする。番号は既存の識別子（Linear課題ID、session id、project id、routine id、スキル名）を置き換えず、追加の別名として持つ。
 
 - 接頭辞は task `T`、session `S`、project `P`、routine `R`、skill `K`（同じスキルがClaudeとHermesにあっても1つ）。
+- 判断ボードの判断は decision `J`（2026-11-08追加。`D` はD1と紛れるため避けた）。保持するのは未回答と「届いていません」の間だけで、配達済み・取下げで解放する。同期は60秒ごとと判断ボードの同期（新しい判断の通知の前）で、通知の題に `判断 J3: …` と出す。依頼元のS番号は判断へ写さず、表示時にsession keyから引く（`sourceRef`）。
 - 保存は `<state dir>/refs.json` の1ファイル（0600、schema付き、atomic replace + lock）。レコードは `{ref,kind,n,key,title,external,assignedAt,releasedAt}` で、`title` は200文字までの題名だけ。説明・プロンプト・スキル本文は保存しない。壊れたファイルは黙って作り直さず、読み書きを拒否してエラーにする（`ref:null` で一覧は返す）。
 - 割当は「そのキーが以前持っていた番号が空いていれば戻す」、なければ「保持されておらず、別のキーが24時間以内に解放していない最小の番号」。解放済みの履歴は30日残す。初回の一括割当は種類ごとに古い順（taskは `BUS-12` が `BUS-130` より先、session/projectは `createdAt`、routineは `id`、skillは名前）。
 - 解放は、Bridge経由のアーカイブ・削除・完了・取消・再割当の即時と、その種類の**完全で成功した**読み取りから消えた時だけ。失敗・部分・ページ途中の読み取りでは解放しない。一度も成功していない種類のレコードは触らない。
-- 一覧・詳細の応答は各itemに `"ref": "T12" | null` を足す（`/v1/linear-owner-tasks` のアーカイブ一覧は常にnull）。`GET /v1/refs?kind=` は保持中の番号、`GET /v1/refs/<ref>` は `{ref,kind,status,holder,previous}` を返す。解決の入力はNFKC・空白/`-`/`_`除去・大文字化の後に `^([TSPRK])0*([1-9][0-9]{0,4})$` で、`t12`・`Ｔ１２`・`T-12`・`T 12` を受け付ける。未知で履歴もなければ404 `ref_unknown`、解放済みは200で `status:"released"` と30日以内の `previous`。
+- 一覧・詳細の応答は各itemに `"ref": "T12" | null` を足す（`/v1/linear-owner-tasks` のアーカイブ一覧は常にnull）。`GET /v1/refs?kind=` は保持中の番号、`GET /v1/refs/<ref>` は `{ref,kind,status,holder,previous}` を返す。解決の入力はNFKC・空白/`-`/`_`除去・大文字化の後に `^([TSPRKJ])0*([1-9][0-9]{0,4})$` で、`t12`・`Ｔ１２`・`T-12`・`T 12` を受け付ける。未知で履歴もなければ404 `ref_unknown`、解放済みは200で `status:"released"` と30日以内の `previous`。
 - 認可はデータに合わせる。taskは `tasks:read`、他は `sessions:read`。読めない種類だけを明示要求した場合は403。
-- 同期は、session・project・skillを60秒ごとのローカル読み取り、routineを既存のroutinesキャッシュ、taskを5分ごとの既存owner-task一覧キャッシュ（全ページ読めた時だけ完全）で行う。同期は一覧応答を待たせず、失敗してもその応答を失敗させない。
+- 同期は、session・project・skill・decisionを60秒ごとのローカル読み取り、routineを既存のroutinesキャッシュ、taskを5分ごとの既存owner-task一覧キャッシュ（全ページ読めた時だけ完全）で行う。同期は一覧応答を待たせず、失敗してもその応答を失敗させない。
 - CLIは `laa-bridge ref <ref> [--json]` と `laa-bridge refs [--kind <kind>] [--json]`。`refs.json` を直接読むだけで、サーバー停止中も動き、書き込まない。`--json` の `ref` は、社長の依頼文へそのまま貼れる1行の `brief` を足す。
 
 

@@ -22,6 +22,7 @@ import {
   resolveUsageRefreshTimeoutMs,
 } from '../config.mjs';
 import { createUsageFeedSource } from '../usage/feed.mjs';
+import { createCapacitySource } from '../usage/capacity.mjs';
 import {
   createHostSampler,
   readDiskStatus,
@@ -36,6 +37,7 @@ export function usageRoutes({
   refreshTimeoutMs,
   autoStaleMs,
   sampler,
+  capacitySource,
   storageStatusFile,
   registerCleanup,
   now = () => Date.now(),
@@ -51,6 +53,8 @@ export function usageRoutes({
     now,
   });
   registerCleanup?.(feedSource.close);
+  const capacity = capacitySource ?? createCapacitySource({ host, now });
+  registerCleanup?.(capacity.close);
 
   async function usage() {
     let items;
@@ -68,6 +72,7 @@ export function usageRoutes({
         items = unavailableUsageItems('fetch_failed');
       }
     }
+    items.push(...capacity.read());
     return { status: 200, data: { items, nextCursor: null, fetchedAt: receivedAt === null ? null : new Date(receivedAt).toISOString() } };
   }
 

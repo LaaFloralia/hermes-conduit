@@ -193,7 +193,7 @@ struct LAAEmployeeWidgetView: View {
 
     private func usageList(meters: [WidgetUsageMeter], limit: Int) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1 / 4) {
-            Text(verbatim: "AI Usage").laaTextStyle(.section).fontWeight(.bold)
+            Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
                 .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
             if meters.isEmpty {
                 Text(verbatim: LAACopy.notFetched)

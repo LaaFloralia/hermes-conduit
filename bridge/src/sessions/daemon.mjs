@@ -206,7 +206,7 @@ export function snapshot(a, now) {
   const pending = a.pendingPermissions ?? [];
   const effort = a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null;
   const observed = { provider: a.provider, model: a.runtimeInfo?.model ?? a.model ?? null, effort };
-  return { title: a.title, daemonStatus: a.status,
+  return { title: a.title, daemonStatus: a.status, activeTurn: Boolean(a.activeTurn), archivedAt: a.archivedAt ?? null,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
     pending,
     // The runtime reports model/mode in `runtimeInfo` and the applied thinking

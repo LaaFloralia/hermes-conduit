@@ -21,6 +21,7 @@ import {
 import { createStore } from './store.mjs';
 import { grantInstructions, grantScopes, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
+import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,7 @@ Usage:
   laa-bridge version
 
 ${TASKS_USAGE}
+${DECISIONS_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
 Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
@@ -59,8 +61,8 @@ function fail(message, code = 1) {
 // Flags that take no value, and flags that may repeat (each occurrence is
 // appended). Everything else takes exactly one value; a missing value is a usage
 // error rather than a silent `true`.
-const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'force', 'allow-live', 'help']);
-const REPEATED_FLAGS = new Set(['link']);
+const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'force', 'allow-live', 'help', 'no-other']);
+const REPEATED_FLAGS = new Set(['link', 'option']);
 
 function parseArgs(argv) {
   const positional = [];
@@ -217,6 +219,9 @@ const command = positional.shift();
 if (flags.help) {
   process.stdout.write(USAGE);
 } else switch (command) {
+  case 'decide':
+    process.exitCode = await decisionsCommand(positional, flags);
+    break;
   case 'serve':
     commandServe();
     break;

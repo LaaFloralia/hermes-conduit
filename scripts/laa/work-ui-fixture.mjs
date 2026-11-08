@@ -72,6 +72,68 @@ const releaseImages = () => {
 };
 const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null;
 
+// The decision board. Off by default (an empty board) so the hub keeps its
+// usual first section for the other Work tests; a test switches it on with
+// /decisions/normal, /decisions/empty or /decisions/unsupported (an older
+// Bridge without the route), and /decisions/fail-next makes the next answer
+// stay undelivered. The first decision carries J1/S4; the others keep ref and
+// sourceRef null, as an older Bridge sends.
+const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02', failed: 'dec_0000000000000a03' };
+let decisionMode = 'off';
+let failNextDelivery = false;
+let decisions = [];
+const iso = (offsetHours) => new Date(Date.now() + offsetHours * 3600 * 1000).toISOString();
+const resetDecisions = () => {
+  decisionMode = 'off'; failNextDelivery = false;
+  decisions = [
+    { id: DECISION_IDS.hp, ref: 'J1', status: 'open', title: 'HPの公開日を決める',
+      summary: '新しいHPは公開できる状態です。告知の準備に合わせて公開日を1つ選んでください。選んだ日に合わせて告知文と予約投稿を整えます。',
+      options: [
+        { label: '11月15日（土）に公開', detail: '準備は完了。告知は前日に出します。', recommended: true },
+        { label: '11月22日（土）に延期', detail: '写真を撮り直してから公開します。', recommended: false },
+        { label: '公開を保留する', detail: null, recommended: false },
+      ],
+      allowOther: true, impact: '公開日に合わせてSNSの告知予約が決まります。', deadline: iso(5),
+      source: { paseoAgentId: 'agent-fixture-hp', sessionId: null, name: 'HP｜公開準備' }, sourceRef: 'S4',
+      createdAt: iso(-2), updatedAt: iso(-2), answer: null, delivery: null },
+    { id: DECISION_IDS.card, ref: null, status: 'open', title: '名刺の紙を選ぶ',
+      summary: '試し刷りの2種から選んでください。',
+      options: [
+        { label: 'マットな白', detail: '文字がくっきり読めます。', recommended: true },
+        { label: '生成りの紙', detail: '柔らかい印象です。', recommended: false },
+      ],
+      allowOther: true, impact: null, deadline: iso(72),
+      source: { paseoAgentId: 'agent-fixture-card', sessionId: null, name: 'Studio｜名刺' }, sourceRef: null,
+      createdAt: iso(-5), updatedAt: iso(-5), answer: null, delivery: null },
+    { id: DECISION_IDS.failed, ref: null, status: 'answered', title: '週報の送り先を決める',
+      summary: '週報をどこへ送るかを決めます。',
+      options: [{ label: 'Driveに保存', detail: null, recommended: true }, { label: 'メールの下書き', detail: null, recommended: false }],
+      allowOther: true, impact: null, deadline: null,
+      source: { paseoAgentId: 'agent-fixture-weekly', sessionId: null, name: '週報｜作成' }, sourceRef: null,
+      createdAt: iso(-20), updatedAt: iso(-1),
+      answer: { optionIndex: 0, label: 'Driveに保存', note: null, answeredAt: iso(-1), deviceId: 'work-fixture' },
+      delivery: { state: 'failed', attempts: 1, messageId: `${DECISION_IDS.failed}:answer:1`, deliveredAt: null, error: 'agent_archived' } },
+  ];
+};
+resetDecisions();
+const boardItems = () => {
+  if (decisionMode !== 'normal') return [];
+  const items = decisions.filter((d) => d.status === 'open' || d.delivery?.state === 'failed').map((d) => ({ kind: 'board', ...d }));
+  const waiting = sessions.find((session) => session.id === SESSION_IDS.decision);
+  items.push({ kind: 'session', sessionId: waiting.id, ref: null, title: waiting.name, summary: 'どちらにしますか？',
+    kinds: ['question'], createdAt: iso(-30), deadline: null });
+  return items.sort((a, b) => Number(b.delivery?.state === 'failed') - Number(a.delivery?.state === 'failed')
+    || (Date.parse(a.deadline) || Infinity) - (Date.parse(b.deadline) || Infinity)
+    || Date.parse(b.createdAt) - Date.parse(a.createdAt));
+};
+const settleDecision = (decision) => {
+  const attempts = (decision.delivery?.attempts ?? 0) + 1;
+  const failed = failNextDelivery; failNextDelivery = false;
+  decision.delivery = { state: failed ? 'failed' : 'delivered', attempts, messageId: `${decision.id}:answer:${attempts}`,
+    deliveredAt: failed ? null : new Date().toISOString(), error: failed ? 'delivery_unconfirmed' : null };
+  decision.updatedAt = new Date().toISOString();
+};
+
 const api = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   const path = url.pathname;
@@ -99,6 +161,31 @@ const api = http.createServer(async (req, res) => {
     Object.assign(task, body, { updatedAt: new Date().toISOString() });
     await new Promise(resolve => setTimeout(resolve, 700));
     return send(res, 200, task);
+  }
+  if (path === '/v1/decisions' && req.method === 'GET') {
+    if (decisionMode === 'unsupported') { res.writeHead(404, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code: 'not_found', message: 'Not found', retryable: false }, requestId: 'fixture' })); }
+    return send(res, 200, { items: boardItems(), fetchedAt: new Date().toISOString() });
+  }
+  const decisionMatch = path.match(/^\/v1\/decisions\/(dec_[0-9a-f]{16})(?:\/(answer|retry))?$/);
+  if (decisionMatch) {
+    const decision = decisions.find((d) => d.id === decisionMatch[1]);
+    if (!decision || decisionMode === 'unsupported') { res.writeHead(404); return res.end(); }
+    const { requestId, ...visible } = decision;
+    if (!decisionMatch[2] && req.method === 'GET') return send(res, 200, { ...visible });
+    if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const body = raw ? JSON.parse(raw) : {};
+    if (decisionMatch[2] === 'answer') {
+      if (decision.status !== 'open') { res.writeHead(409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code: 'decision_closed', message: 'closed', retryable: false }, requestId: 'fixture' })); }
+      const option = Number.isInteger(body.optionIndex) ? decision.options[body.optionIndex] : null;
+      decision.status = 'answered';
+      decision.answer = { optionIndex: option ? body.optionIndex : null, label: option ? option.label : 'その他', note: body.note ?? null,
+        answeredAt: new Date().toISOString(), deviceId: 'work-fixture' };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    settleDecision(decision);
+    const { requestId: _, ...result } = decision;
+    return send(res, 200, { decision: result });
   }
   if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', ref: 'R1', name: '朝の確認', schedule: '毎日 07:30', destination: 'Cielの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }, { id: 'service', ref: 'R2', name: '常駐の確認用', triggerKind: 'service', schedule: '常駐', state: 'running' }], nextCursor: null });
   if (path === '/v1/skills') return send(res, 200, { items: [{ id: 'test:weekly', ref: 'K1', name: 'weekly-report', description: '指定した内容から週報を作成します。', category: '日常業務', summary: 'カオナビの週報を作成する', detail: '社長の指定内容に沿って現職の週報を入力します。', source: 'Claude' }], nextCursor: null });
@@ -202,7 +289,11 @@ const control = http.createServer((req, res) => {
     advanced = 0;
     lastServed = 0;
     imagesServed = 0;
+    resetDecisions();
   }
+  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off)$/);
+  if (decisionControl) decisionMode = decisionControl[1];
+  if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/hold-image') holdImages();
   if (req.url === '/release-image') releaseImages();
   if (req.url === '/advance') {
@@ -211,6 +302,9 @@ const control = http.createServer((req, res) => {
       text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z' });
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed }));
+  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed,
+    answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null, delivery: d.delivery?.state ?? null })) }));
 });
-api.listen(19584, '127.0.0.1'); control.listen(19585, '127.0.0.1');
+// WORK_FIXTURE_PORT moves both servers (api, api + 1) when the usual pair is taken.
+const apiPort = Number(process.env.WORK_FIXTURE_PORT || 19584);
+api.listen(apiPort, '127.0.0.1'); control.listen(apiPort + 1, '127.0.0.1');

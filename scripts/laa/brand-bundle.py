@@ -23,6 +23,7 @@ bundle_names = {"watch": "LAA Watch", "watch-widget": "LAA Watch",
 # in the LAA interface. Keep the original keys and localize the replacement.
 COPY = json.loads(Path(__file__).with_name("brand-copy.json").read_text())
 STATIC_COPY_KEYS = {
+    "AI usage": "usage",
     "Run hermes gateway status on the host to see why.": "check_mac",
     "It may still be finishing running tasks. Run hermes gateway status on the host to check.": "check_mac",
     "Update Hermes, or run hermes gateway restart on the host.": "check_mac",
