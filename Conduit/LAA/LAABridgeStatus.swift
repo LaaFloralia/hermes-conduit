@@ -10,21 +10,26 @@ final class LAABridgeSession: ObservableObject {
     private var credentials: LAABridgeCredentials?
     private let keychain: LAABridgeKeychain
     private let client: LAABridgeClient
+    private let readCredentials: () throws -> LAABridgeCredentials?
 
-    init(keychain: LAABridgeKeychain = .init(), client: LAABridgeClient = .init()) {
+    init(keychain: LAABridgeKeychain = .init(), client: LAABridgeClient = .init(),
+         readCredentials: (() throws -> LAABridgeCredentials?)? = nil) {
         self.keychain = keychain
         self.client = client
+        let read = readCredentials ?? { try keychain.read() }
+        self.readCredentials = read
         do {
-            credentials = try keychain.read()
+            credentials = try read()
             status = credentials == nil ? .unpaired : .paired
         } catch { status = .keychainError }
     }
 
     #if DEBUG
     /// An in-memory status for UI fixtures; no Keychain or network access.
-    init(statusForTesting: Status) {
+    init(statusForTesting: Status, readCredentials: @escaping () throws -> LAABridgeCredentials? = { throw LAABridgeError.keychain }) {
         self.keychain = .init()
         self.client = .init()
+        self.readCredentials = readCredentials
         self.status = statusForTesting
     }
 
@@ -32,6 +37,7 @@ final class LAABridgeSession: ObservableObject {
     init(credentialsForTesting: LAABridgeCredentials) {
         self.keychain = .init()
         self.client = .init()
+        self.readCredentials = { nil }
         self.credentials = credentialsForTesting
         self.status = .paired
     }
@@ -39,6 +45,25 @@ final class LAABridgeSession: ObservableObject {
 
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
     var deviceID: String? { credentials?.deviceID }
+
+    /// A background launch can encounter protected Keychain data while locked.
+    /// Retry only a missing or unreadable local item: an explicit 401/revocation
+    /// must never be converted back to paired without a new enrollment.
+    func retryReadingCredentialsIfNeeded() {
+        guard status == .keychainError || status == .unpaired else { return }
+        do {
+            let loaded = try readCredentials()
+            let next: Status = loaded == nil ? .unpaired : .paired
+            guard next != status || loaded != credentials else { return }
+            credentials = loaded
+            status = next
+            revision += 1
+        } catch {
+            guard status != .keychainError else { return }
+            status = .keychainError
+            revision += 1
+        }
+    }
 
     func driveRange(path: String, offset: Int64, length: Int, expectedVersion: String? = nil,
                     timeout: TimeInterval? = nil) async throws -> LAADriveRangeResponse {
