@@ -138,6 +138,7 @@ targets:
             --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
   ConduitWatch:
     sources:
+      - path: Conduit/LAA/Staff/StaffAssets.swift
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAAColorValues.swift
@@ -178,6 +179,10 @@ targets:
           /usr/libexec/PlistBuddy -c "Set :CFBundleName LAA Watch" "$SCRIPT_OUTPUT_FILE_0"
           /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription LAA uses the microphone to talk with Ciel from your wrist." "$SCRIPT_OUTPUT_FILE_0"
     postBuildScripts:
+      - name: LAA watch staff avatars
+        basedOnDependencyAnalysis: false
+        script: |
+          "$SRCROOT/scripts/laa/watch-staff-avatars.sh"
       - name: Brand LAA watch resources
         basedOnDependencyAnalysis: false
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]

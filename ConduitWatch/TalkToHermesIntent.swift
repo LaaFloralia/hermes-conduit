@@ -16,7 +16,7 @@ import Foundation
 struct TalkToHermesIntent: AppIntent {
     #if LAA_BUILD
     static let title: LocalizedStringResource = "Talk to LAA"
-    static let description = IntentDescription("Starts a voice call to LAA on your Watch.")
+    static let description = IntentDescription("Opens LAA Voice on your Watch.")
     #else
     static let title: LocalizedStringResource = "Talk to Hermes"
     static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
@@ -47,7 +47,7 @@ struct TalkToHermesIntent: AppIntent {
 struct OpenTalkToHermesIntent: OpenIntent {
     #if LAA_BUILD
     static let title: LocalizedStringResource = "Talk to LAA"
-    static let description = IntentDescription("Starts a voice call to LAA on your Watch.")
+    static let description = IntentDescription("Opens LAA Voice on your Watch.")
     #else
     static let title: LocalizedStringResource = "Talk to Hermes"
     static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")

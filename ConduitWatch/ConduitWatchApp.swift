@@ -24,7 +24,11 @@ struct ConduitWatchApp: App {
         // waits on its PushKit registry.
         HermesWatchCalls.shared.activate()
         // The Action button, a control or a shortcut (TalkToHermesIntent).
+        #if LAA_BUILD
+        WatchCallRequests.handler = { _ in LAAWatchVoice.shared.openDefault() }
+        #else
         WatchCallRequests.handler = { WatchVoiceCall.shared.requestCall(source: $0) }
+        #endif
         WatchVoiceCall.shared.applyScreenshotFixture()
     }
 
@@ -35,11 +39,20 @@ struct ConduitWatchApp: App {
                 .environmentObject(link)
                 .onOpenURL { url in
                     // The watch face complication.
-                    if WatchCallURL.isTalk(url) { call.requestCall(source: "complication") }
+                    if WatchCallURL.isTalk(url) {
+                        #if LAA_BUILD
+                        LAAWatchVoice.shared.openDefault()
+                        #else
+                        call.requestCall(source: "complication")
+                        #endif
+                    }
                 }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             call.scenePhaseChanged(phase)
+            #if LAA_BUILD
+            if phase == .active { LAAWatchVoice.shared.resumePending() }
+            #endif
             // A suspended app sends nothing: the call log's waiting lines
             // go first.
             if phase == .background { WatchCallLog.shared.sendBatch() }
@@ -60,7 +73,11 @@ struct WatchRootView: View {
                     .transition(.opacity)
             } else {
                 NavigationStack {
+                    #if LAA_BUILD
+                    LAAWatchHome()
+                    #else
                     WatchHomeView()
+                    #endif
                 }
                 .transition(.opacity)
             }

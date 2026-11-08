@@ -24,6 +24,31 @@ final class WatchLink: ObservableObject {
     /// Every reachable ↔ unreachable change since launch.
     private(set) var reachabilityChanges = 0
 
+    #if LAA_BUILD
+    @Published private(set) var askState: LAAWatchAsk.State?
+    @Published private(set) var askSignal: String?
+
+    func transferAsk(_ url: URL, request: LAAWatchAsk.Request) -> Bool {
+        guard WCSession.default.activationState == .activated else { return false }
+        WCSession.default.transferFile(url, metadata: LAAWatchAsk.fileMetadata(request))
+        return true
+    }
+
+    fileprivate func receivedAsk(_ message: WatchVoiceWire.Message?) {
+        if case .laaAskState(let state) = message { askState = state }
+    }
+
+    fileprivate func receivedAskSignal(_ message: WatchVoiceWire.Message?) {
+        if case .laaAskState(let state) = message { askSignal = state.requestID }
+    }
+
+    fileprivate func finishedAskFile(_ url: URL, request: LAAWatchAsk.Request?, error: Error?) {
+        guard let request, url.lastPathComponent == "laa-voice-\(request.requestID).pcm" else { return }
+        try? FileManager.default.removeItem(at: url)
+        if error != nil { NotificationCenter.default.post(name: .laaWatchTransferFailed, object: request.requestID) }
+    }
+    #endif
+
     private let proxy = SessionDelegateProxy()
 
     private init() {}
@@ -133,5 +158,33 @@ private final class SessionDelegateProxy: NSObject, WCSessionDelegate {
     // and dropped.
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         replyHandler([:])
+        #if LAA_BUILD
+        let decoded = WatchVoiceWire.decode(message)
+        WatchVoiceMain.async { [weak self] in self?.link?.receivedAsk(decoded) }
+        #endif
     }
+
+    #if LAA_BUILD
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        let decoded = WatchVoiceWire.decode(message)
+        WatchVoiceMain.async { [weak self] in self?.link?.receivedAsk(decoded) }
+    }
+
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        let decoded = WatchVoiceWire.decode(userInfo)
+        WatchVoiceMain.async { [weak self] in self?.link?.receivedAskSignal(decoded) }
+    }
+
+    func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+        let url = fileTransfer.file.fileURL
+        let request = LAAWatchAsk.request(fromMetadata: fileTransfer.file.metadata)
+        WatchVoiceMain.async { [weak self] in self?.link?.finishedAskFile(url, request: request, error: error) }
+    }
+    #endif
 }
+
+#if LAA_BUILD
+extension Notification.Name {
+    static let laaWatchTransferFailed = Notification.Name("laaWatchTransferFailed")
+}
+#endif

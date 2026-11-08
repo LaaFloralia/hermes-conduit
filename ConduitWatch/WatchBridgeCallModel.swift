@@ -131,6 +131,9 @@ final class WatchBridgeCallModel: ObservableObject {
     private var openingTurn: String?
     /// The call from Hermes this call answers.
     private var ring: String?
+    #if LAA_BUILD
+    var laaProfile: String?
+    #endif
     /// Answered from the call screen, where the link to the iPhone is down:
     /// the iPhone's answer comes through the relay too (HermesRingHandoff).
     private var answer: HermesRingAnswer?
@@ -508,7 +511,12 @@ final class WatchBridgeCallModel: ObservableObject {
         sessionRequests += 1
         let id = callID
         if sessionRequests == 1, let answer { fetchHandoff(answer) }
-        link.send(Self.startRequest(callID: id, ring: ring), reply: { [weak self] answer in
+        #if LAA_BUILD
+        let request: WatchVoiceWire.Message = laaProfile.map { .bridgeStartFor(callID: id, version: WatchVoiceWire.version, engine: Self.engine, profile: $0) } ?? Self.startRequest(callID: id, ring: ring)
+        #else
+        let request = Self.startRequest(callID: id, ring: ring)
+        #endif
+        link.send(request, reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             self.sessionAnswered(answer)
         }, failure: { [weak self] error in

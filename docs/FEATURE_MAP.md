@@ -4176,3 +4176,22 @@ Google data remains a signed-build gate.
 - Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column tops out at 460 UIKit points (about 354 Mac points), which no four-column row fits.
 
 **Checked:** 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
+
+## LAA Watch employee voice
+
+**Siblings:** Watch employee list and call · Watch LAA Voice recording and text · iPhone Chat · voice transcription · Action button, Siri and complication · employee avatars
+
+**Code**
+- Watch screens and recorder: `ConduitWatch/LAA/LAAWatchViews.swift`, `ConduitWatch/LAA/LAAWatchVoice.swift`, `ConduitWatch/WatchLink.swift`
+- Employee calls: `ConduitWatch/WatchVoiceCall.swift`, `ConduitWatch/WatchBridgeCallModel.swift`, `ConduitWatch/WatchCallView.swift`
+- Shared wire: `Shared/WatchVoice/LAAWatchAsk.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- Actions and images: `ConduitWatch/TalkToHermesIntent.swift`, `scripts/laa/watch-staff-avatars.sh`
+
+**Rulings**
+- LAA Voice sends the unpolished transcription to Chat. A named employee call uses GPT-Live; the Watch's default Talk allows the iPhone to route a leading employee name.
+- Audio is limited to 25 seconds and transferred as 16 kHz mono PCM16; a final state or the 90-second timeout stops status polling.
+
+**Open gaps**
+- Watch simulator build, snapshots and paired-device acceptance are pending.
+
+**Checked:** 2026-11-08, LAA laa/apple-watch, based on b01a62d9 (implementation; build and paired-device verification pending).
