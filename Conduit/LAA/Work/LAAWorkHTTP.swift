@@ -83,7 +83,7 @@ enum LAAWorkHTTP {
             return "前の要求の結果を確認できません。同じIDの状態を確認してください。"
         case "profile_unsupported": return "このプロファイルは利用できません。名前を確認してください。"
         case "effort_unsupported": return "このMacでは推論設定を開始後に変更できません。"
-        case "effort_rejected": return "推論設定を変更できませんでした。Paseoの状態を確認してください。"
+        case "effort_rejected": return "推論設定を変更できませんでした。Workの状態を確認してください。"
         case "effort_not_applied": return "推論設定の変更を確認できませんでした。現在値を読み直してください。"
         case "request_id_conflict", "idempotency_key_conflict": return "要求IDが別の内容と衝突しました。状態を確認してください。"
         default: return error.legacyError.japaneseText

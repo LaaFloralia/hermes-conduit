@@ -21,11 +21,15 @@ enum LAAProductBrand {
         #if LAA_BUILD
         return value.replacingOccurrences(of: "Hermes Conduit", with: "LAA")
             .replacingOccurrences(of: "Conduit-chan", with: "Ciel")
-            .replacingOccurrences(of: "Conduit plugin", with: "connection service")
-            .replacingOccurrences(of: "Hermes server", with: "Mac")
-            .replacingOccurrences(of: "Hermes host", with: "Mac")
+            .replacingOccurrences(of: "Conduit plugin", with: "LAA plugin")
+            .replacingOccurrences(of: "Conduitプラグイン", with: "LAAの連携プラグイン")
+            .replacingOccurrences(of: "Hermes gateway", with: "LAA background service")
+            .replacingOccurrences(of: "Hermes server", with: "LAA server")
+            .replacingOccurrences(of: "Hermes host", with: "LAA host")
             .replacingOccurrences(of: "Conduit", with: "LAA")
-            .replacingOccurrences(of: "Hermes", with: "Ciel")
+            .replacingOccurrences(of: "Hermes", with: "LAA")
+            .replacingOccurrences(of: "Paseo", with: "Work")
+            .replacingOccurrences(of: "パセオ", with: "Work")
         #else
         return value
         #endif

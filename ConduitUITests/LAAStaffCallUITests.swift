@@ -29,7 +29,7 @@ final class LAAStaffCallUITests: XCTestCase {
     }
 
     func testEmployeeVoiceSettingAndCall() {
-        let app = launch()
+        let app = launch("-AppleLanguages", "(en)", "-conduit.appLanguage", "en")
         XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 10))
         app.buttons["laa.employee.header"].tap()
         let picker = app.descendants(matching: .any)["laa.employee.voice-setting"]
@@ -39,7 +39,8 @@ final class LAAStaffCallUITests: XCTestCase {
         let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Juniper")).firstMatch
         XCTAssertTrue(choice.waitForExistence(timeout: 5))
         choice.tap()
-        app.buttons["閉じる"].tap()
+        // The gate uses an English simulator; the sheet localizes its close label.
+        app.buttons["Close"].tap()
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.staticTexts["laa.call.engine"].waitForExistence(timeout: 10))
         attachScreenshot(name: "employee-gpt-live-call")
