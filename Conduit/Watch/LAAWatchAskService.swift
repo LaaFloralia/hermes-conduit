@@ -6,7 +6,8 @@ import WatchConnectivity
 enum LAAWatchAskRouting {
     // Aliases describe names, not profile IDs; the current staff list owns identities.
     static let aliases: [String: [String]] = [
-        "Ciel": ["シエル"], "Monet": ["モネット", "モネ"], "Argus": ["アーガス"],
+        // シエル: the secretary's name before she became Monet (2026-11-08).
+        "Monet": ["モネット", "モネ", "シエル", "Ciel"], "Argus": ["アーガス"],
         "Morgan": ["モーガン"], "Sherlock": ["シャーロック"], "Merlin": ["マーリン"],
         "Talos": ["タロス"], "Ada": ["エイダ"]
     ]

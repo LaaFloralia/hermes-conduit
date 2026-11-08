@@ -16,6 +16,9 @@ final class LAAWatchAskTests: XCTestCase {
         let chosen = try XCTUnwrap(LAAWatchAskRouting.route("アーガスに本文", profile: expected))
         XCTAssertEqual(chosen.text, "アーガスに本文")
         XCTAssertNil(LAAWatchAskRouting.route("本文", profile: "unknown"))
+        XCTAssertEqual(LAAWatchAskRouting.route("シエルに本文", profile: nil)?.profile, "laa-monet")
+        XCTAssertEqual(LAAWatchAskRouting.route("モネ無検閲に本文", profile: nil)?.profile, "laa-monet-uncensored")
+        XCTAssertEqual(LAAWatchAskRouting.route("モネットさん、本文", profile: nil)?.profile, "laa-monet")
     }
 
     func testRequestAudioLimitsAndPhaseMapping() {
