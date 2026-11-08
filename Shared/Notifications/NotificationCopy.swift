@@ -14,7 +14,8 @@ enum NotificationCopy {
     static func redactedApprovalBody(_ body: String) -> String {
         #if LAA_BUILD
         if body == "Hermes needs your approval. Open Conduit for details." {
-            return "Ciel needs your approval. Open LAA for details."
+            return AppLocalization.string("Hermes is waiting for your approval.") + " "
+                + AppLocalization.string("Tap to review it in Conduit.")
         }
         #endif
         return body

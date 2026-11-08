@@ -3043,7 +3043,7 @@ private struct SlashSuggestionsOverlay: View {
 
                             // Category badge
                             if let category = cmd.category, !category.isEmpty {
-                                Text(category)
+                                Text(category == "Hermes" ? AppLocalization.string("Hermes") : category)
                                     .font(.system(size: categoryBadgeSize, weight: .medium))
                                     .foregroundStyle(.conduitAccent)
                                     .padding(.horizontal, 6)

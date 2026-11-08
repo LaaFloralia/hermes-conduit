@@ -65,28 +65,29 @@ def validate_bundle_name(value):
 
 
 def display(value, source_key=None, locale="en"):
-    # Agent and connection are different things. Keep each translation and
-    # its format arguments; only replace the product names in display values.
+    if source_key in {"Conduit profile", "LAA profile"} and locale == "ja":
+        return "AI社員"
+    # Transform app-owned display values only; lookup keys remain upstream's.
     for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Ciel"),
-                     ("Conduit notifier plugin", "connection service"),
-                     ("Conduit plugin", "connection service"),
-                     ("Hermes notifier plugin", "connection service"),
-                     ("Hermes Desktop", "desktop app"),
-                     ("Update Hermes", "Update the connection service"),
-                     ("restart Hermes", "restart the connection service"),
-                     ("Hermes server", "Mac"), ("Hermes host", "Mac"),
-                     ("Hermes gateway", "Mac"), ("Hermes dashboard", "Mac"),
-                     ("Hermes installation", "Mac"), ("Hermesサーバー", "Mac"),
-                     ("Conduit", "LAA")):
+                     ("Conduit notifier plugin", "LAA plugin"),
+                     ("Conduit plugin", "LAA plugin"),
+                     ("Hermes notifier plugin", "LAA plugin"),
+                     ("Conduit プラグイン", "LAAの連携プラグイン"),
+                     ("Conduitプラグイン", "LAAの連携プラグイン"),
+                     ("Hermes プラグイン", "LAAの連携プラグイン"),
+                     ("Hermesプラグイン", "LAAの連携プラグイン"),
+                     ("Hermes gateway", "LAA background service"),
+                     ("Hermesのgateway", "LAAの常駐サービス"),
+                     ("Hermesゲートウェイ", "LAAの常駐サービス"),
+                     ("Hermes profile", "AI employee"),
+                     ("Conduit profile", "AI employee"),
+                     ("LAA profile", "AI employee"),
+                     ("Hermesのプロファイル", "AI社員"),
+                     ("Hermesプロファイル", "AI社員"),
+                     ("Hermes cron", "scheduled runs"),
+                     ("Hermes", "LAA"), ("Conduit", "LAA"),
+                     ("Paseo", "Work"), ("パセオ", "Work")):
         value = value.replace(old, new)
-    # The key gives context to translated strings whose word order differs.
-    # Other occurrences address the agent, Ciel.
-    # English phrases above already identify the connection. A remaining
-    # occurrence can name the agent even in a sentence that also names the
-    # server. Translations may reverse their word order, so retain their
-    # source-key context where the English phrase was not present verbatim.
-    connection = locale != "en" and source_key and re.search(r"Hermes (?:server|host|gateway|dashboard|installation)", source_key, re.I)
-    value = value.replace("Hermes", "Mac" if connection else "Ciel")
     return value
 
 
@@ -117,6 +118,18 @@ def values_only(value, source_key=None, locale="en"):
         # The Watch error keeps its translated text and any format argument.
         value = value.replace("conduit_push", "Mac")
     return value if is_identifier(value) else display(value, source_key, locale)
+
+
+def display_aliases(values):
+    # App Intents metadata needs LAA literals before the resource build phase.
+    # Reuse each upstream translation for those fork-only keys, keeping the
+    # original lookup keys and any explicit LAA translation.
+    aliases = dict(values)
+    for key, value in values.items():
+        alias = display(key)
+        if alias != key and not is_identifier(key):
+            aliases.setdefault(alias, value)
+    return aliases
 
 
 def read_plist(path):
@@ -197,22 +210,41 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
                     continue
                 data = read_plist(path)
                 with path.open("wb") as stream:
-                    plistlib.dump(values_only(data, locale=directory.stem), stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
+                    plistlib.dump(display_aliases(values_only(data, locale=directory.stem)), stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
 
     # String catalogs omit untranslated source-language entries from en.lproj.
     # Without explicit English values, Foundation displays the original key.
-    catalog_path = source / ("ConduitWatch/Localizable.xcstrings"
-                             if kind in ("watch", "watch-widget") else "Conduit/Localizable.xcstrings")
-    catalog = json.loads(catalog_path.read_text())["strings"]
+    catalog_dir = source / ("ConduitWatch" if kind in ("watch", "watch-widget") else "Conduit")
     english_dir = resources / "en.lproj"
     english_dir.mkdir(parents=True, exist_ok=True)
-    english_path = english_dir / "Localizable.strings"
-    english = read_plist(english_path) if english_path.exists() else {}
-    for key in catalog:
-        if ("Conduit" in key or "Hermes" in key or key in STATIC_COPY_KEYS or key in MAC_ONLY_KEYS) and key not in english:
-            english[key] = values_only({key: key})[key]
-    with english_path.open("wb") as stream:
-        plistlib.dump(english, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
+    for catalog_path in catalog_dir.glob("*.xcstrings"):
+        if catalog_path.stem == "InfoPlist":
+            continue
+        catalog = json.loads(catalog_path.read_text())["strings"]
+        english_path = english_dir / (catalog_path.stem + ".strings")
+        english = read_plist(english_path) if english_path.exists() else {}
+        for key in catalog:
+            if (re.search(r"Conduit|Hermes|Paseo|パセオ", key)
+                    or key in STATIC_COPY_KEYS or key in MAC_ONLY_KEYS) and key not in english:
+                english[key] = values_only({key: key})[key]
+        with english_path.open("wb") as stream:
+            plistlib.dump(display_aliases(english), stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
+
+    # Siri phrases must contain the applicationName token. Reuse the existing
+    # short action translations so they say "Ask LAA", not "Ask LAA in LAA".
+    for directory in resources.glob("*.lproj"):
+        shortcuts_path = directory / "AppShortcuts.strings"
+        if not shortcuts_path.exists():
+            continue
+        shortcuts = read_plist(shortcuts_path)
+        local_path = directory / "Localizable.strings"
+        translations = {**(read_plist(local_path) if local_path.exists() else {}), **shortcuts}
+        for original in ("Ask Hermes", "Send to Hermes"):
+            if original in translations:
+                key = display(original).replace("LAA", "${applicationName}")
+                shortcuts.setdefault(key, translations[original].replace("LAA", "${applicationName}"))
+        with shortcuts_path.open("wb") as stream:
+            plistlib.dump(shortcuts, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
 
 
 def main():

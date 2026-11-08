@@ -48,7 +48,19 @@ final class LAABuildBrandTests: XCTestCase {
         XCTAssertEqual(DashboardTicketBridgeError.answeredAfterSwitch.errorDescription, LAACopy.macConnectingBody)
         XCTAssertEqual(LAAProductBrand.display("Open Conduit"), "Open LAA")
         XCTAssertEqual(LAAProductBrand.display("Open LAA"), "Open LAA")
-        XCTAssertEqual(LAAProductBrand.display("the Conduit plugin"), "the connection service")
+        XCTAssertEqual(LAAProductBrand.display("Talk to Hermes"), "Talk to LAA")
+        XCTAssertEqual(LAAProductBrand.display("Paseoの状態"), "Workの状態")
+        XCTAssertEqual(LAAProductBrand.display("Ciel"), "Ciel")
+        XCTAssertEqual(LAAProductBrand.display("the Conduit plugin"), "the LAA plugin")
+    }
+
+    func testJapaneseIntentAliasesAndEnglishCallCopyUseLAA() {
+        XCTAssertEqual(AppLocalization.string("Tell LAA", language: .localization("ja")), "LAAに伝える")
+        XCTAssertEqual(AppLocalization.string("LAA profile", language: .localization("ja")), "AI社員")
+        XCTAssertEqual(AppLocalization.string("Calls from Hermes", language: .localization("en")), "Calls from LAA")
+        XCTAssertEqual(AppLocalization.string("Ask Hermes", table: "AppShortcuts", language: .localization("en")), "Ask LAA")
+        XCTAssertEqual(AppLocalization.string("Hermes wants to talk", language: .localization("ja")), "LAAが話したがっています")
+        XCTAssertEqual(AppLocalization.string("Tap to talk to Hermes.", language: .localization("ja")), "タップしてLAAと話す")
     }
 
     func testTheRedactedApprovalKeepsTheNotifiersTextAndIsBrandedForDisplay() {
@@ -56,7 +68,7 @@ final class LAABuildBrandTests: XCTestCase {
         XCTAssertEqual(AppState.redactedApprovalPushDescription,
                        "Hermes needs your approval. Open Conduit for details.")
         XCTAssertEqual(NotificationCopy.redactedApprovalBody(AppState.redactedApprovalPushDescription),
-                       "Ciel needs your approval. Open LAA for details.")
+                       "LAA is waiting for your approval. Tap to review it in LAA.")
         let prefixed = "Conduit: " + AppState.redactedApprovalPushDescription
         XCTAssertEqual(NotificationCopy.redactedApprovalBody(prefixed), prefixed)
         XCTAssertEqual(NotificationCopy.redactedApprovalBody("Hermes asked about Conduit."), "Hermes asked about Conduit.")

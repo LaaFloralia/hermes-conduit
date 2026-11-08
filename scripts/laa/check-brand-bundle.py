@@ -20,7 +20,7 @@ REQUIRED = {APP_ID, APP_ID + ".widgets", APP_ID + ".ShareExtension",
             APP_ID + ".watchkitapp.widgets"}
 MAC_REQUIRED = {APP_ID, APP_ID + ".NotificationService"}
 INTENTS = {APP_ID, APP_ID + ".watchkitapp", APP_ID + ".watchkitapp.widgets"}
-BRAND = re.compile(r"Conduit|Hermes", re.I)
+BRAND = re.compile(r"Conduit|Hermes|Paseo|パセオ", re.I)
 NOTICE_NAME = "LAAOpenSourceNotices.txt"
 NOTICE_SOURCE = Path(__file__).resolve().parents[2] / "assets/laa" / NOTICE_NAME
 
