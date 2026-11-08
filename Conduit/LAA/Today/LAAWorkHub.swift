@@ -11,15 +11,16 @@ struct LAAWorkHub: View {
     // The Usage tab keeps its own state: Work opens it rarely, and the screen
     // refreshes on appear. The shell's instance keeps the main Usage tab.
     @StateObject private var usageState = LAAUsageState()
-    @State private var section: Section = .priority
+    @State private var section: Section = .tasks
     @State private var showPairing = false
+    /// The phone's one search: it filters whichever section is showing.
+    @State private var search = ""
 
     enum Section: String, CaseIterable, Identifiable {
-        case priority, tasks, sessions, projects, routines, skills, usage
+        case tasks, sessions, projects, routines, skills, usage
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .priority: AppLocalization.string("Work priorities")
             case .tasks: AppLocalization.string("Tasks")
             case .sessions: AppLocalization.string("Sessions")
             case .projects: AppLocalization.string("Projects")
@@ -30,7 +31,6 @@ struct LAAWorkHub: View {
         }
         var desktopTitle: String {
             switch self {
-            case .priority: AppLocalization.string("Priority")
             case .tasks: AppLocalization.string("Tasks")
             case .sessions: AppLocalization.string("Sessions")
             case .projects: AppLocalization.string("Projects")
@@ -79,16 +79,19 @@ struct LAAWorkHub: View {
                 connectionState
             } else {
                 switch section {
-                case .priority, .tasks:
-                    LAALinearTasksView(drafts: drafts, priorityOnly: section == .priority)
-                case .sessions: LAAWorkView(embeddedSection: 0, onRequestSettings: onRequestSettings)
-                case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings)
-                case .routines: LAAWorkCatalogView(kind: .routines).id(section)
-                case .skills: LAAWorkCatalogView(kind: .skills).id(section)
+                case .tasks: LAALinearTasksView(drafts: drafts, query: search)
+                case .sessions: LAAWorkView(embeddedSection: 0, onRequestSettings: onRequestSettings, query: search)
+                case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings, query: search)
+                case .routines: LAAWorkCatalogView(kind: .routines, query: search).id(section)
+                case .skills: LAAWorkCatalogView(kind: .skills, query: search).id(section)
                 case .usage: LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                 }
             }
         }
+        // One native search for the whole hub, as the standard drawer under
+        // the title. Usage has nothing to filter, so it carries no field.
+        .modifier(LAAWorkSearchField(enabled: section != .usage, text: $search))
+        .onChange(of: section) { _, _ in search = "" }
     }
 
     private var desktopBody: some View {
@@ -145,8 +148,7 @@ struct LAAWorkHub: View {
 
     @ViewBuilder private var desktopSection: some View {
         switch section {
-        case .priority: LAALinearTasksView(drafts: drafts, priorityOnly: true)
-        case .tasks: LAALinearTasksView(drafts: drafts, priorityOnly: false)
+        case .tasks: LAALinearTasksView(drafts: drafts)
         case .sessions: LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0)
         case .projects: LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0)
         case .routines: LAAWorkDesktopCatalogView(kind: .routines)
@@ -191,6 +193,20 @@ struct LAAWorkHub: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(value == section ? .isSelected : [])
         .accessibilityIdentifier("work.section.\(value.rawValue)")
+    }
+}
+/// The phone's search as the system drawer, present only on the list
+/// sections. Applied as one modifier so the toolbar keeps its buttons.
+private struct LAAWorkSearchField: ViewModifier {
+    let enabled: Bool
+    @Binding var text: String
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always))
+        } else {
+            content
+        }
     }
 }
 #endif

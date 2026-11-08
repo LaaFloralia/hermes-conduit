@@ -12,7 +12,8 @@ final class LAAShellNavigationUITests: XCTestCase {
         for name in ["Chat", "Today", "Doc", "Studio", "Work"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
-        XCTAssertTrue(app.buttons["work.section.priority"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["work.section.tasks"].isSelected)
         app.buttons["Doc"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
