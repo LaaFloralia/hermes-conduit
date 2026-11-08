@@ -795,6 +795,44 @@ remains the wide-window check. iPhone classes are delegated to the integrated
 gate.
 
 
+## LAA decision board
+
+The LAA Work hub's first section, 判断 (`Decisions`), lists what agents are waiting for the owner to decide: records an agent posted with `laa-bridge decide add`, and Paseo conversations whose own question is pending. A row reads as what to decide, with one quiet line for the source, the deadline and the recommended choice. The detail offers large choices with the recommended one first and a free answer; the answer goes back to the conversation that asked, with a short confirmation when it arrives. An answer that did not arrive stays on the board marked 届いていません with a retry.
+
+**Siblings:** the Bridge decision store, delivery and CLI · the session decision
+read and reply (`LAAWorkSessionDecision`) · Work hub pills and links · owner
+notifications (`decision.new`, `decision.failed`, deep link) · Mac Work sections
+
+**Code**
+- App: `Conduit/LAA/Work/Decisions/LAADecisionModels.swift`, `Conduit/LAA/Work/Decisions/LAADecisionBoard.swift`,
+  `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/Decisions/LAADecisionDetailView.swift`,
+  `Conduit/LAA/Work/Decisions/LAADecisionCelebration.swift`; hub section and pill count: `Conduit/LAA/Today/LAAWorkHub.swift`;
+  links `laa://work/decisions[/<id>]`: `Conduit/LAA/Work/LAAWorkSessionCache.swift`; native questions reuse
+  `Conduit/LAA/Work/LAAWorkSessionDecision.swift`
+- Bridge: `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/routes/decisions.mjs`,
+  `bridge/src/cli-decisions.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md`; design: `docs/laa/DESIGN.md`
+- Tests: `ConduitTests/LAADecisionTests.swift`, `ConduitTests/LAADecisionSnapshotTests.swift`,
+  `ConduitUITests/LAADecisionUITests.swift`, `scripts/laa/work-ui-fixture.mjs`, `bridge/test/decisions.test.mjs`
+
+**Rulings**
+- One Bridge client and one reply path: board answers post to `/v1/decisions/:id/answer` and `/retry` with the
+  request ID kept until the outcome is known; native questions use the existing session decision endpoints.
+- `ref` and `sourceRef` may be null until the refs work merges; the row then shows the conversation name alone.
+- The board is chosen as the hub's first section only when it has items on the first read, and never after the
+  owner or a link chose another section. A Bridge without the route (404) shows 「Macのアップデート待ち」.
+- The confirmation is one checkmark, a success haptic and one line; Reduce Motion keeps it to a fade. No glow,
+  confetti or new colours.
+
+**Open gaps**
+- The Mac window shows the board through the same view, without its own desktop list/detail layout.
+- The pill count refreshes when the hub appears or the board is pulled; there is no push-driven refresh yet.
+- A native question's detail shows the existing session reply card, not the board's large choice cards.
+
+**Checked:** 2026-11-08, daae3647 (laa/decisions-app-1108 base). On LAA 16 Pro Max: LAADecisionTests 8,
+LAADecisionSnapshotTests 2 (list, detail, chosen, empty, undelivered, older Mac, offline and sent at 440 × 956 pt,
+light and dark), LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal
+Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
+
 ## Voice beside the tabs
 
 The gold button beside the tab bar, and where voice goes when it is swapped

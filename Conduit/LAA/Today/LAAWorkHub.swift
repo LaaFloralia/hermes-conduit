@@ -11,14 +11,16 @@ struct LAAWorkHub: View {
     // The Usage tab keeps its own state: Work opens it rarely, and the screen
     // refreshes on appear. The shell's instance keeps the main Usage tab.
     @StateObject private var usageState = LAAUsageState()
+    @StateObject private var decisions = LAADecisionBoard()
     @State private var section: Section = .priority
     @State private var showPairing = false
 
     enum Section: String, CaseIterable, Identifiable {
-        case priority, tasks, sessions, projects, routines, skills, usage
+        case decisions, priority, tasks, sessions, projects, routines, skills, usage
         var id: String { rawValue }
         var title: String {
             switch self {
+            case .decisions: AppLocalization.string("Decisions")
             case .priority: AppLocalization.string("Work priorities")
             case .tasks: AppLocalization.string("Tasks")
             case .sessions: AppLocalization.string("Sessions")
@@ -30,6 +32,7 @@ struct LAAWorkHub: View {
         }
         var desktopTitle: String {
             switch self {
+            case .decisions: AppLocalization.string("Decisions")
             case .priority: AppLocalization.string("Priority")
             case .tasks: AppLocalization.string("Tasks")
             case .sessions: AppLocalization.string("Sessions")
@@ -48,6 +51,7 @@ struct LAAWorkHub: View {
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
             let url = linkRequest.url
             if url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
+            if linkRequest.decisionsLink { section = .decisions; decisions.choseDefaultSection = true; decisions.linkedID = linkRequest.decisionTarget }
         }
         .background(LAAColor.background.ignoresSafeArea())
         .foregroundStyle(LAAColor.text)
@@ -58,6 +62,7 @@ struct LAAWorkHub: View {
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+        .task(id: bridge.revision) { if await decisions.loadForDefaultSection(bridge) { section = .decisions } }
     }
 
     private var phoneBody: some View {
@@ -79,6 +84,7 @@ struct LAAWorkHub: View {
                 connectionState
             } else {
                 switch section {
+                case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
                 case .priority, .tasks:
                     LAALinearTasksView(drafts: drafts, priorityOnly: section == .priority)
                 case .sessions: LAAWorkView(embeddedSection: 0, onRequestSettings: onRequestSettings)
@@ -145,6 +151,7 @@ struct LAAWorkHub: View {
 
     @ViewBuilder private var desktopSection: some View {
         switch section {
+        case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
         case .priority: LAALinearTasksView(drafts: drafts, priorityOnly: true)
         case .tasks: LAALinearTasksView(drafts: drafts, priorityOnly: false)
         case .sessions: LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0)
@@ -181,7 +188,7 @@ struct LAAWorkHub: View {
 
     private func pillButton(_ value: Section) -> some View {
         Button { section = value } label: {
-            Text(verbatim: value.title)
+            LAADecisionPillTitle(title: value.title, count: value == .decisions ? decisions.count : 0)
                 .laaTextStyle(.secondary)
                 .fontWeight(value == section ? .semibold : .regular)
                 .foregroundStyle(value == section ? LAAColor.link : LAAColor.secondaryText)
