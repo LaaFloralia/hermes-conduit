@@ -3,7 +3,7 @@ extension LAACopy {
     static let chatsTitle = "Chats"
     static let chatsSearch = "Search conversations"
     static let chatsNew = "New chat"
-    static let chatsCiel = "Ciel"
+    static let chatsMonet = "Monet"
     static let chatsEmployees = "Employees"
     static let chatsGroups = "Groups"
     static let chatsNewGroup = "New group"

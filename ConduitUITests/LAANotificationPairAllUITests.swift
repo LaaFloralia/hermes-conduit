@@ -22,7 +22,7 @@ final class LAANotificationPairAllUITests: XCTestCase {
         XCTAssertFalse(pair.isEnabled)
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: retry)
         XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 15), .completed)
-        let retried = app.descendants(matching: .any)["notifications.pair-all.result.laa-cmo"]
+        let retried = app.descendants(matching: .any)["notifications.pair-all.result.laa-monet"]
         let done = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "済"), object: retried)
         XCTAssertEqual(XCTWaiter.wait(for: [done], timeout: 15), .completed)
         XCTAssertTrue(pair.isEnabled)

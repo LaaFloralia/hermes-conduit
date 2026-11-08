@@ -90,7 +90,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
             return
         }
         name.tap(); name.typeText("Planning")
-        app.buttons["groups.employee.laa-ciel"].tap()
+        app.buttons["groups.employee.laa-monet"].tap()
         app.buttons["groups.employee.laa-cto"].tap()
         let submit = app.buttons["groups.create.submit"]
         XCTAssertTrue(submit.isEnabled)
@@ -100,7 +100,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         let add = app.buttons["groups.member.add"]
         XCTAssertTrue(add.waitForExistence(timeout: 5))
         XCTAssertFalse(add.isEnabled)
-        XCTAssertFalse(app.buttons["groups.member.remove.laa-ciel"].isEnabled)
+        XCTAssertFalse(app.buttons["groups.member.remove.laa-monet"].isEnabled)
         XCTAssertTrue(app.staticTexts["この接続先には参加者を追加・削除する機能がありません。"].exists)
         let rename = app.textFields["groups.rename.name"]
         rename.tap()

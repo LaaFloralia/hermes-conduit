@@ -35,13 +35,13 @@ final class LAAChatDesignTests: XCTestCase {
     }
 
     func testLinkIndicatorsKeepCopiesAndMentionsIntact() throws {
-        let source = NSMutableAttributedString(string: "Read Notes, then News and @Ciel.")
+        let source = NSMutableAttributedString(string: "Read Notes, then News and @Monet.")
         let plain = source.string as NSString
         source.addAttribute(.link, value: try XCTUnwrap(URL(string: "https://example.com/notes")), range: plain.range(of: "Notes"))
         source.addAttribute(.link, value: try XCTUnwrap(URL(string: "https://example.com/news")), range: plain.range(of: "News"))
-        source.addAttribute(.link, value: try XCTUnwrap(URL(string: "conduit-mention://agent/ciel")), range: plain.range(of: "@Ciel"))
+        source.addAttribute(.link, value: try XCTUnwrap(URL(string: "conduit-mention://agent/monet")), range: plain.range(of: "@Monet"))
         let displayed = LAALinkDecoration.addingIndicators(to: source)
-        XCTAssertEqual(displayed.string, "Read Notes ↗, then News ↗ and @Ciel.")
+        XCTAssertEqual(displayed.string, "Read Notes ↗, then News ↗ and @Monet.")
         XCTAssertEqual(MarkdownProseRun.copyableText(displayed).string, source.string)
         let arrowRange = (displayed.string as NSString).range(of: "↗")
         XCTAssertEqual(displayed.attribute(.link, at: arrowRange.location, effectiveRange: nil) as? URL,

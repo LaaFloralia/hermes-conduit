@@ -111,17 +111,17 @@ class LAABrandCheckTests(unittest.TestCase):
     def test_generated_shortcut_yaml_checks_titles_and_utterances(self):
         yaml = self.app / "Metadata.appintents/root.ssu.yaml"
         safe = ("apiVersion: ssu/v1\nnlu:\n  shortcuts:\n    intents:\n"
-                "    - metadata:\n        name: SendToHermesIntent_1\n        title: Talk to Ciel\n"
+                "    - metadata:\n        name: SendToHermesIntent_1\n        title: Talk to Monet\n"
                 "      corpuses:\n        training:\n        - locale: en\n          utterances:\n"
                 "          - Talk to ${ConduitProfileEntity} in ${+applicationName}\n"
                 "- name: ConduitProfileEntity\n")
         yaml.write_text(safe)
         self.assertEqual(checker.check_bundle(self.app), [])
-        yaml.write_text(safe.replace("title: Talk to Ciel", "title: Talk to Hermes"))
+        yaml.write_text(safe.replace("title: Talk to Monet", "title: Talk to Hermes"))
         self.assertTrue(checker.check_bundle(self.app))
         yaml.write_text(safe.replace("Talk to ${ConduitProfileEntity}", "Talk to Conduit"))
         self.assertTrue(checker.check_bundle(self.app))
-        yaml.write_text(safe.replace("title: Talk to Ciel", "title: ${ConduitProfileEntity}"))
+        yaml.write_text(safe.replace("title: Talk to Monet", "title: ${ConduitProfileEntity}"))
         self.assertTrue(checker.check_bundle(self.app))
         yaml.write_text(safe + 'title: "C\\u006fnduit"\n')
         with self.assertRaises(checker.CheckError):
@@ -132,7 +132,7 @@ class LAABrandCheckTests(unittest.TestCase):
         write_plist(actions, {"fullyQualifiedTypeName": "Conduit.SomeIntent",
                               "actionIdentifier": "SendToHermesIntent"})
         self.assertEqual(checker.check_bundle(self.app), [])
-        write_plist(actions, {"actionIdentifier": "Open Hermes", "title": "Open Ciel"})
+        write_plist(actions, {"actionIdentifier": "Open Hermes", "title": "Open Monet"})
         self.assertTrue(checker.check_bundle(self.app))
         write_plist(actions, {"fullyQualifiedTypeName": "Conduit.SomeIntent", "title": "Open Hermes"})
         self.assertTrue(checker.check_bundle(self.app))
@@ -175,7 +175,7 @@ class LAABrandCheckTests(unittest.TestCase):
             "CFBundleName": "LAA", "CFBundleDisplayName": "LAA"})
         write_plist(extension / "en.lproj/Localizable.strings", {"title": "Open Hermes"})
         self.assertTrue(checker.check_bundle(self.app))
-        write_plist(extension / "en.lproj/Localizable.strings", {"title": "Open Ciel"})
+        write_plist(extension / "en.lproj/Localizable.strings", {"title": "Open Monet"})
         self.assertEqual(checker.check_bundle(self.app), [])
         (extension / "Info.plist").unlink()
         with self.assertRaises(checker.CheckError):

@@ -65,9 +65,9 @@ final class LAAMacCatalystTests: XCTestCase {
     /// The list marks the row whose conversation is open, and marks no person
     /// row while a group room is open.
     func testChatListSelectionMarksOneRow() {
-        let person = LAAChatsListSelection(profile: "laa-ciel", roomID: nil)
+        let person = LAAChatsListSelection(profile: "laa-monet", roomID: nil)
         XCTAssertFalse(person.isEmpty)
-        XCTAssertEqual(person.profile, "laa-ciel")
+        XCTAssertEqual(person.profile, "laa-monet")
         XCTAssertNil(person.roomID)
         let room = LAAChatsListSelection(profile: nil, roomID: "room-1")
         XCTAssertEqual(room.roomID, "room-1")

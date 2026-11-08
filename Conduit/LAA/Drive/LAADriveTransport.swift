@@ -124,11 +124,11 @@ enum LAADriveContent {
                                  bridge: LAABridgeSession, expectedVersion: String? = nil) async throws -> LAADriveRangeResponse {
         #if DEBUG
         if LAADriveData.fixture != nil {
-            let directory = Bundle.main.bundleURL.appendingPathComponent("staff/ciel")
+            let directory = Bundle.main.bundleURL.appendingPathComponent("staff/monet")
             let data: Data
-            if item.id == "video1", let file = try? Data(contentsOf: directory.appendingPathComponent("ciel-idle-512.mov")) {
+            if item.id == "video1", let file = try? Data(contentsOf: directory.appendingPathComponent("monet-idle-512.mov")) {
                 data = file
-            } else if item.id == "image1", let file = try? Data(contentsOf: directory.appendingPathComponent("ciel-avatar-512.png")) {
+            } else if item.id == "image1", let file = try? Data(contentsOf: directory.appendingPathComponent("monet-avatar-512.png")) {
                 data = file
             } else if item.isPDF {
                 let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 400))

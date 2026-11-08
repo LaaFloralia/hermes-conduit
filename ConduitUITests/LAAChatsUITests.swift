@@ -22,8 +22,8 @@ final class LAAChatsUITests: XCTestCase {
     /// has no Recent section.
     func testEmployeeGroupAndNewChatRoutes() {
         let app = launch()
-        app.buttons["laa.chats.person.laa-ciel"].tap()
-        closeSelection(app, expected: "person:laa-ciel")
+        app.buttons["laa.chats.person.laa-monet"].tap()
+        closeSelection(app, expected: "person:laa-monet")
         XCTAssertFalse(app.buttons["laa.chats.seeAll.employees"].exists)
         XCTAssertFalse(app.staticTexts["RECENT"].exists)
         app.buttons["laa.chats.person.laa-cto"].tap()
@@ -66,7 +66,7 @@ final class LAAChatsUITests: XCTestCase {
         let name = app.textFields["groups.create.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         name.tap(); name.typeText("Planning")
-        app.buttons["groups.employee.laa-ciel"].tap()
+        app.buttons["groups.employee.laa-monet"].tap()
         app.buttons["groups.employee.laa-cto"].tap()
         let create = app.buttons["groups.create.submit"]
         XCTAssertTrue(create.isEnabled)

@@ -89,13 +89,13 @@ final class LAALinearTaskTests: XCTestCase {
         XCTAssertFalse(unsupported.isReflected(in: current))
     }
     func testRoutineExtraObservationsDecodeWithoutLosingHistory() throws {
-        let data = Data(#"{"id":"mail","name":"メール","schedule":"毎日","state":"scheduled","triggerKind":"scheduled","destination":"Cielの定期実行チャット","businessStatus":"success","notificationStatus":"sent","result":"timeout","lastRunAt":"2026-11-02T00:00:00Z"}"#.utf8)
+        let data = Data(#"{"id":"mail","name":"メール","schedule":"毎日","state":"scheduled","triggerKind":"scheduled","destination":"Monetの定期実行チャット","businessStatus":"success","notificationStatus":"sent","result":"timeout","lastRunAt":"2026-11-02T00:00:00Z"}"#.utf8)
         let row = try JSONDecoder().decode(LAAWorkRoutine.self, from: data)
         XCTAssertEqual(row.state, "scheduled")
         XCTAssertEqual(row.triggerKind, "scheduled")
         XCTAssertEqual(row.result, "timeout")
         XCTAssertEqual(row.businessStatus, "success")
-        XCTAssertEqual(row.destination, "Cielの定期実行チャット")
+        XCTAssertEqual(row.destination, "Monetの定期実行チャット")
     }
     func testPreviousRoutineRunCombinesTimeAndOutcomeWithoutDeliveryNoise() throws {
         let data = Data(#"{"id":"daily","name":"朝","lastRunAt":"2026-11-01T22:30:00.000Z","businessStatus":"completed","notificationStatus":"sent"}"#.utf8)

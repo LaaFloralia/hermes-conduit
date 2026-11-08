@@ -107,7 +107,7 @@ struct LAAGroupCreateView: View {
     @State private var failed = false
 
     private var available: [BotProfile] {
-        roster.filter { bot in LAAWidgetEmployee.forProfile(bot.name) != nil && LAAWidgetEmployee.forProfile(bot.name) != .cielUncensored && !bot.isHiddenByMeta }
+        roster.filter { bot in LAAWidgetEmployee.forProfile(bot.name) != nil && LAAWidgetEmployee.forProfile(bot.name) != .monetUncensored && !bot.isHiddenByMeta }
     }
     private var selection: LAAGroupSelection {
         var selection = LAAGroupSelection(available: Set(available.map(\.name)))
@@ -121,7 +121,7 @@ struct LAAGroupCreateView: View {
                 TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.create.name")
             }
             Section {
-                ForEach(LAAWidgetEmployee.allCases.filter { $0 != .cielUncensored }, id: \.self) { employee in
+                ForEach(LAAWidgetEmployee.allCases.filter { $0 != .monetUncensored }, id: \.self) { employee in
                     let isAvailable = available.contains { $0.name == employee.profile }
                     Button {
                         var next = selection

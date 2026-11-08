@@ -77,7 +77,7 @@ final class LAADriveRangeTests: XCTestCase {
         // Include cancelled requests: their announced lengths are an upper
         // bound on bytes actually delivered by the fake server.
         let beforeBytes = before.reduce(0) { $0 + $1.length }
-        // 15 s at the fixture bitrate is about 2.5 MB. The controlled server
+        // 15 s at the fixture bitrate is about 1.5 MB. The controlled server
         // permits some metadata/prefetch overhead but never an entire download.
         XCTAssertLessThanOrEqual(beforeBytes, 4 * 1024 * 1024)
         XCTAssertTrue(before.allSatisfy { $0.length <= LAADriveContent.chunkSize })
@@ -161,7 +161,7 @@ private final class DriveRangeTimeoutProtocol: URLProtocol {
 }
 
 /// The fast-start MP4 headers describe 15 and 120 stream-copied repetitions
-/// of the bundled two-second Ciel video (ffmpeg `-stream_loop`, `-c copy`,
+/// of the bundled two-second Monet video (ffmpeg `-stream_loop`, `-c copy`,
 /// `-movflags +faststart`). Only the requested slice is assembled in memory.
 private struct VirtualDriveMedia {
     private struct Fixtures: Decodable {

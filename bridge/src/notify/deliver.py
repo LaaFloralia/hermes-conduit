@@ -11,7 +11,7 @@ from pathlib import Path
 logging.disable(logging.CRITICAL)
 home = Path.home()
 sys.path.insert(0, str(home / '.local/share/hermes-agent'))
-os.environ['HERMES_HOME'] = str(home / '.hermes/profiles/laa-ciel')
+os.environ['HERMES_HOME'] = str(home / '.hermes/profiles/laa-monet')
 package = types.ModuleType('_laa_bridge_conduit')
 package.__path__ = [str(home / '.hermes/plugins/conduit_push')]
 sys.modules[package.__name__] = package

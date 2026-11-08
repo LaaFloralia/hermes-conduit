@@ -3,7 +3,7 @@ import Foundation
 
 /// Profile IDs are stable; display names can be changed on the host.
 enum LAAStaff: String, CaseIterable {
-    case ciel, cielUncensored = "ciel-uncensored", argus, cfo, cio, cmo, cos, cso, cto
+    case monet, monetUncensored = "monet-uncensored", argus, cfo, cio, cos, cso, cto
 
     init?(profile: String) {
         let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -13,12 +13,11 @@ enum LAAStaff: String, CaseIterable {
 
     var name: String {
         switch self {
-        case .ciel: return "Ciel"
-        case .cielUncensored: return "Ciel（無検閲）"
+        case .monet: return "Monet"
+        case .monetUncensored: return "Monet（無検閲）"
         case .argus: return "Argus"
         case .cfo: return "Morgan"
         case .cio: return "Sherlock"
-        case .cmo: return "Monet"
         case .cos: return "Merlin"
         case .cso: return "Talos"
         case .cto: return "Ada"
@@ -27,12 +26,11 @@ enum LAAStaff: String, CaseIterable {
 
     var role: String {
         switch self {
-        case .ciel: return "社長秘書・総合アドバイザー"
-        case .cielUncensored: return "社長秘書・総合アドバイザー"
+        case .monet: return "社長秘書・総合アドバイザー"
+        case .monetUncensored: return "社長秘書・総合アドバイザー"
         case .argus: return "Head Trader"
         case .cfo: return "CFO"
         case .cio: return "CIO"
-        case .cmo: return "CMO"
         case .cos: return "COS"
         case .cso: return "CSO"
         case .cto: return "CTO"

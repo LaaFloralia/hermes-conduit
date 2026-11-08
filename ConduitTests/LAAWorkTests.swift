@@ -359,7 +359,7 @@ final class LAAWorkTests: XCTestCase {
     /// Stands in for a bridge or client instance: only its identity matters,
     /// and a re-created connection is a new object.
     private func cronConnection(_ object: NSObject, dashboard: UUID?,
-                                profile: String = "laa-ciel",
+                                profile: String = "laa-monet",
                                 kind: CronJobsConnection.Kind = .dashboard) -> CronJobsConnection {
         CronJobsConnection(kind: kind,
                            owner: CronJobsOwner(dashboardID: dashboard, profile: profile),

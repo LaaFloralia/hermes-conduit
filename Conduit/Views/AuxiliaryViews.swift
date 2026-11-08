@@ -1365,7 +1365,7 @@ private struct SettingsHome: View {
             settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
             settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"), identifier: "settings.voice")
             if appState.supportsHermesCalls {
-                settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: LAACopy.callsFromCiel, detail: LAACopy.callsFromCielDetail, identifier: "settings.hermes-calls")
+                settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: LAACopy.callsFromMonet, detail: LAACopy.callsFromMonetDetail, identifier: "settings.hermes-calls")
             }
         }
         homeSection(AppLocalization.string("App"), tint: .conduitAccent) {

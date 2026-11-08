@@ -461,26 +461,26 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000af")
         let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
-        appState.profiles = ["default", "laa-cmo", "laa-cfo", "laa-cio"]
+        appState.profiles = ["default", "laa-monet", "laa-cfo", "laa-cio"]
         var own = session("own")
         own.isUnread = true
         var archived = session("archived")
         archived.isUnread = true
         archived.isArchived = true
-        var otherInOwnList = session("other-own-list", profile: "laa-cmo")
+        var otherInOwnList = session("other-own-list", profile: "laa-monet")
         otherInOwnList.isUnread = true
         appState.sessions = [own, archived, otherInOwnList]
-        var cmo = session("cmo", profile: "laa-cmo")
-        cmo.isUnread = true
+        var monet = session("monet", profile: "laa-monet")
+        monet.isUnread = true
         let cfo = session("cfo", profile: "laa-cfo")
         var unknown = session("unknown", profile: "unlisted")
         unknown.isUnread = true
         appState.allProfilesCatalog = AllProfilesCatalog(
-            dashboardID: current.id, sessions: [cmo, cfo, unknown], isLoaded: true
+            dashboardID: current.id, sessions: [monet, cfo, unknown], isLoaded: true
         )
 
-        let requested: Set<String> = ["default", "laa-cmo", "laa-cfo", "laa-cio"]
-        XCTAssertEqual(appState.unreadChatCounts(profiles: requested), ["default": 2, "laa-cmo": 1, "laa-cfo": 0])
+        let requested: Set<String> = ["default", "laa-monet", "laa-cfo", "laa-cio"]
+        XCTAssertEqual(appState.unreadChatCounts(profiles: requested), ["default": 2, "laa-monet": 1, "laa-cfo": 0])
         appState.allProfilesCatalog.dashboardID = UUID()
         XCTAssertEqual(appState.unreadChatCounts(profiles: requested), ["default": 1])
     }

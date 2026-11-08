@@ -11,7 +11,7 @@ v2の英語ナビゲーションと正方形ウィジェットは、[ROADMAP](RO
 | [Apple HIG Materials](https://developer.apple.com/design/human-interface-guidelines/materials)・[Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass) | Glassはナビゲーションと操作層に使い、本文は落ち着いた不透明面に置く。regularを基本に、clearは写真・映像上で使う | Studioの静止画は部品の位置と階層を示すもの。OSの光学表現・アクセシビリティ動作の実証ではない |
 | LAA Console：Studioのモバイル画面（r49）と `/Users/laa/dev/inventory/shared/design-tokens.json`・`console-shell.ts` | 英語の短いタブ名、紙色の余白、Georgiaの見出し、細い罫線、青緑の選択状態 | Consoleの情報密度や画面をそのまま縮小せず、電話用の一覧とタッチ操作に組み替える |
 | LAA HP：`/Users/laa/dev/hp`、[公開サイト](https://www.laa-inc.com/)、`/Users/laa/dev/laa-brand-system/DESIGN_SYSTEM_PROPOSAL.md` と保管スクリーンショット | 社員の実3D、紙・墨・青緑と余白の方向。ブランドシステム案から色の役割分離を採る | ブランドシステムの旧提案色は使わず、Studioの採用版v6を使う。保管スクリーンショットは旧版であり、公開HPの現行画面は接続不調で目視できていない |
-| Slack iOS：[モバイル画面の実例](https://images.squarespace-cdn.com/content/v1/62b4cde29ebbf50911448f0d/b79659f8-14dc-4697-9ba7-7c728c5339d0/Message%2BButton)、[モバイルのカスタマイズ](https://slack.com/help/articles/29788684062739-Customize-the-Slack-mobile-app) | セクションから相手・グループを選ぶ一覧、最近の会話への短い導線 | 並びはCiel・Employees・Groups・Recent。Slack固有の配色や情報量は持ち込まない |
+| Slack iOS：[モバイル画面の実例](https://images.squarespace-cdn.com/content/v1/62b4cde29ebbf50911448f0d/b79659f8-14dc-4697-9ba7-7c728c5339d0/Message%2BButton)、[モバイルのカスタマイズ](https://slack.com/help/articles/29788684062739-Customize-the-Slack-mobile-app) | セクションから相手・グループを選ぶ一覧、最近の会話への短い導線 | 並びはMonet・Employees・Groups・Recent。Slack固有の配色や情報量は持ち込まない |
 | Telegram：[引用表示の実例](https://ux-news.com/content/images/2023/10/image-5.png)、[公式説明](https://telegram.org/blog/reply-revolution?setln=en) | 引用を本文から区別し、画像やファイルも会話内で読める構成 | 背景模様や吹き出し色はLAAのものにする。見出し・箇条書き・コードも同じ会話内で扱う |
 | [OpenAI Dots](https://openai.com/index/introducing-dots/) | 公式説明から、個別の相手と音声で話す方向を確認 | 実画面の視覚比較は未確認。社員別3D像や声は社長の要件であり、Dotsの画面仕様とは断定しない |
 | [Apple App icons](https://developer.apple.com/design/human-interface-guidelines/app-icons) | 文字を入れず、背景と前景を分ける | アイコンに人物や場面を描かない |
@@ -56,7 +56,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 
 | 順序 | 表示名 | 主な内容 | アイコン |
 |---|---|---|---|
-| 1 | Chats | Ciel、社員、グループ、最近 | `bubble.left.and.bubble.right` |
+| 1 | Chats | Monet、社員、グループ、最近 | `bubble.left.and.bubble.right` |
 | 2 | Work | Sessions、Projects、Tasks、Routines | `checklist` |
 | 3 | Doc | Recent、Folders、Tags、検索 | `doc.text` |
 | 4 | Assets | Drive、Inspiration、Studio | `photo.on.rectangle` |
@@ -66,7 +66,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 
 ## Chats：相手を選ぶ一覧
 
-画面上部に `Chats`、検索、新規作成。縦スクロールの順は `Ciel`、`Employees`、`Groups`。Cielは最初に大きめの1行で固定し、Employeesは既存の社員データ、Groupsは参加中のグループを、折りたたまずに全件表示する（Recentは2026-11-02に社長の指示で削除。会話の一覧はWorkのSessions）。`+` は既存の作成フローへ進む。未実装の作成操作を成功したように見せない。
+画面上部に `Chats`、検索、新規作成。縦スクロールの順は `Monet`、`Employees`、`Groups`。Monetは最初に大きめの1行で固定し、Employeesは既存の社員データ、Groupsは参加中のグループを、折りたたまずに全件表示する（Recentは2026-11-02に社長の指示で削除。会話の一覧はWorkのSessions）。`+` は既存の作成フローへ進む。未実装の作成操作を成功したように見せない。
 
 社員行は40〜44ptの静止アバター、表示名、役割を並べる。グループ行は参加社員の顔を同じ大きさの枠に重ねて示す（2人は斜め、3人以上は3つの塊、4人以上は3つ目を人数）。実際に取得できない状態や未読数は作らない。検索は相手名・役割・グループ名・メンバーを対象にし、結果なし、読み込み中、接続失敗を区別する。
 
@@ -135,11 +135,11 @@ Docの編集画面は表を実表として編集し、未対応の記法（front
 
 ## Widgetとロック画面
 
-ホームは `systemSmall` の正方形。Cielを初期値とし、上段に名前・静止3D、下段に `Call` と `Chat` の2操作を並べる。見本は170×170pt、各ボタンの当たり領域は44pt以上。実寸はWidgetKitが決めるため、縮小時は画像と余白を調整し、文字と2操作を残す。ウィジェット全体の既定遷移はChat、Callは対象社員の通話、Chatはその社員の会話。iOS 17以降の `Link` と1つの `widgetURL` で行き先を区別する（[Appleの遷移仕様](https://developer.apple.com/documentation/widgetkit/linking-to-specific-app-scenes-from-your-widget-or-live-activity)）。ロック解除・権限・既存の通話同意が必要な場合はアプリ側で正規の流れを示す。
+ホームは `systemSmall` の正方形。Monetを初期値とし、上段に名前・静止3D、下段に `Call` と `Chat` の2操作を並べる。見本は170×170pt、各ボタンの当たり領域は44pt以上。実寸はWidgetKitが決めるため、縮小時は画像と余白を調整し、文字と2操作を残す。ウィジェット全体の既定遷移はChat、Callは対象社員の通話、Chatはその社員の会話。iOS 17以降の `Link` と1つの `widgetURL` で行き先を区別する（[Appleの遷移仕様](https://developer.apple.com/documentation/widgetkit/linking-to-specific-app-scenes-from-your-widget-or-live-activity)）。ロック解除・権限・既存の通話同意が必要な場合はアプリ側で正規の流れを示す。
 
-横長 `systemMedium` は、左上に会社（LAA）のアイコンとCielの名前、その下にCiel像と電話・会話のアイコン操作（アイコンだけを置き、下地や光彩を付けない）、右にAI Usageを優先順（Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、GPT API、Claude API、Liquid AI）で上から入る分だけ置く。アイコンにはVoiceOver名を付ける。右側のタップはUsageタブを開き、外部URLは開かない。取得時刻などの脚注は置かず、取れない項目は数値なしの状態行にする。
+横長 `systemMedium` は、左上に会社（LAA）のアイコンとMonetの名前、その下にMonet像と電話・会話のアイコン操作（アイコンだけを置き、下地や光彩を付けない）、右にAI Usageを優先順（Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、GPT API、Claude API、Liquid AI）で上から入る分だけ置く。アイコンにはVoiceOver名を付ける。右側のタップはUsageタブを開き、外部URLは開かない。取得時刻などの脚注は置かず、取れない項目は数値なしの状態行にする。
 
-ロック画面は `accessoryRectangular`、単色の電話アイコンと `Ciel / Call`。1つの遷移先としてアプリの通話画面を開く。実際の色や形はOSのレンダリングに従うため、Studioの色付き見本と完全一致を要求しない。ロック画面に会話内容や接続状況を表示しない。
+ロック画面は `accessoryRectangular`、単色の電話アイコンと `Monet / Call`。1つの遷移先としてアプリの通話画面を開く。実際の色や形はOSのレンダリングに従うため、Studioの色付き見本と完全一致を要求しない。ロック画面に会話内容や接続状況を表示しない。
 
 ウィジェットは静止画。ティント等の外観ではOSが画像を処理するため、文字・操作の視認性を実機で確認する。状態を表示する場合は最終確認時刻も表示し、古い値を最新に見せない。
 
@@ -164,7 +164,7 @@ Docの編集画面は表を実表として編集し、未対応の記法（front
 
 アイコン原本はStudioブランドの「配信用 — PWA 1024 / any」。`Conduit/Resources/AppIcon-LAA.icon` は青緑の地に螺旋・四分円・円弧の3層、iOS 26未満は `Conduit/Resources/Assets.xcassets/AppIcon-LAA.appiconset` を使う。LAA用署名overlayで `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA` を指定し、上流のアイコン設定は維持する。既存の `ictool`・`actool` 検証は実機表示の確認を意味しない。
 
-社員像は社長が2026-11-06に採用した9体のマスコットを使う（人物像から置き換えた）。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。周りに円・縁・白い下地を付けない（社長の指摘 2026-11-06）。チャット上部のマスコットは54ptで、名前のガラスの外に置く。
+社員像は2026-11-08のMonet統合後の8体のマスコットを使う。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。周りに円・縁・白い下地を付けない（社長の指摘 2026-11-06）。チャット上部のマスコットは54ptで、名前のガラスの外に置く。
 
 | ファイル | 用途 |
 |---|---|
@@ -173,7 +173,7 @@ Docの編集画面は表を実表として編集し、未対応の記法（front
 | `<id>-avatar-512.png` | ループの1コマ目。一覧、処理中の行、静止時 |
 | `<id>-idle-512.mov` | HEVCアルファ付き、512²、約4秒、24fps。チャット上部と通話 |
 
-IDは `ciel`（青い白鳥）、`ciel-uncensored`（黒鳥）、`argus`（孔雀）、`cfo`（Morgan）、`cio`（Sherlock）、`cmo`（Monet）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。
+IDは `monet`（藤色の花）、`monet-uncensored`（無検閲版）、`argus`（孔雀）、`cfo`（Morgan）、`cio`（Sherlock）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。
 
 LAA版の `profileAvatarURL` は社員ならHermesの画像ではなく同梱のマスコットを返す。処理中の行や一覧も同じ画像になる。
 
@@ -186,7 +186,7 @@ LAA版の `profileAvatarURL` は社員ならHermesの画像ではなく同梱の
 1. Studioの `studio_image_cutout` で採用画を切り抜く。外周幅の対角が760pxになるよう拡大し、1280×720の単色地の中央へ置いて開始フレームにする。地は像にない色にする（既定は緑、Adaはマゼンタ、Morganは空色）。
 2. Flow（Omni 1.1 Flash、720p・4秒）で、同じ画像を開始と終了に入れて生成する。依頼文は固定カメラ・主な動き一つ・最初の姿勢へ戻る・地は平らで影なし、を書く。Flowの枠が尽きた時はMagnificのKling 2.6へ回す。Veo 3.1 Liteは漫画の線が出たため使わない。Klingは開始と終了が同じだと動きが小さくなることがある。その場合は終了画像を外し、前半を順再生と逆再生でつなぐ。5秒の素材は4秒へ縮める。
 3. `python3 scripts/laa/staff_3d/matte_loop.py <作業フォルダ> <id> <動画>` で、色抜き、輪郭を2px削って地の色を除去、466pxへ縮小して512の中央へ置く（動いても円で切れない）、影の追加、末尾10コマを1コマ目へ寄せる、HEVCアルファの書出し、静止画の書出しを行う。HEVCアルファは色をアルファで乗算してから書き出す（`premultiply`）。AVFoundationは必ず乗算済みとして重ねるので、乗算しないと明るい地で輪郭に白い縁が出る（社長の指摘した「白い囲み」の正体。`testEveryLoopIsPremultiplied` で防ぐ）。
-4. アルファは `swift scripts/laa/staff_3d/verify_alpha.swift <mov>` で確かめる。全コマの輪郭を重ねて円の外に出ないこと、継ぎ目、38pt・44pt・270ptを明暗の地で見る。
+4. アルファは `swift scripts/laa/staff_3d/verify_alpha.swift <mov>` で確かめる。全コマの輪郭を重ねて円の外に出ないこと、継ぎ目、38pt・44pt・270ptを明暗の地で見る。暗い色の派生（例：Monet（無検閲））は、38ptの暗い地で輪郭と顔が読めるまで暗部を持ち上げる（2026-11-08、茄子紺へ補正して採用）。
 5. 元の動画はStudio作品「LAAアプリ｜社員マスコット」（`cf51462f-250f-413b-9f6e-b41540841fec`）に入れる。
 
 ### 360度の回転

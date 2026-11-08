@@ -319,6 +319,19 @@ final class ProfileDiscoveryTests: XCTestCase {
 
     // MARK: - Authoritative success re-homes a deleted active profile
 
+    func testRetiredLAAProfilesRehomeAfterAuthoritativeDiscovery() async {
+        for retired in ["laa-ciel", "laa-ciel-uncensored", "laa-cmo"] {
+            seedKnownProfiles(["default", retired], activeProfile: retired)
+            let appState = makeAppState(profileDiscoveryLoader: {
+                ["profiles": ["default", "laa-monet", "laa-monet-uncensored"]]
+            })
+            appState.installDashboardTicketBridgeForTesting(makeBridge("https://one.example"))
+            await appState.loadProfiles()
+            XCTAssertEqual(appState.activeProfile, "default")
+            XCTAssertFalse(appState.profiles.contains(retired))
+        }
+    }
+
     func testAuthoritativeResponseRemovingActiveProfileRehomesToDefault() async throws {
         seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
         // Stale per-profile bookkeeping and catalog state belonging to the

@@ -3572,7 +3572,7 @@ extension HermesClientTests {
         let transport = FakeTransport()
         let socket = FakeSocket()
         transport.nextSocket = { socket }
-        let client = makeClient(transport: transport, profile: "laa-ciel")
+        let client = makeClient(transport: transport, profile: "laa-monet")
         defer { client.disconnect() }
         let connect = Task { try? await client.connect() }
         transport.open(socket)
@@ -3581,7 +3581,7 @@ extension HermesClientTests {
         state.isConnected = true
         _ = state.adoptDashboard(forNormalizedURL: "https://test.example")
 
-        let bots = ["laa-ciel", "laa-cto"].map { profile in
+        let bots = ["laa-monet", "laa-cto"].map { profile in
             BotProfile(name: profile, botTitle: nil, displayName: profile, profileDescription: "", model: nil,
                        provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
                        appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
@@ -3601,7 +3601,7 @@ extension HermesClientTests {
         XCTAssertEqual(createParams["room_id"] as? String, "laa-test-room")
         XCTAssertEqual(createParams["name"] as? String, "Planning")
         let members = try XCTUnwrap(createParams["members"] as? [[String: Any]])
-        XCTAssertEqual(Set(members.compactMap { $0["profile"] as? String }), Set(["laa-ciel", "laa-cto"]))
+        XCTAssertEqual(Set(members.compactMap { $0["profile"] as? String }), Set(["laa-monet", "laa-cto"]))
         for member in members {
             XCTAssertEqual(member["member_id"] as? String, member["profile"] as? String)
             XCTAssertNotNil(member["handle"] as? String)

@@ -16,7 +16,7 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    private func key(_ conversation: String = "one", profile: String = "laa-ciel", surface: LAABackgroundKey.Surface = .chat,
+    private func key(_ conversation: String = "one", profile: String = "laa-monet", surface: LAABackgroundKey.Surface = .chat,
                      dashboard: UUID? = nil) -> LAABackgroundKey {
         LAABackgroundKey(dashboard: dashboard ?? self.dashboard, profile: profile, conversation: conversation, surface: surface)
     }
@@ -162,20 +162,20 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         var selection = LAAGroupSelection(available: Set(LAAWidgetEmployee.allCases.map(\.profile)))
         selection.toggle("not-an-employee")
         XCTAssertTrue(selection.selected.isEmpty)
-        selection.toggle("laa-ciel")
+        selection.toggle("laa-monet")
         XCTAssertFalse(selection.canCreate(name: "Group"))
         selection.toggle("laa-cto")
         XCTAssertTrue(selection.canCreate(name: "Group"))
         XCTAssertFalse(selection.canCreate(name: "  "))
-        selection.toggle("laa-ciel")
-        XCTAssertFalse(selection.selected.contains("laa-ciel"))
+        selection.toggle("laa-monet")
+        XCTAssertFalse(selection.selected.contains("laa-monet"))
         for employee in LAAWidgetEmployee.allCases where !selection.selected.contains(employee.profile) { selection.toggle(employee.profile) }
         XCTAssertEqual(selection.selected.count, 6)
     }
 
     func testEditedCreateInputsMintANewIdButRetryKeepsIt() {
-        let first = GroupCreateAttempt.Inputs(name: "One", members: ["laa-ciel", "laa-cfo"])
-        let edited = GroupCreateAttempt.Inputs(name: "One", members: ["laa-ciel", "laa-cto"])
+        let first = GroupCreateAttempt.Inputs(name: "One", members: ["laa-monet", "laa-cfo"])
+        let edited = GroupCreateAttempt.Inputs(name: "One", members: ["laa-monet", "laa-cto"])
         let id = GroupCreateAttempt.mintRoomID()
         XCTAssertEqual(GroupCreateAttempt.roomID(for: first, current: id, attempted: first), id)
         XCTAssertNotEqual(GroupCreateAttempt.roomID(for: edited, current: id, attempted: first), id)

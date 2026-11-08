@@ -5,7 +5,7 @@
 // wrapper already owns request idempotency (`origin` + `requestId`), verifies
 // that the running agent still uses the requested provider/model/effort, and
 // refuses to send into a stopped or waiting session. Re-implementing those
-// rules here would duplicate the contract the owner's Ciel path already uses.
+// rules here would duplicate the contract the owner's Monet path already uses.
 //
 // The CLI reads one JSON object on stdin and writes one JSON object on stdout.
 // Failures still print `{"ok":false,"error":"<code>"}` (exit code 1), so the
