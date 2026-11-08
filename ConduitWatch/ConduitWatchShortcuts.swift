@@ -14,7 +14,7 @@ struct ConduitWatchShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: TalkToHermesIntent(),
             phrases: [
-                "Talk to LAA in \(.applicationName)",
+                "Talk to \(.applicationName)",
                 "Start a \(.applicationName) call",
             ],
             shortTitle: "Talk to LAA",

@@ -230,6 +230,22 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
         with english_path.open("wb") as stream:
             plistlib.dump(display_aliases(english), stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
 
+    # Siri phrases must contain the applicationName token. Reuse the existing
+    # short action translations so they say "Ask LAA", not "Ask LAA in LAA".
+    for directory in resources.glob("*.lproj"):
+        shortcuts_path = directory / "AppShortcuts.strings"
+        if not shortcuts_path.exists():
+            continue
+        shortcuts = read_plist(shortcuts_path)
+        local_path = directory / "Localizable.strings"
+        translations = {**(read_plist(local_path) if local_path.exists() else {}), **shortcuts}
+        for original in ("Ask Hermes", "Send to Hermes"):
+            if original in translations:
+                key = display(original).replace("LAA", "${applicationName}")
+                shortcuts.setdefault(key, translations[original].replace("LAA", "${applicationName}"))
+        with shortcuts_path.open("wb") as stream:
+            plistlib.dump(shortcuts, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
+
 
 def main():
     parser = argparse.ArgumentParser()

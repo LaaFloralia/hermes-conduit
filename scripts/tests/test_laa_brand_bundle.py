@@ -315,6 +315,8 @@ class LAABrandBundleTests(unittest.TestCase):
             brand.brand_bundle(bundle, "app", ROOT)
             values = plistlib.loads((bundle / "en.lproj/AppShortcuts.strings").read_bytes())
             self.assertEqual(values["Ask Hermes"], "Ask LAA")
+            self.assertEqual(values["Ask ${applicationName}"], "Ask ${applicationName}")
+            self.assertEqual(values["Send to ${applicationName}"], "Send to ${applicationName}")
             self.assertEqual(values["Talk to Conduit"], "Talk to LAA")
             self.assertTrue(all("Hermes" not in value and "Conduit" not in value
                                 for value in values.values()))
