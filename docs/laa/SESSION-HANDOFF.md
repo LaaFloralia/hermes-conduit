@@ -66,7 +66,7 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 
 ## 現在の状態（2026-11-06）
 
-- 判断ボードはmaster `4038f19b` へ統合済み（2026-11-08）。Work「判断」にCLI投稿とnative質問を集め、選択を元の会話へ届けて読み戻す。判断はJ、依頼元は表示時のS番号。LAA関連76成功・0失敗・既存の実Bridgeペアリング2件は除外、比較smokeは候補698/698、masterは既知の接続画面5件だけ失敗、personal Releaseと最終Bridge665/665が成功。証跡はHQ `logs/2026-11-08-decision-board/verification.json` と同フォルダの `evidence.zip`。HQ規則は `09e4e38` に保存済み。TestFlightはUsageの次回配信へ同梱し、Bridge実適用は番号管理の引継ぎ親がUsage合流と社長の対象別承認後に1回行う。実機での通知→判断→回答→元会話の再開は未確認。
+- 判断ボードはmaster `4038f19b` へ統合済み（2026-11-08）。Work「判断」にCLI投稿とnative質問を集め、選択を元の会話へ届けて読み戻す。判断はJ、依頼元は表示時のS番号。LAA関連76成功・0失敗・既存の実Bridgeペアリング2件は除外、比較smokeは候補698/698、masterは既知の接続画面5件だけ失敗、personal Releaseと最終Bridge665/665が成功。証跡はHQ `logs/2026-11-08-decision-board/verification.json` と同フォルダの `evidence.zip`。HQ規則は `09e4e38` に保存済み。TestFlightはUsageの次回配信へ同梱し、Bridge実適用は番号管理の引継ぎ親が、Usage合流SHA・Voiceの新worker実配置/self-test完了の直接連絡・社長の対象別承認の3条件を確認して1回行う。既存の `LAA_VOICE_WORKER` 設定は維持する。実機での通知→判断→回答→元会話の再開は未確認。
 
 - DocでCRLF文書とコードフェンス内への表挿入が既存内容を壊さない修正を **2611060608** へ配信。対象の編集テスト43/43、既定scheme回帰698/698、personal Releaseが成功。未閉鎖のコードフェンス内では内容を保つため挿入しない。表内の参照リンクは矢印を幅に含めず折り返していたため、列幅の修正を **2611060706** へ配信。シミュレーターで修正前63pt・2行、修正後76pt・1行、LAA関連20/20、既定schemeの現行版・候補再試験とも717/717、personal Release成功。候補初回は接続画面UI 5件が失敗し、再試験で成功したが原因は未確定（BUS-373）。iPhoneでの編集は未確認（BUS-366）。ログは `work/laa-doc-bug-evidence-20261106/` と `work/laa-md-ref-link-evidence-20261106/`。
 
