@@ -22,6 +22,7 @@ struct LAABrainView: View {
     @State private var desktopSelection: LAABrainReference?
     @State private var desktopFolder = ""
     @State private var dailyOpening = false
+    @State private var dailyNeedsSelection = false
     @State private var autoEditPath: String?
     @State private var editorIsOpen = false
     @State private var files: [LAABrainFile] = []
@@ -172,7 +173,8 @@ struct LAABrainView: View {
             do {
                 guard let selected = try result.get().first else { return }
                 try local.connect(selected)
-                localError = nil; path = []; files = []; folderPaths = []; index = nil; query = ""; selectedTag = nil; localMode = 1
+                resetLocalNavigation(); dailyNeedsSelection = false
+                openDailyIfPossible()
             } catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message }
         }
         .task(id: BrainLoadKey(revision: bridge.revision, localRevision: local.revision, inbox: includeInbox, mac: showMacSource || useBridgeFixture)) { await load() }
@@ -226,7 +228,22 @@ struct LAABrainView: View {
                                   },
                                   open: {}) {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                        #if targetEnvironment(macCatalyst)
+                        macLocalSelector
+                        #else
                         sourceSelector
+                        #endif
+                        #if targetEnvironment(macCatalyst)
+                        if local.isSelected {
+                            if local.state == .needsAccess { localAccessView } else { localBrowser }
+                        } else if useBridgeFixture {
+                            if LAABrainData.available(bridge) { browser } else { connectionView }
+                        } else if local.location != nil {
+                            Text("フォルダを選んでください。")
+                        } else {
+                            Text("Brain または HQ を選んでください。")
+                        }
+                        #else
                         if local.isSelected {
                             if local.state == .needsAccess { localAccessView } else { localBrowser }
                         } else if showMacSource || useBridgeFixture {
@@ -234,6 +251,7 @@ struct LAABrainView: View {
                         } else {
                             localIntroduction
                         }
+                        #endif
                     }
                     .padding(.horizontal, LAASpacing.x4)
                     .padding(.vertical, LAASpacing.x4)
@@ -330,8 +348,21 @@ struct LAABrainView: View {
     }
 
     @MainActor private func openDailyIfPossible() {
-        guard let request = dailyRequest.id, local.isReady, !dailyOpening, !dailyBlocked,
-              let root = try? local.snapshot() else { return }
+        guard let request = dailyRequest.id, !dailyOpening, !dailyBlocked else { return }
+        #if targetEnvironment(macCatalyst)
+        if local.location != .brain || !local.isReady {
+            if local.location != .brain { resetLocalNavigation() }
+            guard local.prepareDaily() else {
+                if !dailyNeedsSelection {
+                    dailyNeedsSelection = true
+                    localError = "今日のノートを開くにはBrainフォルダを選んでください。"
+                    chooseFolder = true
+                }
+                return
+            }
+        }
+        #endif
+        guard local.isReady, let root = try? local.snapshot() else { return }
         dailyOpening = true
         Task {
             do {
@@ -365,6 +396,44 @@ struct LAABrainView: View {
         false
         #endif
     }
+
+    private func resetLocalNavigation() {
+        path = []; desktopSelection = nil; desktopFolder = ""; files = []; folderPaths = []
+        index = nil; indexRevision += 1; hits = []; query = ""; selectedTag = nil
+        pins = []; localMode = 1; autoEditPath = nil; localError = nil
+        isLoading = false; isIndexing = false; isSearching = false; localReadFailed = false
+    }
+
+    #if targetEnvironment(macCatalyst)
+    private var macLocalSelector: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            HStack {
+                ForEach(LAABrainLocalVault.Location.allCases, id: \.rawValue) { target in
+                    Button(target.rawValue) {
+                        guard local.location != target || !local.isReady else { return }
+                        resetLocalNavigation()
+                        local.select(target)
+                        if !local.isReady { chooseFolder = true }
+                    }
+                    .disabled(dailyBlocked || dailyOpening)
+                    .accessibilityIdentifier("laa.brain.location.\(target.rawValue)")
+                }
+                Spacer()
+                if let location = local.location { Text(verbatim: location.rawValue).laaTextStyle(.secondary) }
+            }
+            if local.location != nil {
+                Button("フォルダを選び直す") { chooseFolder = true }
+                    .disabled(dailyBlocked || dailyOpening)
+                    .accessibilityIdentifier("laa.brain.chooseFolder")
+            }
+            if local.isReady {
+                Button("復元履歴") { showRecovery = true }
+                    .accessibilityIdentifier("laa.brain.recovery.open")
+            }
+            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+        }
+    }
+    #endif
 
     private var localIntroduction: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
@@ -484,8 +553,17 @@ struct LAABrainView: View {
 
     private var localAccessView: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            #if targetEnvironment(macCatalyst)
+            if local.location == nil {
+                Text("Brain または HQ を選んでください。")
+            } else {
+                Text(verbatim: LAABrainVaultError.access.message).foregroundStyle(LAAColor.attention)
+                Button("フォルダを選ぶ") { chooseFolder = true }.laaGlassButton(prominent: true)
+            }
+            #else
             Text(verbatim: LAABrainVaultError.access.message).foregroundStyle(LAAColor.attention)
             Button("フォルダを選ぶ") { chooseFolder = true }.laaGlassButton(prominent: true)
+            #endif
         }
     }
 
@@ -777,7 +855,7 @@ struct LAABrainView: View {
             if updated.contains(path) { updated.remove(path) } else { updated.insert(path) }
             try LAABrainPins.save(updated, root: local.isReady ? local.snapshot() : nil)
             pins = updated
-        } catch { localError = "Could not save pins on this iPhone." }
+        } catch { localError = "ピンを保存できませんでした。" }
     }
 
     private func failure(_ error: LAABridgeError) -> some View {
@@ -791,28 +869,35 @@ struct LAABrainView: View {
 
     @MainActor private func load() async {
         if local.isSelected {
+            let selectedRoot = try? local.snapshot()
             listError = nil; localReadFailed = false; isLoading = true; isIndexing = false
             do {
                 let root = try local.snapshot()
                 let listing = try await Task.detached(priority: .userInitiated) { try LAABrainVaultIO.listing(root: root) }.value
                 try Task.checkCancellation()
+                guard (try? local.snapshot()) == root else { return }
                 let result = listing.files
                 files = result; folderPaths = listing.folders; isLoading = false; localError = nil; isIndexing = true
                 do { pins = try LAABrainPins.load(root: root) }
-                catch { localError = "Could not load pins on this iPhone." }
+                catch { localError = "ピンを読み込めませんでした。" }
                 let job = Task.detached(priority: .utility) {
                     LAABrainIndex(files: result) { path in try LAABrainVaultIO.note(root: root, path: path).text }
                 }
                 let built = await withTaskCancellationHandler(operation: { await job.value }, onCancel: { job.cancel() })
                 try Task.checkCancellation()
+                guard (try? local.snapshot()) == root else { return }
                 index = built; indexRevision += 1; isIndexing = false
             } catch is CancellationError { return }
-            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; localReadFailed = true; isLoading = false; isIndexing = false }
+            catch {
+                guard selectedRoot == (try? local.snapshot()) else { return }
+                localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message
+                localReadFailed = true; isLoading = false; isIndexing = false
+            }
             return
         }
         index = nil; isIndexing = false
         do { pins = try LAABrainPins.load(root: nil) }
-        catch { localError = "Could not load pins on this iPhone." }
+        catch { localError = "ピンを読み込めませんでした。" }
         guard (showMacSource || useBridgeFixture), LAABrainData.available(bridge) else { files = []; listError = nil; isLoading = false; return }
         let inbox = includeInbox
         files = []; listError = nil; isLoading = true
@@ -842,12 +927,15 @@ struct LAABrainView: View {
         if local.isSelected {
             hits = []; searchError = nil
             guard !term.isEmpty, local.isReady else { isSearching = false; return }
-            guard let index, !isIndexing else { isSearching = false; return }
+            guard let index, !isIndexing, let root = try? local.snapshot() else { isSearching = false; return }
+            let searchIndexRevision = indexRevision
             isSearching = true
             do {
                 try await Task.sleep(for: .milliseconds(350))
                 let results = await Task.detached(priority: .userInitiated) { index.search(term) }.value
                 try Task.checkCancellation()
+                guard (try? local.snapshot()) == root, searchIndexRevision == indexRevision,
+                      term == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
                 hits = results; isSearching = false
             } catch is CancellationError { return }
             catch { localError = LAABrainVaultError.unreadable.message; isSearching = false }

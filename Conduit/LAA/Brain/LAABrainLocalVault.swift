@@ -1,6 +1,9 @@
 #if LAA_BUILD
 import Combine
 import Foundation
+#if targetEnvironment(macCatalyst)
+import Darwin
+#endif
 
 /// A selected folder remains in scope while its file presenter is registered.
 /// No sync state is inferred from the ability to read this folder.
@@ -12,11 +15,70 @@ import Foundation
     private var presenter: LAABrainVaultPresenter?
     private var scopeHeld = false
     private let bookmarkURL: URL
+    private let preferences: UserDefaults
+    private let beginScope: (URL) -> Bool
+    private let endScope: (URL) -> Void
+    private let homeDirectory: URL?
+    #if DEBUG && targetEnvironment(macCatalyst)
+    private var fixtureRoots: [Location: URL] = [:]
+    #endif
+    enum Location: String, CaseIterable { case brain = "Brain", hq = "HQ" }
+    @Published private(set) var location: Location?
+    private var locationBookmark: URL? { location.map { bookmarkURL.deletingLastPathComponent().appendingPathComponent("vault-\($0.rawValue).bookmark") } }
 
-    init() {
+    nonisolated static func userHomeDirectory() -> URL? {
+        #if targetEnvironment(macCatalyst)
+        guard let entry = getpwuid(getuid()), let path = entry.pointee.pw_dir, path.pointee != 0 else { return nil }
+        return URL(fileURLWithPath: String(cString: path), isDirectory: true)
+        #else
+        return nil
+        #endif
+    }
+
+    static func allowedMacRoot(_ url: URL, home: URL) -> Bool {
+        let candidate = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let home = home.standardizedFileURL.resolvingSymlinksInPath().path
+        return candidate != home && !home.hasPrefix(candidate == "/" ? "/" : candidate + "/")
+    }
+
+    static func legacyLocation(_ url: URL, home: URL) -> Location? {
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        if path == home.appendingPathComponent("Brain").standardizedFileURL.resolvingSymlinksInPath().path { return .brain }
+        if path == home.appendingPathComponent("hq").standardizedFileURL.resolvingSymlinksInPath().path { return .hq }
+        return nil
+    }
+
+    func hasBookmark(_ location: Location) -> Bool {
+        FileManager.default.fileExists(atPath: bookmarkURL.deletingLastPathComponent().appendingPathComponent("vault-\(location.rawValue).bookmark").path)
+    }
+
+    init(bookmarkDirectory: URL? = nil, preferences: UserDefaults = .standard,
+         homeDirectory: URL? = LAABrainLocalVault.userHomeDirectory(),
+         beginScope: @escaping (URL) -> Bool = { $0.startAccessingSecurityScopedResource() },
+         endScope: @escaping (URL) -> Void = { $0.stopAccessingSecurityScopedResource() }) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        bookmarkURL = support.appendingPathComponent("Brain", isDirectory: true).appendingPathComponent("vault.bookmark")
+        bookmarkURL = (bookmarkDirectory ?? support.appendingPathComponent("Brain", isDirectory: true)).appendingPathComponent("vault.bookmark")
+        self.preferences = preferences
+        self.homeDirectory = homeDirectory
+        self.beginScope = beginScope
+        self.endScope = endScope
         #if DEBUG
+        #if targetEnvironment(macCatalyst)
+        if ProcessInfo.processInfo.arguments.contains("-laa-brain-mac-roots-fixture") {
+            do {
+                let container = FileManager.default.temporaryDirectory.appendingPathComponent("brain-mac-fixture-" + UUID().uuidString)
+                for target in Location.allCases {
+                    let directory = container.appendingPathComponent(target.rawValue, isDirectory: true)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try Data("# \(target.rawValue) Only\n".utf8).write(to: directory.appendingPathComponent("\(target.rawValue)Only.md"))
+                    fixtureRoots[target] = directory
+                }
+                location = .brain
+                activate(fixtureRoots[.brain]!, scoped: false)
+            } catch { state = .needsAccess }
+            return
+        }
+        #endif
         if ProcessInfo.processInfo.arguments.contains("-laa-brain-no-vault-fixture") { return }
         if ProcessInfo.processInfo.arguments.contains("-laa-brain-local-fixture") {
             do {
@@ -70,23 +132,27 @@ import Foundation
     var isReady: Bool { state == .ready }
 
     func connect(_ selected: URL) throws {
-        guard selected.startAccessingSecurityScopedResource() else { throw LAABrainVaultError.access }
+        #if targetEnvironment(macCatalyst)
+        guard let homeDirectory, Self.allowedMacRoot(selected, home: homeDirectory), let location, Self.legacyLocation(selected, home: homeDirectory) == location else { throw LAABrainVaultError.invalidPath }
+        #endif
+        guard beginScope(selected) else { throw LAABrainVaultError.access }
         do {
             let values = try selected.resourceValues(forKeys: [.isDirectoryKey])
             guard values.isDirectory == true else { throw LAABrainVaultError.notDirectory }
             let bookmark = try selected.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             try FileManager.default.createDirectory(at: bookmarkURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try bookmark.write(to: bookmarkURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try bookmark.write(to: locationBookmark ?? bookmarkURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             activate(selected, scoped: true)
         } catch {
-            selected.stopAccessingSecurityScopedResource()
+            endScope(selected)
             throw error
         }
     }
 
     func disconnect() throws {
         // Keep the bookmark and current state if removing it fails.
-        if FileManager.default.fileExists(atPath: bookmarkURL.path) { try FileManager.default.removeItem(at: bookmarkURL) }
+        let selectedBookmark = locationBookmark ?? bookmarkURL
+        if FileManager.default.fileExists(atPath: selectedBookmark.path) { try FileManager.default.removeItem(at: selectedBookmark) }
         deactivate()
         state = .disconnected
         revision += 1
@@ -97,20 +163,75 @@ import Foundation
         return root
     }
 
+    #if targetEnvironment(macCatalyst)
+    func select(_ target: Location) {
+        guard location != target || !isReady else { return }
+        deactivate()
+        location = target
+        state = .disconnected
+        revision += 1
+        #if DEBUG
+        if let fixture = fixtureRoots[target] { activate(fixture, scoped: false); return }
+        #endif
+        restoreBookmark(at: locationBookmark!)
+    }
+
+    func prepareDaily() -> Bool {
+        if location != .brain { select(.brain) }
+        return location == .brain && isReady
+    }
+
     private func restoreBookmark() {
+        // Prefer the last explicitly selected location. Never delete the legacy
+        // bookmark: it remains a recovery source if migration is interrupted.
+        if let raw = preferences.string(forKey: "laa.brain.mac.location"),
+           let target = Location(rawValue: raw), hasBookmark(target) {
+            location = target
+            restoreBookmark(at: locationBookmark!)
+            return
+        }
         guard FileManager.default.fileExists(atPath: bookmarkURL.path) else { return }
         do {
             let data = try Data(contentsOf: bookmarkURL)
             var stale = false
             let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
-            guard !stale, url.startAccessingSecurityScopedResource() else { state = .needsAccess; return }
+            guard let homeDirectory, !stale, Self.allowedMacRoot(url, home: homeDirectory) else { state = .needsAccess; return }
+            if let target = Self.legacyLocation(url, home: homeDirectory) {
+                let destination = bookmarkURL.deletingLastPathComponent().appendingPathComponent("vault-\(target.rawValue).bookmark")
+                if !FileManager.default.fileExists(atPath: destination.path) {
+                    try data.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                }
+                location = target
+                restoreBookmark(at: destination)
+            } else {
+                // Keep the old bookmark solely as a recovery source.
+                state = .needsAccess
+            }
+        } catch { state = .needsAccess }
+    }
+    #else
+    private func restoreBookmark() { restoreBookmark(at: bookmarkURL) }
+    #endif
+
+    private func restoreBookmark(at bookmarkURL: URL) {
+        guard FileManager.default.fileExists(atPath: bookmarkURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: bookmarkURL)
+            var stale = false
+            let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
+            #if targetEnvironment(macCatalyst)
+            guard let homeDirectory, let location, Self.allowedMacRoot(url, home: homeDirectory), Self.legacyLocation(url, home: homeDirectory) == location else {
+                state = .needsAccess; return
+            }
+            #endif
+            guard !stale, beginScope(url) else { state = .needsAccess; return }
             do {
                 guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
-                    url.stopAccessingSecurityScopedResource(); state = .needsAccess; return
+                    endScope(url); state = .needsAccess; return
                 }
                 activate(url, scoped: true)
             } catch {
-                url.stopAccessingSecurityScopedResource(); state = .needsAccess
+                endScope(url); state = .needsAccess
             }
         } catch { state = .needsAccess }
     }
@@ -128,20 +249,27 @@ import Foundation
         presenter = observer
         NSFileCoordinator.addFilePresenter(observer)
         state = .ready
+        #if targetEnvironment(macCatalyst)
+        #if DEBUG
+        if fixtureRoots.isEmpty, let location { preferences.set(location.rawValue, forKey: "laa.brain.mac.location") }
+        #else
+        if let location { preferences.set(location.rawValue, forKey: "laa.brain.mac.location") }
+        #endif
+        #endif
         revision += 1
     }
 
     private func deactivate() {
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
         presenter = nil
-        if scopeHeld { root?.stopAccessingSecurityScopedResource() }
+        if scopeHeld, let root { endScope(root) }
         root = nil
         scopeHeld = false
     }
 
     deinit {
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
-        if scopeHeld { root?.stopAccessingSecurityScopedResource() }
+        if scopeHeld, let root { endScope(root) }
     }
 }
 
