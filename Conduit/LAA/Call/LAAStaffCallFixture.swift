@@ -43,9 +43,9 @@ private final class LAAFixturePlacedCallKit: VoicePlacedCallKit {
 struct LAAStaffCallFixture: View {
     static let launchArgument = "-laa-staff-call-fixture"
     @StateObject private var calls = LAAEmployeeCallCoordinator(control: LAAFixtureCallControl())
-    @State private var voice = LAAStaff.ciel.defaultGPTLiveVoice
+    @State private var voice = LAAStaff.monet.defaultGPTLiveVoice
     private let args = ProcessInfo.processInfo.arguments
-    private let profile = "laa-ciel"
+    private let profile = "laa-monet"
     private let conversationID = "fixture-conversation"
 
     private var reason: String? {
@@ -94,12 +94,12 @@ struct LAAStaffCallFixture: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    LAAEmployeeHeader(profile: profile, name: "Ciel", status: reason ?? "● 待機中",
+                    LAAEmployeeHeader(profile: profile, name: "Monet", status: reason ?? "● 待機中",
                                       voiceSetting: $voice)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     LAAEmployeeCallButton(reason: reason) {
-                        calls.start(profile: profile, name: "Ciel", conversationID: conversationID)
+                        calls.start(profile: profile, name: "Monet", conversationID: conversationID)
                     }
                 }
             }

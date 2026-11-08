@@ -12,7 +12,7 @@ final class LAABackgroundFixture: ObservableObject {
     init(chatFixtureOverride: String? = nil, defaultsSuiteName: String = "LAABackgroundUITestFixture",
          conversationID: String = "fixture-chat") {
         let members = [
-            GroupMember(memberID: "laa-ciel", profile: "laa-ciel", handle: "ciel", displayName: "Ciel", target: nil, extra: [:]),
+            GroupMember(memberID: "laa-monet", profile: "laa-monet", handle: "monet", displayName: "Monet", target: nil, extra: [:]),
             GroupMember(memberID: "laa-cto", profile: "laa-cto", handle: "ada", displayName: "Ada", target: nil, extra: [:]),
         ]
         let room = GroupRoom(roomID: "fixture-room", name: "企画チーム", members: members,
@@ -33,7 +33,7 @@ final class LAABackgroundFixture: ObservableObject {
                        actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
                        authorityEpoch: 1, payload: ["text": .string("今日の予定を教えてください。"), "thread_id": .string("main")], createdAt: 1),
             GroupEvent(roomID: room.roomID, seq: 2, eventID: "two", kind: "message.member",
-                       actor: GroupActor(kind: "member", id: "laa-ciel", profile: "laa-ciel", displayName: "Ciel", connectionID: nil),
+                       actor: GroupActor(kind: "member", id: "laa-monet", profile: "laa-monet", displayName: "Monet", connectionID: nil),
                        authorityEpoch: 1, payload: ["text": .string("是。予定を確認して、必要な情報をお伝えします。"), "thread_id": .string("main")], createdAt: 2),
         ]
         if chatFixture != nil {
@@ -42,7 +42,7 @@ final class LAABackgroundFixture: ObservableObject {
                            actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
                            authorityEpoch: 1, payload: ["text": .string("今日の予定を整理して、次の一手を教えて。")], createdAt: now - 60),
                 GroupEvent(roomID: room.roomID, seq: 2, eventID: "two", kind: "message.member",
-                           actor: GroupActor(kind: "member", id: "laa-ciel", profile: "laa-ciel", displayName: "Ciel", connectionID: nil),
+                           actor: GroupActor(kind: "member", id: "laa-monet", profile: "laa-monet", displayName: "Monet", connectionID: nil),
                            authorityEpoch: 1, payload: ["text": .string(Self.richMessage)], createdAt: now),
             ]
         }
@@ -64,13 +64,13 @@ final class LAABackgroundFixture: ObservableObject {
             }
         )
         let defaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defaults.set("laa-ciel", forKey: "conduit.activeProfile")
+        defaults.set("laa-monet", forKey: "conduit.activeProfile")
         let app = AppState(defaults: defaults, loadSavedConnection: false,
                            clearSessionPresentationCache: {},
                            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(botRoster: { _ in
                                BotRosterSnapshot(bots: bots, supportsBotProtocol: true)
                            }), groupChatOperations: operations)
-        app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: "laa-ciel")
+        app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: "laa-monet")
         app.isConnected = mode != "offline"
         _ = app.adoptDashboard(forNormalizedURL: "https://background-ui-test.invalid")
         app.activeSessionId = conversationID
@@ -81,12 +81,12 @@ final class LAABackgroundFixture: ObservableObject {
         if let chatFixture {
             if chatFixture == "media" {
                 app.messages = [ChatMessage(id: "assistant", role: .assistant,
-                    content: "# 素材をまとめました\n\n画像とファイルをこの会話から開けます。\n\nMEDIA: /fixtures/ciel.png\n\nMEDIA: /fixtures/design-notes.pdf",
+                    content: "# 素材をまとめました\n\n画像とファイルをこの会話から開けます。\n\nMEDIA: /fixtures/monet.png\n\nMEDIA: /fixtures/design-notes.pdf",
                     timestamp: String(now))]
                 if let dashboard = app.activeDashboardID,
-                   let hero = StaffAssetResolver.bundled.resolve(profile: "laa-ciel").hero,
+                   let hero = StaffAssetResolver.bundled.resolve(profile: "laa-monet").hero,
                    let data = try? Data(contentsOf: hero) {
-                    let key = TranscriptImageCache.key(dashboard: dashboard.uuidString, profile: "laa-ciel", path: "/fixtures/ciel.png")
+                    let key = TranscriptImageCache.key(dashboard: dashboard.uuidString, profile: "laa-monet", path: "/fixtures/monet.png")
                     TranscriptImageCache.store(data, fileExtension: "png", for: key)
                 }
             } else {

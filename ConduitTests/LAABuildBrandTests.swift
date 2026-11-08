@@ -6,16 +6,16 @@ import XCTest
 /// migration away from the upstream alternate icon (BUS-330).
 final class LAABuildBrandTests: XCTestCase {
     @MainActor
-    func testDefaultProfileNameUsesCielAndPreservesANameTheUserSaved() {
+    func testDefaultProfileNameUsesMonetAndPreservesANameTheUserSaved() {
         let suite = "laa.brand.profile.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ProfileAppearanceStore(defaults: defaults)
-        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Ciel")
+        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Monet")
         store.saveDefaultName("Hermes", dashboardID: nil)
         XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Hermes")
         store.saveDefaultName(" ", dashboardID: nil)
-        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Ciel")
+        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Monet")
     }
 
     func testPairingCodeIsTrimmedBeforeItReachesTheBridge() {
@@ -50,7 +50,7 @@ final class LAABuildBrandTests: XCTestCase {
         XCTAssertEqual(LAAProductBrand.display("Open LAA"), "Open LAA")
         XCTAssertEqual(LAAProductBrand.display("Talk to Hermes"), "Talk to LAA")
         XCTAssertEqual(LAAProductBrand.display("Paseoの状態"), "Workの状態")
-        XCTAssertEqual(LAAProductBrand.display("Ciel"), "Ciel")
+        XCTAssertEqual(LAAProductBrand.display("Monet"), "Monet")
         XCTAssertEqual(LAAProductBrand.display("the Conduit plugin"), "the LAA plugin")
     }
 

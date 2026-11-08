@@ -192,7 +192,7 @@ YAML
 fi
 echo "Generating Conduit.xcodeproj from $(basename "$spec") (build $build_number)..."
 # The overlay must sit at the repository root: xcodegen resolves the `type:
-# folder` resources (docs/laa/assets/staff and ciel) against the top-level
+# folder` resource (docs/laa/assets/staff) against the top-level
 # spec's directory, so a spec under build/ shifts their paths and the archive
 # fails. Generated here, removed immediately after — and by the trap on exit.
 xcodegen generate --spec "$spec" --project "$repo" >/dev/null

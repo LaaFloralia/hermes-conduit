@@ -24,7 +24,7 @@ struct LAAChatsView: View {
         let people = LAAStaff.allCases.compactMap { staff -> LAAChatsPerson? in
             let expected = "laa-\(staff.rawValue)"
             let found = appState.profiles.first { AppState.profilesMatch($0, expected) }
-            guard staff == .ciel || found != nil else { return nil }
+            guard staff == .monet || found != nil else { return nil }
             let profile = found ?? expected
             let name = appState.profileHermesNames[profile] ?? staff.name
             return LAAChatsPerson(profile: profile, name: name, role: staff.role,

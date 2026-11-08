@@ -28,7 +28,7 @@ struct LAAChatsFixtureView: View {
         }
     }
     private var members: [GroupMember] {
-        ["ciel", "cto", "cos"].compactMap { LAAStaff(rawValue: $0) }.map {
+        ["monet", "cto", "cos"].compactMap { LAAStaff(rawValue: $0) }.map {
             GroupMember(memberID: "laa-\($0.rawValue)", profile: "laa-\($0.rawValue)",
                         handle: nil, displayName: $0.name, target: nil, extra: [:])
         }

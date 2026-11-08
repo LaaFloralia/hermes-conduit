@@ -119,7 +119,7 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertTrue(settings.waitForExistence(timeout: 30))
             settings.tap()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["Ciel"].exists)
+            XCTAssertTrue(app.staticTexts["Monet"].exists)
             XCTAssertFalse(app.staticTexts["Hermes"].exists)
             capture("remnants-settings-\(appearance)")
 
@@ -194,7 +194,7 @@ final class LAAChromeUITests: XCTestCase {
     func testExistingVoiceEntryShowsLAACallAndCanReturnFromTabs() {
         let app = launch("light", extra: ["-LAA_UI_TEST_EXISTING_VOICE"])
         XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 30))
-        XCTAssertEqual(app.staticTexts["laa.call.name"].label, "Ciel")
+        XCTAssertEqual(app.staticTexts["laa.call.name"].label, "Monet")
         app.buttons["laa.call.back"].tap()
         let returnToCall = app.buttons["laa.call.return"]
         XCTAssertTrue(returnToCall.waitForExistence(timeout: 10))

@@ -83,8 +83,4 @@ if __name__ == "__main__":
     workdir, k, src = sys.argv[1:4]
     src = os.path.abspath(src)
     os.chdir(workdir)
-    if k == "ciel":
-        # The first clip, made before the frames were normalised.
-        build(k, src, crop=(678, 301, 21), cut_scale=660, cut_at=(310, 34))
-    else:
-        build(k, src)
+    build(k, src)

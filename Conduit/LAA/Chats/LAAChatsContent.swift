@@ -23,15 +23,15 @@ struct LAAChatsContent: View {
     @FocusState private var focusedRow: String?
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var ciel: LAAChatsPerson? { snapshot.people.first { LAAStaff(profile: $0.profile) == .ciel } }
+    private var monet: LAAChatsPerson? { snapshot.people.first { LAAStaff(profile: $0.profile) == .monet } }
     private var employees: [LAAChatsPerson] {
-        snapshot.people.filter { LAAStaff(profile: $0.profile) != .ciel && LAAChatsSearch.person($0, matches: query) }
+        snapshot.people.filter { LAAStaff(profile: $0.profile) != .monet && LAAChatsSearch.person($0, matches: query) }
     }
     private var rooms: [GroupRoom] { snapshot.rooms.filter { LAAChatsSearch.room($0, matches: query) } }
-    private var matchingCiel: LAAChatsPerson? {
-        ciel.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
+    private var matchingMonet: LAAChatsPerson? {
+        monet.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
     }
-    private var hasResults: Bool { matchingCiel != nil || !employees.isEmpty || !rooms.isEmpty }
+    private var hasResults: Bool { matchingMonet != nil || !employees.isEmpty || !rooms.isEmpty }
 
     var body: some View {
         ScrollView {
@@ -42,7 +42,7 @@ struct LAAChatsContent: View {
                 if searching && !hasResults {
                     searchEmpty
                 } else {
-                    if let ciel = matchingCiel { cielSection(ciel) }
+                    if let monet = matchingMonet { monetSection(monet) }
                     if !searching || !employees.isEmpty { employeeSection }
                     if !searching || !rooms.isEmpty { groupSection }
                     if !searching { scheduledSection }
@@ -95,7 +95,7 @@ struct LAAChatsContent: View {
     /// The rows a click or the arrow keys can reach, in the order shown.
     private var rowIDs: [String] {
         var ids: [String] = []
-        if let ciel = matchingCiel, ciel.available { ids.append("person.\(ciel.profile)") }
+        if let monet = matchingMonet, monet.available { ids.append("person.\(monet.profile)") }
         ids += employees.filter(\.available).map { "person.\($0.profile)" }
         if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
         return ids
@@ -160,23 +160,23 @@ struct LAAChatsContent: View {
         .laaGlass(in: Capsule())
     }
 
-    private func cielSection(_ ciel: LAAChatsPerson) -> some View {
+    private func monetSection(_ monet: LAAChatsPerson) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionHeader(LAACopy.chatsCiel)
-            Button { openPerson(ciel) } label: {
-                personRow(ciel, size: 48, selected: isSelected("person.\(ciel.profile)"))
+            sectionHeader(LAACopy.chatsMonet)
+            Button { openPerson(monet) } label: {
+                personRow(monet, size: 48, selected: isSelected("person.\(monet.profile)"))
                     .padding(LAASpacing.x3)
-                    .background(isSelected("person.\(ciel.profile)") ? LAAColor.selectionFill : LAAColor.surface,
+                    .background(isSelected("person.\(monet.profile)") ? LAAColor.selectionFill : LAAColor.surface,
                                 in: RoundedRectangle(cornerRadius: LAARadius.card))
             }
             .buttonStyle(.plain)
-            .disabled(!ciel.available)
-            .accessibilityHint(Text(verbatim: ciel.available ? "" : LAACopy.chatsUnavailable))
-            .accessibilityAddTraits(isSelected("person.\(ciel.profile)") ? .isSelected : [])
-            .accessibilityIdentifier("laa.chats.person.\(ciel.profile)")
-            .focused($focusedRow, equals: "person.\(ciel.profile)")
-            .onHover(perform: hover("person.\(ciel.profile)"))
-            if !ciel.available { note(LAACopy.chatsUnavailable) }
+            .disabled(!monet.available)
+            .accessibilityHint(Text(verbatim: monet.available ? "" : LAACopy.chatsUnavailable))
+            .accessibilityAddTraits(isSelected("person.\(monet.profile)") ? .isSelected : [])
+            .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
+            .focused($focusedRow, equals: "person.\(monet.profile)")
+            .onHover(perform: hover("person.\(monet.profile)"))
+            if !monet.available { note(LAACopy.chatsUnavailable) }
         }
     }
 

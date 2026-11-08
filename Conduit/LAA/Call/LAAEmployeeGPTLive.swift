@@ -12,7 +12,7 @@ struct LAAEmployeeGPTLivePlan: Equatable {
     let billing: GPTLiveBilling = .subscription
 
     static func make(profile: String, savedVoice: String?, dashboardID: UUID? = nil) -> Self? {
-        guard let staff = LAAStaff(profile: profile), staff != .cielUncensored else { return nil }
+        guard let staff = LAAStaff(profile: profile), staff != .monetUncensored else { return nil }
         let voices = Set(GPTLiveVoice.all.map(\.name))
         let voice = savedVoice.flatMap { voices.contains($0) ? $0 : nil } ?? staff.defaultGPTLiveVoice
         return Self(profile: profile, voice: voice, dashboardID: dashboardID)
@@ -23,12 +23,11 @@ extension LAAStaff {
     /// ChatGPT subscription voices, chosen independently for each employee.
     var defaultGPTLiveVoice: String {
         switch self {
-        case .ciel: return "vale"
-        case .cielUncensored: return "vale"
+        case .monet: return "vale"
+        case .monetUncensored: return "vale"
         case .argus: return "ember"
         case .cfo: return "arbor"
         case .cio: return "cove"
-        case .cmo: return "maple"
         case .cos: return "spruce"
         case .cso: return "sol"
         case .cto: return "juniper"

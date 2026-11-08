@@ -8,11 +8,11 @@ final class LAAEmployeeWidgetTests: XCTestCase {
 
     func testEveryEmployeeHasTheSpecifiedProfileAndArtwork() {
         let expected = [
-            "ciel": "Ciel", "ciel-uncensored": "Ciel（無検閲）", "argus": "Argus", "cfo": "Morgan", "cio": "Sherlock",
-            "cmo": "Monet", "cos": "Merlin", "cto": "Ada", "cso": "Talos"
+            "monet": "Monet", "monet-uncensored": "Monet（無検閲）", "argus": "Argus", "cfo": "Morgan", "cio": "Sherlock",
+            "cos": "Merlin", "cto": "Ada", "cso": "Talos"
         ]
         XCTAssertEqual(LAAWidgetEmployee.allCases.count, expected.count)
-        XCTAssertEqual(LAAWidgetEmployee.defaultEmployee, .ciel)
+        XCTAssertEqual(LAAWidgetEmployee.defaultEmployee, .monet)
         for employee in LAAWidgetEmployee.allCases {
             XCTAssertEqual(employee.name, expected[employee.rawValue])
             XCTAssertEqual(employee.profile, "laa-\(employee.rawValue)")
@@ -20,6 +20,10 @@ final class LAAEmployeeWidgetTests: XCTestCase {
             XCTAssertEqual(employee.heroImage, "LAAEmployee-\(employee.rawValue)-hero")
         }
         XCTAssertNil(LAAWidgetEmployee.forProfile("laa-unknown"))
+        for retired in ["laa-ciel", "laa-ciel-uncensored", "laa-cmo"] {
+            XCTAssertNil(LAAWidgetEmployee.forProfile(retired))
+            XCTAssertNil(LAAWidgetEmployee(rawValue: String(retired.dropFirst(4))))
+        }
     }
 
     func testEveryEmployeeLinkPreservesProfileDashboardAndAction() throws {
@@ -80,23 +84,23 @@ final class LAAEmployeeWidgetTests: XCTestCase {
     func testEmptyEmployeeCatalogCreatesConversationInThatProfile() async throws {
         let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "https://widget-test.invalid")
         let state = try makeState(dashboards: [dashboard])
-        state.setActiveProfileForTesting("laa-ciel")
+        state.setActiveProfileForTesting("laa-monet")
         let connection = HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "test")
         state.connection = connection
-        state.client = HermesClient(connection: connection, profile: "laa-ciel")
+        state.client = HermesClient(connection: connection, profile: "laa-monet")
         state.isConnected = true
-        state.profiles = ["default", "laa-ciel"]
+        state.profiles = ["default", "laa-monet"]
         state.sessions = []
-        let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-ciel")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-monet")
         state.widgetSettledCatalogOwner = workspace
-        state.widgetSessionCreatorOverride = { _, _ in ("new-ciel", "new-ciel", "laa-ciel") }
+        state.widgetSessionCreatorOverride = { _, _ in ("new-monet", "new-monet", "laa-monet") }
         let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
 
         let result = await state.performWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true }))
 
         XCTAssertEqual(result, .handled)
-        XCTAssertEqual(state.activeSessionId, "new-ciel")
-        XCTAssertEqual(state.activeProfile, "laa-ciel")
+        XCTAssertEqual(state.activeSessionId, "new-monet")
+        XCTAssertEqual(state.activeProfile, "laa-monet")
     }
 
     private func makeState(dashboards: [SavedDashboard]) throws -> AppState {

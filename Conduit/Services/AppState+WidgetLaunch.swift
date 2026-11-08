@@ -166,7 +166,7 @@ extension AppState {
             return await openWidgetConversation(reference, workspace: workspace, lease: lease)
         case .talk:
             #if LAA_BUILD
-            if LAAStaff(profile: workspace.profile) == .cielUncensored {
+            if LAAStaff(profile: workspace.profile) == .monetUncensored {
                 return .failed("この会話はテキスト専用です")
             }
             #endif

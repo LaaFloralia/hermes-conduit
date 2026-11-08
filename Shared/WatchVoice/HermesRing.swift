@@ -45,7 +45,7 @@ struct HermesRing: Equatable {
 /// capitalized profile id.
 enum HermesCallerName {
     #if LAA_BUILD
-    static let fallback = "Ciel"
+    static let fallback = "Monet"
     #else
     static let fallback = "Hermes"
     #endif

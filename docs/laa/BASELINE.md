@@ -25,7 +25,7 @@
 | 更新通知 | 2026-10-24〜28 毎日「plugin updates available」 | `~/.hermes/logs/gateway.log` | grep |
 | Hermes | v0.22.2（2026.9.24）local d923a5eb | `~/.local/share/hermes-agent` | `hermes --version` |
 | Hermes gateway | 常駐（launchd `ai.hermes.gateway`、PID稼働中） | `~/.hermes` | `ps`, launchd plist |
-| Hermesプロファイル | 8件（laa-ciel/cmo/cfo/cio/cos/cso/cto/argus） | `~/.hermes/profiles` | ls |
+| Hermesプロファイル | 統合後の想定は8件（laa-monet、laa-monet-uncensored、laa-cfo、laa-cio、laa-cos、laa-cso、laa-cto、laa-argus）。実行環境への反映は親が担当 | `~/.hermes/profiles` | 切替後に確認 |
 | Paseo | CLI 0.11.4 / daemon 0.12.0 | `/Applications/Paseo.app` | `paseo --version`, プラグインのエラー文 |
 | Paseoプラグイン | child-session-prefix 稼働 / t3-chat-theme **failed**（daemon 0.12.0が要求範囲外） | `paseo plugin ls --json` | 同上 |
 | push relay | `https://push.milim.dev`、gateway `Mac-mini.local Hermes`、E2E有効 | `~/.hermes/conduit-push.json`（credentialは読まない） | キー限定の読取り |
@@ -49,8 +49,8 @@
 ## 5. laa-personal-agent
 
 - 入口 `/Users/laa/.local/bin/laa-personal-agent` → 実体 `/Users/laa/hq/harness/personal_agent_bridge.mjs`（24,938 bytes、2026-10-25更新、hqはmaster clean）。
-- 操作は create / status / wait / list / send / reply / stop。waitは最大55秒（Ciel側）、`creation_outcome_unknown` は新IDで再試行しない。Paseoの永続idempotency必須。
-- Hermes Cielの `laa_personal_agent` だけがorigin `hermes-conduit` 固定で呼ぶ。他7役はterminal・Mac委譲を持たない。
+- 操作は create / status / wait / list / send / reply / stop。waitは最大55秒（Monet側）、`creation_outcome_unknown` は新IDで再試行しない。Paseoの永続idempotency必須。
+- Hermes Monetの `laa_personal_agent` だけがorigin `hermes-conduit` 固定で呼ぶ。他7役はterminal・Mac委譲を持たない。
 
 ## 6. Usage・Mac監視の既存経路
 

@@ -80,7 +80,7 @@ final class WidgetLaunchUITests: XCTestCase {
     #if LAA_BUILD
     func testEmployeeRowOpensAnotherProfilesConversation() throws {
         let profile = "laa-cfo"
-        let app = launchApp(warmURL: employeeURL(action: "employeeChat", profile: profile), sourceProfile: "laa-ciel")
+        let app = launchApp(warmURL: employeeURL(action: "employeeChat", profile: profile), sourceProfile: "laa-monet")
         let employee = app.buttons["laa.chats.person.\(profile)"]
         app.returnToV2Tabs(revealing: employee)
         XCTAssertTrue(employee.waitForExistence(timeout: 15), tree(app))
@@ -95,7 +95,7 @@ final class WidgetLaunchUITests: XCTestCase {
     }
 
     func testEveryEmployeeLinkReachesItsConversationAndVoicePath() throws {
-        for employee in ["ciel", "argus", "cfo", "cio", "cmo", "cos", "cto", "cso"] {
+        for employee in ["monet", "argus", "cfo", "cio", "cos", "cto", "cso"] {
             let profile = "laa-\(employee)"
             let chat = launchApp(coldURL: employeeURL(action: "employeeChat", profile: profile))
             let conversation = chat.otherElements[Identity.conversationOutcome]
@@ -112,8 +112,8 @@ final class WidgetLaunchUITests: XCTestCase {
         }
     }
 
-    func testCielUncensoredWidgetOpensItsConversation() throws {
-        let profile = "laa-ciel-uncensored"
+    func testMonetUncensoredWidgetOpensItsConversation() throws {
+        let profile = "laa-monet-uncensored"
         let app = launchApp(coldURL: employeeURL(action: "employeeChat", profile: profile))
         let conversation = app.otherElements[Identity.conversationOutcome]
         XCTAssertTrue(conversation.waitForExistence(timeout: 15), tree(app))

@@ -15,10 +15,10 @@ struct LAANotificationPairAllFixtureScreen: View {
 
         func source() -> LAANotificationPairAll.Source {
             .init(dashboardID: dashboardID, installationID: installationID, canStart: { true }, isCurrent: { true }, profiles: {
-                ["default", "laa-cmo", "laa-cto"]
+                ["default", "laa-monet", "laa-cto"]
             }, alreadyPaired: { $0 == "default" }, pair: { name in
                 try await Task.sleep(for: .seconds(2))
-                if name == "laa-cmo" && !self.failed {
+                if name == "laa-monet" && !self.failed {
                     self.failed = true
                     throw URLError(.notConnectedToInternet)
                 }

@@ -15,7 +15,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
         let usage = WidgetUsageSnapshot(meters: meters, checkedAt: now)
         let snapshot = WidgetSnapshot(appLanguage: "en", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
-        let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot, date: now)
+        let entry = LAAEmployeeWidgetEntry.make(employee: .monet, snapshot: snapshot, date: now)
         XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
     }
 
@@ -100,9 +100,21 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
 
     func testMediumWidgetRendersSelectedEmployee() throws {
         let now = Date(timeIntervalSince1970: 1_793_456_040)
-        let ciel = try capture(style: .light, mode: .fullColor, name: "medium-ciel", now: now, employee: .ciel)
-        let monet = try capture(style: .light, mode: .fullColor, name: "medium-monet", now: now, employee: .cmo)
-        XCTAssertNotEqual(ciel, monet, "The selected employee must change the medium widget's appearance")
+        let monet = try capture(style: .light, mode: .fullColor, name: "medium-monet", now: now, employee: .monet)
+        let argus = try capture(style: .light, mode: .fullColor, name: "medium-argus", now: now, employee: .argus)
+        XCTAssertNotEqual(monet, argus, "The selected employee must change the medium widget's appearance")
+    }
+
+    func testMonetVariantsOnWallpaperLightAndDark() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let appearance = style == .dark ? "dark" : "light"
+            let monet = try capture(style: style, mode: .fullColor, name: "monet-\(appearance)",
+                                    now: now, wallpaper: true, employee: .monet)
+            let uncensored = try capture(style: style, mode: .fullColor, name: "monet-uncensored-\(appearance)",
+                                         now: now, wallpaper: true, employee: .monetUncensored)
+            XCTAssertNotEqual(monet, uncensored, "Employee variants must render differently")
+        }
     }
 
     func testSmallActionsOnWallpaperLightDarkAndTinted() throws {
@@ -136,7 +148,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
                          dynamicTypeSize: DynamicTypeSize = .large,
                          checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0, wallpaper: Bool = false, small: Bool = false,
-                         employee: LAAWidgetEmployee = .ciel) throws -> Data {
+                         employee: LAAWidgetEmployee = .monet) throws -> Data {
         let rows: [(String, String, WidgetUsageMeter.Unit, Double)] = [
             ("codex.quota.weekly", "Codex Weekly", .percent, 35),
             ("opencode-go.quota.weekly", "OpenCode Weekly", .percent, 72),

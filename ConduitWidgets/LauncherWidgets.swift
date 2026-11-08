@@ -32,8 +32,8 @@ struct CharacterLauncherWidget: Widget {
             LauncherWidgetView(entry: entry, style: .character)
         }
         #if LAA_BUILD
-        .configurationDisplayName("Ciel Workspace")
-        .description("Open your workspace, start a new chat, or talk with Ciel.")
+        .configurationDisplayName("Monet Workspace")
+        .description("Open your workspace, start a new chat, or talk with Monet.")
         #else
         .configurationDisplayName("Conduit-chan")
         .description("Open your workspace, start a new chat, or talk with Conduit-chan.")
@@ -156,7 +156,7 @@ private struct LauncherWidgetView: View {
     @ViewBuilder
     private var characterArtwork: some View {
         #if LAA_BUILD
-        Image("LAAEmployee-ciel-hero").resizable().scaledToFit()
+        Image("LAAEmployee-monet-hero").resizable().scaledToFit()
             .frame(width: 84, height: 94).accessibilityHidden(true)
         #else
         if #available(iOS 18.0, *), renderingMode == .accented {
