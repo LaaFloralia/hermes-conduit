@@ -116,6 +116,7 @@ struct RootView: View {
 struct MainView: View {
     @EnvironmentObject var appState: AppState
 #if LAA_BUILD
+    @Environment(\.scenePhase) private var laaScenePhase
     @StateObject private var employeeCalls = LAAEmployeeCallCoordinator(control: LAAEmployeeVoiceControl())
     #if DEBUG
     @State private var laaTestVoiceInjected = false
@@ -521,6 +522,9 @@ struct MainView: View {
         #if LAA_BUILD
         AnyView(shellSurface
             .environmentObject(laaBridge)
+            .onChange(of: laaScenePhase, initial: true) { _, phase in
+                if phase == .active { laaBridge.retryReadingCredentialsIfNeeded() }
+            }
             .modifier(LAACallPresentation(calls: employeeCalls, topBanner: AnyView(callTopBanners),
                                           bottomOverlay: AnyView(presentedConfirmOverlay(inCall: true))))
             .onAppear {
