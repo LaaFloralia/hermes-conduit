@@ -129,7 +129,7 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
     @discardableResult
     func startEmployeeConversation(_ appState: AppState) -> Bool {
         let profile = appState.conversationIdentityProfile
-        guard let employee = LAAStaff(profile: profile), employee != .monetUncensored else { return false }
+        guard let employee = LAAStaff(profile: profile), employee.supportsCalls else { return false }
         if let context = snapshot?.context, context.profile == profile,
            context.conversationID == appState.activeSessionId {
             showCall()

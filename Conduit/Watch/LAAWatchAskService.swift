@@ -13,10 +13,10 @@ enum LAAWatchAskRouting {
     ]
 
     static func route(_ text: String, profile: String?) -> (profile: String, text: String)? {
-        let staff = LAAStaff.allCases
+        let staff = LAAStaff.allCases.filter { $0 != .monetDots }
         guard let first = staff.first else { return nil }
         if let profile {
-            guard let selected = LAAStaff(profile: profile) else { return nil }
+            guard let selected = LAAStaff(profile: profile), selected != .monetDots else { return nil }
             return ("laa-\(selected.rawValue)", text)
         }
         var matches: [(LAAStaff, String.Index)] = []

@@ -191,8 +191,10 @@ struct LAAChatsView: View {
     }
 
     private func openPerson(_ person: LAAChatsPerson) {
-        guard person.available, let employee = LAAWidgetEmployee.forProfile(person.profile) else { return }
-        let link = LAAEmployeeWidgetLinks.link(employee: employee, action: .employeeChat, snapshot: nil)
+        guard person.available, LAAStaff(profile: person.profile) != nil,
+              let dashboardID = appState.activeDashboardID,
+              let link = WidgetLaunchLink(action: .employeeChat,
+                  workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: person.profile), reference: nil) else { return }
         _ = appState.routeWidgetLaunchURL(link.url)
     }
 }

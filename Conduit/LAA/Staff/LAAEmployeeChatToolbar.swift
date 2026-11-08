@@ -70,7 +70,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 
     private func voiceSetting(for profile: String) -> Binding<String>? {
-        guard let staff = LAAStaff(profile: profile), staff != .monetUncensored else { return nil }
+        guard let staff = LAAStaff(profile: profile), staff.supportsCalls else { return nil }
         return Binding(get: { appState.laaEmployeeVoice(profile: profile) ?? staff.defaultGPTLiveVoice },
                        set: { appState.setLAAEmployeeVoice($0, profile: profile) })
     }
@@ -107,7 +107,7 @@ enum LAAEmployeeCallAvailability {
     @MainActor
     static func reason(appState: AppState, bridge: LAABridgeSession.Status, calls: LAAEmployeeCallCoordinator) -> String? {
         let profile = appState.conversationIdentityProfile
-        if LAAStaff(profile: profile) == .monetUncensored { return "この会話はテキスト専用です" }
+        if let staff = LAAStaff(profile: profile), !staff.supportsCalls { return "この会話はテキスト専用です" }
         if let snapshot = calls.snapshot {
             return snapshot.context.profile == profile && snapshot.context.conversationID == appState.activeSessionId
                 ? nil : "別の会話の通話を確認してください"

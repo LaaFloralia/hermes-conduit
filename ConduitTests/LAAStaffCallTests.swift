@@ -63,7 +63,8 @@ final class LAAStaffCallTests: XCTestCase {
     func testStaffProfilesAndUnknownProfile() {
         let expected: [String: String] = ["monet": "Monet", "argus": "Argus", "cfo": "Morgan",
                                           "cio": "Sherlock", "cos": "Merlin",
-                                          "cso": "Talos", "cto": "Ada", "monet-uncensored": "Monet（無検閲）"]
+                                          "cso": "Talos", "cto": "Ada", "monet-uncensored": "Monet（無検閲）",
+                                          "monet-dots": "Monet（Dots）"]
         for (id, name) in expected {
             XCTAssertEqual(LAAStaff(profile: "laa-\(id)")?.name, name)
         }
@@ -72,6 +73,16 @@ final class LAAStaffCallTests: XCTestCase {
         for retired in ["laa-ciel", "laa-ciel-uncensored", "laa-cmo"] {
             XCTAssertNil(LAAStaff(profile: retired))
         }
+    }
+
+    func testDotsEmployeeChatRoutePreservesProfileWithoutAddingAVoiceWidget() throws {
+        let workspace = WidgetWorkspaceID(dashboardID: UUID(), profile: "laa-monet-dots")
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        XCTAssertEqual(WidgetLaunchLink(url: link.url)?.workspace, workspace)
+        XCTAssertEqual(WidgetLaunchLink(url: link.url)?.action, .employeeChat)
+        XCTAssertNil(LAAWidgetEmployee.forProfile(workspace.profile))
+        XCTAssertNil(WidgetLaunchLink(action: .employeeChat,
+            workspace: WidgetWorkspaceID(dashboardID: workspace.dashboardID, profile: "laa-unknown"), reference: nil))
     }
 
     func testCallKitPresentationUsesBundledIconAndStaffNames() throws {
@@ -406,6 +417,8 @@ final class LAAStaffCallTests: XCTestCase {
         let resolver = StaffAssetResolver(root: root, exists: { paths.contains($0.path) })
         let monet = resolver.resolve(profile: "laa-monet")
         XCTAssertEqual(monet.avatar?.path, "/test-bundle/staff/monet/monet-avatar-512.png")
+        XCTAssertEqual(resolver.resolve(profile: "laa-monet-dots"), monet)
+        XCTAssertFalse(LAAStaff.monetDots.supportsCalls)
         XCTAssertNotNil(monet.loop)
         XCTAssertNotNil(monet.turn)
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").turn)
