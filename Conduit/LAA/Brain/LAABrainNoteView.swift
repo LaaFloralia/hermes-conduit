@@ -22,6 +22,9 @@ struct LAABrainNoteView: View {
     /// The Mac detail column paints the whole column and narrows only this
     /// card, so no second colour shows down its sides.
     var contentMaxWidth: CGFloat? = nil
+    /// Leaves this note once it has moved or gone to the trash: the phone
+    /// pops it, the Mac detail column clears its selection.
+    var leave: (() -> Void)? = nil
     @State private var note: LAABrainNote?
     @State private var error: LAABridgeError?
     @State private var localError: String?
@@ -161,9 +164,10 @@ struct LAABrainNoteView: View {
             }
             .sheet(isPresented: $showManage, onDismiss: { editorIsOpen = false; managedNote = nil }) {
                 if let managedNote, let root = try? local.snapshot() {
-                    LAABrainManageNoteView(root: root, note: managedNote) { destination in
+                    LAABrainManageNoteView(root: root, rootName: local.location?.rawValue ?? root.lastPathComponent,
+                                           note: managedNote) { destination in
                         showManage = false; editorIsOpen = false
-                        if !path.isEmpty { path.removeLast() }
+                        if let leave { leave() } else if !path.isEmpty { path.removeLast() }
                         if !destination.hasPrefix(".trash/") {
                             path.append(.note(LAABrainReference(path: destination, includeInbox: true)))
                         }

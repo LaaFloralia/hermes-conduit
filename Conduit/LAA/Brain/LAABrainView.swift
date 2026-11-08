@@ -148,15 +148,16 @@ struct LAABrainView: View {
         .sheet(isPresented: $showCreate) {
             LAABrainCreateView(pending: $pending) { created in
                 showCreate = false
-                path.append(.note(LAABrainReference(path: created.path, includeInbox: true)))
+                open(.note(LAABrainReference(path: created.path, includeInbox: true)))
             }.environmentObject(bridge)
         }
         .sheet(item: $localCreate) { target in
             if let root = try? local.snapshot() {
-                LAABrainLocalCreateView(root: root, target: target) { newPath, kind in
+                LAABrainLocalCreateView(root: root, rootName: local.location?.rawValue ?? root.lastPathComponent,
+                                        target: target) { newPath, kind in
                     switch kind {
-                    case .note: path.append(.note(LAABrainReference(path: newPath, includeInbox: true)))
-                    case .folder: path.append(.folder(newPath))
+                    case .note: open(.note(LAABrainReference(path: newPath, includeInbox: true)))
+                    case .folder: open(.folder(newPath))
                     }
                     Task { await load() }
                 }
@@ -266,10 +267,11 @@ struct LAABrainView: View {
         if let selection = desktopSelection {
             LAABrainNoteView(reference: selection, files: files, local: local, isLocal: local.isReady,
                              index: index, isPinned: pins.contains(selection.path),
-                             togglePin: { togglePin(selection.path) }, path: $path,
+                             togglePin: { togglePin(selection.path) }, path: desktopPath,
                              autoEditPath: $autoEditPath, editorIsOpen: $editorIsOpen,
                              showsBackButton: false, usesNavigationTitle: false,
-                             contentMaxWidth: LAADesktopMetrics.documentWidth)
+                             contentMaxWidth: LAADesktopMetrics.documentWidth,
+                             leave: { desktopSelection = nil; Task { await load() } })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             LAAMacEmptyDetail(symbol: "doc.text", title: "ノートを選ぶ",
@@ -331,6 +333,18 @@ struct LAABrainView: View {
             return files.filter { $0.folder == desktopFolder }
                 .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         }
+    }
+
+    /// The detail column's routes: a link or a moved note it opens selects
+    /// that note in the columns rather than pushing a page over the list.
+    private var desktopPath: Binding<[LAABrainRoute]> {
+        Binding(get: { [] }, set: { routes in if let route = routes.last { showBrainRoute(route) } })
+    }
+
+    /// A note or folder the list, a new note or the gallery opens: pushed on
+    /// the phone, shown in the columns on the Mac.
+    private func open(_ route: LAABrainRoute) {
+        if laaDesktop { showBrainRoute(route) } else { path.append(route) }
     }
 
     /// Feed the phone's route into the column that is showing it.
@@ -721,7 +735,7 @@ struct LAABrainView: View {
     @ViewBuilder private var galleryBrowser: some View {
         if isIndexing { ProgressView(LAACopy.Brain.indexing) }
         else if let index {
-            LAABrainGalleryView(index: index, files: files, local: local) { path.append(.note($0)) }
+            LAABrainGalleryView(index: index, files: files, local: local) { open(.note($0)) }
         }
     }
 

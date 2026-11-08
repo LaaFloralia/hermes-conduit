@@ -10,6 +10,8 @@ struct LAABrainLocalCreateTarget: Identifiable {
 struct LAABrainLocalCreateView: View {
     @Environment(\.dismiss) private var dismiss
     let root: URL
+    /// The chosen folder's name (Brain, HQ, or the folder picked on the phone).
+    let rootName: String
     let target: LAABrainLocalCreateTarget
     let created: (String, LAABrainFolderStore.Kind) -> Void
     @State private var name = ""
@@ -34,7 +36,7 @@ struct LAABrainLocalCreateView: View {
                             if isNote { focused = .body } else { Task { await create() } }
                         }
                 } footer: {
-                    Text(verbatim: target.parent.isEmpty ? "Brainの直下に作成します。" : "\(target.parent) に作成します。")
+                    Text(verbatim: target.parent.isEmpty ? "\(rootName)の直下に作成します。" : "\(target.parent) に作成します。")
                 }
                 if isNote {
                     Section("本文（Markdown）") {

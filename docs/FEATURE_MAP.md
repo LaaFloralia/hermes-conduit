@@ -619,6 +619,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   name in `.trash`, with original-path recovery history. A changed source stops
   the action and retains both versions. Relative links and inbound links are
   preserved verbatim, and the sheet explains they are not automatically updated.
+  The destination picker and the new-note sheet name the chosen folder (Brain,
+  HQ, or the folder picked on the phone) rather than always Brain (2026-11-09).
 - The Doc tab (internal name `brain`, the vault keeps its folder) edits the
   note's own Markdown with the formatted reading in place: heading marks and
   list markers are hidden and drawn as glyphs, inline markers stay visible only
@@ -4177,7 +4179,7 @@ Google data remains a signed-build gate.
 
 **Code**
 - Shared contract: `Conduit/LAA/Mac/LAADesktopLayout.swift` (`laaDesktop`, `LAAMacListDetail`, `LAAMacEmptyDetail`, `laaReadableWidth`, `LAADesktopMetrics`).
-- Brain: `Conduit/LAA/Brain/LAABrainDesktop.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`.
+- Brain: `Conduit/LAA/Brain/LAABrainDesktop.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainManageNoteView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`.
 - Studio: `Conduit/LAA/Studio/LAAStudioDesktop.swift`, `Conduit/LAA/Studio/LAAStudioHome.swift`.
 - Drive: `Conduit/LAA/Drive/LAADriveDesktop.swift`, `Conduit/LAA/Drive/LAADriveBrowserView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`.
 - Tests: `ConduitUITests/LAAMacLibraryUITests.swift` (Mac-only flows); unit coverage of the row/column rules stays inside the views' pure helpers.
@@ -4185,7 +4187,7 @@ Google data remains a signed-build gate.
 **Rulings**
 - The Mac branch is `laaDesktop`, never the size class: the shell keeps the reused phone screens in a compact size class inside each column.
 - The list column keeps the phone's search, source switching, filters and existing Bridge calls; choosing a row fills the detail column instead of pushing. The selection stays highlighted, rows highlight on hover, and each row carries a `.help` tooltip.
-- Brain keeps folder browsing inside the list with a clickable breadcrumb, and a note's wiki links open in the detail column. Create, save, pin, conflict copies, recovery and the `brain:write` boundary are unchanged.
+- Brain keeps folder browsing inside the list with a clickable breadcrumb, and a note's wiki links open in the detail column. So do a new note, a moved or renamed note and a gallery pick: the Mac never pushes a page over the list. A note moved or sent to the trash leaves the column and the list reloads (2026-11-09: a trashed note stayed selected and read as unavailable). Create, save, pin, conflict copies, recovery and the `brain:write` boundary are unchanged.
 - Studio lists Works, Requests and Library; the works gallery in the detail column is an adaptive grid with `LAADesktopMetrics.gridItemMinWidth`, and a chosen work opens its existing detail, preview and export rows. Library uses the wide column.
 - Drive lists files as rows with name, kind, updated and size columns when the column is wide, falling back to two lines; folders open in place with a breadcrumb, a file opens its existing preview and metadata sheet in the detail column. Upload, share, shortcut resolution and offline saving are unchanged.
 - Keyboard: ↑/↓ move the list selection, Return keeps the selected row open, ⌘F focuses search, ⌘R reloads, ⌘N creates a note. Phone behaviour, identifiers and tap targets are unchanged.
@@ -4195,4 +4197,4 @@ Google data remains a signed-build gate.
 - The parent runs the consolidated iPhone compact regression and the Mac UI tests. Physical Mac and iPhone confirmation of the three screens is pending.
 - Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column tops out at 460 UIKit points (about 354 Mac points), which no four-column row fits.
 
-**Checked:** 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
+**Checked:** 2026-11-09, laa/app-polish-1109 on 92d8dcb5 (Doc opens and leaves notes in the detail column; @@CHECK@@); 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.

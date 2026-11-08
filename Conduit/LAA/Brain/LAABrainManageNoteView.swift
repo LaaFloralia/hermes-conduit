@@ -4,6 +4,8 @@ import SwiftUI
 struct LAABrainManageNoteView: View {
     @Environment(\.dismiss) private var dismiss
     let root: URL
+    /// The chosen folder's name (Brain, HQ, or the folder picked on the phone).
+    let rootName: String
     let note: LAABrainNote
     let completed: (String) -> Void
     @State private var name = ""
@@ -21,7 +23,7 @@ struct LAABrainManageNoteView: View {
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .accessibilityIdentifier("laa.brain.manage.name")
                     Picker(selection: $folder) {
-                        Text(verbatim: "Brain直下").tag("")
+                        Text(verbatim: rootName + "直下").tag("")
                         ForEach(folders, id: \.self) { Text(verbatim: $0).tag($0) }
                     } label: { Text(verbatim: "保存先") }
                     Text(verbatim: "本文はそのまま移動します。相対リンクや、このノートへのリンクは自動変更されません。")
