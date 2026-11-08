@@ -674,7 +674,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 ## LAA Work tab
 
-The LAA build's Work hub contains priority tasks, the owner's Linear tasks, sessions, projects, routines and read-only skills. AI usage is opened from Settings.
+The LAA build's Work hub contains the owner's Linear tasks, sessions, projects, routines and read-only skills, each with the short number the owner says in chat (`T12` task, `S4` session, `P2` project, `R7` routine, `K3` skill). AI usage is opened from Settings.
+
+Short numbers (refs) give each task, session, project, routine and skill a spoken alias (`T12`, `S5`, `P3`, `R2`, `K7`). The Bridge owns the registry, decorates list and detail responses with `ref` and resolves `GET /v1/refs/{ref}`; the `laa-bridge ref`/`refs` CLI reads the same file while the server is down. Ref display, VoiceOver and search in the app are a separate LAA app task.
 
 A parent session's children stay folded under it until opened; a folded child waiting for a decision shows on the parent. Archiving a session archives its children and reaches Paseo, along with a workspace left empty (never a worktree, which would delete files); a tree with a running or undecided agent is refused, and restoring brings back only the chosen row. Projects archive and restore on the Bridge only, and their sessions stay as they are.
 
@@ -683,6 +685,7 @@ store · the session and project API · the owner-task API · Console job observ
 
 **Code**
 - Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
+  `Conduit/LAA/Work/LAAWorkRef.swift` (short numbers, label and the one search rule),
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkCopy.swift`, `Conduit/LAA/Work/LAAWorkToolRuns.swift`
 - Mac Catalyst list/detail columns: `Conduit/LAA/Mac/LAADesktopLayout.swift`,
@@ -697,10 +700,12 @@ store · the session and project API · the owner-task API · Console job observ
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
 - Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/src/routes/skill-metadata.mjs`, `bridge/src/routes/routines.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`, `bridge/test/routines.test.mjs`
+- Short numbers (refs): `bridge/src/refs/registry.mjs`, `bridge/src/refs/service.mjs`, `bridge/src/refs/items.mjs`, `bridge/src/refs/routes.mjs`, `bridge/src/refs/cli.mjs`, `bridge/src/refs/present.mjs`, `bridge/test/refs.test.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md` §9
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
-- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkToolRunTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
-  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
+- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAWorkToolRunTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`,
+  `ConduitUITests/LAAWorkRefUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
 - Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
   `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`,
@@ -726,9 +731,9 @@ store · the session and project API · the owner-task API · Console job observ
   both the user's edit and the current version for an explicit choice. A name
   change alone does not replace shared instructions. Legacy references are
   shown as unapplied metadata and can only be explicitly cleared.
-- Priority and Tasks read only the owner's undelegated Linear issues in team
-  BUS (LAA). Priority means urgent/high or due today/overdue. Creation assigns
-  LAA in Todo. Confirmed swipe deletion uses Linear issueArchive, preserving
+- Tasks reads only the owner's undelegated Linear issues in team
+  BUS (LAA); there is no separate Priority tab, and Tasks is the hub's default
+  section. Creation assigns LAA in Todo. Confirmed swipe deletion uses Linear issueArchive, preserving
   the assignee and state; the toolbar archive list restores with issueUnarchive.
   Trashed issues are excluded even with includeArchived. Edits and archive writes carry `If-Match: updatedAt`; this is a read/check,
   not an atomic Linear compare-and-swap. The exact UUID, body, version and
@@ -743,6 +748,14 @@ store · the session and project API · the owner-task API · Console job observ
   Skills are grouped with Japanese summary/detail metadata; unregistered names
   keep their original description under Other. SKILL.md bodies are never sent.
   Skills do not execute from this list.
+- A short number is shown, when the Bridge sends one, as a small muted
+  monospaced-digit label before the row title and in the detail header (tasks:
+  `T12 · BUS-123`, Linear's identifier kept). A row without a ref shows nothing,
+  so an older Bridge degrades to today's rows. On the phone the hub carries one
+  native `.searchable` that filters the current section: a number matches that
+  exact ref (`t12`, `Ｔ１２` and `T-12` are `T12`) and any query also matches the
+  row's existing text. The Mac keeps its own per-column fields and the same
+  matcher.
 - A project detail lists its sessions and passes the project to session creation.
 - Session transcripts show user and assistant messages by default. Each
   consecutive run of tool calls becomes one collapsed `実行 N件` row, with
@@ -782,7 +795,15 @@ store · the session and project API · the owner-task API · Console job observ
   parent's integrated gate. Live list/detail reads are verified separately;
   simulator CRUD uses synthetic data.
 
-**Checked:** 2026-11-02, f5633702 (laa/work-tab). Debug build and 34 related Swift/UI tests
+**Checked:** 2026-11-08, e5927541 (short numbers and the Work search).
+Unit tests decode every kind with and without `ref` and cover the matcher; `LAAWorkRefUITests` runs on LAA 16 Pro Max
+in English (US) against `scripts/laa/work-ui-fixture.mjs` for the default Tasks
+section, no Priority tab, refs in the five lists and their details, and `t12`
+finding T12; light/dark 440 × 956 pt captures of the task list, session list and
+active search sit beside the same master captures. Bridge-side assignment is a
+separate candidate.
+
+Checked 2026-11-02, f5633702 (laa/work-tab). Debug build and 34 related Swift/UI tests
 passed (33 in the full run and the corrected CRUD test in its targeted rerun).
 Bridge tests: 381 passed. Six Work sections and the AI usage settings destination
 were captured in light/dark at 440 × 956 pt. Linear list (63 items) and one detail

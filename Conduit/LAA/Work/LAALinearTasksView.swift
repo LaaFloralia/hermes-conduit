@@ -6,7 +6,8 @@ struct LAALinearTasksView: View {
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject private var taskRoute = LAALinearTaskRoute.shared
     @ObservedObject var drafts: ComposerDraftStore
-    let priorityOnly: Bool
+    /// The Work hub's search on the phone; the Mac column keeps its own field.
+    var query = ""
     var archivedOnly = false
     @State private var showingArchive = false
     @State private var items: [LAALinearTask] = []
@@ -39,8 +40,12 @@ struct LAALinearTasksView: View {
         LAAWorkDrafts.key(deviceID: bridge.deviceID ?? "unpaired", target: "linear-owner-operation")
     }
     private var pending: ComposerDraftStore.Submission? { LAAWorkDrafts.pending(drafts, key: journalKey) }
+    private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     private var rows: [LAALinearTask] {
-        items.filter { archivedOnly ? $0.isArchived : ($0.isOpen && (!priorityOnly || $0.needsAttention(today: LAALinearTask.today()))) }
+        items.filter { archivedOnly ? $0.isArchived : $0.isOpen }
+            .filter { archivedOnly || LAAWorkRef.matches(query, ref: $0.ref,
+                                                         text: [$0.title, $0.description ?? "", $0.identifier]) }
             .sorted {
                 let a = $0.priority == 0 ? 5 : $0.priority
                 let b = $1.priority == 0 ? 5 : $1.priority
@@ -76,7 +81,7 @@ struct LAALinearTasksView: View {
         }
         .sheet(isPresented: $showingArchive, onDismiss: { Task { await load() } }) {
             NavigationStack {
-                LAALinearTasksView(drafts: drafts, priorityOnly: false, archivedOnly: true)
+                LAALinearTasksView(drafts: drafts, archivedOnly: true)
                     .navigationTitle(Text(verbatim: "アーカイブ"))
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
                         Button { showingArchive = false } label: { Text(verbatim: "閉じる") }
@@ -94,7 +99,8 @@ struct LAALinearTasksView: View {
         }
         .sheet(item: $detail) { task in
             NavigationStack {
-                LAAPersonalTaskDetailView(id: task.identifier.isEmpty ? task.id : "linear:\(task.identifier)", drafts: drafts)
+                LAAPersonalTaskDetailView(id: task.identifier.isEmpty ? task.id : "linear:\(task.identifier)", drafts: drafts,
+                                          ref: task.ref)
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
                         Button { detail = nil } label: { Text(verbatim: "閉じる") }
                     } }
@@ -158,7 +164,10 @@ struct LAALinearTasksView: View {
                     HStack(alignment: .top, spacing: LAASpacing.x3) {
                         Button { editor = Editor(id: task.id, task: task) } label: {
                             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                                Text(verbatim: task.title).foregroundStyle(LAAColor.text).fontWeight(.medium)
+                                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                    LAAWorkRefLabel(ref: task.ref)
+                                    Text(verbatim: task.title).foregroundStyle(LAAColor.text).fontWeight(.medium)
+                                }
                                 HStack(spacing: LAASpacing.x2) {
                                     if task.priority != 0 {
                                         Text(verbatim: LAALinearTask.priorityLabel(task.priority))
@@ -190,16 +199,16 @@ struct LAALinearTasksView: View {
                     }
                 }
             } header: {
-                Text(verbatim: archivedOnly ? "アーカイブ" : priorityOnly ? "期限・優先度の高いタスク" : "社長のタスク")
+                Text(verbatim: archivedOnly ? "アーカイブ" : "社長のタスク")
             } footer: {
                 Text(verbatim: archivedOnly ? "アーカイブしたタスクです。スワイプで戻せます。" : "Linear · LAA担当")
             }
             if loaded && rows.isEmpty && !loading && failure == nil {
                 ContentUnavailableView {
-                    Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : priorityOnly ? "優先タスクはありません" : "タスクはありません") }
+                    Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : searching ? "一致するタスクはありません" : "タスクはありません") }
                     icon: { Image(systemName: "checkmark.circle") }
                 } description: {
-                    Text(verbatim: archivedOnly ? "アーカイブしたタスクは、スワイプで戻せます。" : priorityOnly ? "緊急・高優先度、または今日までが期限のタスクを表示します。" : "＋から追加できます。")
+                    Text(verbatim: archivedOnly ? "アーカイブしたタスクは、スワイプで戻せます。" : searching ? "短い番号（T12）か題名の一部で探せます。" : "＋から追加できます。")
                 }.listRowBackground(Color.clear)
             }
         }
@@ -208,7 +217,7 @@ struct LAALinearTasksView: View {
     }
 
     private var desktopRows: [LAALinearTask] {
-        rows.filter { LAAWorkDesktopList.matches($0.title + " " + ($0.description ?? ""), query: desktopSearch) }
+        rows.filter { LAAWorkRef.matches(desktopSearch, ref: $0.ref, text: [$0.title, $0.description ?? "", $0.identifier]) }
     }
     private var selectedTask: LAALinearTask? {
         guard case let .task(id) = desktopSelection else { return nil }
@@ -265,12 +274,12 @@ struct LAALinearTasksView: View {
                         desktopNavRow("Inbox", icon: "tray", selection: .inbox, identifier: "work.linear.inbox")
                         desktopNavRow("All tasks · search · projects", icon: "magnifyingglass", selection: .browse, identifier: "work.linear.browse")
                         Divider().overlay(LAAColor.separator).padding(.vertical, LAASpacing.x2)
-                        Text(verbatim: priorityOnly ? "NEEDS ATTENTION" : "TASKS")
+                        Text(verbatim: "TASKS")
                             .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                             .padding(.horizontal, LAASpacing.x4).padding(.bottom, LAASpacing.x1)
                         ForEach(desktopRows) { task in desktopTaskRow(task) }
                         if loaded && desktopRows.isEmpty && !loading && failure == nil {
-                            Text(verbatim: priorityOnly ? "No priority tasks." : "No tasks yet.")
+                            Text(verbatim: desktopSearch.isEmpty ? "No tasks yet." : "No matching tasks.")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
@@ -324,8 +333,11 @@ struct LAALinearTasksView: View {
     private func desktopTaskRow(_ task: LAALinearTask) -> some View {
         Button { desktopSelection = .task(task.id) } label: {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
-                    .foregroundStyle(LAAColor.text).lineLimit(2)
+                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                    LAAWorkRefLabel(ref: task.ref)
+                    Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
+                        .foregroundStyle(LAAColor.text).lineLimit(2)
+                }
                 HStack(spacing: LAASpacing.x2) {
                     if task.priority != 0 {
                         Text(verbatim: LAALinearTask.priorityLabel(task.priority))
@@ -356,7 +368,8 @@ struct LAALinearTasksView: View {
     @ViewBuilder private var desktopDetail: some View {
         if let selectedTask {
             NavigationStack {
-                LAAPersonalTaskDetailView(id: selectedTask.identifier.isEmpty ? selectedTask.id : "linear:\(selectedTask.identifier)", drafts: drafts)
+                LAAPersonalTaskDetailView(id: selectedTask.identifier.isEmpty ? selectedTask.id : "linear:\(selectedTask.identifier)", drafts: drafts,
+                                          ref: selectedTask.ref)
                     .id(selectedTask.id)
             }
         } else if desktopSelection == .inbox {

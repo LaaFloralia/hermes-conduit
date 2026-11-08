@@ -245,6 +245,7 @@ test('the list is only the owner\'s open tasks, across every page', async () => 
       updatedAt: '2026-11-02T00:00:00.000Z',
       archivedAt: null,
       url: 'https://linear.app/laa/issue/BUS-201',
+      ref: 'T1',
     });
     assert.equal(response.body.data.items[1].status, 'doing');
     assert.equal(response.body.data.items[1].dueDate, '2026-11-05');

@@ -40,7 +40,7 @@ struct LAAWorkDesktopSessionsView: View {
 
     private var filtered: [LAAWorkSession] {
         sessions.filter {
-            LAAWorkDesktopList.matches($0.name + " " + ($0.observed?.model ?? $0.requested?.model ?? ""), query: search)
+            LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.observed?.model ?? $0.requested?.model ?? ""])
         }
     }
 
@@ -267,7 +267,7 @@ struct LAAWorkDesktopProjectsView: View {
     @FocusState private var listFocused: Bool
 
     private var visible: [LAAWorkProject] {
-        projects.filter { LAAWorkDesktopList.matches($0.name, query: search) }
+        projects.filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name]) }
     }
     private var selected: LAAWorkProject? { projects.first { $0.id == selectedID } }
 
@@ -308,8 +308,11 @@ struct LAAWorkDesktopProjectsView: View {
                                 HStack(spacing: LAASpacing.x3) {
                                     Image(systemName: "folder").foregroundStyle(LAAColor.link).frame(width: 22)
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
-                                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                            LAAWorkRefLabel(ref: project.ref)
+                                            Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
+                                                .foregroundStyle(LAAColor.text).lineLimit(1)
+                                        }
                                         Text(verbatim: summary(project)).laaTextStyle(.secondary)
                                             .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                                     }
@@ -454,26 +457,27 @@ struct LAAWorkDesktopCatalogView: View {
         let title: String
         let subtitle: String
         let group: String
+        let ref: String?
     }
 
     private var rows: [CatalogRow] {
         if kind == .routines {
             let scheduled = routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
-                .filter { LAAWorkDesktopList.matches($0.name + " " + ($0.destination ?? "") + " " + ($0.schedule ?? ""), query: search) }
+                .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
             return LAAWorkRoutineGrouping.groups(scheduled).flatMap { group in
                 group.routines.map { routine in
                     CatalogRow(id: routine.id, title: routine.name,
                                subtitle: "Next \(LAAWorkRoutineTime.next(routine.nextRunAt)) · \(routine.schedule ?? "Schedule unknown")",
-                               group: group.destination)
+                               group: group.destination, ref: routine.ref)
                 }
             }
         }
         var seen = Set<String>()
         return skills.filter { seen.insert($0.name).inserted }
-            .filter { LAAWorkDesktopList.matches($0.name + " " + $0.explanation, query: search) }
+            .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.explanation]) }
             .sorted { $0.name < $1.name }
             .map { CatalogRow(id: $0.id, title: $0.name,
-                              subtitle: $0.explanation.isEmpty ? "No description" : $0.explanation, group: "") }
+                              subtitle: $0.explanation.isEmpty ? "No description" : $0.explanation, group: "", ref: $0.ref) }
     }
 
     var body: some View {
@@ -509,8 +513,11 @@ struct LAAWorkDesktopCatalogView: View {
                             }
                             Button { selectedID = row.id } label: {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.semibold)
-                                        .foregroundStyle(LAAColor.text).lineLimit(1)
+                                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                        LAAWorkRefLabel(ref: row.ref)
+                                        Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.semibold)
+                                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                                    }
                                     Text(verbatim: row.subtitle).laaTextStyle(.secondary)
                                         .foregroundStyle(LAAColor.secondaryText).lineLimit(2)
                                 }
@@ -556,6 +563,7 @@ struct LAAWorkDesktopCatalogView: View {
         if kind == .routines, let routine = routines.first(where: { $0.id == selectedID }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    LAAWorkRefLabel(ref: routine.ref)
                     Text(verbatim: routine.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     Text(verbatim: routine.schedule ?? "Schedule unknown").foregroundStyle(LAAColor.link)
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
@@ -571,6 +579,7 @@ struct LAAWorkDesktopCatalogView: View {
         } else if kind == .skills, let skill = skills.first(where: { $0.id == selectedID }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    LAAWorkRefLabel(ref: skill.ref)
                     Text(verbatim: skill.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     Text(verbatim: skill.group).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     Text(verbatim: skill.explanation.isEmpty ? "No description" : skill.explanation).workCard()

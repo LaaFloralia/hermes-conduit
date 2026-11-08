@@ -2,8 +2,8 @@
 import http from 'node:http';
 let tasks;
 const reset = () => { tasks = [
-  { id: 'b9d2f664-cda3-4c56-8d39-c4d6df597254', identifier: 'BUS-TEST1', title: '次の打ち合わせを確認する', description: '資料と開始時刻を確認', dueDate: '2026-11-02', priority: 2, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-02T00:00:00Z', url: null },
-  { id: 'dce58a26-2f89-4d6a-b78e-01d07d485dbd', identifier: 'BUS-TEST2', title: '今週の振り返りをまとめる', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-01T00:00:00Z', url: null },
+  { id: 'b9d2f664-cda3-4c56-8d39-c4d6df597254', identifier: 'BUS-TEST1', ref: 'T12', title: '次の打ち合わせを確認する', description: '資料と開始時刻を確認', dueDate: '2026-11-02', priority: 2, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-02T00:00:00Z', url: null },
+  { id: 'dce58a26-2f89-4d6a-b78e-01d07d485dbd', identifier: 'BUS-TEST2', ref: 'T13', title: '今週の振り返りをまとめる', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-01T00:00:00Z', url: null },
 ]; };
 reset();
 const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
@@ -11,11 +11,15 @@ const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Con
 // Work sessions for the scroll/header tests. Three states on one fixture:
 // empty, waiting for a decision, and a long transcript with an image.
 const SESSION_IDS = { empty: 'ses_1111111111111111', decision: 'ses_2222222222222222', long: 'ses_3333333333333333', stale: 'ses_4444444444444444' };
+const SESSION_REFS = {
+  ses_1111111111111111: 'S1', ses_2222222222222222: 'S2',
+  ses_3333333333333333: 'S3', ses_4444444444444444: 'S4',
+};
 const IMAGE_ID = 'a'.repeat(64);
 const FIXTURE_IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const fixtureModel = { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' };
 const fixtureSession = (id, name, phase, pending = null) => ({
-  id, name, nameSource: 'agent', delegateSessionId: `agent-${id}`, requestId: id,
+  id, ref: SESSION_REFS[id] ?? null, name, nameSource: 'agent', delegateSessionId: `agent-${id}`, requestId: id,
   parentId: null, projectId: null, workspaceId: 'ws_fixture', cwd: '/Users/laa', profile: 'opus-high',
   requested: fixtureModel, observed: fixtureModel, runtimeVerified: true, phase, pending,
   resumedFrom: null, resumedTo: null, instructionVersion: null, instructionHash: null,
@@ -42,6 +46,13 @@ const conversationFor = (id) => id === SESSION_IDS.long ? longMessages : [];
 // What the app actually fetched, as opposed to what the fixture holds. The UI
 // test waits for this before asserting the scroll position, so a stopped
 // client cannot pass by accident.
+// One project gives the Projects list a row with a short number.
+const PROJECT = {
+  id: 'proj_laa_fixture', ref: 'P1', name: 'LAA', nameSource: 'owner',
+  instructions: '共通の指示はここに置きます。', instructionVersion: 1, instructionHash: 'fixture-hash',
+  version: 1, etag: '"fixture-project-1"', updatedAt: '2026-11-06T00:00:00Z', archivedAt: null,
+  fileCount: 0, files: [],
+};
 let lastServed = 0;
 let imagesServed = 0;
 let resetGeneration = 0;
@@ -89,8 +100,8 @@ const api = http.createServer(async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 700));
     return send(res, 200, task);
   }
-  if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', name: '朝の確認', schedule: '毎日 07:30', destination: 'Cielの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }, { id: 'service', name: '常駐の確認用', triggerKind: 'service', schedule: '常駐', state: 'running' }], nextCursor: null });
-  if (path === '/v1/skills') return send(res, 200, { items: [{ id: 'test:weekly', name: 'weekly-report', description: '指定した内容から週報を作成します。', category: '日常業務', summary: 'カオナビの週報を作成する', detail: '社長の指定内容に沿って現職の週報を入力します。', source: 'Claude' }], nextCursor: null });
+  if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', ref: 'R1', name: '朝の確認', schedule: '毎日 07:30', destination: 'Cielの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }, { id: 'service', ref: 'R2', name: '常駐の確認用', triggerKind: 'service', schedule: '常駐', state: 'running' }], nextCursor: null });
+  if (path === '/v1/skills') return send(res, 200, { items: [{ id: 'test:weekly', ref: 'K1', name: 'weekly-report', description: '指定した内容から週報を作成します。', category: '日常業務', summary: 'カオナビの週報を作成する', detail: '社長の指定内容に沿って現職の週報を入力します。', source: 'Claude' }], nextCursor: null });
   if (path.startsWith('/v1/personal-tasks/') && path.split('/').length === 4) {
     const requested = decodeURIComponent(path.split('/').at(-1));
     const found = tasks.find(t => requested === t.id || requested === `linear:${t.identifier}`) || tasks[0];
@@ -117,7 +128,7 @@ const api = http.createServer(async (req, res) => {
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     return send(res, 200, { id: 'fixture-event-1', title: 'デザイン確認', start: start.toISOString(), end: end.toISOString(), allDay: false, location: 'LAA', calendarId: 'primary', etag: '"fixture-1"', description: 'MacのToday確認用の予定' });
   }
-  if (path === '/v1/projects') return send(res, 200, { items: [], nextCursor: null });
+  if (path === '/v1/projects') return send(res, 200, { items: [PROJECT], nextCursor: null });
   if (path === '/v1/sessions') {
     const archived = url.searchParams.get('archived') === 'only';
     return send(res, 200, { items: archived ? [] : sessions, nextCursor: null });

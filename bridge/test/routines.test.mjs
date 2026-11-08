@@ -10,7 +10,7 @@ test('routine endpoint requires read access and projects only public fields', as
   const token = await bridge.token();
   const response = await bridge.request('/v1/routines', { token });
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null }]);
+  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null, ref: 'R1' }]);
 });
 
 test('unavailable routine source returns an error rather than an empty list', async (t) => {
