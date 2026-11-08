@@ -4195,3 +4195,25 @@ Google data remains a signed-build gate.
 - Watch simulator build, snapshots and paired-device acceptance are pending.
 
 **Checked:** 2026-11-08, LAA laa/apple-watch, based on b01a62d9 (implementation; build and paired-device verification pending).
+
+## LAA Watch employee voice and transcription
+
+The LAA Watch can ask an employee through the iPhone and call an employee
+through the host's GPT-Live bridge. This is enabled only in LAA builds.
+
+**Siblings:** Watch recording and status · iPhone WatchConnectivity receiver · employee Chat · employee call identity · Bridge transcription and its opt-in grant · CLI help and Bridge documentation.
+
+**Code**
+- Shared contract: `Shared/WatchVoice/LAAWatchAsk.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- iPhone: `Conduit/Watch/LAAWatchAskService.swift`, `Conduit/Watch/WatchVoiceLink.swift`, `Conduit/Watch/WatchDirectBroker.swift`, `Conduit/Services/AppState.swift`, `Conduit/LAA/LAABridgeClient.swift`
+- Bridge: `bridge/src/config.mjs`, `bridge/src/pairing.mjs`, `bridge/src/routes/voice.mjs`, `bridge/src/routes/devices.mjs`, `bridge/test/grant.test.mjs`
+
+**Rulings**
+- A 16 kHz PCM16 recording of at most 25 seconds is transcribed without polishing and sent to the employee's Watch chat. Only an explicit opening name selects another employee; a selected profile takes precedence.
+- `voice:transcribe` remains opt-in and may be granted with a reason to the owner's LAA phone. `voice:polish` is not granted by this operation. Only devices with voice scopes exclusively can self-revoke.
+- Queued WatchConnectivity state carries only request ID, phase and profile; the transcript, reply and failure stay in iPhone memory for ten minutes and are returned over a reachable status request.
+
+**Open gaps**
+- iPhone and Watch physical-device acceptance remains pending. The uncensored employee uses Talk; its existing phone call plan refuses GPT-Live.
+
+**Checked:** 2026-11-08, LAA laa/apple-watch, baseline b01a62d9.

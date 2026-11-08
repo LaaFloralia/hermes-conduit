@@ -48,7 +48,7 @@ export const STUDIO_SCOPES = Object.freeze(['studio:read', 'studio:request']);
 // account, `brain:create` creates new Brain notes without touching existing
 // ones, and `brain:owner` permits the owner's UI to browse all non-hidden notes
 // without invoking models.
-export const OPERATOR_GRANT_SCOPES = Object.freeze(['brain:create', 'brain:owner', 'calendar:read', 'calendar:write', 'media:write']);
+export const OPERATOR_GRANT_SCOPES = Object.freeze(['brain:create', 'brain:owner', 'calendar:read', 'calendar:write', 'media:write', 'voice:transcribe']);
 
 // `brain:create` (new files only) is deliberately NOT in DEFAULT_SCOPES: BRIDGE
 // §9 fixes the initial grant set, and docs/laa/BRAIN-WRITE.md §7 only establishes

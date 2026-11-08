@@ -13,7 +13,7 @@
 |---|---|---|
 | 認証 | 端末ごとの 256bit ランダムトークン（`Authorization: Bearer`）。保存は SHA-256 hash のみ | §9。要求ごとの署名・nonce 台帳は採らない |
 | ペアリング | Mac の CLI が10分有効・1回限りのコードを発行。state には hash のみ保存し、コードは端末に一度だけ表示 | §9。コードはログ・引数・チャットへ出さない |
-| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read`・`calendar:write`・`media:write`・`brain:create`・`brain:owner` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|calendar:write|media:write|brain:create|brain:owner> --reason <理由>` で付与する。この5つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
+| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read`・`calendar:write`・`media:write`・`brain:create`・`brain:owner`・`voice:transcribe` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|calendar:write|media:write|brain:create|brain:owner|voice:transcribe> --reason <理由>` で付与する。この6つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
 | idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は原則として保存応答を再返却（Studioの作成・操作は現在の状態を取得）、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
@@ -63,7 +63,7 @@ laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner
 
 失効後、そのトークンの要求は `401 token_revoked`。実行中の下流処理は自動停止しないので、必要なら既存の停止制御で別途止める。再登録は新しいコードと新しい端末IDになる。
 
-音声専用端末は `laa-bridge pair --scopes voice:polish,voice:transcribe` で別に登録する。既存端末・既定scopeには追加しない。`LAA_VOICE_WORKER` に Mac mini の `saiddone-polish-worker` の絶対パスを設定した起動時だけ有効（未設定は503）。Haas-ja-v1.0 Q8_0とQwen3-4Bをprivate stdioで呼び、本文・音声はログやidempotency台帳に保存しない。同時要求は1件、処理中の追加要求は429。Bridgeの上限は通常90秒・worker初回120秒で、クライアント切断時はその要求だけを取り消す。ソースの配置と稼働への反映は別で、設定後の再起動には対象別の承認が必要。
+音声専用端末は `laa-bridge pair --scopes voice:polish,voice:transcribe` で別に登録する。既定scopeには追加しない。Watchの音声入力に限り、社長のLAAアプリ端末1台に `voice:transcribe` だけを理由付きの `grant` で明示付与する。`LAA_VOICE_WORKER` に Mac mini の `saiddone-polish-worker` の絶対パスを設定した起動時だけ有効（未設定は503）。Haas-ja-v1.0 Q8_0とQwen3-4Bをprivate stdioで呼び、本文・音声はログやidempotency台帳に保存しない。同時要求は1件、処理中の追加要求は429。Bridgeの上限は通常90秒・worker初回120秒で、クライアント切断時はその要求だけを取り消す。ソースの配置と稼働への反映は別で、設定後の再起動には対象別の承認が必要。
 
 ## API（実装済み）
 
@@ -117,7 +117,7 @@ Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 | `POST /v1/voice/transcribe` | Bearer + `voice:transcribe` | `{pcm16,sampleRate:16000,language?:ja}` → `{text,model}`。PCM16LE mono base64、25秒まで |
 | `POST /v1/voice/polish` | Bearer + `voice:polish` | `{text,language?}` → `{text,model,nothing?}`。4,000 UTF-16文字まで |
 | `POST /v1/voice/summarize` | Bearer + `voice:polish` | `{text,language:ja}` → `{text,model}`。日本語、2,000 UTF-16単位まで。要約は下書き |
-| `POST /v1/devices/self/revoke` | Bearer + voice scope | 呼出端末の資格情報だけ失効。対象指定不可 |
+| `POST /v1/devices/self/revoke` | Bearer + voice専用scopeのみ（1つ以上） | 呼出端末の資格情報だけ失効。対象指定不可。一般scopeと音声scopeを併せ持つ端末は拒否 |
 | `GET /v1/instructions/{agents|claude}` | Bearer + `instructions:read` | 指定された2ファイルのみ。本文と内容のSHA-256 ETag |
 | `PUT /v1/instructions/{agents|claude}` | Bearer + `instructions:write` + `If-Match` | 保存前にBridge stateへ旧版をバックアップし、版不一致は412。git commitしない |
 | `GET /v1/drive/files?query=&folderId=&pageSize=&cursor=` | Bearer + `media:read` | `{items,nextCursor}` |

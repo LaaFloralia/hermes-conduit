@@ -225,7 +225,7 @@ extension AppState {
     /// notifications are end-to-end encrypted (the Watch's Settings).
     func shareWatchCallVoices() {
         let notifications = PushNotificationService.shared
-        WatchVoiceLink.shared.share(WatchPhoneContext(
+        var context = WatchPhoneContext(
             voices: Self.watchContextVoices(
                 notifications.watchCallVoices,
                 scope: hermesCallsKey(profile: activeProfile),
@@ -236,7 +236,14 @@ extension AppState {
             activeDashboardID: activeDashboardID?.uuidString,
             accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
             notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:)))
-        ))
+        )
+        #if LAA_BUILD
+        context.laaCallableProfiles = LAAStaff.allCases.compactMap { staff in
+            let profile = "laa-\(staff.rawValue)"
+            return LAAEmployeeGPTLivePlan.make(profile: profile, savedVoice: nil) == nil ? nil : profile
+        }
+        #endif
+        WatchVoiceLink.shared.share(context)
     }
 
     /// The Watch's word for a dashboard's notifications encryption: nil

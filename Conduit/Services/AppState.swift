@@ -36606,6 +36606,55 @@ final class AppState: ObservableObject {
         )
     }
 
+    #if LAA_BUILD
+    /// Prepare an employee without changing the profile displayed on the phone.
+    func prepareWatchEmployeeBridgeCall(profile: String) async throws -> WatchBridgePlan {
+        guard let employee = laaEmployeeCallPlan(profile: profile) else {
+            throw WatchDirectPrepareError("この社員とは通話できません。Talkを使ってください")
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let phoneConnection = watchDirectConnection
+        let isCurrent: @MainActor () -> Bool = { [weak self] in self?.watchDirectConnection == phoneConnection }
+        let context = geminiLiveTokenClient.captured(profile: employee.profile, isCurrent: isCurrent)
+        let scopedClient = gptLiveClient.captured(profile: employee.profile, billing: .subscription, isCurrent: isCurrent)
+        let preferences = loadVoiceProfilePreferences(profile: employee.profile)
+        async let memoryLookup = (preferences.gptLiveMemory ?? false) ? context.memoryContext() : nil
+        let status = try await scopedClient.availability()
+        guard status.isAvailable else { throw WatchDirectPrepareError(status.userFacingReason ?? "通話を利用できません") }
+        var persona = await context.employeePersonality()
+        if persona == .unavailable { persona = await context.employeePersonality() }
+        let personality: String
+        switch persona {
+        case .available(let text): personality = text
+        case .missingRoute: throw WatchDirectPrepareError(LAACopy.employeePersonalityUnavailable)
+        case .missingPersona: throw WatchDirectPrepareError("社員の人格が見つかりません")
+        case .unavailable: throw WatchDirectPrepareError("社員の人格を読み込めません")
+        }
+        let memory = await memoryLookup
+        guard isCurrent() else { throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged) }
+        let style = liveVoiceStyle
+        let jobSession = preferences.voiceJobSessionOptions(runtimeModel: runtime.model, runtimeProvider: runtime.provider)
+        var options: [String: String] = [:]
+        if let model = jobSession.model {
+            options["model"] = model
+            if let provider = jobSession.provider { options["provider"] = provider }
+        }
+        if let effort = jobSession.reasoningEffort { options["reasoning_effort"] = effort }
+        return WatchBridgePlan(
+            briefing: GPTLiveConversationController.briefing(memory: memory, personality: personality,
+                answerLength: style.answerLength, onWatch: true,
+                watchChats: notifierPlugin.reports(WatchToolAnswer.chatCapability), followedBy: style.instructions),
+            greeting: style.greeting, voice: employee.voice,
+            connection: WatchDirectConnection(profile: employee.profile, dashboard: phoneConnection.dashboard),
+            saveCalls: voiceCallSavingEnabled, memoryIncluded: memory != nil, personalityIncluded: true,
+            jobOptions: options, endPhrases: preferences.resolvedSpokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames(callProfile: employee.profile))
+    }
+    #endif
+
     /// What a Watch call to Grok starts with: the setup this profile's
     /// Grok Live call gets on the phone. Unlike Gemini there's no token:
     /// the Hermes host holds xAI's session, on its own xAI sign-in, and the
