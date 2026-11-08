@@ -129,6 +129,11 @@ export function createSessionStore({
             favorite: row.favorite === undefined ? previous.favorite === true : row.favorite === true,
             // Paseo decides: a session it brought back is back here too.
             archivedAt: previous.daemonArchivedAt && !row.daemonArchivedAt ? null : previous.archivedAt,
+            // The agent is in Paseo's directory again, so an earlier "gone from
+            // Paseo" mark no longer describes it.
+            daemonDeletedAt: null,
+            // A read without a feature list says nothing about Fast support.
+            fastAvailable: row.fastAvailable === undefined ? previous.fastAvailable : row.fastAvailable,
             name: previous.nameSource === 'owner' ? previous.name : row.name,
             nameSource: previous.nameSource === 'owner' ? 'owner' : 'agent',
             requested: previous.requested ?? row.requested,

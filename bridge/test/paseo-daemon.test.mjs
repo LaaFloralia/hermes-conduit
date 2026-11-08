@@ -28,6 +28,13 @@ function fixture(options = {}) {
       if (options.effortRejected) throw new Error('provider refused');
       if (!options.effortNoop) rows.find((a) => a.id === id).effectiveThinkingOptionId = effort;
     },
+    setAgentFeature: async (id, featureId, value) => {
+      calls.push(['feature', id, featureId, value]);
+      if (options.featureRejected) throw new Error('provider refused');
+      if (options.featureNoop) return;
+      const feature = rows.find((a) => a.id === id).features?.find((f) => f.id === featureId);
+      if (feature) feature.value = value;
+    },
     respondToPermissionAndWait: async (id, request, response) => { calls.push(['reply', id, request, response]); rows.find((a) => a.id === id).pendingPermissions = []; },
   };
   return { rows, calls, client, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
@@ -356,6 +363,108 @@ test('Fast is cleared when a later successful observation stops reporting it, an
   assert.equal(fastValue([{ type: 'toggle', id: 'fast_mode', label: 'Fast', value: true }]), true);
   assert.equal(fastValue([{ id: 'fast_mode' }]), null);
   assert.equal(fastValue(null), null);
+});
+
+test('fastValue reads the Claude toggle and the Codex speed select, and nothing else', () => {
+  assert.equal(fastValue([{ type: 'toggle', id: 'fast_mode', label: 'Fast', value: true }]), true);
+  assert.equal(fastValue([{ type: 'toggle', id: 'fast_mode', label: 'Fast', value: false }]), false);
+  assert.equal(fastValue([{ id: 'fast_mode' }]), null);
+  const codex = (value, options) => [{ type: 'select', id: 'service_tier', label: 'Speed', value,
+    options: options ?? [{ id: 'default', label: 'Normal', isDefault: true }, { id: 'priority', label: 'Fast' }] }];
+  assert.equal(fastValue(codex('default')), false);
+  assert.equal(fastValue(codex('priority')), true);
+  assert.equal(fastValue(codex('flex')), null);
+  assert.equal(fastValue(codex('priority', [{ id: 'default', label: 'Normal' }, { id: 'flex', label: 'Flex' }])), null);
+  assert.equal(fastValue([{ type: 'select', id: 'service_tier' }]), null);
+  assert.equal(fastValue([]), null);
+  assert.equal(fastValue(null), null);
+  assert.equal(fastValue(undefined), null);
+});
+
+test('Fast switches through the provider feature and is verified by read-back', async (t) => {
+  const make = async (options = {}, { features, withDaemon = true } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'paseo-fast-switch-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const f = fixture(options);
+    f.rows[0].features = features;
+    const store = createSessionStore({ file: join(dir, 'sessions.json') });
+    const service = createSessionService({ sessionStore: store, daemon: withDaemon ? f.daemon : null, adapter: {},
+      findWorkspace: async () => null, notify: async () => {}, observationTtlMs: 0 });
+    await service.listSessions();
+    return { f, store, service, id: daemonSessionID('parent') };
+  };
+  const claude = (value) => [{ type: 'toggle', id: 'fast_mode', label: 'Fast', value }];
+  const codex = (value) => [{ type: 'select', id: 'service_tier', label: 'Speed', value,
+    options: [{ id: 'default', label: 'Normal', isDefault: true }, { id: 'priority', label: 'Fast' }] }];
+
+  const claudeRun = await make({}, { features: claude(false) });
+  const listed = claudeRun.service.view(claudeRun.store.get(claudeRun.id));
+  assert.equal(listed.observedFast, false);
+  assert.equal(listed.capabilities.fast, true);
+  const switched = await claudeRun.service.updateSession({ id: claudeRun.id, body: { fast: true } });
+  assert.equal(claudeRun.service.view(switched.session).observedFast, true);
+  assert.deepEqual(claudeRun.f.calls.find((call) => call[0] === 'feature'), ['feature', 'parent', 'fast_mode', true]);
+  // The same value again is idempotent and still reports the applied value.
+  const again = await claudeRun.service.updateSession({ id: claudeRun.id, body: { fast: true } });
+  assert.equal(claudeRun.service.view(again.session).observedFast, true);
+
+  // Codex reports Normal/Fast as a speed select; observedFast is no longer null.
+  const codexRun = await make({}, { features: codex('default') });
+  assert.equal(codexRun.service.view(codexRun.store.get(codexRun.id)).observedFast, false);
+  assert.equal(codexRun.service.view(codexRun.store.get(codexRun.id)).capabilities.fast, true);
+  await codexRun.service.updateSession({ id: codexRun.id, body: { fast: true } });
+  assert.deepEqual(codexRun.f.calls.find((call) => call[0] === 'feature'), ['feature', 'parent', 'service_tier', 'priority']);
+  assert.equal(codexRun.service.view(codexRun.store.get(codexRun.id)).observedFast, true);
+  await codexRun.service.updateSession({ id: codexRun.id, body: { fast: false } });
+  assert.equal(codexRun.service.view(codexRun.store.get(codexRun.id)).observedFast, false);
+
+  const unsupported = await make({}, { features: [] });
+  assert.equal(unsupported.service.view(unsupported.store.get(unsupported.id)).capabilities.fast, false);
+  await assert.rejects(unsupported.service.updateSession({ id: unsupported.id, body: { fast: true } }), { code: 'fast_unsupported' });
+
+  // A provider that accepted the call but did not change the value is a failure.
+  const noop = await make({ featureNoop: true }, { features: claude(false) });
+  await assert.rejects(noop.service.updateSession({ id: noop.id, body: { fast: true } }), { code: 'fast_not_applied' });
+  const refused = await make({ featureRejected: true }, { features: claude(false) });
+  await assert.rejects(refused.service.updateSession({ id: refused.id, body: { fast: true } }), { code: 'fast_rejected' });
+
+  const stopped = await make({}, { features: claude(false) });
+  await stopped.service.stopSession(stopped.id);
+  await assert.rejects(stopped.service.updateSession({ id: stopped.id, body: { fast: true } }), { code: 'session_stopped' });
+
+  await assert.rejects(claudeRun.service.updateSession({ id: claudeRun.id, body: { fast: 'yes' } }), { status: 400 });
+
+  // A delegation-only record has no Paseo agent to change.
+  const noDaemon = await make({}, { withDaemon: false });
+  noDaemon.store.create({ record: {
+    id: noDaemon.id, requestId: 'paseo-parent', name: '親', nameSource: 'agent', parentId: null,
+    projectId: null, workspaceId: 'home', cwd: '/Users/laa', profile: 'codex',
+    requested: { provider: 'codex', model: 'gpt', effort: 'high' }, observed: null,
+    phase: 'created', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
+    delegate: { sessionId: 'parent' },
+  } });
+  await assert.rejects(noDaemon.service.updateSession({ id: noDaemon.id, body: { fast: true } }), { code: 'fast_unsupported' });
+});
+
+test('the session API exposes capabilities.fast and applies a Fast change over PATCH', async (t) => {
+  const f = fixture();
+  f.rows[0].features = [{ type: 'toggle', id: 'fast_mode', label: 'Fast', value: false }];
+  const bridge = await startBridge({ sessions: { daemon: f.daemon, notify: async () => {} } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  const id = daemonSessionID('parent');
+  const list = await bridge.request('/v1/sessions', { token });
+  const row = list.body.data.items.find((item) => item.id === id);
+  assert.equal(row.capabilities.fast, true);
+  assert.equal(row.observedFast, false);
+  const patched = await bridge.request(`/v1/sessions/${id}`, { method: 'PATCH', token, key: 'fast-1', body: { fast: true } });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  assert.equal(patched.body.data.observedFast, true);
+  assert.equal(patched.body.data.capabilities.fast, true);
+  // The route keeps the existing shape: a favorite-only PATCH still works.
+  const favorite = await bridge.request(`/v1/sessions/${id}`, { method: 'PATCH', token, key: 'fast-2', body: { favorite: true } });
+  assert.equal(favorite.status, 200, JSON.stringify(favorite.body));
+  assert.equal(favorite.body.data.favorite, true);
 });
 
 test('effort changes use the daemon, are verified by read-back, and are refused when unsupported', async (t) => {
