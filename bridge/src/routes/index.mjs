@@ -112,9 +112,8 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   }
 
   sessionOptions.registerCleanup?.(() => refs.stop());
-  refs.start();
 
-  return [
+  const routes = [
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...linearOwnerTaskRoutes({ ...(options.linearOwnerTasks ?? {}), refs }),
     ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
@@ -146,4 +145,8 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...deviceRoutes({ store, now }),
     ...refRoutes({ refs }),
   ];
+  // Start after every factory has registered its source: the first live pass
+  // must cover all five kinds, not only sessions and projects.
+  refs.start();
+  return routes;
 }
