@@ -37,6 +37,9 @@ import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
 import { deviceRoutes } from './devices.mjs';
+import { createDecisionStore } from '../decisions/store.mjs';
+import { createDecisionService } from '../decisions/service.mjs';
+import { createDecisionRoutes } from './decisions.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -52,10 +55,18 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     now,
     retentionMs: sessionOptions.eventRetentionMs,
   });
-  const sessionService = sessionOptions.service ?? createSessionService({
+  const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
+  let sessionService;
+  const decisionsOptions = options.decisions ?? {};
+  const decisions = decisionsOptions.service ?? createDecisionService({
+    ...decisionsOptions, store: decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now }), sessionStore,
+    sessions: { syncDaemon: () => sessionService.syncDaemon(), decision: (id) => sessionService.decision(id) }, daemon, now,
+  });
+  sessionService = sessionOptions.service ?? createSessionService({
     ...sessionOptions,
     sessionStore,
-    daemon: sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null),
+    daemon,
+    decisions,
     retentionMs: sessionOptions.eventRetentionMs,
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
@@ -95,6 +106,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   }
 
   return [
+    ...createDecisionRoutes({ service: decisions }),
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...linearOwnerTaskRoutes(options.linearOwnerTasks ?? {}),
     ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),

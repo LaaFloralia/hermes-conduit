@@ -67,6 +67,48 @@ laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner
 
 ## API（実装済み）
 
+The decision board is shared by shell agents and native Paseo questions.
+`decisions.json` is schema-versioned, locked across CLI/server processes and
+atomically replaced with mode 0600. Invalid state refuses writes; closed records
+and their operation identities remain for 30 days. Only bounded decision fields
+are retained. References are resolved by an optional `refs(kind, id)` dependency;
+without it `ref` and `sourceRef` are null.
+
+```sh
+laa-bridge decide add --title '公開日を決める' --summary '日付を選んでください' \
+  --option '明日' --option '来週::確認時間を確保' --recommended 2 --request-id release-date
+laa-bridge decide status dec_<16hex> --json
+laa-bridge decide list --json
+laa-bridge decide withdraw dec_<16hex> --reason '解決済み'
+```
+
+`--agent` defaults to `$PASEO_AGENT_ID`; `--name`, `--impact`, `--deadline` (ISO
+8601) and `--no-other` are optional. End the agent turn after posting. The server
+detects CLI records on the existing five-second session sync and sends through
+the existing notifier. Posting an open board decision suppresses that session's
+finished notification. CLI reads do not consume pending notifications.
+
+Answers use the existing daemon adapter with a stable
+`<id>:answer:<attempt>` message ID and steering behavior. A fresh agent read
+must confirm an active/running turn or a timestamp advanced past the send.
+Failure preserves the answer, keeps it on the board and notifies once per failed
+attempt. Only an explicit retry sends again. Interrupted pending attempts become
+failed after 60 seconds. Agents without a Paseo ID get `delivery.state=stored`
+and read their answer through the CLI. Device request IDs prevent duplicate
+answers; another answer after closure is `409 decision_closed`.
+
+| method / path | scope | response |
+|---|---|---|
+| `GET /v1/decisions` | `sessions:read` | `{items,fetchedAt}`; board open/failed plus native pending sessions, failed first, then deadline, then newest |
+| `GET /v1/decisions/{dec_id}` | `sessions:read` | One record, any status; omits posting `requestId` |
+| `POST /v1/decisions/{dec_id}/answer` | `sessions:write` | `{optionIndex,note?,requestId}` → `{decision}` after delivery; null index requires a free answer and `allowOther` |
+| `POST /v1/decisions/{dec_id}/retry` | `sessions:write` | `{requestId}` → `{decision}`; only failed delivery |
+
+Both POST routes require the existing `Idempotency-Key` header. Native items
+continue to use `/v1/sessions/{id}/decision` and `/reply`; no parallel reply or
+Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
+3 missing, 4 conflict, 5 rejected input, 6 unavailable store.
+
 | method / path | 認証 | 応答 |
 |---|---|---|
 | `GET /v1/health` | 不要 | `{version, uptimeSeconds}` のみ |

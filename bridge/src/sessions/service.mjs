@@ -57,6 +57,7 @@ export function createSessionService({
   adapter,
   daemon = null,
   notify = notifyOwner,
+  decisions = null,
   history = readConversation,
   images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
   findWorkspace,
@@ -277,6 +278,7 @@ export function createSessionService({
 
   let syncInFlight;
   async function syncDaemon() {
+    await decisions?.sync();
     if (!daemon) return;
     if (syncInFlight) return syncInFlight;
     syncInFlight = (async () => {
@@ -326,7 +328,7 @@ export function createSessionService({
         const phase = current.phase;
         const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
           : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
-        if (kind && !current.archivedAt && !current.daemonArchivedAt) {
+        if (kind && !current.archivedAt && !current.daemonArchivedAt && !(kind === 'finished' && decisions?.hasOpen(current))) {
           void notify({ kind: `session.${kind}`, title: current.name,
             body: { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
