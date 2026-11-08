@@ -358,9 +358,9 @@ struct ShortcutSender {
 @available(iOS 16.0, *)
 struct SendToHermesIntent: AppIntent {
     #if LAA_BUILD
-    static let title: LocalizedStringResource = "Send to Ciel"
+    static let title: LocalizedStringResource = "Send to LAA"
     static let description = IntentDescription(
-        "Send Ciel a chat message. With Wait for Answer on, the reply comes back to the shortcut."
+        "Send LAA a chat message. With Wait for Answer on, the reply comes back to the shortcut."
     )
     #else
     static let title: LocalizedStringResource = "Send to Hermes"
@@ -382,7 +382,7 @@ struct SendToHermesIntent: AppIntent {
     #if LAA_BUILD
     @Parameter(
         title: "Message",
-        requestValueDialog: "What should Ciel get?",
+        requestValueDialog: "What should LAA get?",
         inputConnectionBehavior: .connectToPreviousIntentResult
     )
     var message: String
@@ -406,7 +406,7 @@ struct SendToHermesIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary {
         #if LAA_BUILD
-        Summary("Send \(\.$message) to Ciel") {
+        Summary("Send \(\.$message) to LAA") {
             \.$waitForAnswer
             \.$chatName
             \.$profile

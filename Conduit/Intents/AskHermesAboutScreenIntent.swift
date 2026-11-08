@@ -116,7 +116,7 @@ struct ScreenQuestionStagingError: LocalizedError {
 @available(iOS 16.0, *)
 struct AskHermesAboutScreenIntent: AppIntent {
     #if LAA_BUILD
-    static let title: LocalizedStringResource = "Ask Ciel About Screen"
+    static let title: LocalizedStringResource = "Ask LAA About Screen"
     static let description = IntentDescription(
         "Open LAA with this screenshot attached to a chat, ready for your question."
     )
@@ -158,7 +158,7 @@ struct AskHermesAboutScreenIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary {
         #if LAA_BUILD
-        Summary("Ask Ciel about \(\.$screenshot)") {
+        Summary("Ask LAA about \(\.$screenshot)") {
             \.$question
             \.$startWith
             \.$profile

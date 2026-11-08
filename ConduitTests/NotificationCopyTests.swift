@@ -11,6 +11,11 @@ import XCTest
 
 final class NotificationCopyTests: XCTestCase {
     private let standardDefaults = UserDefaults.standard
+    #if LAA_BUILD
+    private let displayedAgentName = "LAA"
+    #else
+    private let displayedAgentName = "Hermes"
+    #endif
 
     override func setUp() {
         super.setUp()
@@ -27,12 +32,12 @@ final class NotificationCopyTests: XCTestCase {
         standardDefaults.set("zh-Hans", forKey: AppLanguageStore.defaultsKey)
         let copy = NotificationCopy.generic(for: "approval.needed")
         XCTAssertEqual(copy.title, "需要批准")
-        XCTAssertEqual(copy.body, "Hermes 正在等待你的批准。")
+        XCTAssertEqual(copy.body, "\(displayedAgentName) 正在等待你的批准。")
     }
 
     func testGenericCopyCoversEveryAlertType() {
-        XCTAssertEqual(NotificationCopy.generic(for: "phone.changes").title, "Hermes has a change for you")
-        XCTAssertEqual(NotificationCopy.generic(for: "call.requested").body, "Tap to talk to Hermes.")
+        XCTAssertEqual(NotificationCopy.generic(for: "phone.changes").title, "\(displayedAgentName) has a change for you")
+        XCTAssertEqual(NotificationCopy.generic(for: "call.requested").body, "Tap to talk to \(displayedAgentName).")
         XCTAssertEqual(NotificationCopy.generic(for: nil).title, "Response ready")
     }
 
@@ -72,9 +77,9 @@ final class NotificationCopyTests: XCTestCase {
     func testPhoneChangeLabels() {
         XCTAssertEqual(NotificationCopy.preview([
             "title_label": "phone.add_event", "title": "Hermes wants to add an event", "body": "Lunch, Fri 12:00",
-        ]).title, "Hermes wants to add an event")
+        ]).title, "\(displayedAgentName) wants to add an event")
         XCTAssertEqual(NotificationCopy.preview(["title_label": "phone.auto.set_timer"]).title,
-                       "Hermes is starting a timer")
+                       "\(displayedAgentName) is starting a timer")
         XCTAssertEqual(NotificationCopy.preview(["title_label": "phone.unknown", "title": "Host"]).title,
                        "Host", "an unknown label keeps the host's title")
     }
@@ -88,13 +93,13 @@ final class NotificationCopyTests: XCTestCase {
         XCTAssertEqual(line(["kind": "done", "title": "Check the server"]), "“Check the server” finished.")
         XCTAssertEqual(line(["kind": "failed"]), "Your job failed.")
         XCTAssertEqual(line(["kind": "done", "reason": "The build is green"]), "The build is green")
-        XCTAssertEqual(line(["kind": "approval", "reason": "Deploy now?"]), "Hermes needs your OK. Deploy now?")
-        XCTAssertEqual(line(["kind": "question"]), "Hermes has a question for you.")
-        XCTAssertEqual(line(["kind": "failed", "origin": "alert"]), "Hermes ran into a problem with your request.")
+        XCTAssertEqual(line(["kind": "approval", "reason": "Deploy now?"]), "\(displayedAgentName) needs your OK. Deploy now?")
+        XCTAssertEqual(line(["kind": "question"]), "\(displayedAgentName) has a question for you.")
+        XCTAssertEqual(line(["kind": "failed", "origin": "alert"]), "\(displayedAgentName) ran into a problem with your request.")
         XCTAssertEqual(line(["title": "No kind"]), "host line", "a call without an outcome keeps the host's line")
         XCTAssertEqual(line(["kind": "paused", "title": "Backup"]), "“Backup” ended.", "as HermesCallCopy.outcome says it")
         XCTAssertEqual(NotificationCopy.preview(["title_label": "call.requested"]).title,
-                       "Hermes wants to talk")
+                       "\(displayedAgentName) wants to talk")
     }
 
     // #1415: which profile a push came from, and Chat names.
