@@ -20,6 +20,7 @@
 import { BridgeError, badRequest, markBeforeWrite } from '../errors.mjs';
 import { TaskSourceError, createLinearOwnerTaskSource } from '../tasks/linear-owner.mjs';
 import { parseObjectBody } from './state-file.mjs';
+import { taskRefItem } from '../refs/items.mjs';
 
 const DETAIL_PATH = /^\/v1\/linear-owner-tasks\/([^/]+)$/;
 const TASK_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -135,8 +136,24 @@ function checkIfMatch(raw) {
 // The ledger's own 409s are raised before the handler and never reach this.
 const beforeWrite = (error) => error?.writeStarted === false;
 
-export function linearOwnerTaskRoutes({ source } = {}) {
+export function linearOwnerTaskRoutes({ source, refs = null } = {}) {
   const tasks = source ?? createLinearOwnerTaskSource();
+
+  function decorate(task) {
+    return refs ? { ...task, ref: refs.refFor('task', String(task.id).toLowerCase()) } : task;
+  }
+  function assign(task) {
+    if (!refs || !task) return;
+    const item = taskRefItem(task);
+    refs.assign('task', item.key, item.title, item.external);
+  }
+  function observe(items) {
+    if (!refs) return;
+    refs.observe('task', items.map(taskRefItem));
+  }
+  if (refs) {
+    refs.registerSource('task', async () => (await tasks.listOwnerTasks({ archived: false })).items.map(taskRefItem));
+  }
 
   async function list({ req }) {
     const url = new URL(req.url, 'http://bridge.local');
@@ -144,7 +161,13 @@ export function linearOwnerTaskRoutes({ source } = {}) {
       const archived = url.searchParams.get('archived');
       if (archived !== null && archived !== 'only') throw badRequest('query_invalid', 'archived must be only');
       const outcome = await tasks.listOwnerTasks({ archived: archived === 'only' });
-      return { status: 200, data: { items: outcome.items, nextCursor: null } };
+      // Only the live list is the kind's complete source; the archived list
+      // must never release a number, and its items carry `ref: null`.
+      if (archived === 'only') {
+        return { status: 200, data: { items: outcome.items.map((task) => ({ ...task, ref: null })), nextCursor: null } };
+      }
+      observe(outcome.items);
+      return { status: 200, data: { items: outcome.items.map(decorate), nextCursor: null } };
     } catch (error) {
       throw toBridgeError(error);
     }
@@ -159,7 +182,7 @@ export function linearOwnerTaskRoutes({ source } = {}) {
       throw toBridgeError(error);
     }
     if (!task) throw new BridgeError(404, 'linear_owner_task_not_found', 'no such owner task');
-    return { status: 200, data: task };
+    return { status: 200, data: decorate(task) };
   }
 
   async function create({ rawBody }) {
@@ -190,7 +213,8 @@ export function linearOwnerTaskRoutes({ source } = {}) {
     } catch (error) {
       throw toBridgeError(error);
     }
-    return { status: 201, data: task };
+    assign(task);
+    return { status: 201, data: decorate(task) };
   }
 
   async function patch({ req, rawBody, params }) {
@@ -227,7 +251,8 @@ export function linearOwnerTaskRoutes({ source } = {}) {
     } catch (error) {
       throw toBridgeError(error);
     }
-    return { status: 200, data: task };
+    assign(task);
+    return { status: 200, data: decorate(task) };
   }
 
   function archiveAction(archived) {
@@ -245,6 +270,19 @@ export function linearOwnerTaskRoutes({ source } = {}) {
         if (archived) await tasks.archiveOwnerTask(id);
         else await tasks.restoreOwnerTask(id);
       } catch (error) { throw toBridgeError(error); }
+      // Release now (not on the next list read) and restore immediately; the
+      // restore rule gives the task its old number back when it is still free.
+      if (refs) {
+        if (archived) refs.release('task', id.toLowerCase());
+        else {
+          try {
+            const restored = await tasks.readOwnerTask(id);
+            assign(restored);
+          } catch {
+            // The next complete task read assigns it; the archive result stays.
+          }
+        }
+      }
       return { status: 200, data: { id, archived } };
     };
   }

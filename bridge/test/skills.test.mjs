@@ -64,10 +64,10 @@ test('lists the Claude and Hermes skills from frontmatter only', async () => {
         assert.equal(response.status, 200);
         assert.equal(response.body.data.nextCursor, null);
         assert.deepEqual(response.body.data.items.map(({ category, summary, detail, metadataKnown, ...raw }) => raw), [
-          { id: 'claude:cf-cli', name: 'cf-cli', description: 'Cloudflareの標準', source: 'Claude' },
-          { id: 'claude:docx', name: 'docx', description: 'Word文書', source: 'Claude' },
-          { id: 'hermes:software-development/github', name: 'github', description: 'GitHub操作', source: 'Hermes' },
-          { id: 'hermes:ytsummary', name: 'ytsummary', description: 'YouTube要約', source: 'Hermes' },
+          { id: 'claude:cf-cli', name: 'cf-cli', description: 'Cloudflareの標準', source: 'Claude', ref: 'K1' },
+          { id: 'claude:docx', name: 'docx', description: 'Word文書', source: 'Claude', ref: 'K2' },
+          { id: 'hermes:software-development/github', name: 'github', description: 'GitHub操作', source: 'Hermes', ref: 'K3' },
+          { id: 'hermes:ytsummary', name: 'ytsummary', description: 'YouTube要約', source: 'Hermes', ref: 'K4' },
         ]);
         // The body is never part of the answer.
         assert.doesNotMatch(JSON.stringify(response.body), /secret text/);
@@ -176,7 +176,7 @@ test('a linked skill is listed, a link into the Brain is not opened', async () =
         const response = await bridge.request('/v1/skills', { token });
         assert.equal(response.status, 200);
         assert.deepEqual(response.body.data.items.map(({ category, summary, detail, metadataKnown, ...raw }) => raw), [
-          { id: 'claude:cf-cli', name: 'cf-cli', description: '共有skill', source: 'Claude' },
+          { id: 'claude:cf-cli', name: 'cf-cli', description: '共有skill', source: 'Claude', ref: 'K1' },
         ]);
         assert.doesNotMatch(JSON.stringify(response.body), /社長の文脈/);
       },
