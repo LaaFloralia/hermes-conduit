@@ -44,6 +44,15 @@ createServer(async (req, res) => {
     const name = req.url === '/v1/usage' ? 'usage-normal.json' : 'mac-status-normal.json';
     const body = await readFixture(name);
     if (req.url === '/v1/usage') {
+      const capacityObserved = Date.now() - (mode === 'stale' ? 30 * 60_000 : 60_000);
+      const gib = 1024 ** 3;
+      body.data.items.push({ id: 'capacity.mac-mini.ssd', kind: 'capacity', label: 'Mac mini SSD',
+        value: 400 * gib, unit: 'bytes', source: 'filesystem',
+        observedAt: new Date(capacityObserved).toISOString(), availability: 'available',
+        stale: mode === 'stale', expired: false, estimated: false,
+        detail: { totalBytes: 500 * gib, availableBytes: 100 * gib, status: 'normal',
+          warningFreeBytes: 80 * gib, criticalFreeBytes: 40 * gib,
+          freshUntil: new Date(capacityObserved + 10 * 60_000).toISOString() } });
       for (const quota of body.data.items.filter(item => item.kind === 'quota' && item.detail?.windows)) {
         const observed = Date.now() - (mode === 'stale' ? 30 * 60_000 : 60_000);
         quota.observedAt = new Date(observed).toISOString();

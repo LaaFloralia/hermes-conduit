@@ -3,6 +3,33 @@ import UIKit
 import XCTest
 
 final class LAAUsageUITests: XCTestCase {
+    func testCapacityUsesSharedFeedAndHidesStaleNumbers() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
+        continueAfterFailure = false
+        _ = try helper("mode/normal")
+        let app = XCUIApplication()
+        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
+                               "https://conduit-ui-test.invalid", "-laa-tab", "work"]
+        app.launch()
+        defer { app.terminate() }
+        let settings = app.buttons["laa.settings.open"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 30))
+        settings.tap()
+        let usage = app.buttons["settings.ai-usage"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 15))
+        XCTAssertEqual(usage.label, "Usage")
+        usage.tap()
+        app.buttons["laa.bridge.openPairing"].tap()
+        try pair(app, port: 19492, codeRoute: "fixture-code")
+        XCTAssertTrue(app.staticTexts["空き 100 GiB"].waitForExistence(timeout: 30))
+        screenshot("usage-capacity-live-fixture")
+        _ = try helper("mode/stale")
+        app.buttons["laa.usage.refresh"].tap()
+        XCTAssertTrue(app.staticTexts["更新待ち"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["空き 100 GiB"].exists)
+    }
+
     func testWidgetUsageLinkSelectsUsageOnColdAndWarmLaunch() {
         for delivery in ["cold", "warm"] {
             let app = XCUIApplication()

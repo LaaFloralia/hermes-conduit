@@ -25,7 +25,8 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     ...(tasks ? { tasks } : {}),
     ...(sessions ? { sessions } : {}),
     ...(brain ? { brain } : {}),
-    ...(usage ? { usage } : {}),
+    // Tests never run the real Google or MacBook authentication helpers.
+    usage: { capacitySource: { read: () => [], close() {} }, ...(usage ?? {}) },
     ...(studio ? { studio } : {}),
     ...(ownerTasks ? { ownerTasks } : {}),
     ...(linearOwnerTasks ? { linearOwnerTasks } : {}),

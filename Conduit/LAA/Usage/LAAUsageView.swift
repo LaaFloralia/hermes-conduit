@@ -17,6 +17,7 @@ struct LAAUsageView: View {
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
     @State private var evaluatedAt = Date()
+    @State private var showsUnconnected = false
     private let automaticallyRefresh: Bool
     let onRequestSettings: () -> Void
     init(state: LAAUsageState, onRequestSettings: @escaping () -> Void) {
@@ -41,7 +42,11 @@ struct LAAUsageView: View {
                     VStack(alignment: .leading, spacing: LAASpacing.section) {
                         header
                         if bridge.status != .paired { connectionCard }
-                        else { services }
+                        else {
+                            feedError
+                            capacity
+                            services
+                        }
                     }
                     .padding(.horizontal, geometry.size.width < 360 ? LAASpacing.compactHorizontal : LAASpacing.horizontal)
                     .padding(.top, LAASpacing.x4)
@@ -109,7 +114,7 @@ struct LAAUsageView: View {
                 .accessibilityLabel(Text(verbatim: LAACopy.usageRefresh))
                 .accessibilityIdentifier("laa.usage.refresh")
             }
-            Text(verbatim: "鮮度を確認できる残り枠・残高")
+            Text(verbatim: "鮮度を確認できるAI枠と容量")
                 .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
             Text(verbatim: "通信 " + time(state.updatedAt))
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -138,16 +143,8 @@ struct LAAUsageView: View {
 
     private var services: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            Text(verbatim: "AI Usage").laaTextStyle(.section).fontWeight(.bold)
+            Text(verbatim: "AI").laaTextStyle(.section).fontWeight(.bold)
                 .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
-            if let problem = state.usage.error {
-                Label {
-                    Text(verbatim: problem.message)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: { Image(systemName: "exclamationmark.triangle") }
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                .accessibilityIdentifier("laa.usage.error")
-            }
             if let items = state.usage.value {
                 let groups = LAAUsageGroup.consoleGroups(items)
                 if groups.isEmpty { caption("表示できるサービスはありません。") }
@@ -194,6 +191,155 @@ struct LAAUsageView: View {
                     }
                 }
             } else { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+        }
+    }
+
+    @ViewBuilder private var feedError: some View {
+        if let problem = state.usage.error {
+            Label {
+                Text(verbatim: problem.message)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: { Image(systemName: "exclamationmark.triangle") }
+            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+            .accessibilityIdentifier("laa.usage.error")
+        }
+    }
+
+    /// Memory and storage, apart from the AI services: one card, rows divided
+    /// by hairlines, and the shape of each mark carries its state.
+    private var capacity: some View {
+        let items = LAACapacity.items(state.usage.value ?? [])
+        let shown = items.filter { !LAACapacity.isUnconnected($0) }
+        let unconnected = items.filter(LAACapacity.isUnconnected)
+        return VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                Text(verbatim: "容量").laaTextStyle(.section).fontWeight(.bold)
+                    .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Text(verbatim: "● 正常・取得済み　▲ 要確認　○ 未取得")
+                    .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .accessibilityLabel(Text(verbatim: "凡例 黒丸は正常または取得済み、三角は要確認、白丸は未取得"))
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                if shown.isEmpty && unconnected.isEmpty {
+                    caption(state.isRefreshing ? LAACopy.loading : LAACopy.notFetched)
+                        .padding(.vertical, LAASpacing.x3)
+                }
+                ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                    if index > 0 { Rectangle().fill(LAAColor.separator).frame(height: 1) }
+                    capacityRow(item)
+                }
+                if !unconnected.isEmpty {
+                    if !shown.isEmpty { Rectangle().fill(LAAColor.separator).frame(height: 1) }
+                    DisclosureGroup(isExpanded: $showsUnconnected) {
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            ForEach(unconnected) { item in
+                                caption("○ " + LAACapacity.name(item.id) + " · 取得経路なし")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, LAASpacing.x2)
+                    } label: {
+                        Text(verbatim: "○ 未接続 " + unconnected.map { LAACapacity.name($0.id) }.joined(separator: "・"))
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            .lineLimit(1).truncationMode(.tail)
+                    }
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .accessibilityIdentifier("laa.capacity.unconnected")
+                }
+            }
+            .padding(.horizontal, LAASpacing.x4)
+            .padding(.vertical, LAASpacing.x1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        }
+        .accessibilityIdentifier("laa.capacity")
+    }
+
+    @ViewBuilder
+    private func capacityRow(_ item: LAAUsageItem) -> some View {
+        let reading = LAACapacity.reading(item, at: evaluatedAt)
+        let name = LAACapacity.name(item.id)
+        let alert = reading.map { $0.level == .warning || $0.level == .critical } ?? false
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                Text(verbatim: reading == nil ? "○" : alert ? "▲" : "●")
+                    .laaTextStyle(.secondary)
+                    .foregroundStyle(alert ? LAAColor.attention : reading == nil ? LAAColor.secondaryText : LAAColor.link)
+                    .accessibilityHidden(true)
+                Text(verbatim: name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
+                Spacer(minLength: LAASpacing.x2)
+                Text(verbatim: reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? capacityMissing(item))
+                    .laaTextStyle(.body).monospacedDigit()
+                    .foregroundStyle(alert ? LAAColor.attention : reading == nil ? LAAColor.secondaryText : LAAColor.text)
+                    .multilineTextAlignment(.trailing)
+            }
+            if item.id == "capacity.google-drive" { caption("Drive・Gmail・フォトの共有容量") }
+            if let reading {
+                capacityMeter(reading, alert: alert)
+                    .accessibilityLabel(Text(verbatim: name + " 使用量"))
+                    .accessibilityValue(Text(verbatim: capacityAccessibility(reading)))
+                if let warning = capacityWarning(reading, item: item) {
+                    Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                }
+                caption("使用 " + LAACapacity.bytes(reading.usedBytes, locale: locale) + " / "
+                        + LAACapacity.bytes(reading.totalBytes, locale: locale)
+                        + " · 取得 " + clockTime(LAAUsageItem.date(item.observedAt)))
+            } else if item.availability == "available" {
+                caption("最終取得 " + time(LAAUsageItem.date(item.observedAt)))
+            }
+        }
+        .padding(.vertical, LAASpacing.x3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("laa.capacity.\(item.id)")
+    }
+
+    /// A thin used-bytes track; the tick marks where the warning threshold begins.
+    private func capacityMeter(_ reading: LAACapacityReading, alert: Bool) -> some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(LAAColor.subtleSurface)
+                Capsule().fill(alert ? LAAColor.attention : LAAColor.link)
+                    .frame(width: max(width * min(max(reading.usedFraction, 0), 1), reading.usedBytes > 0 ? 4 : 0))
+                if let tick = reading.warningFraction, tick > 0, tick < 1 {
+                    Rectangle().fill(LAAColor.secondaryText)
+                        .frame(width: 1, height: 10)
+                        .offset(x: width * tick)
+                }
+            }
+        }
+        .frame(height: 4)
+        .padding(.vertical, 3)
+    }
+
+    private func capacityWarning(_ reading: LAACapacityReading, item: LAAUsageItem) -> String? {
+        if item.id == "capacity.google-drive" {
+            if reading.usedBytes >= reading.totalBytes { return "▲ 容量の上限に達しています" }
+            if reading.level == .critical { return "▲ 容量の98%以上を使用" }
+            if reading.level == .warning { return "▲ 容量の90%以上を使用" }
+        }
+        switch reading.level {
+        case .critical: return "▲ 危険 · 空き " + (reading.criticalFreeBytes.map { LAACapacity.bytes($0, locale: locale) } ?? "") + " 未満"
+        case .warning: return "▲ 要確認 · 空き " + (reading.warningFreeBytes.map { LAACapacity.bytes($0, locale: locale) } ?? "") + " 未満"
+        case .normal, .recorded: return nil
+        }
+    }
+
+    private func capacityAccessibility(_ reading: LAACapacityReading) -> String {
+        let level = switch reading.level { case .normal: "正常"; case .recorded: "取得済み"; case .warning: "要確認"; case .critical: "危険" }
+        return level + "、空き " + LAACapacity.bytes(reading.availableBytes, locale: locale)
+            + "、使用 " + LAACapacity.bytes(reading.usedBytes, locale: locale)
+            + "、合計 " + LAACapacity.bytes(reading.totalBytes, locale: locale)
+    }
+
+    private func capacityMissing(_ item: LAAUsageItem) -> String {
+        if item.availability == "available" { return "更新待ち" }
+        switch item.nullReason {
+        case "auth_required": return "認証が必要"
+        case "unsupported": return "未接続"
+        default: return "未取得"
         }
     }
 

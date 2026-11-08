@@ -458,6 +458,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Capacity collection and checks: `bridge/src/usage/capacity.mjs`, `bridge/test/capacity.test.mjs`, `ConduitTests/LAACapacityModelTests.swift`
 - Assets and Drive: `Conduit/LAA/Assets/`, `Conduit/LAA/Drive/`, `bridge/src/routes/drive.mjs`, `bridge/src/drive/`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`, `bridge/bench/README.md`, `docs/laa/DRIVE-PLAYER-API.md`
 - Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-v2.test.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainManageNoteView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`, `Conduit/LAA/Brain/LAAMarkdownModel.swift`, `Conduit/LAA/Brain/LAAMarkdownStyler.swift`, `Conduit/LAA/Brain/LAAMarkdownTextView.swift`, `Conduit/LAA/Brain/LAAMarkdownFormatBar.swift`, `Conduit/LAA/Brain/LAAMarkdownTableEditor.swift`, `Conduit/LAA/Brain/LAAMarkdownDocumentModel.swift`, `Conduit/LAA/Brain/LAAMarkdownEditor.swift`, `ConduitTests/LAAMarkdownEditorTests.swift`
@@ -500,14 +501,23 @@ App Store build · the Bridge API, Brain and Usage data contracts
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
-- Usage reads the Bridge usage-proxy projection in one fixed order: Codex
+- Usage first shows Mac mini and MacBook memory/SSD and the Google account's
+  shared Drive/Gmail/Photos quota, then reads the Bridge usage-proxy projection
+  in one fixed order: Codex
   Weekly, OpenCode Weekly, Claude Weekly, Venice, GPT API, Claude API, Liquid AI, then the
   remaining providers. A 7-day window is called Weekly (ウィークリー), never D1.
   Jev, Google Cloud and Google Flow are retired: the proxy and the Bridge no longer
   read them, and a cached row is dropped before drawing. Quota windows, reset
   times, balances, credits and Liquid AI's recorded cost, input/output tokens and
-  request counts stay in their own units; model names, Hermes token usage and Mac
-  status are not part of this screen. The refresh button only re-reads the feed and
+  request counts stay in their own units; model names and Hermes token usage
+  are not part of this screen. Capacity readings come from the Mac mini Bridge;
+  missing, failed or stale readings show no current number. SSD free space below
+  80 GiB warns and below 40 GiB is critical. MacBook uses the existing Tailscale
+  password-SSH path with runtime-only credentials; iCloud has no reader and is
+  disclosed as unconnected. Google quota includes shared services, retains actual
+  use above the limit, and warns at 90% / 98%. The generated settings title is
+  Usage in every locale while upstream localization keys stay intact.
+  The refresh button only re-reads the feed and
   never opens an external URL. Opening the tab refreshes after a 60-second quiet
   interval; the shared foreground timer also refreshes while Usage is visible.
   The screen reevaluates freshness while open. Failed refreshes clear screen
@@ -666,7 +676,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
-**Checked:** 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
