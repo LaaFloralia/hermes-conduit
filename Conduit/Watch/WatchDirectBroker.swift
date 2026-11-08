@@ -204,6 +204,29 @@ final class WatchDirectBroker {
                 if self.preparing?.callID == id { self.preparing = nil }
                 end()
             }
+        #if LAA_BUILD
+        case .bridgeStartFor(let id, let version, let engine, let profile):
+            guard version == WatchVoiceWire.version, engine == WatchAudioBridgeWire.gptLive else {
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch)); return
+            }
+            guard appState.laaEmployeeCallPlan(profile: profile) != nil else {
+                answer(.callRefused(callID: id, reason: "この社員とは通話できません。Talkを使ってください")); return
+            }
+            if let refusal = consentRefusal(.gptLive) { answer(.callRefused(callID: id, reason: refusal)); return }
+            let end = Self.beginBackgroundTask("conduit.watchBridge.employee")
+            let task: Task<WatchVoiceWire.Message, Never>
+            if let preparing, preparing.callID == id { task = preparing.task }
+            else {
+                task = Task { await self.prepareBridge(id, engine: engine, employeeProfile: profile) }
+                preparing = (id, task)
+            }
+            Task {
+                let response = await task.value
+                answer(response)
+                if self.preparing?.callID == id { self.preparing = nil }
+                end()
+            }
+        #endif
         case .bridgeStart(let id, let version, let engine, let ring):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
@@ -510,7 +533,7 @@ final class WatchDirectBroker {
     /// opens the host's audio bridge, with jobs for GPT-Live's delegations
     /// as the user allows and web_search for when they don't. Nothing else
     /// runs here until the call ends.
-    private func prepareBridge(_ id: UInt32, engine: String, ring: String? = nil) async -> WatchVoiceWire.Message {
+    private func prepareBridge(_ id: UInt32, engine: String, ring: String? = nil, employeeProfile: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -534,9 +557,16 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            let phoneConnection = appState.watchDirectConnection
+            let plan: AppState.WatchBridgePlan
+            #if LAA_BUILD
+            if let employeeProfile { plan = try await appState.prepareWatchEmployeeBridgeCall(profile: employeeProfile) }
+            else { plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }) }
+            #else
+            plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            #endif
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchDirectConnection == phoneConnection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -569,7 +599,7 @@ final class WatchDirectBroker {
                 try await prepareRuntime(id, profile: plan.connection.profile)
                 guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchDirectConnection == phoneConnection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
@@ -1489,6 +1519,11 @@ final class WatchDirectBroker {
         let current = appState.watchDirectConnection
         let known = ledger.call(id)
         if let known, known.connection == current { return true }
+        #if LAA_BUILD
+        // Employee calls keep their own profile while the phone shows another.
+        if let known, LAAStaff(profile: known.connection.profile) != nil,
+           known.connection.dashboard == current.dashboard { return true }
+        #endif
         // The running call, or one still running when the phone restarted.
         if id == callID || (callID == nil && known?.ended == false) {
             link.log.note("watchDirectConnectionChanged", ["callID": Int(id), "known": known != nil])

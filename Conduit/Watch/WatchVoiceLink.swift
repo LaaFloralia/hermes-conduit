@@ -26,6 +26,9 @@ final class WatchVoiceLink: ObservableObject {
     let log = WatchPhoneCallLog.shared
     /// Sets up and serves the Watch's calls.
     private(set) lazy var direct = WatchDirectBroker(link: self)
+    #if LAA_BUILD
+    private let ask = LAAWatchAskService()
+    #endif
     private let proxy = PhoneWatchSessionProxy()
     /// What the Watch app should show from this phone, and what it was
     /// last sent.
@@ -80,6 +83,12 @@ final class WatchVoiceLink: ObservableObject {
         }
     }
 
+    #if LAA_BUILD
+    fileprivate func receivedAskFile(_ request: LAAWatchAsk.Request, data: Data) {
+        ask.receiveAudio(request, data: data)
+    }
+    #endif
+
     // MARK: Receiving
 
     fileprivate func sessionChanged(_ session: WCSession, activation: Bool = false) {
@@ -95,6 +104,15 @@ final class WatchVoiceLink: ObservableObject {
 
     fileprivate func received(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
         switch message {
+        #if LAA_BUILD
+        case .bridgeStartFor:
+            direct.handle(message, reply: reply)
+        case .laaAskText(let id, let profile, let text):
+            ask.receiveText(id: id, profile: profile, text: text)
+            reply?(WatchVoiceWire.encode(.laaAskState(ask.state(id))))
+        case .laaAskStatus(let id):
+            reply?(WatchVoiceWire.encode(.laaAskState(ask.state(id))))
+        #endif
         case .report(let line):
             log.watchReport(line)
             reply?([:])
@@ -165,6 +183,16 @@ private final class PhoneWatchSessionProxy: NSObject, WCSessionDelegate {
             link.received(decoded, reply: replyHandler)
         }
     }
+
+    #if LAA_BUILD
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        defer { try? FileManager.default.removeItem(at: file.fileURL) }
+        guard let request = LAAWatchAsk.request(fromMetadata: file.metadata) else { return }
+        let size = (try? file.fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let data = size > 0 && size <= LAAWatchAsk.maxAudioBytes ? (try? Data(contentsOf: file.fileURL)) ?? Data() : Data()
+        WatchVoiceMain.async { [weak self] in self?.link?.receivedAskFile(request, data: data) }
+    }
+    #endif
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
         guard let decoded = WatchVoiceWire.decode(userInfo) else { return }

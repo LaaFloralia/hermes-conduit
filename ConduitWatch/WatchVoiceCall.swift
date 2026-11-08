@@ -190,6 +190,20 @@ final class WatchVoiceCall: ObservableObject {
         return nil
     }
 
+    #if LAA_BUILD
+    @Published private(set) var laaEmployeeName: String?
+    private var laaEmployeeCallPending = false
+
+    func startEmployee(_ staff: LAAStaff) {
+        guard !isActive else { return }
+        dismissEnded()
+        laaEmployeeName = staff.name
+        laaEmployeeCallPending = true
+        bridge.laaProfile = "laa-\(staff.rawValue)"
+        start(engine: .gptLive)
+    }
+    #endif
+
     // MARK: Controls
 
     /// `ring`: the call from Hermes it answers (HermesWatchCalls), which
@@ -198,6 +212,10 @@ final class WatchVoiceCall: ObservableObject {
     /// named.
     func start(ring: String? = nil, answer: HermesRingAnswer? = nil, engine chosen: WatchVoiceEngine? = nil) {
         guard !isActive else { return }
+        #if LAA_BUILD
+        if !laaEmployeeCallPending { laaEmployeeName = nil; bridge.laaProfile = nil }
+        laaEmployeeCallPending = false
+        #endif
         callEngine = chosen ?? engine
         summaryDismissed = false
         liveSince = nil
@@ -317,7 +335,9 @@ final class WatchVoiceCall: ObservableObject {
                     WatchCallLog.shared.note("callRequestExpired", ["source": request.source, "seconds": Int(age)])
                 }
             }
+            #if !LAA_BUILD
             if !hasBeenActive || wasBackgrounded { startOnOpenIfWanted() }
+            #endif
             hasBeenActive = true
             wasBackgrounded = false
         }

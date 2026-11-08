@@ -138,3 +138,43 @@ test('the CLI exposes grant, its JSON output and the recorded audit', async (t) 
   assert.equal(revoked.status, 1);
   assert.match(revoked.stderr, /revoked/);
 });
+
+test('transcription grant is explicit, audited and confined to one device', async (t) => {
+  const api = await startBridge();
+  t.after(() => api.close());
+  const target = await device(api);
+  const other = await device(api);
+  const before = api.store.read().devices[other.id];
+  const body = { pcm16: Buffer.alloc(3200).toString('base64'), sampleRate: 16000, language: 'ja' };
+  const request = (token) => api.request('/v1/voice/transcribe', { method: 'POST', token, body });
+  assert.equal((await request(target.token)).status, 403);
+  assert.equal((await request(other.token)).status, 403);
+  const result = grantScopes(api.store, { target: target.id, scopes: ['voice:transcribe'], reason: 'Watch voice', now: 1000, operatorUid: 123 });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.device.scopeGrants, [{ scopes: ['voice:transcribe'], grantedAt: '1970-01-01T00:00:01.000Z', operatorUid: 123, reason: 'Watch voice', wasAlreadyGranted: false }]);
+  assert.deepEqual(api.store.read().devices[other.id], before);
+  assert.equal((await request(other.token)).status, 403);
+  assert.notEqual((await request(target.token)).status, 403);
+  assert.match(grantScopes(api.store, { target: target.id, scopes: ['voice:polish'], reason: 'not allowed' }).error, /not grantable/);
+});
+
+test('a transcription grant never gives a general-purpose app self-revocation', async (t) => {
+  const api = await startBridge();
+  t.after(() => api.close());
+  const app = await device(api);
+  const other = await device(api);
+  const voiceToken = await api.token(['voice:polish', 'voice:transcribe']);
+  const voice = await api.request('/v1/me', { token: voiceToken });
+  const otherBefore = api.store.read().devices[other.id];
+  const granted = grantScopes(api.store, { target: app.id, scopes: ['voice:transcribe'], reason: 'Watch voice' });
+  assert.equal(granted.error, undefined);
+  const attempt = await api.request('/v1/devices/self/revoke', { method: 'POST', token: app.token });
+  assert.equal(attempt.status, 403);
+  assert.equal((await api.request('/v1/me', { token: app.token })).status, 200);
+  assert.deepEqual(api.store.read().devices[other.id], otherBefore);
+  assert.equal((await api.request('/v1/devices/self/revoke', { method: 'POST', token: voiceToken })).status, 200);
+  assert.equal((await api.request('/v1/me', { token: voiceToken })).status, 401);
+  assert.equal((await api.request('/v1/me', { token: other.token })).status, 200);
+  assert.equal(api.store.read().devices[voice.body.data.deviceId].id, voice.body.data.deviceId);
+  assert.deepEqual(api.store.read().devices[other.id], otherBefore);
+});

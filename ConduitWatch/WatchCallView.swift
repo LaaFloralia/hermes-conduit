@@ -44,7 +44,10 @@ struct WatchCallView: View {
 
     /// The voice's name, or the iPhone's while it has the call.
     private var title: String {
-        call.phase == .onPhone ? String(localized: "iPhone") : call.callEngine.title
+        #if LAA_BUILD
+        if let name = call.laaEmployeeName { return name }
+        #endif
+        return call.phase == .onPhone ? String(localized: "iPhone") : call.callEngine.title
     }
 
     /// Up while a job's request waits for an answer; only Approve or Deny

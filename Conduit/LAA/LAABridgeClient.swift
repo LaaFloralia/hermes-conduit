@@ -179,6 +179,14 @@ struct LAABridgeClient {
         self.session = URLSession(configuration: config, delegate: LAANoRedirects(), delegateQueue: nil)
     }
 
+    func transcribeWatchAudio(_ audio: Data, credentials: LAABridgeCredentials) async throws -> String {
+        struct Body: Encodable { let pcm16: String; let sampleRate: Int; let language: String }
+        struct Result: Decodable { let text: String }
+        let body = try JSONEncoder().encode(Body(pcm16: audio.base64EncodedString(), sampleRate: 16_000, language: "ja"))
+        let response: LAABridgeResponse<Result> = try await request(method: "POST", path: "/v1/voice/transcribe", jsonBody: body, credentials: credentials, timeout: 25)
+        return response.data.text
+    }
+
     func enroll(baseURL: URL, code: String, name: String) async throws -> LAABridgeEnrollment {
         let body = try JSONEncoder().encode(EnrollmentRequest(code: code, name: name, platform: Self.enrollmentPlatform))
         do {

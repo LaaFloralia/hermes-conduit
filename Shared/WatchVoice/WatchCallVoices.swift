@@ -82,6 +82,11 @@ struct WatchPhoneContext: Codable, Equatable {
     /// app; a value the Watch doesn't know reads as nil.
     var notificationsEncryption: String? = nil
 
+    #if LAA_BUILD
+    /// Employee profiles the phone can prepare with its existing call plan.
+    var laaCallableProfiles: [String]? = nil
+    #endif
+
     /// What the Watch's Settings show for the notifications it mirrors.
     enum NotificationsEncryption: String {
         case encrypted

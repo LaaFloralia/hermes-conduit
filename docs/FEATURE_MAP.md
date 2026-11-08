@@ -545,7 +545,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   searches never re-rank with a model. Hidden paths and trash remain excluded.
 - On iPhone, Brain opens the Mac Bridge when no security-scoped folder is selected;
   choosing the SyncTrain folder enables local, offline browsing. On Mac, Doc
-  switches between separately bookmarked ~/Brain and ~/hq folders.
+  switches between separately bookmarked ~/Brain and ~/hq.
   It preserves the legacy bookmark and migrates a recognized selection without
   replacing a separately saved bookmark; it refuses the home folder. The local
   list shows folders (including empty ones) and Markdown notes. The user can
@@ -4198,3 +4198,44 @@ Google data remains a signed-build gate.
 - Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column tops out at 460 UIKit points (about 354 Mac points), which no four-column row fits.
 
 **Checked:** 2026-11-09, laa/app-polish-1109 on 92d8dcb5 (Doc opens and leaves notes in the detail column; @@CHECK@@); 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.
+
+## LAA Watch employee voice
+
+**Siblings:** Watch employee list and call · Watch LAA Voice recording and text · iPhone Chat · voice transcription · Action button, Siri and complication · employee avatars
+
+**Code**
+- Watch screens and recorder: `ConduitWatch/LAA/LAAWatchViews.swift`, `ConduitWatch/LAA/LAAWatchVoice.swift`, `ConduitWatch/WatchLink.swift`
+- Employee calls: `ConduitWatch/WatchVoiceCall.swift`, `ConduitWatch/WatchBridgeCallModel.swift`, `ConduitWatch/WatchCallView.swift`
+- Shared wire: `Shared/WatchVoice/LAAWatchAsk.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- Actions and images: `ConduitWatch/TalkToHermesIntent.swift`, `scripts/laa/watch-staff-avatars.sh`
+
+**Rulings**
+- LAA Voice sends the unpolished transcription to Chat. A named employee call uses GPT-Live; the Watch's default Talk allows the iPhone to route a leading employee name.
+- Audio is limited to 25 seconds and transferred as 16 kHz mono PCM16; a final state or the 90-second timeout stops status polling.
+
+**Open gaps**
+- Watch simulator build, snapshots and paired-device acceptance are pending.
+
+**Checked:** 2026-11-08, LAA laa/apple-watch, based on b01a62d9 (implementation; build and paired-device verification pending).
+
+## LAA Watch employee voice and transcription
+
+The LAA Watch can ask an employee through the iPhone and call an employee
+through the host's GPT-Live bridge. This is enabled only in LAA builds.
+
+**Siblings:** Watch recording and status · iPhone WatchConnectivity receiver · employee Chat · employee call identity · Bridge transcription and its opt-in grant · CLI help and Bridge documentation.
+
+**Code**
+- Shared contract: `Shared/WatchVoice/LAAWatchAsk.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- iPhone: `Conduit/Watch/LAAWatchAskService.swift`, `Conduit/Watch/WatchVoiceLink.swift`, `Conduit/Watch/WatchDirectBroker.swift`, `Conduit/Services/AppState.swift`, `Conduit/LAA/LAABridgeClient.swift`
+- Bridge: `bridge/src/config.mjs`, `bridge/src/pairing.mjs`, `bridge/src/routes/voice.mjs`, `bridge/src/routes/devices.mjs`, `bridge/test/grant.test.mjs`
+
+**Rulings**
+- A 16 kHz PCM16 recording of at most 25 seconds is transcribed without polishing and sent to the employee's Watch chat. Only an explicit opening name selects another employee; a selected profile takes precedence.
+- `voice:transcribe` remains opt-in and may be granted with a reason to the owner's LAA phone. `voice:polish` is not granted by this operation. Only devices with voice scopes exclusively can self-revoke.
+- Queued WatchConnectivity state carries only request ID, phase and profile; the transcript, reply and failure stay in iPhone memory for ten minutes and are returned over a reachable status request.
+
+**Open gaps**
+- iPhone and Watch physical-device acceptance remains pending. The uncensored employee uses Talk; its existing phone call plan refuses GPT-Live.
+
+**Checked:** 2026-11-08, LAA laa/apple-watch, baseline b01a62d9.

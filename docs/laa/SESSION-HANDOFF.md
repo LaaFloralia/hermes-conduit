@@ -50,7 +50,7 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 
 - このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で端末の停止を待ってから渡す。
 - 検証用の端末は `LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）の1台だけ（iPhone Duoは社長の指示で使わない）。作業用に端末を増やしたら、終了時に削除する。
-- xcodebuildは共有の `build-slot.sh` 経由で同時1本・`-jobs 4`（2026-11-02、Mac miniのメモリ24GBを共有しているため max=1）。1GB超を生成する前に `laa-storage-guard status --quick` と必要量・並行作業を確認し、作業中も80 GiB以上を保つ（`hq/tools/STORAGE.md`）。必要な余裕がなければ新しい生成を始めず、自分の不要物整理・Driveへの退避後に再確認する。他者の参照中データや削除審査で拒否された物には触れない。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。親はゲートが終わるたびに `LAA 16 Pro Max` を `simctl erase` で初期化し、起動して `defaults write -g AppleLanguages -array en-US` と `AppleLocale en_US` を書いて読み戻してから停止する（試験のたびに端末のデータが増え、2時間で約2 GB増えた）。
+- xcodebuildは共有の `build-slot.sh` 経由で同時1本・`-jobs 4`（2026-11-02、Mac miniのメモリ24GBを共有しているため max=1）。1GB超を生成する前に `laa-storage-guard status --quick` と必要量・並行作業を確認し、取得・展開・同時作業・ビルド中のピークを含め80 GiB以上を保つ（`hq/tools/STORAGE.md`）。ほかの担当の未完了の清掃を空きとして見込まない。必要な余裕がなければ新しい生成を始めず、自分の不要物整理・Driveへの退避後に再確認する。他者の参照中データや削除審査で拒否された物には触れない。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。親はゲートが終わるたびに `LAA 16 Pro Max` を `simctl erase` で初期化し、起動して `defaults write -g AppleLanguages -array en-US` と `AppleLocale en_US` を書いて読み戻してから停止する（試験のたびに端末のデータが増え、2時間で約2 GB増えた）。
 
 ## マージとTestFlight
 
