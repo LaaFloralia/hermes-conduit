@@ -63,7 +63,7 @@ final class VoicePlacedCallsTests: XCTestCase {
         calls.voiceChanged(running: true)
 
         XCTAssertEqual(calls.phase, .placing)
-        XCTAssertEqual(kit.names, ["Ciel"])
+        XCTAssertEqual(kit.names, ["Monet"])
         XCTAssertFalse(audio.isInNativeCall, "CallKit hasn't shown the call yet")
     }
 
@@ -660,7 +660,7 @@ func makePlacedCallsForTesting(appState: AppState, kit: FakePlacedCallKit, timeo
     let host = VoicePlacedCallHost(
         isSettingOn: { true },
         isVoiceRunning: { [weak appState] in appState?.isPhoneVoiceCallRunning ?? false },
-        displayName: { "Ciel" },
+        displayName: { "Monet" },
         endVoice: { [weak appState] in appState?.endVoiceForPlacedCall() },
         voiceMuted: { [weak appState] in appState?.nativeCallVoiceMuted },
         setVoiceMuted: { [weak appState] in appState?.setVoiceMutedForNativeCall($0) },
@@ -713,7 +713,7 @@ private final class FakePlacedCallHost {
     var isSettingOn = true
     var running = true
     var elsewhere = false
-    var name = "Ciel"
+    var name = "Monet"
     var muted: Bool?
     private(set) var mutedValues: [Bool] = []
     private(set) var endVoiceCount = 0

@@ -167,12 +167,23 @@ struct LAAWorkHub: View {
     private var connectionState: some View {
         VStack(spacing: LAASpacing.x4) {
             Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(LAAColor.secondaryText)
-            Text(verbatim: "Macに接続してください").fontWeight(.semibold)
-            Text(verbatim: "接続するとタスクやセッションを確認できます。")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("work.connect")
+            if bridge.status == .keychainError {
+                Text(verbatim: "接続情報を読み取れません").fontWeight(.semibold)
+                Text(verbatim: LAABridgeError.keychain.japaneseText)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Button { bridge.retryReadingCredentialsIfNeeded() } label: { Text(verbatim: "もう一度読み込む") }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("work.retry-credentials")
+            } else {
+                Text(verbatim: "Macに接続してください").fontWeight(.semibold)
+                Text(verbatim: bridge.status == .revoked ? LAABridgeError.revoked.japaneseText :
+                     bridge.status == .unauthorized ? "この端末の接続を確認できません。もう一度接続してください。" :
+                     "接続するとタスクやセッションを確認できます。")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("work.connect")
+            }
         }
         .padding(LAASpacing.horizontal)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

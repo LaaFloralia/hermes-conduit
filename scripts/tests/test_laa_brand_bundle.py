@@ -297,7 +297,9 @@ class LAABrandBundleTests(unittest.TestCase):
         for original, expected in samples.items():
             with self.subTest(original=original):
                 self.assertEqual(brand.display(original), expected)
-        self.assertEqual(brand.display("Ciel"), "Ciel")
+        self.assertEqual(brand.display("Monet"), "Monet")
+        self.assertEqual(brand.display("Ask Ciel"), "Ask Monet")
+        self.assertEqual(brand.display("Cielに聞く"), "Monetに聞く")
 
     def test_intent_aliases_reuse_japanese_translation_without_changing_lookup_keys(self):
         original = {"Tell Hermes": "Hermesに伝える", "LAA profile": "LAAプロファイル"}
@@ -305,6 +307,9 @@ class LAABrandBundleTests(unittest.TestCase):
         self.assertEqual(values["Tell LAA"], "LAAに伝える")
         self.assertEqual(values["Tell Hermes"], "LAAに伝える")
         self.assertEqual(values["AI employee"], "AI社員")
+        renamed = brand.display_aliases(brand.values_only({"Talk to Ciel": "Cielと話す"}, locale="ja"))
+        self.assertEqual(renamed["Talk to Ciel"], "Monetと話す")
+        self.assertEqual(renamed["Talk to Monet"], "Monetと話す")
         self.assertEqual(brand.display_aliases(values), values)
         explicit = {"Talk to Hermes": "LAA と話す", "Talk to LAA": "LAAと話す"}
         self.assertEqual(brand.display_aliases(explicit)["Talk to LAA"], "LAAと話す")

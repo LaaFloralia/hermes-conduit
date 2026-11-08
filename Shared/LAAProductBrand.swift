@@ -20,7 +20,7 @@ enum LAAProductBrand {
     static func display(_ value: String) -> String {
         #if LAA_BUILD
         return value.replacingOccurrences(of: "Hermes Conduit", with: "LAA")
-            .replacingOccurrences(of: "Conduit-chan", with: "Ciel")
+            .replacingOccurrences(of: "Conduit-chan", with: "Monet")
             .replacingOccurrences(of: "Conduit plugin", with: "LAA plugin")
             .replacingOccurrences(of: "Conduitプラグイン", with: "LAAの連携プラグイン")
             .replacingOccurrences(of: "Hermes gateway", with: "LAA background service")

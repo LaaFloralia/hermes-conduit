@@ -7,7 +7,7 @@ import XCTest
 final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
     func testDefaultConfigurationAndSupportedFamilies() {
         let configuration = LAAEmployeeWidgetIntent()
-        XCTAssertEqual(configuration.employee, .ciel)
+        XCTAssertEqual(configuration.employee, .monet)
         XCTAssertEqual(LAAEmployeeWidget.supportedFamilies, [.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular])
     }
 
@@ -31,7 +31,7 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
             XCTAssertNil(WidgetLaunchLink(action: .usage, workspace: workspace, reference: nil))
             XCTAssertEqual(entry.defaultLink(for: .accessoryRectangular).url, entry.call.url)
             XCTAssertEqual(entry.defaultLink(for: .accessoryCircular).url, entry.call.url)
-            for (link, action) in [(entry.call, employee == .cielUncensored ? WidgetLaunchAction.employeeChat : .talk), (entry.chat, .employeeChat)] {
+            for (link, action) in [(entry.call, employee == .monetUncensored ? WidgetLaunchAction.employeeChat : .talk), (entry.chat, .employeeChat)] {
                 let decoded = try XCTUnwrap(WidgetLaunchLink(url: link.url))
                 XCTAssertEqual(decoded.action, action)
                 XCTAssertEqual(decoded.workspace?.dashboardID, dashboard)
@@ -55,14 +55,14 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
         XCTAssertTrue(timeline.entries[1].usage!.meters[0].isPast(at: timeline.entries[1].date))
     }
 
-    func testDefaultTimelineWithoutSnapshotKeepsCielAndUnresolvedDashboard() throws {
+    func testDefaultTimelineWithoutSnapshotKeepsMonetAndUnresolvedDashboard() throws {
         let timeline = LAAEmployeeTimelineProvider.makeTimeline(configuration: LAAEmployeeWidgetIntent(), snapshot: nil)
         let entry = try XCTUnwrap(timeline.entries.first)
-        XCTAssertEqual(entry.employee, .ciel)
+        XCTAssertEqual(entry.employee, .monet)
         XCTAssertEqual(entry.call.workspace?.dashboardID, LAAEmployeeWidgetLinks.unresolvedDashboard)
         XCTAssertEqual(entry.chat.workspace?.dashboardID, LAAEmployeeWidgetLinks.unresolvedDashboard)
-        XCTAssertEqual(entry.call.workspace?.profile, "laa-ciel")
-        XCTAssertEqual(entry.chat.workspace?.profile, "laa-ciel")
+        XCTAssertEqual(entry.call.workspace?.profile, "laa-monet")
+        XCTAssertEqual(entry.chat.workspace?.profile, "laa-monet")
     }
 }
 #endif

@@ -14,7 +14,7 @@ try {
     join(root, 'Conduit/LAA/Drive/LAADrivePlaybackState.swift'),
     join(root, 'Conduit/LAA/Drive/LAADrivePlaybackCoordinator.swift'),
     join(here, 'drive-native-playback-test.swift'), '-o', binary], { stdio: 'inherit' });
-  execFileSync(binary, [join(root, 'docs/laa/assets/staff/ciel/ciel-idle-512.mov')], { stdio: 'inherit' });
+  execFileSync(binary, [join(root, 'docs/laa/assets/staff/monet/monet-idle-512.mov')], { stdio: 'inherit' });
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }

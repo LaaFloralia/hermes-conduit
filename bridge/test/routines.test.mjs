@@ -67,15 +67,15 @@ test('routine states use current scheduler and business observations with explic
 });
 
 test('destinations only use explicitly configured chat roles and preserve unknown receivers', () => {
-  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'COS', ownerRole: 'Ciel' }), 'Merlinのチャット');
-  assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'ciel', deliver: 'local' }), 'Cielのチャット');
-  assert.equal(routineDestination({ notificationMode: 'email', ownerRole: 'ciel' }), null);
-  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'unknown', ownerRole: 'ciel' }), null);
+  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'COS', ownerRole: 'Monet' }), 'Merlinのチャット');
+  assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'monet', deliver: 'local' }), 'Monetのチャット');
+  assert.equal(routineDestination({ notificationMode: 'email', ownerRole: 'monet' }), null);
+  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'unknown', ownerRole: 'monet' }), null);
   assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'constructor' }), null);
 });
 
 test('history stays visible separately from the current state and is recomputed each read', () => {
-  const job = { id: 'job:mail', name: 'Mail', notificationMode: 'chat', ownerRole: 'ciel', reading: {
+  const job = { id: 'job:mail', name: 'Mail', notificationMode: 'chat', ownerRole: 'monet', reading: {
     enabled: true, schedulerResult: 'error', businessStatus: 'failed', notificationStatus: 'pending', result: 'timeout', lastRunAt: '2026-11-02T00:00:00Z' } };
   assert.equal(projectRoutines({ data: [job] })[0].state, 'error');
   job.reading.schedulerResult = 'success'; job.reading.businessStatus = 'success';

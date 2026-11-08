@@ -61,14 +61,17 @@ final class LAAStaffCallTests: XCTestCase {
     }
 
     func testStaffProfilesAndUnknownProfile() {
-        let expected: [String: String] = ["ciel": "Ciel", "argus": "Argus", "cfo": "Morgan",
-                                          "cio": "Sherlock", "cmo": "Monet", "cos": "Merlin",
-                                          "cso": "Talos", "cto": "Ada", "ciel-uncensored": "Ciel（無検閲）"]
+        let expected: [String: String] = ["monet": "Monet", "argus": "Argus", "cfo": "Morgan",
+                                          "cio": "Sherlock", "cos": "Merlin",
+                                          "cso": "Talos", "cto": "Ada", "monet-uncensored": "Monet（無検閲）"]
         for (id, name) in expected {
             XCTAssertEqual(LAAStaff(profile: "laa-\(id)")?.name, name)
         }
         XCTAssertNil(LAAStaff(profile: "default"))
         XCTAssertNil(LAAStaff(profile: "laa-other"))
+        for retired in ["laa-ciel", "laa-ciel-uncensored", "laa-cmo"] {
+            XCTAssertNil(LAAStaff(profile: retired))
+        }
     }
 
     func testCallKitPresentationUsesBundledIconAndStaffNames() throws {
@@ -83,12 +86,12 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAACallKitPresentation.outgoingUpdate(name: "Talos").localizedCallerName, "Talos")
     }
 
-    func testLegacyDefaultCallerNameKeepsNamedProfilesAndUsesCielFallback() {
-        XCTAssertEqual(HermesCallerName.name(profile: nil, mainName: nil), "Ciel")
-        XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Hermes"), "Ciel")
+    func testLegacyDefaultCallerNameKeepsNamedProfilesAndUsesMonetFallback() {
+        XCTAssertEqual(HermesCallerName.name(profile: nil, mainName: nil), "Monet")
+        XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Hermes"), "Monet")
         XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Hermes", profileName: "Ada"), "Ada")
         XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Morgan", profileName: "Ada"), "Morgan")
-        XCTAssertEqual(HermesCallCopy.missedCallTitle(from: "Hermes"), HermesCallCopy.missedCallTitle(from: "Ciel"))
+        XCTAssertEqual(HermesCallCopy.missedCallTitle(from: "Hermes"), HermesCallCopy.missedCallTitle(from: "Monet"))
     }
 
     func testPlacedCallNameFollowsConversationAndKeepsDefaultName() {
@@ -118,7 +121,7 @@ final class LAAStaffCallTests: XCTestCase {
         let control = FakeControl()
         control.consent = .geminiLive
         let calls = LAAEmployeeCallCoordinator(control: control)
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat-one")
+        calls.start(profile: "laa-monet", name: "Monet", conversationID: "chat-one")
         XCTAssertEqual(calls.consentRequest?.mode, .geminiLive)
         XCTAssertNil(calls.snapshot)
         calls.answerConsent(false)
@@ -126,7 +129,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertNil(control.context)
         XCTAssertNil(control.grantedConsent)
 
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat-one")
+        calls.start(profile: "laa-monet", name: "Monet", conversationID: "chat-one")
         calls.answerConsent(true)
         XCTAssertEqual(control.grantedConsent, .geminiLive)
         XCTAssertNil(calls.snapshot)
@@ -196,7 +199,7 @@ final class LAAStaffCallTests: XCTestCase {
             else if snapshot.phase == .connected { updated.fulfill() }
             else if snapshot.phase == .ended { ended.fulfill() }
         }
-        let context = LAAEmployeeCallContext(profile: "laa-ciel", name: "Ciel", conversationID: nil)
+        let context = LAAEmployeeCallContext(profile: "laa-monet", name: "Monet", conversationID: nil)
         control.start(context)
         await fulfillment(of: [connected], timeout: 5)
         XCTAssertEqual(snapshots.last?.context.conversationID, "new-chat")
@@ -230,7 +233,7 @@ final class LAAStaffCallTests: XCTestCase {
         fake.canAdopt = true
         fake.voiceStatus = LAAEmployeeVoiceStatus(phase: .connected)
         let control = LAAEmployeeVoiceControl(host: fake.makeHost())
-        let context = LAAEmployeeCallContext(profile: "default", name: "Ciel", conversationID: nil)
+        let context = LAAEmployeeCallContext(profile: "default", name: "Monet", conversationID: nil)
         var updates: [LAAEmployeeCallSnapshot] = []
         control.onUpdate = { updates.append($0) }
 
@@ -244,7 +247,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(updates.last?.phase, .ended)
     }
 
-    func testCoordinatorPresentsAnExistingVoiceCallAsCiel() {
+    func testCoordinatorPresentsAnExistingVoiceCallAsMonet() {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)
@@ -256,7 +259,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertNil(calls.snapshot)
         app.showVoiceSheet = true
         calls.adoptVoiceIfNeeded(app)
-        XCTAssertEqual(calls.snapshot?.context.name, "Ciel")
+        XCTAssertEqual(calls.snapshot?.context.name, "Monet")
         XCTAssertTrue(calls.isShowingCall)
         let id = calls.snapshot?.context.id
         calls.adoptVoiceIfNeeded(app)
@@ -304,7 +307,7 @@ final class LAAStaffCallTests: XCTestCase {
         let control = LAAEmployeeVoiceControl(host: fake.makeHost())
         var snapshots: [LAAEmployeeCallSnapshot] = []
         control.onUpdate = { snapshots.append($0) }
-        let context = LAAEmployeeCallContext(profile: "laa-ciel", name: "Ciel", conversationID: "chat")
+        let context = LAAEmployeeCallContext(profile: "laa-monet", name: "Monet", conversationID: "chat")
         control.start(context)
         await fulfillment(of: [began], timeout: 5)
         control.end()
@@ -325,7 +328,7 @@ final class LAAStaffCallTests: XCTestCase {
         let observation = calls.$snapshot.sink { snapshot in
             if case .failed = snapshot?.phase { failed.fulfill() }
         }
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat")
+        calls.start(profile: "laa-monet", name: "Monet", conversationID: "chat")
         await fulfillment(of: [failed], timeout: 5)
         calls.showChat()
         calls.showCall()
@@ -396,18 +399,18 @@ final class LAAStaffCallTests: XCTestCase {
 
     func testBundledAssetsResolveOnlyWhatIsPresent() {
         let root = URL(fileURLWithPath: "/test-bundle", isDirectory: true)
-        let paths: Set<String> = ["/test-bundle/staff", "/test-bundle/staff/ciel/ciel-avatar-512.png",
-                                  "/test-bundle/staff/ciel/ciel-idle-512.mov",
-                                  "/test-bundle/staff/ciel/ciel-turn.heic",
+        let paths: Set<String> = ["/test-bundle/staff", "/test-bundle/staff/monet/monet-avatar-512.png",
+                                  "/test-bundle/staff/monet/monet-idle-512.mov",
+                                  "/test-bundle/staff/monet/monet-turn.heic",
                                   "/test-bundle/callkit-icon-template-120.png"]
         let resolver = StaffAssetResolver(root: root, exists: { paths.contains($0.path) })
-        let ciel = resolver.resolve(profile: "laa-ciel")
-        XCTAssertEqual(ciel.avatar?.path, "/test-bundle/staff/ciel/ciel-avatar-512.png")
-        XCTAssertNotNil(ciel.loop)
-        XCTAssertNotNil(ciel.turn)
+        let monet = resolver.resolve(profile: "laa-monet")
+        XCTAssertEqual(monet.avatar?.path, "/test-bundle/staff/monet/monet-avatar-512.png")
+        XCTAssertNotNil(monet.loop)
+        XCTAssertNotNil(monet.turn)
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").turn)
-        XCTAssertNil(resolver.resolve(profile: "laa-ciel-uncensored").avatar)
-        XCTAssertNil(ciel.hero)
+        XCTAssertNil(resolver.resolve(profile: "laa-monet-uncensored").avatar)
+        XCTAssertNil(monet.hero)
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").avatar)
         XCTAssertNotNil(resolver.resolve(profile: "default").defaultMark)
         XCTAssertEqual(resolver.resolve(profile: "unknown"), StaffAssets())
@@ -511,8 +514,8 @@ final class LAAStaffCallTests: XCTestCase {
 
     func testAnEmployeeWearsTheMascotWhateverHermesHolds() {
         let resolver = StaffAssetResolver.bundled
-        let mascot = try? XCTUnwrap(resolver.resolve(profile: "laa-ciel").avatar)
-        XCTAssertEqual(AppState().profileAvatarURL(for: "laa-ciel"), mascot)
+        let mascot = try? XCTUnwrap(resolver.resolve(profile: "laa-monet").avatar)
+        XCTAssertEqual(AppState().profileAvatarURL(for: "laa-monet"), mascot)
         XCTAssertTrue(mascot.map(resolver.isMascot) ?? false)
         XCTAssertFalse(resolver.isMascot(URL(fileURLWithPath: "/tmp/avatar.png")))
     }
@@ -543,7 +546,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(.speechRecognitionDenied), "音声認識を許可してください")
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(.noSpeechToText(detail: nil)), "音声入力を設定してください")
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(.noTextToSpeech), "音声出力を設定してください")
-        XCTAssertNil(LAAEmployeeCallAvailability.voiceReason(profile: "laa-ciel", canStart: false, issue: .noTextToSpeech))
+        XCTAssertNil(LAAEmployeeCallAvailability.voiceReason(profile: "laa-monet", canStart: false, issue: .noTextToSpeech))
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(profile: "default", canStart: false, issue: .noTextToSpeech),
                        "音声出力を設定してください")
     }
@@ -559,7 +562,7 @@ final class LAAStaffCallTests: XCTestCase {
     func testCallRetainsConversationAndLateEventsCannotResurrectIt() {
         let control = FakeControl()
         let calls = LAAEmployeeCallCoordinator(control: control)
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat-one")
+        calls.start(profile: "laa-monet", name: "Monet", conversationID: "chat-one")
         let initial = try! XCTUnwrap(calls.snapshot)
         XCTAssertEqual(initial.context.conversationID, "chat-one")
         XCTAssertTrue(calls.isShowingCall)
@@ -585,10 +588,10 @@ final class LAAStaffCallTests: XCTestCase {
         let control = FakeControl()
         let calls = LAAEmployeeCallCoordinator(control: control)
         control.unavailableReason = "未接続"
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: nil)
+        calls.start(profile: "laa-monet", name: "Monet", conversationID: nil)
         XCTAssertNil(calls.snapshot)
         control.unavailableReason = nil
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: nil)
+        calls.start(profile: "laa-monet", name: "Monet", conversationID: nil)
         let first = calls.snapshot?.context.id
         calls.start(profile: "laa-cfo", name: "Morgan", conversationID: "other")
         XCTAssertEqual(calls.snapshot?.context.id, first)
@@ -614,7 +617,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAAAudioRouteLabel.labels([]), "No output")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInReceiver, name: "Receiver"), "Receiver")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInSpeaker, name: "Speaker"), "Speaker")
-        XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothHFP, name: " Ciel’s AirPods "), "Ciel’s AirPods")
+        XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothHFP, name: " Monet’s AirPods "), "Monet’s AirPods")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothA2DP, name: ""), "Bluetooth")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .headphones, name: "Headphones"), "Headphones")
         XCTAssertEqual(LAAAudioRouteLabel.labels([(.builtInSpeaker, "Speaker"), (.bluetoothLE, "AirPods")]), "Speaker, AirPods")

@@ -2,6 +2,19 @@
 import XCTest
 
 final class LAAWorkUITests: XCTestCase {
+    func testKeychainFailureOffersRetryInsteadOfNewPairing() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_KEYCHAIN_ERROR"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["接続情報を読み取れません"].waitForExistence(timeout: 30))
+        let retry = app.buttons["work.retry-credentials"]
+        XCTAssertTrue(retry.exists)
+        XCTAssertFalse(app.buttons["work.connect"].exists)
+        retry.tap()
+        XCTAssertTrue(retry.exists)
+        XCTAssertFalse(app.buttons["work.connect"].exists)
+    }
+
     private func launchWork() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]

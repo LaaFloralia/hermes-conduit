@@ -7,18 +7,17 @@ import Foundation
 /// Static identities are independent of the last widget snapshot. Profiles are
 /// validated by the app against the selected dashboard when a link is opened.
 enum LAAWidgetEmployee: String, CaseIterable {
-    case ciel, cielUncensored = "ciel-uncensored", argus, cfo, cio, cmo, cos, cto, cso
+    case monet, monetUncensored = "monet-uncensored", argus, cfo, cio, cos, cto, cso
 
-    static let defaultEmployee: Self = .ciel
+    static let defaultEmployee: Self = .monet
 
     var name: String {
         switch self {
-        case .ciel: "Ciel"
-        case .cielUncensored: "Ciel（無検閲）"
+        case .monet: "Monet"
+        case .monetUncensored: "Monet（無検閲）"
         case .argus: "Argus"
         case .cfo: "Morgan"
         case .cio: "Sherlock"
-        case .cmo: "Monet"
         case .cos: "Merlin"
         case .cto: "Ada"
         case .cso: "Talos"

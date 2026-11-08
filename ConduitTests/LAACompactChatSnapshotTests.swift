@@ -33,11 +33,11 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
         let fixture = LAABackgroundFixture(chatFixtureOverride: "rich", defaultsSuiteName: suiteName,
                                            conversationID: "compact-snapshot-\(UUID().uuidString)")
-        fixture.state.adoptProfileHermesNames([(profile: "laa-ciel", displayName: "Ciel")])
+        fixture.state.adoptProfileHermesNames([(profile: "laa-monet", displayName: "Monet")])
         fixture.state.themePreference = style == .dark ? .dark : .light
         let backgroundKey = try XCTUnwrap(LAAConversationScope.current(fixture.state))
         XCTAssertEqual(LAABackgroundStore.shared.setting(for: backgroundKey).kind, .paper)
-        XCTAssertEqual(fixture.state.composerPlaceholder, "Cielにメッセージを送信…")
+        XCTAssertEqual(fixture.state.composerPlaceholder, "Monetにメッセージを送信…")
         let bridge = LAABridgeSession(statusForTesting: .unpaired)
         let calls = LAAEmployeeCallCoordinator(control: SnapshotCallControl())
         var swiftUISizeClass: UserInterfaceSizeClass?
@@ -138,9 +138,10 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual(canvas.width - headerTrailing, bar.directionalLayoutMargins.trailing, accuracy: 3,
                        "The header controls must keep the bar's margin, as Back does")
         XCTAssertEqual(bar.directionalLayoutMargins.leading, bar.directionalLayoutMargins.trailing, accuracy: 0.5)
-        let name = try XCTUnwrap(leadingControlSpan(image, rows: 56..<106), "The name must be visible")
-        XCTAssertEqual((name.lowerBound + name.upperBound) / 2, canvas.width / 2, accuracy: 2,
-                       "The name \(name) must sit on the screen's center")
+        let header = try XCTUnwrap(principalContentSpan(image, rows: 56..<106), "The employee header must be visible")
+        // The transparent mascot artwork does not fill its layout frame.
+        XCTAssertEqual((header.lowerBound + header.upperBound) / 2, canvas.width / 2, accuracy: 8,
+                       "The employee header \(header) must sit on the screen's center")
         let composerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 800..<940), "The composer controls must be visible")
         XCTAssertEqual(canvas.width - composerTrailing, LAASpacing.horizontal, accuracy: 3,
                        "The send control must end at the chat's trailing margin")
@@ -232,7 +233,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
 
     /// The first control from the leading edge in the bar's rows: the
     /// columns that differ from the paper, up to the first wide gap.
-    private func leadingControlSpan(_ image: UIImage, rows: Range<Int>) -> ClosedRange<CGFloat>? {
+    private func principalContentSpan(_ image: UIImage, rows: Range<Int>) -> ClosedRange<CGFloat>? {
         guard let cgImage = image.cgImage else { return nil }
         let width = Int(canvas.width), height = rows.count, components = 4
         let crop = CGRect(x: 0, y: CGFloat(rows.lowerBound) * image.scale,
@@ -255,12 +256,10 @@ final class LAACompactChatSnapshotTests: XCTestCase {
                 }
             }
         }
-        guard let start = occupied.firstIndex(of: true) else { return nil }
-        var end = start
-        var gap = 0
-        for x in start..<width {
-            if occupied[x] { end = x; gap = 0 } else { gap += 1; if gap >= 8 { break } }
-        }
+        let reserve = Int(LAAConversationHeaderLayout.sideReserve)
+        let principal = reserve..<(width - reserve)
+        guard let start = principal.first(where: { occupied[$0] }),
+              let end = principal.last(where: { occupied[$0] }) else { return nil }
         return CGFloat(start)...CGFloat(end + 1)
     }
 

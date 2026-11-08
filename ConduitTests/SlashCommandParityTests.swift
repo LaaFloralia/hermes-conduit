@@ -101,7 +101,7 @@ extension ComposerDraftStoreTests {
             detail: "Run `hermes profile export [name] -o <file>` in a terminal."
         )
 #if LAA_BUILD
-        let service = "Ciel"
+        let service = "Monet"
         let app = "LAA"
 #else
         let service = "Hermes"

@@ -65,7 +65,7 @@ extension ChatTextSelectionTests {
 
     func testOwnMessageQuoteKeepsAuthorAcrossSendAndQueuedDraft() throws {
         let original = ChatMessage(id: "mine", role: .user, content: "Earlier request", timestamp: "1")
-        let reference = try XCTUnwrap(ComposerReplyReference.reference(for: original, agentName: "Ciel"))
+        let reference = try XCTUnwrap(ComposerReplyReference.reference(for: original, agentName: "Monet"))
         XCTAssertEqual(reference.isOwnMessage, true)
         let pending = PendingComposerSend(draftText: "A correction", replyReference: reference,
             dashboardID: UUID(), profile: "default", sessionIDs: ["s"], draftSessionID: "s",
@@ -76,7 +76,7 @@ extension ChatTextSelectionTests {
         XCTAssertEqual(parsed.quote, "Earlier request")
         XCTAssertEqual(parsed.message, "A correction")
         let oldReference = try JSONDecoder().decode(ComposerReplyReference.self,
-            from: Data(#"{"authorName":"Ciel","text":"Earlier answer","excerpt":"Earlier answer"}"#.utf8))
+            from: Data(#"{"authorName":"Monet","text":"Earlier answer","excerpt":"Earlier answer"}"#.utf8))
         XCTAssertNil(oldReference.isOwnMessage)
         XCTAssertFalse(try XCTUnwrap(ReplyQuoteEnvelope.parse(
             ComposerReplyReference.outboundText("Thanks", hasAttachments: false, replyingTo: oldReference))).isOwnMessage)
@@ -85,10 +85,10 @@ extension ChatTextSelectionTests {
     func testQuotingOwnReplyUsesOnlyItsOwnWords() throws {
         let sent = ReplyQuoteEnvelope.outboundText(quoting: "Old answer", message: "My reply")
         let message = ChatMessage(id: "mine", role: .user, content: sent, timestamp: "1")
-        XCTAssertEqual(ComposerReplyReference.reference(for: message, agentName: "Ciel")?.text, "My reply")
+        XCTAssertEqual(ComposerReplyReference.reference(for: message, agentName: "Monet")?.text, "My reply")
         let assistant = ChatMessage(id: "theirs", role: .assistant, content: "Their answer", timestamp: "2")
-        XCTAssertEqual(ComposerReplyReference.reference(for: assistant, agentName: "Ciel")?.authorName, "Ciel")
-        XCTAssertNil(ComposerReplyReference.reference(for: ChatMessage(id: "empty", role: .user, content: " ", timestamp: "3"), agentName: "Ciel"))
+        XCTAssertEqual(ComposerReplyReference.reference(for: assistant, agentName: "Monet")?.authorName, "Monet")
+        XCTAssertNil(ComposerReplyReference.reference(for: ChatMessage(id: "empty", role: .user, content: " ", timestamp: "3"), agentName: "Monet"))
     }
 
     func testOrdinaryMessagesAreNotTakenForAReplyEnvelope() {

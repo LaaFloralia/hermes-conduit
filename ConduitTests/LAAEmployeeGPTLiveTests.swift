@@ -5,17 +5,17 @@ import XCTest
 
 @MainActor
 final class LAAEmployeeGPTLiveTests: XCTestCase {
-    func testEightDefaultsAreDistinctChatGPTVoices() throws {
+    func testSevenDefaultsAreDistinctChatGPTVoices() throws {
         let voices = Set(GPTLiveVoice.all.map(\.name))
-        let plans = try LAAStaff.allCases.filter { $0 != .cielUncensored }.map {
+        let plans = try LAAStaff.allCases.filter { $0 != .monetUncensored }.map {
             try XCTUnwrap(LAAEmployeeGPTLivePlan.make(profile: "laa-\($0.rawValue)", savedVoice: nil))
         }
-        XCTAssertEqual(Set(plans.map(\.voice)).count, 8)
+        XCTAssertEqual(Set(plans.map(\.voice)).count, 7)
         XCTAssertTrue(plans.allSatisfy { voices.contains($0.voice) && $0.engine == .gptLive && $0.billing == .subscription })
         XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "default", savedVoice: nil))
-        XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "laa-ciel-uncensored", savedVoice: nil))
-        XCTAssertEqual(LAAEmployeeGPTLivePlan.make(profile: "laa-ciel", savedVoice: "marin")?.voice, LAAStaff.ciel.defaultGPTLiveVoice)
-        XCTAssertEqual(LAAEmployeeGPTLivePlan.make(profile: "laa-ciel", savedVoice: "cove")?.voice, "cove")
+        XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "laa-monet-uncensored", savedVoice: nil))
+        XCTAssertEqual(LAAEmployeeGPTLivePlan.make(profile: "laa-monet", savedVoice: "marin")?.voice, LAAStaff.monet.defaultGPTLiveVoice)
+        XCTAssertEqual(LAAEmployeeGPTLivePlan.make(profile: "laa-monet", savedVoice: "cove")?.voice, "cove")
     }
 
     func testVoiceSettingIsPersistedForTheEmployeeRatherThanTheWorkspace() {
@@ -25,12 +25,12 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         }
         let app = harness.appState
         app.setActiveProfileForTesting("default")
-        app.setLAAEmployeeVoice("breeze", profile: "laa-ciel")
+        app.setLAAEmployeeVoice("breeze", profile: "laa-monet")
         app.setLAAEmployeeVoice("spruce", profile: "laa-cfo")
-        app.setLAAEmployeeVoice("marin", profile: "laa-ciel")
-        XCTAssertEqual(app.laaEmployeeVoice(profile: "laa-ciel"), "breeze")
+        app.setLAAEmployeeVoice("marin", profile: "laa-cto")
+        XCTAssertEqual(app.laaEmployeeVoice(profile: "laa-monet"), "breeze")
         XCTAssertEqual(app.laaEmployeeVoice(profile: "laa-cfo"), "spruce")
-        app.setActiveProfileForTesting("laa-ciel")
+        app.setActiveProfileForTesting("laa-monet")
         XCTAssertEqual(app.gptLiveVoice, "breeze")
         XCTAssertEqual(app.laaEmployeeCallPlan(profile: "laa-cfo")?.voice, "spruce")
     }
@@ -205,7 +205,7 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         }
         let app = harness.appState
         let original = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cfo"))
-        let replacement = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-ciel"))
+        let replacement = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-monet"))
         app.laaEmployeeGPTLivePlan = original
         var paths: [String] = []
         var pending: CheckedContinuation<[String: Any], Never>?

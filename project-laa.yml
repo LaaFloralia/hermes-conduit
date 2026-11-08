@@ -176,7 +176,7 @@ targets:
           /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$SCRIPT_OUTPUT_FILE_0"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName LAA" "$SCRIPT_OUTPUT_FILE_0"
           /usr/libexec/PlistBuddy -c "Set :CFBundleName LAA Watch" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription LAA uses the microphone to talk with Ciel from your wrist." "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription LAA uses the microphone to talk with Monet from your wrist." "$SCRIPT_OUTPUT_FILE_0"
     postBuildScripts:
       - name: Brand LAA watch resources
         basedOnDependencyAnalysis: false

@@ -30,7 +30,7 @@ final class LAAConversationHeaderSnapshotTests: XCTestCase {
                         }.accessibilityLabel(Text(verbatim: LAACopy.back))
                     }
                     ToolbarItem(placement: .principal) {
-                        LAAEmployeeHeader(profile: "laa-ciel-uncensored", name: "Ciel（無検閲）",
+                        LAAEmployeeHeader(profile: "laa-monet-uncensored", name: "Monet（無検閲）",
                                           status: "この会話はテキスト専用です", isObscured: true,
                                           compact: available < 140 || size.isAccessibilitySize)
                             .frame(maxWidth: available)

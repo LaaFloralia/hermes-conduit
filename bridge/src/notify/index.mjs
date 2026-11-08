@@ -55,7 +55,7 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
       || typeof dedupeKey !== 'string' || !dedupeKey) return { delivered: false, reason: 'invalid_notification' };
     const key = createHash('sha256').update(dedupeKey).digest('hex');
     if (state.read().delivered[key]) return { delivered: false, reason: 'duplicate' };
-    const event = { type: 'response.ready', event_id: `laa-bridge:${key}`, profile: 'laa-ciel',
+    const event = { type: 'response.ready', event_id: `laa-bridge:${key}`, profile: 'laa-monet',
       session_id: `laa-bridge:${deepLink}`, title: title.slice(0, 120), body: body.slice(0, 500) };
     state.mutate((s) => { (s.pending ??= {})[key] ??= { event, queuedAt: now() }; });
     return deliverPending(key, event);

@@ -69,7 +69,7 @@ def display(value, source_key=None, locale="en"):
     if source_key in {"Conduit profile", "LAA profile"} and locale == "ja":
         return "AI社員"
     # Transform app-owned display values only; lookup keys remain upstream's.
-    for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Ciel"),
+    for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Monet"), ("Cielem", "Monet"), ("Ciela", "Monet"), ("Ciel", "Monet"), ("シエル", "モネット"),
                      ("Conduit notifier plugin", "LAA plugin"),
                      ("Conduit plugin", "LAA plugin"),
                      ("Hermes notifier plugin", "LAA plugin"),
