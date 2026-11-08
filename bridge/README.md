@@ -116,6 +116,7 @@ Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 | `GET /v1/me` | Bearer | `{deviceId, name, scopes, platform, createdAt}` |
 | `POST /v1/voice/transcribe` | Bearer + `voice:transcribe` | `{pcm16,sampleRate:16000,language?:ja}` → `{text,model}`。PCM16LE mono base64、25秒まで |
 | `POST /v1/voice/polish` | Bearer + `voice:polish` | `{text,language?}` → `{text,model,nothing?}`。4,000 UTF-16文字まで |
+| `POST /v1/voice/summarize` | Bearer + `voice:polish` | `{text,language:ja}` → `{text,model}`。日本語、2,000 UTF-16単位まで。要約は下書き |
 | `POST /v1/devices/self/revoke` | Bearer + voice scope | 呼出端末の資格情報だけ失効。対象指定不可 |
 | `GET /v1/instructions/{agents|claude}` | Bearer + `instructions:read` | 指定された2ファイルのみ。本文と内容のSHA-256 ETag |
 | `PUT /v1/instructions/{agents|claude}` | Bearer + `instructions:write` + `If-Match` | 保存前にBridge stateへ旧版をバックアップし、版不一致は412。git commitしない |

@@ -8,6 +8,7 @@
 // Transport is the child's stdin/stdout, one JSON object per line:
 //
 //   Bridge -> worker   {id, kind: 'polish', text, language}
+//                      {id, kind: 'summarize', text, language}
 //                      {id, kind: 'transcribe', pcm16, sampleRate, language}
 //   worker -> Bridge   {id, ok: true, text, nothing?}
 //                      {id, ok: false, error: 'timeout'|'empty'|'unavailable'|'internal'}
@@ -102,7 +103,7 @@ function wireMessage(id, entry) {
   if (entry.kind === 'transcribe') {
     return { id, kind: 'transcribe', pcm16: entry.pcm16, sampleRate: entry.sampleRate, language: entry.language };
   }
-  return { id, kind: 'polish', text: entry.text, language: entry.language };
+  return { id, kind: entry.kind === 'summarize' ? 'summarize' : 'polish', text: entry.text, language: entry.language };
 }
 
 export function createVoiceWorker({
@@ -371,7 +372,7 @@ export function createVoiceWorker({
     return id;
   }
 
-  // `payload.kind` is 'polish' (default) or 'transcribe'. `signal` cancels this
+  // `payload.kind` is 'polish' (default), 'summarize' or 'transcribe'. `signal` cancels this
   // request only, when the client that asked for it disconnects.
   function request(payload, { timeoutMs, signal } = {}) {
     return new Promise((resolve, reject) => {
