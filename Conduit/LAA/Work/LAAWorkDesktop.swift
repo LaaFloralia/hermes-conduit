@@ -571,6 +571,16 @@ struct LAAWorkDesktopCatalogView: View {
                         detailLine("Destination", routine.destination ?? "Not set")
                         detailLine("State", stateLabel(routine.state))
                         detailLine("Last run", routine.previousRunSummary())
+                        if routine.runId != nil || routine.reasonCode != nil {
+                            DisclosureGroup("実行の記録") {
+                                detailLine("予定", LAAWorkRoutine.recordedTime(routine.expectedRunAt ?? routine.scheduledAt))
+                                detailLine("開始", LAAWorkRoutine.recordedTime(routine.startedAt))
+                                detailLine("終了", LAAWorkRoutine.recordedTime(routine.finishedAt))
+                                detailLine("チャット受付", LAAWorkRoutine.recordedTime(routine.notificationAcceptedAt))
+                                detailLine("送信", LAAWorkRoutine.recordedTime(routine.notificationSentAt))
+                                detailLine("端末受信", LAAWorkRoutine.recordedTime(routine.notificationReceivedAt))
+                            }
+                        }
                     }.workCard()
                 }
                 .padding(LAASpacing.x6).laaReadableWidth()

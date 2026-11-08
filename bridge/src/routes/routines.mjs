@@ -22,8 +22,9 @@ const ROLE_NAMES = Object.freeze({ ciel: 'Ciel', cos: 'Merlin', cto: 'Ada', cfo:
 const boundedString = (value) => typeof value === 'string' && value.length <= 500 ? value : null;
 
 export function routineState(job, reading) {
-  if (reading.running === true) return 'running';
+  if (reading.running === true || reading.schedulerState === 'running') return 'running';
   if (reading.enabled === false || job.expected === 'stopped') return 'paused';
+  if (['read_unavailable', 'schedule_overdue'].includes(reading.reasonCode)) return 'error';
   if (reading.schedulerResult === 'error' || ['failed', 'partial'].includes(reading.businessStatus)) return 'error';
   if (reading.enabled === true) return 'scheduled';
   return 'unknown';
@@ -40,7 +41,7 @@ export function routineDestination(job) {
 export function routineKind(job) {
   if (['scheduled', 'service', 'manual', 'unknown'].includes(job.triggerKind)) return job.triggerKind;
   if (job.reading?.source === 'launchd') return 'unknown';
-  if (['hermes', 'hermes-shared', 'paseo'].includes(job.reading?.source)) return 'scheduled';
+  if (['hermes', 'hermes-shared', 'paseo', 'work'].includes(job.reading?.source)) return 'scheduled';
   return 'unknown';
 }
 
@@ -62,7 +63,8 @@ export function projectRoutineRows(document) {
       triggerKind: routineKind(job), destination: routineDestination(job), state: routineState(job, reading),
       nextRunAt: boundedString(reading.nextRunAt), lastRunAt: boundedString(reading.lastRunAt),
       businessStatus: boundedString(reading.businessStatus), notificationStatus: boundedString(reading.notificationStatus),
-      result: boundedString(reading.result) });
+      result: boundedString(reading.result),
+      ...Object.fromEntries(['runId', 'reasonCode', 'observationStatus', 'scheduledAt', 'expectedRunAt', 'startedAt', 'finishedAt', 'notificationAcceptedAt', 'notificationSentAt', 'notificationReceivedAt'].map((key) => [key, boundedString(reading[key])])) });
   }
   if (document.data.length > 0 && items.length === 0) throw new Error('invalid jobs response');
   return { items, skipped };
