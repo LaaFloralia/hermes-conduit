@@ -21,6 +21,47 @@ final class LAAMacLibraryUITests: XCTestCase {
         button.tap()
     }
 
+    func testBrainAndHQAreVisibleAsSeparateLocalLocations() {
+        let app = launch(["-laa-brain-no-vault-fixture"])
+        openSection(app, "brain")
+        XCTAssertTrue(app.buttons["laa.brain.location.Brain"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["laa.brain.location.HQ"].exists)
+        XCTAssertFalse(app.staticTexts["On this iPhone"].exists)
+    }
+
+    func testSwitchingLocationsClearsPreviousDetailAndShowsNewNotes() {
+        let app = launch(["-laa-brain-mac-roots-fixture"])
+        openSection(app, "brain")
+        let brain = app.buttons["laa.brain.note"].firstMatch
+        XCTAssertTrue(brain.waitForExistence(timeout: 30))
+        app.buttons["laa.brain.location.Brain"].tap()
+        XCTAssertTrue(app.staticTexts["BrainOnly"].waitForExistence(timeout: 15))
+        brain.tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 15))
+        app.buttons["laa.brain.location.HQ"].tap()
+        XCTAssertTrue(app.staticTexts["HQOnly"].waitForExistence(timeout: 15))
+        app.buttons["laa.brain.location.HQ"].tap()
+        XCTAssertTrue(app.staticTexts["HQOnly"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["laa.brain.rawToggle"].exists)
+        XCTAssertFalse(app.staticTexts["BrainOnly"].exists)
+        app.buttons["laa.brain.location.Brain"].tap()
+        XCTAssertTrue(app.staticTexts["BrainOnly"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["HQOnly"].exists)
+    }
+
+    func testLocationSwitchIsUnavailableWhileEditing() {
+        let app = launch(["-laa-brain-mac-roots-fixture"])
+        openSection(app, "brain")
+        let note = app.buttons["laa.brain.note"].firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 30))
+        note.tap()
+        let edit = app.buttons["laa.brain.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 15))
+        edit.tap()
+        XCTAssertTrue(app.buttons["laa.brain.edit.save"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["laa.brain.location.HQ"].isEnabled)
+    }
+
     func testBrainNoteOpensInTheDetailColumn() {
         let app = launch(["-laa-brain-fixture", "normal"])
         openSection(app, "brain")
