@@ -32,22 +32,44 @@ import Foundation
 enum LAABrainDailyNote {
     static let folder = "daily journal"
 
-    static func path(date: Date = Date(), timeZone: TimeZone = .current) -> String {
+    /// The owner's iPhone selects "このiPhone内/LAA", which holds Brain and HQ,
+    /// so the vault is its Brain folder. A device that selected the Brain
+    /// folder itself has no Brain child and the selected folder is the vault.
+    /// A linked Brain is refused instead of writing a second `daily journal`
+    /// at the selected folder's root.
+    static func vault(root: URL) throws -> String {
+        let brain = root.appendingPathComponent("Brain", isDirectory: true)
+        guard let values = try? brain.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else {
+            return ""
+        }
+        if values.isSymbolicLink == true { throw LAABrainVaultError.invalidPath }
+        return values.isDirectory == true ? "Brain" : ""
+    }
+
+    static func path(root: URL, date: Date = Date(), timeZone: TimeZone = .current) throws -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let date = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%@/%04d-%02d-%02d.md", folder, date.year!, date.month!, date.day!)
+        let vault = try vault(root: root)
+        let month = String(format: "%04d-%02d", date.year!, date.month!)
+        return String(format: "%@%@/%@/%04d-%02d-%02d.md",
+                      vault.isEmpty ? "" : vault + "/", folder, month, date.year!, date.month!, date.day!)
     }
 
     /// Exclusive creation keeps any file created by Syncthing or another
     /// writer, even if it appears between the existence check and creation.
     static func open(root: URL, date: Date = Date(), timeZone: TimeZone = .current,
                      journal: LAABrainSaveJournal = LAABrainSaveJournal()) throws -> String {
-        let path = path(date: date, timeZone: timeZone)
-        do { _ = try LAABrainFolderStore.create(root: root, parent: "", name: folder, kind: .folder) }
-        catch LAABrainFolderStore.Failure.exists { }
-        let name = String(path.dropFirst(folder.count + 1))
-        do { _ = try LAABrainFolderStore.create(root: root, parent: folder, name: name, kind: .note, journal: journal) }
+        let path = try path(root: root, date: date, timeZone: timeZone)
+        let parts = path.split(separator: "/").map(String.init)
+        guard let name = parts.last else { throw LAABrainFolderStore.Failure.invalidName }
+        var parent = ""
+        for part in parts.dropLast() {
+            do { _ = try LAABrainFolderStore.create(root: root, parent: parent, name: part, kind: .folder) }
+            catch LAABrainFolderStore.Failure.exists { }
+            parent = parent.isEmpty ? part : parent + "/" + part
+        }
+        do { _ = try LAABrainFolderStore.create(root: root, parent: parent, name: name, kind: .note, journal: journal) }
         catch LAABrainFolderStore.Failure.exists { }
         // Validate that an existing item is a readable, non-symlink Markdown
         // note before navigating to it. Do not replace an invalid item.

@@ -552,9 +552,14 @@ App Store build · the Bridge API, Brain and Usage data contracts
   SyncTrain applying it still needs device verification. Existing notes require
   atomic exchange; unsupported providers retain the draft for export and leave
   the original unchanged. The temp folder is created only if fallback is needed.
-- The App Shortcut “今日のデイリーノートを開く” opens `daily journal/YYYY-MM-DD.md`
-  for editing, creating an empty note exclusively if absent. A pending request
-  waits for local folder access and for any open editor to close.
+- The App Shortcut “今日のデイリーノートを開く” opens
+  `Brain/daily journal/YYYY-MM/YYYY-MM-DD.md` inside the selected folder's
+  Brain vault, or `daily journal/YYYY-MM/YYYY-MM-DD.md` when the selected
+  folder is the Brain vault itself (no Brain child), for editing. It creates
+  the month folder and an empty note exclusively if absent, never replaces an
+  existing note, and refuses a linked Brain instead of writing a second daily
+  folder at the selected root. A pending request waits for local folder access
+  and for any open editor to close.
 - Assets Drive uses the paired `media:read` Bridge and Google Drive API for My Drive,
   shared drives, shared items, recent, starred, full-text search, folders, paging and
   bounded thumbnails. Protected local metadata appears before refresh. Images,
