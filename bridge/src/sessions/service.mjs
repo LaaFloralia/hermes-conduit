@@ -57,6 +57,9 @@ const MODES = new Set(['bypass', 'default']);
 // directory can lag its own creation by a moment.
 const DELETED_GRACE_MS = 2 * 60 * 1000;
 const MAX_DELETED_CHECKS = 20;
+// An unlisted agent that Paseo confirmed it still holds is not asked again
+// for this long, so the same rows cannot take every sync's checks.
+const PRESENT_RECHECK_MS = 10 * 60 * 1000;
 
 const sha = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const count = (text) => [...text].length;
@@ -285,16 +288,21 @@ export function createSessionService({
     return { session: sessionStore.get(stored.record.id) ?? stored.record, created: stored.created };
   }
 
-  // Paseo's directory is the complete set of agents it still holds, but one
-  // missing row is not proof: re-read that agent, and only Paseo's own 404
-  // marks the record as gone. A daemon error is "unknown" and changes nothing.
-  // A session that just started is exempt because the directory can lag it.
+  // A missing directory row is not proof: Paseo's directory leaves out many
+  // old archived agents it still holds (2026-11-09: 191 of 193 unlisted rows).
+  // Only rows still shown are checked, since an archived row holds no number
+  // and is already hidden; each is re-read, and only Paseo's own 404 marks it
+  // gone. A daemon error is "unknown" and changes nothing. A session that just
+  // started is exempt because the directory can lag it.
+  const presentCheckedAt = new Map();
   async function markDeletedAgents(agents) {
     const listed = new Set(agents.map((agent) => agent.id));
     const cutoff = now() - DELETED_GRACE_MS;
     const candidates = sessionStore.all().filter((record) => {
-      if (typeof record.delegate?.sessionId !== 'string' || record.daemonDeletedAt) return false;
-      if (listed.has(record.delegate.sessionId)) return false;
+      const agentId = record.delegate?.sessionId;
+      if (typeof agentId !== 'string' || record.daemonDeletedAt) return false;
+      if (record.archivedAt || record.daemonArchivedAt || listed.has(agentId)) return false;
+      if (now() - (presentCheckedAt.get(agentId) ?? -Infinity) < PRESENT_RECHECK_MS) return false;
       const created = Date.parse(record.createdAt ?? '');
       return Number.isFinite(created) && created <= cutoff;
     }).slice(0, MAX_DELETED_CHECKS);
@@ -305,7 +313,10 @@ export function createSessionService({
       } catch {
         continue;
       }
-      if (exists) continue;
+      if (exists) {
+        presentCheckedAt.set(record.delegate.sessionId, now());
+        continue;
+      }
       const deletedAt = new Date(now()).toISOString();
       sessionStore.update(record.id, (current) => {
         if (current.daemonDeletedAt) return [];

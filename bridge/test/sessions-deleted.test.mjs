@@ -21,7 +21,9 @@ function fixture(options = {}) {
     fetchAgent: async ({ agentId }) => {
       calls.push(['agent', agentId]);
       if (options.fetchThrows) throw new Error('daemon down');
-      return { agent: rows.find((agent) => agent.id === agentId) };
+      // `unlisted` agents still exist in Paseo but are left out of its
+      // directory, as old archived agents are.
+      return { agent: rows.find((agent) => agent.id === agentId) ?? options.unlisted?.find((agent) => agent.id === agentId) };
     },
     fetchAgents: async () => {
       if (options.listFails) throw new Error('directory down');
@@ -141,4 +143,40 @@ test('a session gone from Paseo releases its short number', async (t) => {
   const all = await bridge.request('/v1/sessions?scope=all', { token });
   assert.equal(all.body.data.items.length, 1);
   assert.equal((await bridge.request('/v1/refs/S1', { token })).body.data.status, 'released');
+});
+
+function addRecord(store, n, fields) {
+  store.create({ record: { id: `ses_${String(n).padStart(16, '0')}`, requestId: `paseo-extra-${n}`, name: `記録${n}`,
+    nameSource: 'agent', parentId: null, projectId: null, workspaceId: 'wks_a', cwd: '/tmp',
+    phase: 'awaiting_review', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', ...fields } });
+}
+
+test('archived rows Paseo leaves out of its directory do not crowd out a shown one', async (t) => {
+  const unlisted = [];
+  const ctx = await makeService(t, { unlisted });
+  for (let n = 0; n < 30; n += 1) {
+    unlisted.push({ id: `old-${n}`, status: 'closed', archivedAt: '2026-11-01T00:00:00Z', labels: {} });
+    addRecord(ctx.store, n, { daemonArchivedAt: '2026-11-01T00:00:00Z', delegate: { sessionId: `old-${n}` } });
+  }
+  addRecord(ctx.store, 99, { delegate: { sessionId: 'gone-agent' } });
+  await ctx.service.syncDaemon();
+  // Only the shown row is re-read, so it is reached on the first sync.
+  assert.deepEqual(ctx.f.calls.filter((call) => call[0] === 'agent').map((call) => call[1]), ['gone-agent']);
+  assert.equal(typeof ctx.store.get(`ses_${String(99).padStart(16, '0')}`).daemonDeletedAt, 'string');
+  assert.equal(ctx.store.all().filter((record) => record.daemonArchivedAt && record.daemonDeletedAt).length, 0);
+});
+
+test('an unlisted agent Paseo still holds is not re-read for ten minutes', async (t) => {
+  const unlisted = [{ id: 'quiet-agent', status: 'idle', labels: {} }];
+  const ctx = await makeService(t, { unlisted });
+  addRecord(ctx.store, 7, { delegate: { sessionId: 'quiet-agent' } });
+  const reads = () => ctx.f.calls.filter((call) => call[0] === 'agent' && call[1] === 'quiet-agent').length;
+  await ctx.service.syncDaemon();
+  assert.equal(reads(), 1);
+  assert.equal(ctx.store.get(`ses_${String(7).padStart(16, '0')}`).daemonDeletedAt ?? null, null);
+  await ctx.service.syncDaemon();
+  assert.equal(reads(), 1);
+  ctx.advance(11 * 60 * 1000);
+  await ctx.service.syncDaemon();
+  assert.equal(reads(), 2);
 });
