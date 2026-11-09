@@ -19,7 +19,7 @@ const PARENT_LABEL = 'paseo.parent-agent-id';
 const TIDY_IDLE_MS = 10 * 60 * 1000;
 const isBusy = (a) => Boolean(a.activeTurn || a.pendingPermissions?.length) || !['idle', 'closed', 'error'].includes(a.status);
 
-export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() } = {}) {
+export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(), idleCloseMs = 30_000 } = {}) {
   const decisions = new Map();
   // What the running daemon advertises. A hard-coded capability would offer an
   // operation this daemon cannot perform.
@@ -27,10 +27,48 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
   // Paseo titles the workspace, not the agent; the detail read needs the same
   // title its list row uses (see syncDaemon and applyObservation).
   let workspaceCache = { at: -Infinity, titles: new Map() };
+  // The daemon handshake costs about as much as the RPC it carries (one
+  // /v1/sessions sync makes two calls), so one connection serves the calls of
+  // this process until it fails or sits idle. A connection that is not
+  // confirmed alive is never handed to a request: Paseo's client does not
+  // reconnect on its own.
+  let pooled = null;
+  let connecting = null;
+  let idleTimer = null;
+  let inflight = 0;
+  const alive = (client) => Boolean(client) && client.isConnected !== false;
+  function dropConnection() {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+    const client = pooled;
+    pooled = null;
+    if (client && typeof client.close === 'function') void Promise.resolve(client.close()).catch(() => {});
+  }
+  function keepConnection() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      // A call may still be using it; ask again after that one is done.
+      if (inflight > 0) keepConnection();
+      else dropConnection();
+    }, idleCloseMs);
+    idleTimer.unref?.();
+  }
+  function acquire() {
+    if (alive(pooled)) return Promise.resolve(pooled);
+    if (pooled) dropConnection();
+    if (connecting) return connecting;
+    connecting = (async () => {
+      const client = await connect();
+      pooled = client;
+      return client;
+    })().finally(() => { connecting = null; });
+    return connecting;
+  }
   async function call(fn) {
     let client;
+    inflight += 1;
     try {
-      client = await connect();
+      client = await acquire();
       try {
         const features = client.getLastServerInfoMessage?.()?.features;
         if (features && typeof features === 'object') serverFeatures = features;
@@ -38,9 +76,16 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
       return await fn(client);
     }
     catch (error) {
+      // A transport failure leaves the connection suspect; our own refusals
+      // (404, 409) do not.
+      if (!(error instanceof BridgeError)) dropConnection();
       if (error instanceof BridgeError) throw error;
       throw new BridgeError(503, 'paseo_unavailable', 'Paseo could not confirm the operation', { retryable: true });
-    } finally { await client?.close().catch(() => {}); }
+    }
+    finally {
+      inflight -= 1;
+      if (inflight === 0 && pooled) keepConnection();
+    }
   }
   async function agent(client, id) {
     const a = (await client.fetchAgent({ agentId: id }))?.agent;
