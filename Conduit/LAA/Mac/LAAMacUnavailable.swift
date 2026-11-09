@@ -2,12 +2,14 @@
 import SwiftUI
 
 extension LAACopy {
-    static let macScanTitle = "Paste Code"
-    static let macScanReason = "QR scanning is unavailable on Mac. Paste the code or address instead."
+    // The phone's own words for the same thing: a pairing code, not a
+    // dashboard address.
+    static let macScanTitle = "Pairing Code"
+    static let macScanReason = "QR codes can't be read on this Mac. Paste the pairing code or address."
     static let macScanField = "Code or address"
     static let macScanContinue = "Continue"
     static let macScanCancel = "Cancel"
-    static let macScanInvalid = "That code isn't a dashboard address."
+    static let macScanInvalid = "That code isn't a pairing code."
 }
 
 /// The phone's camera scanner is unavailable on Catalyst. Keep its existing
@@ -46,6 +48,7 @@ struct DashboardCodeScannerSheet: View {
                 }
             }
         }
+        .laaSheetSize(.picker)
     }
 
     private func submit() {

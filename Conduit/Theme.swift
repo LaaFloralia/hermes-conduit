@@ -720,28 +720,14 @@ extension View {
     /// project has available (iOS 26.5 only, locally and in CI), which is why
     /// this note stands in for a test of it: verify by inspection when changing
     /// either branch.
-    @ViewBuilder
     func conduitGlassSurface(
         cornerRadius: CGFloat,
         tint: Color = .clear,
         interactive: Bool = false,
         clear: Bool = false
     ) -> some View {
-        if #available(iOS 26.0, *) {
-            let glass: Glass = clear ? .clear : .regular
-            if interactive {
-                self.glassEffect(glass.tint(tint).interactive(), in: .rect(cornerRadius: cornerRadius))
-            } else {
-                self.glassEffect(glass.tint(tint), in: .rect(cornerRadius: cornerRadius))
-            }
-        } else {
-            self
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                }
-        }
+        modifier(ConduitGlassSurfaceStyle(cornerRadius: cornerRadius, tint: tint,
+                                          interactive: interactive, clear: clear))
     }
 
     func conduitGlassControl(
@@ -756,7 +742,56 @@ extension View {
 
 }
 
+private struct ConduitGlassSurfaceStyle: ViewModifier {
+    #if LAA_BUILD
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    #endif
+    let cornerRadius: CGFloat
+    let tint: Color
+    let interactive: Bool
+    let clear: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        #if LAA_BUILD
+        // Reduce Transparency asks for paper: the LAA card surface and a
+        // hairline instead of glass, so this control turns opaque along with
+        // the ones in LAAGlass.
+        if reduceTransparency {
+            content
+                .background(LAAColor.surface, in: shape)
+                .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: 1) }
+        } else {
+            glass(content)
+        }
+        #else
+        glass(content)
+        #endif
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    @ViewBuilder private func glass(_ content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            let glass: Glass = clear ? .clear : .regular
+            if interactive {
+                content.glassEffect(glass.tint(tint).interactive(), in: .rect(cornerRadius: cornerRadius))
+            } else {
+                content.glassEffect(glass.tint(tint), in: .rect(cornerRadius: cornerRadius))
+            }
+        } else {
+            content
+                .background(.ultraThinMaterial, in: shape)
+                .overlay { shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 1) }
+        }
+    }
+}
+
 private struct ConduitGlassControlStyle: ViewModifier {
+    #if LAA_BUILD
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    #endif
     @Environment(\.laaClearGlassControls) private var clear
     let cornerRadius: CGFloat
     let tint: Color
@@ -764,6 +799,24 @@ private struct ConduitGlassControlStyle: ViewModifier {
     let interactive: Bool
 
     @ViewBuilder func body(content: Content) -> some View {
+        #if LAA_BUILD
+        if reduceTransparency {
+            content
+                .background(prominent ? tint.opacity(0.92) : LAAColor.surface, in: shape)
+                .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: 1) }
+        } else {
+            glass(content)
+        }
+        #else
+        glass(content)
+        #endif
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    @ViewBuilder private func glass(_ content: Content) -> some View {
         if #available(iOS 26.0, *) {
             let glass: Glass = clear ? .clear : .regular
             if interactive {
@@ -774,12 +827,22 @@ private struct ConduitGlassControlStyle: ViewModifier {
                                     in: .rect(cornerRadius: cornerRadius))
             }
         } else {
-            content.background(prominent ? tint.opacity(0.92) : Color.conduitSurface.opacity(0.78),
-                               in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+            #if LAA_BUILD
+            // Before iOS 26 one Material stands in for the glass, as in
+            // conduitGlassSurface: an untinted translucent fill let the text
+            // under the control show through.
+            Group {
+                if prominent {
+                    content.background(tint.opacity(0.92), in: shape)
+                } else {
+                    content.background(.ultraThinMaterial, in: shape)
                 }
+            }
+            .overlay { shape.strokeBorder(Color.white.opacity(0.16), lineWidth: 1) }
+            #else
+            content.background(prominent ? tint.opacity(0.92) : Color.conduitSurface.opacity(0.78), in: shape)
+                .overlay { shape.strokeBorder(Color.white.opacity(0.16), lineWidth: 1) }
+            #endif
         }
     }
 }

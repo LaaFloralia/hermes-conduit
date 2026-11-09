@@ -90,6 +90,7 @@ struct LAAMacShell: View {
             .sheet(isPresented: $showUsage) {
                 NavigationStack { LAAUsageView(state: usageState, onRequestSettings: onRequestSettings) }
                     .environmentObject(bridge)
+                    .laaSheetSize(.page)
             }
             .onChange(of: workLinkRequest.generation, initial: true) { _, _ in
                 guard let host = workLinkRequest.url?.host, let target = LAAMacSection(linkHost: host) else { return }
@@ -113,8 +114,9 @@ struct LAAMacShell: View {
             .onChange(of: commands.closeConversation) { _, _ in appState.showSidebar = true }
             // Another section has no conversation on screen, so the chat
             // stops counting as seen and its streaming rows stop redrawing.
-            .onChange(of: section) { _, new in
+            .onChange(of: section, initial: true) { _, new in
                 appState.showSidebar = !(new == .chats && chatConversationShown)
+                commands.activeSection = new
             }
             .onChange(of: requiresLogin) { _, needsLogin in
                 if needsLogin { chatConversationShown = false }
@@ -137,7 +139,7 @@ struct LAAMacShell: View {
     private var split: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             LAAMacSidebar(section: sectionBinding, onRequestSettings: onRequestSettings)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 286, max: 364)
         } detail: {
             detail
         }
@@ -149,8 +151,7 @@ struct LAAMacShell: View {
     private var detail: some View {
         switch section {
         case .chats:
-            LAAMacChatsSection(commands: commands,
-                               conversationShown: $chatConversationShown)
+            LAAMacChatsSection(conversationShown: $chatConversationShown)
         case .work:
             NavigationStack { LAAWorkHub(onRequestSettings: onRequestSettings) }
                 .laaCompactColumn()
@@ -173,17 +174,16 @@ struct LAAMacShell: View {
                 LAAStudioHomeView()
                     .background(LAAColor.background.ignoresSafeArea())
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbarBackground(.hidden, for: .navigationBar)
-                    .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
             }
             .laaCompactColumn()
         case .drive:
             NavigationStack { LAAAssetsView(onRequestSettings: onRequestSettings) }
                 .laaCompactColumn()
         case .usage:
+            // Usage centres its own card grid; a readable width here would
+            // narrow it back to two columns.
             NavigationStack {
                 LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
-                    .laaReadableWidth()
             }
             .laaCompactColumn()
         }
@@ -200,15 +200,14 @@ private extension View {
     }
 }
 
-/// iOS 26 blurs and tints the top of a scroll view under a navigation bar.
-/// On the phone that edge reads as the bar; in a Mac column it left a band of
-/// another colour across the top of the detail column, and across only the
-/// readable-width column where one is centred. The column's paper shows
-/// through instead, so the bar and the page are one colour.
+/// iOS 26 blurs and tints the top of a scroll view under a navigation bar. A
+/// Mac column keeps that effect — hiding it let content run under the bar —
+/// but asks for the hard style, the line the Mac uses between a toolbar and
+/// the page beneath it.
 struct LAAMacFlatTopEdge: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectHidden(true, for: .top)
+            content.scrollEdgeEffectStyle(.hard, for: .top)
         } else {
             content
         }

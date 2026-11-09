@@ -105,7 +105,7 @@ struct LAAEmployeeCallView: View {
         case .connected:
             if let started = snapshot.connectedAt {
                 TimelineView(.periodic(from: started, by: 1)) { timeline in
-                    Text(verbatim: "通話中　\(Self.elapsed(since: started, now: timeline.date))")
+                    Text(verbatim: "通話中 \(Self.elapsed(since: started, now: timeline.date))")
                         .monospacedDigit()
                 }
             } else { Text(verbatim: "通話中") }
@@ -121,35 +121,39 @@ struct LAAEmployeeCallView: View {
     }
 
     private func controls(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            CallGlassButton(title: snapshot.muted ? LAACopy.callUnmute : LAACopy.callMute,
-                            symbol: snapshot.muted ? "mic.slash.fill" : "mic.fill",
-                            identifier: "laa.call.mute", selected: snapshot.muted,
-                            action: calls.toggleMute)
-                .disabled(!snapshot.phase.isOngoing)
-            if snapshot.usesSystemRoutePicker {
-                VStack(spacing: 8) {
-                    LAAAudioRoutePicker()
-                        .frame(width: 60, height: 60)
-                        .modifier(CallGlassCircle(selected: false, destructive: false))
-                    Text(verbatim: routeLabel).font(.caption).foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                }
-                .frame(maxWidth: .infinity)
-                .disabled(!snapshot.phase.isOngoing)
-            } else {
-                CallGlassButton(title: routeLabel, symbol: snapshot.speaker ? "speaker.wave.2.fill" : "speaker.fill",
-                                identifier: "laa.call.speaker", accessibilityTitle: LAACopy.callSpeaker,
-                                selected: snapshot.speaker, action: calls.toggleSpeaker)
+        // One compositing pass for the row of glass controls.
+        ConduitGlassGroup(spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
+                CallGlassButton(title: snapshot.muted ? LAACopy.callUnmute : LAACopy.callMute,
+                                symbol: snapshot.muted ? "mic.slash.fill" : "mic.fill",
+                                identifier: "laa.call.mute", selected: snapshot.muted,
+                                action: calls.toggleMute)
                     .disabled(!snapshot.phase.isOngoing)
+                if snapshot.usesSystemRoutePicker {
+                    VStack(spacing: 8) {
+                        LAAAudioRoutePicker()
+                            .frame(width: 60, height: 60)
+                            .modifier(CallGlassCircle(selected: false, destructive: false))
+                        Text(verbatim: routeLabel).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .disabled(!snapshot.phase.isOngoing)
+                } else {
+                    CallGlassButton(title: routeLabel,
+                                    symbol: snapshot.speaker ? "speaker.wave.2.fill" : "speaker.fill",
+                                    identifier: "laa.call.speaker", accessibilityTitle: LAACopy.callSpeaker,
+                                    selected: snapshot.speaker, action: calls.toggleSpeaker)
+                        .disabled(!snapshot.phase.isOngoing)
+                }
+                CallGlassButton(title: LAACopy.callChat, symbol: "bubble.left.fill",
+                                identifier: "laa.call.chat", action: calls.showChat)
+                    .disabled(!snapshot.phase.isOngoing)
+                CallGlassButton(title: LAACopy.callEnd, symbol: "phone.down.fill", identifier: "laa.call.end",
+                                destructive: true, action: calls.end)
             }
-            CallGlassButton(title: LAACopy.callChat, symbol: "bubble.left.fill", identifier: "laa.call.chat",
-                            action: calls.showChat)
-                .disabled(!snapshot.phase.isOngoing)
-            CallGlassButton(title: LAACopy.callEnd, symbol: "phone.down.fill", identifier: "laa.call.end",
-                            destructive: true, action: calls.end)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -222,18 +226,21 @@ private struct CallGlassCircle: ViewModifier {
     let selected: Bool
     let destructive: Bool
 
+    /// `regular`, not `clear`: the call screen sits on the app's paper, where
+    /// clear would leave the symbols floating on a flat colour. Only the
+    /// selected control and the end button carry a tint.
+    private var tint: Color? {
+        destructive ? LAAColor.end : (selected ? LAAColor.selectionFill : nil)
+    }
+
     private var fill: Color {
         destructive ? LAAColor.end : (selected ? LAAColor.selectionFill : LAAColor.surface)
     }
 
     @ViewBuilder func body(content: Content) -> some View {
-        if reduceTransparency {
+        if #available(iOS 26.0, *), !reduceTransparency {
             styled(content)
-                .background(fill, in: Circle())
-                .overlay(border)
-        } else if #available(iOS 26.0, *) {
-            styled(content)
-                .glassEffect(.clear.tint(fill).interactive(), in: Circle())
+                .glassEffect(.regular.tint(tint).interactive(), in: Circle())
                 .overlay(border)
         } else {
             styled(content)
@@ -257,15 +264,36 @@ struct LAACallPresentation: ViewModifier {
     var topBanner: AnyView? = nil
     var bottomOverlay: AnyView? = nil
     func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        // On the Mac the call is a page the window holds, not a cover over
+        // the whole window. Its own host keeps it from competing with the
+        // consent sheet for the window's single sheet slot.
+        content
+            .sheet(isPresented: $calls.isShowingCall) {
+                callSurface.laaSheetSize(.page)
+            }
+            .background {
+                Color.clear
+                    .sheet(item: $calls.consentRequest, onDismiss: calls.consentDidDismiss) { request in
+                        LiveVoiceConsentSheet(mode: request.mode, onAnswer: calls.answerConsent)
+                            .laaSheetSize(.picker)
+                    }
+            }
+        #else
         content.fullScreenCover(isPresented: $calls.isShowingCall) {
-            LAAEmployeeCallView(calls: calls)
-                .safeAreaInset(edge: .top, spacing: 0) { topBanner }
-                .overlay(alignment: .bottom) { bottomOverlay }
+            callSurface
         }
         .sheet(item: $calls.consentRequest, onDismiss: calls.consentDidDismiss) { request in
             LiveVoiceConsentSheet(mode: request.mode, onAnswer: calls.answerConsent)
                 .presentationDetents([.medium, .large])
         }
+        #endif
+    }
+
+    private var callSurface: some View {
+        LAAEmployeeCallView(calls: calls)
+            .safeAreaInset(edge: .top, spacing: 0) { topBanner }
+            .overlay(alignment: .bottom) { bottomOverlay }
     }
 }
 

@@ -223,26 +223,27 @@ struct LAABrainDesktopBreadcrumb: View {
     }
 }
 
-/// Hidden buttons carry the desktop shortcuts: search, reload and new note.
+/// Brain's entries in the Mac menu bar. ⌘F, ⌘R and ⌘N live in the menu, which
+/// reads the commands the shown section publishes: this view publishes them,
+/// so the screen no longer registers the same keys behind invisible buttons.
 struct LAABrainDesktopShortcuts: View {
     let search: () -> Void
     let reload: (() -> Void)?
     let create: (() -> Void)?
 
     var body: some View {
-        Group {
-            shortcut("f", action: search)
-            if let reload { shortcut("r", action: reload) }
-            if let create { shortcut("n", action: create) }
-        }
-        .frame(width: 0, height: 0)
-        .opacity(0)
-        .accessibilityHidden(true)
-    }
-
-    private func shortcut(_ key: KeyEquivalent, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text(verbatim: "") }
-            .keyboardShortcut(key, modifiers: .command)
+        Color.clear
+            .frame(width: 0, height: 0)
+            .laaMacSectionCommands(LAAMacSectionCommands(
+                newTitle: LAACopy.Brain.newNote,
+                canCreate: create != nil,
+                create: { create?() },
+                canSearch: true,
+                focusSearch: search,
+                canReload: reload != nil,
+                reload: { reload?() }
+            ))
+            .accessibilityHidden(true)
     }
 }
 #endif

@@ -40,7 +40,7 @@ struct LAATodayDesktopView: View {
                         if calendar.isLoading && !calendar.loaded { ProgressView().padding(LAASpacing.x4) }
                         ForEach(days, id: \.timeIntervalSince1970) { day in daySection(day) }
                         if calendar.loaded && calendar.events.isEmpty && calendar.errorMessage == nil {
-                            Text(verbatim: "No events in this range.")
+                            Text(verbatim: LAACopy.macNoEvents)
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
@@ -58,14 +58,18 @@ struct LAATodayDesktopView: View {
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { selectedEventID = nil; return .handled }
-            .onKeyPress(.init("n"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                showNewEvent = true; return .handled
-            }
-            .onKeyPress(.init("r"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                Task { await calendar.refresh(bridge: bridge) }; return .handled
-            }
+            // An event is not the window's one new thing — ⇧⌘N keeps ⌘N free
+            // for the menu's per-section new item, and ⌘R reloads from the
+            // menu like every other section.
+            .laaMacSectionCommands(LAAMacSectionCommands(
+                newTitle: "New Event",
+                newShortcut: "n",
+                newModifiers: [.command, .shift],
+                canCreate: calendar.calendars.contains(where: \.writable),
+                create: { showNewEvent = true },
+                canReload: true,
+                reload: { Task { await calendar.refresh(bridge: bridge) } }
+            ))
         } detail: {
             detail
         }
@@ -94,6 +98,7 @@ struct LAATodayDesktopView: View {
                 Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
                     .frame(width: 36, height: 36)
                     .accessibilityLabel(Text(verbatim: "Previous"))
+                    .macTooltip("Previous")
                 DatePicker(selection: $calendar.selectedDate, displayedComponents: .date) {
                     Text(verbatim: "日付")
                 }
@@ -103,11 +108,12 @@ struct LAATodayDesktopView: View {
                 Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
                     .frame(width: 36, height: 36)
                     .accessibilityLabel(Text(verbatim: "Next"))
+                    .macTooltip("Next")
                 Spacer(minLength: 0)
                 Button { showNewEvent = true } label: { Image(systemName: "plus") }
                     .frame(width: 36, height: 36)
                     .accessibilityLabel(Text(verbatim: "予定を作成"))
-                    .macTooltip("New event (⌘N)")
+                    .macTooltip("New event (⇧⌘N)")
                     .disabled(!calendar.calendars.contains(where: \.writable))
             }
 
@@ -207,8 +213,7 @@ struct LAATodayDesktopView: View {
             .padding(LAASpacing.x8).frame(maxWidth: 560)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            LAAMacEmptyDetail(symbol: "calendar", title: "Select an event",
-                              message: "Choose an event on the left to see its details and edit it here.")
+            LAAMacEmptyDetail(symbol: "calendar", title: LAACopy.macNoEventTitle)
         }
     }
 
@@ -233,8 +238,7 @@ struct LAATodayDesktopView: View {
                 .clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
             }
             .padding(LAASpacing.x8)
-            .frame(maxWidth: 1040, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .laaReadableWidth(LAADesktopMetrics.readingWidth)
         }
         .background(LAAColor.surface)
     }

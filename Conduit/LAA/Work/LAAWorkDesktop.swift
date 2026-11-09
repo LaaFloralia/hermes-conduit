@@ -100,7 +100,7 @@ struct LAAWorkDesktopSessionsView: View {
                             sessionRow(session, children: children[session.id] ?? [], in: ordered)
                         }
                         if ordered.isEmpty && !loading && failure == nil {
-                            Text(verbatim: showArchived ? "No archived sessions." : "No sessions yet.")
+                            Text(verbatim: showArchived ? LAACopy.macNoArchivedSessions : LAACopy.macNoSessions)
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
@@ -126,18 +126,15 @@ struct LAAWorkDesktopSessionsView: View {
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.return) { if selectedID == nil { selectedID = ordered.first?.id }; return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
-            .onKeyPress(.init("f"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                searchFocused = true; return .handled
-            }
-            .onKeyPress(.init("r"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                reloadID += 1; return .handled
-            }
-            .onKeyPress(.init("n"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                showLauncher = true; return .handled
-            }
+            .laaMacSectionCommands(LAAMacSectionCommands(
+                newTitle: "New Session",
+                canCreate: bridge.status == .paired,
+                create: { showLauncher = true },
+                canSearch: true,
+                focusSearch: { searchFocused = true },
+                canReload: true,
+                reload: { reloadID += 1 }
+            ))
         } detail: {
             if let selected {
                 NavigationStack {
@@ -145,8 +142,7 @@ struct LAAWorkDesktopSessionsView: View {
                         .id(selected.id)
                 }
             } else {
-                LAAMacEmptyDetail(symbol: "rectangle.stack", title: "Select a session",
-                                  message: "Choose a session on the left to read its conversation and continue it here.")
+                LAAMacEmptyDetail(symbol: "rectangle.stack", title: LAACopy.macNoSessionTitle)
             }
         }
         .accessibilityIdentifier("work.desktop.sessions")
@@ -155,6 +151,7 @@ struct LAAWorkDesktopSessionsView: View {
                 showLauncher = false; selectedID = created.id; reloadID += 1
             }
             .environmentObject(bridge)
+            .laaSheetSize(.form)
         }
         .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") { await load() }
     }
@@ -225,7 +222,7 @@ struct LAAWorkDesktopSessionsView: View {
         } catch let error as LAABridgeError {
             failure = error.japaneseText
         } catch {
-            failure = "Could not read sessions."
+            failure = LAACopy.macSessionsUnreadable
         }
         if options == nil { options = try? await bridge.read("/v1/session-options") }
     }
@@ -244,7 +241,7 @@ struct LAAWorkDesktopSessionsView: View {
         } catch let error as LAABridgeHTTPError {
             failure = LAAWorkHTTP.message(error)
         } catch {
-            failure = "Could not save the change."
+            failure = "変更を保存できません。"
         }
     }
 }
@@ -333,7 +330,7 @@ struct LAAWorkDesktopProjectsView: View {
                             .accessibilityIdentifier("work.project.\(project.id)")
                         }
                         if visible.isEmpty && !loading && failure == nil {
-                            Text(verbatim: showArchived ? "No archived projects." : "No projects yet.")
+                            Text(verbatim: showArchived ? LAACopy.macNoArchivedProjects : LAACopy.macNoProjects)
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
@@ -359,31 +356,29 @@ struct LAAWorkDesktopProjectsView: View {
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
-            .onKeyPress(.init("f"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                searchFocused = true; return .handled
-            }
-            .onKeyPress(.init("r"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                reloadID += 1; return .handled
-            }
-            .onKeyPress(.init("n"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                showNew = true; return .handled
-            }
+            .laaMacSectionCommands(LAAMacSectionCommands(
+                newTitle: "New Project",
+                canCreate: bridge.status == .paired,
+                create: { showNew = true },
+                canSearch: true,
+                focusSearch: { searchFocused = true },
+                canReload: true,
+                reload: { reloadID += 1 }
+            ))
         } detail: {
             if let selected {
                 NavigationStack {
                     LAAWorkProjectHome(project: selected, drafts: drafts).id(selected.id)
                 }
             } else {
-                LAAMacEmptyDetail(symbol: "folder", title: "Select a project",
-                                  message: "Choose a project on the left to see its instructions, files and sessions.")
+                LAAMacEmptyDetail(symbol: "folder", title: LAACopy.macNoProjectTitle)
             }
         }
         .accessibilityIdentifier("work.desktop.projects")
         .sheet(isPresented: $showNew, onDismiss: { reloadID += 1 }) {
-            LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+            LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts)
+                .environmentObject(bridge)
+                .laaSheetSize(.form)
         }
         .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") { await load() }
     }
@@ -419,7 +414,7 @@ struct LAAWorkDesktopProjectsView: View {
         } catch is CancellationError {
             return
         } catch {
-            failure = "Could not read projects."
+            failure = LAACopy.macProjectsUnreadable
         }
     }
 
@@ -430,7 +425,7 @@ struct LAAWorkDesktopProjectsView: View {
         } catch let error as LAABridgeHTTPError {
             failure = LAAWorkHTTP.message(error)
         } catch {
-            failure = "Could not save the change."
+            failure = "変更を保存できません。"
         }
     }
 }
@@ -530,7 +525,7 @@ struct LAAWorkDesktopCatalogView: View {
                             .accessibilityAddTraits(selectedID == row.id ? .isSelected : [])
                         }
                         if loaded && rows.isEmpty && failure == nil {
-                            Text(verbatim: kind == .routines ? "No routines." : "No skills.")
+                            Text(verbatim: kind == .routines ? LAACopy.macNoRoutines : LAACopy.macNoSkills)
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
@@ -544,14 +539,14 @@ struct LAAWorkDesktopCatalogView: View {
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
-            .onKeyPress(.init("f"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                searchFocused = true; return .handled
-            }
-            .onKeyPress(.init("r"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                reloadID += 1; return .handled
-            }
+            .laaMacSectionCommands(LAAMacSectionCommands(
+                newTitle: kind == .routines ? "New Routine" : "New Skill",
+                canCreate: false,
+                canSearch: true,
+                focusSearch: { searchFocused = true },
+                canReload: true,
+                reload: { reloadID += 1 }
+            ))
         } detail: {
             detail
         }
@@ -565,7 +560,7 @@ struct LAAWorkDesktopCatalogView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     LAAWorkRefLabel(ref: routine.ref)
                     Text(verbatim: routine.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                    Text(verbatim: routine.schedule ?? "Schedule unknown").foregroundStyle(LAAColor.link)
+                    Text(verbatim: routine.schedule ?? LAACopy.macScheduleUnknown).foregroundStyle(LAAColor.link)
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         detailLine("Next run", LAAWorkRoutineTime.next(routine.nextRunAt))
                         detailLine("Destination", routine.destination ?? "Not set")
@@ -602,8 +597,7 @@ struct LAAWorkDesktopCatalogView: View {
             .background(LAAColor.background)
         } else {
             LAAMacEmptyDetail(symbol: kind == .routines ? "clock" : "sparkles",
-                              title: kind == .routines ? "Select a routine" : "Select a skill",
-                              message: "Choose an item on the left to read its details here.")
+                              title: kind == .routines ? LAACopy.macNoRoutineTitle : LAACopy.macNoSkillTitle)
         }
     }
 
@@ -656,7 +650,7 @@ struct LAAWorkDesktopCatalogView: View {
         } catch is CancellationError {
             return
         } catch {
-            failure = "Could not read the list."
+            failure = LAACopy.macListUnreadable
         }
     }
 }

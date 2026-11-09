@@ -1,7 +1,10 @@
-#if LAA_BUILD && targetEnvironment(macCatalyst)
+// Imports outside the platform check: the shared block at the end of this file
+// publishes menu commands from screens the phone also builds.
 import Combine
 import Foundation
 import SwiftUI
+
+#if LAA_BUILD && targetEnvironment(macCatalyst)
 
 /// The Mac sidebar's sections, in the order the sidebar and ⌘1–⌘7 show them.
 /// Each is one of the phone's tabs; Drive is the Assets tab's own entry, which
@@ -87,12 +90,12 @@ final class LAAMacCommandsModel: ObservableObject {
 
     /// A section the Go menu asked for, cleared once the shell shows it.
     @Published var pendingSection: LAAMacSection?
+    /// The section the window shows, so a menu item about one section's
+    /// content (the open conversation) knows whether it applies.
+    @Published var activeSection: LAAMacSection = .chats
     /// Counters: each request bumps one, and the shell acts on the change.
     @Published var toggleSidebar = 0
     @Published var openSettings = 0
-    @Published var focusSearch = 0
-    @Published var reload = 0
-    @Published var newChat = 0
     @Published var closeConversation = 0
 }
 
@@ -104,29 +107,88 @@ extension LAACopy {
         }
     }
 
-    // MARK: Sidebar
-
-    static let macSidebarSubtitle = "AIアプリ"
-    static let macSidebarSections = "Sections"
-    static let macConnection = "Connection"
-    static let macConnectionDetail = "接続状態"
-
-    // MARK: Empty detail columns
-
-    static let macNoChatTitle = "会話を選んでください"
-    static let macNoChatBody = "左の一覧から相手かグループを選ぶと、ここに会話が開きます。"
-    static let macNoConversationTitle = "会話が開いていません"
-    static let macNoConversationBody = "一覧から会話を選ぶか、⌘Nで新しい会話を始めてください。"
-
     // MARK: Menus
 
     static let macMenuGo = "Go"
     static let macMenuChat = "Chat"
     static let macToggleSidebar = "Toggle Sidebar"
-    static let macNewChat = "New Chat"
     static let macSearch = "Search"
     static let macReload = "Reload"
     static let macSettingsMenu = "Settings…"
     static let macCloseConversation = "Close Conversation"
+}
+
+#endif
+
+#if LAA_BUILD
+// The Mac's screens that share code with the phone publish these too, so the
+// type cannot live in the Catalyst-only block above.
+
+/// What the menu bar can do in the section the window shows. A section
+/// publishes one for its column and the menu reads it as a focused value, so
+/// each of ⌘N, ⌘F and ⌘R has one implementation: the one the shown section
+/// provides. A section that publishes nothing — or has nothing to do the
+/// command acts on — leaves the item greyed instead of silently doing nothing.
+struct LAAMacSectionCommands {
+    /// The File menu's new item names what it creates here.
+    var newTitle: String = LAACopy.macNewChat
+    var newShortcut: KeyEquivalent = "n"
+    var newModifiers: EventModifiers = .command
+    var canCreate = true
+    var create: () -> Void = {}
+    var canSearch = false
+    var focusSearch: () -> Void = {}
+    var canReload = false
+    var reload: () -> Void = {}
+}
+
+private struct LAAMacSectionCommandsKey: FocusedValueKey {
+    typealias Value = LAAMacSectionCommands
+}
+
+extension FocusedValues {
+    var laaMacSectionCommands: LAAMacSectionCommands? {
+        get { self[LAAMacSectionCommandsKey.self] }
+        set { self[LAAMacSectionCommandsKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Offers this section's menu commands to the window's menu bar. Scene
+    /// scope, not focus scope: the list keeps its own keyboard focus, and the
+    /// menu still knows what the column can do.
+    func laaMacSectionCommands(_ commands: LAAMacSectionCommands) -> some View {
+        focusedSceneValue(\.laaMacSectionCommands, commands)
+    }
+}
+
+extension LAACopy {
+    /// The File menu's new item when the section names nothing else.
+    static let macNewChat = "New Chat"
+
+    // MARK: Empty detail columns
+
+    // One line each, in the reader's language: the rules keep operation
+    // labels English and say what is missing in Japanese.
+    static let macNoChatTitle = "会話を選んでください。"
+    static let macNoSessionTitle = "セッションを選んでください。"
+    static let macNoProjectTitle = "プロジェクトを選んでください。"
+    static let macNoRoutineTitle = "定期実行を選んでください。"
+    static let macNoSkillTitle = "スキルを選んでください。"
+    static let macNoEventTitle = "予定を選んでください。"
+
+    // MARK: List states
+
+    static let macNoSessions = "セッションはまだありません。"
+    static let macNoArchivedSessions = "アーカイブしたセッションはありません。"
+    static let macNoProjects = "プロジェクトはまだありません。"
+    static let macNoArchivedProjects = "アーカイブしたプロジェクトはありません。"
+    static let macNoRoutines = "定期実行はありません。"
+    static let macNoSkills = "スキルはありません。"
+    static let macNoEvents = "この期間に予定はありません。"
+    static let macSessionsUnreadable = "セッションを読み取れません。"
+    static let macProjectsUnreadable = "プロジェクトを読み取れません。"
+    static let macListUnreadable = "一覧を読み取れません。"
+    static let macScheduleUnknown = "日程不明"
 }
 #endif

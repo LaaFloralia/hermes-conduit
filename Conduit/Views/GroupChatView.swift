@@ -1431,6 +1431,35 @@ private struct GroupReadAloudControl: View {
     }
 }
 
+/// The @mention picker floats above the composer, in the operation layer:
+/// the LAA build gives it one sheet of regular glass on iOS 26 and keeps the
+/// material before it.
+private struct MentionSuggestionSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
+    @ViewBuilder func body(content: Content) -> some View {
+        #if LAA_BUILD
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            material(content)
+        }
+        #else
+        material(content)
+        #endif
+    }
+
+    @ViewBuilder private func material(_ content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: shape)
+            .overlay { shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 1) }
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+}
+
 /// The @mention picker shown above a composer while a trailing `@query`
 /// is being typed. Tapping a row completes the tag.
 struct MentionSuggestionList: View {
@@ -1476,11 +1505,7 @@ struct MentionSuggestionList: View {
         // Sized to its rows (a bare max height would stretch two rows to
         // the cap), scrolling past five; the row height follows Dynamic Type.
         .frame(height: min(rowHeight * 5, CGFloat(candidates.count) * rowHeight) + dividerAllowance)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-        }
+        .modifier(MentionSuggestionSurface(cornerRadius: 18))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }

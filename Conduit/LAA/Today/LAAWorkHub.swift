@@ -141,8 +141,10 @@ struct LAAWorkHub: View {
                 }
             }
             .padding(3)
-            .frame(maxWidth: 760)
             .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip + 3))
+            // Centred at a readable width instead of a narrow fixed column
+            // pinned to the leading edge.
+            .laaReadableWidth()
             .accessibilityIdentifier("work.segment")
         }
         .padding(.horizontal, LAASpacing.x6)
@@ -213,12 +215,17 @@ struct LAAWorkHub: View {
 }
 /// Settings at the bar's trailing end, where every tab has it. On iOS 26
 /// the minimized search sits before it rather than after, which pushed
-/// Settings inward on Work alone.
+/// Settings inward on Work alone. The Mac shows neither: its search lives in
+/// each list column (the desktop body has nothing to attach `.searchable` to)
+/// and Settings sits under the sidebar.
 private struct LAAWorkToolbar: ViewModifier {
     let onRequestSettings: () -> Void
+    @Environment(\.laaDesktop) private var laaDesktop
 
     @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if laaDesktop {
+            content
+        } else if #available(iOS 26.0, *) {
             content.toolbar {
                 DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
                 // Its own glass, the same as on the other tabs.

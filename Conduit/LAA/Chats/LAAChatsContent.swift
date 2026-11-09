@@ -66,27 +66,28 @@ struct LAAChatsContent: View {
                     .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
                     .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
                     .accessibilityIdentifier("laa.chats.new")
+                    .macTooltip(LAACopy.chatsNew)
             }
             if settingsAvailable { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: openSettings) } }
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in searchChanged() }
-        .onChange(of: selection?.focusSearch) { _, _ in
-            guard selection != nil else { return }
-            searchFocused = true
-        }
-        .onChange(of: selection?.reload) { _, _ in
-            guard selection != nil else { return }
-            retry()
-        }
-        .onChange(of: selection?.newChat) { _, _ in
-            guard selection != nil, snapshot.canCreateChat else { return }
-            newChat()
-        }
         // The arrow keys walk the rows the list actually shows; Return opens
-        // the focused one, because each row is a Button.
+        // the focused one, so the list answers the keyboard the way the Mac's
+        // other lists do. ⌘N, ⌘F and ⌘R come from the menu bar, which reads
+        // the commands this section publishes below.
         .onKeyPress(.downArrow) { moveFocus(by: 1) }
         .onKeyPress(.upArrow) { moveFocus(by: -1) }
+        .onKeyPress(.return) { openFocusedRow() }
+        .laaMacSectionCommands(LAAMacSectionCommands(
+            newTitle: LAACopy.macNewChat,
+            canCreate: snapshot.canCreateChat,
+            create: newChat,
+            canSearch: true,
+            focusSearch: { searchFocused = true },
+            canReload: true,
+            reload: retry
+        ))
         .accessibilityIdentifier("laa.chats.list")
     }
 
@@ -107,6 +108,28 @@ struct LAAChatsContent: View {
             return selection.roomID == nil && selection.profile == String(id.dropFirst("person.".count))
         }
         return selection.roomID == String(id.dropFirst("room.".count))
+    }
+
+    /// The person or room a row id names, in the rows the list shows now.
+    private func rowTarget(_ id: String) -> LAAChatsRowTarget? {
+        if id.hasPrefix("person.") {
+            let profile = String(id.dropFirst("person.".count))
+            let people = ([matchingMonet].compactMap { $0 } + employees)
+            return people.first { $0.profile == profile }.map(LAAChatsRowTarget.person)
+        }
+        let roomID = String(id.dropFirst("room.".count))
+        return rooms.first { $0.roomID == roomID }.map(LAAChatsRowTarget.room)
+    }
+
+    private func openFocusedRow() -> KeyPress.Result {
+        guard selection != nil else { return .ignored }
+        guard let id = focusedRow ?? rowIDs.first(where: isSelected),
+              let target = rowTarget(id) else { return .ignored }
+        switch target {
+        case .person(let person): openPerson(person)
+        case .room(let room): openRoom(room)
+        }
+        return .handled
     }
 
     private func moveFocus(by delta: Int) -> KeyPress.Result {
@@ -152,6 +175,7 @@ struct LAAChatsContent: View {
                         .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                 }
                 .accessibilityLabel(Text(verbatim: "Clear search"))
+                .macTooltip("Clear search")
             }
         }
         .padding(.leading, LAASpacing.x4)
@@ -215,6 +239,7 @@ struct LAAChatsContent: View {
                 .accessibilityLabel(Text(verbatim: LAACopy.chatsNewGroup))
                 .accessibilityHint(Text(verbatim: snapshot.canCreateGroup ? "" : groupUnavailableReason))
                 .accessibilityIdentifier("laa.chats.group.new")
+                .macTooltip(LAACopy.chatsNewGroup)
             }
             if rooms.isEmpty {
                 loadNote(snapshot.groupsState, empty: LAACopy.chatsNoGroups)
@@ -246,10 +271,20 @@ struct LAAChatsContent: View {
             if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
                 unreadBadge(unread)
             }
-            Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            // Beside the conversation the row only selects; a chevron there
+            // would promise a push that never comes.
+            if selection == nil {
+                Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    /// A two-line row on the Mac is at least 72 points (rules §2); the phone
+    /// keeps its own 56.
+    private var rowHeight: CGFloat {
+        selection == nil ? LAASpacing.minimumRowHeight : 72
     }
 
     /// A count, as the phone's chat lists show one: messages past the read
@@ -274,9 +309,11 @@ struct LAAChatsContent: View {
                 if !names.isEmpty { Text(verbatim: names).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
             }
             Spacer(minLength: LAASpacing.x2)
-            Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            if selection == nil {
+                Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
     }
 
@@ -565,6 +602,13 @@ private enum LAAChatsAvatarCache {
     }
 }
 
+/// What a list row opens. The Mac's list selects the row's conversation in
+/// the detail column; the phone pushes the same screen.
+private enum LAAChatsRowTarget {
+    case person(LAAChatsPerson)
+    case room(GroupRoom)
+}
+
 /// Mac only: a row's selected and hovered fill. `active` is false on the
 /// phone, where the list draws neither, so the row is untouched there.
 private struct LAAChatsRowChrome: ViewModifier {
@@ -577,7 +621,7 @@ private struct LAAChatsRowChrome: ViewModifier {
             if active {
                 RoundedRectangle(cornerRadius: LAARadius.card)
                     .fill(selected ? LAAColor.selectionFill
-                          : (hovering ? LAAColor.subtleSurface : Color.clear))
+                          : (hovering ? LAAColor.subtleSurface.opacity(0.7) : Color.clear))
             }
         }
     }

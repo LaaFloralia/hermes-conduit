@@ -22,11 +22,6 @@ struct LAAMacSidebar: View {
             heading
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: LAACopy.macSidebarSections.uppercased())
-                        .laaTextStyle(.section).fontWeight(.bold).tracking(0.8)
-                        .foregroundStyle(LAAColor.secondaryText)
-                        .padding(.horizontal, LAASpacing.x2)
-                        .padding(.bottom, LAASpacing.x1)
                     ForEach(LAAMacSection.allCases) { item in
                         row(item)
                     }
@@ -39,24 +34,20 @@ struct LAAMacSidebar: View {
             .onKeyPress(.upArrow) { moveFocus(by: -1) }
             footer
         }
-        .background(LAAColor.background)
+        // No background of its own: the split view's floating sidebar is
+        // system glass, and the window supplies the paper behind it.
         .accessibilityIdentifier("laa.mac.sidebar")
     }
 
     private var heading: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: LAACopy.brand)
-                .font(LAAType.screenTitle)
-                .foregroundStyle(LAAColor.text)
-                .accessibilityAddTraits(.isHeader)
-            Text(verbatim: LAACopy.macSidebarSubtitle)
-                .laaTextStyle(.secondary)
-                .foregroundStyle(LAAColor.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, LAASpacing.x4)
-        .padding(.top, LAASpacing.x4)
-        .padding(.bottom, LAASpacing.x3)
+        Text(verbatim: LAACopy.brand)
+            .font(LAAType.screenTitle)
+            .foregroundStyle(LAAColor.text)
+            .accessibilityAddTraits(.isHeader)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, LAASpacing.x4)
+            .padding(.top, LAASpacing.x4)
+            .padding(.bottom, LAASpacing.x3)
     }
 
     private func row(_ item: LAAMacSection) -> some View {

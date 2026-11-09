@@ -92,8 +92,15 @@ struct LAABrainSaveEditor: View {
             }
             .overlay(alignment: .bottom) {
                 if let message {
+                    // The message floats over the editor's own text, so it is
+                    // reading-layer paper with a hairline, not glass.
                     Text(verbatim: message).font(.footnote).foregroundStyle(LAAColor.attention)
-                        .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding()
+                        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(LAAColor.separator, lineWidth: 1)
+                        }
                         .padding()
                 }
             }

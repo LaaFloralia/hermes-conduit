@@ -14,14 +14,20 @@ extension EnvironmentValues {
     }
 }
 
-/// The same system toolbar control is used at the root of each tab.
+/// The same system toolbar control is used at the root of each tab. The Mac
+/// keeps one Settings entry instead — the row under its sidebar — so the
+/// toolbar button stays on the phone.
 struct LAASettingsButton: View {
+    @Environment(\.laaDesktop) private var laaDesktop
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) { Image(systemName: "gearshape") }
-            .accessibilityLabel(Text(verbatim: LAACopy.settings))
-            .accessibilityIdentifier("laa.settings.open")
+        if !laaDesktop {
+            Button(action: action) { Image(systemName: "gearshape") }
+                .accessibilityLabel(Text(verbatim: LAACopy.settings))
+                .accessibilityIdentifier("laa.settings.open")
+                .macTooltip(LAACopy.settings)
+        }
     }
 }
 

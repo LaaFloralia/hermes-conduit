@@ -785,6 +785,27 @@ private struct RichPlaceTile: View {
 
 /// A card's places on a full map: pins, the route, the user, and the
 /// selected place's details with Look Around.
+/// The selected place's card is body content over the conversation, so in the
+/// LAA build it is an opaque sheet with a hairline instead of a material the
+/// transcript shows through (design rules §3).
+private struct RichPlaceCardSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
+    @ViewBuilder func body(content: Content) -> some View {
+        #if LAA_BUILD
+        content
+            .background(LAAColor.surface, in: shape)
+            .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: 1) }
+        #else
+        content.background(.regularMaterial, in: shape)
+        #endif
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+}
+
 struct RichMapScreen: View {
     let places: [RichPlace]
     /// Each found place, by its index in the card.
@@ -895,7 +916,7 @@ struct RichMapScreen: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .modifier(RichPlaceCardSurface(cornerRadius: 22))
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
     }

@@ -152,8 +152,9 @@ struct LAAWorkSessionDetail: View {
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarBackground(LAAColor.background, for: .navigationBar)
+        // The bar keeps the system's glass, as in Chat; painting the paper
+        // here flattened it under the session pill.
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             // The heading is the bar's own: the transcript has no second one.
             // The Mac window already carries the name in its title bar, so the

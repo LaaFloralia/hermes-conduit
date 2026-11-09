@@ -6,7 +6,6 @@ import SwiftUI
 /// never pushes a screen, so Back and the tab bar stay out of the way.
 struct LAAMacChatsSection: View {
     @EnvironmentObject private var appState: AppState
-    @ObservedObject var commands: LAAMacCommandsModel
     @Binding var conversationShown: Bool
 
     private var requiresLogin: Bool { LAAMacLogin.isRequired(appState) }
@@ -21,10 +20,7 @@ struct LAAMacChatsSection: View {
         LAAChatsListSelection(
             profile: appState.laaOpeningEmployeeChat ?? (conversationShown && appState.activeRoomSurface == nil
                 ? appState.conversationIdentityProfile : nil),
-            roomID: conversationShown ? appState.activeRoomSurface?.room.roomID : nil,
-            focusSearch: commands.focusSearch,
-            reload: commands.reload,
-            newChat: commands.newChat
+            roomID: conversationShown ? appState.activeRoomSurface?.room.roomID : nil
         )
     }
 
@@ -131,8 +127,7 @@ struct LAAMacChatsSection: View {
                 }
         case .empty:
             LAAMacEmptyDetail(symbol: "bubble.left.and.bubble.right",
-                              title: LAACopy.macNoChatTitle,
-                              message: LAACopy.macNoChatBody)
+                              title: LAACopy.macNoChatTitle)
                 .accessibilityIdentifier("laa.mac.chats.empty")
         }
     }

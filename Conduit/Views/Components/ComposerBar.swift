@@ -3018,6 +3018,35 @@ struct ContextRingView: View {
 
 // MARK: - Slash Suggestions Overlay
 
+/// The suggestion popup floats above the composer, in the operation layer:
+/// the LAA build gives it one sheet of regular glass on iOS 26 and keeps the
+/// material before it.
+private struct ComposerSuggestionSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
+    @ViewBuilder func body(content: Content) -> some View {
+        #if LAA_BUILD
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            material(content)
+        }
+        #else
+        material(content)
+        #endif
+    }
+
+    @ViewBuilder private func material(_ content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: shape)
+            .overlay { shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 1) }
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+}
+
 private struct SlashSuggestionsOverlay: View {
     let commands: [SlashCommand]
     let onSelected: (SlashCommand) -> Void
@@ -3077,11 +3106,7 @@ private struct SlashSuggestionsOverlay: View {
             }
         }
         .frame(maxHeight: 280)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-        }
+        .modifier(ComposerSuggestionSurface(cornerRadius: 20))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
