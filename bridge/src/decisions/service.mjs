@@ -65,7 +65,9 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       const after = await daemon.status(record.source.paseoAgentId);
       if (!after.activeTurn && after.daemonStatus !== 'running' && !(Date.parse(after.updatedAt) > sentAt && Date.parse(after.updatedAt) > Date.parse(before.updatedAt))) throw new Error('delivery_unconfirmed');
     } catch (e) {
-      const known = ['agent_archived', 'pending_decision_requires_reply', 'paseo_unavailable', 'delivery_unconfirmed', 'not_found'];
+      // `session_busy` is the daemon refusing a second foreground turn: the
+      // answer is kept and can be re-sent once that turn ends (2026-11-09).
+      const known = ['agent_archived', 'pending_decision_requires_reply', 'session_busy', 'paseo_unavailable', 'delivery_unconfirmed', 'not_found'];
       error = known.includes(e.code ?? e.message) ? (e.code ?? e.message) : 'paseo_unavailable';
     }
     const updated = store.settle(record.id, record.delivery.messageId, error ? 'failed' : 'delivered', error);

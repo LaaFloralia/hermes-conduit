@@ -33,6 +33,7 @@ import { DELEGATION_ORIGIN } from './adapter.mjs';
 import { readConversation } from './history.mjs';
 import { settleLocalImages } from './local-images.mjs';
 import { daemonSessionID, snapshot } from './daemon.mjs';
+import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
 import { fastAvailable, fastValue } from './features.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 
@@ -84,6 +85,10 @@ export function createSessionService({
   retentionMs = 24 * 60 * 60 * 1000,
   pollMs = 2500,
   observationTtlMs = 1500,
+  // How often a held follow-up is offered to its session again. Each tick costs
+  // nothing while nothing is queued (see flushQueues), so this stays short
+  // enough that the owner sees their message go out right after the turn ends.
+  outboxPollMs = 3000,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
   // An observation cache keeps a detail read and an events long-poll from
@@ -496,6 +501,214 @@ export function createSessionService({
     });
   }
 
+  // --- follow-up queue ------------------------------------------------------
+  //
+  // A message the owner sends while the session is still working is recorded on
+  // the session and delivered when the turn ends (outbox.mjs explains why it is
+  // never handed to a working agent). Three things keep it honest:
+  //   * the message id is stable per request, so a retry reconciles with the
+  //     queued row instead of queueing the same text twice;
+  //   * delivery re-reads Paseo's own status first, so a queue that drains after
+  //     a restart still refuses to interrupt a turn;
+  //   * a real send failure is counted and surfaced, never retried forever in
+  //     silence.
+
+  // Sessions with an unsent row. Kept in memory so the timer does not parse the
+  // store every few seconds; rebuilt once per process to pick up a queue that
+  // was written before a restart.
+  const queuedSessions = new Set();
+  let queueIndexRead = false;
+  const flushing = new Set();
+
+  function rememberQueue(id) {
+    const record = sessionStore.get(id);
+    if (queuedEntries(record).length > 0) queuedSessions.add(id);
+    else queuedSessions.delete(id);
+    return record;
+  }
+
+  function queueView(record) {
+    const queued = queuedEntries(record);
+    return {
+      count: queued.length,
+      items: queued.map((entry) => ({
+        id: entry.id,
+        chars: count(entry.text ?? ''),
+        queuedAt: entry.queuedAt ?? null,
+        attempts: entry.attempts ?? 0,
+        error: entry.error ?? null,
+      })),
+    };
+  }
+
+  function enqueue(id, { messageId, text, reason = null }) {
+    const current = requireSession(id);
+    if (!outboxHas(current, messageId) && queuedEntries(current).length >= MAX_QUEUED) {
+      throw new BridgeError(429, 'queue_full', `the session already holds ${MAX_QUEUED} unsent messages; let the current turn finish`);
+    }
+    const updated = sessionStore.update(id, (record) => {
+      record.outbox = Array.isArray(record.outbox) ? record.outbox : [];
+      if (outboxHas(record, messageId)) return [];
+      record.outbox.push({
+        id: messageId,
+        text,
+        status: 'queued',
+        queuedAt: new Date(now()).toISOString(),
+        attempts: 0,
+        ...(reason ? { reason } : {}),
+      });
+      return [{
+        type: 'session.message.queued',
+        payload: { messageId, chars: count(text), position: queuedEntries(record).length, ...(reason ? { reason } : {}) },
+      }];
+    });
+    queuedSessions.add(id);
+    return updated?.record ?? requireSession(id);
+  }
+
+  function outboxHas(record, messageId) {
+    return Array.isArray(record?.outbox) && record.outbox.some((entry) => entry?.id === messageId);
+  }
+
+  /// Record the delivery of one message: the turn it starts, the event the app
+  /// reads, and the row that makes a retried request idempotent.
+  function markSent(id, messageId, text, { queuedMs = null } = {}) {
+    const updated = sessionStore.update(id, (record) => {
+      const events = [];
+      record.outbox = Array.isArray(record.outbox) ? record.outbox : [];
+      const entry = record.outbox.find((row) => row.id === messageId);
+      if (entry) {
+        entry.status = 'sent';
+        entry.sentAt = new Date(now()).toISOString();
+        delete entry.error;
+        delete entry.reason;
+        if (queuedMs !== null) entry.queuedMs = queuedMs;
+      } else {
+        record.outbox.push({ id: messageId, text, status: 'sent', sentAt: new Date(now()).toISOString(), attempts: 0 });
+      }
+      const sent = record.outbox.filter((row) => row.status === 'sent');
+      for (const old of sent.slice(0, Math.max(0, sent.length - KEEP_SENT))) {
+        record.outbox.splice(record.outbox.indexOf(old), 1);
+      }
+      if (record.phase !== 'running') {
+        events.push({ type: 'session.phase', payload: { phase: 'running', previous: record.phase, daemonStatus: record.daemonStatus } });
+        record.phase = 'running';
+      }
+      events.push({ type: 'session.message.sent', payload: { messageId, chars: count(text ?? ''), ...(queuedMs !== null ? { queuedMs } : {}) } });
+      return events;
+    });
+    return rememberQueue(id) ?? updated?.record ?? requireSession(id);
+  }
+
+  /// A send that really failed. "Still working" is not a failure and never
+  /// reaches here, so the attempt count a stuck queue shows means something.
+  function markAttempt(id, messageId, error) {
+    sessionStore.update(id, (record) => {
+      const entry = Array.isArray(record.outbox) ? record.outbox.find((row) => row.id === messageId) : null;
+      if (!entry || entry.status !== 'queued') return [];
+      entry.attempts = (entry.attempts ?? 0) + 1;
+      entry.lastAttemptAt = new Date(now()).toISOString();
+      entry.error = error;
+      if (entry.attempts < MAX_ATTEMPTS) return [];
+      entry.status = 'failed';
+      return [{ type: 'session.message.queue_failed', payload: { messageId, attempts: entry.attempts, error } }];
+    });
+  }
+
+  /// The staged pictures of one message, read back from the session's own image
+  /// index, so a queued message carries the same attachments as a direct send.
+  function stagedImages(id, messageId) {
+    const ids = images.references(id)?.[messageId] ?? [];
+    return ids.map((imageId) => images.read(id, imageId));
+  }
+
+  async function deliver(record, entry) {
+    if (daemon) {
+      await daemon.send(record.delegate.sessionId, { text: entry.text, messageId: entry.id, images: stagedImages(record.id, entry.id) });
+      return;
+    }
+    await adapter.send({ requestId: record.delegate.requestId, messageId: entry.id, text: entry.text });
+  }
+
+  /// Offer the oldest unsent message to its session. Returns without sending
+  /// while the turn is still working, and the next tick tries again.
+  async function flushQueue(id) {
+    if (flushing.has(id)) return;
+    const known = sessionStore.get(id);
+    if (!known || nextQueued(known) === null) {
+      queuedSessions.delete(id);
+      return;
+    }
+    flushing.add(id);
+    try {
+      for (;;) {
+        const record = sessionStore.get(id);
+        const entry = nextQueued(record);
+        if (!entry) {
+          queuedSessions.delete(id);
+          return;
+        }
+        // A stop is the owner's word: queued text waits for a resume instead of
+        // starting the session again behind their back.
+        if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') return;
+        let observation;
+        try {
+          observation = await observe(id, { force: true });
+        } catch {
+          return;
+        }
+        if (!observation.available) return;
+        if (readiness(observation.status) !== 'ready') return;
+        try {
+          await deliver(record, entry);
+        } catch (err) {
+          const code = err instanceof BridgeError ? err.code : 'send_failed';
+          // Paseo started or stopped working between the read and the send:
+          // nothing failed, so nothing is counted.
+          if (code === 'session_busy' || code === 'pending_decision_requires_reply') {
+            await observe(id, { force: true }).catch(() => null);
+            return;
+          }
+          markAttempt(id, entry.id, err instanceof BridgeError ? err.message : String(err?.message ?? err));
+          return;
+        }
+        const queuedMs = Date.parse(entry.queuedAt ?? '');
+        markSent(id, entry.id, entry.text, {
+          queuedMs: Number.isFinite(queuedMs) ? Math.max(0, now() - queuedMs) : null,
+        });
+      }
+    } finally {
+      flushing.delete(id);
+    }
+  }
+
+  async function flushQueues() {
+    if (!queueIndexRead) {
+      queueIndexRead = true;
+      for (const record of sessionStore.all()) if (nextQueued(record) !== null) queuedSessions.add(record.id);
+    }
+    for (const id of [...queuedSessions]) {
+      try {
+        await flushQueue(id);
+      } catch {
+        // One session that cannot drain must not stop the others; the next tick
+        // tries it again and the row stays visible.
+      }
+    }
+  }
+
+  const queueTimer = outboxPollMs > 0
+    ? (() => {
+      const timer = setInterval(() => { void flushQueues().catch(() => {}); }, outboxPollMs);
+      timer.unref?.();
+      return timer;
+    })()
+    : null;
+
+  function close() {
+    if (queueTimer) clearInterval(queueTimer);
+  }
+
   async function sendMessage({ id, body = {}, key }) {
     const record = requireSession(id);
     if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') {
@@ -508,27 +721,37 @@ export function createSessionService({
 
     const attachments = parseImages(body.images);
     images.stage(id, messageId, attachments);
+
+    // A retried request carries the same message id: it is already held or
+    // already sent, and must not become a second turn.
+    const held = Array.isArray(record.outbox) ? record.outbox.find((row) => row?.id === messageId) : null;
+    if (held) return { session: record, queued: held.status === 'queued' };
+
+    // Read Paseo's own status before sending: a running turn is the case that
+    // used to lose the message (and stop the turn with it).
+    const before = await observe(id, { force: true }).catch((err) => ({ available: false, code: err instanceof BridgeError ? err.code : 'delegation_failed' }));
+    if (before.available) {
+      const state = readiness(before.status);
+      if (state === 'decision') throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
+      if (state === 'working') return { session: enqueue(id, { messageId, text }), queued: true };
+    }
+
     try {
-      if (daemon) await daemon.send(record.delegate.sessionId, { text, messageId, images: attachments });
-      else await adapter.send({ requestId: record.delegate.requestId, messageId, text });
+      await deliver(requireSession(id), { id: messageId, text });
     } catch (err) {
       // The client needs the waiting question in the same breath as the 409.
       if (err instanceof BridgeError && err.code === 'pending_decision_requires_reply') {
         await observe(id, { force: true }).catch(() => null);
+        throw err;
+      }
+      // The turn started between the read and the send. Hold the message
+      // instead of reporting a failure the owner would have to retype.
+      if (err instanceof BridgeError && err.code === 'session_busy') {
+        return { session: enqueue(id, { messageId, text, reason: 'session_busy' }), queued: true };
       }
       throw err;
     }
-
-    const updated = sessionStore.update(id, (current) => {
-      const events = [];
-      if (current.phase !== 'running') {
-        events.push({ type: 'session.phase', payload: { phase: 'running', previous: current.phase, daemonStatus: current.daemonStatus } });
-        current.phase = 'running';
-      }
-      events.push({ type: 'session.message.sent', payload: { messageId, chars: count(text) } });
-      return events;
-    });
-    return { session: updated?.record ?? requireSession(id) };
+    return { session: markSent(id, messageId, text), queued: false };
   }
 
   // A session with everything started under it, parent first.
@@ -803,6 +1026,10 @@ export function createSessionService({
     applyObservation(id, status);
     const result = { available: true, status };
     observations.set(id, { at: Date.now(), result });
+    // A turn that just ended releases the owner's held follow-up now, on the
+    // read the app is already making, instead of on the next timer tick. The
+    // guard inside flushQueue keeps a nested read from draining twice.
+    if (queuedSessions.has(id) && readiness(status) === 'ready') void flushQueue(id).catch(() => {});
     return result;
   }
 
@@ -915,6 +1142,10 @@ export function createSessionService({
       resumedFrom: record.resumedFrom ?? null,
       resumedTo: record.resumedTo ?? null,
       pending: record.pending ?? null,
+      // Follow-ups the owner has already sent that wait for the running turn to
+      // end. The app shows them as 順番待ち so an accepted message never looks
+      // lost while it is held.
+      queue: queueView(record),
       result: record.result ?? null,
       stopRequestedAt: record.stopRequestedAt ?? null,
       createdAt: record.createdAt,
@@ -955,6 +1186,11 @@ export function createSessionService({
     observe,
     view,
     sessionIdFor,
+    // The queue is drained by the service's own timer; these let a caller (or a
+    // test) drain it at a known moment instead of waiting for a tick.
+    flushQueue,
+    flushQueues,
+    close,
   };
 }
 

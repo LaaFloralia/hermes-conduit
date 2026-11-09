@@ -293,17 +293,61 @@ test('a child session keeps the 「子｜」 prefix on an owner name', async (t)
   assert.equal(child.body.data.parentId, parent.body.data.id);
 });
 
-test('send is refused while the agent is busy or waiting, and accepted when idle', async (t) => {
-  const ctx = await boot(t);
+test('a send while the agent is busy is held, not refused, and drains when the turn ends', async (t) => {
+  const ctx = await boot(t, { sessions: { outboxPollMs: 0 } });
   const created = await createSession(ctx);
   const id = created.body.data.id;
   const requestId = `laa-bridge-${createHash('sha256').update('req-1').digest('hex').slice(0, 40)}`;
 
+  // The owner's follow-up arrives while the turn is still running (the exact
+  // 2026-11-09 loss). It is accepted and queued, and nothing reaches the agent.
   const busy = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
     method: 'POST', token: ctx.token, key: 'k-m1', body: { message: 'next' },
   });
-  assert.equal(busy.status, 409);
-  assert.equal(busy.body.error.code, 'session_busy');
+  assert.equal(busy.status, 202);
+  assert.equal(busy.body.data.queue.count, 1);
+  assert.equal(busy.body.data.queue.items[0].chars, 4);
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 0);
+
+  // The same request again (retry after an unknown outcome) is the same row,
+  // not a second queued message.
+  const retried = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
+    method: 'POST', token: ctx.token, key: 'k-m1', body: { message: 'next' },
+  });
+  assert.equal(retried.status, 202);
+  assert.equal(retried.body.data.queue.count, 1);
+
+  // Still working: a drain attempt leaves it held.
+  await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 0);
+
+  // The turn ends. The next read releases the held message, exactly once.
+  ctx.adapter.setIdle(requestId, { text: 'ok' });
+  const deadline = Date.now() + 3000;
+  while (ctx.adapter.agent(requestId).messages.length === 0 && Date.now() < deadline) {
+    await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.deepEqual(ctx.adapter.agent(requestId).messages.map((message) => message.text), ['next']);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const after = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+  assert.equal(after.body.data.queue.count, 0);
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 1, 'the held message is sent once');
+
+  const events = await ctx.bridge.request(`/v1/sessions/${id}/events?afterSeq=0`, { token: ctx.token });
+  const types = events.body.data.items.map((event) => event.type);
+  assert.ok(types.includes('session.message.queued'));
+  assert.ok(types.includes('session.message.sent'));
+  const sent = events.body.data.items.find((event) => event.type === 'session.message.sent');
+  assert.equal(sent.payload.messageId, retried.body.data.queue.items[0].id);
+  assert.ok(Number.isFinite(sent.payload.queuedMs));
+});
+
+test('a waiting decision is refused, and an idle session takes the message at once', async (t) => {
+  const ctx = await boot(t, { sessions: { outboxPollMs: 0 } });
+  const created = await createSession(ctx);
+  const id = created.body.data.id;
+  const requestId = `laa-bridge-${createHash('sha256').update('req-1').digest('hex').slice(0, 40)}`;
 
   ctx.adapter.setPending(requestId, [{ id: 'p1', kind: 'question', name: 'AskUserQuestion' }]);
   const waiting = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
@@ -315,6 +359,7 @@ test('send is refused while the agent is busy or waiting, and accepted when idle
   const detail = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
   assert.equal(detail.body.data.phase, 'awaiting_decision');
   assert.deepEqual(detail.body.data.pending.kinds, ['question']);
+  assert.equal(detail.body.data.queue.count, 0);
 
   ctx.adapter.setPending(requestId, []);
   ctx.adapter.setIdle(requestId, { text: 'ok' });
@@ -323,12 +368,60 @@ test('send is refused while the agent is busy or waiting, and accepted when idle
   });
   assert.equal(sent.status, 202);
   assert.equal(sent.body.data.phase, 'running');
+  assert.equal(sent.body.data.queue.count, 0);
   assert.equal(ctx.adapter.agent(requestId).messages.length, 1);
 
   const events = await ctx.bridge.request(`/v1/sessions/${id}/events?afterSeq=0`, { token: ctx.token });
   const types = events.body.data.items.map((event) => event.type);
   assert.ok(types.includes('session.message.sent'));
   assert.ok(types.includes('session.result'));
+});
+
+test('the queue drains on its own timer once the turn ends', async (t) => {
+  const ctx = await boot(t, { sessions: { outboxPollMs: 20 } });
+  const created = await createSession(ctx);
+  const id = created.body.data.id;
+  const requestId = `laa-bridge-${createHash('sha256').update('req-1').digest('hex').slice(0, 40)}`;
+
+  const held = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
+    method: 'POST', token: ctx.token, key: 'k-t1', body: { message: 'held' },
+  });
+  assert.equal(held.body.data.queue.count, 1);
+
+  // Nothing has ended yet: the timer must not force the message in.
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 0);
+
+  ctx.adapter.setIdle(requestId, { text: 'ok' });
+  const deadline = Date.now() + 3000;
+  while (ctx.adapter.agent(requestId).messages.length === 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 1, 'the timer delivers the held message');
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const detail = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+  assert.equal(detail.body.data.queue.count, 0);
+});
+
+test('a queued message waits out a stop instead of restarting the session', async (t) => {
+  const ctx = await boot(t, { sessions: { outboxPollMs: 20 } });
+  const created = await createSession(ctx);
+  const id = created.body.data.id;
+  const requestId = `laa-bridge-${createHash('sha256').update('req-1').digest('hex').slice(0, 40)}`;
+
+  const held = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
+    method: 'POST', token: ctx.token, key: 'k-s1', body: { message: 'held' },
+  });
+  assert.equal(held.body.data.queue.count, 1);
+  // The stop comes first; the turn that would have released the message never
+  // ends in a way that sends it.
+  await ctx.bridge.request(`/v1/sessions/${id}/stop`, { method: 'POST', token: ctx.token, key: 'k-s2', body: {} });
+  ctx.adapter.setIdle(requestId, { text: 'ok' });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 0);
+
+  const detail = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
+  assert.equal(detail.body.data.queue.count, 1, 'the held message stays visible after a stop');
 });
 
 test('stop confirms, records an event, and refuses further sends', async (t) => {

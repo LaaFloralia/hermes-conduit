@@ -132,6 +132,9 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   }
 
   sessionOptions.registerCleanup?.(() => refs.stop());
+  // The follow-up queue's timer belongs to the session service; a closed server
+  // must not leave it ticking.
+  if (!sessionOptions.service) sessionOptions.registerCleanup?.(() => sessionService.close?.());
 
   const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() });
   const linearOptions = options.linearOwnerTasks ?? {};

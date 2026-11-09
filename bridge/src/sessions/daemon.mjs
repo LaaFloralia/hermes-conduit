@@ -223,9 +223,22 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
     send: (id, { text, messageId, images }) => call(async (c) => {
       const a = await agent(c, id);
       if (a.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
-      // Explicit steering preserves the currently running turn. The daemon
-      // owns exactly-once message acceptance for this stable client message id.
-      await c.sendMessage(id, text, { messageId, activeTurnBehavior: 'steer', images });
+      // One foreground turn per agent. A prompt handed to a working agent makes
+      // the provider replace that turn — and an agent without autonomous
+      // steering refuses the start instead, which loses the owner's message and
+      // stops the turn (2026-11-09). The caller holds the message until idle.
+      if (isBusy(a)) throw conflict('session_busy', 'the session is still working; the message waits for the turn to end');
+      try {
+        // Explicit steering preserves the currently running turn. The daemon
+        // owns exactly-once message acceptance for this stable client message id.
+        await c.sendMessage(id, text, { messageId, activeTurnBehavior: 'steer', images });
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        if (/already active|is busy|is running/i.test(String(error?.message ?? error))) {
+          throw conflict('session_busy', 'the session started working before the message was accepted');
+        }
+        throw error;
+      }
     }),
     stop: (id) => call(async (c) => {
       await agent(c, id);
