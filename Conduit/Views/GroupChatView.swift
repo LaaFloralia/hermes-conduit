@@ -362,12 +362,7 @@ struct GroupChatView: View {
         ToolbarItem(placement: .principal) {
             roomTitle.frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            LAAConversationControls {
-                roomCallButton
-                if let menu { menu }
-            }
-        }
+        LAAConversationControlItems(call: roomCallButton, menu: menu)
 #else
         ToolbarItem(placement: .principal) { roomTitle }
 #endif

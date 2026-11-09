@@ -57,26 +57,43 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 
     // The system's own slots: it centers the name on the screen and gives
-    // the call button and menu one glass with Back's margin. One item, not
-    // two: two get a capsule too wide to leave the name centered.
+    // the call button and menu one glass with Back's margin.
     @ToolbarContentBuilder var body: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             header
                 .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                 .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            LAAConversationControls {
-                callButton
-                if let menu { menu }
-            }
-        }
+        LAAConversationControlItems(call: callButton, menu: menu)
     }
 
     private func voiceSetting(for profile: String) -> Binding<String>? {
         guard let staff = LAAStaff(profile: profile), staff.supportsCalls else { return nil }
         return Binding(get: { appState.laaEmployeeVoice(profile: profile) ?? staff.defaultGPTLiveVoice },
                        set: { appState.setLAAEmployeeVoice($0, profile: profile) })
+    }
+}
+
+/// The call button and the conversation menu at the bar's trailing end.
+/// One item on iPhone, since two get a capsule too wide to leave the name
+/// centered. Two on Mac, whose bar turns an item holding a menu into that
+/// menu, so the call button there opened the menu (2026-11-09).
+struct LAAConversationControlItems<Call: View>: ToolbarContent {
+    let call: Call
+    var menu: AnyView? = nil
+
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        #if targetEnvironment(macCatalyst)
+        ToolbarItem(placement: .topBarTrailing) { call }
+        if let menu { ToolbarItem(placement: .topBarTrailing) { menu } }
+        #else
+        ToolbarItem(placement: .topBarTrailing) {
+            LAAConversationControls {
+                call
+                if let menu { menu }
+            }
+        }
+        #endif
     }
 }
 
