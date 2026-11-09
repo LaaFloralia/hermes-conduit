@@ -210,7 +210,14 @@ struct LAAWorkSessionDetail: View {
                     }
                     // Tool calls are not part of the conversation the owner
                     // reads; only the messages they wrote or received are.
-                    ForEach(conversationMessages) { message in messageCard(message) }
+                    let shown = conversationMessages
+                    let speakers = shown.map(LAAWorkSpeaker.speaker)
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
+                        LAAWorkMessageRow(message: message, sessionID: id,
+                                          agentName: LAAWorkSpeaker.agentName(session, options: options),
+                                          continues: LAASenderRun.continues(speakers, at: index),
+                                          columnWidth: columnWidth, responseSize: responseSize)
+                    }
                     if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                 } else if let failure {
                     Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
@@ -324,16 +331,11 @@ struct LAAWorkSessionDetail: View {
         messages.filter { $0.role != "tool" }
     }
 
-    private func messageCard(_ message: LAAWorkConversationMessage) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: message.role == "user" ? "あなた" : "回答")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
-                .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
-            ForEach(message.images ?? [], id: \.self) { imageID in
-                LAAWorkSessionImage(sessionID: id, imageID: imageID)
-            }
-        }.workCard()
+    /// The chat's 85% reading column, of the screen on a phone and of the
+    /// reading width on a Mac.
+    private var columnWidth: CGFloat? {
+        guard screenWidth > 0 else { return nil }
+        return min(screenWidth, laaDesktop ? LAADesktopMetrics.readingWidth : 720) * 0.85
     }
 
     /// The heading card is gone; a mismatch between what was asked for and

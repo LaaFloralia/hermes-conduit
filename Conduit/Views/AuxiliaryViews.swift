@@ -1357,6 +1357,7 @@ private struct SettingsHome: View {
     /// in the upstream build, while pairing uses the shared Bridge session.
     @ViewBuilder private var laaSections: some View {
         LAAMacSettingsCard()
+        LAAOwnerAvatarSettingsCard()
         homeSection("", tint: .conduitAccent) {
             settingsLink(.usage, icon: "gauge.medium", title: AppLocalization.string("AI usage"), detail: "", identifier: "settings.ai-usage")
         }

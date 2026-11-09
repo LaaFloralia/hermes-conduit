@@ -680,9 +680,16 @@ struct GroupEventRow: View {
 
     var body: some View {
         if event.isUserMessage {
+#if LAA_BUILD
+            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt,
+                            continuesRun: continuesRun) {
+                EmptyView()
+            }
+#else
             GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
                 EmptyView()
             }
+#endif
         } else if event.isMemberMessage {
             GroupMemberBubble(
                 member: GroupRoomTurns.member(for: event, members: members),
@@ -778,19 +785,34 @@ struct GroupUserBubble<Footer: View>: View {
     let text: String
     let members: [GroupMember]
     let timestamp: Double?
+#if LAA_BUILD
+    /// The previous row is also the owner's: no picture or name again.
+    var continuesRun = false
+#endif
     @ViewBuilder let footer: Footer
 
     var body: some View {
+#if LAA_BUILD
+        // The owner's picture, name and role, as in chats and Work.
+        LAAOwnerMessageRow(continues: continuesRun) { stack }
+            .laaChatColumn(.trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+#else
+        HStack {
+            Spacer(minLength: 48)
+            stack
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+#endif
+    }
+
+    private var stack: some View {
         let parts = GroupMessageParts(text)
         // A message that quoted a whole room message shows a compact
         // "Replying to" card instead of the full quote.
         let reply = GroupRoomReplyQuote.parse(parts.text)
         let ownText = reply?.message ?? parts.text
-        HStack {
-#if !LAA_BUILD
-            Spacer(minLength: 48)
-#endif
-            VStack(alignment: .trailing, spacing: 2) {
+        return VStack(alignment: .trailing, spacing: 2) {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files, onAccent: true)
                     if let reply {
@@ -845,11 +867,6 @@ struct GroupUserBubble<Footer: View>: View {
                     }
                 }
             }
-#if LAA_BUILD
-            .laaChatColumn(.trailing)
-#endif
-        }
-        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
@@ -938,12 +955,16 @@ struct GroupMemberBubble: View {
                 }
             }
 #if LAA_BUILD
-            .laaChatColumn(.leading)
-#endif
-#if !LAA_BUILD
+            Spacer(minLength: 0)
+#else
             Spacer(minLength: 32)
 #endif
         }
+#if LAA_BUILD
+        // The picture sits inside the column, as the owner's does on the
+        // other side, so both bubbles keep the same reading width.
+        .laaChatColumn(.leading)
+#endif
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

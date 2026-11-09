@@ -67,6 +67,7 @@ struct LAAMacShell: View {
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
             .environment(\.laaDesktop, true)
+            .laaOwnerAvatarSync(bridge, active: scenePhase == .active)
             .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
                 let active = scenePhase == .active
                 await usageState.synchronize(bridge: bridge, active: active)
