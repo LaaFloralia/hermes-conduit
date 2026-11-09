@@ -31,7 +31,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         add.tap()
         XCTAssertTrue(app.textViews["work.project.instructions"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.staticTexts["Bridgeが指示本文を返すまで編集できません。"].exists)
+        XCTAssertFalse(app.staticTexts["MacのLAAアプリが指示本文を返すまで編集できません。"].exists)
     }
 
     func testCreateEditArchiveAndRestoreOwnerTasks() throws {

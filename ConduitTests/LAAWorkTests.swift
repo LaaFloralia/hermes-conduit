@@ -352,7 +352,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAChatsCron.loadState(.idle, connected: true), .loading)
         XCTAssertEqual(LAAChatsCron.loadState(.loading, connected: false), .offline)
         XCTAssertEqual(LAAChatsCron.loadState(.failed("x"), connected: true), .failed(LAACopy.chatsCronUnavailable))
-        XCTAssertTrue(LAACopy.chatsCronUnavailable.contains("取得できません"))
+        XCTAssertTrue(LAACopy.chatsCronUnavailable.contains("読み込めません"))
         XCTAssertNotEqual(LAACopy.chatsCronUnavailable, LAACopy.chatsCronNone)
     }
 
