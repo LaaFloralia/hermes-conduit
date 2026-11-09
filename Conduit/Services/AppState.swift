@@ -3351,6 +3351,10 @@ final class AppState: ObservableObject {
     /// The persona and memory for the next GPT-Live call, read when it
     /// starts and dropped when it closes.
     private var gptLivePersonality: String?
+    #if DEBUG
+    /// Test seam: the persona the host's /personality returned.
+    func setGPTLivePersonalityForTesting(_ text: String?) { gptLivePersonality = text }
+    #endif
     private var gptLiveMemoryContext: GeminiLiveMemoryContext?
     /// Whether the next GPT-Live call does its own web lookups ("Look up:")
     /// on the host's search backend, read when it starts.
@@ -3576,7 +3580,12 @@ final class AppState: ObservableObject {
         #else
         let phoneHint = phoneVoiceSettingHint(for: .gptLive)
         #endif
-        return GPTLiveConversationController.briefing(
+        #if LAA_BUILD
+        let identity = laaGPTLiveStaff?.callIdentity ?? ""
+        #else
+        let identity = ""
+        #endif
+        return identity + GPTLiveConversationController.briefing(
             memory: gptLiveMemoryContext,
             personality: gptLivePersonality,
             answerLength: liveVoiceStyle.answerLength,
@@ -5331,7 +5340,30 @@ final class AppState: ObservableObject {
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
         isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive
-            || isNativeHermesCallActive || isPlacedPhoneCallActive
+            || isNativeHermesCallActive || isPlacedPhoneCallActive || liveCallKeepsTransport
+    }
+
+    #if DEBUG
+    /// Test seam for `liveCallKeepsTransport`: a live call's controller
+    /// can't run in a unit test.
+    var liveVoiceCallActiveForTesting: Bool?
+    #endif
+
+    /// A live call (GPT-Live and the other live modes) running on this
+    /// phone off screen: the user is talking to Hermes through it right now,
+    /// so a dropped chat socket is reconnected as for CarPlay. Without it, an
+    /// LAA employee's GPT-Live call whose CallKit call wasn't up (or had
+    /// ended) on a locked phone refused every request after a drop with
+    /// "not connected" and never reconnected (owner, 2026-11-09).
+    var liveCallKeepsTransport: Bool {
+        #if LAA_BUILD
+        #if DEBUG
+        if let active = liveVoiceCallActiveForTesting { return active && !voiceCallRunsElsewhere }
+        #endif
+        return isLiveVoiceCallActive && !voiceCallRunsElsewhere
+        #else
+        return false
+        #endif
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -7526,7 +7558,11 @@ final class AppState: ObservableObject {
         #else
         let profile = activeProfile
         #endif
-        return loadVoiceProfilePreferences(profile: profile).liveVoiceStyle
+        var style = loadVoiceProfilePreferences(profile: profile).liveVoiceStyle
+        #if LAA_BUILD
+        if style.greeting == nil, let staff = laaGPTLiveStaff { style.greeting = staff.callGreeting }
+        #endif
+        return style
     }
 
     /// Applies from the next call. `profile` defaults to the active one.
@@ -36209,7 +36245,7 @@ final class AppState: ObservableObject {
         // from Hermes answered in CallKit, and a call the user placed from
         // Conduit (LAA fork) that the system's call screen keeps running.
         guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
-                || isPlacedPhoneCallActive,
+                || isPlacedPhoneCallActive || liveCallKeepsTransport,
               !isSceneActive,
               connection != nil,
               !isConnected,

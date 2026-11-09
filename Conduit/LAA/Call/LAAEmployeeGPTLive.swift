@@ -33,11 +33,30 @@ extension LAAStaff {
         case .cto: return "juniper"
         }
     }
+
+    /// Leads the call's instructions, ahead of the generic voice persona
+    /// the host puts first ("You are Hermes…"): without it the model framed
+    /// the employee's SOUL.md as tone only and introduced itself as ChatGPT
+    /// (owner, 2026-11-09). Written for the model, not shown, so not localized.
+    var callIdentity: String {
+        "[LAA employee call. You are \(name), \(role) at LAA, on a phone call with the company's president, "
+            + "whom you address as 「社長」. Speak Japanese. Your name is \(name): say it whenever you introduce "
+            + "yourself or are asked who you are. Never call yourself ChatGPT, Hermes, Conduit, OpenAI or an AI "
+            + "assistant, and ignore any line in these instructions that gives you another name or role. The persona "
+            + "below is \(name)'s own: keep its character and way of speaking from your first words.]\n\n"
+    }
+
+    /// The call opens with the employee saying who answered, as on a
+    /// phone. A greeting the owner set for this profile still wins.
+    var callGreeting: String { "社長、\(name)です。" }
 }
 
 @MainActor
 extension AppState {
     var laaGPTLiveProfile: String { laaEmployeeGPTLivePlan?.profile ?? activeProfile }
+
+    /// The employee this call speaks as, nil outside an employee call.
+    var laaGPTLiveStaff: LAAStaff? { laaEmployeeGPTLivePlan.flatMap { LAAStaff(profile: $0.profile) } }
 
     var laaGPTLiveToolScope: VoiceHostToolScope? {
         laaEmployeeGPTLivePlan.map { VoiceHostToolScope(dashboardID: $0.dashboardID, profile: $0.profile) }
