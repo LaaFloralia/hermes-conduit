@@ -14,6 +14,7 @@
 - On Mac the main window's scene is already active at launch, so `onChange(of: scenePhase)` never reports that first activation; handle the initial phase as well as changes. Acceptance includes opening an employee chat right after a cold launch, not only after a resume (2026-11-09).
 - Take "before" screenshots of an old SHA from a separate worktree. `git checkout <old SHA> -- <files>` in the working copy overwrote an uncommitted fix (2026-11-09).
 - Accept a Mac control by clicking it and checking the result, not by its presence. On Mac a toolbar item that holds a button and a Menu side by side collapses into one Menu, so the call button opened the conversation menu in 2611090507; give such controls separate toolbar items on Mac.
+- In UI tests, find the app's controls by accessibility identifier, not by label: `app.buttons["Dictate"]` also matched the keyboard's dictation key.
 - This repo is public. Keep private URLs and identifiers out of it and embed them at release time from `~/.config/laa/mac-release.env.tpl` into Info.
 - GitHub CI currently does not run on pushes to master (BUS-323). Until it does, and whenever GitHub Actions is unavailable, gate on the local master-based smoke with no new failures and a local personal Release build: generate `project-personal.yml` and build for generic iOS with `CODE_SIGNING_ALLOWED=NO`.
 - The parent session runs TestFlight uploads because it holds the required secrets.
