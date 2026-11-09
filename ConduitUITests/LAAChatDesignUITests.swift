@@ -189,7 +189,7 @@ final class LAAChatDesignUITests: XCTestCase {
         // Send ends the row under the field, as in a chat; no mic.
         XCTAssertGreaterThanOrEqual(send.frame.minY, field.frame.maxY - 1)
         XCTAssertGreaterThan(send.frame.minX, field.frame.midX)
-        XCTAssertFalse(app.buttons["Dictate"].exists)
+        XCTAssertFalse(app.buttons["room.composer.dictate"].exists)
         send.tap()
         let message = app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "Team update")).firstMatch
         XCTAssertTrue(message.waitForExistence(timeout: 10))
@@ -267,7 +267,7 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(send.frame.minY, field.frame.maxY - 1)
             XCTAssertGreaterThan(send.frame.minX, field.frame.midX)
             XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY + 1)
-            XCTAssertFalse(app.buttons["Dictate"].exists)
+            XCTAssertFalse(app.buttons["room.composer.dictate"].exists)
             app.terminate()
         }
     }

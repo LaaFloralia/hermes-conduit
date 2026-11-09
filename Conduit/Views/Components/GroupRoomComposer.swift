@@ -599,6 +599,7 @@ struct GroupRoomComposer: View {
             }
         }
         .accessibilityLabel(dictateTitle(isCapturing: isCapturing))
+        .accessibilityIdentifier("room.composer.dictate")
     }
 
     private func dictateTitle(isCapturing: Bool) -> Text {
