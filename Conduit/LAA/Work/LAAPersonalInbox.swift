@@ -85,7 +85,7 @@ struct LAAPersonalInboxView: View {
                 }
             }
             .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
-            .frame(maxWidth: 720, alignment: .leading)
+            .laaPageWidth()
         }
         .navigationTitle(Text(verbatim: "受信箱"))
         .navigationBarTitleDisplayMode(.inline)

@@ -14,6 +14,7 @@ struct LAAMarkdownTableEditor: View {
     let segmentID: UUID
     @FocusState private var focused: Cell?
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.laaDesktop) private var laaDesktop
     @State private var confirmingRemoval = false
 
     private struct Cell: Hashable {
@@ -27,6 +28,11 @@ struct LAAMarkdownTableEditor: View {
 
     private var cellWidth: CGFloat {
         let columns = max(1, table.columnCount)
+        // The Mac detail column keeps a compact size class, so a size-class
+        // cell would stay at phone width there; read the desktop flag instead.
+        if laaDesktop {
+            return max(96, min(220, LAADesktopMetrics.readingWidth / CGFloat(columns)))
+        }
         let width = sizeClass == .compact ? 132.0 : 180.0
         return max(96, min(width, 640 / CGFloat(columns)))
     }

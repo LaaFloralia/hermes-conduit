@@ -81,8 +81,7 @@ struct LAABrainView: View {
                     }
                     .padding(.horizontal, LAASpacing.horizontal)
                     .padding(.vertical, LAASpacing.x4)
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .laaPageWidth()
                 }
                 .refreshable { await load() }
             }
@@ -118,8 +117,7 @@ struct LAABrainView: View {
                                 folderContents(folder)
                             }
                             .padding(LAASpacing.horizontal)
-                            .frame(maxWidth: 720, alignment: .leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .laaPageWidth()
                         }
                     }
                     .navigationTitle(Text(verbatim: folder.split(separator: "/").last.map(String.init) ?? folder))
@@ -150,6 +148,7 @@ struct LAABrainView: View {
                 showCreate = false
                 open(.note(LAABrainReference(path: created.path, includeInbox: true)))
             }.environmentObject(bridge)
+                .laaSheetSize(.form)
         }
         .sheet(item: $localCreate) { target in
             if let root = try? local.snapshot() {
@@ -161,11 +160,13 @@ struct LAABrainView: View {
                     }
                     Task { await load() }
                 }
+                .laaSheetSize(.form)
             }
         }
         .sheet(isPresented: $showRecovery) {
             if let root = try? local.snapshot() {
                 LAABrainRecoveryCatalogueView(root: root) { Task { await load() } }
+                    .laaSheetSize(.page)
             } else {
                 Text("Folder access is unavailable.")
             }
@@ -460,10 +461,14 @@ struct LAABrainView: View {
         }.foregroundStyle(LAAColor.text)
     }
 
+    /// The folder this app reads sits on the Mac when the Mac runs it, so the
+    /// phone's device name would be wrong there.
+    private var localFolderLabel: String { LAADeviceCopy.shown("このiPhoneのフォルダ") }
+
     private var localSource: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             HStack {
-                Label("このiPhoneのフォルダ", systemImage: "folder")
+                Label(localFolderLabel, systemImage: "folder")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .accessibilityIdentifier("laa.brain.localSource")
                 Spacer()
@@ -701,6 +706,12 @@ struct LAABrainView: View {
         }.laaTextStyle(.body).foregroundStyle(LAAColor.text)
     }
 
+    private var recentFolderColumns: [GridItem] {
+        laaDesktop
+            ? [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x6)]
+            : [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
+    }
+
     private var recent: some View {
         let sorted = files.sorted { $0.modifiedAt > $1.modifiedAt }
         let pinned = sorted.filter { pins.contains($0.path) }
@@ -725,7 +736,7 @@ struct LAABrainView: View {
                     Spacer()
                     Button(LAACopy.Brain.browse) { if local.isReady { localMode = 1 } else { mode = 1 } }.laaTextStyle(.secondary)
                 }.padding(.top, LAASpacing.section)
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())], spacing: LAASpacing.x2) {
+                LazyVGrid(columns: recentFolderColumns, spacing: LAASpacing.x2) {
                     ForEach(Array(roots.prefix(2)), id: \.self) { name in folderLink(name, parent: "") }
                 }
             }

@@ -16,7 +16,10 @@ struct LAAStudioHomeView: View {
     @State private var desktopSelection: LAAStudioDesktopSelection?
     init(initialSection: Int = 0) { _section = State(initialValue: initialSection) }
     private var columns: [GridItem] {
-        dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
+        if laaDesktop {
+            return [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x6)]
+        }
+        return dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
             [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
     }
     var body: some View {

@@ -45,7 +45,7 @@ struct LAAAssetsView: View {
             ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
         }
         .tint(LAAColor.link)
-        .sheet(isPresented: $showUpload) { LAADriveUpload(folderId: uploadFolderID) { driveRevision &+= 1 }.environmentObject(bridge) }
+        .sheet(isPresented: $showUpload) { LAADriveUpload(folderId: uploadFolderID) { driveRevision &+= 1 }.environmentObject(bridge).laaSheetSize(.form) }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .navigationDestination(item: $selected) { selected in
             LAADriveDetailView(item: selected.entry.item, webViewURL: selected.entry.safeWebViewURL, images: selected.images)
@@ -95,8 +95,7 @@ struct LAAAssetsView: View {
                 }
                 .padding(.horizontal, LAASpacing.horizontal)
                 .padding(.vertical, LAASpacing.x4)
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .laaPageWidth()
             }
         }
     }
@@ -287,7 +286,7 @@ struct LAAAssetsView: View {
                  bridge.status == .revoked || bridge.status == .unauthorized ? LAABridgeError.revoked.japaneseText : LAACopy.bridgeNotPairedBody)
             if bridge.status != .keychainError {
                 Button { showPairing = true } label: { Text(verbatim: LAACopy.Brain.connect) }
-                    .buttonStyle(.borderedProminent).accessibilityIdentifier("laa.assets.pair")
+                    .laaGlassButton(prominent: true).accessibilityIdentifier("laa.assets.pair")
             }
         }.laaTextStyle(.body).foregroundStyle(LAAColor.text)
     }

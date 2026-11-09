@@ -39,7 +39,7 @@ struct LAAWorkTaskDetailView: View {
                     } else {
                         ProgressView().accessibilityLabel(Text(verbatim: "読み込み中"))
                     }
-                }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).frame(maxWidth: 720, alignment: .leading)
+                }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).laaPageWidth()
             }
         }
         .navigationTitle(Text(verbatim: LAACopy.WorkTab.task))

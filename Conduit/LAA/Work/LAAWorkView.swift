@@ -48,8 +48,7 @@ struct LAAWorkView: View {
                 .padding(.horizontal, LAASpacing.horizontal)
                 .padding(.top, LAASpacing.x2)
                 .padding(.bottom, LAASpacing.x8)
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .laaPageWidth()
                 .laaTextStyle(.body).foregroundStyle(LAAColor.text)
             }
             .refreshable {
@@ -73,6 +72,7 @@ struct LAAWorkView: View {
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .sheet(isPresented: $showNewProject, onDismiss: { refreshID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+                .laaSheetSize(.form)
         }
         .onChange(of: embeddedSection) { _, value in if let value { section = value } }
         .task(id: "\(bridge.revision)-\(section)-\(refreshID)") { await load() }
@@ -154,7 +154,7 @@ struct LAAWorkView: View {
                     .foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"
-                     : "この端末はMacのLAA Bridgeとペアリングされていません。")
+                     : "この端末はMacのLAAアプリと接続されていません。")
                 Button(LAACopy.WorkTab.connect) { showPairing = true }
                     .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                     .foregroundStyle(LAAColor.filledButtonText)

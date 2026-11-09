@@ -46,9 +46,11 @@ struct LAATodayView: View {
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .sheet(isPresented: $showNewEvent) {
             LAACalendarEditor(event: nil, calendars: calendar.calendars, date: calendar.selectedDate) { Task { await refresh() } }.environmentObject(bridge)
+                .laaSheetSize(.form)
         }
         .sheet(item: $selectedEvent) { event in
             LAACalendarDetail(event: event, calendars: calendar.calendars) { Task { await refresh() } }.environmentObject(bridge)
+                .laaSheetSize(.page)
         }
         .task(id: "\(initialCalendarID ?? ""): dedupe:\(initialEventID ?? ""): rev:\(bridge.revision)") { await openLinkedEvent() }
         .refreshable { await refresh() }
@@ -101,7 +103,7 @@ struct LAATodayView: View {
                     }
                 }
                 Button(action: openBrain) { Text(verbatim: "Docを開く") }.laaGlassButton()
-            }.frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.laaPageWidth()
                 .padding(LAASpacing.horizontal)
         }
     }

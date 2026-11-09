@@ -134,7 +134,7 @@ private struct LAAStudioPrincipleView: View {
                         }
                     }
                 }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "原則"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
     }
@@ -163,7 +163,7 @@ private struct LAAStudioDocumentView: View {
                 }
                 if LAAStudioMedia.bridgePath(document.media, allowed: ["pdf"]) != nil { LAAStudioFilePreview(path: document.media, driveURL: document.driveUrl) }
                 else { Text(verbatim: "アプリ用の資料を読み込めません。Driveで開いてください。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "正式資料"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
     }

@@ -72,7 +72,10 @@ struct LAADriveBrowserView: View {
     private var effectiveLayout: Layout { desktop ? .list : layout }
 
     private var columns: [GridItem] {
-        dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
+        if desktop {
+            return [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x6)]
+        }
+        return dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
             [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
     }
 

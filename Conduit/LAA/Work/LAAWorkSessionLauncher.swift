@@ -87,7 +87,7 @@ struct LAAWorkSessionLauncher: View {
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
-                .frame(maxWidth: 720, alignment: .leading)
+                .laaPageWidth()
             }
             .background(LAAColor.background)
             .laaTextStyle(.body).foregroundStyle(LAAColor.text)
@@ -100,6 +100,7 @@ struct LAAWorkSessionLauncher: View {
             }
         }
         .tint(LAAColor.link)
+        .laaSheetSize(.form)
         .task(id: bridge.revision) {
             if let key { revision &+= 1; prompt = drafts.draft(for: key).text }
             if options == nil { options = try? await bridge.read("/v1/session-options") }

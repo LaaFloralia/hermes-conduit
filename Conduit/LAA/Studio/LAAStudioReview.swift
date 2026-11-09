@@ -130,7 +130,7 @@ struct LAAStudioReviewView: View {
                     }.padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
                         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
                 }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "講評"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
             .onAppear(perform: restore)

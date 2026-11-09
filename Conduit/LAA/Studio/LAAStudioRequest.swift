@@ -155,7 +155,7 @@ struct LAAStudioRequestView: View {
                     }
                         .accessibilityIdentifier("laa.studio.again")
                 }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }
         .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.requestDetail))
         .tint(LAAColor.link)

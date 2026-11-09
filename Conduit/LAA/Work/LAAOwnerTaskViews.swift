@@ -289,7 +289,7 @@ struct LAAOwnerTaskConflictContent: View {
                 Text(verbatim: "自分の変更を保存する場合、変更していない項目には現在の内容を使います。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Button(LAAOwnerTaskCopy.saveMine) { saveMine(conflict.rebasedDraft()) }
-                    .buttonStyle(.borderedProminent).disabled(!canSaveMine)
+                    .laaGlassButton(prominent: true).disabled(!canSaveMine)
                     .accessibilityIdentifier("work.ownerTasks.conflict.saveMine")
                 Button(LAAOwnerTaskCopy.useCurrent) { confirmUseCurrent = true }
                     .accessibilityIdentifier("work.ownerTasks.conflict.useCurrent")
@@ -298,7 +298,7 @@ struct LAAOwnerTaskConflictContent: View {
             }
             .padding(.horizontal, LAASpacing.horizontal)
             .padding(.vertical, LAASpacing.x4)
-            .frame(maxWidth: 720, alignment: .leading)
+            .laaPageWidth()
         }
         .navigationTitle(LAAOwnerTaskCopy.compare)
         .confirmationDialog(LAAOwnerTaskCopy.confirmUseCurrent, isPresented: $confirmUseCurrent, titleVisibility: .visible) {

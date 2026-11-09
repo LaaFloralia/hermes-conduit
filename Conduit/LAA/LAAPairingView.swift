@@ -79,8 +79,7 @@ struct LAAPairingView: View {
                     .disabled(!canPair)
                     .accessibilityIdentifier("laa.bridge.pair")
                 }
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                .laaPageWidth()
                 .padding(.horizontal, LAASpacing.horizontal)
                 .padding(.top, LAASpacing.x6)
                 .padding(.bottom, LAASpacing.x8)
@@ -94,6 +93,7 @@ struct LAAPairingView: View {
             .tint(LAAColor.link)
             .onAppear { address = bridge.address }
         }
+        .laaSheetSize(.form)
     }
 
     /// UIKit reports "iPad" on Mac Catalyst; name the Mac the enrollment came

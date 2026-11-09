@@ -112,7 +112,7 @@ struct LAAStudioCreateView: View {
                     if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                     if sending { ProgressView() }
                 }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }
         .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Assets.studio))
         .tint(LAAColor.link)

@@ -149,7 +149,7 @@ struct LAAStudioWorkBody: View {
                 }
                 if items.isEmpty { Text(verbatim: "表示できるページや素材はありません。").foregroundStyle(LAAColor.secondaryText) }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in itemLink(item, index: index, items: items) }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.works))
             .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
             .task(id: bridge.revision) { await load() }.refreshable { await load() }
@@ -268,7 +268,7 @@ private struct LAAStudioItemView: View {
                         }.frame(minHeight: LAASpacing.minimumTouchTarget)
                     }
                 }
-            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(LAASpacing.horizontal).laaPageWidth()
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "閲覧"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
             .onAppear {

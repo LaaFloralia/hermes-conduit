@@ -62,7 +62,7 @@ struct LAAPersonalTaskList: View {
                 Text(verbatim: "TASKS").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                 Spacer()
                 Button(LAACopy.WorkTab.newTask) { showCreate = true }
-                    .buttonStyle(.borderedProminent).disabled(viewerId == nil)
+                    .laaGlassButton(prominent: true).disabled(viewerId == nil)
                     .accessibilityIdentifier("work.tasks.create")
             }
             Text(verbatim: "変更はLAAアプリから保存します。")
@@ -155,10 +155,10 @@ struct LAAPersonalTaskList: View {
         }
         .accessibilityIdentifier("work.tasks")
         .sheet(isPresented: $showCreate, onDismiss: { revision += 1 }) {
-            if let viewerId { LAAPersonalTaskEditor(task: nil, viewerId: viewerId, drafts: drafts).environmentObject(bridge) }
+            if let viewerId { LAAPersonalTaskEditor(task: nil, viewerId: viewerId, drafts: drafts).environmentObject(bridge).laaSheetSize(.form) }
         }
         .sheet(item: $editing, onDismiss: { revision += 1 }) { item in
-            if let viewerId { LAAPersonalTaskEditor(task: item, viewerId: viewerId, drafts: drafts).environmentObject(bridge) }
+            if let viewerId { LAAPersonalTaskEditor(task: item, viewerId: viewerId, drafts: drafts).environmentObject(bridge).laaSheetSize(.form) }
         }
         .task(id: filterID) { await load(reset: true) }
         .task(id: bridge.revision) {
