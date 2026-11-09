@@ -171,7 +171,11 @@ struct ConnectionSetupView: View {
                 }
             }
             .sheet(isPresented: $showRepairSignIn) {
+                // A web sign-in inside the sheet needs a page's room.
                 repairSignInSheet
+                    #if LAA_BUILD
+                    .laaSheetSize(.page)
+                    #endif
             }
             .alert("Already a Saved Dashboard", isPresented: Binding(
                 get: { repairAddressConflict != nil },

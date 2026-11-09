@@ -55,7 +55,7 @@ struct LAADriveOfflineList: View {
             Button("Remove", role: .destructive) { remove(record) }
             Button("Cancel", role: .cancel) { }
         } message: { record in
-            Text("The saved copy of \(record.name) will be removed from this iPhone. The file in Drive will not be changed.")
+            Text(verbatim: LAADeviceCopy.shown(AppLocalization.string("The saved copy of \(record.name) will be removed from this iPhone. The file in Drive will not be changed.")))
         }
         .onChange(of: pairingID) { _, _ in
             confirmingRemoval = false

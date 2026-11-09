@@ -286,6 +286,7 @@ private struct LAAStaffDetailView: View {
                 }
             }
         }
+        .laaSheetSize(.form)
         .presentationDetents([.medium, .large])
     }
 }

@@ -190,7 +190,9 @@ struct LAADriveDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .task(id: bridge.revision) { await load() }
         .onDisappear { saveTask?.cancel() }
-        .confirmationDialog("Save a copy on this iPhone?", isPresented: $saveConfirmation, titleVisibility: .visible) {
+        // The copy is saved on the device the app runs on: this Mac on the Mac.
+        .confirmationDialog(Text(verbatim: LAADeviceCopy.shown(AppLocalization.string("Save a copy on this iPhone?"))),
+                            isPresented: $saveConfirmation, titleVisibility: .visible) {
             Button("Save offline") { if let metadata { save(metadata) } }
             Button("Cancel", role: .cancel) { }
         } message: {

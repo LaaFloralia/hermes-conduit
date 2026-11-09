@@ -213,36 +213,54 @@ struct MainView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(.clear)
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.picker)
+                #endif
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showContextSheet) {
             ContextSheet()
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showWorkspaceSheet) {
             WorkspaceSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showGatewaySheet) {
             GatewayDiagnosticsSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showAgentsSheet) {
             DelegateAgentsSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
                 .environmentObject(appState)
         }
         .sheet(item: $appState.chatCallTranscript) { call in
             VoiceChatCallTranscriptSheet(call: call)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.page)
+                #endif
         }
         // "Keep phone awake during voice conversations": hold off auto-lock
         // only while a voice conversation is on screen.
@@ -412,6 +430,11 @@ struct MainView: View {
                 disconnect: { appState.disconnect() }
             )
                 .presentationDetents([.large])
+                #if LAA_BUILD
+                // Settings keeps its own wide sheet on the Mac; the phone's
+                // detents stay.
+                .laaSheetSize(.settings)
+                #endif
                 .environmentObject(appState)
                 #if LAA_BUILD
                 .environmentObject(laaBridge)

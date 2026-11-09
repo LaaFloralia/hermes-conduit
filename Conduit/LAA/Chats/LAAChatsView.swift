@@ -109,6 +109,7 @@ struct LAAChatsView: View {
                         Button(LAACopy.chatsCancel) { showingGroupCreator = false }
                     }
                 }
+                .laaSheetSize(.form)
             }
         }
         .task(id: "\(appState.activeDashboardID?.uuidString ?? "-")|\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)|\(shown)") {

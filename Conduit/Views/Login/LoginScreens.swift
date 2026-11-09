@@ -1206,10 +1206,16 @@ struct LoginFlowPresentations: ViewModifier {
                     }
                 }
                 .environmentObject(appState)
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
             }
             .sheet(item: $flow.connectionRepairContext) { context in
                 ConnectionRepairSetupSheet(context: context)
                     .environmentObject(appState)
+                    #if LAA_BUILD
+                    .laaSheetSize(.form)
+                    #endif
             }
             .sheet(item: $flow.extraHeadersRequest) { request in
                 CustomHeadersEditorSheet(
@@ -1219,6 +1225,9 @@ struct LoginFlowPresentations: ViewModifier {
                     CustomHeaderStore.shared.setHeaders(headers, forServerURL: request.serverURL)
                     flow.extraHeadersRevision += 1
                 }
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
             }
             .sheet(item: $flow.nativeOAuthRequest) { request in
                 NativeOAuthSignInSheet(
@@ -1235,17 +1244,26 @@ struct LoginFlowPresentations: ViewModifier {
                         flow.nativeOAuthFailed(error)
                     }
                 )
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
             }
             .sheet(isPresented: $flow.showsScanner, onDismiss: { flow.scannerDismissed() }) {
                 DashboardCodeScannerSheet { text in
                     flow.scanned(text)
                 }
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
             }
             .sheet(item: $flow.pendingLink) { link in
                 ConnectLinkSheet(link: link) {
                     flow.onSignedIn()
                 }
                 .environmentObject(appState)
+                #if LAA_BUILD
+                .laaSheetSize(.form)
+                #endif
             }
             .sheet(item: $flow.browserRequest) { request in
                 AuthWebView(
@@ -1268,6 +1286,10 @@ struct LoginFlowPresentations: ViewModifier {
                     }
                 )
                 .asSignInSheet()
+                // A web sign-in needs the room a page has, not a form sheet's.
+                #if LAA_BUILD
+                .laaSheetSize(.page)
+                #endif
             }
     }
 }

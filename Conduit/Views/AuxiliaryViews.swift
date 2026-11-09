@@ -16,6 +16,16 @@ private enum ConduitAppVersion {
 }
 import UIKit
 
+/// Settings copy names the device the app runs on. Upstream's keys and text
+/// stay as they are; on the Mac the same line names the Mac.
+private func deviceCopy(_ text: String) -> String {
+    #if LAA_BUILD
+    LAADeviceCopy.shown(text)
+    #else
+    text
+    #endif
+}
+
 // MARK: - Context Sheet
 
 struct ContextSheet: View {
@@ -594,6 +604,18 @@ struct SettingsView: View {
     @State private var mainModelSaves = 0
     @Environment(\.dismiss) private var dismiss
 
+    /// Settings' column: the phone's 720 pt, and on the Mac the 832 pt a
+    /// document page keeps inside a wide sheet. The Mac is judged by the
+    /// platform, as the sheet's size is: the sheet's own environment is not
+    /// the place to learn it.
+    private var columnWidth: CGFloat {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        return LAADesktopMetrics.documentWidth
+        #else
+        return ReadableWidth.settings
+        #endif
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             SettingsHome(snapshot: snapshot, path: $path, v2Layout: homeHeader != nil)
@@ -612,13 +634,13 @@ struct SettingsView: View {
                 // On a wide window every page keeps to a readable column.
                 // Inside the stack: a margin outside it doesn't reach the
                 // pages it hosts.
-                .readableContentWidth(ReadableWidth.settings)
+                .readableContentWidth(columnWidth)
                 // V2's Settings tab: each screen stops above the floating
                 // tab bar and fades under it. Nothing in the sheet.
                 .v2TabBarClearance()
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     destinationView(destination)
-                        .readableContentWidth(ReadableWidth.settings)
+                        .readableContentWidth(columnWidth)
                         .v2TabBarClearance()
                 }
         }
@@ -1163,6 +1185,15 @@ private struct SettingsHome: View {
         var id: String { url }
     }
 
+    /// The Mac's detail columns keep 32 pt side margins; a phone 16.
+    private var sidePadding: CGFloat {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        return LAASpacing.x8
+        #else
+        return 16
+        #endif
+    }
+
     var body: some View {
         ZStack {
             // V2: the tab roots' backdrop in the profile's glow, held still
@@ -1248,7 +1279,7 @@ private struct SettingsHome: View {
                         .padding(.top, v2Layout ? -12 : 2)
                     #endif
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, sidePadding)
                 .padding(.top, v2Layout ? 8 : 16)
                 .padding(.bottom, v2Layout ? 24 : 16)
             }
@@ -1262,6 +1293,9 @@ private struct SettingsHome: View {
             ProfilePickerSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                #if LAA_BUILD
+                .laaSheetSize(.picker)
+                #endif
                 .environmentObject(appState)
         }
         .sheet(item: $connectionSetupSeed, onDismiss: {
@@ -1309,6 +1343,9 @@ private struct SettingsHome: View {
                 onRepair: appState.connectionRepairActivationHandler()
             )
             .environmentObject(appState)
+            #if LAA_BUILD
+            .laaSheetSize(.form)
+            #endif
         }
         .alert("Settings applied", isPresented: $appliedConnectionNotice) {
             Button("OK", role: .cancel) {}
@@ -3136,7 +3173,7 @@ struct ProfileConfigSettingsPage: View {
                     drafts[field.key] = id
                     commitText(field, value: id)
                 } label: {
-                    Label(AppLocalization.string("Use this iPhone's time zone (\(id))"), systemImage: "location")
+                    Label(deviceCopy(AppLocalization.string("Use this iPhone's time zone (\(id))")), systemImage: "location")
                         .font(.subheadline.weight(.medium))
                 }
                 .disabled(savingKey != nil)
@@ -3325,6 +3362,9 @@ private struct GatewaySettingsDetail: View {
                 saveCustomHeaders(headers)
                 customHeaders = headers.filter { !$0.trimmedName.isEmpty || !$0.value.isEmpty }
             }
+            #if LAA_BUILD
+            .laaSheetSize(.form)
+            #endif
         }
     }
 }
@@ -3743,7 +3783,7 @@ private struct NotificationsSettingsDetail: View {
 
     var body: some View {
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("This iPhone"), symbol: "bell.badge", tint: .conduitAura) {
+            ConduitSettingsSection(title: deviceCopy(AppLocalization.string("This iPhone")), symbol: "bell.badge", tint: .conduitAura) {
                 SettingsMetricRow(
                     label: AppLocalization.string("Status"),
                     value: notifications.statusText,
@@ -4139,7 +4179,7 @@ private struct NotificationsSettingsDetail: View {
     @ViewBuilder
     private var oneTapPairing: some View {
         let profile = appState.activeProfile
-        Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
+        Text(deviceCopy(AppLocalization.string("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")))
             .font(.footnote)
             .foregroundStyle(.secondary)
         Button {
@@ -4157,7 +4197,7 @@ private struct NotificationsSettingsDetail: View {
             }
         } label: {
             Label(
-                pairing ? AppLocalization.string("Pairing…") : AppLocalization.string("Pair \(profile) with this iPhone"),
+                pairing ? AppLocalization.string("Pairing…") : deviceCopy(AppLocalization.string("Pair \(profile) with this iPhone")),
                 systemImage: "link"
             )
             .frame(maxWidth: .infinity)
@@ -4228,7 +4268,7 @@ private struct NotificationsSettingsDetail: View {
         if notifications.unsavedRotationGatewayIDs.contains(gateway.id) {
             // A rotation the host took whose new key the Keychain refused:
             // said as it is, not as a generic mismatch.
-            Label(AppLocalization.string("This host has a new encryption key that Conduit couldn't save on this iPhone, so its notifications show only generic text. Conduit asks for it again the next time it connects to this dashboard."), systemImage: "exclamationmark.triangle.fill")
+            Label(deviceCopy(AppLocalization.string("This host has a new encryption key that Conduit couldn't save on this iPhone, so its notifications show only generic text. Conduit asks for it again the next time it connects to this dashboard.")), systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)
                 .foregroundStyle(.orange)
         } else if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
@@ -4242,12 +4282,12 @@ private struct NotificationsSettingsDetail: View {
             // ML-KEM rotation: quantum-safe end to end.
             Label(
                 quantumSafe
-                    ? AppLocalization.string("End-to-end encrypted and quantum-safe, with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days.")
+                    ? deviceCopy(AppLocalization.string("End-to-end encrypted and quantum-safe, with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days."))
                     : !rotates
                         ? noRotation
                         : NotificationKeyRotation.supportsPQ
-                            ? AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days.")
-                            : AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days; update to iOS 26 to make it quantum-safe."),
+                            ? deviceCopy(AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days."))
+                            : deviceCopy(AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days; update to iOS 26 to make it quantum-safe.")),
                 systemImage: quantumSafe ? "lock.shield.fill" : "lock.fill"
             )
             .font(.footnote)
@@ -4257,11 +4297,11 @@ private struct NotificationsSettingsDetail: View {
                 .font(.footnote)
                 .foregroundStyle(.orange)
         } else if case .mismatched = assurance {
-            Label(AppLocalization.string("This host's encryption key doesn't match this iPhone's, so its notifications show only generic text. Conduit sets up a new key the next time it connects to this dashboard."), systemImage: "lock.open")
+            Label(deviceCopy(AppLocalization.string("This host's encryption key doesn't match this iPhone's, so its notifications show only generic text. Conduit sets up a new key the next time it connects to this dashboard.")), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if case .unconfirmed = assurance {
-            Label(AppLocalization.string("End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard."), systemImage: "lock.open")
+            Label(deviceCopy(AppLocalization.string("End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard.")), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if NotificationSharedSettings.keysProvisioned, notifications.encryptedGatewayIDs.isEmpty {

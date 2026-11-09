@@ -37,7 +37,7 @@ struct LAANotificationPairAllControls: View {
             Task { await model.run(source: source) }
         } label: {
             Label {
-                Text(verbatim: model.isRunning ? "設定中…" : "全社員の通知をこのiPhoneへ")
+                Text(verbatim: model.isRunning ? "設定中…" : "全社員の通知を\(LAADeviceCopy.thisDevice)へ")
             } icon: { Image(systemName: "person.2.badge.key") }
                 .foregroundStyle(LAAColors.paper)
                 .frame(maxWidth: .infinity)
@@ -89,7 +89,7 @@ struct LAANotificationPairAllControls: View {
         case .checking: return "確認中"
         case .pairing: return "設定中"
         case .done: return "済"
-        case .already: return "既にこのiPhone"
+        case .already: return "既に" + LAADeviceCopy.thisDevice
         case .failed(let reason): return "失敗：\(reason)"
         }
     }
