@@ -1024,6 +1024,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// each delegation without naming Hermes every time. English only: the
     /// phrases GPT-Live uses.
     static func claimsToSendToHermes(_ text: String) -> Bool {
+        #if LAA_BUILD
+        if claimsWorkInJapanese(text) { return true }
+        #endif
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // A turn that ends asking ("… Send it?") waits for the user.
@@ -1045,6 +1048,25 @@ final class GPTLiveConversationController: ObservableObject {
         }
         return false
     }
+
+    #if LAA_BUILD
+    /// LAA's calls are in Japanese: a short turn that only says the work is
+    /// starting ("了解です、確認します。", "はい、Macで確認しますね。少々お待ちください。")
+    /// is the same claim. Without it the model said it was checking, sent
+    /// nothing and then guessed the answer (2026-11-09). A question, a no,
+    /// a past "確認しました" or a turn with figures (an answer) isn't one.
+    static func claimsWorkInJapanese(_ text: String) -> Bool {
+        let turn = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !turn.isEmpty, turn.count <= 45,
+              turn.range(of: "\\p{Han}|\\p{Hiragana}|\\p{Katakana}", options: .regularExpression) != nil,
+              turn.range(of: "[?？0-9０-９]|か[。、]?$", options: .regularExpression) == nil,
+              turn.range(of: japaneseHedge, options: .regularExpression) == nil else { return false }
+        return turn.range(of: japaneseWorkUnderway, options: .regularExpression) != nil
+    }
+
+    private static let japaneseWorkUnderway = "(確認|調査|チェック|対応|手配|連絡|検索)(を)?(し|いた)(ます|てみます|てきます|てお伝えします)|調べ(ます|てみます|てきます)|見て(みます|きます)|探し(ます|てみます)|(送|渡)ります|(送|渡)します|伝えます|進めます|取りかかります|(少々|少し)お待ち|お待ち(ください|下さい)"
+    private static let japaneseHedge = "ましょうか|ますか|でしょうか|ません|ないです|できれば|なら|たら|れば|(確認|調査|チェック|対応|手配|連絡|検索)(を)?(し|いた)しました|(確認|調査|チェック|対応|手配|連絡|検索)(を)?しました|調べました|見ました|探しました|送りました|渡しました|伝えました"
+    #endif
 
     private static let sendClaimPattern = #"\b(send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting)\b[^.!?]{0,40}?\bto hermes\b|\b(tell|telling|ask|asking|let|letting|ping|pinging|update|updating)\s+hermes\b|\b(check|checking) with hermes\b"#
     /// A sentence that is nothing but an acknowledgement ("Okay, I'm on

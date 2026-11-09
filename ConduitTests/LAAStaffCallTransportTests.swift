@@ -118,6 +118,18 @@ final class LAAStaffCallTransportTests: XCTestCase {
         controller.stop()
     }
 
+    func testAJapaneseTurnThatOnlySaysItIsCheckingClaimsTheRequest() {
+        for said in ["了解です、確認します。", "はい、Macで確認しますね。少しお待ちください。", "はい、Macで確認してお伝えしますね。",
+                     "承知しました。調べてみます。", "少々お待ちください。"] {
+            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(said), said)
+        }
+        for said in ["確認しましょうか？", "確認しました。問題ありません。", "今日は2025年12月19日、金曜日です。",
+                     "Adaです。LAAのCTOを担当しています。", "Macで確認しますか", "それはできません。",
+                     "はい、社長。ご用件をどうぞ。"] {
+            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(said), said)
+        }
+    }
+
     func testAGreetingTheOwnerSetForTheEmployeeStillWins() throws {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
