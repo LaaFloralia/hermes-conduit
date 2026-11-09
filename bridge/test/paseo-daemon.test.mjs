@@ -40,9 +40,15 @@ function fixture(options = {}) {
   return { rows, calls, client, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
 }
 
-test('directory follows every daemon page; running sends steer with stable ID and images', async () => {
+test('directory follows every daemon page; an idle send carries steer, a stable ID and images, and a working agent is never handed one', async () => {
   const f = fixture();
   assert.equal((await f.daemon.list()).length, 2);
+  // The Bridge never hands a prompt to an agent with a turn running: the
+  // provider replaced or refused that turn and the owner's message went with it
+  // (2026-11-09). The message waits in the session's queue instead.
+  await assert.rejects(f.daemon.send('parent', { text: '追加', messageId: 'm-1' }), { code: 'session_busy' });
+  assert.equal(f.calls.filter((c) => c[0] === 'send').length, 0);
+  f.rows[0].status = 'idle';
   await f.daemon.send('parent', { text: '追加', messageId: 'm-1', images: [{ data: 'YWJj', mimeType: 'image/png' }] });
   const send = f.calls.find((c) => c[0] === 'send');
   assert.equal(send[3].activeTurnBehavior, 'steer');
@@ -119,6 +125,8 @@ test('owner notification reuses plugin event routing and durable dedupe; failure
 test('image attachments retain exact bytes and session isolation; malformed and oversized inputs fail before send', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'paseo-images-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const f = fixture(), store = createSessionStore({ file: join(dir, 'sessions.json') });
+  // The fixture's parent is mid-turn; a send only goes out to an idle agent.
+  f.rows[0].status = 'idle';
   const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null,
     history: async () => [{ id: 'm1', role: 'user', text: '画像' }], notify: async () => {} });
   await service.syncDaemon();

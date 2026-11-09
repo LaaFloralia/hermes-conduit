@@ -83,7 +83,7 @@ export function createSessionStore({
           });
         }
         return { record, created: true };
-      });
+      }, { tag: record.id });
     },
     // Apply an observation or an operation: `mutate(record)` may edit the
     // record in place and returns the events to append. Version increments once
@@ -113,7 +113,7 @@ export function createSessionStore({
         }
         record.updatedAt = new Date(now()).toISOString();
         return { record, events: appended };
-      });
+      }, { tag: id });
     },
     // One atomic directory snapshot, rather than rewriting the complete file
     // once per agent. Directory input contains metadata only.
@@ -160,6 +160,20 @@ export function createSessionStore({
     readEvents(id, options) {
       const doc = state.read();
       return readEvents(doc, id, options);
+    },
+    // One read for the three things a long-poll needs on arrival: the record,
+    // the oldest sequence the journal still covers, and the page itself. The
+    // 2.4 MB document is parsed once instead of once per field.
+    eventPage(id, options) {
+      const doc = state.read();
+      const record = doc.sessions?.[id];
+      if (!record) return null;
+      return { record, ...readEvents(doc, id, options) };
+    },
+    // Announce every write to this file, tagged with the session id when the
+    // store knows it (`null` for a directory sync, which can touch any).
+    subscribe(listener) {
+      return state.subscribe(listener);
     },
     // Journal-only read used by the log artifact: no write, same retention.
     allEvents(id) {
