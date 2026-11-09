@@ -21,3 +21,5 @@
 - Do not add direct Foundation `Date <=` or `Date >=` comparisons; use equivalent `<` comparisons. With Xcode 27.2 these operators left weak Foundation imports in a shipping binary even after simulator and personal Release builds passed. Before export or upload, run `scripts/laa/check-weak-date-ops.sh` on every shipped app and extension, covering every architecture. A successful build alone does not pass this gate.
 - Install launchd services such as the push relay (`scripts/laa/relay-install.sh`) only from the main checkout `/Users/laa/dev/hermes-conduit`, never from a worktree; worktrees are removed after merges.
 - Upstream `Conduit` plugin updates are decided by the daily HQ routine in `hq/tools/APP-UPDATE.md`. The LAA build shows no plugin update notices.
+- Publish `focusedSceneValue` only on Mac. On iPhone every `TabView` tab stays resident, so all tabs write the value at once and the app froze after closing Settings in Chat (TestFlight 2611091726, fixed in 2611092009).
+- Design: Georgia is for Latin text only; Work's sub-pages sit in the sidebar's second level; the tab name "Chat" is intentional, and Mac uses the same name.
