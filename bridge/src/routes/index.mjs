@@ -23,6 +23,8 @@ import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOption
 import { taskRoutes } from './tasks.mjs';
 import { personalTaskRoutes } from './personal-tasks.mjs';
 import { linearOwnerTaskRoutes } from './linear-owner-tasks.mjs';
+import { createLinearOwnerTaskSource } from '../tasks/linear-owner.mjs';
+import { createTaskRunStore, createTaskDispatchService, taskCleanup } from '../tasks/dispatch.mjs';
 import { skillRoutes } from './skills.mjs';
 import { ownerTaskRoutes } from './owner-tasks.mjs';
 import { createOwnerTaskStore } from '../tasks/owner-store.mjs';
@@ -131,10 +133,24 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
 
   sessionOptions.registerCleanup?.(() => refs.stop());
 
+  const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() });
+  const linearOptions = options.linearOwnerTasks ?? {};
+  const linearTasks = linearOptions.source ?? createLinearOwnerTaskSource();
+  const taskDispatch = linearOptions.dispatch ?? createTaskDispatchService({
+    ...linearOptions, store: linearOptions.runStore ?? createTaskRunStore({ dir: store.dir, now }), tasks: linearTasks,
+    sessions: sessionService, sessionStore, decisionStore, sessionOptions: sessionChoices, refs, daemon, now,
+    cleanup: linearOptions.cleanup ?? (() => taskCleanup({ log: options.log })), log: options.log,
+  });
+  if (sessionOptions.live) {
+    const tick = () => { taskDispatch.tick().catch(() => {}); };
+    const timer = setInterval(tick, 30_000); timer.unref(); tick();
+    sessionOptions.registerCleanup?.(() => clearInterval(timer));
+  }
+
   const routes = [
     ...createDecisionRoutes({ service: decisions }),
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
-    ...linearOwnerTaskRoutes({ ...(options.linearOwnerTasks ?? {}), refs }),
+    ...linearOwnerTaskRoutes({ ...linearOptions, source: linearTasks, dispatch: taskDispatch, refs }),
     ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
     ...skillRoutes({ ...(options.skills ?? {}), refs }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
@@ -150,7 +166,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...createSessionRoutes({
       sessions: sessionService,
       refs,
-      sessionOptions: sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() }),
+      sessionOptions: sessionChoices,
     }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),

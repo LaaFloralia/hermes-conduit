@@ -108,6 +108,12 @@ const ARCHIVE_MUTATION = `mutation BridgeOwnerTaskArchive($id: String!) {
 const RESTORE_MUTATION = `mutation BridgeOwnerTaskRestore($id: String!) {
   issueUnarchive(id: $id) { success }
 }`;
+const COMMENT_QUERY = `query BridgeOwnerTaskComment($id: String!) {
+  comment(id: $id) { id issueId body }
+}`;
+const COMMENT_MUTATION = `mutation BridgeOwnerTaskCommentCreate($input: CommentCreateInput!) {
+  commentCreate(input: $input) { success comment { id issueId body } }
+}`;
 
 const DOCUMENTS = new Set([
   VIEWER_QUERY,
@@ -118,13 +124,15 @@ const DOCUMENTS = new Set([
   UPDATE_MUTATION,
   ARCHIVE_MUTATION,
   RESTORE_MUTATION,
+  COMMENT_QUERY,
+  COMMENT_MUTATION,
 ]);
 
 // Only an unknown issue id produces this shape; every other rejection stays a
 // dependency error so an outage is never reported as "not found".
-function isMissingIssue(errors) {
+function isMissingIssue(errors, field = 'issue') {
   return errors.length > 0 && errors.every((error) => (
-    error?.path?.[0] === 'issue'
+    error?.path?.[0] === field
     && error?.extensions?.userError === true
     && String(error?.extensions?.code ?? '') === 'INPUT_ERROR'
   ));
@@ -250,7 +258,8 @@ export function createLinearOwnerTaskSource({
       throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected response body');
     }
     if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-      if (notFoundIsNull && isMissingIssue(payload.errors)) return { issue: null };
+      const field = typeof notFoundIsNull === 'string' ? notFoundIsNull : 'issue';
+      if (notFoundIsNull && isMissingIssue(payload.errors, field)) return { [field]: null };
       throw new TaskSourceError('linear_request_rejected', 'Linear rejected the request');
     }
     if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
@@ -315,7 +324,8 @@ export function createLinearOwnerTaskSource({
     if (!todo || typeof todo.id !== 'string' || todo.id === '') {
       throw new TaskSourceError('linear_owner_config_incomplete', `the Linear team has no ${TODO_STATE_NAME} state`);
     }
-    const value = { teamId: team.id, todoStateId: todo.id };
+    const completed = states.find((s) => s?.type === 'completed' && s.name === 'Done') ?? states.find((s) => s?.type === 'completed');
+    const value = { teamId: team.id, todoStateId: todo.id, completedStateId: typeof completed?.id === 'string' && completed.id ? completed.id : null };
     cachedConfig = { at: now(), value };
     return value;
   }
@@ -490,8 +500,65 @@ export function createLinearOwnerTaskSource({
     throw new TaskSourceError('linear_archive_unconfirmed', 'Linear did not confirm the archive state', { writeStarted: true });
   }
 
+  async function requireOwned(id) {
+    await config();
+    const issue = await getIssue(id);
+    if (!owned(issue)) throw new TaskSourceError('linear_owner_task_not_found', 'no such owner task', { status: 404, writeStarted: false });
+    return issue;
+  }
+
+  async function prepareCompletion() {
+    const settings = await config();
+    if (!settings.completedStateId) throw new TaskSourceError('linear_owner_config_incomplete', 'the Linear team has no completed state', { writeStarted: false });
+    return settings;
+  }
+
+  // Client UUIDs make comments idempotent even if Linear accepted a write but
+  // the Bridge lost its response or died before recording the completed step.
+  async function commentOwnerTask(issueId, { id, body }) {
+    if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/.test(id) || typeof body !== 'string' || body.length > 4000) {
+      throw new TaskSourceError('linear_comment_invalid', 'invalid task comment', { status: 400, writeStarted: false });
+    }
+    await requireOwned(issueId);
+    const same = (c) => c?.id === id && c.issueId === issueId && c.body === body;
+    async function existing() {
+      const data = await gql(COMMENT_QUERY, { id }, { notFoundIsNull: 'comment' });
+      if (!Object.hasOwn(data, 'comment') || (data.comment !== null && (typeof data.comment !== 'object' || Array.isArray(data.comment)))) {
+        throw new TaskSourceError('linear_response_invalid', 'Linear returned an invalid comment');
+      }
+      if (data.comment && !same(data.comment)) throw new TaskSourceError('linear_comment_conflict', 'the comment id has different content', { status: 409 });
+      return data.comment;
+    }
+    if (await existing()) return;
+    // Re-read immediately before the mutation, including on a resumed step.
+    await requireOwned(issueId);
+    let failure;
+    try {
+      const data = await gql(COMMENT_MUTATION, { input: { id, issueId, body } }, { write: true });
+      if (data.commentCreate?.success === true && same(data.commentCreate.comment)) return;
+    } catch (e) { failure = e; }
+    try { await requireOwned(issueId); if (await existing()) return; } catch { /* Retain the write's uncertainty. */ }
+    if (failure) throw failure;
+    throw new TaskSourceError('linear_comment_unconfirmed', 'Linear did not confirm the comment', { writeStarted: true });
+  }
+
+  async function completeOwnerTask(id) {
+    const settings = await prepareCompletion();
+    const current = await requireOwned(id);
+    if (current.state?.type === 'completed') return toTask(current);
+    let failure;
+    try {
+      const data = await gql(UPDATE_MUTATION, { id, input: { stateId: settings.completedStateId } }, { write: true });
+      if (data.issueUpdate?.success === true && owned(data.issueUpdate.issue) && data.issueUpdate.issue.state?.type === 'completed') return toTask(data.issueUpdate.issue);
+    } catch (e) { failure = e; }
+    try { const reread = await getIssue(id); if (owned(reread) && reread.state?.type === 'completed') return toTask(reread); } catch { /* Keep the attempted write uncertain. */ }
+    if (failure) throw failure;
+    throw new TaskSourceError('linear_completion_unconfirmed', 'Linear did not confirm the completed state', { writeStarted: true });
+  }
+
   return {
     config, listOwnerTasks, readOwnerTask, createOwnerTask, patchOwnerTask,
+    prepareCompletion, commentOwnerTask, completeOwnerTask,
     archiveOwnerTask: (id) => setArchived(id, true),
     restoreOwnerTask: (id) => setArchived(id, false),
   };
