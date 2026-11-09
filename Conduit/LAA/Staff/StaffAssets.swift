@@ -3,7 +3,7 @@ import Foundation
 
 /// Profile IDs are stable; display names can be changed on the host.
 enum LAAStaff: String, CaseIterable {
-    case monet, monetUncensored = "monet-uncensored", argus, cfo, cio, cos, cso, cto
+    case monet, monetUncensored = "monet-uncensored", monetDots = "monet-dots", argus, cfo, cio, cos, cso, cto
 
     init?(profile: String) {
         let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -11,10 +11,14 @@ enum LAAStaff: String, CaseIterable {
         self.init(rawValue: String(profile.dropFirst(4)))
     }
 
+    /// Dots replies asynchronously through its text bridge.
+    var supportsCalls: Bool { self != .monetUncensored && self != .monetDots }
+
     var name: String {
         switch self {
         case .monet: return "Monet"
         case .monetUncensored: return "Monet（無検閲）"
+        case .monetDots: return "Monet（Dots）"
         case .argus: return "Argus"
         case .cfo: return "Morgan"
         case .cio: return "Sherlock"
@@ -27,7 +31,7 @@ enum LAAStaff: String, CaseIterable {
     var role: String {
         switch self {
         case .monet: return "社長秘書・総合アドバイザー"
-        case .monetUncensored: return "社長秘書・総合アドバイザー"
+        case .monetUncensored, .monetDots: return "社長秘書・総合アドバイザー"
         case .argus: return "Head Trader"
         case .cfo: return "CFO"
         case .cio: return "CIO"
@@ -60,7 +64,7 @@ struct StaffAssetResolver {
             return StaffAssets(defaultMark: present(root.appendingPathComponent("callkit-icon-template-120.png")))
         }
         guard let staff = LAAStaff(profile: normalized) else { return StaffAssets() }
-        let name = staff.rawValue
+        let name = (staff == .monetDots ? LAAStaff.monet : staff).rawValue
         let directory = root.appendingPathComponent("staff/\(name)", isDirectory: true)
         return StaffAssets(
             avatar: present(directory.appendingPathComponent("\(name)-avatar-512.png")),
