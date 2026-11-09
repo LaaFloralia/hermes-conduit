@@ -4,7 +4,7 @@
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
-- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録、`owner-tasks.json`＝社長タスクと操作台帳・取込み対応表 0600）
+- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録、`owner-tasks.json`＝社長タスクと操作台帳・取込み対応表、`task-runs.json`＝Linearタスクの担当・実行・完了手順の記録。いずれも0600）
 - 依存: Node.js 20.11+ の標準モジュールのみ（npm install 不要）。`laa-personal-agent`（`hq/harness/personal_agent_bridge.mjs`）と同じ ESM/Node 系に合わせ、外部依存を持たない
 
 ## 設計上の決定
@@ -132,10 +132,11 @@ Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `GET /v1/linear-owner-tasks` | Bearer + `tasks:read` | 社長本人の未完了Linear課題だけ（team BUS・owner・Todoはアカウントから解決）。`?archived=only` はアーカイブ一覧。`{items,nextCursor}` |
-| `POST /v1/linear-owner-tasks` | Bearer + `tasks:write` + `Idempotency-Key` | `{id,title,description?,dueDate?,priority?}` → 201。`id` はクライアント生成のUUID v4。同じUUID・同じ内容の再送は既存課題を返す |
+| `POST /v1/linear-owner-tasks` | Bearer + `tasks:write` + `Idempotency-Key`（AI担当は `sessions:write` も） | `{id,title,description?,dueDate?,priority?,assignee?,profile?}` → 201。`id` はクライアント生成のUUID v4。同じUUID・同じ内容の再送は既存課題を返す。AI担当は作成時の本文で指示を固定し、作成後にMonetが取得（後からLinearで本文が変わっても会話へ渡さない） |
 | `GET /v1/linear-owner-tasks/{id}` | Bearer + `tasks:read` | 1件。他人・他team・委譲済み・ゴミ箱は404 |
 | `PATCH /v1/linear-owner-tasks/{id}` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{title?,description?,dueDate?,priority?}`。`If-Match` 欠落428、不一致412。アーカイブ済みは409 |
 | `POST /v1/linear-owner-tasks/{id}/archive`・`/restore` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{id,archived}`。担当・状態を保ってアーカイブ／復元。旧DELETE・completed指定は受け付けない |
+| `POST /v1/linear-owner-tasks/{id}/complete` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match`（AI担当は `sessions:write` も） | `{id,completed:true,sessionArchived,archive:"queued"}`。会話ツリーの実行中は409 `session_running`。判断の取下げ→会話のアーカイブ→完了コメント→Done→番号解放→記録保管。途中失敗は同じ要求の再送で続行 |
 | `GET /v1/skills` | Bearer + `sessions:read` | `{items:[{id,name,description,source,category,summary,detail,metadataKnown}]}`。分類・日本語説明は名前別メタデータ、未登録は「その他」と元の説明。SKILL.md本文は返さない。読取失敗は503 |
 | `GET /v1/routines` | Bearer + `sessions:read` | Console `jobs` の名前・予定・配信先・状態・直近実行・結果・`triggerKind`。定期実行以外は別枠。未観測はnull、読取失敗は503 |
 | `GET /v1/refs?kind=` | Bearer + `tasks:read`（task）／`sessions:read`（他） | 保持中の短い番号 `{items:[{ref,kind,key,title,external}],observedAt,fetchedAt}`。種類ごとに `n` 順 |
@@ -278,11 +279,27 @@ ROADMAP 19。**読取専用**で、担当の設定も worker の起動もしな�
 
 ### 社長のLinearタスク（`/v1/linear-owner-tasks`）
 
-Workタブは社長本人のLinear課題だけを扱う。team（key BUS、name LAA）、owner id、Todoの状態はアカウントから解決し、クライアントからteam・担当・状態を受け取らない。通常一覧は未完了かつ本人担当・委譲なし、`?archived=only` は本人担当のアーカイブ一覧。`includeArchived` で取得し、どちらも `trashed:true` を除く。詳細も本人担当・委譲なし・ゴミ箱以外に限る。
+Workタブは社長本人のLinear課題だけを扱う。team（key BUS、name LAA）、owner id、Todoとcompleted型の状態はアカウントから解決する。Linearの担当は社長、委譲はなし。通常一覧は未完了、`?archived=only` はアーカイブ一覧で、どちらもゴミ箱を除く。クライアントからteam・Linearの担当・状態を指定できない。
 
 作成はクライアント生成のUUID v4を `id` に使う。同じUUID・同じ内容の再送は既存課題を返す。PATCHとarchive/restoreは、最後に読んだ `updatedAt` を `If-Match` に要求する。欠落は428、不一致は412。PATCHは題名・説明・期限・優先度だけを扱い、アーカイブ済みは409を返す。
 
 画面の削除は確認後に `POST /{id}/archive` で `issueArchive`、戻す操作は `POST /{id}/restore` で `issueUnarchive` を呼ぶ。担当・状態は変更しない。`success:true` を成功根拠とし、不明時は本人担当・ゴミ箱以外の課題を再読取して目的のアーカイブ状態と一致した場合だけ成功にする。`null`・ゴミ箱・壊れた応答を成功根拠にしない。旧DELETEとcompleted指定は受け付けない。
+
+作成時の `assignee` は省略すると `{"kind":"owner"}`。AI社員は `{"kind":"staff","staff":"monet"}` とし、`staff` は `monet / argus / cfo / cio / cos / cso / cto` から選ぶ。AI担当だけ `profile` が必須で、`GET /v1/session-options` にあるidを受け付ける。社長担当にprofileは指定できない。担当と作成端末は `task-runs.json` に記録する。このAPIで社長が作成したAI担当の課題だけが起動の対象で、Linearでの担当付けは起動条件にならない。
+
+取得は作成直後と30秒ごとの定期処理で行う。HOMEのbypass会話を既存の会話サービスで作り、ピン留めせず、一覧から開く。requestIdは `task-<issue UUID>` に固定し、初回の依頼文を保存して同じ内容で再試行する。通信等の失敗は1分→5分→15分→60分（以後60分）で上限なく再試行し、不明なprofileなど継続できない失敗はfailedにする。
+
+一覧と詳細の各itemには `run` を付ける。記録のない課題はnull。記録があれば `creator:"owner"`、`assignee`（AIは表示名 `name` を含む）、`profile`、`profileLabel`、`state`、`sessionId`、`sessionRef`、`decisionRef`、`report:{summary,at}|null`、`error` を返す。stateは社長担当がnull、AI担当が `queued / running / awaiting_decision / done / stopped / failed`。会話または子の未回答判断・native質問はawaiting_decision、CLI報告後はdone。S・J番号は共通refsから表示時に引く。
+
+```sh
+laa-bridge tasks report T12 --summary '結果・検証・残件' --json
+```
+
+報告先は課題UUID・T番号・BUS-IDで指定し、要約は600字以内。`PASEO_AGENT_ID` がある時は紐づく会話かその子だけが報告できる。新しい子はPaseoの親ラベルでも照合する。
+
+完了は `POST /{id}/complete` に、読取時のupdatedAtを `If-Match` に入れ、`Idempotency-Key` を固定して送る（本文は空か `{}`）。会話ツリーが実行中・native質問待ちなら409で変更しない。実行していなければ、未回答判断を「タスク完了」で取り下げ、既存会話サービスで親子と空のワークスペースをアーカイブし、ピンとS番号を解放する。S番号・会話名・担当・モデル・要約（なければ「報告なし」）を課題へコメントしてDoneへ移し、T番号を解放する。段階の台帳とコメントUUIDを保存し、途中失敗や応答喪失でも同じ要求で続きを処理する。
+
+最後に `laa-agent cleanup --done-only` を非同期で1回起動する。課題とコメントはHQ `logs/linear/<ID>-<hash>.json/.md` に保存・照合され、Linearから削除される。Bridgeログには終了コードと件数の要約だけを残す。cleanupの失敗や起動前のプロセス終了でもDoneを戻さず、週次の整理で回収する。社長担当・旧課題も会話なしで完了できる。実行記録は完了から30日で消す。保存先が壊れていれば503で読み書きを止める。
 
 ## 番号（refs）
 

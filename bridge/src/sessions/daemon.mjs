@@ -14,6 +14,9 @@ export async function connectDaemon() {
 export const pendingHash = (pending) => createHash('sha256').update(JSON.stringify(pending)).digest('hex');
 export const daemonSessionID = (id) => `ses_${createHash('sha256').update(`paseo|${id}`).digest('hex').slice(0, 16)}`;
 const PARENT_LABEL = 'paseo.parent-agent-id';
+// A workspace is tidied only once its last conversation has been archived for
+// this long, so a quick unarchive-and-continue does not lose it.
+const TIDY_IDLE_MS = 10 * 60 * 1000;
 const isBusy = (a) => Boolean(a.activeTurn || a.pendingPermissions?.length) || !['idle', 'closed', 'error'].includes(a.status);
 
 export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() } = {}) {
@@ -113,6 +116,8 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
     /// closes labelled children with their parent, so a tree with anything at
     /// work is refused whole. A workspace left empty goes too, or Paseo's
     /// sidebar keeps it; a worktree stays because archiving one deletes files.
+    /// A pinned workspace is unpinned first: an archived workspace keeps its
+    /// pin otherwise, and Paseo still lists it at the top.
     archive: (ids) => call(async (c) => {
       const agents = await directory(c);
       const tree = new Set(ids.filter((id) => agents.some((a) => a.id === id)));
@@ -133,9 +138,42 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now() 
       const emptied = new Set(rows.map((a) => a.workspaceId).filter((id) => id && !remaining.some((a) => a.workspaceId === id && !a.archivedAt)));
       for (const entry of await activeWorkspaces(c)) {
         if (!emptied.has(entry.id) || entry.workspaceKind === 'worktree') continue;
+        // The pin goes first, and a failure there leaves the workspace visible
+        // rather than archived while still pinned.
+        if (entry.pinnedAt != null) await c.setWorkspacePinned(entry.id, false);
         const result = await c.archiveWorkspace(entry.id);
         if (result?.error) throw new Error(result.error);
       }
+    }),
+    /// Archive workspaces no conversation is left in. Paseo archives the
+    /// agents but keeps their workspaces, so the two counts drift apart.
+    /// Only a workspace whose every agent is archived, ten minutes after the
+    /// newest of them was created or archived, is touched; one with no agent
+    /// at all is left alone because the owner may have just made it.
+    tidyWorkspaces: ({ now: at = now(), dryRun = false } = {}) => call(async (c) => {
+      const workspaces = await activeWorkspaces(c);
+      const agents = await directory(c);
+      const archived = [], failed = [];
+      for (const entry of workspaces) {
+        const id = entry?.id ?? entry?.workspace?.id;
+        if (typeof id !== 'string' || entry.workspaceKind === 'worktree') continue;
+        const own = agents.filter((a) => a.workspaceId === id);
+        if (!own.length || own.some((a) => !a.archivedAt)) continue;
+        const newest = Math.max(...own.map((a) => Math.max(Date.parse(a.createdAt ?? ''), Date.parse(a.archivedAt ?? ''))));
+        if (!Number.isFinite(newest) || at - newest < TIDY_IDLE_MS) continue;
+        if (dryRun) { archived.push(id); continue; }
+        try {
+          if (entry.pinnedAt != null) await c.setWorkspacePinned(id, false);
+          const result = await c.archiveWorkspace(id);
+          if (result?.error) throw new Error(result.error);
+          archived.push(id);
+        } catch {
+          // One workspace that will not archive must not stop the rest; the
+          // caller gets the ids so a failure stays visible.
+          failed.push(id);
+        }
+      }
+      return { archived, skipped: workspaces.length - archived.length, ...(dryRun ? { dryRun } : {}), ...(failed.length ? { failed } : {}) };
     }),
     /// Bring one agent back, with its workspace if that was archived. Paseo
     /// has no bare unarchive: refresh unarchives and loads it without a turn.
