@@ -48,9 +48,9 @@ enum LAALinearTaskFilter: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .related: "自分に関係"
-        case .created: "自分が作成"
-        case .assigned: "自分が担当"
+        case .related: LAATaskRunCopy.filterRelated
+        case .created: LAATaskRunCopy.filterCreated
+        case .assigned: LAATaskRunCopy.filterAssigned
         }
     }
     /// The created filter needs a run record; an older Bridge (no `run`) keeps
@@ -82,6 +82,9 @@ struct LAATaskRunStatus: Equatable {
 }
 
 enum LAATaskRunCopy {
+    static let filterRelated = "自分に関係"
+    static let filterCreated = "自分が作成"
+    static let filterAssigned = "自分が担当"
     static let runningReason = "実施中のため、終わってから完了できます"
 
     ///「完了にしますか？」の本文。The session line is added only when the task
