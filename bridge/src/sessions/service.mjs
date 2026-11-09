@@ -61,6 +61,8 @@ const MAX_DELETED_CHECKS = 20;
 // for this long, so the same rows cannot take every sync's checks.
 const PRESENT_RECHECK_MS = 10 * 60 * 1000;
 const ROUTINE_LABEL = 'laa-cron';
+// How often the regular sync also archives workspaces left behind by Paseo.
+const TIDY_INTERVAL_MS = 5 * 60 * 1000;
 
 const sha =(value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const count = (text) => [...text].length;
@@ -327,6 +329,19 @@ export function createSessionService({
     }
   }
 
+  // Paseo keeps a workspace after its last conversation is archived, so the
+  // two counts drift apart. Tidying is a background chore: it runs once per
+  // five minutes from the regular sync, and its failure never stops the sync.
+  let lastTidyAt = -Infinity;
+  async function tidyWorkspaces() {
+    if (typeof daemon?.tidyWorkspaces !== 'function') return;
+    if (now() - lastTidyAt < TIDY_INTERVAL_MS) return;
+    // Marked before the call so a daemon that keeps failing is not retried on
+    // every five-second sync.
+    lastTidyAt = now();
+    await daemon.tidyWorkspaces({ now: now() }).catch(() => {});
+  }
+
   let syncInFlight;
   async function syncDaemon() {
     await decisions?.sync();
@@ -388,6 +403,7 @@ export function createSessionService({
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
         }
       }
+      await tidyWorkspaces();
     })().finally(() => { syncInFlight = null; });
     return syncInFlight;
   }

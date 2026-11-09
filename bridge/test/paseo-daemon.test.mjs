@@ -187,11 +187,43 @@ function archiveFixture() {
     fetchAgents: async () => ({ entries: agents.map((agent) => ({ agent })), pageInfo: { nextCursor: null } }),
     fetchWorkspaces: async () => ({ entries: workspaces.filter((w) => !w.archived) }),
     archiveAgent: async (id) => { calls.push(['archive', id]); for (const a of agents) if (a.id === id || a.labels['paseo.parent-agent-id'] === id) a.archivedAt ??= '2026-11-05T00:00:00Z'; },
+    setWorkspacePinned: async (id, pinned) => { calls.push(['unpin', id, pinned]); workspaces.find((w) => w.id === id).pinnedAt = null; return { pinnedAt: null }; },
     archiveWorkspace: async (id) => { calls.push(['archiveWorkspace', id]); workspaces.find((w) => w.id === id).archived = true; return { error: null }; },
     restoreWorkspace: async (id) => { calls.push(['restoreWorkspace', id]); workspaces.find((w) => w.id === id).archived = false; },
     refreshAgent: async (id) => { calls.push(['refresh', id]); agents.find((a) => a.id === id).archivedAt = null; },
   };
-  return { agents, calls, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
+  return { agents, workspaces, calls, client, daemon: daemonAdapter({ connect: async () => client, now: () => 1000 }) };
+}
+
+function tidyFixture() {
+  const calls = [], at = Date.parse('2026-11-09T12:00:00Z');
+  const agents = [
+    // Every conversation archived eleven minutes ago: this one is tidied, and
+    // its pin goes first.
+    { id: 'done', workspaceId: 'wks_done', status: 'closed', createdAt: '2026-11-09T11:40:00Z', archivedAt: '2026-11-09T11:45:00Z', labels: {} },
+    // Two conversations, one still open: the workspace stays.
+    { id: 'live-old', workspaceId: 'wks_live', status: 'closed', createdAt: '2026-11-09T10:00:00Z', archivedAt: '2026-11-09T10:05:00Z', labels: {} },
+    { id: 'live', workspaceId: 'wks_live', status: 'idle', createdAt: '2026-11-09T11:40:00Z', labels: {} },
+    // Archived five minutes ago: too soon to tell the owner is done with it.
+    { id: 'fresh', workspaceId: 'wks_fresh', status: 'closed', createdAt: '2026-11-09T11:50:00Z', archivedAt: '2026-11-09T11:56:00Z', labels: {} },
+    // Archived long enough, but archiving a worktree deletes files.
+    { id: 'tree', workspaceId: 'wks_tree', status: 'closed', createdAt: '2026-11-09T11:40:00Z', archivedAt: '2026-11-09T11:45:00Z', labels: {} },
+  ];
+  const workspaces = [
+    { id: 'wks_done', workspaceKind: 'directory', pinnedAt: '2026-11-01T00:00:00Z' },
+    { id: 'wks_empty', workspaceKind: 'directory' }, // the owner may have just made it
+    { id: 'wks_live', workspaceKind: 'directory' },
+    { id: 'wks_fresh', workspaceKind: 'directory' },
+    { id: 'wks_tree', workspaceKind: 'worktree' },
+  ];
+  const archived = new Set();
+  const client = { close: async () => {},
+    fetchAgents: async () => ({ entries: agents.map((agent) => ({ agent })), pageInfo: { nextCursor: null } }),
+    fetchWorkspaces: async () => ({ entries: workspaces.filter((w) => !archived.has(w.id)) }),
+    setWorkspacePinned: async (id, pinned) => { calls.push(['unpin', id, pinned]); workspaces.find((w) => w.id === id).pinnedAt = null; return { pinnedAt: null }; },
+    archiveWorkspace: async (id) => { calls.push(['archiveWorkspace', id]); archived.add(id); return { error: null }; },
+  };
+  return { at, calls, workspaces, archived, client, daemon: daemonAdapter({ connect: async () => client, now: () => at }) };
 }
 
 test('a parent left on its sent title shows the title Paseo gave its workspace', async (t) => {
@@ -268,6 +300,70 @@ test('a worktree workspace survives archiving its last agent', async () => {
   const f = archiveFixture();
   await f.daemon.archive(['other']);
   assert.deepEqual(f.calls, [['archive', 'other']]);
+});
+
+test('archiving the last conversation unpins its workspace before archiving it', async () => {
+  const f = archiveFixture();
+  f.workspaces.find((w) => w.id === 'wks_a').pinnedAt = '2026-11-01T00:00:00Z';
+  await f.daemon.archive(['root']);
+  assert.deepEqual(f.calls, [['archive', 'root'], ['unpin', 'wks_a', false], ['archiveWorkspace', 'wks_a']]);
+});
+
+test('a workspace whose pin cannot be removed is not archived while still pinned', async () => {
+  const f = archiveFixture();
+  f.workspaces.find((w) => w.id === 'wks_a').pinnedAt = '2026-11-01T00:00:00Z';
+  f.client.setWorkspacePinned = async () => { throw new Error('pin refused'); };
+  await assert.rejects(f.daemon.archive(['root']), { code: 'paseo_unavailable' });
+  assert.deepEqual(f.calls, [['archive', 'root']]);
+  assert.equal(f.workspaces.find((w) => w.id === 'wks_a').archived, undefined);
+});
+
+test('tidy archives only workspaces every conversation has left, ten minutes on', async () => {
+  const f = tidyFixture();
+  const result = await f.daemon.tidyWorkspaces();
+  assert.deepEqual(result.archived, ['wks_done']);
+  assert.equal(result.skipped, 4);
+  assert.equal(result.failed, undefined);
+  assert.deepEqual(f.calls, [['unpin', 'wks_done', false], ['archiveWorkspace', 'wks_done']]);
+  assert.ok(f.archived.has('wks_done'));
+});
+
+test('tidy with dryRun reports the targets and changes nothing', async () => {
+  const f = tidyFixture();
+  const result = await f.daemon.tidyWorkspaces({ dryRun: true });
+  assert.deepEqual(result.archived, ['wks_done']);
+  assert.equal(result.dryRun, true);
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.archived.size, 0);
+});
+
+test('one workspace that will not archive does not stop tidy and stays visible', async () => {
+  const f = tidyFixture();
+  f.client.archiveWorkspace = async (id) => { f.calls.push(['archiveWorkspace', id]); if (id === 'wks_done') throw new Error('refused'); return { error: null }; };
+  const result = await f.daemon.tidyWorkspaces();
+  assert.deepEqual(result.archived, []);
+  assert.deepEqual(result.failed, ['wks_done']);
+  assert.equal(result.skipped, 5);
+});
+
+test('the regular sync tidies once per five minutes and a failure does not stop the sync', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-bridge-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  let clock = 1_000_000, calls = 0, fail = true;
+  const daemon = {
+    list: async () => [], workspacePins: async () => [], exists: async () => true,
+    tidyWorkspaces: async () => { calls += 1; if (fail) throw new Error('daemon down'); },
+  };
+  const service = createSessionService({ sessionStore: createSessionStore({ file: join(dir, 'sessions.json') }), daemon,
+    adapter: {}, findWorkspace: async () => null, notify: async () => {}, now: () => clock });
+  await service.syncDaemon();
+  assert.equal(calls, 1, 'the first sync tidies, and its failure still resolves');
+  clock += 4 * 60 * 1000;
+  await service.syncDaemon();
+  assert.equal(calls, 1, 'inside five minutes nothing is retried');
+  clock += 60 * 1000;
+  fail = false;
+  await service.syncDaemon();
+  assert.equal(calls, 2, 'five minutes later it runs again');
 });
 
 test('a session Paseo brought back leaves the LAA archive too', async (t) => {
