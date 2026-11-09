@@ -254,6 +254,13 @@ private struct LAAEmployeeComposerContent: View {
                 Text(verbatim: "保存した通話")
                     .accessibilityIdentifier("laa.fixture.saved-call")
             }
+            if LAAStaff(profile: appState.conversationIdentityProfile) != nil {
+                // The header's phone, the one way a staff call starts now
+                // that the composer has no voice button.
+                LAAEmployeeCallButton(reason: LAAEmployeeCallAvailability.reason(appState: appState, bridge: bridge.status, calls: calls)) {
+                    _ = calls.startEmployeeConversation(appState)
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-laa-pending-call") {
                 Button {
                     appState.laaEmployeeGPTLivePlan = appState.laaEmployeeGPTLivePlan == nil

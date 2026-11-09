@@ -80,6 +80,15 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
             self.assertNotIn("Hermes", info["NSMicrophoneUsageDescription"])
             self.assertEqual(info["CFBundleIdentifier"], "$(PRODUCT_BUNDLE_IDENTIFIER)")
+            self.assertNotIn("LAADotsCallURL", info)
+
+    def test_dots_call_link_comes_only_from_the_release_environment(self):
+        link = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
+        self.assertEqual(brand.dots_call({}, "app", link), {"LAADotsCallURL": link})
+        self.assertEqual(brand.dots_call({"LAADotsCallURL": link}, "app", None), {})
+        self.assertEqual(brand.dots_call({}, "widgets", link), {})
+        with self.assertRaises(ValueError):
+            brand.dots_call({}, "app", "https://example.com/dots/x")
 
     def test_localized_privacy_copy_does_not_transfer_developer_claim(self):
         strings = json.loads((ROOT / "Conduit/Localizable.xcstrings").read_text())["strings"]

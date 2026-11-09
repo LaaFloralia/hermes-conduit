@@ -59,15 +59,18 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Cedar")).firstMatch.exists)
     }
 
-    func testExpandedComposerWaveformCallsTheEmployee() {
+    func testEmployeeCallStartsFromThePhoneNotTheComposer() {
         let app = launch("-laa-composer-fixture")
         let field = app.textViews["composer.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
-        let waveform = app.buttons["composer.voice"]
-        XCTAssertTrue(waveform.waitForExistence(timeout: 5))
-        XCTAssertTrue(waveform.isEnabled)
-        waveform.tap()
+        // The expanded composer has no mic or voice button (owner, 2026-11-09).
+        XCTAssertTrue(app.buttons["composer.action"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["composer.voice"].exists)
+        XCTAssertFalse(app.buttons["composer.dictate"].exists)
+        let phone = app.buttons["laa.employee.call"]
+        XCTAssertTrue(phone.isEnabled)
+        phone.tap()
         let name = app.staticTexts["laa.call.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         XCTAssertEqual(name.label, "Morgan")
@@ -78,18 +81,15 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertEqual(context.label, "laa-cfo|fixture-conversation")
     }
 
-    func testExpandedComposerWaveformResumesSavedEmployeeCallWithPersona() {
+    func testPhoneResumesSavedEmployeeCallWithPersona() {
         // The argument domain supplies consent only to this test process.
         let app = launch("-laa-composer-fixture", "-laa-saved-call",
                          "-conduit.liveVoiceProviderConsent.gpt-live", "YES")
         XCTAssertTrue(app.staticTexts["laa.fixture.saved-call"].waitForExistence(timeout: 10))
-        let field = app.textViews["composer.field"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
-        field.tap()
-        let waveform = app.buttons["composer.voice"]
-        XCTAssertTrue(waveform.waitForExistence(timeout: 5))
-        XCTAssertTrue(waveform.isEnabled)
-        waveform.tap()
+        let phone = app.buttons["laa.employee.call"]
+        XCTAssertTrue(phone.waitForExistence(timeout: 10))
+        XCTAssertTrue(phone.isEnabled)
+        phone.tap()
         XCTAssertTrue(app.staticTexts["laa.call.name"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts["laa.call.name"].label, "Morgan")
         assertLabel(app, "laa.fixture.resume-evidence",
@@ -107,17 +107,14 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertEqual(context.label, "laa-cfo|fixture-conversation")
     }
 
-    func testExpandedComposerWaveformIsDisabledWhileWidgetCallWaits() {
+    func testPhoneIsDisabledWhileWidgetCallWaits() {
         let app = launch("-laa-composer-fixture", "-laa-pending-call")
         let pending = app.buttons["laa.fixture.pending-call"]
         XCTAssertTrue(pending.waitForExistence(timeout: 10))
         pending.tap()
-        let field = app.textViews["composer.field"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
-        field.tap()
-        let waveform = app.buttons["composer.voice"]
-        XCTAssertTrue(waveform.waitForExistence(timeout: 5))
-        XCTAssertFalse(waveform.isEnabled)
+        let phone = app.buttons["laa.employee.call"]
+        XCTAssertTrue(phone.waitForExistence(timeout: 5))
+        XCTAssertFalse(phone.isEnabled)
         XCTAssertFalse(app.staticTexts["laa.call.name"].exists)
     }
 
@@ -129,17 +126,15 @@ final class LAAStaffCallUITests: XCTestCase {
         let field = app.textViews["composer.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
-        let composer = app.buttons["laa.voice.button"].firstMatch
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        XCTAssertTrue(composer.isEnabled)
+        // A plain chat's composer has no voice button either.
+        XCTAssertTrue(app.buttons["composer.action"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["laa.voice.button"].exists)
         let pending = app.buttons["laa.fixture.pending-call"]
         pending.tap()
         XCTAssertFalse(home.isEnabled)
-        XCTAssertFalse(composer.isEnabled)
         XCTAssertFalse(app.staticTexts["laa.call.name"].exists)
         pending.tap()
         XCTAssertTrue(home.isEnabled)
-        XCTAssertTrue(composer.isEnabled)
     }
 
     func testDictationMenuExplainsUnavailableCallDuringPendingPlan() {

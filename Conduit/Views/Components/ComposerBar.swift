@@ -17,8 +17,11 @@ import UniformTypeIdentifiers
 enum ComposerShared {
     #if LAA_BUILD
     static let controlSize: CGFloat = LAASpacing.minimumTouchTarget
+    /// The row under the field: Work's 36 pt glass, Send included.
+    static let rowControlSize: CGFloat = 36
     #else
     static let controlSize: CGFloat = 32
+    static let rowControlSize: CGFloat = controlSize
     #endif
     /// Taps land a little outside each control, without overlapping its neighbours.
     static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
@@ -760,10 +763,15 @@ struct ComposerBar: View, Equatable {
                     .transition(.opacity)
             } else {
 #if LAA_BUILD
+                // Send sits at the end of the row below, as in Work; only a
+                // running turn's Stop stays beside the resting field.
                 HStack(alignment: .bottom, spacing: LAASpacing.x2) {
                     attachmentButton
                     composerField
-                    trailingSlot
+                    if rests && stopOnly {
+                        trailingSlot(size: ComposerShared.controlSize)
+                            .transition(.opacity)
+                    }
                 }
 #else
                 // The field spans the card; every control sits in the row
@@ -789,7 +797,7 @@ struct ComposerBar: View, Equatable {
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
-                        trailingSlot
+                        trailingSlot()
                             .padding(.trailing, 4)
                             .transition(.opacity)
                     }
@@ -805,8 +813,7 @@ struct ComposerBar: View, Equatable {
 #endif
             }
 #if LAA_BUILD
-            // Keep the same voice button mounted while its held recording
-            // replaces the field, so releasing the gesture still ends it.
+            // The row, with Send at its end, stays under a voice message too.
             if !rests || showsVoiceMessage {
                 controlsRow.laaComposerPhotoInk(bare: true)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -969,13 +976,15 @@ struct ComposerBar: View, Equatable {
                     }
                 },
                 dictateButton: {
+#if !LAA_BUILD
                     if !dictationHoldsSendSlot { dictateButton }
+#endif
                 },
                 actionButton: {
                     if dictationHoldsSendSlot {
                         ComposerDictationStopButton(dictation: dictation, identifier: "composer.fullEditor.dictation.stop")
                     } else {
-                        composerActionButton
+                        composerActionButton()
                     }
                 }
             )
@@ -1077,7 +1086,7 @@ struct ComposerBar: View, Equatable {
                 appState.showContextSheet = true
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
-                    .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+                    .frame(width: ComposerShared.rowControlSize, height: ComposerShared.rowControlSize)
                     .contentShape(ComposerShared.controlHitShape)
             }
             .buttonStyle(.plain)
@@ -1097,7 +1106,7 @@ struct ComposerBar: View, Equatable {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: ComposerShared.controlSize, minHeight: ComposerShared.controlSize)
+                        .frame(minWidth: ComposerShared.rowControlSize, minHeight: ComposerShared.rowControlSize)
                         .contentShape(ComposerShared.controlHitShape)
                 }
                 .buttonStyle(.plain)
@@ -1110,19 +1119,16 @@ struct ComposerBar: View, Equatable {
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
             }
 
+#if LAA_BUILD
+            // No mic or voice button: calls start from the header's phone,
+            // and Send is Work's size at the row's end (owner, 2026-11-09).
+            trailingSlot(size: ComposerShared.rowControlSize)
+#else
             if !dictationHoldsSendSlot {
                 dictateButton
             }
 
-#if LAA_BUILD
-            if isEmployeeConversation {
-                // Staff calls, including saved resumes, must create the employee plan first.
-                voiceButton
-            } else {
-                V2VoiceButton(context: .conversation, style: .toolbar)
-            }
-#else
-            trailingSlot
+            trailingSlot()
 #endif
         }
         .padding(.horizontal, 10)
@@ -1490,7 +1496,7 @@ struct ComposerBar: View, Equatable {
     }
 
     @ViewBuilder
-    private var trailingSlot: some View {
+    private func trailingSlot(size: CGFloat = ComposerShared.controlSize) -> some View {
 #if LAA_BUILD
         let showsVoice = false
 #else
@@ -1502,18 +1508,18 @@ struct ComposerBar: View, Equatable {
             holdsDictation: dictationHoldsSendSlot
         )
         if #available(iOS 26.0, *) {
-            trailingControlButton(control)
+            trailingControlButton(control, size: size)
                 .glassEffectID("composer-action", in: glassNamespace)
         } else {
-            trailingControlButton(control)
+            trailingControlButton(control, size: size)
         }
     }
 
     @ViewBuilder
-    private func trailingControlButton(_ control: TrailingControl) -> some View {
+    private func trailingControlButton(_ control: TrailingControl, size: CGFloat) -> some View {
         switch control {
         case .voice: voiceButton
-        case .action: composerActionButton
+        case .action: composerActionButton(size: size)
         case .dictation: ComposerDictationStopButton(dictation: dictation)
         }
     }
@@ -1529,11 +1535,11 @@ struct ComposerBar: View, Equatable {
     /// hold to the button's large content viewer, so a hold sent like a
     /// tap; the menu form has no large content viewer (as ChatTitleControl).
     @ViewBuilder
-    private var composerActionButton: some View {
+    private func composerActionButton(size: CGFloat = ComposerShared.controlSize) -> some View {
         let choices = sendChoices
         if choices.isEmpty {
             Button(action: performComposerAction) {
-                composerActionFace
+                composerActionFace(size: size)
             }
             .disabled(action == .unavailable)
             .modifier(composerActionChrome)
@@ -1558,7 +1564,7 @@ struct ComposerBar: View, Equatable {
                     }
                 }
             } label: {
-                composerActionFace
+                composerActionFace(size: size)
             } primaryAction: {
                 performComposerAction()
             }
@@ -1593,10 +1599,15 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    private var composerActionFace: some View {
+    private func composerActionFace(size: CGFloat) -> some View {
         HStack(spacing: 6) {
             Image(systemName: actionSymbol)
+#if LAA_BUILD
+                // Work's Send glyph.
+                .font(.system(size: stopOnly ? 12 : 15, weight: .bold))
+#else
                 .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
+#endif
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
@@ -1610,7 +1621,7 @@ struct ComposerBar: View, Equatable {
 #else
         .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
 #endif
-        .frame(minWidth: actionTitle == nil ? ComposerShared.controlSize : 86, minHeight: ComposerShared.controlSize)
+        .frame(minWidth: actionTitle == nil ? size : 86, minHeight: size)
         .padding(.horizontal, actionTitle == nil ? 0 : 4)
         .contentShape(ComposerShared.controlHitShape)
         .animation(ConduitMotion.transition, value: action)
@@ -1982,12 +1993,12 @@ struct ComposerBar: View, Equatable {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
-            .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+            .frame(width: ComposerShared.rowControlSize, height: ComposerShared.rowControlSize)
             .contentShape(ComposerShared.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.voiceWaitsForRunningTurn)
-        .conduitGlassControl(cornerRadius: ComposerShared.controlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
+        .conduitGlassControl(cornerRadius: ComposerShared.rowControlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
         .accessibilityShowsLargeContentViewer {
             Label(AppLocalization.string("Resume call"), systemImage: "phone.arrow.up.right")
         }

@@ -2,6 +2,7 @@
 """Brand only generated LAA bundles; source catalogs and lookup keys stay intact."""
 import argparse
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -178,6 +179,23 @@ def brand_info(info, kind, source, name=None, bundle_name=None):
     return info, bundle_name
 
 
+# The page Monet (Dots)' phone opens on Mac. This source is public, so the
+# link comes from the Mac release's environment (~/.config/laa/
+# mac-release.env.tpl) and only builds made with it carry the key.
+DOTS_CALL_KEY = "LAADotsCallURL"
+DOTS_CALL_LINK = re.compile(r"https://chatgpt\.com/dots/[A-Za-z0-9~-]+")
+
+
+def dots_call(info, kind, link):
+    info.pop(DOTS_CALL_KEY, None)
+    if kind != "app" or not link:
+        return info
+    if not DOTS_CALL_LINK.fullmatch(link):
+        raise ValueError("LAA_DOTS_CALL_URL must be a https://chatgpt.com/dots/ link")
+    info[DOTS_CALL_KEY] = link
+    return info
+
+
 def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
     is_mac = (bundle / "Contents/Info.plist").is_file()
     info_path = bundle / ("Contents/Info.plist" if is_mac else "Info.plist")
@@ -264,6 +282,7 @@ def main():
         brand_bundle(args.bundle, args.kind, args.source, name=args.name, bundle_name=args.bundle_name)
     elif not args.bundle and args.input_info and args.output_info:
         info, _ = brand_info(read_plist(args.input_info), args.kind, args.source, args.name, args.bundle_name)
+        dots_call(info, args.kind, os.environ.get("LAA_DOTS_CALL_URL"))
         args.output_info.parent.mkdir(parents=True, exist_ok=True)
         with args.output_info.open("wb") as stream:
             plistlib.dump(info, stream, sort_keys=False)

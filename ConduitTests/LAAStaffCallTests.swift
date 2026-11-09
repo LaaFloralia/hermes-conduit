@@ -179,6 +179,35 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertFalse(calls.startEmployeeConversation(app))
     }
 
+    func testDotsPhoneHandsTheCallToChatGPT() {
+        let shortcut = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
+        let page = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
+        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: nil), shortcut)
+        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: true, info: ["LAADotsCallURL": page]), URL(string: page))
+        XCTAssertNil(LAAStaff.monetDots.dotCallURL(onMac: true, info: nil))
+        XCTAssertNil(LAAStaff.monetDots.dotCallURL(onMac: true, info: ["LAADotsCallURL": "https://example.com/dots/x"]))
+        XCTAssertNil(LAAStaff.monet.dotCallURL(onMac: false, info: nil))
+        XCTAssertEqual(LAAEmployeeCallAvailability.dotCallHint(shortcut), "ChatGPTでMonetと通話します")
+        XCTAssertEqual(LAAEmployeeCallAvailability.dotCallHint(URL(string: page)!), "ブラウザでMonetの通話画面を開きます")
+
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.setActiveProfileForTesting("default")
+        app.noteBotChatSessionForTesting("dots-chat", profile: "laa-monet-dots")
+        app.activeSessionId = "dots-chat"
+        let calls = LAAEmployeeCallCoordinator(control: FakeControl())
+        // The call runs in ChatGPT, so pairing does not hold the phone back,
+        // and no in-app call starts.
+        XCTAssertNil(LAAEmployeeCallAvailability.reason(appState: app, bridge: .unpaired, calls: calls))
+        XCTAssertFalse(calls.startEmployeeConversation(app))
+        app.noteBotChatSessionForTesting("uncensored-chat", profile: "laa-monet-uncensored")
+        app.activeSessionId = "uncensored-chat"
+        XCTAssertEqual(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls), "この会話はテキスト専用です")
+    }
+
     func testBindingVoiceControlRefreshesAvailability() {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in

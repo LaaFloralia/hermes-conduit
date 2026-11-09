@@ -11,8 +11,30 @@ enum LAAStaff: String, CaseIterable {
         self.init(rawValue: String(profile.dropFirst(4)))
     }
 
-    /// Dots replies asynchronously through its text bridge.
+    /// In-app calls (GPT Live). Dots replies through its text bridge; its
+    /// phone hands the call to the owner's own ChatGPT dot (`dotCallURL`).
     var supportsCalls: Bool { self != .monetUncensored && self != .monetDots }
+
+    /// Where Dots' phone goes (owner, 2026-11-09).
+    var dotCallURL: URL? {
+        #if targetEnvironment(macCatalyst)
+        dotCallURL(onMac: true, info: Bundle.main.infoDictionary)
+        #else
+        dotCallURL(onMac: false, info: Bundle.main.infoDictionary)
+        #endif
+    }
+
+    /// iPhone runs the owner's "Monetに電話" shortcut (ChatGPT's Open your
+    /// dot, Call). Mac opens the dot's page in the default browser, since
+    /// the ChatGPT app there would take the Local Work connection. That
+    /// page's link stays out of this public source: the Mac release writes
+    /// it into Info as `LAADotsCallURL` (scripts/laa/brand-bundle.py).
+    func dotCallURL(onMac: Bool, info: [String: Any]?) -> URL? {
+        guard self == .monetDots else { return nil }
+        guard onMac else { return URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1") }
+        guard let link = info?["LAADotsCallURL"] as? String, link.hasPrefix("https://chatgpt.com/dots/") else { return nil }
+        return URL(string: link)
+    }
 
     var name: String {
         switch self {

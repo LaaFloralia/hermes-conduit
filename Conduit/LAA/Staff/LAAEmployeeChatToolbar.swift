@@ -10,6 +10,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
 
     private var profile: String { appState.conversationIdentityProfile }
@@ -41,8 +42,11 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 
     private var callButton: some View {
-        LAAEmployeeCallButton(reason: reason) {
-            if LAAStaff(profile: profile) != nil {
+        let dotCall = LAAStaff(profile: profile)?.dotCallURL
+        return LAAEmployeeCallButton(reason: reason, hint: dotCall.map(LAAEmployeeCallAvailability.dotCallHint)) {
+            if let dotCall {
+                openURL(dotCall)
+            } else if LAAStaff(profile: profile) != nil {
                 _ = calls.startEmployeeConversation(appState)
             } else if sameCall {
                 calls.showCall()
@@ -107,7 +111,13 @@ enum LAAEmployeeCallAvailability {
     @MainActor
     static func reason(appState: AppState, bridge: LAABridgeSession.Status, calls: LAAEmployeeCallCoordinator) -> String? {
         let profile = appState.conversationIdentityProfile
-        if let staff = LAAStaff(profile: profile), !staff.supportsCalls { return "この会話はテキスト専用です" }
+        if let staff = LAAStaff(profile: profile), !staff.supportsCalls {
+            guard staff == .monetDots else { return "この会話はテキスト専用です" }
+            // The call itself runs in ChatGPT: only a call here holds it back.
+            guard staff.dotCallURL != nil else { return "通話先が設定されていません" }
+            let callHere = calls.snapshot != nil || appState.isVoiceCallInProgress || appState.laaEmployeeGPTLivePlan != nil
+            return callHere ? LAACopy.otherCallInProgress : nil
+        }
         if let snapshot = calls.snapshot {
             return snapshot.context.profile == profile && snapshot.context.conversationID == appState.activeSessionId
                 ? nil : "別の会話の通話を確認してください"
@@ -120,6 +130,10 @@ enum LAAEmployeeCallAvailability {
         if let reason = voiceReason(profile: profile, canStart: appState.canStartPhoneVoiceConversation,
                                     issue: appState.voiceSetupIssue) { return reason }
         return calls.unavailableReason
+    }
+
+    static func dotCallHint(_ link: URL) -> String {
+        link.scheme == "shortcuts" ? "ChatGPTでMonetと通話します" : "ブラウザでMonetの通話画面を開きます"
     }
 
     static func voiceReason(profile: String, canStart: Bool, issue: VoiceSetupIssue?) -> String? {
@@ -261,6 +275,7 @@ private struct LAAStaffDetailView: View {
 
 struct LAAEmployeeCallButton: View {
     let reason: String?
+    var hint: String? = nil
     let action: () -> Void
     var body: some View {
         Button(action: action) {
@@ -271,7 +286,7 @@ struct LAAEmployeeCallButton: View {
         }
         .disabled(reason != nil)
         .accessibilityLabel(Text(verbatim: "電話"))
-        .accessibilityHint(reason ?? "この会話の社員と通話します")
+        .accessibilityHint(reason ?? hint ?? "この会話の社員と通話します")
         .accessibilityIdentifier("laa.employee.call")
     }
 }

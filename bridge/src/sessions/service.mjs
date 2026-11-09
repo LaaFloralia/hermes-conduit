@@ -60,8 +60,9 @@ const MAX_DELETED_CHECKS = 20;
 // An unlisted agent that Paseo confirmed it still holds is not asked again
 // for this long, so the same rows cannot take every sync's checks.
 const PRESENT_RECHECK_MS = 10 * 60 * 1000;
+const ROUTINE_LABEL = 'laa-cron';
 
-const sha = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
+const sha =(value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const count = (text) => [...text].length;
 
 export function createSessionService({
@@ -340,6 +341,7 @@ export function createSessionService({
       const workspaceTitles = new Map((workspaces ?? []).map((row) => [row.id, row.title]));
       const parents = new Map();
       for (const a of agents) if (!a.labels?.['paseo.parent-agent-id']) parents.set(a.workspaceId, (parents.get(a.workspaceId) ?? 0) + 1);
+      const routines = routineAgents(agents);
       const known = new Map(sessionStore.all().map((r) => [r.delegate?.sessionId, r]));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
       const rows = agents.map((a) => {
@@ -358,6 +360,7 @@ export function createSessionService({
         const paseoTitle = !renamed && rootAgents === 1 && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitle : null;
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
+          routine: routines.get(a.id) ?? null,
           projectId: null, workspaceId, cwd: a.cwd,
           name: paseoTitle || a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
           // The detail read (applyObservation) uses the same two fields to reach
@@ -379,7 +382,7 @@ export function createSessionService({
         const phase = current.phase;
         const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
           : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
-        if (kind && !current.archivedAt && !current.daemonArchivedAt && !(kind === 'finished' && decisions?.hasOpen(current))) {
+        if (kind && !current.archivedAt && !current.daemonArchivedAt && !current.routine && !(kind === 'finished' && decisions?.hasOpen(current))) {
           void notify({ kind: `session.${kind}`, title: current.name,
             body: { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
@@ -406,7 +409,7 @@ export function createSessionService({
   function visibleRecords() {
     return sessionStore.all().filter((record) =>
       (daemon !== null || !isWorktree(record))
-      && !record.daemonDeletedAt && !record.archivedAt && !record.daemonArchivedAt);
+      && !record.daemonDeletedAt && !record.routine && !record.archivedAt && !record.daemonArchivedAt);
   }
 
   async function listSessions(query = {}) {
@@ -419,8 +422,9 @@ export function createSessionService({
       : null;
     const requestId = query.requestId ? parseRequestId(query.requestId) : null;
     const phase = query.phase ?? null;
-    // The app's list hides archived sessions and the older worktree sessions;
-    // a requestId lookup (reconcile after an unknown outcome) sees everything.
+    // The app's list hides archived sessions, the older worktree sessions and
+    // scheduled runs; a requestId lookup (reconcile after an unknown outcome)
+    // sees everything.
     const scopeAll = query.scope === 'all' || requestId !== null;
     const archivedOnly = query.archived === 'only';
     let parentId;
@@ -433,7 +437,7 @@ export function createSessionService({
       .filter((record) => (requestId ? record.requestId === requestId : true))
       .filter((record) => (phase ? record.phase === phase : true))
       .filter((record) => (parentId === undefined ? true : (record.parentId ?? null) === parentId))
-      .filter((record) => scopeAll || (!record.daemonDeletedAt && (daemon || !isWorktree(record))
+      .filter((record) => scopeAll || (!record.daemonDeletedAt && !record.routine && (daemon || !isWorktree(record))
         && Boolean(record.archivedAt || record.daemonArchivedAt) === archivedOnly))
       .sort((a, b) => (b.sourceUpdatedAt ?? b.updatedAt ?? '').localeCompare(a.sourceUpdatedAt ?? a.updatedAt ?? '') || a.id.localeCompare(b.id));
 
@@ -1010,6 +1014,24 @@ export function defaultName(prompt) {
   if (!line) return null;
   const graphemes = [...TITLE_SEGMENTER.segment(line)].map((item) => item.segment);
   return graphemes.length > DEFAULT_NAME_GRAPHEMES ? `${graphemes.slice(0, DEFAULT_NAME_GRAPHEMES).join('')}…` : line;
+}
+
+// Scheduled runs: hq/harness/paseo_job.py labels each one `laa-cron=<slot>`,
+// and whatever such a run starts belongs to it. They stay out of Work, its
+// short numbers and its notices while the jobs themselves run on (owner,
+// 2026-11-09). Agent id -> the slot.
+export function routineAgents(agents) {
+  const routines = new Map(agents.filter((a) => a.labels?.[ROUTINE_LABEL]).map((a) => [a.id, a.labels[ROUTINE_LABEL]]));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const a of agents) {
+      const slot = routines.get(a.labels?.['paseo.parent-agent-id']);
+      if (slot === undefined || routines.has(a.id)) continue;
+      routines.set(a.id, slot);
+      grew = true;
+    }
+  }
+  return routines;
 }
 
 export function isWorktree(record) {

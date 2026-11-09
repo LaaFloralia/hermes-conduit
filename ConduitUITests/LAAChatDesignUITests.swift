@@ -45,7 +45,6 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue(app.buttons["chat.replyMoreMenu"].exists)
         XCTAssertTrue(app.buttons["Attach"].exists)
         XCTAssertTrue(app.buttons["composer.expand-editor"].exists)
-        XCTAssertTrue(app.buttons["composer.action"].exists)
         copy.tap()
         XCTAssertTrue(app.buttons["chat.code.copy"].label.contains("Copied"))
 
@@ -53,7 +52,13 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         field.typeText("draft with two lines\nsecond line")
-        XCTAssertTrue(app.buttons["composer.action"].isEnabled)
+        let send = app.buttons["composer.action"]
+        XCTAssertTrue(send.isEnabled)
+        // Send ends the row under the field, as in Work; no mic or voice button.
+        XCTAssertGreaterThanOrEqual(send.frame.minY, field.frame.maxY - 1)
+        XCTAssertGreaterThan(send.frame.minX, field.frame.midX)
+        XCTAssertFalse(app.buttons["composer.dictate"].exists)
+        XCTAssertFalse(app.buttons["composer.voice"].exists)
         app.buttons["composer.expand-editor"].tap()
         let full = app.textViews["composer.fullEditor.field"]
         XCTAssertTrue(full.waitForExistence(timeout: 10))
