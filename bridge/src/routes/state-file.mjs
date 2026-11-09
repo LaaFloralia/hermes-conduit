@@ -35,6 +35,21 @@ export class StateFileError extends Error {
 export function createJsonFile({ file, schema = 1, initial = () => ({}) }) {
   const dir = dirname(file);
   const lockFile = `${file}.lock`;
+  // In-process listeners for "this document was written", tagged with the
+  // record the write belonged to. A long-poll waits on this instead of
+  // re-reading the file on a timer. Only this process's writes are announced; a
+  // write from another process is still seen on the next read.
+  const listeners = new Set();
+
+  function announce(tag) {
+    for (const listener of [...listeners]) {
+      try {
+        listener(tag);
+      } catch {
+        // A listener must never fail the write it is watching.
+      }
+    }
+  }
 
   function ensureDir() {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -111,13 +126,23 @@ export function createJsonFile({ file, schema = 1, initial = () => ({}) }) {
   return {
     file,
     read,
-    mutate(fn) {
+    // `tag` names the record the write belongs to (`null` when it can be any),
+    // so a waiter for one record is not woken by another one's writes.
+    mutate(fn, { tag = null } = {}) {
       return withLock(() => {
         const state = read();
         const result = fn(state);
         write(state);
+        announce(tag);
         return result;
       });
+    },
+    // Listen for writes made through this instance. Returns the unsubscribe.
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
   };
 }
