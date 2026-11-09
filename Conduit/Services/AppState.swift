@@ -11439,6 +11439,34 @@ final class AppState: ObservableObject {
         MentionAutocomplete.botCandidates(botRoster, activeProfileName: activeConversationProfileScope)
     }
 
+    /// What the composer's prediction row offers above the field: the
+    /// owner's own recent sentences in this conversation, then the same
+    /// staff names the @ picker offers. The display rules (boundary,
+    /// composition, order, cap) are `ComposerPrediction`'s; this only names
+    /// the two sources. Nothing is persisted: both are read again each time.
+    func composerPredictionCandidates(
+        draft: String,
+        isComposing: Bool
+    ) -> [ComposerPrediction.Candidate] {
+        ComposerPrediction.candidates(
+            draft: draft,
+            recentSentences: composerPredictionRecentSentences,
+            names: composerMentionCandidates.map(\.title),
+            isComposing: isComposing
+        )
+    }
+
+    /// The owner's own sentences here, newest first. Bounded by the recent
+    /// rows rather than the whole transcript, so a long conversation costs
+    /// the same as a short one when the composer redraws on each keystroke.
+    private var composerPredictionRecentSentences: [String] {
+        messages
+            .suffix(200)
+            .filter { $0.role == .user }
+            .reversed()
+            .map(\.content)
+    }
+
     /// Presentation state for one open hosted room. A room is NOT a session:
     /// it never touches `activeSessionId`, the transcript cache, or the saved
     /// `SessionReference`, and it is deliberately NOT persisted — cold launch
