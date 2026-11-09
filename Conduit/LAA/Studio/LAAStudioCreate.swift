@@ -229,14 +229,6 @@ private struct LAAStudioInputField: ViewModifier {
 extension View {
     func studioInputField() -> some View { modifier(LAAStudioInputField()) }
 
-    /// Search is a control, so it takes glass; typed form fields stay opaque.
-    func studioSearchField() -> some View {
-        textFieldStyle(.plain)
-            .padding(.horizontal, LAASpacing.x4)
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .laaGlass(in: Capsule())
-    }
-
     func studioFilterChip(selected: Bool) -> some View {
         fontWeight(selected ? .semibold : .regular)
             .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)

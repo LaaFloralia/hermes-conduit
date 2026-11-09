@@ -77,7 +77,7 @@ final class LAADrivePlayerOwner: NSObject, ObservableObject, @preconcurrency AVP
                 catch {
                     if let failure = error as? LAADriveOfflineError,
                        failure == .forbidden || failure == .notFound || failure == .accessChanged || failure == .permissionUnknown {
-                        self?.invalidate("Access to this saved file is no longer available.")
+                        self?.invalidate("この保存済みファイルはもう開けません。")
                         return
                     }
                 }

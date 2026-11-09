@@ -2,12 +2,14 @@
 import ImageIO
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The Assets screen supplies the authenticated loaders and opens files. The
 /// browser owns only its section, folder path, search and presentation state.
 @MainActor
 struct LAADriveBrowserView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var bridge: LAABridgeSession
     typealias Loader = LAADriveBrowseController.Loader
     typealias ThumbnailLoader = @MainActor (LAADriveListingItem) async throws -> Data?
     typealias ShortcutLoader = @MainActor (LAADriveListingItem, Set<String>) async throws -> LAADriveListingItem
@@ -57,8 +59,15 @@ struct LAADriveBrowserView: View {
     @State private var resolutionTask: Task<Void, Never>?
     @FocusState private var searchFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var dropTargeted = false
+    @State private var droppedFile: DroppedFile?
 
     private enum Layout { case grid, list }
+    /// A dropped file copied where the upload sheet can read it.
+    private struct DroppedFile: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
     private struct LoadKey: Equatable {
         let revision: Int
         let refreshID: Int
@@ -110,6 +119,17 @@ struct LAADriveBrowserView: View {
             results
         }
         .tint(LAAColor.link)
+        // Files dropped on the list take the upload sheet's existing path. Mac
+        // and iPad both accept the drop; nothing changes for a phone's taps.
+        .onDrop(of: [.fileURL, .image], isTargeted: $dropTargeted) { providers in acceptDrop(providers) }
+        .overlay { dropTarget }
+        .sheet(item: $droppedFile) { dropped in
+            LAADriveUpload(folderId: folders.last?.id, droppedFile: dropped.url, ownsDroppedFile: true) {
+                Task { await reload(key, debounce: false) }
+            }
+            .environmentObject(bridge)
+            .laaSheetSize(.form)
+        }
         .task(id: key) { [requested = key] in await reload(requested, debounce: true) }
         .onChange(of: revision) { _, _ in
             controller.invalidate()
@@ -123,7 +143,7 @@ struct LAADriveBrowserView: View {
         // the header's reload, the same two controls the Mac shows. Upload
         // keeps its own button, so the File menu's new item is off by name.
         .laaMacSectionCommands(LAAMacSectionCommands(
-            newTitle: "Upload",
+            newTitle: AppLocalization.string("Upload Files"),
             canCreate: false,
             canSearch: true,
             focusSearch: { searchFocused = true },
@@ -411,6 +431,59 @@ struct LAADriveBrowserView: View {
     private func thumbnail(_ entry: LAADriveListingItem) -> some View {
         LAADriveBrowserThumbnail(entry: entry, revision: revision, load: loadThumbnail)
             .accessibilityHidden(true)
+    }
+
+    /// A quiet frame while a file is held over the list: enough to show where
+    /// it lands, without covering the files.
+    @ViewBuilder private var dropTarget: some View {
+        if dropTargeted {
+            RoundedRectangle(cornerRadius: LAARadius.card)
+                .strokeBorder(LAAColor.link, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                .background(LAAColor.link.opacity(0.06), in: RoundedRectangle(cornerRadius: LAARadius.card))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Only the first file is taken: the upload sheet sends one file at a time.
+    private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let url = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) } ?? item as? URL
+                guard let url else { return }
+                Task { @MainActor in receive(url) }
+            }
+            return true
+        }
+        guard provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) else { return false }
+        // The representation's URL is removed when this handler returns, so the
+        // copy is made first and the sheet reads that copy.
+        provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
+            guard let url, let copy = try? LAADriveBrowserView.copyForDrop(url) else { return }
+            Task { @MainActor in droppedFile = DroppedFile(url: copy) }
+        }
+        return true
+    }
+
+    private func receive(_ url: URL) {
+        do { droppedFile = DroppedFile(url: try Self.copyForDrop(url)) }
+        catch { navigationError = "ドロップしたファイルを読み込めませんでした。" }
+    }
+
+    /// Copies a dropped file (which may be another app's, security-scoped)
+    /// beside the upload's own temporary files, so the sheet can read it.
+    private nonisolated static func copyForDrop(_ url: URL) throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DriveDrop-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let name = url.lastPathComponent.isEmpty ? "file" : url.lastPathComponent
+        let target = folder.appendingPathComponent(name)
+        do { try FileManager.default.copyItem(at: url, to: target) }
+        catch { try? FileManager.default.removeItem(at: folder); throw error }
+        return target
     }
 
     private func reload(_ requested: LoadKey, debounce: Bool) async {

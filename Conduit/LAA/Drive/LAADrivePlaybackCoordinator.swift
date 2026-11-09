@@ -36,8 +36,8 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
 
     /// `openSource` must synchronously install an AVPlayerItem or report failure.
     init(player: AVPlayer, identity: LAADrivePlaybackIdentity?, resumeStore: LAADriveResumeStore? = nil,
-         playbackFailureMessage: String = "This file could not be played.",
-         audioFailureMessage: String = "Audio is not available right now.",
+         playbackFailureMessage: String = "このファイルを再生できませんでした。",
+         audioFailureMessage: String = "いまは音声を再生できません。",
          openSource: @escaping () -> Void, closeSource: @escaping () -> Void,
          acquireAudio: @escaping () throws -> Void, releaseAudio: @escaping () -> Void) {
         self.player = player

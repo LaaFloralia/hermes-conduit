@@ -361,6 +361,37 @@ class LAABrandBundleTests(unittest.TestCase):
         self.assertEqual(brand.display("Ask Ciel"), "Ask Monet")
         self.assertEqual(brand.display("Cielに聞く"), "Monetに聞く")
 
+    def test_japanese_copy_closes_the_space_after_laa(self):
+        samples = {
+            "Hermes が作業中です。": "LAAが作業中です。",
+            "通知がオンなら、Conduit が自動でオンにします。": "通知がオンなら、LAAが自動でオンにします。",
+            "LAA の設定です。": "LAAの設定です。",
+        }
+        for original, expected in samples.items():
+            with self.subTest(original=original):
+                self.assertEqual(brand.values_only({"copy": original}, locale="ja")["copy"], expected)
+        # English keeps the words apart: only Japanese copy joins them.
+        self.assertEqual(brand.values_only({"copy": "LAA is here"}, locale="en")["copy"], "LAA is here")
+
+    def test_japanese_copy_uses_the_owners_words(self):
+        samples = {
+            "https://は入力不要です。次に、このダッシュボードのサインイン方法をConduitが確認します。":
+                "https://は入力不要です。次に、このMacへのサインイン方法をLAAが確認します。",
+            "このホストのほかのプロファイルとも共有": "このMacのほかのAI社員とも共有",
+            "新しいダッシュボード": "新しいMac",
+            "プロファイルID：%@": "AI社員ID：%@",
+            "他者がHermesをホストしている場合は、そのホストも読み取れます。":
+                "他者がLAAを運用している場合は、その提供元も読み取れます。",
+            "実際のブラウザプロファイルを使う": "実際のブラウザ設定を使う",
+        }
+        for original, expected in samples.items():
+            with self.subTest(original=original):
+                self.assertEqual(brand.values_only({"copy": original}, locale="ja")["copy"], expected)
+        # A hostname and a cookie scope are technical terms, not the owner's Mac.
+        for technical in ("Tailscaleのホスト名", "ホストスコープのセッションCookie"):
+            with self.subTest(technical=technical):
+                self.assertIn("ホスト", brand.display(technical, None, "ja"))
+
     def test_intent_aliases_reuse_japanese_translation_without_changing_lookup_keys(self):
         original = {"Tell Hermes": "Hermesに伝える", "LAA profile": "LAAプロファイル"}
         values = brand.display_aliases(brand.values_only(original, locale="ja"))

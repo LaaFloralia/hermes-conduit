@@ -383,8 +383,8 @@ struct LAALinearTasksView: View {
                             .accessibilityLabel(Text(verbatim: "Reload tasks"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    TextField("", text: $desktopSearch, prompt: Text(verbatim: "Search tasks"))
-                        .textFieldStyle(.roundedBorder).focused($searchFocused)
+                    LAASearchField(placeholder: "Search tasks", text: $desktopSearch,
+                                   identifier: "work.tasks.desktop.search", focus: $searchFocused)
                     if let failure {
                         Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                         Button { reloadID += 1 } label: { Text(verbatim: "読み直す").foregroundStyle(LAAColor.link) }.buttonStyle(.plain)

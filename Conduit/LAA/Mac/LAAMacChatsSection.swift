@@ -36,9 +36,13 @@ struct LAAMacChatsSection: View {
             // form, so it fills the column rather than sitting in a frame:
             // framed, the backdrop showed as a floating rectangle with a hard
             // edge and the form left a wide empty margin beside it.
+            // The bar's edge and colour match the other sections, so no
+            // lighter band sits above the form.
             LoginView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.horizontalSizeClass, .compact)
+                .background(LAAColor.background.ignoresSafeArea())
+                .modifier(LAAMacFlatTopEdge())
         } else {
             split
         }

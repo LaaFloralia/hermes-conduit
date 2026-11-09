@@ -20,7 +20,7 @@ extension LAACopy {
         static let editProject = "Edit Project"
         static let successor = "Successor Session"
         static let settings = "Settings"
-        static let connect = "Connect to Mac"
+        static let connect = "Macに接続"
         static let retry = "Retry"
         static let reconnect = "Check Connection"
         static let ownerFilter = "Owner"

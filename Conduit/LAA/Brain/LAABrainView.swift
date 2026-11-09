@@ -500,18 +500,8 @@ struct LAABrainView: View {
 
     private var localBrowser: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(LAAColor.secondaryText)
-                TextField("ノートを検索", text: $query)
-                    .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
-                    .accessibilityIdentifier("laa.brain.search")
-                if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .accessibilityLabel("検索を消す")
-                }
-            }
-            .padding(.horizontal, LAASpacing.x4).frame(minHeight: LAASpacing.minimumTouchTarget)
-            .laaGlass(in: Capsule())
+            LAASearchField(placeholder: "ノートを検索", text: $query,
+                           identifier: "laa.brain.search", focus: $searchFocused)
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchResults
             } else if localReadFailed {
@@ -597,21 +587,8 @@ struct LAABrainView: View {
 
     private var browser: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            HStack(spacing: LAASpacing.x3) {
-                Image(systemName: "magnifyingglass").foregroundStyle(LAAColor.secondaryText)
-                TextField(text: $query) { Text(verbatim: LAACopy.Brain.search) }
-                    .focused($searchFocused).submitLabel(.search)
-                    .onSubmit { searchFocused = false }
-                    .accessibilityIdentifier("laa.brain.search")
-                if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .accessibilityLabel(Text(verbatim: LAACopy.Brain.clearSearch))
-                }
-            }
-            .laaTextStyle(.body)
-            .padding(.horizontal, LAASpacing.x4)
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .laaGlass(in: Capsule())
+            LAASearchField(placeholder: LAACopy.Brain.search, text: $query,
+                           identifier: "laa.brain.search", focus: $searchFocused)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: LAASpacing.x2) {
                     chip(LAACopy.Brain.recent, selected: mode == 0) { mode = 0 }

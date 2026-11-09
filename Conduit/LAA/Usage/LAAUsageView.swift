@@ -5,7 +5,7 @@ import Combine
 private extension LAACopy {
     static let usageConnection = "Connection"
     static let usageRefresh = "Refresh"
-    static let usageConnect = "Connect to Mac"
+    static let usageConnect = "Macに接続"
     static let usageMore = "More"
     static let usageOpenService = "Open service"
     static let usageBilling = "Check billing"
@@ -480,7 +480,7 @@ struct LAAUsageView: View {
                 }
             }
         } else if item.id == "provider.liquid.usage" {
-            metric("記録済み費用", money(item.detail?.recordedCostUsd, precision: 12), warning: warning, prominent: true)
+            metric("記録済み費用", LAAUsageMoney.text(item.detail?.recordedCostUsd, locale: locale), warning: warning, prominent: true)
             if let input = item.detail?.models?.first?.inputTokens { metric("記録済み入力", value(input, unit: "tokens"), warning: warning) }
             if let output = item.detail?.models?.first?.outputTokens { metric("記録済み出力", value(output, unit: "tokens"), warning: warning) }
             if let count = item.detail?.recordedRequestCount { metric("API応答記録", value(count, unit: "count"), warning: warning) }
@@ -628,23 +628,15 @@ struct LAAUsageView: View {
         }
     }
 
-    private func money(_ number: Double?, precision: Int = 2) -> String {
-        guard let number, number.isFinite else { return "未取得" }
-        if number != 0 && abs(number) < pow(10, -Double(precision)) { return number > 0 ? "<$0.000000000001" : "未取得" }
-        return "$" + number.formatted(.number.locale(locale).precision(.fractionLength(2...precision)))
-    }
-
     private func value(_ number: Double?, unit: String) -> String {
         guard let number, number.isFinite else { return "未取得" }
+        if unit == "usd" { return LAAUsageMoney.text(number, locale: locale) }
         if unit == "percent", number > 0, number < 0.01 { return "<0.01%" }
         if unit == "percent", number < 100, number > 99.99 { return ">99.99%" }
-        let digits = number.formatted(.number.locale(locale).precision(.fractionLength((unit == "usd" ? 2 : 0)...(unit == "percent" ? 2 : 6))))
+        let digits = number.formatted(.number.locale(locale).precision(.fractionLength(0...(unit == "percent" ? 2 : 6))))
         let shown = number > 0 && number < 0.000001 && unit != "percent" ? "<0.000001" : digits
         switch unit {
         case "percent": return shown + "%"
-        case "usd":
-            if shown.hasPrefix("-") { return "-$" + shown.dropFirst() }
-            return shown.hasPrefix("<") ? "<$0.000001" : "$" + shown
         case "jpy": return shown.hasPrefix("<") ? "<¥0.000001" : "¥" + shown
         case "credits": return shown + " credits"
         case "count": return shown + " 回"

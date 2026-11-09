@@ -47,7 +47,11 @@ struct LoginView: View {
             #if LAA_BUILD
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            #if !targetEnvironment(macCatalyst)
+            // The Mac keeps its window bar, as the other sections do: hidden,
+            // it showed as a lighter band above the form.
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .toolbar {
                 if let laaSettings {
                     ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: laaSettings) }

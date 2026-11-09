@@ -39,14 +39,10 @@ final class LAAWorkRefUITests: XCTestCase {
         LAAWorkRefUITests.openSearch(app)
     }
 
-    /// iOS 26 shows the search minimized as a toolbar button until tapped.
+    /// The hub's one search sits above the list, in the same capsule as the
+    /// other sections' — no toolbar button to open first.
     static func openSearch(_ app: XCUIApplication) -> XCUIElement {
-        let field = app.searchFields.firstMatch
-        if !field.waitForExistence(timeout: 3) || !field.isHittable {
-            let button = app.buttons["Search"].firstMatch
-            if button.waitForExistence(timeout: 5) { button.tap() }
-        }
-        return field.exists ? field : app.textFields["Search"].firstMatch
+        app.textFields["laa.work.search"]
     }
 
     func testTasksIsTheDefaultSectionAndPriorityIsGone() throws {

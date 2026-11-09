@@ -2,7 +2,8 @@
 import SwiftUI
 
 struct LAASettingsHeader: View {
-    let close: () -> Void
+    /// Nil in a window of its own, which closes from its title bar.
+    let close: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: LAASpacing.x4) {
@@ -14,22 +15,22 @@ struct LAASettingsHeader: View {
                     .accessibilityAddTraits(.isHeader)
             }
             Spacer(minLength: LAASpacing.x2)
-            closeButton
+            if let close { closeButton(close) }
         }
         .padding(.horizontal, LAASpacing.horizontal)
         .padding(.vertical, LAASpacing.x2)
         .background(LAAColor.background)
     }
 
-    @ViewBuilder private var closeButton: some View {
+    @ViewBuilder private func closeButton(_ close: @escaping () -> Void) -> some View {
         if #available(iOS 26.0, *) {
-            button.buttonStyle(.glass)
+            button(close).buttonStyle(.glass)
         } else {
-            button.buttonStyle(.bordered)
+            button(close).buttonStyle(.bordered)
         }
     }
 
-    private var button: some View {
+    private func button(_ close: @escaping () -> Void) -> some View {
         Button(action: close) {
             Text(verbatim: LAACopy.done)
                 .frame(minHeight: LAASpacing.minimumTouchTarget)

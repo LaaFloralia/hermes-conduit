@@ -101,7 +101,7 @@ private struct LAADriveOfflinePreview: View {
                 Text(verbatim: error).foregroundStyle(LAAColor.attention)
             }
             if accessLost {
-                Text(verbatim: error ?? "Access to this saved file is no longer available.")
+                Text(verbatim: error ?? "この保存済みファイルはもう開けません。")
                     .foregroundStyle(LAAColor.attention)
             } else if media {
                 LAADriveOfflinePlayer(opened: opened, bridge: bridge)
@@ -139,8 +139,8 @@ private struct LAADriveOfflinePreview: View {
 
     private var status: String {
         let checked = record.verifiedAt.formatted(date: .abbreviated, time: .shortened)
-        let age = record.access == .stale ? "Older copy · " : ""
-        return "\(age)Last verified \(checked)" + (opened.checkedOnline ? "" : " · Offline")
+        let age = record.access == .stale ? "古いコピー · " : ""
+        return "\(age)最終確認 \(checked)" + (opened.checkedOnline ? "" : " · オフライン")
     }
 
     private func loadDocument() {

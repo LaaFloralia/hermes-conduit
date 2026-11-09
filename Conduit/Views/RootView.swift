@@ -155,6 +155,9 @@ struct MainView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
+    #if LAA_BUILD && targetEnvironment(macCatalyst)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
     /// The page Settings opens at next, for an in-app settings link.
     @State private var settingsOpensAt: ConduitAppLink.SettingsLink?
@@ -411,42 +414,24 @@ struct MainView: View {
             appState.isSettingsSheetPresented = false
             Task { await appState.refreshVoiceCapabilities() }
         }) { snapshot in
-            SettingsView(
-                snapshot: snapshot,
-                saveTheme: { appState.themePreference = $0 },
-                persistBusyInputMode: { mode in await appState.setBusyInputMode(mode) },
-                persistChatResumeBehavior: { appState.setChatResumeBehavior($0) },
-                persistChatReturnSurface: { appState.setChatReturnSurface($0) },
-                loadProfileSettings: { keys in await appState.loadProfileSettings(keys: keys) },
-                persistProfileSetting: { key, value in await appState.setProfileSetting(key, value: value) },
-                loadProfileConfigOptions: { await appState.loadProfileConfigOptions() },
-                loadProfileModelDefaults: { await appState.loadProfileModelDefaults() },
-                persistProfileMainModel: { provider, model, reasoning in
-                    await appState.setProfileMainModel(provider: provider, model: model, reasoning: reasoning)
-                },
-                saveDefaultProfileName: { appState.saveDefaultProfileName($0) },
-                reconnect: {
-                    await appState.reconnect()
-                    return appState.isConnected
-                },
-                disconnect: { appState.disconnect() }
-            )
+            settingsPage(snapshot)
                 .presentationDetents([.large])
                 #if LAA_BUILD
                 // Settings keeps its own wide sheet on the Mac; the phone's
                 // detents stay.
                 .laaSheetSize(.settings)
                 #endif
-                .environmentObject(appState)
-                #if LAA_BUILD
-                .environmentObject(laaBridge)
-                #endif
         }
         // Settings can go with this screen (switching or adding a dashboard
         // swaps in sign-in), and SwiftUI doesn't promise the sheet's
         // onDismiss then. Its flag must not outlive it: it holds back the
         // return surface while it claims a sheet is up.
-        .onDisappear { appState.isSettingsSheetPresented = false }
+        .onDisappear {
+            appState.isSettingsSheetPresented = false
+            #if LAA_BUILD && targetEnvironment(macCatalyst)
+            LAAMacSettingsWindow.shared.close()
+            #endif
+        }
         .background(windowWidthReader)
         .onPreferenceChange(MainViewWindowWidthKey.self) { availableWindowWidth = $0 }
         .onChange(of: isPersistentSidebarActive) { _, persistentActive in
@@ -483,6 +468,9 @@ struct MainView: View {
             shouldPresentSettingsAfterSidebarDismissal = false
             settingsOpensAt = nil
             settingsPresentation = nil
+            #if LAA_BUILD && targetEnvironment(macCatalyst)
+            LAAMacSettingsWindow.shared.close()
+            #endif
         }
         .onChange(of: appState.settingsLinkRequest) { _, page in
             // V2 opens the page in its Settings tab (V2Shell).
@@ -510,12 +498,21 @@ struct MainView: View {
 #endif
     }
 
+    /// Settings in its own window (the Mac) counts as open, like the sheet.
+    private var settingsWindowOpen: Bool {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        LAAMacSettingsWindow.shared.isOpen
+        #else
+        false
+        #endif
+    }
+
     /// An in-app settings link (`conduit://settings/calls` or `/voice`, in a reply):
     /// Settings opens at that page. Settings already open stays as it is,
     /// and so does a voice or other sheet: closing a voice sheet ends its
     /// call, and only one sheet shows at a time.
     private func openSettings(at page: ConduitAppLink.SettingsLink) {
-        guard settingsPresentation == nil else { return }
+        guard settingsPresentation == nil, !settingsWindowOpen else { return }
         let otherSheetUp = appState.showModelPicker || appState.showContextSheet || appState.showWorkspaceSheet
             || appState.showGatewaySheet || appState.showAgentsSheet || appState.showVoiceSheet
             || appState.showQwenLiveSheet || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
@@ -765,7 +762,42 @@ struct MainView: View {
         var snapshot = appState.makeSettingsSnapshot()
         snapshot.opensAt = settingsOpensAt
         settingsOpensAt = nil
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        LAAMacSettingsWindow.shared.show(AnyView(settingsPage(snapshot)), onClose: {
+            appState.isSettingsSheetPresented = false
+            Task { await appState.refreshVoiceCapabilities() }
+        }, open: { openWindow(id: $0) })
+        #else
         settingsPresentation = snapshot
+        #endif
+    }
+
+    /// Settings' page, in the sheet or (on the Mac) its own window.
+    private func settingsPage(_ snapshot: SettingsSnapshot) -> some View {
+        SettingsView(
+            snapshot: snapshot,
+            saveTheme: { appState.themePreference = $0 },
+            persistBusyInputMode: { mode in await appState.setBusyInputMode(mode) },
+            persistChatResumeBehavior: { appState.setChatResumeBehavior($0) },
+            persistChatReturnSurface: { appState.setChatReturnSurface($0) },
+            loadProfileSettings: { keys in await appState.loadProfileSettings(keys: keys) },
+            persistProfileSetting: { key, value in await appState.setProfileSetting(key, value: value) },
+            loadProfileConfigOptions: { await appState.loadProfileConfigOptions() },
+            loadProfileModelDefaults: { await appState.loadProfileModelDefaults() },
+            persistProfileMainModel: { provider, model, reasoning in
+                await appState.setProfileMainModel(provider: provider, model: model, reasoning: reasoning)
+            },
+            saveDefaultProfileName: { appState.saveDefaultProfileName($0) },
+            reconnect: {
+                await appState.reconnect()
+                return appState.isConnected
+            },
+            disconnect: { appState.disconnect() }
+        )
+        .environmentObject(appState)
+        #if LAA_BUILD
+        .environmentObject(laaBridge)
+        #endif
     }
 
     /// Presents the sessions drawer for a preferred-return-surface request.

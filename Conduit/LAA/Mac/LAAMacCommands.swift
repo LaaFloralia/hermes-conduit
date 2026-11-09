@@ -19,19 +19,23 @@ struct LAAMacCommands: Commands {
             Button(LAACopy.macToggleSidebar) { model.toggleSidebar += 1 }
                 .keyboardShortcut("s", modifiers: [.command, .control])
         }
-        CommandMenu(LAACopy.macMenuChat) {
+        // Where a Mac app keeps them, so no menu is named after one section:
+        // Search in Edit, Reload and closing the conversation in View.
+        CommandGroup(after: .textEditing) {
             Button(LAACopy.macSearch) { section?.focusSearch() }
                 .keyboardShortcut("f", modifiers: .command)
                 .disabled(section?.canSearch != true)
+        }
+        CommandGroup(before: .toolbar) {
             Button(LAACopy.macReload) { section?.reload() }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(section?.canReload != true)
-            Divider()
             // Escape closes the conversation where it is read (the
             // conversation's own key handler); the menu repeats the action
             // without taking the key from sheets and dialogs.
             Button(LAACopy.macCloseConversation) { model.closeConversation += 1 }
                 .disabled(model.activeSection != .chats)
+            Divider()
         }
         // New Window is not this app's: one window holds the LAA desktop.
         CommandGroup(replacing: .newItem) {

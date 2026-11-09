@@ -75,9 +75,8 @@ struct LAAWorkDesktopSessionsView: View {
                             .accessibilityLabel(Text(verbatim: "Reload sessions"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    TextField("", text: $search, prompt: Text(verbatim: "Search sessions"))
-                        .textFieldStyle(.roundedBorder)
-                        .focused($searchFocused)
+                    LAASearchField(placeholder: "Search sessions", text: $search,
+                                   identifier: "work.sessions.desktop.search", focus: $searchFocused)
                         .accessibilityIdentifier("work.sessions.search")
                     if let failure {
                         Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -291,8 +290,8 @@ struct LAAWorkDesktopProjectsView: View {
                             .accessibilityLabel(Text(verbatim: "Reload projects"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    TextField("", text: $search, prompt: Text(verbatim: "Search projects"))
-                        .textFieldStyle(.roundedBorder).focused($searchFocused)
+                    LAASearchField(placeholder: "Search projects", text: $search,
+                                   identifier: "work.projects.desktop.search", focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     if loading && projects.isEmpty { ProgressView().controlSize(.small) }
                 }
@@ -444,6 +443,9 @@ struct LAAWorkDesktopCatalogView: View {
     @State private var loaded = false
     @State private var failure: String?
     @State private var reloadID = 0
+    /// As on the phone: a partial or old read is said, not shown as complete.
+    @State private var skipped = 0
+    @State private var fetchedAt: Date?
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
@@ -453,19 +455,32 @@ struct LAAWorkDesktopCatalogView: View {
         let subtitle: String
         let group: String
         let ref: String?
+        var service = false
     }
 
     private var rows: [CatalogRow] {
         if kind == .routines {
             let scheduled = routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
                 .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
-            return LAAWorkRoutineGrouping.groups(scheduled).flatMap { group in
+            var result = LAAWorkRoutineGrouping.groups(scheduled).flatMap { group in
                 group.routines.map { routine in
                     CatalogRow(id: routine.id, title: routine.name,
                                subtitle: "Next \(LAAWorkRoutineTime.next(routine.nextRunAt)) · \(routine.schedule ?? "Schedule unknown")",
                                group: group.destination, ref: routine.ref)
                 }
             }
+            // Always-on and manual services have no schedule to place them by;
+            // the phone lists them under their own note, so the Mac does too.
+            let services = self.services
+            if !services.isEmpty {
+                let title = "常駐・手動・時刻未確認（\(services.count)）"
+                result += services.map { routine in
+                    CatalogRow(id: routine.id, title: routine.name,
+                               subtitle: "Next \(LAAWorkRoutineTime.next(routine.nextRunAt)) · \(routine.schedule ?? "Schedule unknown")",
+                               group: title, ref: routine.ref, service: true)
+                }
+            }
+            return result
         }
         var seen = Set<String>()
         return skills.filter { seen.insert($0.name).inserted }
@@ -473,6 +488,11 @@ struct LAAWorkDesktopCatalogView: View {
             .sorted { $0.name < $1.name }
             .map { CatalogRow(id: $0.id, title: $0.name,
                               subtitle: $0.explanation.isEmpty ? "No description" : $0.explanation, group: "", ref: $0.ref) }
+    }
+
+    private var services: [LAAWorkRoutine] {
+        routines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
+            .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
     }
 
     var body: some View {
@@ -488,9 +508,20 @@ struct LAAWorkDesktopCatalogView: View {
                             .accessibilityLabel(Text(verbatim: "Reload"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    TextField("", text: $search, prompt: Text(verbatim: kind == .routines ? "Search routines" : "Search skills"))
-                        .textFieldStyle(.roundedBorder).focused($searchFocused)
+                    LAASearchField(placeholder: kind == .routines ? "Search routines" : "Search skills", text: $search,
+                                   identifier: "work.\(kind == .routines ? "routines" : "skills").desktop.search",
+                                   focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+                    if kind == .routines, skipped > 0 {
+                        Text(verbatim: "一部（\(skipped)件）を読み取れませんでした。表示は前回の内容です。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                            .accessibilityIdentifier("work.routines.partial")
+                    }
+                    if kind == .routines, LAAWorkFreshness.isStale(fetchedAt) {
+                        Text(verbatim: "最終取得 \(clock(fetchedAt))。最新ではない可能性があります。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            .accessibilityIdentifier("work.routines.fetchedAt")
+                    }
                     if loading && !loaded { ProgressView().controlSize(.small) }
                 }
                 .padding(LAASpacing.x3)
@@ -504,7 +535,7 @@ struct LAAWorkDesktopCatalogView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, LAASpacing.x4)
                                     .padding(.top, LAASpacing.x3)
-                                    .accessibilityIdentifier("work.desktop.routines.group")
+                                    .accessibilityIdentifier(row.service ? "work.routines.services" : "work.desktop.routines.group")
                             }
                             Button { selectedID = row.id } label: {
                                 VStack(alignment: .leading, spacing: 3) {
@@ -619,6 +650,12 @@ struct LAAWorkDesktopCatalogView: View {
         }
     }
 
+    private func clock(_ date: Date?) -> String {
+        guard let date else { return "時刻不明" }
+        let parts = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
     private func rowBackground(_ id: String) -> Color {
         if selectedID == id { return LAAColor.selectionFill }
         if hoveredID == id { return LAAColor.subtleSurface }
@@ -640,6 +677,8 @@ struct LAAWorkDesktopCatalogView: View {
                 let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
                 guard !Task.isCancelled else { return }
                 routines = page.items
+                skipped = max(0, page.skipped ?? 0)
+                fetchedAt = LAAWorkFreshness.date(page.fetchedAt)
             } else {
                 let page: LAAWorkPage<LAAWorkSkill> = try await bridge.read("/v1/skills")
                 guard !Task.isCancelled else { return }

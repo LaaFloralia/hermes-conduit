@@ -72,6 +72,14 @@ struct LAAWorkHub: View {
             if bridge.status != .paired {
                 connectionState
             } else {
+                // One field for the whole hub, above the list and in the same
+                // capsule as Chat, Doc and Studio. The sections it filters take
+                // it as `query`; Usage and Decisions have nothing to filter.
+                if searchable {
+                    LAASearchField(placeholder: "検索", text: $search, identifier: "laa.work.search")
+                        .padding(.horizontal, LAASpacing.horizontal)
+                        .padding(.bottom, LAASpacing.x2)
+                }
                 switch section {
                 case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
                 case .tasks: LAALinearTasksView(drafts: drafts, query: search)
@@ -83,11 +91,14 @@ struct LAAWorkHub: View {
                 }
             }
         }
-        // One native search for the whole hub, as the standard drawer under
-        // the title. Usage has nothing to filter, so it carries no field.
-        .modifier(LAAWorkSearchField(enabled: section != .usage && section != .decisions, text: $search))
         .onChange(of: section) { _, _ in search = "" }
+        // The field stays put; scrolling the list puts the keyboard away, as
+        // on Chat.
+        .scrollDismissesKeyboard(.interactively)
     }
+
+    /// Usage has nothing to filter, and Decisions carries its own board.
+    private var searchable: Bool { section != .usage && section != .decisions }
 
     private var desktopBody: some View {
         VStack(spacing: 0) {
@@ -204,11 +215,10 @@ struct LAAWorkHub: View {
         .accessibilityIdentifier("work.section.\(value.rawValue)")
     }
 }
-/// Settings at the bar's trailing end, where every tab has it. On iOS 26
-/// the minimized search sits before it rather than after, which pushed
-/// Settings inward on Work alone. The Mac shows neither: its search lives in
-/// each list column (the desktop body has nothing to attach `.searchable` to)
-/// and Settings sits under the sidebar.
+/// Settings at the bar's trailing end, where every tab has it. Work carries
+/// no search item: its field sits above the list, in the same capsule as the
+/// other sections. The Mac shows no bar item at all — Settings sits under the
+/// sidebar.
 private struct LAAWorkToolbar: ViewModifier {
     let onRequestSettings: () -> Void
     @Environment(\.laaDesktop) private var laaDesktop
@@ -216,35 +226,10 @@ private struct LAAWorkToolbar: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if laaDesktop {
             content
-        } else if #available(iOS 26.0, *) {
-            content.toolbar {
-                DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-                // Its own glass, the same as on the other tabs.
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
-            }
         } else {
             content.toolbar {
                 ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
             }
-        }
-    }
-}
-
-/// The phone's search, present only on the list sections. On iOS 26 it is
-/// the system's minimized search button, so Work keeps its large title like
-/// the other tabs; earlier systems use the drawer under the title.
-private struct LAAWorkSearchField: ViewModifier {
-    let enabled: Bool
-    @Binding var text: String
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if !enabled {
-            content
-        } else if #available(iOS 26.0, *) {
-            content.searchable(text: $text).searchToolbarBehavior(.minimize)
-        } else {
-            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always))
         }
     }
 }

@@ -155,8 +155,8 @@ struct LAAStudioHomeView: View {
 
     @ViewBuilder private func desktopWorkRows(_ snapshot: LAAStudioSnapshot) -> some View {
         let projects = desktopProjects(snapshot)
-        TextField(text: $search) { Text(verbatim: "作品を検索") }
-            .studioSearchField().focused($searchFocused).accessibilityIdentifier("laa.studio.work.search")
+        LAASearchField(placeholder: "作品を検索", text: $search,
+                       identifier: "laa.studio.work.search", focus: $searchFocused)
         if projects.isEmpty {
             Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。")
                 .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
@@ -235,7 +235,7 @@ struct LAAStudioHomeView: View {
         let projects = snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
         return VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Text(verbatim: "\(LAACopy.Studio.works.uppercased()) · \(projects.count)").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-            TextField(text: $search) { Text(verbatim: "作品を検索") }.studioSearchField().accessibilityIdentifier("laa.studio.work.search")
+            LAASearchField(placeholder: "作品を検索", text: $search, identifier: "laa.studio.work.search")
             if projects.isEmpty { Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。").foregroundStyle(LAAColor.secondaryText) }
             else {
                 LazyVGrid(columns: columns, spacing: LAASpacing.x2) {

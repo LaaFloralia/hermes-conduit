@@ -149,10 +149,10 @@ final class LAANotificationPairAll: ObservableObject {
         }
         if let bridge = error as? DashboardTicketBridgeError {
             switch bridge {
-            case .notReady, .answeredAfterSwitch: return "ダッシュボードに接続できません。"
-            case .signInRequired: return "ダッシュボードに再ログインしてください。"
-            case .http(let status, _): return "ダッシュボードが応答しました（HTTP \(status)）。"
-            default: return "ダッシュボードで設定を確認できません。"
+            case .notReady, .answeredAfterSwitch: return "Macに接続できません。"
+            case .signInRequired: return "Macに再ログインしてください。"
+            case .http(let status, _): return "Macが応答しました（HTTP \(status)）。"
+            default: return "Macで設定を確認できません。"
             }
         }
         if let url = error as? URLError {

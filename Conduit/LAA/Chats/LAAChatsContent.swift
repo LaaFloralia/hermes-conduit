@@ -17,6 +17,7 @@ struct LAAChatsContent: View {
     var retry: () -> Void
     var searchChanged: () -> Void
 
+    @Environment(\.laaDesktop) private var laaDesktop
     @State private var query = ""
     @State private var hoveredRow: String?
     @FocusState private var searchFocused: Bool
@@ -36,7 +37,15 @@ struct LAAChatsContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                LAATabHeading(title: LAACopy.chatsTitle)
+                // The Mac's window bar belongs to the whole window, so the
+                // list's own new button sits by its heading there.
+                HStack(alignment: .bottom) {
+                    LAATabHeading(title: LAACopy.chatsTitle, identifier: "laa.chats.heading")
+                    if laaDesktop {
+                        Spacer()
+                        newChatButton.buttonStyle(.borderless).foregroundStyle(LAAColor.link)
+                    }
+                }
                 if !snapshot.canCreateChat { note(LAACopy.chatsNewUnavailable) }
                 search
                 if searching && !hasResults {
@@ -60,14 +69,7 @@ struct LAAChatsContent: View {
         .toolbar {
             // Creation sits on the leading edge so settings is the only
             // trailing item, in the same place as every other tab's.
-            ToolbarItem(placement: .topBarLeading) {
-                Button(action: newChat) { Image(systemName: "plus") }
-                    .disabled(!snapshot.canCreateChat)
-                    .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
-                    .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
-                    .accessibilityIdentifier("laa.chats.new")
-                    .macTooltip(LAACopy.chatsNew)
-            }
+            if !laaDesktop { ToolbarItem(placement: .topBarLeading) { newChatButton } }
             if settingsAvailable { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: openSettings) } }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -158,30 +160,8 @@ struct LAAChatsContent: View {
     }
 
     private var search: some View {
-        HStack(spacing: LAASpacing.x3) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(LAAColor.secondaryText)
-                .accessibilityHidden(true)
-            TextField("", text: $query, prompt: Text(verbatim: LAACopy.chatsSearch).foregroundStyle(LAAColor.secondaryText))
-                .laaTextStyle(.body)
-                .foregroundStyle(LAAColor.text)
-                .focused($searchFocused)
-                .submitLabel(.search)
-                .accessibilityLabel(Text(verbatim: LAACopy.chatsSearch))
-                .accessibilityIdentifier("laa.chats.search")
-            if searching {
-                Button { query = ""; searchFocused = false } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(LAAColor.secondaryText)
-                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-                }
-                .accessibilityLabel(Text(verbatim: "Clear search"))
-                .macTooltip("Clear search")
-            }
-        }
-        .padding(.leading, LAASpacing.x4)
-        .padding(.trailing, LAASpacing.x1)
-        .frame(minHeight: LAASpacing.minimumTouchTarget)
-        .laaGlass(in: Capsule())
+        LAASearchField(placeholder: LAACopy.chatsSearch, text: $query,
+                       identifier: "laa.chats.search", focus: $searchFocused)
     }
 
     private func monetSection(_ monet: LAAChatsPerson) -> some View {
@@ -223,6 +203,19 @@ struct LAAChatsContent: View {
                 }
             }
         }
+    }
+
+    private var newChatButton: some View {
+        Button(action: newChat) {
+            Image(systemName: "plus")
+                .frame(minWidth: laaDesktop ? LAASpacing.minimumTouchTarget : nil,
+                       minHeight: laaDesktop ? LAASpacing.minimumTouchTarget : nil)
+        }
+        .disabled(!snapshot.canCreateChat)
+        .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
+        .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
+        .accessibilityIdentifier("laa.chats.new")
+        .macTooltip(LAACopy.chatsNew)
     }
 
     private var groupSection: some View {

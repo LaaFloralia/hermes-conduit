@@ -261,7 +261,7 @@ struct LAAAppShell: View {
         } else {
             NavigationStack(path: $chatsPath) {
                 // LAAChatsContent owns the bar (an empty title and the
-                // settings button); a title here would repeat the "Chats"
+                // settings button); a title here would repeat the "Chat"
                 // heading in the body.
                 LAAChatsView(appState: appState)
                     .navigationDestination(for: V2Route.self) { route in

@@ -110,7 +110,6 @@ extension LAACopy {
     // MARK: Menus
 
     static let macMenuGo = "Go"
-    static let macMenuChat = "Chat"
     static let macToggleSidebar = "Toggle Sidebar"
     static let macSearch = "Search"
     static let macReload = "Reload"

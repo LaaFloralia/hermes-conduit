@@ -277,6 +277,19 @@ struct ConduitApp: App {
         .windowResizability(.contentMinSize)
         .commands { LAAMacCommands() }
         #endif
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        // Settings opens in a window of its own (LAAMacSettingsWindow).
+        WindowGroup(id: LAAMacSettingsWindow.sceneID) {
+            LAAMacSettingsScene()
+                .environmentObject(appState)
+                .environment(\.locale, appLanguage.resolvedLocale)
+                .environment(\.laaDesktop, true)
+                .preferredColorScheme(appState.themePreference.colorScheme)
+                .tint(LAAColor.link)
+        }
+        .defaultSize(width: LAAMacSettingsWindow.initialWidth, height: LAAMacSettingsWindow.initialHeight)
+        .windowResizability(.contentMinSize)
+        #endif
     }
 
     private var rootContent: some View {

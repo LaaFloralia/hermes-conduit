@@ -59,10 +59,11 @@ final class LAAChromeUITests: XCTestCase {
                     firstFrame = settings.frame
                 }
                 if tab == "Chat" {
-                    // The screen's own "Chats" heading is the only one: the
-                    // bar above it stays empty (BUS-331).
-                    XCTAssertFalse(app.navigationBars["Chats"].exists, "no navigation title over Chats")
-                    XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Chats")).count, 1)
+                    // The section is "Chat" everywhere: the screen's own
+                    // heading says so and the bar above it stays empty
+                    // (BUS-331).
+                    XCTAssertFalse(app.navigationBars["Chat"].exists, "no navigation title over Chat")
+                    XCTAssertEqual(app.staticTexts["laa.chats.heading"].label, "Chat")
                 }
                 capture("chrome-\(tab.lowercased())-\(appearance)")
                 settings.tap()

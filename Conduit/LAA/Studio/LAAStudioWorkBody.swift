@@ -137,7 +137,7 @@ struct LAAStudioWorkBody: View {
                     }
                 }
                 Text(verbatim: "ページと素材 · \(items.count)").laaTextStyle(.section).fontWeight(.semibold)
-                TextField(text: $search) { Text(verbatim: "名前を検索") }.studioSearchField().accessibilityIdentifier("laa.studio.item.search")
+                LAASearchField(placeholder: "名前を検索", text: $search, identifier: "laa.studio.item.search")
                 if laaDesktop {
                     LAAMacFlowLayout(spacing: LAASpacing.x2) {
                         filterChips

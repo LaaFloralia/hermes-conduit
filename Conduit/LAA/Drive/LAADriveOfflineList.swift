@@ -30,8 +30,18 @@ struct LAADriveOfflineList: View {
 
     @State private var pendingRemoval: LAADriveOfflineRecord?
     @State private var confirmingRemoval = false
+    @State private var showingAll = false
 
     private var visibleRecords: [LAADriveOfflineRecord] { records.filter { $0.pairingID == pairingID } }
+
+    /// On the Mac the saved files share the Drive column, so a growing list
+    /// would push the files below it out of view. A few rows stay, and one
+    /// control opens the rest. The phone keeps its own long list.
+    private var collapsedLimit: Int { 4 }
+    private var collapsible: Bool { LAADeviceCopy.isMac && visibleRecords.count > collapsedLimit }
+    private var shownRecords: [LAADriveOfflineRecord] {
+        collapsible && !showingAll ? Array(visibleRecords.prefix(collapsedLimit)) : visibleRecords
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
@@ -47,7 +57,17 @@ struct LAADriveOfflineList: View {
                 Text("No files saved offline.").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
             } else {
                 LazyVStack(spacing: LAASpacing.x2) {
-                    ForEach(visibleRecords) { record in row(record) }
+                    ForEach(shownRecords) { record in row(record) }
+                }
+                if collapsible {
+                    Button {
+                        showingAll.toggle()
+                    } label: {
+                        Text(verbatim: showingAll ? "折りたたむ" : "すべて表示（\(visibleRecords.count)件）")
+                            .laaTextStyle(.secondary)
+                    }
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .accessibilityIdentifier("laa.drive.offline.showAll")
                 }
             }
         }
@@ -60,6 +80,7 @@ struct LAADriveOfflineList: View {
         .onChange(of: pairingID) { _, _ in
             confirmingRemoval = false
             pendingRemoval = nil
+            showingAll = false
         }
     }
 
@@ -100,7 +121,7 @@ struct LAADriveOfflineList: View {
                     Image(systemName: "trash")
                         .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                 }
-                .accessibilityLabel(Text(verbatim: "Remove saved copy of \(record.name)"))
+                .accessibilityLabel(Text(verbatim: "\(record.name)の保存済みコピーを削除"))
                 .accessibilityIdentifier("laa.drive.offline.remove.\(record.id)")
             }
         }
@@ -110,17 +131,17 @@ struct LAADriveOfflineList: View {
 
     private func details(_ record: LAADriveOfflineRecord) -> String {
         let size = ByteCountFormatter.string(fromByteCount: record.size, countStyle: .file)
-        return record.sourceFormat == .workspacePDF ? "PDF copy · \(size)" : size
+        return record.sourceFormat == .workspacePDF ? "PDFコピー · \(size)" : size
     }
 
     private func status(_ record: LAADriveOfflineRecord) -> String {
         let checked = record.verifiedAt.formatted(date: .abbreviated, time: .shortened)
         switch record.access {
-        case .verified: return "Last verified \(checked)"
-        case .stale: return "Older copy · Last verified \(checked)"
-        case .denied: return "Access denied · Last verified \(checked)"
-        case .missing: return "Unavailable in Drive · Last verified \(checked)"
-        case .unknown: return "Permission unknown · Last verified \(checked)"
+        case .verified: return "最終確認 \(checked)"
+        case .stale: return "古いコピー · 最終確認 \(checked)"
+        case .denied: return "アクセスできません · 最終確認 \(checked)"
+        case .missing: return "Driveで利用できません · 最終確認 \(checked)"
+        case .unknown: return "権限を確認できません · 最終確認 \(checked)"
         }
     }
 

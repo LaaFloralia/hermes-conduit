@@ -27,6 +27,17 @@ enum LoginAddressContext {
     }
 }
 
+/// The phone keeps a sign-in screen's primary action at its foot, under the
+/// thumb. A Mac window is tall and has no thumb: there the action follows the
+/// form and the form sits in the middle of the window.
+enum LoginLayout {
+    #if LAA_BUILD && targetEnvironment(macCatalyst)
+    static let actionsFollowForm = true
+    #else
+    static let actionsFollowForm = false
+    #endif
+}
+
 struct LoginAddressStep: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Bindable var flow: LoginFlowModel
@@ -84,7 +95,7 @@ struct LoginAddressStep: View {
             if let failure = flow.failure(at: .address) {
                 LoginFailureCard(failure: failure, flow: flow)
             }
-            Spacer(minLength: 12)
+            if !LoginLayout.actionsFollowForm { Spacer(minLength: 12) }
             VStack(spacing: 6) {
                 LoginPrimaryButton(
                     title: flow.isWorking ? AppLocalization.string("Connecting…") : AppLocalization.string("Continue"),
@@ -100,6 +111,7 @@ struct LoginAddressStep: View {
                     flow.connectionSetupDestination = .start
                 }
             }
+            if LoginLayout.actionsFollowForm { Spacer(minLength: 32) }
         }
         .loginReadableWidth()
         .padding(.horizontal, 16)
@@ -138,6 +150,9 @@ struct LoginAddressStep: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
+            #if !(LAA_BUILD && targetEnvironment(macCatalyst))
+            // A Mac pastes with ⌘V and has no camera to aim at a code, and
+            // Catalyst draws no paste control: the row stays on the phone.
             HStack(spacing: 10) {
                 // The system paste control: it reads the clipboard only when
                 // tapped, so iOS asks nothing first.
@@ -168,6 +183,7 @@ struct LoginAddressStep: View {
                 .accessibilityIdentifier("\(prefix).scan")
             }
             .padding(.top, 2)
+            #endif
         }
     }
 
@@ -353,7 +369,7 @@ struct LoginCredentialsPage: View {
             if let failure = flow.failure(at: .credentials) {
                 LoginFailureCard(failure: failure, flow: flow)
             }
-            Spacer(minLength: 12)
+            if !LoginLayout.actionsFollowForm { Spacer(minLength: 12) }
             VStack(spacing: 6) {
                 LoginPrimaryButton(
                     title: flow.isWorking ? AppLocalization.string("Connecting…") : AppLocalization.string("Sign in"),
@@ -380,6 +396,7 @@ struct LoginCredentialsPage: View {
                     .accessibilityIdentifier("login.browser-sign-in")
                 }
             }
+            if LoginLayout.actionsFollowForm { Spacer(minLength: 32) }
         }
         .loginReadableWidth()
         .padding(.horizontal, 16)
@@ -618,7 +635,7 @@ struct LoginDashboardsScreen: View {
             .disabled(flow.isWorking)
             .settingsCard()
             .accessibilityIdentifier("login.add-dashboard")
-            Spacer(minLength: 12)
+            if !LoginLayout.actionsFollowForm { Spacer(minLength: 12) }
             VStack(spacing: 4) {
                 LoginHelpLink(identifier: "login.connection-setup") {
                     flow.connectionSetupDestination = .start
@@ -628,6 +645,7 @@ struct LoginDashboardsScreen: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
+            if LoginLayout.actionsFollowForm { Spacer(minLength: 28) }
         }
         .loginReadableWidth()
         .padding(.horizontal, 16)

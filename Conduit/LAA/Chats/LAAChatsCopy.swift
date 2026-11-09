@@ -1,6 +1,6 @@
 #if LAA_BUILD
 extension LAACopy {
-    static let chatsTitle = "Chats"
+    static let chatsTitle = "Chat"
     static let chatsSearch = "Search conversations"
     static let chatsNew = "New Chat"
     static let chatsMonet = "Monet"

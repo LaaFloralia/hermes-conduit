@@ -54,7 +54,7 @@ final class LAAChatsUITests: XCTestCase {
         search.tap(); search.typeText("LAA team")
         XCTAssertTrue(app.buttons["laa.chats.group.team"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["laa.chats.person.laa-cto"].exists)
-        app.buttons["Clear search"].tap()
+        app.buttons["laa.chats.search.clear"].tap()
         search.tap()
         search.typeText("no-result-xyz")
         XCTAssertTrue(app.staticTexts["laa.chats.search.empty"].waitForExistence(timeout: 5))

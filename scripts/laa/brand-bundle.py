@@ -71,9 +71,47 @@ def validate_bundle_name(value):
     return value
 
 
+# Japanese copy reads as one sentence and names the owner's world: no
+# half-width space after LAA, and no platform words the owner never uses.
+# A hostname and a cookie scope stay technical terms, as does hosting when it
+# is the verb or a third-party provider rather than the owner's Mac.
+JAPANESE_AFTER_LAA = re.compile(r"LAA +(?=[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f])")
+JAPANESE_OWNER_WORDS = (
+    ("このダッシュボードのサインイン方法", "このMacへのサインイン方法"),
+    ("セルフホストのHermesダッシュボード", "お使いのMac"),
+    ("ダッシュボードのホスト", "Mac"),
+    ("ホストのダッシュボード", "Mac"),
+    ("専用のHermesプロファイル", "専用の設定"),
+    ("ボットのプロファイル", "ボットの設定"),
+    ("ブラウザプロファイル", "ブラウザ設定"),
+    # Hosting is a verb here, and the third-party host is the provider.
+    ("そのホストも", "その提供元も"),
+    ("ホストしている", "運用している"),
+    ("ホストします", "運用します"),
+    ("ホスト型", "クラウド型"),
+    # A connection field asks for a destination, not a machine named "Mac".
+    ("ホストまたはIPアドレス", "接続先またはIPアドレス"),
+    ("ホストまたはアドレス", "接続先またはアドレス"),
+) + tuple((name + join + word, replacement)
+          for name in ("Hermes", "Conduit", "LAA")
+          for join in ("の", " ", "")
+          for word, replacement in (("ダッシュボード", "Mac"), ("ホスト", "Mac"), ("プロファイル", "AI社員")))
+JAPANESE_HOST = re.compile(r"(?<!セルフ)ホスト(?![名型スしすさ])")
+
+
+def owner_japanese(value):
+    """Upstream platform words become the Mac or an AI employee (名称の辞書)."""
+    for old, new in JAPANESE_OWNER_WORDS:
+        value = value.replace(old, new)
+    value = value.replace("ダッシュボード", "Mac").replace("プロファイル", "AI社員")
+    return JAPANESE_HOST.sub("Mac", value)
+
+
 def display(value, source_key=None, locale="en"):
     if source_key in {"Conduit profile", "LAA profile"} and locale == "ja":
         return "AI社員"
+    if locale == "ja":
+        value = owner_japanese(value)
     # Transform app-owned display values only; lookup keys remain upstream's.
     for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Monet"), ("Cielem", "Monet"), ("Ciela", "Monet"), ("Ciel", "Monet"), ("シエル", "モネット"),
                      ("Conduit notifier plugin", "LAA plugin"),
@@ -98,6 +136,8 @@ def display(value, source_key=None, locale="en"):
                      ("Hermes", "LAA"), ("Conduit", "LAA"),
                      ("Paseo", "Work"), ("パセオ", "Work")):
         value = value.replace(old, new)
+    if locale == "ja":
+        value = JAPANESE_AFTER_LAA.sub("LAA", value)
     return value
 
 

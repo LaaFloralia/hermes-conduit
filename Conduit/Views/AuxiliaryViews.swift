@@ -603,6 +603,9 @@ struct SettingsView: View {
     /// reload for the new model.
     @State private var mainModelSaves = 0
     @Environment(\.dismiss) private var dismiss
+    #if LAA_BUILD
+    @Environment(\.laaSettingsInWindow) private var inWindow
+    #endif
 
     /// Settings' column: the phone's 720 pt, and on the Mac the 832 pt a
     /// document page keeps inside a wide sheet. The Mac is judged by the
@@ -625,7 +628,7 @@ struct SettingsView: View {
                         homeHeader
                     } else {
                         #if LAA_BUILD
-                        LAASettingsHeader(close: { dismiss() })
+                        LAASettingsHeader(close: inWindow ? nil : { dismiss() })
                         #else
                         ConduitSheetHeader(title: AppLocalization.string("Settings"), close: { dismiss() })
                         #endif
@@ -1439,7 +1442,7 @@ private struct SettingsHome: View {
                 v2Link(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
             }
         }
-        v2Group(AppLocalization.string("Hermes"), symbol: "gearshape.2") {
+        v2Group(aiGroupTitle, symbol: "gearshape.2") {
             v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
             v2Link(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
             v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
@@ -1499,6 +1502,15 @@ private struct SettingsHome: View {
     }
 
     /// A V2 group: its name over one card of rows.
+    /// The LAA build names the group for what it holds, not the server.
+    private var aiGroupTitle: String {
+        #if LAA_BUILD
+        "AI"
+        #else
+        AppLocalization.string("Hermes")
+        #endif
+    }
+
     private func v2Group<Rows: View>(_ title: String, symbol: String, @ViewBuilder rows: () -> Rows) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             SettingsSectionHeader(title: title, symbol: symbol, tint: .conduitAccent)
@@ -4650,7 +4662,11 @@ struct ConduitSettingsSection<Content: View>: View {
     /// cards, and a quiet card rather than a tinted glass slab.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
+            // A card that needs no name (LAA's lone Usage row) shows no
+            // header, rather than its symbol over an empty line.
+            if !title.isEmpty {
+                SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
+            }
             VStack(alignment: .leading, spacing: 14) {
                 content
             }

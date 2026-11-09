@@ -37,6 +37,17 @@ struct LAADriveUpload: View {
     @State private var session: LAADriveUploadSession?
     @State private var confirm = false
 
+    /// A file dropped on the Drive list arrives already chosen: the sheet keeps
+    /// the same confirmation and upload path as a picked file. `ownsDroppedFile`
+    /// is set for the copy the drop made in the temporary folder.
+    init(folderId: String?, droppedFile: URL? = nil, ownsDroppedFile: Bool = false,
+         completed: @escaping () -> Void) {
+        self.folderId = folderId
+        self.completed = completed
+        _file = State(initialValue: droppedFile)
+        _ownsFile = State(initialValue: ownsDroppedFile)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
