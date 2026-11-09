@@ -62,10 +62,20 @@ enum LAARadius {
 }
 
 enum LAAType {
+    #if targetEnvironment(macCatalyst)
+    // Catalyst draws UIKit points at about 0.77 Mac points, so the phone's
+    // 16/13/12 read as 12.3/10/9.2 on a Mac: below the system's 13 pt body.
+    // One step up keeps the phone's proportions at the Mac's reading size.
+    static let bodySize: CGFloat = 17
+    static let secondarySize: CGFloat = 15
+    static let sectionSize: CGFloat = 14
+    static let screenTitle = Font.custom("Georgia", size: 30, relativeTo: .largeTitle)
+    #else
     static let bodySize: CGFloat = 16
     static let secondarySize: CGFloat = 13
     static let sectionSize: CGFloat = 12
     static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
+    #endif
     static let employeeName = Font.custom("Georgia", size: 16, relativeTo: .body)
     static let usageValue = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
 

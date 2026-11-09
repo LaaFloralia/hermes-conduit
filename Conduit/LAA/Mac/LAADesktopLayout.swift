@@ -17,14 +17,14 @@ extension EnvironmentValues {
 
 /// Widths in UIKit points; Catalyst's iPad scaling shows them at about 77%.
 enum LAADesktopMetrics {
-    static let listMinWidth: CGFloat = 320
-    static let listIdealWidth: CGFloat = 380
+    static let listMinWidth: CGFloat = 340
+    static let listIdealWidth: CGFloat = 390
     /// The share of a section's width its list takes on a narrow window.
     static let listShare: CGFloat = 0.3
     /// A Work session's transcript.
-    static let readingWidth: CGFloat = 880
+    static let readingWidth: CGFloat = 936
     /// Notes, documents and task details.
-    static let documentWidth: CGFloat = 820
+    static let documentWidth: CGFloat = 832
     /// Card grids such as Studio works and Usage providers.
     static let gridItemMinWidth: CGFloat = 300
 
@@ -96,6 +96,83 @@ extension View {
     /// Centers content at a comfortable line length in a wide column.
     func laaReadableWidth(_ width: CGFloat = LAADesktopMetrics.documentWidth) -> some View {
         frame(maxWidth: width).frame(maxWidth: .infinity)
+    }
+
+    /// A page's text column: on the phone a leading column up to `phone`
+    /// points, on the Mac centred at `desktop`, so a wide window never shows
+    /// a phone-width column with empty paper beside it.
+    func laaPageWidth(phone: CGFloat = 720, desktop: CGFloat = LAADesktopMetrics.documentWidth) -> some View {
+        modifier(LAAPageWidth(phone: phone, desktop: desktop))
+    }
+
+    /// A sheet's size on the Mac. Catalyst otherwise shows every sheet as a
+    /// small form sheet (about 415×477 Mac points) whatever its detents say.
+    /// The phone keeps its detents; this does nothing there.
+    func laaSheetSize(_ size: LAASheetSize) -> some View {
+        modifier(LAASheetSizing(size: size))
+    }
+}
+
+/// Sheet sizes in UIKit points (Mac points ≈ ×0.77).
+enum LAASheetSize {
+    /// Settings, connection, notifications: ≈ 800×600 Mac points.
+    case settings
+    /// Create or edit one thing: a task, a project, a session.
+    case form
+    /// A short choice: a model, a profile, an order.
+    case picker
+    /// Reading or a call: ≈ 700×650 Mac points.
+    case page
+
+    var width: CGFloat {
+        switch self {
+        case .settings: 1040
+        case .form: 680
+        case .picker: 520
+        case .page: 900
+        }
+    }
+
+    var height: CGFloat {
+        switch self {
+        case .settings: 780
+        case .form: 600
+        case .picker: 480
+        case .page: 840
+        }
+    }
+}
+
+private struct LAAPageWidth: ViewModifier {
+    @Environment(\.laaDesktop) private var laaDesktop
+    let phone: CGFloat
+    let desktop: CGFloat
+
+    func body(content: Content) -> some View {
+        if laaDesktop {
+            content.frame(maxWidth: desktop, alignment: .leading).frame(maxWidth: .infinity)
+        } else {
+            content.frame(maxWidth: phone, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct LAASheetSizing: ViewModifier {
+    let size: LAASheetSize
+
+    func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        if #available(iOS 18.0, *) {
+            content
+                .frame(minWidth: size.width * 0.8, idealWidth: size.width,
+                       minHeight: size.height * 0.75, idealHeight: size.height)
+                .presentationSizing(.fitted)
+        } else {
+            content.frame(minWidth: size.width, minHeight: size.height)
+        }
+        #else
+        content
+        #endif
     }
 }
 #endif
