@@ -40,6 +40,7 @@ struct LAADecisionBoardView: View {
                         Task { await board.load(bridge) }
                     }
                 }
+                .environmentObject(bridge)
             }
             .sensoryFeedback(.success, trigger: retried)
             .accessibilityIdentifier("work.decisions")

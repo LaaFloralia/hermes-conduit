@@ -128,6 +128,24 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertFalse(route.decisionsLink)
     }
 
+    /// The free answer is an answer, not a supplement: optionIndex stays on
+    /// the wire as null and the words travel in note. Choosing an option may
+    /// still add a note beside it.
+    func testFreeAnswerKeepsOptionIndexNullAndCarriesTheNote() throws {
+        let free = try JSONEncoder().encode(LAADecisionBoard.answerBody(
+            optionIndex: nil, note: "  制作を優先し、公開は11月28日にします。 ", requestId: "req-1"))
+        let fields = try XCTUnwrap(try JSONSerialization.jsonObject(with: free) as? [String: Any])
+        XCTAssertTrue(fields["optionIndex"] is NSNull)
+        XCTAssertEqual(fields["note"] as? String, "制作を優先し、公開は11月28日にします。")
+        XCTAssertEqual(fields["requestId"] as? String, "req-1")
+
+        let chosen = try JSONEncoder().encode(LAADecisionBoard.answerBody(
+            optionIndex: 1, note: "  ", requestId: "req-2"))
+        let chosenFields = try XCTUnwrap(try JSONSerialization.jsonObject(with: chosen) as? [String: Any])
+        XCTAssertEqual(chosenFields["optionIndex"] as? Int, 1)
+        XCTAssertTrue(chosenFields["note"] is NSNull)
+    }
+
     func testBoardStateTreatsAnOlderBridgeAsUnsupported() async {
         let board = LAADecisionBoard()
         board.setForTesting([], phase: .unsupported)

@@ -180,6 +180,7 @@ private struct LAAPersonalDetailSection<Item: Decodable & Identifiable, Row: Vie
 }
 
 struct LAAPersonalTaskConnections: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let task: LAAPersonalTask
     let viewerId: String
@@ -234,15 +235,19 @@ struct LAAPersonalTaskConnections: View {
         }
         .sheet(item: $reply, onDismiss: { revision += 1 }) { target in
             LAAPersonalCommentEditor(taskId: task.id, viewerId: viewerId, parentId: target.parentId, drafts: drafts)
+                .environmentObject(bridge)
         }
         .sheet(isPresented: $showSubtask, onDismiss: { revision += 1 }) {
             LAAPersonalTaskEditor(task: nil, viewerId: viewerId, drafts: drafts, parent: task)
+                .environmentObject(bridge)
         }
         .sheet(isPresented: $showUpload, onDismiss: { revision += 1 }) {
             LAAPersonalTaskUpload(drafts: drafts, taskId: task.id, viewerId: viewerId)
+                .environmentObject(bridge)
         }
         .sheet(item: $itemMode, onDismiss: { revision += 1 }) { mode in
             LAAPersonalItemEditor(mode: mode, taskId: task.id, viewerId: viewerId, drafts: drafts)
+                .environmentObject(bridge)
         }
     }
 

@@ -43,8 +43,12 @@ struct LAAWorkSessionDecision: View {
                                     }.frame(minHeight: LAASpacing.minimumTouchTarget)
                                 }
                             }
-                            TextField("", text: answer(request.id, index), prompt: Text(verbatim: "回答を入力"), axis: .vertical)
+                            TextField("", text: answer(request.id, index),
+                                      prompt: Text(verbatim: "選択肢以外で答える"), axis: .vertical)
                                 .textFieldStyle(.roundedBorder)
+                                .accessibilityIdentifier("work.session.decision.note.\(index)")
+                            Text(verbatim: "選ばずに書くと、その内容で答えます。")
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                         Button { reply(request, decision: "answer") } label: { Text(verbatim: "回答を送信") }
                             .disabled(pendingSubmission(request.id) != nil || !request.questions.indices.allSatisfy { !(answers["\(request.id):\($0)"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
