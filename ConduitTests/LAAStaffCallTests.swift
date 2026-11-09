@@ -208,6 +208,26 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls), "この会話はテキスト専用です")
     }
 
+    func testDotsPhoneOpensTheDotsPageWhenTheShortcutFails() throws {
+        let shortcut = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
+        let page = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
+        let url = try XCTUnwrap(LAAStaff.monetDots.dotCallURL(onMac: false, info: ["LAADotsCallURL": page]))
+        XCTAssertEqual(url.scheme, "shortcuts")
+        XCTAssertEqual(url.host, "x-callback-url")
+        XCTAssertEqual(url.path, "/run-shortcut")
+        let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(items.first { $0.name == "name" }?.value, "Monetに電話")
+        // One escape only: the query parser gives the original link back, and
+        // the raw link is not written into the URL twice.
+        XCTAssertEqual(items.first { $0.name == "x-error" }?.value, page)
+        XCTAssertTrue(url.absoluteString.contains("x-error=https%3A%2F%2Fchatgpt.com%2Fdots%2F"))
+        XCTAssertFalse(url.absoluteString.contains("%253A"))
+        XCTAssertEqual(LAAEmployeeCallAvailability.dotCallHint(url), "ChatGPTでMonetと通話します")
+        // No page yet, or one that is not the dot: the plain shortcut stays.
+        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: nil), shortcut)
+        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: ["LAADotsCallURL": "https://example.com/dots/x"]), shortcut)
+    }
+
     func testBindingVoiceControlRefreshesAvailability() {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in

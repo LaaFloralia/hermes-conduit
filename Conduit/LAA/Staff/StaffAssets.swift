@@ -25,16 +25,37 @@ enum LAAStaff: String, CaseIterable {
     }
 
     /// iPhone runs the owner's "Monetに電話" shortcut (ChatGPT's Open your
-    /// dot, Call). Mac opens the dot's page in the default browser, since
-    /// the ChatGPT app there would take the Local Work connection. That
-    /// page's link stays out of this public source: the Mac release writes
-    /// it into Info as `LAADotsCallURL` (scripts/laa/brand-bundle.py).
+    /// dot, Call). A release writes the dot's page into Info as
+    /// `LAADotsCallURL`; the x-callback-url form then opens that page in
+    /// ChatGPT when the shortcut is missing or fails, instead of stopping at
+    /// "shortcut not found". Without the page the plain run-shortcut stays.
+    /// Mac opens the dot's page in the default browser, since the ChatGPT app
+    /// there would take the Local Work connection. That page's link stays out
+    /// of this public source: the release writes it into Info as
+    /// `LAADotsCallURL` (scripts/laa/brand-bundle.py).
     func dotCallURL(onMac: Bool, info: [String: Any]?) -> URL? {
         guard self == .monetDots else { return nil }
-        guard onMac else { return URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1") }
-        guard let link = info?["LAADotsCallURL"] as? String, link.hasPrefix("https://chatgpt.com/dots/") else { return nil }
-        return URL(string: link)
+        let page = (info?["LAADotsCallURL"] as? String)
+            .flatMap { $0.hasPrefix("https://chatgpt.com/dots/") ? $0 : nil }
+        guard onMac else {
+            // A page is escaped once, with the unreserved set only, so a
+            // receiver that splits the query on `&`, `=`, `+` or `?` still
+            // gets the whole link back after decoding.
+            guard let page, let error = page.addingPercentEncoding(withAllowedCharacters: Self.dotLinkCharacters) else {
+                return Self.dotShortcutURL
+            }
+            return URL(string: Self.dotShortcutFallback + error)
+        }
+        guard let page else { return nil }
+        return URL(string: page)
     }
+
+    /// Characters left as they are inside the dot link given to `x-error`.
+    private static let dotLinkCharacters = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    private static let dotShortcutURL = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
+    private static let dotShortcutFallback =
+        "shortcuts://x-callback-url/run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1&x-error="
 
     var name: String {
         switch self {
