@@ -84,7 +84,9 @@ export function createSessionService({
   retentionMs = 24 * 60 * 60 * 1000,
   pollMs = 2500,
   observationTtlMs = 1500,
-  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  // Time kept back from a long-poll's wait for the last look at the delegation
+  // path, so the reply lands inside the client's wait instead of after it.
+  observeReserveMs = 120,
 }) {
   // An observation cache keeps a detail read and an events long-poll from
   // spawning the delegation CLI twice in the same second.
@@ -717,23 +719,65 @@ export function createSessionService({
     return { session: sessionStore.get(successorId) ?? result.session, created: result.created, resumedFrom: id };
   }
 
+  // The app's long-poll: hold the request until this session's journal grows,
+  // and hand the page back as soon as it does. A pass costs one read of the
+  // journal, and the delegation path is read once per poll interval instead of
+  // once per pass, because a journal write is already the change that read
+  // would have found.
+  //
+  // Resolves with why it stopped: `journal` when this process wrote the
+  // session's record, `timeout` when the poll interval ran out, `closed` when
+  // the client went away. A write from another process is not announced; the
+  // timeout still covers it.
+  function journalChanged(id, timeoutMs, res) {
+    if (!(timeoutMs > 0)) return Promise.resolve('timeout');
+    return new Promise((resolve) => {
+      let finished = false;
+      let timer = null;
+      const onClose = () => finish('closed');
+      const finish = (reason) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        unsubscribe();
+        res?.off?.('close', onClose);
+        resolve(reason);
+      };
+      const unsubscribe = sessionStore.subscribe((tag) => {
+        // A directory sync may touch any session; a record write names one.
+        if (tag === null || tag === id) finish('journal');
+      });
+      timer = setTimeout(() => finish('timeout'), timeoutMs);
+      timer.unref?.();
+      res?.once?.('close', onClose);
+    });
+  }
+
   async function readEventPage({ id, cursor, afterSeq, limit, wait, res }) {
-    const record = requireSession(id);
-    const oldest = sessionStore.oldestSeq(id);
+    const first = sessionStore.eventPage(id, { afterSeq: 0, limit: 0 });
+    if (!first) throw notFound('session not found');
+    const record = first.record;
     const startSeq = cursor === null || cursor === undefined
       ? parseAfterSeq(afterSeq)
       : parseEventCursor(cursor, { sessionId: id, now: now(), retentionMs });
-    if (startSeq < oldest - 1) {
+    if (startSeq < first.oldestSeq - 1) {
       throw new BridgeError(410, 'event_history_gap', 'the journal no longer covers this cursor; re-read the session and its artifacts');
     }
     const pageLimit = parseEventLimit(limit);
     const waitSeconds = parseWait(wait);
     const deadline = Date.now() + waitSeconds * 1000;
     let resync = null;
+    const closed = () => Boolean(res?.destroyed || res?.writableEnded);
+    // Whether this pass may skip its look at the delegation path because the
+    // wake-up was a journal write: that write is what the look would report.
+    let journalFresh = false;
 
     for (;;) {
-      const observation = await observe(id, { force: true });
-      if (!observation.available) resync = observation.code ?? 'delegation_unavailable';
+      if (!journalFresh) {
+        const observation = await observe(id, { force: true });
+        if (!observation.available) resync = observation.code ?? 'delegation_unavailable';
+      }
+      journalFresh = false;
       const page = sessionStore.readEvents(id, { afterSeq: startSeq, limit: pageLimit });
       // A down delegation path cannot produce new events; waiting would only
       // repeat the same failure. Hand back what the journal has and let the
@@ -741,10 +785,20 @@ export function createSessionService({
       if (page.items.length > 0 || waitSeconds === 0 || resync !== null) {
         return { record: record.id, page, startSeq, resync };
       }
-      if (Date.now() >= deadline || res?.destroyed || res?.writableEnded) {
+      if (closed() || Date.now() >= deadline) {
         return { record: record.id, page, startSeq, resync };
       }
-      await sleep(Math.max(10, Math.min(pollMs, deadline - Date.now())));
+      // Keep back enough time for the last look, so the reply lands inside the
+      // client's wait instead of after an observation it must abandon.
+      const remaining = deadline - Date.now();
+      if (remaining <= observeReserveMs) {
+        return { record: record.id, page, startSeq, resync };
+      }
+      const woke = await journalChanged(id, Math.min(pollMs, remaining - observeReserveMs), res);
+      if (woke === 'closed') {
+        return { record: record.id, page, startSeq, resync };
+      }
+      journalFresh = woke === 'journal';
     }
   }
 
