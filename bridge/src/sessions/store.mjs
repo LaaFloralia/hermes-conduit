@@ -190,5 +190,24 @@ export function createSessionStore({
       const events = doc.streams?.[id]?.events ?? [];
       return events[0]?.seq ?? (doc.streams?.[id]?.lastSeq ?? 0) + 1;
     },
+    // The two journal positions a list row shows, for many sessions from one
+    // read: a row's own `headSeq` + `oldestSeq` parsed the whole document twice
+    // (2.4 MB, 1297 sessions) and that cost scaled with the number of rows.
+    // Only reading the file once per request keeps the answer current: nothing
+    // is remembered between requests.
+    seqInfo(ids) {
+      const doc = state.read();
+      prune(doc);
+      const info = new Map();
+      for (const id of ids) {
+        const stream = doc.streams?.[id];
+        const lastSeq = stream?.lastSeq ?? 0;
+        info.set(id, {
+          lastSeq,
+          oldestSeq: (stream?.events ?? [])[0]?.seq ?? lastSeq + 1,
+        });
+      }
+      return info;
+    },
   };
 }

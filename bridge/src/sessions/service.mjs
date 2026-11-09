@@ -475,12 +475,15 @@ export function createSessionService({
   async function getSession(id) {
     const record = requireSession(id);
     const observation = await observe(id);
+    // The observation may have rewritten the record; read it once for the row
+    // and its timestamp instead of parsing the document twice more.
+    const current = sessionStore.get(id) ?? record;
     return {
-      session: sessionStore.get(id) ?? record,
+      session: current,
       observation: {
         available: observation.available,
         code: observation.code ?? null,
-        observedAt: (sessionStore.get(id) ?? record).observedAt ?? null,
+        observedAt: current.observedAt ?? null,
       },
     };
   }
@@ -1152,10 +1155,15 @@ export function createSessionService({
     });
   }
 
-  function view(record) {
+  // `seqs` carries the journal positions already read for this request (see
+  // `views`). Without it a single row reads the store once; a row must never
+  // parse the whole 2.4 MB document twice, and a list must not do it per row.
+  function view(record, seqs = null) {
     // Cursor helpers stay in one place: the route module parses what the
     // service issues.
-    const lastSeq = sessionStore.headSeq(record.id);
+    const seq = (seqs ?? sessionStore.seqInfo([record.id])).get(record.id)
+      ?? { lastSeq: 0, oldestSeq: 1 };
+    const lastSeq = seq.lastSeq;
     return {
       id: record.id,
       name: record.name,
@@ -1208,10 +1216,18 @@ export function createSessionService({
       observedAt: record.observedAt ?? null,
       events: {
         lastSeq,
-        oldestSeq: sessionStore.oldestSeq(record.id),
+        oldestSeq: seq.oldestSeq,
         cursor: encodeEventCursor({ sessionId: record.id, seq: lastSeq, now: now() }),
       },
     };
+  }
+
+  // A page of rows with one journal read for all of them: the list cost no
+  // longer grows with the row count's file parses.
+  function views(records) {
+    if (records.length === 0) return [];
+    const seqs = sessionStore.seqInfo(records.map((record) => record.id));
+    return records.map((record) => view(record, seqs));
   }
 
   // The route module owns the HTTP shape; the cursor stays opaque and is
@@ -1240,6 +1256,7 @@ export function createSessionService({
     eventCursor,
     observe,
     view,
+    views,
     sessionIdFor,
     // The queue is drained by the service's own timer; these let a caller (or a
     // test) drain it at a known moment instead of waiting for a tick.

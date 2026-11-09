@@ -51,7 +51,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null }) {
     observeVisible();
     return {
       status: 200,
-      data: { items: page.items.map(sessions.view).map(decorate), nextCursor: page.nextCursor },
+      data: { items: sessions.views(page.items).map(decorate), nextCursor: page.nextCursor },
     };
   }
 
