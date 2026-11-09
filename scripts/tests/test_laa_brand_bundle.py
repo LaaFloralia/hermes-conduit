@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -7,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("laa_brand_bundle", ROOT / "scripts/laa/brand-bundle.py")
@@ -89,6 +91,55 @@ class LAABrandBundleTests(unittest.TestCase):
         self.assertEqual(brand.dots_call({}, "widgets", link), {})
         with self.assertRaises(ValueError):
             brand.dots_call({}, "app", "https://example.com/dots/x")
+
+    def test_prepared_info_carries_the_dots_link_without_printing_it(self):
+        link = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
+        command = [sys.executable, str(ROOT / "scripts/laa/brand-bundle.py"),
+                   "--input-info", str(ROOT / "Conduit/Info.plist"), "--output-info", "",
+                   "--kind", "app", "--source", str(ROOT), "--name", "LAA", "--bundle-name", "LAA"]
+
+        def prepare(path, value):
+            command[command.index("--output-info") + 1] = str(path)
+            return subprocess.run(command, capture_output=True, text=True,
+                                  env={**os.environ, checker.DOTS_CALL_ENV: value})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "prepared/Info.plist"
+            prepare(output, link)
+            self.assertEqual(plistlib.loads(output.read_bytes())["LAADotsCallURL"], link)
+            bad = prepare(output, "https://example.com/dots/x")
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertNotIn("https://example.com/dots/x", bad.stdout + bad.stderr)
+            prepare(output, "")
+            self.assertNotIn("LAADotsCallURL", plistlib.loads(output.read_bytes()))
+
+    def test_a_release_with_the_dots_link_checks_the_app_info(self):
+        link = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
+        checker.check_dots_call({}, None)
+        with self.assertRaises(checker.CheckError) as missing:
+            checker.check_dots_call({}, link)
+        self.assertNotIn(link, str(missing.exception))
+        checker.check_dots_call({checker.DOTS_CALL_KEY: link}, link)
+        with self.assertRaises(checker.CheckError):
+            checker.check_dots_call({checker.DOTS_CALL_KEY: ""}, link)
+        with mock.patch.dict(os.environ, {checker.DOTS_CALL_ENV: link}):
+            with self.assertRaises(checker.CheckError):
+                checker.check_dots_call({})
+            checker.check_dots_call({checker.DOTS_CALL_KEY: link})
+        # The archive check itself runs it, not only this test.
+        self.assertIn("check_dots_call(root_info)",
+                      (ROOT / "scripts/laa/check-brand-bundle.py").read_text())
+
+    def test_testflight_hands_the_dots_link_only_to_the_brand_step(self):
+        script = (ROOT / "scripts/laa/testflight.sh").read_text()
+        export = 'export LAA_DOTS_CALL_URL="$dots_call"'
+        self.assertIn('dots_call="${LAA_DOTS_CALL_URL:-}"', script)
+        self.assertLess(script.index('dots_call="${LAA_DOTS_CALL_URL:-}"'), script.index(export))
+        self.assertLess(script.index(export), script.index("xcodebuild archive"))
+        self.assertLess(script.index(export), script.index("check-brand-bundle.py"))
+        for line in script.splitlines():
+            if "LAA_DOTS_CALL_URL" in line or "$dots_call" in line:
+                self.assertNotRegex(line, r"echo|printf|tee|log")
 
     def test_localized_privacy_copy_does_not_transfer_developer_claim(self):
         strings = json.loads((ROOT / "Conduit/Localizable.xcstrings").read_text())["strings"]

@@ -7,6 +7,7 @@ fail the check; source/UI review still covers fixed Swift and server content.
 """
 import argparse
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -23,6 +24,10 @@ INTENTS = {APP_ID, APP_ID + ".watchkitapp", APP_ID + ".watchkitapp.widgets"}
 BRAND = re.compile(r"Conduit|Hermes|Paseo|パセオ", re.I)
 NOTICE_NAME = "LAAOpenSourceNotices.txt"
 NOTICE_SOURCE = Path(__file__).resolve().parents[2] / "assets/laa" / NOTICE_NAME
+# The owner's own ChatGPT dot: private, so the release passes it through the
+# environment and this check reports only whether the key is there.
+DOTS_CALL_ENV = "LAA_DOTS_CALL_URL"
+DOTS_CALL_KEY = "LAADotsCallURL"
 
 # Internal metadata names identify Swift types / intents and are not display
 # strings. They are kept to preserve registered shortcuts and compatibility.
@@ -114,6 +119,18 @@ def scan_shortcuts_yaml(path, issues):
             issues.append(f"old brand in {path} (line: {number})")
 
 
+def check_dots_call(info, link=None):
+    """A release given the dot page link must ship it in the app's Info.
+
+    Prints neither the link nor its absence value: this repository is public.
+    """
+    link = os.environ.get(DOTS_CALL_ENV) if link is None else link
+    if not link:
+        return
+    if not isinstance(info.get(DOTS_CALL_KEY), str) or not info[DOTS_CALL_KEY]:
+        raise CheckError(f"this release has {DOTS_CALL_ENV} but the app's Info has no {DOTS_CALL_KEY}")
+
+
 def bundle_info(bundle):
     path = bundle / ("Contents/Info.plist" if (bundle / "Contents").is_dir() else "Info.plist")
     if not path.is_file():
@@ -131,6 +148,7 @@ def check_bundle(bundle):
     root_info = bundle_info(bundle)
     if root_info.get("CFBundleIdentifier") != APP_ID:
         raise CheckError("the supplied app is not the LAA bundle")
+    check_dots_call(root_info)
     is_mac = (bundle / "Contents").is_dir()
     notices = (bundle / "Contents/Resources" if is_mac else bundle) / NOTICE_NAME
     if not notices.is_file() or notices.read_bytes() != NOTICE_SOURCE.read_bytes():
