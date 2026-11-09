@@ -181,11 +181,20 @@ export function createSessionStore({
       prune(doc);
       return [...(doc.streams[id]?.events ?? [])];
     },
-    // The two journal positions a list row shows (head and the oldest sequence
-    // the journal still covers), for many sessions from one read. Reading them
-    // a session at a time parsed the whole document twice per row — 2.4 MB and
-    // 1297 sessions live — so the cost grew with the number of rows. Nothing is
-    // remembered between reads: one read per request keeps the answer current.
+    headSeq(id) {
+      return state.read().streams?.[id]?.lastSeq ?? 0;
+    },
+    oldestSeq(id) {
+      const doc = state.read();
+      prune(doc);
+      const events = doc.streams?.[id]?.events ?? [];
+      return events[0]?.seq ?? (doc.streams?.[id]?.lastSeq ?? 0) + 1;
+    },
+    // The two journal positions a list row shows, for many sessions from one
+    // read: a row's own `headSeq` + `oldestSeq` parsed the whole document twice
+    // (2.4 MB, 1297 sessions) and that cost scaled with the number of rows.
+    // Only reading the file once per request keeps the answer current: nothing
+    // is remembered between requests.
     seqInfo(ids) {
       const doc = state.read();
       prune(doc);
