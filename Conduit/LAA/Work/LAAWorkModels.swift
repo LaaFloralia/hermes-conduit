@@ -237,6 +237,20 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
         let available: Bool
         let code: String?
     }
+    /// Follow-ups the owner has already sent that wait for the running turn to
+    /// end. The Bridge holds them instead of handing them to a busy agent, so
+    /// an accepted message is never lost; an older Bridge omits the field.
+    struct Queue: Codable, Hashable {
+        struct Item: Codable, Hashable {
+            let id: String
+            let chars: Int?
+            let queuedAt: String?
+            let attempts: Int?
+            let error: String?
+        }
+        let count: Int
+        let items: [Item]?
+    }
     /// What the Bridge and its daemon can actually do to this session. A
     /// missing or false value means no control is offered.
     struct Capabilities: Codable, Hashable {
@@ -260,6 +274,8 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     let runtimeVerified: Bool?
     let phase: String
     let pending: Pending?
+    /// Messages the owner sent that the Bridge is holding until the turn ends.
+    let queue: Queue?
     let resumedFrom: String?
     let resumedTo: String?
     let instructionVersion: Int?
@@ -288,6 +304,11 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     var needsDecision: Bool {
         phase == "awaiting_decision" || (pending?.count ?? 0) > 0
     }
+
+    /// How many of the owner's follow-ups are waiting for the turn to end. The
+    /// transcript cannot show them: they are not part of the agent's history
+    /// until the Bridge sends them.
+    var queuedCount: Int { queue?.count ?? 0 }
 
     var modelMismatch: Bool {
         guard let requested, let observed else { return false }

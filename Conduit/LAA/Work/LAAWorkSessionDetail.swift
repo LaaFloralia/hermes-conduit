@@ -211,6 +211,7 @@ struct LAAWorkSessionDetail: View {
                     // Tool calls are not part of the conversation the owner
                     // reads; only the messages they wrote or received are.
                     ForEach(conversationMessages) { message in messageCard(message) }
+                    if session.queuedCount > 0 { queuedNotice(session) }
                     if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                 } else if let failure {
                     Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
@@ -342,6 +343,17 @@ struct LAAWorkSessionDetail: View {
         Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             .accessibilityIdentifier("work.session.modelMismatch")
+    }
+
+    /// The owner's follow-up is already accepted: the Bridge holds it until this
+    /// turn ends and then sends it. Saying so is what keeps an accepted message
+    /// from looking lost while the agent is still busy (2026-11-09).
+    private func queuedNotice(_ session: LAAWorkSession) -> some View {
+        let count = session.queuedCount
+        let text = "実行中・順番待ち" + (count > 1 ? "\(count)件" : "1件") + "（今の手番が終わると届きます）"
+        return Label(text, systemImage: "clock.arrow.circlepath")
+            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            .accessibilityIdentifier("work.session.queue")
     }
 
     private func canInterrupt(_ session: LAAWorkSession) -> Bool {
@@ -531,6 +543,11 @@ struct LAAWorkSessionHeaderPill: View {
                 Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase))
                     .foregroundStyle(LAAWorkSessionStyle.statusColor(session.phase))
                 Text(verbatim: " " + LAAWorkPresentation.phase(session.phase)).foregroundStyle(.secondary)
+                // An accepted follow-up that is still waiting is part of the
+                // state the owner reads here, not a detail inside the page.
+                if session.queuedCount > 0 {
+                    Text(verbatim: "・順番待ち\(session.queuedCount)").foregroundStyle(.secondary)
+                }
             }
             .font(.caption2).lineLimit(1)
         }
