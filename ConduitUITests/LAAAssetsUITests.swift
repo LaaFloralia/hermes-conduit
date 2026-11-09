@@ -102,10 +102,21 @@ final class LAAAssetsUITests: XCTestCase {
         let surface = app.otherElements["laa.drive.player"]
         XCTAssertTrue(surface.waitForExistence(timeout: 10))
         let play = app.buttons["Play"]
-        if !play.exists { surface.tap() }
-        XCTAssertTrue(play.waitForExistence(timeout: 20))
-        play.tap()
-        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 20))
+        let pause = app.buttons["Pause"]
+        let replay = app.buttons["laa.drive.player.replay"]
+        // The fixture is four seconds long and playback starts automatically.
+        // It may already be playing or finished by the time XCTest gets here.
+        if replay.exists { replay.tap() }
+        if !pause.exists && !play.exists { surface.tap() }
+        if play.exists { play.tap() }
+        if !pause.waitForExistence(timeout: 3), replay.exists {
+            replay.tap()
+            if !pause.exists { surface.tap() }
+        }
+        XCTAssertTrue(pause.waitForExistence(timeout: 4))
+        // Pause the short fixture before seeking so it cannot finish while
+        // accessibility queries are locating the native slider.
+        pause.tap()
         let slider = app.sliders.firstMatch
         let enabled = NSPredicate(format: "enabled == true")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: enabled, object: slider)], timeout: 20), .completed)

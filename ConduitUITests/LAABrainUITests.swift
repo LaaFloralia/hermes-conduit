@@ -200,7 +200,7 @@ final class LAABrainUITests: XCTestCase {
         let create = app.buttons["laa.brain.create"]
         XCTAssertTrue(create.waitForExistence(timeout: 30))
         create.tap()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'brain:create'")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "メモを新規作成する権限がありません")).firstMatch.waitForExistence(timeout: 10))
         app.swipeUp()
         let save = app.buttons["laa.brain.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 10))

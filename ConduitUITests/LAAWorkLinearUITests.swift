@@ -2,15 +2,17 @@
 import XCTest
 
 final class LAAWorkLinearUITests: XCTestCase {
+    private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
+
     private func launch(_ appearance: String = "light") throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:19585/reset")!)) != nil else {
+        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:\(port + 1)/reset")!)) != nil else {
             throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
         }
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance,
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19584"
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
         app.launch()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
