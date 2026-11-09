@@ -344,7 +344,7 @@ struct LAAUsageView: View {
                 Text(verbatim: "● 取得済み　▲ 要確認　○ 未取得")
                     .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                     .lineLimit(1).minimumScaleFactor(0.8)
-                    .accessibilityLabel(Text(verbatim: "凡例 黒丸は取得済み、三角は要確認、白丸は未取得"))
+                    .accessibilityLabel(Text(verbatim: "凡例 取得済みは●、要確認は▲、未取得は○"))
             }
             VStack(alignment: .leading, spacing: 0) {
                 if shown.isEmpty && unconnected.isEmpty {

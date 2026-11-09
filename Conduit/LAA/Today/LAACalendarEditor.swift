@@ -75,13 +75,13 @@ struct LAACalendarEditor: View {
             }
             .navigationTitle(Text(verbatim: event == nil ? "予定を作成" : "予定を編集"))
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "キャンセル") }.disabled(busy) }
+                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.cancel) }.disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { confirmSave = true } label: { Text(verbatim: "保存") }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(start < end) || busy || uncertain)
+                    Button { confirmSave = true } label: { Text(verbatim: LAACopy.save) }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(start < end) || busy || uncertain)
                 }
             }
             .confirmationDialog(Text(verbatim: "Googleカレンダーに保存しますか？"), isPresented: $confirmSave, titleVisibility: .visible) {
-                Button { Task { await save() } } label: { Text(verbatim: "保存") }
+                Button { Task { await save() } } label: { Text(verbatim: LAACopy.save) }
             } message: { Text(verbatim: "参加者がいる場合は、Googleから予定の通知が送られます。") }
         }.interactiveDismissDisabled(busy)
             .onChange(of: allDay) { _, value in

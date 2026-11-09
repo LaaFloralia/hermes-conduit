@@ -362320,7 +362320,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bridge接続が変更されました。ファイルを開き直してください。"
+            "value": "Macとの接続が変わりました。ファイルを開き直してください。"
           }
         },
         "ko": {
@@ -362402,7 +362402,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "MacがBridgeにGoogle Driveの読み取りを許可していません。"
+            "value": "MacでGoogle Driveの読み取りが許可されていません。"
           }
         },
         "ko": {

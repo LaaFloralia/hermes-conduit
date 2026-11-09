@@ -119,7 +119,7 @@ struct LAAWorkCatalogView: View {
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }
             if kind == .routines, skipped > 0 {
-                Text(verbatim: "一部の定期実行を読み取れませんでした（\(skipped)件）。この一覧は完全ではありません。")
+                Text(verbatim: "一部（\(skipped)件）を読み取れませんでした。表示は前回の内容です。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .accessibilityIdentifier("work.routines.partial")
             }

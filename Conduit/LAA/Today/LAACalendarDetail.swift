@@ -55,7 +55,7 @@ struct LAACalendarDetail: View {
             .toolbar {
                 if onClose == nil {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button { dismiss() } label: { Text(verbatim: "閉じる") }
+                        Button { dismiss() } label: { Text(verbatim: LAACopy.close) }
                     }
                 }
             }

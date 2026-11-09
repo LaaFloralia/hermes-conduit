@@ -91,7 +91,7 @@ struct LAATodayView: View {
                     Text(verbatim: message).foregroundStyle(LAAColor.attention).accessibilityIdentifier("laa.today.error")
                     if calendar.loaded { Text(verbatim: "保存済みの予定です。最新の変更は未確認です。").font(.caption) }
                     Button { Task { await refresh() } } label: { Text(verbatim: "再読み込み") }.laaGlassButton()
-                    if bridge.status != .paired { Button { showPairing = true } label: { Text(verbatim: "Macに接続") }.laaGlassButton() }
+                    if bridge.status != .paired { Button { showPairing = true } label: { Text(verbatim: LAACopy.WorkTab.connect) }.laaGlassButton() }
                 }
                 if calendar.skippedCount > 0 { Text(verbatim: "読み取れない予定を\(calendar.skippedCount)件除外しました。").font(.caption).foregroundStyle(LAAColor.attention) }
                 if calendar.mode == .month { monthGrid }
@@ -115,7 +115,7 @@ struct LAATodayView: View {
                 Text(verbatim: "Macに接続してください").fontWeight(.semibold)
                 Text(verbatim: "接続すると予定を確認・編集できます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
+                Button { showPairing = true } label: { Text(verbatim: LAACopy.WorkTab.connect) }
                     .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("work.connect")
             }

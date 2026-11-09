@@ -260,7 +260,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Input Text Size"].exists)
         XCTAssertTrue(app.buttons["Full Screen Editor"].exists)
-        app.buttons["閉じる"].tap()
+        app.buttons["Close"].tap()
         app.buttons["Projects"].tap()
         let addProject = app.buttons["work.projects.new"]
         XCTAssertTrue(addProject.waitForExistence(timeout: 10))
@@ -575,7 +575,7 @@ final class LAAWorkUITests: XCTestCase {
         app.buttons["work.launch.model"].tap()
         shot("model-menu")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
-        let close = app.buttons["閉じる"]
+        let close = app.buttons["Close"]
         XCTAssertTrue(waitUntilReady(close, timeout: 10))
         close.tap()
         app.buttons["Projects"].tap()

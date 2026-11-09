@@ -52,6 +52,8 @@ enum LAACopy {
     static let openSourceLicenses = "Open-source licenses"
     static let back = "Back"
     static let close = "Close"
+    static let cancel = "Cancel"
+    static let save = "Save"
     static let done = "Done"
     static let call = "Call"
     static let callMute = "Mute"

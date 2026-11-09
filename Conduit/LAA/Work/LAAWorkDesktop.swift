@@ -480,7 +480,7 @@ struct LAAWorkDesktopCatalogView: View {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     HStack {
-                        Text(verbatim: kind == .routines ? "WORK ROUTINES" : "SKILLS")
+                        Text(verbatim: kind == .routines ? "ROUTINES" : "SKILLS")
                             .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
                         Button { reloadID += 1 } label: { Image(systemName: "arrow.clockwise") }

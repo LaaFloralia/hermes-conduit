@@ -100,7 +100,7 @@ struct LAAPersonalInboxView: View {
             LAAPersonalNotificationContent(item: item, drafts: drafts)
             let locallyPending = draftKey(item.id).flatMap { LAAWorkDrafts.pending(drafts, key: $0) } != nil
             if locallyPending || unresolved.contains(item.id) {
-                Text(verbatim: "この通知の操作は確認待ちです。Pendingで結果を確認してください。")
+                Text(verbatim: "この通知の操作は確認待ちです。送信待ちで結果を確認してください。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             HStack {
@@ -110,7 +110,7 @@ struct LAAPersonalInboxView: View {
                 .accessibilityIdentifier("work.inbox.read.\(item.id)")
                 Button() {
                     Task { await change(item, action: item.isArchived ? "unarchive" : "archive") }
-                } label: { Text(verbatim: item.isArchived ? "戻す" : "アーカイブ") }
+                } label: { Text(verbatim: item.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) }
                 .accessibilityIdentifier("work.inbox.archive.\(item.id)")
             }
             .buttonStyle(.bordered)
@@ -192,9 +192,9 @@ struct LAAPersonalInboxView: View {
                 return
             }
             working = false
-            operationError = "結果を確認できません。Pendingで状態を確認してください。自動で再送しません。"
+            operationError = "結果を確認できません。送信待ちで状態を確認してください。自動で再送しません。"
             await loadOperations()
-            if operationError == nil { operationError = "結果を確認できません。Pendingで状態を確認してください。自動で再送しません。" }
+            if operationError == nil { operationError = "結果を確認できません。送信待ちで状態を確認してください。自動で再送しません。" }
         }
     }
 }

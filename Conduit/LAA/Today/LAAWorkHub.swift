@@ -22,26 +22,17 @@ struct LAAWorkHub: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .decisions: AppLocalization.string("Decisions")
-            case .tasks: AppLocalization.string("Tasks")
-            case .sessions: AppLocalization.string("Sessions")
-            case .projects: AppLocalization.string("Projects")
-            case .routines: AppLocalization.string("Work routines")
-            case .skills: AppLocalization.string("Skills")
+            case .decisions: LAACopy.WorkTab.decisions
+            case .tasks: LAACopy.WorkTab.tasks
+            case .sessions: LAACopy.WorkTab.sessions
+            case .projects: LAACopy.WorkTab.projects
+            case .routines: LAACopy.WorkTab.routines
+            case .skills: LAACopy.WorkTab.skills
             case .usage: AppLocalization.string("AI usage")
             }
         }
-        var desktopTitle: String {
-            switch self {
-            case .decisions: AppLocalization.string("Decisions")
-            case .tasks: AppLocalization.string("Tasks")
-            case .sessions: AppLocalization.string("Sessions")
-            case .projects: AppLocalization.string("Projects")
-            case .routines: AppLocalization.string("Routines")
-            case .skills: AppLocalization.string("Skills")
-            case .usage: AppLocalization.string("AI usage")
-            }
-        }
+        /// The Mac header row and the phone list use the same words.
+        var desktopTitle: String { title }
     }
 
     var body: some View {

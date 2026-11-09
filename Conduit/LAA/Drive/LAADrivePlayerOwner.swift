@@ -39,7 +39,7 @@ final class LAADrivePlayerOwner: NSObject, ObservableObject, @preconcurrency AVP
         if localURL != nil {
             let revision = bridge.revision
             bridge.$revision.dropFirst().sink { [weak self] current in
-                if current != revision { self?.invalidate("The Bridge connection changed. Reopen this saved file.") }
+                if current != revision { self?.invalidate("Macとの接続が変わりました。このファイルを開き直してください。") }
             }.store(in: &subscriptions)
         }
         VoiceAudioSessionCoordinator.shared.$isInNativeCall.removeDuplicates().sink { [weak playback] active in

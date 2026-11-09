@@ -101,7 +101,7 @@ struct LAAPersonalTaskDetailView: View {
                             isPresented: Binding(get: { confirmingComplete }, set: { confirmingComplete = $0 }),
                             titleVisibility: .visible) {
             Button { if let ownerTask { Task { await complete(ownerTask) } } } label: { Text(verbatim: "完了") }
-            Button(role: .cancel) {} label: { Text(verbatim: "キャンセル") }
+            Button(role: .cancel) {} label: { Text(verbatim: LAACopy.cancel) }
         } message: {
             Text(verbatim: ownerTask.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
         }

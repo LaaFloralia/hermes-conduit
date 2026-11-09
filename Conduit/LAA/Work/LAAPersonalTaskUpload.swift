@@ -30,7 +30,7 @@ struct LAAPersonalTaskUpload: View {
                 if let pending {
                     Section() {
                         if pending.personalOrigin != nil {
-                            Text(verbatim: "移した下書きはPendingで元の要求を照合してください。")
+                            Text(verbatim: "移した下書きは送信待ちで元の要求を照合してください。")
                         } else {
                             Text(verbatim: "送信結果を確認するまで、別のファイルを送信しません。")
                             if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }

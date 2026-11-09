@@ -69,7 +69,7 @@ final class LAAWorkRefUITests: XCTestCase {
         let meta = app.staticTexts["work.task.detail.ref"]
         XCTAssertTrue(meta.waitForExistence(timeout: 10))
         XCTAssertEqual(meta.label, "T12 · BUS-TEST1")
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["Close"].firstMatch.tap()
 
         // Sessions: every row and the session's own header.
         section(app, "sessions")

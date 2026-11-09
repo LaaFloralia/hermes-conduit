@@ -95,7 +95,7 @@ struct LAAWorkSessionLauncher: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { dismiss() } label: { Text(verbatim: "閉じる") }
+                    Button { dismiss() } label: { Text(verbatim: LAACopy.close) }
                 }
             }
         }

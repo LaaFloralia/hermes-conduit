@@ -62,7 +62,7 @@ struct LAADecisionDetailView: View {
             if !laaDesktop {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { onFinished(false) } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel(Text(verbatim: "閉じる"))
+                        .accessibilityLabel(Text(verbatim: LAACopy.close))
                         .accessibilityIdentifier("work.decision.close")
                 }
             }

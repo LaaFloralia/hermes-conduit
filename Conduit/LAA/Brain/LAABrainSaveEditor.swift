@@ -108,7 +108,7 @@ struct LAABrainSaveEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("閉じる") { Task { await close() } }.disabled(busy)
+                    Button(LAACopy.close) { Task { await close() } }.disabled(busy)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("履歴") { showHistory = true }
@@ -116,7 +116,7 @@ struct LAABrainSaveEditor: View {
                         .accessibilityIdentifier("laa.brain.history")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { Task { await save() } }
+                    Button(LAACopy.save) { Task { await save() } }
                         .disabled(busy || recoveryUnavailable || snapshot == nil || conflict != nil || !pending.isEmpty)
                         .accessibilityIdentifier("laa.brain.edit.save")
                 }
@@ -163,7 +163,7 @@ struct LAABrainSaveEditor: View {
             Button("記録を消す", role: .destructive) {
                 if let item = pendingToClear { Task { await clearMissing(item) } }
             }.accessibilityIdentifier("laa.brain.recovery.confirmClearMissing")
-            Button("キャンセル", role: .cancel) { pendingToClear = nil }
+            Button(LAACopy.cancel, role: .cancel) { pendingToClear = nil }
         } message: {
             Text("中断したファイルが見つかりません。記録を消す前に履歴を確認してください。")
         }
@@ -483,7 +483,7 @@ private struct BrainHistoryView: View {
             }
             .navigationTitle("履歴")
             .toolbar { ToolbarItem(placement: .cancellationAction) {
-                Button("閉じる") { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
+                Button(LAACopy.close) { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
             } }
         }
     }
@@ -636,7 +636,7 @@ struct LAABrainRecoveryCatalogueView: View {
                 } else { ProgressView() }
             }
             .navigationTitle("復元履歴")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.close) { dismiss() } } }
             .task { await refresh() }
             .refreshable { await refresh() }
         }
@@ -707,7 +707,7 @@ private struct BrainRecoveryPathView: View {
             Button("記録を消す", role: .destructive) {
                 if let item = pendingToClear { Task { await clearMissing(item) } }
             }
-            Button("キャンセル", role: .cancel) { pendingToClear = nil }
+            Button(LAACopy.cancel, role: .cancel) { pendingToClear = nil }
         } message: {
             Text("中断したファイルが見つかりません。記録を消す前に履歴を確認してください。")
         }

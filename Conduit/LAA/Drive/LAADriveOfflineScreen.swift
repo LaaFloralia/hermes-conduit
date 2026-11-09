@@ -129,7 +129,7 @@ private struct LAADriveOfflinePreview: View {
         .onChange(of: bridge.revision) { _, _ in
             accessLost = true
             image = nil; document = nil
-            error = "The Bridge connection changed. Reopen this saved file."
+            error = "Macとの接続が変わりました。このファイルを開き直してください。"
         }
         .onDisappear { if share == nil { releaseShare() } }
         .sheet(item: $share, onDismiss: releaseShare) { selected in

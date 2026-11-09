@@ -2,17 +2,17 @@
 import SwiftUI
 
 extension LAACopy.WorkTab {
-    static let newTask = "課題を作成"
-    static let editTask = "課題を編集"
-    static let myTasks = "自分の課題"
+    static let newTask = "New Task"
+    static let editTask = "Edit Task"
+    static let myTasks = "My Tasks"
     static let inProgress = "進行中"
     static let backlog = "バックログ"
-    static let searchTasks = "課題を検索"
-    static let loadMore = "さらに表示"
-    static let views = "保存したビュー"
-    static let cycles = "サイクル"
-    static let checkStatus = "結果を確認"
-    static let retrySameRequest = "同じ要求で再送"
+    static let searchTasks = "Search tasks"
+    static let loadMore = "Load More"
+    static let views = "Saved Views"
+    static let cycles = "Cycles"
+    static let checkStatus = "Check Status"
+    static let retrySameRequest = retryRequest
 }
 
 struct LAAPersonalTaskList: View {
@@ -83,7 +83,7 @@ struct LAAPersonalTaskList: View {
                 NavigationLink {
                     if let viewerId { LAAPersonalPendingView(drafts: drafts, viewerId: viewerId) }
                     else { LAAPersonalPendingOfflineView(drafts: drafts) }
-                } label: { Text(verbatim: "Pending") }
+                } label: { Text(verbatim: "送信待ち") }
                     .accessibilityIdentifier("work.tasks.pending")
             }
             TextField(LAACopy.WorkTab.searchTasks, text: $search)

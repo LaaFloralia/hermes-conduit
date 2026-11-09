@@ -160,7 +160,7 @@ struct LAATodayDesktopView: View {
                 .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                 .padding(.horizontal, LAASpacing.x4).padding(.top, LAASpacing.x3)
             if events.isEmpty {
-                Text(verbatim: "予定はありません").laaTextStyle(.secondary)
+                Text(verbatim: "予定はありません。").laaTextStyle(.secondary)
                     .foregroundStyle(LAAColor.secondaryText)
                     .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
             }

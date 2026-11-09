@@ -22,7 +22,7 @@ extension LAACopy {
         static var images: String { AppLocalization.string("Images") }
         static var documents: String { AppLocalization.string("Documents") }
         static var folders: String { AppLocalization.string("Folders") }
-        static var loadedOnly: String { AppLocalization.string("Filters apply to loaded items.") }
+        static var loadedOnly: String { "絞り込みは、読み込み済みの項目にだけ効きます。" }
         static var loadMore: String { AppLocalization.string("Load more") }
         static var searchTooLong: String { AppLocalization.string("Search text is too long.") }
     }

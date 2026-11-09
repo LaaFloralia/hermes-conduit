@@ -154,7 +154,7 @@ struct LAAWorkView: View {
                     .foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"
-                     : "この端末はMacのLAAアプリと接続されていません。")
+                     : LAACopy.bridgeNotPairedBody)
                 Button(LAACopy.WorkTab.connect) { showPairing = true }
                     .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                     .foregroundStyle(LAAColor.filledButtonText)

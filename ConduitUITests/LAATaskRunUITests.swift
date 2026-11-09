@@ -154,7 +154,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertEqual(reason.label, "実施中のため、終わってから完了できます")
         XCTAssertFalse(app.buttons["work.task.detail.complete"].isEnabled)
         XCTAssertEqual(completedIDs(), [])
-        app.buttons["閉じる"].tap()
+        app.buttons["Close"].tap()
 
         let target = row(app, "次の打ち合わせを確認する")
         XCTAssertTrue(target.waitForExistence(timeout: 10))
@@ -274,7 +274,7 @@ final class LAATaskRunUITests: XCTestCase {
         app.buttons["work.linear.add"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.linear.model"].firstMatch.waitForExistence(timeout: 10))
         shot(app, "c-task-create-\(suffix)")
-        app.buttons["閉じる"].tap()
+        app.buttons["Close"].tap()
 
         let target = row(app, "見積りを送る")
         scrollTo(app, target)

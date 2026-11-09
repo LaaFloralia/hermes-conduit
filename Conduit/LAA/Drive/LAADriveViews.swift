@@ -24,8 +24,8 @@ extension LAACopy {
         static var unsupported: String { AppLocalization.string("This file type cannot be previewed here. Open on Mac.") }
         static var notDownloadable: String { AppLocalization.string("This file cannot be downloaded. Open on Mac.") }
         static var downloadUnknown: String { AppLocalization.string("Download permission is unavailable. Open on Mac.") }
-        static var rangeUnsupported: String { AppLocalization.string("The server did not support seeking. Playback was stopped.") }
-        static var rangeInvalid: String { AppLocalization.string("The requested file range could not be read. Try again.") }
+        static var rangeUnsupported: String { "この動画は早送り・巻き戻しに対応していません。再生を止めました。" }
+        static var rangeInvalid: String { "この部分を読み取れませんでした。もう一度読み込んでください。" }
         static var tooLarge: String { AppLocalization.string("This preview is larger than 64 MB. Open on Mac.") }
         static var invalidPreview: String { AppLocalization.string("This file could not be displayed. Open on Mac.") }
     }

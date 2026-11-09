@@ -89,7 +89,7 @@ struct LAALinearTasksView: View {
                 LAALinearTasksView(drafts: drafts, archivedOnly: true)
                     .navigationTitle(Text(verbatim: "アーカイブ"))
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { showingArchive = false } label: { Text(verbatim: "閉じる") }
+                        Button { showingArchive = false } label: { Text(verbatim: LAACopy.close) }
                     } }
             }
             .environmentObject(bridge)
@@ -110,7 +110,7 @@ struct LAALinearTasksView: View {
             NavigationStack {
                 LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { taskRoute.target = nil } label: { Text(verbatim: "閉じる") }
+                        Button { taskRoute.target = nil } label: { Text(verbatim: LAACopy.close) }
                     } }
             }
             .environmentObject(bridge)
@@ -124,7 +124,7 @@ struct LAALinearTasksView: View {
                     Task { await load(quiet: true) }
                 })
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { detail = nil } label: { Text(verbatim: "閉じる") }
+                        Button { detail = nil } label: { Text(verbatim: LAACopy.close) }
                     } }
             }
             .environmentObject(bridge)
@@ -141,7 +141,7 @@ struct LAALinearTasksView: View {
                 if let task = deleting { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "archive") }
                 deleting = nil
             } label: { Text(verbatim: "削除") }
-            Button(role: .cancel) { deleting = nil } label: { Text(verbatim: "キャンセル") }
+            Button(role: .cancel) { deleting = nil } label: { Text(verbatim: LAACopy.cancel) }
         } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
         .confirmationDialog(Text(verbatim: "完了にしますか？"), isPresented: Binding(get: { completing != nil },
             set: { if !$0 { completing = nil } }), titleVisibility: .visible) {
@@ -149,7 +149,7 @@ struct LAALinearTasksView: View {
                 if let task = completing { complete(task) }
                 completing = nil
             } label: { Text(verbatim: "完了") }
-            Button(role: .cancel) { completing = nil } label: { Text(verbatim: "キャンセル") }
+            Button(role: .cancel) { completing = nil } label: { Text(verbatim: LAACopy.cancel) }
         } message: {
             Text(verbatim: completing.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
         }
@@ -777,9 +777,9 @@ struct LAALinearTaskEditor: View {
             .navigationTitle(Text(verbatim: task == nil ? "タスクを追加" : "タスクを編集"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "閉じる") } }
+                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.close) } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { commit() } label: { Text(verbatim: "保存") }
+                    Button { commit() } label: { Text(verbatim: LAACopy.save) }
                         .disabled(!canSave)
                         .accessibilityIdentifier("work.linear.save")
                 }

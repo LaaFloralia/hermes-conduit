@@ -29,7 +29,7 @@ extension LAACopy {
     static let chatsGroupUnsupported = "この接続先はグループに対応していません。"
     static let chatsUnavailable = "Macに接続すると社員が表示されます。"
     static let chatsNewUnavailable = "今は会話を作れません。Macとの接続を確認してください。"
-    static let chatsCron = "定期実行"
+    static let chatsCron = "Routines"
     static let chatsCronNone = "定期実行はありません。"
     static let chatsCronUnavailable = "定期実行を読み込めません。"
     static let chatsCronStale = "前回の内容を表示しています。"

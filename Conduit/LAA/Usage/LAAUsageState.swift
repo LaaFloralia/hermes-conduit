@@ -433,11 +433,11 @@ enum LAAUsageLabel {
     static func window(_ window: LAAUsageItem.Window) -> String {
         if let minutes = window.windowMinutes {
             if minutes == 10_080 { return "週間" }
-            if minutes == 43_200 { return AppLocalization.string("Monthly") }
+            if minutes == 43_200 { return "月間" }
         }
         if isWeekly(window.label) { return "週間" }
         if ["monthly", "月間", "マンスリー"].contains(window.label.lowercased()) {
-            return AppLocalization.string("Monthly")
+            return "月間"
         }
         return window.label
     }

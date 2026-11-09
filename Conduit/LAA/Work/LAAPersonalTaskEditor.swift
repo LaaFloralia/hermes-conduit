@@ -166,7 +166,7 @@ struct LAAPersonalTaskEditor: View {
     @ViewBuilder private func pendingSection(_ item: ComposerDraftStore.Submission) -> some View {
         Section() {
             if item.personalOrigin != nil {
-                Text(verbatim: "移した下書きはPendingで元の要求を照合してください。自動送信しません。")
+                Text(verbatim: "移した下書きは送信待ちで元の要求を照合してください。自動送信しません。")
             } else {
                 Text(verbatim: "保存結果は未確認です。同じ要求の状態を先に確認してください。")
                 if let operation {

@@ -51,7 +51,7 @@ struct LAABrainLocalCreateView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") {
+                    Button(LAACopy.cancel) {
                         if bodyText.isEmpty { dismiss() } else { confirmDiscard = true }
                     }.disabled(busy)
                 }

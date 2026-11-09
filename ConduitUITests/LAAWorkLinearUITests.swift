@@ -68,7 +68,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         let confirm = app.sheets.buttons["削除"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["アーカイブに移り、あとで戻せます。"].exists)
-        if app.sheets.buttons["キャンセル"].exists { app.sheets.buttons["キャンセル"].tap() }
+        if app.sheets.buttons["Cancel"].exists { app.sheets.buttons["Cancel"].tap() }
         else { app.otherElements["PopoverDismissRegion"].tap() }
         XCTAssertTrue(app.buttons[updatedTitle].exists)
         app.buttons[updatedTitle].swipeLeft()
@@ -81,7 +81,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         archived.swipeLeft()
         app.buttons["戻す"].tap()
         XCTAssertTrue(archived.waitForNonExistence(timeout: 10))
-        app.buttons["閉じる"].tap()
+        app.buttons["Close"].tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
 
     }
@@ -147,7 +147,7 @@ final class LAAWorkLinearUITests: XCTestCase {
                 app.buttons["work.linear.archive"].tap()
                 XCTAssertTrue(row.waitForExistence(timeout: 10))
                 attach("work-archive-\(appearance)")
-                app.buttons["閉じる"].tap()
+                app.buttons["Close"].tap()
             } else if section == "skills" {
                 app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.tap()
                 XCTAssertTrue(app.staticTexts["社長の指定内容に沿って現職の週報を入力します。"].waitForExistence(timeout: 5))

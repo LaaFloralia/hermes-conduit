@@ -70,7 +70,7 @@ private struct LAAInstructionEditor: View {
                 if document != nil {
                     Button { editing.toggle() } label: { Text(verbatim: editing ? "プレビュー" : "編集") }.disabled(busy)
                     if editing {
-                        Button { Task { await save() } } label: { Text(verbatim: "保存") }.disabled(!dirty || busy)
+                        Button { Task { await save() } } label: { Text(verbatim: LAACopy.save) }.disabled(!dirty || busy)
                             .accessibilityIdentifier("laa.instructions.save")
                     }
                     Button { if dirty { confirmReload = true } else { Task { await load() } } } label: {

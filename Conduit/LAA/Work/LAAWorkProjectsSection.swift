@@ -34,7 +34,7 @@ struct LAAWorkProjectsSection: View {
                 VStack(spacing: 0) {
                     ForEach(visibleProjects) { project in
                         LAAWorkSwipeRow(id: project.id, openID: $openRow,
-                                        leading: .init(title: project.isArchived ? "戻す" : "アーカイブ",
+                                        leading: .init(title: project.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive,
                                                        systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox",
                                                        tint: LAAColor.attention) { Task { await setArchived(project) } },
                                         onOpen: { opened = project }) {
@@ -59,7 +59,7 @@ struct LAAWorkProjectsSection: View {
                         }
                         .contextMenu {
                             Button { Task { await setArchived(project) } } label: {
-                                Label { Text(verbatim: project.isArchived ? "アーカイブから戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                                Label { Text(verbatim: project.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
                             }
                         }
                         .accessibilityIdentifier("work.project.\(project.id)")
@@ -276,7 +276,7 @@ struct LAAWorkProjectHome: View {
 
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            heading("セッション")
+            heading(LAACopy.WorkTab.sessions)
             let rows = LAAWorkSessionOrder.rows(sessions)
             let all = rows.pinned + rows.recent
             if all.isEmpty {

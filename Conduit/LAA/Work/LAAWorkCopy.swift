@@ -8,6 +8,11 @@ extension LAACopy {
         static let subtitle = "Sessions, projects and tasks."
         static let segments = ["Sessions", "Projects", "Tasks", "Routines"]
         static let sessions = "Sessions"
+        static let projects = "Projects"
+        static let tasks = "Tasks"
+        static let routines = "Routines"
+        static let decisions = "Decisions"
+        static let skills = "Skills"
         static let project = "Project"
         static let task = "Task"
         static let newSession = "New Session"

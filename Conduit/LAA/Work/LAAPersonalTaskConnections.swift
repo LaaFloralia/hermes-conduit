@@ -371,7 +371,7 @@ private struct LAAPersonalItemEditor: View {
                         Text(verbatim: "外部リンクを追加します。ファイルは別の操作でアップロードできます。").laaTextStyle(.secondary)
                     } header: { Text(verbatim: "リンク") }.disabled(!ready || pending != nil)
                 }
-                Button() { submit() } label: { Text(verbatim: "保存") }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || draft.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button() { submit() } label: { Text(verbatim: LAACopy.save) }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || draft.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .disabled(busy).navigationTitle(Text(verbatim: mode.caption))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }

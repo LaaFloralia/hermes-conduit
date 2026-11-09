@@ -51,7 +51,7 @@ struct LAADriveUpload: View {
                 if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
             .navigationTitle(Text(verbatim: "Driveに追加"))
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "閉じる") }.disabled(busy) } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.close) }.disabled(busy) } }
             .fileImporter(isPresented: $picker, allowedContentTypes: [.item]) { result in
                 if case .success(let url) = result { cleanup(); file = url; ownsFile = false; session = nil }
             }
