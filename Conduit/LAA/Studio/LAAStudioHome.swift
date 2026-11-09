@@ -14,6 +14,7 @@ struct LAAStudioHomeView: View {
     @State private var search = ""
     @Environment(\.laaDesktop) private var laaDesktop
     @State private var desktopSelection: LAAStudioDesktopSelection?
+    @FocusState private var searchFocused: Bool
     init(initialSection: Int = 0) { _section = State(initialValue: initialSection) }
     private var columns: [GridItem] {
         if laaDesktop {
@@ -27,6 +28,17 @@ struct LAAStudioHomeView: View {
             if laaDesktop { desktopContent } else { phoneContent }
         }
         .tint(LAAColor.link)
+        // ⌘F and ⌘R act on the list column: the Mac keeps its reload in that
+        // column's header, so the toolbar's is the phone's only. The Mac has no
+        // create sheet here, so the File menu's new item stays off by name.
+        .laaMacSectionCommands(LAAMacSectionCommands(
+            newTitle: LAACopy.Studio.newRequest,
+            canCreate: false,
+            canSearch: laaDesktop && section == 0 && LAAStudioData.available(bridge),
+            focusSearch: { searchFocused = true },
+            canReload: LAAStudioData.available(bridge),
+            reload: { Task { await load() } }
+        ))
         .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge).tint(LAAColor.link) }
         .toolbar {
             ToolbarItemGroup(placement: .topBarLeading) {
@@ -34,7 +46,7 @@ struct LAAStudioHomeView: View {
                     NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: { Image(systemName: "plus") }
                         .accessibilityLabel(Text(verbatim: LAACopy.Studio.newRequest)).accessibilityIdentifier("laa.studio.new")
                 }
-                if LAAStudioData.available(bridge) {
+                if LAAStudioData.available(bridge) && !laaDesktop {
                     Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
                         .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh)).accessibilityIdentifier("laa.studio.refresh")
                 }
@@ -144,7 +156,7 @@ struct LAAStudioHomeView: View {
     @ViewBuilder private func desktopWorkRows(_ snapshot: LAAStudioSnapshot) -> some View {
         let projects = desktopProjects(snapshot)
         TextField(text: $search) { Text(verbatim: "作品を検索") }
-            .studioSearchField().accessibilityIdentifier("laa.studio.work.search")
+            .studioSearchField().focused($searchFocused).accessibilityIdentifier("laa.studio.work.search")
         if projects.isEmpty {
             Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。")
                 .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)

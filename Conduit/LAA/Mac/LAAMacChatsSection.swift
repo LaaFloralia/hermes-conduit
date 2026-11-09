@@ -7,6 +7,9 @@ import SwiftUI
 struct LAAMacChatsSection: View {
     @EnvironmentObject private var appState: AppState
     @Binding var conversationShown: Bool
+    /// The conversation column holds keyboard focus when it opens, so Escape
+    /// returns to the list before a click has landed anywhere in it.
+    @FocusState private var conversationFocused: Bool
 
     private var requiresLogin: Bool { LAAMacLogin.isRequired(appState) }
 
@@ -121,6 +124,13 @@ struct LAAMacChatsSection: View {
                 .environment(\.horizontalSizeClass, .compact)
                 .modifier(LAAMacFlatTopEdge())
                 .accessibilityIdentifier("laa.mac.conversation")
+                // Escape returns to the list from anywhere in the column. The
+                // column takes focus as it appears, and the handler sits on it
+                // so the composer's keys reach it too; it is the only handler,
+                // so the key never fires twice.
+                .focusable()
+                .focused($conversationFocused)
+                .onAppear { conversationFocused = true }
                 .onKeyPress(.escape) {
                     appState.showSidebar = true
                     return .handled

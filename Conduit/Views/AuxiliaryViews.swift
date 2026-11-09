@@ -3943,8 +3943,8 @@ private struct NotificationsSettingsDetail: View {
                                 version: nil,
                                 mark: .actionNeeded,
                                 detail: appState.notifierPlugin.reports("pairing")
-                                    ? AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Pair it below.")
-                                    : AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Create a pairing code below.")
+                                    ? deviceCopy(AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Pair it below."))
+                                    : deviceCopy(AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Create a pairing code below."))
                             )
                         }
                         ForEach(pairings.thisDashboard) { gateway in
@@ -3961,7 +3961,7 @@ private struct NotificationsSettingsDetail: View {
                             // A tap while keys are being set up would only
                             // wait for the next connect.
                             .disabled(notifications.isProvisioningEncryption || pairAllRunning)
-                            Text("Conduit gives this dashboard's hosts new keys by itself every 7 days. The old keys still open notifications already on their way for 7 days.")
+                            Text(verbatim: deviceCopy(AppLocalization.string("Conduit gives this dashboard's hosts new keys by itself every 7 days. The old keys still open notifications already on their way for 7 days.")))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -3989,7 +3989,7 @@ private struct NotificationsSettingsDetail: View {
                                 .foregroundStyle(.secondary)
                         }
                         if pairings.unrecognizedCount > 0 {
-                            Text("\(pairings.unrecognizedCount) more pairings don't match any dashboard saved on this iPhone.")
+                            Text(verbatim: deviceCopy(AppLocalization.string("\(pairings.unrecognizedCount) more pairings don't match any dashboard saved on this iPhone.")))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -4287,7 +4287,7 @@ private struct NotificationsSettingsDetail: View {
         } else if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
             let date = createdAt.formatted(date: .abbreviated, time: .omitted)
             #if LAA_BUILD
-            let noRotation = LAACopy.pluginRotationUnavailable
+            let noRotation = deviceCopy(LAACopy.pluginRotationUnavailable)
             #else
             let noRotation = AppLocalization.string("End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 7 days.")
             #endif

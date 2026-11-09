@@ -15,8 +15,8 @@ final class LAAPluginPolicyTests: XCTestCase {
         XCTAssertTrue(status.updateAvailable)
         XCTAssertTrue(status.needsAttention)
         XCTAssertEqual(LAAPluginPolicy.summary(status), "0.1.0")
-        XCTAssertEqual(LAAPluginPolicy.connection(status, dashboardConnected: true), "Connected")
-        XCTAssertEqual(LAAPluginPolicy.connection(status, dashboardConnected: false), "Not connected")
+        XCTAssertEqual(LAAPluginPolicy.connection(status, dashboardConnected: true), "接続済み")
+        XCTAssertEqual(LAAPluginPolicy.connection(status, dashboardConnected: false), "未接続")
     }
 
     func testOnlyNotifierIsServerManagedWhenCatalogReportsUpdates() throws {

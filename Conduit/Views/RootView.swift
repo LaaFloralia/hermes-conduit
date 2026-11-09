@@ -211,7 +211,9 @@ struct MainView: View {
         .sheet(isPresented: $appState.showModelPicker) {
             ModelPickerView()
                 .presentationDetents([.medium, .large])
+                #if !LAA_BUILD
                 .presentationBackground(.clear)
+                #endif
                 .presentationDragIndicator(.visible)
                 #if LAA_BUILD
                 .laaSheetSize(.picker)

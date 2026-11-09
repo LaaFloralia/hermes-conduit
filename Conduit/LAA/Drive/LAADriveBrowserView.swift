@@ -119,6 +119,17 @@ struct LAADriveBrowserView: View {
         }
         .onChange(of: key) { _, _ in cancelResolution() }
         .onDisappear { cancelResolution() }
+        // ⌘F and ⌘R act on this column: the search field above the list and
+        // the header's reload, the same two controls the Mac shows. Upload
+        // keeps its own button, so the File menu's new item is off by name.
+        .laaMacSectionCommands(LAAMacSectionCommands(
+            newTitle: "Upload",
+            canCreate: false,
+            canSearch: true,
+            focusSearch: { searchFocused = true },
+            canReload: !waiting && !controller.loading,
+            reload: { Task { await reload(key, debounce: false) } }
+        ))
     }
 
     /// Section ▸ folder ▸ subfolder, each step clickable, replaces the phone's

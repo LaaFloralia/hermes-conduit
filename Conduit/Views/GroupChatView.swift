@@ -1432,15 +1432,23 @@ private struct GroupReadAloudControl: View {
 }
 
 /// The @mention picker floats above the composer, in the operation layer:
-/// the LAA build gives it one sheet of regular glass on iOS 26 and keeps the
-/// material before it.
+/// the LAA build gives it one sheet of regular glass on iOS 26, opaque paper
+/// with Reduce Transparency, and keeps the material before iOS 26.
 private struct MentionSuggestionSurface: ViewModifier {
     let cornerRadius: CGFloat
+    #if LAA_BUILD
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    #endif
 
     @ViewBuilder func body(content: Content) -> some View {
         #if LAA_BUILD
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !reduceTransparency {
             content.glassEffect(.regular, in: shape)
+        } else if reduceTransparency {
+            // Opaque paper, as LAAGlassControl falls back.
+            content
+                .background(LAAColor.surface, in: shape)
+                .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: 1) }
         } else {
             material(content)
         }

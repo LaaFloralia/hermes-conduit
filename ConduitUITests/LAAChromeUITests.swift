@@ -152,9 +152,9 @@ final class LAAChromeUITests: XCTestCase {
     }
 
     func testMacSettingsRemainReachableWhenUnpairedOrKeychainFails() {
-        for (arguments, status) in [([String](), "Not paired"),
+        for (arguments, status) in [([String](), "未接続"),
                                     (["-LAA_UI_TEST_KEYCHAIN_ERROR"], "Keychain error"),
-                                    (["-LAA_UI_TEST_BRIDGE_OFFLINE"], "Offline")] {
+                                    (["-LAA_UI_TEST_BRIDGE_OFFLINE"], "未接続")] {
             let app = launch("light", extra: arguments)
             let settings = app.buttons["laa.settings.open"]
             XCTAssertTrue(settings.waitForExistence(timeout: 30))

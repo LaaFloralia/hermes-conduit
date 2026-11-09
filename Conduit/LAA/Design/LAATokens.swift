@@ -65,10 +65,11 @@ enum LAAType {
     #if targetEnvironment(macCatalyst)
     // Catalyst draws UIKit points at about 0.77 Mac points, so the phone's
     // 16/13/12 read as 12.3/10/9.2 on a Mac: below the system's 13 pt body.
-    // One step up keeps the phone's proportions at the Mac's reading size.
+    // One step up keeps the phone's proportions at the Mac's reading size,
+    // and the section label takes a second step to stay above 11 pt.
     static let bodySize: CGFloat = 17
     static let secondarySize: CGFloat = 15
-    static let sectionSize: CGFloat = 14
+    static let sectionSize: CGFloat = 15
     static let screenTitle = Font.custom("Georgia", size: 30, relativeTo: .largeTitle)
     #else
     static let bodySize: CGFloat = 16

@@ -46,6 +46,20 @@ struct LAALinearTasksView: View {
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var filter: LAALinearTaskFilter { LAALinearTaskFilter(rawValue: filterRaw) ?? .related }
 
+    /// How a task comes back from the archive: the phone swipes the row, the
+    /// Mac uses the row's menu, so the hint names the one that is there.
+    private var archivedFooter: String {
+        guard archivedOnly else { return "Linear · LAA担当" }
+        return laaDesktop ? "アーカイブしたタスクです。" : "アーカイブしたタスクです。スワイプで戻せます。"
+    }
+
+    private var archivedDescription: String {
+        if archivedOnly {
+            return laaDesktop ? "行を右クリックすると戻せます。" : "アーカイブしたタスクは、スワイプで戻せます。"
+        }
+        return searching ? "短い番号（T12）か題名の一部で探せます。" : "＋から追加できます。"
+    }
+
     private var rows: [LAALinearTask] {
         items.filter { archivedOnly ? $0.isArchived : $0.isOpen }
             .filter { archivedOnly || filter.matches($0) }
@@ -206,7 +220,14 @@ struct LAALinearTasksView: View {
                         taskMeta(task)
                     }
                     .contextMenu {
-                        if !archivedOnly {
+                        if archivedOnly {
+                            // The Mac list has no swipe, so the row's menu is
+                            // where a task comes back from the archive.
+                            Button {
+                                submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
+                            } label: { Text(verbatim: "Restore") }
+                                .disabled(busy || pending != nil)
+                        } else {
                             Button { detail = task } label: { Text(verbatim: "詳細・コメント") }
                             if task.isOpen { Button { completing = task } label: { Text(verbatim: "完了") }
                                 .disabled(busy || pending != nil || task.completionBlockedReason != nil) }
@@ -241,14 +262,14 @@ struct LAALinearTasksView: View {
                     filterMenu
                 }
             } footer: {
-                Text(verbatim: archivedOnly ? "アーカイブしたタスクです。スワイプで戻せます。" : "Linear · LAA担当")
+                Text(verbatim: archivedFooter)
             }
             if loaded && rows.isEmpty && !loading && failure == nil {
                 ContentUnavailableView {
                     Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : searching ? "一致するタスクはありません" : "タスクはありません") }
                     icon: { Image(systemName: "checkmark.circle") }
                 } description: {
-                    Text(verbatim: archivedOnly ? "アーカイブしたタスクは、スワイプで戻せます。" : searching ? "短い番号（T12）か題名の一部で探せます。" : "＋から追加できます。")
+                    Text(verbatim: archivedDescription)
                 }.listRowBackground(Color.clear)
             }
         }
@@ -392,7 +413,7 @@ struct LAALinearTasksView: View {
                         .padding(.horizontal, LAASpacing.x4).padding(.bottom, LAASpacing.x1)
                         ForEach(desktopRows) { task in desktopTaskRow(task) }
                         if loaded && desktopRows.isEmpty && !loading && failure == nil {
-                            Text(verbatim: desktopSearch.isEmpty ? "No tasks yet." : "No matching tasks.")
+                            Text(verbatim: desktopSearch.isEmpty ? "タスクはありません。" : "一致するタスクはありません。")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
@@ -411,18 +432,18 @@ struct LAALinearTasksView: View {
                 if desktopSelection == nil, let first = desktopRows.first { desktopSelection = .task(first.id) }
                 return .handled
             }
-            .onKeyPress(.init("f"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                searchFocused = true; return .handled
-            }
-            .onKeyPress(.init("r"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                reloadID += 1; return .handled
-            }
-            .onKeyPress(.init("n"), phases: .down) { press in
-                guard press.modifiers.contains(.command) else { return .ignored }
-                editor = Editor(id: UUID().uuidString.lowercased(), task: nil); return .handled
-            }
+            // ⌘N, ⌘F and ⌘R come from the menu bar, which reads the commands
+            // this column publishes: one implementation per key, as in the
+            // window's other sections.
+            .laaMacSectionCommands(LAAMacSectionCommands(
+                newTitle: "New task",
+                canCreate: !(busy || pending != nil),
+                create: { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) },
+                canSearch: true,
+                focusSearch: { searchFocused = true },
+                canReload: true,
+                reload: { reloadID += 1 }
+            ))
         } detail: {
             desktopDetail
         }
@@ -510,8 +531,8 @@ struct LAALinearTasksView: View {
                 .navigationTitle(Text(verbatim: "課題を探す"))
             }
         } else {
-            LAAMacEmptyDetail(symbol: "checklist", title: "Select a task",
-                              message: "Choose a task on the left to read, edit and comment here.")
+            LAAMacEmptyDetail(symbol: "checklist", title: "タスクを選んでください。",
+                              message: "左の一覧からタスクを選ぶと、ここに詳細とコメントを表示します。")
         }
     }
 

@@ -48,7 +48,7 @@ struct LAANotificationPairAllControls: View {
         .tint(LAAColors.teal)
         .accessibilityIdentifier("notifications.pair-all")
 
-        Text(verbatim: "元に戻すには、以前のアプリの「設定」>「通知」で対象のAI社員を選び直します。")
+        Text(verbatim: "元に戻すには、以前に通知を受け取っていたアプリの「設定」>「通知」で対象のAI社員を選び直します。")
             .font(.footnote)
             .foregroundStyle(LAAColors.muted)
 

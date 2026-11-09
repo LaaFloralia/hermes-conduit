@@ -15,9 +15,9 @@ final class LAAMacConnectionStateTests: XCTestCase {
     }
 
     func testStatusLabelsDescribeTheCurrentState() {
-        XCTAssertEqual(LAAMacConnectionState.connected.label, "Connected")
-        XCTAssertEqual(LAAMacConnectionState.offline.label, "Offline")
-        XCTAssertEqual(LAAMacConnectionState.notPaired.label, "Not paired")
+        XCTAssertEqual(LAAMacConnectionState.connected.label, "接続済み")
+        XCTAssertEqual(LAAMacConnectionState.offline.label, "未接続")
+        XCTAssertEqual(LAAMacConnectionState.notPaired.label, "未接続")
         XCTAssertEqual(LAAMacConnectionState.keychainError.label, "Keychain error")
     }
 }

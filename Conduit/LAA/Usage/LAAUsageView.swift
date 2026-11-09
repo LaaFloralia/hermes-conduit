@@ -245,7 +245,7 @@ struct LAAUsageView: View {
                     caption("表示できるサービスはありません。")
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth),
-                                             spacing: LAASpacing.x6)],
+                                             spacing: LAASpacing.x6, alignment: .top)],
                           alignment: .leading, spacing: LAASpacing.x6) {
                     ForEach(groups) { group in serviceCard(group) }
                 }
