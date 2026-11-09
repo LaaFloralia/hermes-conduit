@@ -19,11 +19,27 @@ export function fastSupported(harness, modelId) {
   return (harness === 'claude' && typeof modelId === 'string' && modelId.startsWith('claude-opus')) || harness === 'codex';
 }
 
+// Manual profiles are offered only when HQ also names the exact provider,
+// model and effort as a manual Work entrance. This is a user choice, not an
+// automatic dispatch default.
+function manualEntranceExists(table, profile) {
+  const modelId = table.models?.[profile.model]?.modelId;
+  return typeof modelId === 'string' && (table.entrances ?? []).some((entry) =>
+    entry.kind === 'paseo' && entry.status === 'manual' &&
+    entry.paseo?.provider === profile.harness && entry.paseo?.model === modelId &&
+    entry.paseo?.thinking === profile.effort);
+}
+
 export function sessionOptionsFrom(table) {
   const aliases = table?.aliases ?? {};
-  const profiles = Object.entries(table?.profiles ?? {})
-    .filter(([id, profile]) => profile && profile.manual !== true && !Object.hasOwn(aliases, id))
-    .filter(([, profile]) => ['claude', 'codex', 'dsh'].includes(profile.harness) && typeof profile.effort === 'string')
+  const choices = Object.entries(table?.profiles ?? {})
+    .filter(([id, profile]) => profile && !Object.hasOwn(aliases, id) &&
+      (profile.manual !== true || manualEntranceExists(table, profile)))
+    .filter(([, profile]) => ['claude', 'codex', 'dsh'].includes(profile.harness) && typeof profile.effort === 'string');
+  const automaticIds = choices.filter(([, profile]) => profile.manual !== true).map(([id]) => id);
+  // Existing clients fall back to the first item when defaultProfile is null.
+  // Fail closed if HQ has no automatic choice, rather than selecting a manual one.
+  const profiles = (automaticIds.length ? choices : [])
     .map(([id, profile]) => {
       const model = table.models?.[profile.model] ?? {};
       return {
@@ -37,7 +53,7 @@ export function sessionOptionsFrom(table) {
     });
   return {
     profiles,
-    defaultProfile: profiles.some((item) => item.id === DEFAULT_PROFILE) ? DEFAULT_PROFILE : (profiles[0]?.id ?? null),
+    defaultProfile: automaticIds.includes(DEFAULT_PROFILE) ? DEFAULT_PROFILE : (automaticIds[0] ?? null),
     defaultMode: 'bypass',
   };
 }

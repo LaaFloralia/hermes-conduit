@@ -13,6 +13,7 @@ const table = {
     'sol-high': { model: 'terra', harness: 'codex', effort: 'high' },
     'astra-high': { model: 'terra', harness: 'codex', effort: 'xhigh' },
     'astra-max': { model: 'astra', harness: 'codex', effort: 'max', manual: true },
+    'fable-high': { model: 'fable', harness: 'claude', effort: 'high', manual: true },
     'deepseek-flash-high': { model: 'flash', harness: 'dsh', effort: 'high' },
   },
   aliases: { 'astra-high': 'sol-xhigh' },
@@ -21,18 +22,44 @@ const table = {
     sonnet: { label: 'Claude Sonnet 5.5', modelId: 'claude-sonnet-5-5' },
     terra: { label: 'GPT-6.1 Terra', modelId: 'gpt-6.1-terra' },
     astra: { label: 'GPT-6 Astra', modelId: 'gpt-6-astra' },
+    fable: { label: 'Claude Fable 5.2', modelId: 'claude-fable-5-2' },
     flash: { label: 'DeepSeek V4.1-Flash-1017', modelId: 'deepseek-v4.1-flash' },
   },
+  entrances: [{ kind: 'paseo', status: 'manual', paseo: { provider: 'claude', model: 'claude-fable-5-2', thinking: 'high' } }],
 };
 
-test('options list usable profiles in file order, skip manual and alias names, and mark fast', () => {
+test('options expose explicit manual Work entrances, skip other manual profiles and aliases, and mark fast', () => {
   const options = sessionOptionsFrom(table);
   assert.deepEqual(options.profiles.map((item) => [item.id, item.fast]), [
-    ['opus-high', true], ['sonnet-high', false], ['sol-high', true], ['deepseek-flash-high', false],
+    ['opus-high', true], ['sonnet-high', false], ['sol-high', true], ['fable-high', false], ['deepseek-flash-high', false],
   ]);
   assert.equal(options.profiles[0].label, 'Claude Opus 5.5');
   assert.equal(options.defaultProfile, 'opus-high');
   assert.equal(options.defaultMode, 'bypass');
+});
+
+test('manual profile requires a matching manual provider, model and effort', () => {
+  const fable = table.entrances[0];
+  const offered = (entry) => sessionOptionsFrom({ ...table, entrances: [entry] }).profiles.some((p) => p.id === 'fable-high');
+  assert.equal(offered(fable), true);
+  for (const changed of [
+    { ...fable, kind: 'product' },
+    { ...fable, status: 'stopped' },
+    { ...fable, status: 'active' },
+    { ...fable, paseo: { ...fable.paseo, provider: 'codex' } },
+    { ...fable, paseo: { ...fable.paseo, model: 'claude-fable-5-1' } },
+    { ...fable, paseo: { ...fable.paseo, thinking: 'max' } },
+  ]) assert.equal(offered(changed), false);
+});
+
+test('manual profiles never become the automatic default or the sole fallback', () => {
+  const onlyFable = { 'fable-high': table.profiles['fable-high'] };
+  const noAutomatic = sessionOptionsFrom({ ...table, profiles: onlyFable });
+  assert.deepEqual(noAutomatic.profiles, []);
+  assert.equal(noAutomatic.defaultProfile, null);
+  const fallback = sessionOptionsFrom({ ...table, profiles: { ...onlyFable, 'sonnet-high': table.profiles['sonnet-high'] } });
+  assert.equal(fallback.defaultProfile, 'sonnet-high');
+  assert.deepEqual(fallback.profiles.map((p) => p.id), ['fable-high', 'sonnet-high']);
 });
 
 test('GET /v1/session-options reads the model table and fails closed when it is missing', async (t) => {
@@ -45,7 +72,8 @@ test('GET /v1/session-options reads the model table and fails closed when it is 
   const token = await bridge.token();
   const ok = await bridge.request('/v1/session-options', { token });
   assert.equal(ok.status, 200);
-  assert.equal(ok.body.data.profiles.length, 4);
+  assert.equal(ok.body.data.profiles.length, 5);
+  assert.ok(ok.body.data.profiles.some((profile) => profile.id === 'fable-high'));
   rmSync(file);
   const down = await bridge.request('/v1/session-options', { token });
   assert.equal(down.status, 503);
