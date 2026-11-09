@@ -31,6 +31,13 @@ enum ComposerPrediction {
         defaults.object(forKey: preferenceKey) as? Bool ?? true
     }
 
+    /// Whether the row may show at all: this device's switch is on — the
+    /// settings screen's 「入力候補を出す」 writes the same @AppStorage — and
+    /// the editor has focus. Everything else is `candidates(draft:...)`.
+    static func showsRow(enabled: Bool, isFocused: Bool) -> Bool {
+        enabled && isFocused
+    }
+
     /// Whether the draft is at a boundary where a prediction may appear:
     /// empty, or ending in sentence punctuation or a newline. A draft that is
     /// mid-sentence keeps the row hidden so it never competes with the IME.

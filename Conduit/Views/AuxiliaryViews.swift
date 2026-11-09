@@ -1909,6 +1909,9 @@ private struct ChatFontStyleSettings: View {
 private struct ComposerReturnKeySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
+    /// The prediction row above the field: the same @AppStorage the composer
+    /// reads, so the switch takes effect without a restart.
+    @AppStorage(ComposerPrediction.preferenceKey) private var composerPredictionEnabled = true
     /// A Mac has no on-screen keyboard to mention, and starts with the
     /// preference on.
     private let onMac = ProcessInfo.processInfo.isMacCatalystApp
@@ -1933,6 +1936,16 @@ private struct ComposerReturnKeySettings: View {
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
                 .accessibilityHint(onMac ? Text(verbatim: "") : Text("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged."))
+            // The owner's own wording, kept in code: the row is a personal
+            // preference, and its label names what the composer shows.
+            Toggle(isOn: $composerPredictionEnabled) {
+                Text(verbatim: "入力候補を出す")
+            }
+            .tint(.conduitAccent)
+            .accessibilityIdentifier("settings.composer-prediction")
+            Text(verbatim: "最近の自分の文と社員名を入力欄の上に表示します。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }

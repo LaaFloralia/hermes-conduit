@@ -71,4 +71,12 @@ final class ComposerPredictionTests: XCTestCase {
         XCTAssertTrue(ComposerPrediction.isEnabled(suite))
         suite.removePersistentDomain(forName: name)
     }
+
+    /// Settings > Chat > Keyboard writes the key the composer reads, so off
+    /// hides the row even while the field has focus.
+    func testSwitchOffHidesTheRowEvenInFocus() {
+        XCTAssertTrue(ComposerPrediction.showsRow(enabled: true, isFocused: true))
+        XCTAssertFalse(ComposerPrediction.showsRow(enabled: false, isFocused: true))
+        XCTAssertFalse(ComposerPrediction.showsRow(enabled: true, isFocused: false))
+    }
 }
