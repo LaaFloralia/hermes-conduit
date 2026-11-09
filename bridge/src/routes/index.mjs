@@ -43,6 +43,7 @@ import { createDecisionRoutes } from './decisions.mjs';
 import { createRefService } from '../refs/service.mjs';
 import { projectRefItem, sessionRefItem } from '../refs/items.mjs';
 import { refRoutes } from '../refs/routes.mjs';
+import { ownerProfileRoutes } from './owner-profile.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -163,6 +164,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...voiceRoutes(options.voice ?? {}),
     ...deviceRoutes({ store, now }),
     ...refRoutes({ refs }),
+    ...ownerProfileRoutes({ dir: store.dir }),
   ];
   // Start after every factory has registered its source: the first live pass
   // must cover all five kinds, not only sessions and projects.

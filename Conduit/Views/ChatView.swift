@@ -492,6 +492,7 @@ struct ChatView: View {
                     )
                         .equatable()
 #if LAA_BUILD
+                        .environment(\.laaSenderContinues, LAASenderRun.continues(target, in: visibleTargets))
                         .laaChatDaySection(date: MessageTimestampFormatter.date(from: target.message.timestamp),
                             previous: LAAChatDay.previousDate(before: target.order, in: visibleTargets))
 #endif
@@ -1404,12 +1405,24 @@ struct UserBubble: View {
     var agentName = ""
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaSenderContinues) private var continuesRun
 
     var body: some View {
+        // The owner's picture, name and role, as in groups and Work.
+        LAAOwnerMessageRow(continues: continuesRun) { stack }
+            .laaChatColumn(.trailing)
+    }
+#else
+    var body: some View {
         HStack {
-#if !LAA_BUILD
             Spacer(minLength: 40)
+            stack
+        }
+    }
 #endif
+
+    private var stack: some View {
             VStack(alignment: .trailing, spacing: 4) {
                 UserMessageContent(
                     message: message,
@@ -1436,10 +1449,6 @@ struct UserBubble: View {
                     UserMessageCopyButton(message: message)
                 }
             }
-#if LAA_BUILD
-            .laaChatColumn(.trailing)
-#endif
-        }
     }
 }
 
@@ -2727,6 +2736,9 @@ struct AssistantBubble: View {
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
     @State private var showsTapback = false
+#if LAA_BUILD
+    @Environment(\.laaSenderContinues) private var continuesRun
+#endif
 
     var body: some View {
         // Mirrors MessageBubble's settled-bubble counter so the dormancy
@@ -2735,8 +2747,24 @@ struct AssistantBubble: View {
         // instead of the update being pruned above the gate. Release
         // builds compile the note out.
         let _ = TranscriptPerf.note(.settledBubbleBody)
+#if LAA_BUILD
+        // The employee's picture and name, as in groups and Work.
+        LAAAgentMessageRow(name: LAASender.agentName(profile: appState.conversationIdentityProfile,
+                                                     identity: rowState.agentIdentity),
+                           continues: continuesRun) {
+            ConduitAgentMark(identity: rowState.agentIdentity)
+        } content: {
+            reply
+        }
+        .laaChatColumn(.leading)
+#else
+        reply
+#endif
+    }
+
+    private var reply: some View {
         let identity = rowState.agentIdentity
-        VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
                 message: message,
                 identity: identity,
@@ -2793,9 +2821,6 @@ struct AssistantBubble: View {
             .conduitFixedGlyph()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-#if LAA_BUILD
-        .laaChatColumn(.leading)
-#endif
     }
 }
 
