@@ -383,7 +383,7 @@ struct ComposerBar: View, Equatable {
     /// `ComposerPrediction` decides everything else (empty or sentence-end
     /// draft, and nothing at all while the IME has marked text).
     private var predictionCandidates: [ComposerPrediction.Candidate] {
-        guard composerPredictionEnabled, isFocused else { return [] }
+        guard ComposerPrediction.showsRow(enabled: composerPredictionEnabled, isFocused: isFocused) else { return [] }
         return appState.composerPredictionCandidates(draft: text, isComposing: isIMEComposing)
     }
 
@@ -3209,7 +3209,7 @@ private struct ComposerPredictionRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint(Text(AppLocalization.string("Inserts this text.")))
+                    .accessibilityHint(Text(verbatim: "この文を入力します。"))
                     .accessibilityIdentifier("composer.prediction.\(index)")
                     if index < candidates.count - 1 {
                         Divider()
