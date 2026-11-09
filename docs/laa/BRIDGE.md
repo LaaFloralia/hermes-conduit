@@ -64,7 +64,7 @@ JSONはUTF-8、時刻はUTC ISO 8601。成功は `{"data":...,"requestId":"..."}
 | `POST /v1/sessions/{id}/reply` | `{requestId,requestHash,answer,expiresAt}` → `{status}`、同上 | 改変・期限切れ・別session・workerの回答拒否。実際の承認消化を照合 |
 | `GET /v1/sessions/{id}/events`; `GET /v1/sessions/{id}/artifacts` | cursor → event一覧／`{items:[{id,name,type}]}`、同上 | 認可・重複・欠落・ファイル範囲外・再接続を確認 |
 | `GET /v1/tasks`; `GET /v1/tasks/{id}` | `{title,owner,executor,status,dependencies,sourceId,version}` → task、Linear。読取専用 | 版競合・担当変更で自動起動しない・Linearに読戻し |
-| `GET/POST /v1/linear-owner-tasks`; `GET/PATCH /v1/linear-owner-tasks/{id}`; `POST /{id}/archive`・`/restore`・`/complete` | `{id,title,description,dueDate,priority,assignee?,profile?}` → 社長本人のLinear課題＋`run`。PATCH・archive/restore・completeは `If-Match` 必須 | AI担当は社長がこのAPIで作った課題だけ起動。完了は判断取下げ・会話アーカイブ・Done・記録保管。`?archived=only` でアーカイブ一覧 |
+| `GET/POST /v1/linear-owner-tasks`; `GET/PATCH /v1/linear-owner-tasks/{id}`; `POST /{id}/archive`・`/restore`・`/complete` | `{id,title,description,dueDate,priority,assignee?,profile?}` → 社長本人のLinear課題＋`run`。PATCH・archive/restore・completeは `If-Match` 必須 | AI担当は社長がこのAPIで作った課題だけ起動し、作成と完了に `sessions:write` も要る。指示は作成時の本文で固定。完了は判断取下げ・会話アーカイブ・Done・記録保管。`?archived=only` でアーカイブ一覧 |
 | `GET /v1/calendar/events?start=&end=` | RFC3339の42日以内、任意の複数calendarId → `{items:[予定詳細],source,start,end}`、Google Calendar | `calendar:read` 必須。設定・認可・API失敗は503で、空の予定にしない |
 | `GET /v1/skills` | → `{items:[{id,name,description,source}]}`、Macのスキル定義 | frontmatterの2項目だけ。本文は返さない。読取失敗は503で、空一覧にしない |
 | `GET /v1/routines` | Console `jobs` の名前、予定、直近実行と結果を読み取り専用で返す | 未観測はnull、読取失敗は503。既存 `sessions:read` を使用 |

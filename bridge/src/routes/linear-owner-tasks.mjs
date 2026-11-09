@@ -17,6 +17,7 @@
 // by a write: it stops the two-device silent overwrite this Bridge forbids
 // elsewhere, without claiming atomicity.
 
+import { hasScope } from '../auth.mjs';
 import { BridgeError, badRequest, markBeforeWrite } from '../errors.mjs';
 import { TaskSourceError, createLinearOwnerTaskSource } from '../tasks/linear-owner.mjs';
 import { parseObjectBody } from './state-file.mjs';
@@ -101,6 +102,12 @@ function checkPriority(raw) {
     throw badRequest('payload_invalid', `priority must be an integer between ${PRIORITY_MIN} and ${PRIORITY_MAX}`);
   }
   return raw;
+}
+
+// Starting or archiving an AI session needs the same grant as /v1/sessions,
+// whichever task route carries it.
+function requireSessionWrite(device) {
+  if (!hasScope(device, 'sessions:write')) throw new BridgeError(403, 'insufficient_scope', 'device is missing scope sessions:write');
 }
 
 function checkTaskId(raw) {
@@ -200,6 +207,7 @@ export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } =
       // A corrupt execution record must stop before a new Linear write, too.
       dispatch?.store.all();
       assignment = dispatch?.validateAssignment(body);
+      if (assignment?.assignee.kind === 'staff') requireSessionWrite(device);
       if (!dispatch && (body.assignee !== undefined || body.profile !== undefined)) throw badRequest('task_dispatch_unavailable', 'task dispatch is not configured');
       const existingRun = dispatch?.store.get(body.id.toLowerCase());
       if (existingRun && (JSON.stringify(existingRun.assignee) !== JSON.stringify(assignment.assignee) || existingRun.profile !== assignment.profile)) {
@@ -227,7 +235,7 @@ export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } =
     }
     assign(task);
     if (dispatch) {
-      dispatch.store.record({ task, deviceId: device.id, ...assignment });
+      dispatch.accept({ task, deviceId: device.id, ...assignment });
       dispatch.schedule(task.id);
     }
     return { status: 201, data: decorate(task) };
@@ -244,6 +252,8 @@ export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } =
     if (!IDEMPOTENCY_KEY_PATTERN.test(key)) throw badRequest('idempotency_key_invalid', 'invalid Idempotency-Key');
     checkFields(parseObjectBody(rawBody), []);
     if (!dispatch) throw new BridgeError(503, 'task_dispatch_unavailable', 'task dispatch is not configured');
+    // Archiving a session tree and withdrawing its decisions are session writes.
+    if (dispatch.store.get(id)?.assignee.kind === 'staff') requireSessionWrite(device);
     try {
       const result = await dispatch.complete({ id, deviceId: device.id, key, expected, rawBody });
       return { status: 200, data: result.data, headers: result.replayed ? { 'idempotency-replayed': 'true' } : {} };

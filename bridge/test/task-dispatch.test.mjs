@@ -70,7 +70,7 @@ function fixture(t) {
   const service = createTaskDispatchService({ store, tasks, sessions, sessionStore, decisionStore, refs,
     sessionOptions: () => profiles, now, cleanup() { f.cleanupCount += 1; fail('cleanup'); }, log() {} });
   return Object.assign(f, { tasks, service, sessions, agents,
-    record(assignee = staff) { refs.assign('task', ID, tasksById.get(ID).title, { linear: 'BUS-401' }); return store.record({ task: tasksById.get(ID), deviceId: 'device-test', assignee, profile: assignee.kind === 'owner' ? null : 'opus-high' }); },
+    record(assignee = staff) { refs.assign('task', ID, tasksById.get(ID).title, { linear: 'BUS-401' }); return service.accept({ task: tasksById.get(ID), deviceId: 'device-test', assignee, profile: assignee.kind === 'owner' ? null : 'opus-high' }); },
     complete(overrides = {}) { return service.complete({ id: ID, deviceId: 'device-test', key: 'complete-1', expected: '2026-11-09T10:00:00.000Z', ...overrides }); },
     child() { const root = store.get(ID).sessionId; sessionStore.create({ record: { id: CHILD, parentId: root, delegate: { sessionId: 'agent-child' }, name: '子｜確認', phase: 'awaiting_review', favorite: false, archivedAt: null, createdAt: stamp(), updatedAt: stamp() } }); return CHILD; },
     decision(source = {}) { return decisionStore.add({ title: '選択', summary: '必要な判断', options: [{ label: '進む' }, { label: '保留' }], requestId: `decision-${decisionStore.all().length}`, source }).decision; },
@@ -147,6 +147,21 @@ test('an unknown create outcome reconciles to one agent with identical frozen co
   f.tasksById.get(ID).title = '別の題名'; f.tasksById.get(ID).description = '別の説明';
   f.advance(60_000); await f.service.tick();
   assert.equal(f.store.get(ID).phase, 'started'); assert.equal(f.agents.size, 1); assert.deepEqual(f.bodies[0], f.bodies[1]);
+});
+
+test('the brief is frozen at creation, so an issue edit before the pickup never reaches the session', async (t) => {
+  const f = fixture(t); f.record();
+  f.tasksById.get(ID).title = '別の指示'; f.tasksById.get(ID).description = 'ほかの作業もする';
+  await f.service.pickup(ID);
+  assert.match(f.bodies[0].prompt, /本文を読んで更新する/); assert.match(f.bodies[0].purpose, /資料を直す/);
+  assert.doesNotMatch(JSON.stringify(f.bodies[0]), /別の指示|ほかの作業/);
+});
+
+test('a staff record without a frozen brief never launches a session', async (t) => {
+  const f = fixture(t);
+  f.store.record({ task: f.tasksById.get(ID), deviceId: 'device-test', assignee: staff, profile: 'opus-high' });
+  await f.service.pickup(ID);
+  assert.equal(f.creates.length, 0); assert.equal(f.store.get(ID).phase, 'failed'); assert.equal(f.store.get(ID).lastError, 'task_brief_missing');
 });
 
 test('a removed profile or closed task is a permanent pickup failure', async (t) => {

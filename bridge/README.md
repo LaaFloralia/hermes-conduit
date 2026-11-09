@@ -132,11 +132,11 @@ Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `GET /v1/linear-owner-tasks` | Bearer + `tasks:read` | 社長本人の未完了Linear課題だけ（team BUS・owner・Todoはアカウントから解決）。`?archived=only` はアーカイブ一覧。`{items,nextCursor}` |
-| `POST /v1/linear-owner-tasks` | Bearer + `tasks:write` + `Idempotency-Key` | `{id,title,description?,dueDate?,priority?,assignee?,profile?}` → 201。`id` はクライアント生成のUUID v4。同じUUID・同じ内容の再送は既存課題を返す。AI担当は作成後にMonetが取得 |
+| `POST /v1/linear-owner-tasks` | Bearer + `tasks:write` + `Idempotency-Key`（AI担当は `sessions:write` も） | `{id,title,description?,dueDate?,priority?,assignee?,profile?}` → 201。`id` はクライアント生成のUUID v4。同じUUID・同じ内容の再送は既存課題を返す。AI担当は作成時の本文で指示を固定し、作成後にMonetが取得（後からLinearで本文が変わっても会話へ渡さない） |
 | `GET /v1/linear-owner-tasks/{id}` | Bearer + `tasks:read` | 1件。他人・他team・委譲済み・ゴミ箱は404 |
 | `PATCH /v1/linear-owner-tasks/{id}` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{title?,description?,dueDate?,priority?}`。`If-Match` 欠落428、不一致412。アーカイブ済みは409 |
 | `POST /v1/linear-owner-tasks/{id}/archive`・`/restore` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{id,archived}`。担当・状態を保ってアーカイブ／復元。旧DELETE・completed指定は受け付けない |
-| `POST /v1/linear-owner-tasks/{id}/complete` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{id,completed:true,sessionArchived,archive:"queued"}`。会話ツリーの実行中は409 `session_running`。判断の取下げ→会話のアーカイブ→完了コメント→Done→番号解放→記録保管。途中失敗は同じ要求の再送で続行 |
+| `POST /v1/linear-owner-tasks/{id}/complete` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match`（AI担当は `sessions:write` も） | `{id,completed:true,sessionArchived,archive:"queued"}`。会話ツリーの実行中は409 `session_running`。判断の取下げ→会話のアーカイブ→完了コメント→Done→番号解放→記録保管。途中失敗は同じ要求の再送で続行 |
 | `GET /v1/skills` | Bearer + `sessions:read` | `{items:[{id,name,description,source,category,summary,detail,metadataKnown}]}`。分類・日本語説明は名前別メタデータ、未登録は「その他」と元の説明。SKILL.md本文は返さない。読取失敗は503 |
 | `GET /v1/routines` | Bearer + `sessions:read` | Console `jobs` の名前・予定・配信先・状態・直近実行・結果・`triggerKind`。定期実行以外は別枠。未観測はnull、読取失敗は503 |
 | `GET /v1/refs?kind=` | Bearer + `tasks:read`（task）／`sessions:read`（他） | 保持中の短い番号 `{items:[{ref,kind,key,title,external}],observedAt,fetchedAt}`。種類ごとに `n` 順 |

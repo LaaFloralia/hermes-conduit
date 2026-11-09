@@ -1072,6 +1072,25 @@ test('a paired staff create keeps Linear assigned to the owner and exposes its s
   assert.equal(changed.status, 409); assert.equal(changed.body.error.code, 'task_assignment_conflict');
 });
 
+test('a device without sessions:write cannot start or archive a task session', async (t) => {
+  const fake = fakeLinear(), sessions = taskSessionFixture();
+  const { bridge, token } = await bridgeWith(fake, { sessions, linearOwnerTasks: { cleanup: () => {} } }); t.after(() => bridge.close());
+  const tasksOnly = await bridge.token(['tasks:read', 'tasks:write']);
+  const staffBody = { id: uuid(85), title: 'AIの仕事', assignee: { kind: 'staff', staff: 'monet' }, profile: 'opus-high' };
+  const denied = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token: tasksOnly, key: 'tasks-only-staff', body: staffBody });
+  assert.equal(denied.status, 403); assert.equal(denied.body.error.code, 'insufficient_scope');
+  assert.equal(fake.calls.filter((c) => c.name === 'BridgeOwnerTaskCreate').length, 0); assert.equal(sessions.calls.length, 0);
+  const owner = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token: tasksOnly, key: 'tasks-only-owner', body: { id: uuid(86), title: '社長の仕事' } });
+  assert.equal(owner.status, 201);
+  await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'full-staff', body: staffBody });
+  await waitFor(() => fake.comments.size === 1);
+  const headers = { 'if-match': fake.issues.get(uuid(85)).updatedAt };
+  const archive = await bridge.request(`/v1/linear-owner-tasks/${uuid(85)}/complete`, { method: 'POST', token: tasksOnly, key: 'tasks-only-complete', headers });
+  assert.equal(archive.status, 403); assert.equal(archive.body.error.code, 'insufficient_scope'); assert.notEqual(fake.issues.get(uuid(85)).state.type, 'completed');
+  const ownerDone = await bridge.request(`/v1/linear-owner-tasks/${uuid(86)}/complete`, { method: 'POST', token: tasksOnly, key: 'tasks-only-owner-complete', headers: { 'if-match': fake.issues.get(uuid(86)).updatedAt } });
+  assert.equal(ownerDone.status, 200);
+});
+
 test('staff, profile and execution-store validation stop before the Linear create', async (t) => {
   const fake = fakeLinear(), sessions = taskSessionFixture(); const { bridge, token } = await bridgeWith(fake, { sessions }); t.after(() => bridge.close());
   for (const [i, extra] of [{ assignee: { kind: 'staff', staff: 'cfo' } }, { assignee: { kind: 'staff', staff: 'cfo' }, profile: 'alias' },

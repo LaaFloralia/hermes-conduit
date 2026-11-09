@@ -165,7 +165,7 @@ export function taskSessionRequest(task, run, label, taskRef) {
     prompt: ['LAAの作業。cwdは /Users/laa。最初に /Users/laa/AGENTS.md と関係する PROJECT-RULES.md を読む。社長がLAAアプリで作成したタスクを、Monetが社長の代理として引き受けた。/Users/laa/hq/roles/Monet/SOUL.md の「社長のタスクを引き受けた時」に従い、社長に頼らず完了まで進める。',
       ...(run.assignee.staff === 'monet' ? [] : [`担当は ${who.name}（${who.role}）。/Users/laa/hq/roles/${who.role}/SOUL.md と /Users/laa/hq/roles/PROTOCOL.md を読み、その社員として動く。`]),
       `モデル: ${label}（この設定を保つ。分担は hq/guide/models.md）`,
-      `タスク番号: ${taskRef ?? '未割当'}（${task.identifier}）\n課題ID: ${run.taskId}\n題名: ${task.title}\n説明:\n${task.description || '（説明なし）'}\n期限: ${task.dueDate ?? '未設定'}\n優先度: ${task.priority}`].join('\n\n'),
+      `タスク番号: ${taskRef ?? '未割当'}（${task.identifier}）\n課題ID: ${run.taskId}\n社長がLAAアプリで作成した時の本文（後からLinearで変わっても、この控えが正）\n題名: ${task.title}\n説明:\n${task.description || '（説明なし）'}\n期限: ${task.dueDate ?? '未設定'}\n優先度: ${task.priority}`].join('\n\n'),
   };
 }
 
@@ -235,9 +235,8 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
         let result;
         if (existing && p) result = { session: existing };
         else {
-          const profile = sessionOptions().profiles.find((p) => p.id === r.profile);
-          if (!profile) throw badRequest('task_profile_unknown', 'the selected profile is no longer listed');
-          p ??= store.preparePickup(id, taskSessionRequest(task, r, profileLabel(profile), refs?.refFor('task', id)), profileLabel(profile));
+          if (!p) throw conflict('task_brief_missing', 'the task has no brief frozen from its create request');
+          if (!sessionOptions().profiles.some((v) => v.id === r.profile)) throw badRequest('task_profile_unknown', 'the selected profile is no longer listed');
           result = await sessions.createSession({ deviceId: r.deviceId, body: p.body });
         }
         r = store.update(id, (v) => { v.sessionId = result.session.id; v.phase = v.report ? 'reported' : 'started'; v.pickedUpAt ??= stamp(); v.lastError = null; v.nextAttemptAt = null; });
@@ -255,6 +254,14 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
       store.update(id, (v) => { if (permanent) v.phase = 'failed'; v.lastError = safeError(e);
         v.nextAttemptAt = permanent ? null : new Date(now() + BACKOFF[Math.min(v.attempts - 1, BACKOFF.length - 1)]).toISOString(); });
     }
+  }
+  // The owner's own create request is the only brief a bypass-mode session
+  // receives: an issue edit made in Linear before the pickup never reaches it.
+  function accept({ task, deviceId, assignee, profile }) {
+    const r = store.record({ task, deviceId, assignee, profile });
+    const p = r.assignee.kind === 'staff' && sessionOptions().profiles.find((v) => v.id === r.profile);
+    if (p && !store.pickup(r.taskId)) store.preparePickup(r.taskId, taskSessionRequest(task, r, profileLabel(p), refs?.refFor('task', r.taskId)), profileLabel(p));
+    return r;
   }
   function pickup(id) {
     if (picking.has(id)) return picking.get(id);
@@ -358,6 +365,6 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
     if (completing.has(input.id)) throw conflict('idempotency_key_in_flight', 'the task completion is still executing');
     const work = finish(input).finally(() => completing.delete(input.id)); completing.set(input.id, work); return work;
   }
-  return { store, view, pickup, schedule, tick, report, complete,
+  return { store, view, accept, pickup, schedule, tick, report, complete,
     validateAssignment: (body) => taskAssignee(body, body.assignee?.kind === 'staff' && typeof body.profile === 'string' ? sessionOptions() : null) };
 }
