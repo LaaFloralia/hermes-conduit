@@ -35,11 +35,14 @@ function fixture(t) {
   return { store, ids: [ID_A, ID_B, ID_C], advance: (ms) => { clock += ms; }, now };
 }
 
-test('seqInfo answers for a page the same values the single-session reads give', (t) => {
+test('seqInfo answers for a page what the event page reports for each id', (t) => {
   const f = fixture(t);
   const info = f.store.seqInfo(f.ids);
   for (const id of f.ids) {
-    assert.deepEqual(info.get(id), { lastSeq: f.store.headSeq(id), oldestSeq: f.store.oldestSeq(id) }, id);
+    // The long-poll's own one-read shape is the reference: a client must not
+    // see a different head or gap in the list than it gets from /events.
+    const page = f.store.readEvents(id, { afterSeq: 0, limit: 1 });
+    assert.deepEqual(info.get(id), { lastSeq: page.headSeq, oldestSeq: page.oldestSeq }, id);
   }
   assert.deepEqual(info.get(ID_A), { lastSeq: 3, oldestSeq: 1 });
   assert.deepEqual(info.get(ID_C), { lastSeq: 0, oldestSeq: 1 });
@@ -51,8 +54,8 @@ test('a pruned stream is a gap in seqInfo too, not "no new events"', (t) => {
   // The open of the next read prunes B's journal; both shapes must agree that
   // a cursor at 1 is expired rather than current.
   assert.deepEqual(f.store.seqInfo([ID_B]).get(ID_B), { lastSeq: 2, oldestSeq: 3 });
-  assert.equal(f.store.oldestSeq(ID_B), 3);
-  assert.equal(f.store.headSeq(ID_B), 2);
+  const page = f.store.readEvents(ID_B, { afterSeq: 0, limit: 1 });
+  assert.deepEqual({ lastSeq: page.headSeq, oldestSeq: page.oldestSeq }, { lastSeq: 2, oldestSeq: 3 });
 });
 
 test('seqInfo tolerates an unknown id and an empty page', (t) => {
