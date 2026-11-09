@@ -13,6 +13,7 @@ private extension LAACopy {
 
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     @Environment(\.locale) private var locale
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
@@ -38,7 +39,46 @@ struct LAAUsageView: View {
     }
     #endif
 
+    /// The Mac page: three cards at the grid's minimum, centred. A fourth
+    /// column would squeeze each card's meter and its numbers, so the measure
+    /// is three card widths plus their gaps, plus the page's own insets.
+    private static var desktopWidth: CGFloat {
+        LAADesktopMetrics.gridItemMinWidth * 3 + LAASpacing.x6 * 2 + LAASpacing.x8 * 2
+    }
+
     var body: some View {
+        Group {
+            if laaDesktop { desktopBody } else { phoneBody }
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { evaluatedAt = $0 }
+        .tint(LAAColor.link)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        // The phone hides the bar's paper; on the Mac the window's own toolbar
+        // keeps the system look (rules: 標準のガラスを潰さない).
+        .toolbarBackground(laaDesktop ? .automatic : .hidden, for: .navigationBar)
+        .toolbar {
+            if showsSettingsButton {
+                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            }
+        }
+        .sheet(isPresented: $showPairing) {
+            LAAPairingView().environmentObject(bridge).laaSheetSize(.form)
+        }
+        .onAppear {
+            guard automaticallyRefresh else { return }
+            state.setPresented(true)
+        }
+        .task(id: bridge.revision) {
+            guard automaticallyRefresh else { return }
+            await state.refreshOnTabOpen(bridge: bridge)
+        }
+        .onDisappear { if automaticallyRefresh { state.setPresented(false) } }
+    }
+
+    // MARK: Phone
+
+    private var phoneBody: some View {
         GeometryReader { geometry in
             ZStack {
                 LAAColor.background.ignoresSafeArea()
@@ -66,26 +106,33 @@ struct LAAUsageView: View {
                 .refreshable { await refresh() }
             }
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { evaluatedAt = $0 }
-        .tint(LAAColor.link)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            if showsSettingsButton {
-                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+    }
+
+    // MARK: Mac
+
+    /// The Mac page keeps the phone's order of information but puts the
+    /// services in a card grid and gives the page one centred measure.
+    private var desktopBody: some View {
+        ZStack {
+            LAAColor.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: LAASpacing.section) {
+                    header
+                    if bridge.status != .paired { connectionCard }
+                    else {
+                        feedError
+                        servicesGrid
+                        capacity
+                    }
+                }
+                .padding(.horizontal, LAASpacing.x8)
+                .padding(.top, LAASpacing.x6)
+                .padding(.bottom, LAASpacing.x8)
+                .laaReadableWidth(Self.desktopWidth)
             }
+            .refreshable { await refresh() }
         }
-        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .onAppear {
-            guard automaticallyRefresh else { return }
-            state.setPresented(true)
-        }
-        .task(id: bridge.revision) {
-            guard automaticallyRefresh else { return }
-            await state.refreshOnTabOpen(bridge: bridge)
-        }
-        .onDisappear { if automaticallyRefresh { state.setPresented(false) } }
+        .accessibilityIdentifier("laa.usage.desktop")
     }
 
     private var header: some View {
@@ -105,24 +152,29 @@ struct LAAUsageView: View {
                             .contentShape(Circle())
                     }
                     .accessibilityLabel(Text(verbatim: LAACopy.usageMore))
+                    .macTooltip(LAACopy.usageMore)
                     .accessibilityIdentifier("laa.usage.menu")
                 }
                 Button { Task { await refresh() } } label: {
                     Group { if state.isRefreshing { ProgressView() } else { Image(systemName: "arrow.clockwise") } }
                         .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                        .background(LAAColor.surface, in: Circle())
-                        .overlay(Circle().strokeBorder(LAAColor.separator))
+                        .background(laaDesktop ? Color.clear : LAAColor.surface, in: Circle())
+                        .overlay {
+                            if !laaDesktop { Circle().strokeBorder(LAAColor.separator) }
+                        }
+                        .contentShape(Circle())
                 }
                 // The button only re-reads the feed. Borderless keeps the List
                 // row from claiming the tap, so no other control can fire.
                 .buttonStyle(.borderless)
                 .disabled(state.isRefreshing || bridge.status != .paired)
                 .accessibilityLabel(Text(verbatim: LAACopy.usageRefresh))
+                .macTooltip(LAACopy.usageRefresh)
                 .accessibilityIdentifier("laa.usage.refresh")
             }
-            Text(verbatim: "鮮度を確認できるAI枠と容量")
+            Text(verbatim: "更新時刻のあるAI利用枠と容量")
                 .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
-            Text(verbatim: "通信 " + time(state.updatedAt))
+            Text(verbatim: "更新 " + time(state.updatedAt))
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityIdentifier("laa.usage.updated")
         }
@@ -147,38 +199,21 @@ struct LAAUsageView: View {
         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
     }
 
+    // MARK: Services
+
+    /// The phone's list: one card per provider, in the order the console sends.
     private var services: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            Text(verbatim: "AI").laaTextStyle(.section).fontWeight(.bold)
-                .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
+            servicesHeading
             if let items = state.usage.value {
                 let groups = LAAUsageGroup.consoleGroups(items)
                 if groups.isEmpty { caption("表示できるサービスはありません。") }
                 ForEach(groups) { group in
                     VStack(alignment: .leading, spacing: LAASpacing.x3) {
-                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                            Text(verbatim: group.label).laaTextStyle(.body).fontWeight(.semibold)
-                                .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
-                            Spacer(minLength: 0)
-                            if let warning = groupWarning(group) {
-                                Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
+                        groupHeader(group)
                         if group.items.isEmpty { caption("残量を取得できません。") }
                         ForEach(group.items) { item in usageItem(item) }
-                        if let url = LAAUsageGroup.billingURL(for: Self.apiBalanceID(group.id)) {
-                            Link(destination: url) { Text(verbatim: LAACopy.usageBilling) }
-                                .laaTextStyle(.secondary)
-                                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                                .accessibilityIdentifier("laa.usage.billing.\(group.id)")
-                        } else if let url = group.serviceURL,
-                           group.items.contains(where: { $0.availability != "available" || past($0) }) {
-                            Link(destination: url) { Text(verbatim: LAACopy.usageOpenService) }
-                                .laaTextStyle(.secondary)
-                                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                                .accessibilityIdentifier("laa.usage.open.\(group.id)")
-                        }
+                        serviceLink(group)
                     }
                     .padding(LAASpacing.x4)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,6 +233,90 @@ struct LAAUsageView: View {
                 }
             } else { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
         }
+    }
+
+    /// The Mac's card grid; each card divides its own rows with hairlines.
+    private var servicesGrid: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+            servicesHeading
+            if let items = state.usage.value {
+                let groups = LAAUsageGroup.consoleGroups(items)
+                if groups.isEmpty {
+                    caption("表示できるサービスはありません。")
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth),
+                                             spacing: LAASpacing.x6)],
+                          alignment: .leading, spacing: LAASpacing.x6) {
+                    ForEach(groups) { group in serviceCard(group) }
+                }
+            } else if !state.isRefreshing {
+                caption(state.usage.error == nil ? LAACopy.notFetched : "利用できません。")
+                HStack(spacing: LAASpacing.x4) {
+                    ForEach(LAAWidgetUsageBuilder.slots, id: \.provider) { slot in
+                        let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.name, items: [])
+                        if let url = group.serviceURL {
+                            Link(destination: url) { Text(verbatim: group.label) }
+                                .laaTextStyle(.body)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                                .accessibilityIdentifier("laa.usage.open.\(group.id)")
+                        }
+                    }
+                }
+            } else { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+        }
+    }
+
+    private var servicesHeading: some View {
+        Text(verbatim: "AI").laaTextStyle(.section).fontWeight(.bold)
+            .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
+    }
+
+    private func groupHeader(_ group: LAAUsageGroup) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+            Text(verbatim: group.label).laaTextStyle(.body).fontWeight(.semibold)
+                .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
+            if let warning = groupWarning(group) {
+                Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+    }
+
+    @ViewBuilder private func serviceLink(_ group: LAAUsageGroup) -> some View {
+        if let url = LAAUsageGroup.billingURL(for: Self.apiBalanceID(group.id)) {
+            Link(destination: url) { Text(verbatim: LAACopy.usageBilling) }
+                .laaTextStyle(.secondary)
+                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                .accessibilityIdentifier("laa.usage.billing.\(group.id)")
+        } else if let url = group.serviceURL,
+                  group.items.contains(where: { $0.availability != "available" || past($0) }) {
+            Link(destination: url) { Text(verbatim: LAACopy.usageOpenService) }
+                .laaTextStyle(.secondary)
+                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                .accessibilityIdentifier("laa.usage.open.\(group.id)")
+        }
+    }
+
+    private func serviceCard(_ group: LAAUsageGroup) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            groupHeader(group)
+            if group.items.isEmpty {
+                caption("残量を取得できません。")
+            } else {
+                VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                    ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { Rectangle().fill(LAAColor.separator).frame(height: 1) }
+                        usageItem(item)
+                    }
+                }
+            }
+            serviceLink(group)
+        }
+        .padding(LAASpacing.x4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        .accessibilityIdentifier("laa.usage.service.\(group.id)")
     }
 
     @ViewBuilder private var feedError: some View {
@@ -222,10 +341,10 @@ struct LAAUsageView: View {
                 Text(verbatim: "容量").laaTextStyle(.section).fontWeight(.bold)
                     .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
-                Text(verbatim: "● 正常・取得済み　▲ 要確認　○ 未取得")
+                Text(verbatim: "● 取得済み　▲ 要確認　○ 未取得")
                     .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                     .lineLimit(1).minimumScaleFactor(0.8)
-                    .accessibilityLabel(Text(verbatim: "凡例 黒丸は正常または取得済み、三角は要確認、白丸は未取得"))
+                    .accessibilityLabel(Text(verbatim: "凡例 黒丸は取得済み、三角は要確認、白丸は未取得"))
             }
             VStack(alignment: .leading, spacing: 0) {
                 if shown.isEmpty && unconnected.isEmpty {
@@ -452,7 +571,7 @@ struct LAAUsageView: View {
             let flags = [expiredWindow ? "一部の枠がリセット済み" : nil,
                          item.kind != "quota" && item.isExpired(now: evaluatedAt) ? "期限切れ" : nil,
                          needsRenewal(item) ? "追加項目・期限を要確認" : nil,
-                         LAAUsageFreshness.isStale(item, at: evaluatedAt) ? "古い値または鮮度不明" : nil].compactMap { $0 }
+                         LAAUsageFreshness.isStale(item, at: evaluatedAt) ? "古い値・取得時刻が不明" : nil].compactMap { $0 }
             if !flags.isEmpty {
                 Label { Text(verbatim: flags.joined(separator: "・")) } icon: { Image(systemName: "exclamationmark.triangle") }
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -464,7 +583,7 @@ struct LAAUsageView: View {
         if group.items.contains(where: { LAAUsageFreshness.isStale($0, at: evaluatedAt) && $0.availability == "available" && $0.detail?.sourceKind != "verified" }) { return "更新待ち" }
         if group.items.contains(where: { $0.kind == "quota" && ($0.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0, at: evaluatedAt) } }) { return "一部の枠がリセット済み" }
         if group.items.contains(where: { $0.availability == "available" && ($0.isExpired(now: evaluatedAt) || needsRenewal($0)) }) { return "期限・追加項目 要確認" }
-        if group.items.contains(where: { $0.availability == "available" && $0.detail?.sourceKind != "verified" && $0.detail?.freshUntil == nil }) { return "旧Bridge・鮮度は目安" }
+        if group.items.contains(where: { $0.availability == "available" && $0.detail?.sourceKind != "verified" && $0.detail?.freshUntil == nil }) { return "古い値・未取得は目安です" }
         return nil
     }
 

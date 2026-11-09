@@ -1,13 +1,18 @@
 #if LAA_BUILD
 import SwiftUI
 
-/// One decision: what to decide, a short reason, the facts, then large
-/// choices with the recommended one first. A session's native question uses
-/// the same header and the existing session reply view underneath.
+/// One decision: what to decide, a short reason, the facts, then the choices
+/// as rows divided by hairlines, with the recommended one first. On the Mac
+/// this is the detail column beside the list; on the phone it is the sheet.
+/// A session's native question uses the same header and the existing session
+/// reply view underneath.
 struct LAADecisionDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var board: LAADecisionBoard
     @ObservedObject var drafts: ComposerDraftStore
+    /// Called with the answered record so the list can move the row to 回答済み.
+    let onAnswered: ((LAADecision) -> Void)?
     let onFinished: (_ removed: Bool) -> Void
 
     enum Choice: Hashable { case option(Int), other }
@@ -18,14 +23,17 @@ struct LAADecisionDetailView: View {
     @State private var sending = false
     @State private var failure: String?
     @State private var undelivered: String?
-    @State private var sent: Bool?
+    /// True when the answer just sent was stored instead of delivered.
+    @State private var stored: Bool?
     @FocusState private var noteFocused: Bool
 
     init(item: LAADecision, board: LAADecisionBoard, drafts: ComposerDraftStore,
+         onAnswered: ((LAADecision) -> Void)? = nil,
          onFinished: @escaping (_ removed: Bool) -> Void) {
         _item = State(initialValue: item)
         self.board = board
         self.drafts = drafts
+        self.onAnswered = onAnswered
         self.onFinished = onFinished
         _undelivered = State(initialValue: item.deliveryFailed ? LAADecisionCopy.deliveryError(item.delivery?.error) : nil)
     }
@@ -40,43 +48,51 @@ struct LAADecisionDetailView: View {
 
     var body: some View {
         Group {
-            if let stored = sent {
-                LAADecisionCelebration(stored: stored) { onFinished(true) }
+            if laaDesktop {
+                scrollBody.laaReadableWidth(LAADesktopMetrics.documentWidth)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                        header
-                        if item.kind == .session, let session = item.sessionId {
-                            LAAWorkSessionDecision(sessionID: session, drafts: drafts) {
-                                withAnimation { sent = false }
-                            }
-                        } else if item.answer != nil && undelivered != nil {
-                            undeliveredCard
-                        } else {
-                            choices
-                        }
-                    }
-                    .padding(.horizontal, LAASpacing.horizontal)
-                    .padding(.top, LAASpacing.x2)
-                    .padding(.bottom, LAASpacing.x8)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .safeAreaInset(edge: .bottom) { if item.kind == .board { actionBar } }
+                scrollBody.safeAreaInset(edge: .bottom) { if showsSend { actionBar } }
             }
         }
-        .background(LAAColor.background.ignoresSafeArea())
+        .background { if !laaDesktop { LAAColor.background.ignoresSafeArea() } }
         .foregroundStyle(LAAColor.text)
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button { onFinished(false) } label: { Image(systemName: "xmark") }
-                    .accessibilityLabel(Text(verbatim: "閉じる"))
-                    .accessibilityIdentifier("work.decision.close")
+            if !laaDesktop {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { onFinished(false) } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(Text(verbatim: "閉じる"))
+                        .accessibilityIdentifier("work.decision.close")
+                }
             }
         }
         .sensoryFeedback(.selection, trigger: choice)
         .sensoryFeedback(.warning, trigger: undelivered) { old, new in old == nil && new != nil }
+    }
+
+    private var scrollBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: LAASpacing.x6) {
+                header
+                if item.kind == .session, let session = item.sessionId {
+                    LAAWorkSessionDecision(sessionID: session, drafts: drafts) {
+                        if laaDesktop { Task { await board.load(bridge) } } else { onFinished(false) }
+                    }
+                } else if let answer = item.answer {
+                    if undelivered != nil { undeliveredBlock }
+                    answerBlock(answer)
+                    if laaDesktop, showsSend { desktopAction }
+                } else {
+                    choices
+                    if laaDesktop { desktopAction }
+                }
+            }
+            .padding(.horizontal, laaDesktop ? LAASpacing.x8 : LAASpacing.horizontal)
+            .padding(.top, laaDesktop ? LAASpacing.x6 : LAASpacing.x2)
+            .padding(.bottom, LAASpacing.x8)
+        }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: Header
@@ -89,6 +105,7 @@ struct LAADecisionDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            if let answer = item.answer { answeredLine(answer) }
             if let source = headerMeta {
                 Text(verbatim: source).laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }
@@ -106,9 +123,18 @@ struct LAADecisionDetailView: View {
         }
     }
 
+    /// The one line that replaces the old celebration. It only advances a
+    /// just-sent answer on the phone; an answered record stays put.
+    private func answeredLine(_ answer: LAADecision.Answer) -> some View {
+        let finish: (() -> Void)? = stored != nil && !laaDesktop ? { onFinished(false) } : nil
+        return LAADecisionCelebration(stored: stored == true,
+                                      answeredAt: LAAWorkFreshness.date(answer.answeredAt),
+                                      onFinished: finish)
+    }
+
     @ViewBuilder private var facts: some View {
         let deadline = LAADecisionDeadline.describe(item.deadline)
-        if item.impact != nil || deadline != nil {
+        if item.answer == nil, item.impact != nil || deadline != nil {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 if let impact = item.impact, !impact.isEmpty {
                     fact(icon: "arrow.triangle.branch", text: impact, color: LAAColor.secondaryText)
@@ -130,8 +156,11 @@ struct LAADecisionDetailView: View {
 
     private var choices: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            ForEach(Array(item.options.enumerated()), id: \.offset) { index, option in
-                optionCard(index: index, option: option)
+            VStack(spacing: 0) {
+                ForEach(Array(item.options.enumerated()), id: \.offset) { index, option in
+                    if index > 0 { Rectangle().fill(LAAColor.separator).frame(height: 1) }
+                    optionRow(index: index, option: option)
+                }
             }
             if item.allowOther { freeAnswer }
         }
@@ -154,19 +183,15 @@ struct LAADecisionDetailView: View {
                 .laaTextStyle(.body)
                 .focused($noteFocused)
                 .padding(LAASpacing.x3)
-                .background(LAAColor.background, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
                 .overlay(RoundedRectangle(cornerRadius: LAARadius.selectionChip)
                     .strokeBorder(selected ? LAAColor.link : LAAColor.separator, lineWidth: selected ? 1.5 : 1))
                 .accessibilityLabel(Text(verbatim: LAADecisionCopy.otherTitle))
                 .accessibilityIdentifier("work.decision.note")
-            Text(verbatim: "選ばずに書くと、その内容で答えます。")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }
-        .padding(LAASpacing.x4)
+        .padding(.top, LAASpacing.x3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-        .overlay(RoundedRectangle(cornerRadius: LAARadius.card)
-            .strokeBorder(selected ? LAAColor.link : LAAColor.separator, lineWidth: selected ? 1.5 : 1))
+        .overlay(alignment: .top) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
         .accessibilityIdentifier("work.decision.otherSection")
         .onChange(of: note) { _, value in
             let written = !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -175,12 +200,18 @@ struct LAADecisionDetailView: View {
         }
     }
 
-    private func optionCard(index: Int, option: LAADecision.Option) -> some View {
+    private func optionRow(index: Int, option: LAADecision.Option) -> some View {
         let selected = choice == .option(index)
         return Button { choice = .option(index) } label: {
             HStack(alignment: .center, spacing: LAASpacing.x3) {
+                mark(selected)
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    if option.recommended { recommendedTag(on: selected) }
+                    if option.recommended {
+                        Text(verbatim: LAADecisionCopy.recommended)
+                            .laaTextStyle(.section).fontWeight(.semibold)
+                            .foregroundStyle(LAAColor.link)
+                            .accessibilityHidden(true)
+                    }
                     Text(verbatim: option.label)
                         .laaTextStyle(.body).fontWeight(.semibold)
                         .foregroundStyle(LAAColor.text)
@@ -191,58 +222,58 @@ struct LAADecisionDetailView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                mark(selected)
             }
-            .cardFrame(selected: selected)
+            .padding(.horizontal, LAASpacing.x3)
+            .padding(.vertical, LAASpacing.x3)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+            .background(selected ? LAAColor.selectionFill : Color.clear,
+                        in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+            .contentShape(RoundedRectangle(cornerRadius: LAASpacing.x2))
         }
         .buttonStyle(LAADecisionPressStyle())
-        .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label + (option.detail.map { "、\($0)" } ?? "")))
+        .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label
+                                 + (option.detail.map { "、\($0)" } ?? "")))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("work.decision.option.\(index)")
     }
 
-    private func recommendedTag(on selected: Bool) -> some View {
-        Label { Text(verbatim: LAADecisionCopy.recommended) } icon: { Image(systemName: "star.fill").imageScale(.small) }
-            .labelStyle(.titleAndIcon)
-            .laaTextStyle(.section).fontWeight(.semibold)
-            .foregroundStyle(LAAColor.link)
-            .padding(.horizontal, LAASpacing.x2).padding(.vertical, 2)
-            .background(selected ? LAAColor.surface : LAAColor.selectionFill, in: Capsule())
-            .accessibilityHidden(true)
-    }
-
     private func mark(_ selected: Bool) -> some View {
         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-            .font(.title3)
-            .foregroundStyle(selected ? LAAColor.link : LAAColor.separator)
+            .imageScale(.medium)
+            .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
             .contentTransition(.symbolEffect(.replace))
             .accessibilityHidden(true)
     }
 
-    // MARK: Delivery failed
+    // MARK: Answered
 
-    private var undeliveredCard: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Label { Text(verbatim: LAADecisionCopy.notDelivered) } icon: { Image(systemName: "exclamationmark.circle") }
+    private func answerBlock(_ answer: LAADecision.Answer) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: "回答").laaTextStyle(.section).fontWeight(.semibold)
+                .foregroundStyle(LAAColor.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+            Text(verbatim: answer.label).laaTextStyle(.body).fontWeight(.semibold)
+                .fixedSize(horizontal: false, vertical: true)
+            if let note = answer.note, !note.isEmpty {
+                Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, LAASpacing.x3)
+        .overlay(alignment: .top) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
+    }
+
+    private var undeliveredBlock: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: LAADecisionCopy.notDelivered)
                 .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.attention)
             if let undelivered {
                 Text(verbatim: undelivered).laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let answer = item.answer {
-                Divider().overlay(LAAColor.separator)
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: "保存した回答").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                    Text(verbatim: answer.label).laaTextStyle(.body).fontWeight(.semibold)
-                    if let note = answer.note, !note.isEmpty {
-                        Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    }
-                }
-            }
         }
-        .padding(LAASpacing.x4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("work.decision.undelivered")
     }
@@ -259,22 +290,18 @@ struct LAADecisionDetailView: View {
 
     private var retrying: Bool { item.answer != nil && undelivered != nil }
 
+    /// One primary action, and only while there is something to send.
+    private var showsSend: Bool { item.kind == .board && (item.answer == nil || retrying) }
+
+    private var sendTitle: String {
+        sending ? "届けています" : retrying ? "届け直す" : "この内容で返す"
+    }
+
     private var actionBar: some View {
         VStack(spacing: LAASpacing.x2) {
-            if let failure {
-                Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("work.decision.failure")
-            }
+            failureText
             Button { Task { await send() } } label: {
-                HStack(spacing: LAASpacing.x2) {
-                    if sending { ProgressView().tint(LAAColor.filledButtonText) }
-                    Text(verbatim: sending ? "届けています" : retrying ? "もう一度届ける" : "この内容で送る")
-                        .fontWeight(.semibold)
-                }
-                // The screen's text colour must not reach the filled button.
-                .foregroundStyle(LAAColor.filledButtonText)
-                .frame(maxWidth: .infinity)
+                sendLabel(fullWidth: true)
             }
             .laaGlassButton(prominent: true)
             .disabled(sending || !(retrying || canSend))
@@ -285,25 +312,70 @@ struct LAADecisionDetailView: View {
         .padding(.bottom, LAASpacing.x2)
     }
 
+    /// On the Mac the action sits at the end of the page, not in a bar.
+    private var desktopAction: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            failureText
+            HStack(spacing: LAASpacing.x3) {
+                Spacer(minLength: 0)
+                Button { Task { await send() } } label: { sendLabel(fullWidth: false) }
+                    .laaGlassButton(prominent: true)
+                    .disabled(sending || !(retrying || canSend))
+                    .accessibilityIdentifier("work.decision.send")
+            }
+        }
+    }
+
+    @ViewBuilder private var failureText: some View {
+        if let failure {
+            Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("work.decision.failure")
+        }
+    }
+
+    private func sendLabel(fullWidth: Bool) -> some View {
+        HStack(spacing: LAASpacing.x2) {
+            if sending { ProgressView().tint(LAAColor.filledButtonText) }
+            Text(verbatim: sendTitle).fontWeight(.semibold)
+        }
+        // The screen's text colour must not reach the filled button.
+        .foregroundStyle(LAAColor.filledButtonText)
+        .frame(maxWidth: fullWidth ? .infinity : nil)
+    }
+
     private func send() async {
         guard !sending else { return }
         sending = true; failure = nil
         defer { sending = false }
-        let outcome: LAADecisionBoard.Outcome
         if retrying {
-            outcome = await board.retry(item, bridge: bridge)
-        } else {
-            guard let choice else { return }
-            var index: Int?
-            if case .option(let value) = choice { index = value }
-            outcome = await board.answer(item, optionIndex: index,
-                                         note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note,
-                                         bridge: bridge)
+            switch await board.retry(item, bridge: bridge) {
+            case .done:
+                noteFocused = false
+                withAnimation { stored = false }
+                onAnswered?(LAADecisionBoardView.delivered(item))
+            case .notDelivered(let reason):
+                if let updated = board.items.first(where: { $0.id == item.id }) { item = updated }
+                withAnimation { undelivered = reason }
+            case .failed(let message):
+                failure = message
+            }
+            return
         }
+        guard let choice else { return }
+        var index: Int?
+        if case .option(let value) = choice { index = value }
+        let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outcome = await board.answer(item, optionIndex: index, note: text.isEmpty ? nil : text, bridge: bridge)
         switch outcome {
-        case .done(let stored):
+        case .done(let wasStored):
             noteFocused = false
-            withAnimation { sent = stored }
+            let answered = Self.answered(item, optionIndex: index,
+                                         label: index.map { item.options[$0].label } ?? text,
+                                         note: index == nil ? nil : (text.isEmpty ? nil : text))
+            item = answered
+            withAnimation { stored = wasStored }
+            onAnswered?(answered)
         case .notDelivered(let reason):
             if let updated = board.items.first(where: { $0.id == item.id }) { item = updated }
             withAnimation { undelivered = reason }
@@ -311,17 +383,16 @@ struct LAADecisionDetailView: View {
             failure = message
         }
     }
-}
 
-private extension View {
-    func cardFrame(selected: Bool) -> some View {
-        self
-            .padding(LAASpacing.x4)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(selected ? LAAColor.selectionFill : LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-            .overlay(RoundedRectangle(cornerRadius: LAARadius.card)
-                .strokeBorder(selected ? LAAColor.link : LAAColor.separator, lineWidth: selected ? 1.5 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: LAARadius.card))
+    /// The record as the Bridge keeps it after an answer: `label` is the chosen
+    /// option or the free text, and a free answer keeps `optionIndex` null.
+    static func answered(_ item: LAADecision, optionIndex: Int?, label: String, note: String?) -> LAADecision {
+        LAADecision(kind: item.kind, id: item.id, ref: item.ref, status: "answered", title: item.title,
+                    summary: item.summary, options: item.options, allowOther: item.allowOther, impact: item.impact,
+                    deadline: item.deadline, source: item.source, sourceRef: item.sourceRef, createdAt: item.createdAt,
+                    answer: .init(optionIndex: optionIndex, label: label, note: note,
+                                  answeredAt: ISO8601DateFormatter().string(from: Date())),
+                    delivery: item.delivery, sessionId: item.sessionId)
     }
 }
 #endif

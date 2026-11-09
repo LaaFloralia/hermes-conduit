@@ -173,10 +173,13 @@ enum LAADecisionCopy {
     static let recommended = "推奨"
     static let otherTitle = "選択肢以外で答える"
     static let notDelivered = "届いていません"
+    /// The one line an answered decision shows, with the time it went back.
+    static let replied = "返答済み"
+    /// The same line when the answer was stored, not delivered.
+    static let recorded = "記録済み"
     static let empty = "判断待ちはありません"
-    static let emptyDetail = "エージェントが判断を求めると、ここに届きます。"
     static let unsupported = "Macのアップデート待ち"
-    static let unsupportedDetail = "Macの LAA Bridge が新しくなると、判断ボードを使えます。"
+    static let unsupportedDetail = "判断ボードを使うには、MacのLAAアプリを最新にしてください。"
 
     /// VoiceOver: 「判断、<title>、推奨 <label>」.
     static func accessibilityLabel(_ item: LAADecision, now: Date = Date()) -> String {

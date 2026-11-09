@@ -18,27 +18,6 @@ struct LAAGroupSelection {
     }
 }
 
-private struct LAAGroupListEntry: ViewModifier {
-    @EnvironmentObject private var appState: AppState
-    @State private var showing = false
-    func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom) {
-            Button { showing = true } label: {
-                Label(LAACopy.chatsGroups, systemImage: "person.2")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
-            }
-            .buttonStyle(.plain)
-            .background(LAAColors.surface)
-            .accessibilityIdentifier("groups.open")
-        }
-        .sheet(isPresented: $showing) { LAAGroupListView().environmentObject(appState) }
-    }
-}
-extension View {
-    func laaGroupListEntry() -> some View { modifier(LAAGroupListEntry()) }
-}
-
 @MainActor
 struct LAAGroupListView: View {
     @EnvironmentObject private var appState: AppState
@@ -92,6 +71,7 @@ struct LAAGroupListView: View {
             }
             .refreshable { await appState.refreshBotRoster(); await appState.refreshGroupChatSupport() }
         }
+        .laaSheetSize(.page)
     }
 }
 
@@ -162,6 +142,7 @@ struct LAAGroupCreateView: View {
                 .accessibilityIdentifier("groups.create.submit")
             }
         }
+        .laaSheetSize(.form)
     }
 }
 
@@ -200,6 +181,7 @@ struct LAAGroupSettingsView: View {
                 }
             } else { Text(verbatim: "グループが開かれていません。") }
         }
+        .laaSheetSize(.form)
     }
 }
 

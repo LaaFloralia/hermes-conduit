@@ -105,7 +105,7 @@ final class LAADecisionUITests: XCTestCase {
         app.buttons["work.decision.send"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.decision.undelivered"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["届いていません"].exists)
-        XCTAssertEqual(app.buttons["work.decision.send"].label, "もう一度届ける")
+        XCTAssertEqual(app.buttons["work.decision.send"].label, "届け直す")
         screenshot("ui-decisions-undelivered-light", app)
         app.buttons["work.decision.close"].tap()
 
