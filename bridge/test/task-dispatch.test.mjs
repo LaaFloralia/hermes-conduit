@@ -197,13 +197,14 @@ test('state derives from queued, running, child decisions, native questions, rep
   assert.equal(f.service.view(ID).state, 'awaiting_decision'); assert.equal(f.service.view(ID).decisionRef, null);
   f.sessionStore.update(CHILD, (r) => { r.phase = 'awaiting_review'; });
   f.sessionStore.update(root, (r) => { r.phase = 'error'; }); assert.equal(f.service.view(ID).state, 'stopped');
-  await f.service.report(ID, '修正と検証済み'); assert.equal(f.service.view(ID).state, 'done');
+  await f.service.report(ID, '修正と検証済み', 'agent-root'); assert.equal(f.service.view(ID).state, 'done');
 });
 
 test('report accepts UUID, T number and identifier from the root and descendants, and rejects unrelated agents', async (t) => {
   const f = fixture(t); f.record(); await f.service.pickup(ID); f.child();
-  for (const [given, agent] of [[ID.toUpperCase(), 'agent-root'], ['Ｔ １', 'agent-child'], ['BUS-401', null]]) assert.equal((await f.service.report(given, '完了した', agent)).report.summary, '完了した');
+  for (const [given, agent] of [[ID.toUpperCase(), 'agent-root'], ['Ｔ １', 'agent-child'], ['BUS-401', 'agent-root']]) assert.equal((await f.service.report(given, '完了した', agent)).report.summary, '完了した');
   await assert.rejects(f.service.report(ID, '偽の報告', 'other-agent'), { status: 403, code: 'task_report_forbidden' });
+  for (const missing of [null, undefined, '']) await assert.rejects(f.service.report(ID, '名乗らない報告', missing), { status: 403, code: 'task_report_forbidden' });
   await assert.rejects(f.service.report(ID, 'あ'.repeat(601)), { status: 400 }); await assert.rejects(f.service.report(ID, '  '), { status: 400 });
   await assert.rejects(f.service.report(OTHER, 'ない'), { status: 404 });
 });
@@ -300,4 +301,6 @@ test('tasks report CLI persists into the same file and validates required flags'
   const ok = call('T1', '検証済み'); assert.equal(ok.status, 0, ok.stderr); assert.equal(JSON.parse(ok.stdout).report.summary, '検証済み'); assert.equal(f.store.get(ID).report.summary, '検証済み');
   const noSummary = spawnSync(process.execPath, [cli, 'tasks', 'report', ID, '--json'], { env: { ...process.env, LAA_BRIDGE_STATE_DIR: f.dir }, encoding: 'utf8' });
   assert.equal(noSummary.status, 2); assert.equal(f.store.get(ID).report.summary, '検証済み');
+  const anonymous = call('T1', '名乗らない報告', '');
+  assert.notEqual(anonymous.status, 0); assert.equal(f.store.get(ID).report.summary, '検証済み');
 });
