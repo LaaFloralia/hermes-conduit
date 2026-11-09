@@ -29,16 +29,38 @@ private struct LAAGlassButton: ViewModifier {
         if #available(iOS 26.0, *) {
             if prominent {
                 content.buttonStyle(.glassProminent).tint(LAAColor.filledButton)
-                    .foregroundStyle(LAAColor.filledButtonText)
+                    .modifier(LAAProminentLabel())
             } else {
                 content.buttonStyle(.glass)
             }
         } else if prominent {
             content.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
-                .foregroundStyle(LAAColor.filledButtonText)
+                .modifier(LAAProminentLabel())
         } else {
             content.buttonStyle(.bordered)
         }
+    }
+}
+
+/// A prominent button's label. A Mac window that isn't frontmost greys the
+/// fill, and the white label would vanish on it, so it falls back to the
+/// system's secondary text there.
+private struct LAAProminentLabel: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.modifier(LAAProminentActiveLabel())
+        } else {
+            content.foregroundStyle(LAAColor.filledButtonText)
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct LAAProminentActiveLabel: ViewModifier {
+    @Environment(\.appearsActive) private var appearsActive
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(appearsActive ? AnyShapeStyle(LAAColor.filledButtonText) : AnyShapeStyle(.secondary))
     }
 }
 
