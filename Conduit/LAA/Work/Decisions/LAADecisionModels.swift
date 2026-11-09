@@ -171,7 +171,7 @@ enum LAADecisionDeadline {
 
 enum LAADecisionCopy {
     static let recommended = "推奨"
-    static let other = "その他（自由記入）"
+    static let otherTitle = "選択肢以外で答える"
     static let notDelivered = "届いていません"
     static let empty = "判断待ちはありません"
     static let emptyDetail = "エージェントが判断を求めると、ここに届きます。"

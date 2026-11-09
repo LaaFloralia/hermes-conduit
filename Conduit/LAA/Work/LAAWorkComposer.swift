@@ -160,6 +160,8 @@ enum LAAWorkDrafts {
         // draft; the store is otherwise carried across launches on purpose.
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CLEAR_WORK_STORE") {
             try? FileManager.default.removeItem(at: fileURL)
+            // The task list's filter is device state, not part of this run.
+            UserDefaults.standard.removeObject(forKey: LAALinearTaskFilter.storageKey)
         }
         #endif
         let store = ComposerDraftStore(capacity: .max, fileURL: fileURL)
