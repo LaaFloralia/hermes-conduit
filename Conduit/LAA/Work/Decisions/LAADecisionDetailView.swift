@@ -15,7 +15,6 @@ struct LAADecisionDetailView: View {
     @State private var item: LAADecision
     @State private var choice: Choice?
     @State private var note = ""
-    @State private var addingNote = false
     @State private var sending = false
     @State private var failure: String?
     @State private var undelivered: String?
@@ -134,22 +133,46 @@ struct LAADecisionDetailView: View {
             ForEach(Array(item.options.enumerated()), id: \.offset) { index, option in
                 optionCard(index: index, option: option)
             }
-            if item.allowOther { otherCard }
-            if let choice, choice != .other {
-                if addingNote {
-                    noteField(prompt: "補足（任意）")
-                } else {
-                    Button { addingNote = true; noteFocused = true } label: {
-                        Label { Text(verbatim: "補足を添える") } icon: { Image(systemName: "plus") }
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                            .frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("work.decision.addNote")
-                }
-            }
+            if item.allowOther { freeAnswer }
         }
         .disabled(sending)
+    }
+
+    /// The free answer used to sit behind a "その他（自由記入）" card: with a
+    /// long decision it stayed below the fold and the owner had to guess it
+    /// existed. It is now an always-visible field under the choices; writing
+    /// in it selects その他, and it is sent as optionIndex null with the note.
+    private var freeAnswer: some View {
+        let selected = choice == .other
+        return VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: LAADecisionCopy.otherTitle)
+                .laaTextStyle(.section).fontWeight(.semibold)
+                .foregroundStyle(LAAColor.text)
+                .accessibilityAddTraits(.isHeader)
+            TextField("", text: $note, prompt: Text(verbatim: "どうするかを書く"), axis: .vertical)
+                .lineLimit(2...6)
+                .laaTextStyle(.body)
+                .focused($noteFocused)
+                .padding(LAASpacing.x3)
+                .background(LAAColor.background, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                .overlay(RoundedRectangle(cornerRadius: LAARadius.selectionChip)
+                    .strokeBorder(selected ? LAAColor.link : LAAColor.separator, lineWidth: selected ? 1.5 : 1))
+                .accessibilityLabel(Text(verbatim: LAADecisionCopy.otherTitle))
+                .accessibilityIdentifier("work.decision.note")
+            Text(verbatim: "選ばずに書くと、その内容で答えます。")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+        }
+        .padding(LAASpacing.x4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        .overlay(RoundedRectangle(cornerRadius: LAARadius.card)
+            .strokeBorder(selected ? LAAColor.link : LAAColor.separator, lineWidth: selected ? 1.5 : 1))
+        .accessibilityIdentifier("work.decision.otherSection")
+        .onChange(of: note) { _, value in
+            let written = !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if written { choice = .other }
+            else if choice == .other { choice = nil }
+        }
     }
 
     private func optionCard(index: Int, option: LAADecision.Option) -> some View {
@@ -176,45 +199,6 @@ struct LAADecisionDetailView: View {
         .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label + (option.detail.map { "、\($0)" } ?? "")))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("work.decision.option.\(index)")
-    }
-
-    private var otherCard: some View {
-        let selected = choice == .other
-        return VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Button { choice = .other; addingNote = false; noteFocused = true } label: {
-                HStack(spacing: LAASpacing.x3) {
-                    Text(verbatim: LAADecisionCopy.other)
-                        .laaTextStyle(.body).fontWeight(selected ? .semibold : .regular)
-                        .foregroundStyle(selected ? LAAColor.text : LAAColor.secondaryText)
-                    Spacer(minLength: 0)
-                    mark(selected)
-                }
-                .frame(minHeight: LAASpacing.minimumTouchTarget - LAASpacing.x4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(LAADecisionPressStyle())
-            .accessibilityAddTraits(selected ? .isSelected : [])
-            .accessibilityIdentifier("work.decision.other")
-            if selected {
-                TextField("", text: $note, prompt: Text(verbatim: "どうするかを書く"), axis: .vertical)
-                    .lineLimit(2...6)
-                    .laaTextStyle(.body)
-                    .focused($noteFocused)
-                    .accessibilityIdentifier("work.decision.note")
-            }
-        }
-        .cardFrame(selected: selected)
-    }
-
-    private func noteField(prompt: String) -> some View {
-        TextField("", text: $note, prompt: Text(verbatim: prompt), axis: .vertical)
-            .lineLimit(1...5)
-            .laaTextStyle(.body)
-            .focused($noteFocused)
-            .padding(LAASpacing.x4)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-            .overlay(RoundedRectangle(cornerRadius: LAARadius.card).strokeBorder(LAAColor.separator, lineWidth: 1))
-            .accessibilityIdentifier("work.decision.note")
     }
 
     private func recommendedTag(on selected: Bool) -> some View {
@@ -313,7 +297,8 @@ struct LAADecisionDetailView: View {
             var index: Int?
             if case .option(let value) = choice { index = value }
             outcome = await board.answer(item, optionIndex: index,
-                                         note: choice == .other || addingNote ? note : nil, bridge: bridge)
+                                         note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note,
+                                         bridge: bridge)
         }
         switch outcome {
         case .done(let stored):

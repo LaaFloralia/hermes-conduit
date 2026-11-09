@@ -382,6 +382,7 @@ build (keeps its own chat and call controls)
 - Chat header, composer controls, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
 - Call state, existing voice adapter, controls, route labels, return bar and voice settings: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/VoiceSettingsView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
+- Employee call identity (the employee's name ahead of the host's generic persona) and by-name greeting; a live call keeps the chat connection recovering off screen: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift` (`gptLiveBriefing`, `liveVoiceStyle`, `liveCallKeepsTransport`), `ConduitTests/LAAStaffCallTransportTests.swift`
 - LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
 - Catalyst fallback and checks: `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `ConduitTests/LAAMacCatalystTests.swift`
 - Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAAStaffAvatarAudioTests.swift`, `ConduitTests/LAAConversationHeaderSnapshotTests.swift`, `ConduitTests/LAAEmployeeGPTLiveTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
@@ -718,7 +719,7 @@ A parent session's children stay folded under it until opened; a folded child wa
 store · the session and project API · the owner-task API · Console job observations
 
 **Code**
-- Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
+- Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAATaskRun.swift` (execution record, status labels, filters, create body, completion), `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkRef.swift` (short numbers, label and the one search rule),
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`,
@@ -739,8 +740,8 @@ store · the session and project API · the owner-task API · Console job observ
 - Short numbers (refs): `bridge/src/refs/registry.mjs`, `bridge/src/refs/service.mjs`, `bridge/src/refs/items.mjs`, `bridge/src/refs/routes.mjs`, `bridge/src/refs/cli.mjs`, `bridge/src/refs/present.mjs`, `bridge/test/refs.test.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md` §9
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
-- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
-  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`,
+- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAATaskRunTests.swift` (statuses, filters, create body, completion over a loopback Bridge), `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `ConduitUITests/LAATaskRunUITests.swift`,
   `ConduitUITests/LAAWorkRefUITests.swift`, `ConduitUITests/LAAWorkShotsUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
 - Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
@@ -777,6 +778,35 @@ store · the session and project API · the owner-task API · Console job observ
   owner-task data is retained without automatic migration.
   Healthy in-flight writes show progress. A readback can clear an uncertain
   request only when its requested fields or archive state are reflected.
+- A task may carry the Bridge's execution record (`run`): the assignee (社長 or
+  a staff member), the profile it started with, a state (queued, running,
+  awaiting_decision, done, stopped, failed), the session and a short report.
+  The row's second line reads 担当 then the contract's Japanese status
+  (取得待ち / 実施中（S5） / 判断待（S5） / 完了（S5） / 停止（S5） /
+  取得できません) beside priority and due date; 判断待, 停止 and 取得できません
+  use the attention colour, 完了 the link colour, and a status with a session
+  opens `laa://work/sessions/<id>`. A missing `run` (an older Bridge, or a task
+  an agent registered) reads as 担当 社長 with no badge, as before.
+- The list filters on its own heading: 自分に関係 (default), 自分が作成
+  (`run != nil`) or 自分が担当 (`run == null` or the owner's own run). The choice
+  is kept on the device (`laa.work.taskFilter`) and the Mac column uses the same
+  menu. While a staff member's task is still queued, running or waiting for a
+  decision, the visible list re-reads every 15 seconds; another section or the
+  background stops it, and an all-owner list is not polled.
+- Creation offers 担当 (社長, or Monet [default], Argus, Morgan, Sherlock,
+  Merlin, Talos and Ada from `LAAStaff`) and, for staff, the model・effort
+  profile from `/v1/session-options` (default `defaultProfile`), with
+  「Monetが取得して、完了まで進めます。」under it. The POST carries
+  `assignee` (`{kind: owner}` or `{kind: staff, staff}`) and, for staff,
+  `profile`; the same fields are part of the mutation allow-list and a
+  readback matches them against `run`. Editing shows 担当 and モデル read-only.
+- 完了 is a second trailing swipe action (アーカイブの削除 stays) and a button in
+  the detail's 実行 card. A confirmation names the list removal, the HQ record
+  and, when a session exists, that it is archived. It posts
+  `/v1/linear-owner-tasks/<id>/complete` with `If-Match: updatedAt` and the
+  existing protected draft/idempotency path; a running task is disabled with
+  「実施中のため、終わってから完了できます」, 409 `session_running` reads
+  「実施中のため完了できません」, and a success removes the row at once.
 - Routines expose schedule, destination and current state separately from the
   last run, business result and notification result. Missing observations stay
   unknown. Structured triggerKind separates scheduled jobs from folded services,
@@ -824,6 +854,11 @@ store · the session and project API · the owner-task API · Console job observ
   Agent inbox synchronization runs in the background, retains its last complete
   snapshot and reports retryable synchronization status before the first snapshot.
 
+**Owner check on the device**
+- Create a task for Monet and choose a model: the form shows 「Monetが取得して、完了まで進めます。」 and the new row shows 担当 Monet with 取得待ち.
+- A task whose session is running shows its 完了 disabled with 「実施中のため、終わってから完了できます」; swipe 完了 on a queued task, read the confirmation and see the row leave at once.
+- Tap a 判断待 status and the conversation it names opens; change the filter and relaunch to see the choice kept.
+
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
@@ -831,7 +866,8 @@ store · the session and project API · the owner-task API · Console job observ
   parent's integrated gate. Live list/detail reads are verified separately;
   simulator CRUD uses synthetic data.
 
-**Checked:** 2026-11-09, laa/chat-composer-dots-cron (scheduled runs out of the session lists, short numbers and notices); 2026-11-08, e5927541 (short numbers and the Work search).
+**Checked:** 2026-11-09, laa/tasks-ui (the Bridge's execution record: statuses, the three filters, AI assignee with a model, completion, 15-second refresh, and the 403 refusal on a device without `sessions:write`). Built after merging master 1fd6b9e4: build-for-testing exit 0. Unit: `LAATaskRunTests` 10/10, `LAALinearTaskTests` 8/8, `LAALinearTaskIntegrationTests` 3/3, `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2. On `LAA 16 Pro Max` against `scripts/laa/work-ui-fixture.mjs`: `LAATaskRunUITests` 11/11 (create with Monet + Opus 5.5 XHigh, staff refusal keeping the form and saving as 社長, the running refusal, both completion paths, the status link, the long free answer, and four shot runs), `LAAWorkLinearUITests` create/edit/archive and seven edits 2/2, `LAADecisionUITests` 5/5. 440 × 956 pt light/dark captures compared (task list and states, create form, completion confirmation, decision free answer, session question). The sheet environment check reports 0 (`scripts/tests/test_check_sheet_environment.py` 22/22). The real Bridge's `insufficient_scope` and the real Linear writes remain for the parent's integrated gate.
+2026-11-09, laa/chat-composer-dots-cron (scheduled runs out of the session lists, short numbers and notices); 2026-11-08, e5927541 (short numbers and the Work search).
 Unit tests decode every kind with and without `ref` and cover the matcher; `LAAWorkRefUITests` runs on LAA 16 Pro Max
 in English (US) against `scripts/laa/work-ui-fixture.mjs` for the default Tasks
 section, no Priority tab, refs in the five lists and their details, and `t12`
@@ -863,7 +899,7 @@ gate.
 
 ## LAA decision board
 
-The LAA Work hub's first section, 判断 (`Decisions`), lists what agents are waiting for the owner to decide: records an agent posted with `laa-bridge decide add`, and Paseo conversations whose own question is pending. A row reads as what to decide, with one quiet line for the source, the deadline and the recommended choice. The detail offers large choices with the recommended one first and a free answer; the answer goes back to the conversation that asked, with a short confirmation when it arrives. An answer that did not arrive stays on the board marked 届いていません with a retry.
+The LAA Work hub's first section, 判断 (`Decisions`), lists what agents are waiting for the owner to decide: records an agent posted with `laa-bridge decide add`, and Paseo conversations whose own question is pending. A row reads as what to decide, with one quiet line for the source, the deadline and the recommended choice. The detail offers large choices with the recommended one first and a free answer that is visible from the start; the answer goes back to the conversation that asked, with a short confirmation when it arrives. An answer that did not arrive stays on the board marked 届いていません with a retry.
 
 **Siblings:** the Bridge decision store, delivery and CLI · the session decision
 read and reply (`LAAWorkSessionDecision`) · Work hub pills and links · owner
@@ -883,21 +919,27 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 **Rulings**
 - One Bridge client and one reply path: board answers post to `/v1/decisions/:id/answer` and `/retry` with the
   request ID kept until the outcome is known; native questions use the existing session decision endpoints.
+- The free answer is an always-visible field under the choices, headed 「選択肢以外で答える」 and captioned
+  「選ばずに書くと、その内容で答えます。」. Writing in it selects その他, so nothing has to be tapped first; it
+  sends `optionIndex: null` (present, not omitted) with the words in `note`. A native question's reply card uses
+  the same heading and prompt beside its options. The earlier 「その他（自由記入）」 card only inserted its field
+  after a tap and, under a long decision, sat below the fold with the send button still disabled, so the screen
+  read as choices-only.
 - `ref` and `sourceRef` may be null until the refs work merges; the row then shows the conversation name alone.
 - The board is chosen as the hub's first section only when it has items on the first read, and never after the
   owner or a link chose another section. A Bridge without the route (404) shows 「Macのアップデート待ち」.
 - The confirmation is one checkmark, a success haptic and one line; Reduce Motion keeps it to a fade. No glow,
   confetti or new colours.
 
+**Owner check on the device**
+- Open a production-sized decision and write the answer in 「選択肢以外で答える」 without tapping any card; it should reach the conversation that asked and leave the board.
+
 **Open gaps**
 - The Mac window shows the board through the same view, without its own desktop list/detail layout.
 - The pill count refreshes when the hub appears or the board is pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-08, daae3647 (laa/decisions-app-1108 base). On LAA 16 Pro Max: LAADecisionTests 8,
-LAADecisionSnapshotTests 2 (list, detail, chosen, empty, undelivered, older Mac, offline and sent at 440 × 956 pt,
-light and dark), LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal
-Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
+**Checked:** 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
 
 ## Voice beside the tabs
 

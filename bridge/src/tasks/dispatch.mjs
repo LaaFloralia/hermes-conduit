@@ -281,19 +281,21 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
     const r = store.get(id);
     if (!r) throw missing();
     if (!r.sessionId || r.assignee.kind !== 'staff' || r.completedAt) throw conflict('task_report_closed', 'the task has no active execution record');
-    if (agentId) {
-      const rootAgent = treeFor(r)[0]?.delegate?.sessionId;
-      let authorized = treeFor(r).some((s) => s.delegate?.sessionId === agentId);
-      if (!authorized && rootAgent && daemon) {
-        const agents = await daemon.list(), visited = new Set();
-        let current = agentId;
-        while (current && !visited.has(current)) {
-          if (current === rootAgent) { authorized = true; break; }
-          visited.add(current); current = agents.find((a) => a.id === current)?.labels?.[PARENT];
-        }
+    // Only the task's own conversation tree reports. A caller without a Paseo
+    // identity is refused rather than trusted.
+    const forbidden = () => new BridgeError(403, 'task_report_forbidden', 'このタスクの会話またはその子から報告してください。');
+    if (!agentId) throw forbidden();
+    const rootAgent = treeFor(r)[0]?.delegate?.sessionId;
+    let authorized = treeFor(r).some((s) => s.delegate?.sessionId === agentId);
+    if (!authorized && rootAgent && daemon) {
+      const agents = await daemon.list(), visited = new Set();
+      let current = agentId;
+      while (current && !visited.has(current)) {
+        if (current === rootAgent) { authorized = true; break; }
+        visited.add(current); current = agents.find((a) => a.id === current)?.labels?.[PARENT];
       }
-      if (!authorized) throw new BridgeError(403, 'task_report_forbidden', 'このタスクの会話またはその子から報告してください。');
     }
+    if (!authorized) throw forbidden();
     return store.update(id, (v) => { if (v.report?.summary !== summary) v.report = { summary, at: stamp() }; v.phase = 'reported'; });
   }
 

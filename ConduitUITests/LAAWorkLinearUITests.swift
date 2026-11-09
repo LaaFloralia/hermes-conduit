@@ -45,7 +45,10 @@ final class LAAWorkLinearUITests: XCTestCase {
         let title = app.textFields["work.linear.title"].firstMatch
         let editor = title.exists ? title : app.textViews["work.linear.title"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap(); editor.typeText("UI確認タスク")
-        app.buttons["保存"].tap()
+        // A new task defaults to an AI assignee, whose profile arrives from
+        // the Bridge before the save can be sent.
+        XCTAssertTrue(app.descendants(matching: .any)["work.linear.model"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["work.linear.save"].tap()
         XCTAssertTrue(app.buttons["UI確認タスク"].waitForExistence(timeout: 10))
         app.buttons["UI確認タスク"].tap()
         let editing = app.textFields["work.linear.title"].firstMatch
@@ -54,7 +57,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         let updatedTitle = try XCTUnwrap(field.value as? String)
         XCTAssertTrue(updatedTitle.contains("更新"))
         XCTAssertNotEqual(updatedTitle, "UI確認タスク")
-        app.buttons["保存"].tap()
+        app.buttons["work.linear.save"].tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["work.linear.complete.b9d2f664-cda3-4c56-8d39-c4d6df597254"].exists)
         XCTAssertTrue(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].waitForNonExistence(timeout: 2))
@@ -95,7 +98,7 @@ final class LAAWorkLinearUITests: XCTestCase {
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             field.tap(); field.typeText("改")
             title = try XCTUnwrap(field.value as? String)
-            app.buttons["保存"].tap()
+            app.buttons["work.linear.save"].tap()
             XCTAssertTrue(taskRow(app, title).waitForExistence(timeout: 10))
             XCTAssertTrue(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].waitForNonExistence(timeout: 2))
             XCTAssertTrue(app.staticTexts["保存結果を確認できませんでした。"].waitForNonExistence(timeout: 2))
@@ -168,7 +171,7 @@ final class LAAWorkLinearUITests: XCTestCase {
     func testWorkScreensLight() throws { try capture("light") }
     func testWorkScreensDark() throws { try capture("dark") }
     private func taskRow(_ app: XCUIApplication, _ title: String) -> XCUIElement {
-        app.buttons.containing(.staticText, identifier: title).firstMatch
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
     }
     private func selectSection(_ app: XCUIApplication, _ section: String) {
         let button = app.buttons["work.section.\(section)"]

@@ -1,10 +1,37 @@
 // Local, synthetic Work UI fixture. Never calls Linear or reads personal data.
 import http from 'node:http';
 let tasks;
-const reset = () => { tasks = [
-  { id: 'b9d2f664-cda3-4c56-8d39-c4d6df597254', identifier: 'BUS-TEST1', ref: 'T12', title: '次の打ち合わせを確認する', description: '資料と開始時刻を確認', dueDate: '2026-11-02', priority: 2, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-02T00:00:00Z', url: null },
-  { id: 'dce58a26-2f89-4d6a-b78e-01d07d485dbd', identifier: 'BUS-TEST2', ref: 'T13', title: '今週の振り返りをまとめる', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-01T00:00:00Z', url: null },
-]; };
+// The Bridge's run record (contract 2026-11-09). One row is running so the
+// completion is refused; the rest cover every label the list draws, plus the
+// legacy row with no run at all.
+const fixtureRun = (staff, name, state, sessionId = null, sessionRef = null, extra = {}) => ({
+  creator: 'owner', assignee: { kind: 'staff', staff, name }, profile: 'opus-high',
+  profileLabel: 'Opus 5.5 · High', state, sessionId, sessionRef, decisionRef: null, report: null, error: null, ...extra,
+});
+let createdBodies = [];
+let completed = [];
+let lastAnswer = null;
+// A Bridge on a device without sessions:write refuses a staff assignee (403
+// insufficient_scope). /tasks/refuse-staff switches it on for one test.
+let refuseStaffCreate = false;
+const reset = () => {
+  createdBodies = []; completed = []; lastAnswer = null; refuseStaffCreate = false;
+  tasks = [
+    { id: 'b9d2f664-cda3-4c56-8d39-c4d6df597254', identifier: 'BUS-TEST1', ref: 'T12', title: '次の打ち合わせを確認する', description: '資料と開始時刻を確認', dueDate: '2026-11-02', priority: 2, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-02T00:00:00Z', url: null,
+      run: fixtureRun('monet', 'Monet', 'running', 'ses_5555555555555555', 'S5') },
+    { id: 'dce58a26-2f89-4d6a-b78e-01d07d485dbd', identifier: 'BUS-TEST2', ref: 'T13', title: '今週の振り返りをまとめる', description: '', dueDate: null, priority: 3, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-01T00:00:00Z', url: null, run: null },
+    { id: '7a1c3d5e-1111-4a2b-9c3d-000000000014', identifier: 'BUS-TEST4', ref: 'T14', title: '見積りを送る', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-03T00:00:00Z', url: null,
+      run: fixtureRun('cto', 'Ada', 'queued') },
+    { id: '7a1c3d5e-1111-4a2b-9c3d-000000000015', identifier: 'BUS-TEST5', ref: 'T15', title: '名刺の紙を決める', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-04T00:00:00Z', url: null,
+      run: fixtureRun('cio', 'Sherlock', 'awaiting_decision', 'ses_8888888888888888', 'S8') },
+    { id: '7a1c3d5e-1111-4a2b-9c3d-000000000016', identifier: 'BUS-TEST6', ref: 'T16', title: '週報の下書き', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-05T00:00:00Z', url: null,
+      run: fixtureRun('cos', 'Merlin', 'stopped') },
+    { id: '7a1c3d5e-1111-4a2b-9c3d-000000000017', identifier: 'BUS-TEST7', ref: 'T17', title: '写真の選定', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-06T00:00:00Z', url: null,
+      run: fixtureRun('cso', 'Talos', 'failed', null, null, { error: 'unknown_profile' }) },
+    { id: '7a1c3d5e-1111-4a2b-9c3d-000000000018', identifier: 'BUS-TEST8', ref: 'T18', title: 'HPの文言', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-07T00:00:00Z', url: null,
+      run: fixtureRun('argus', 'Argus', 'done', 'ses_3333333333333333', 'S3', { report: { summary: '3案を比較して2案に絞りました。', at: '2026-11-07T00:00:00Z' } }) },
+  ];
+};
 reset();
 const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
 
@@ -117,7 +144,11 @@ const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null
 // Bridge without the route), and /decisions/fail-next makes the next answer
 // stay undelivered. The first decision carries J1/S4; the others keep ref and
 // sourceRef null, as an older Bridge sends.
-const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02', failed: 'dec_0000000000000a03' };
+const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02', failed: 'dec_0000000000000a03',
+  long: 'dec_0000000000000a04' };
+// A production-sized question: about 600 characters of explanation and two
+// choices, so the free answer is measured where the owner reads it.
+const longSummary = '新しいHPと名刺、写真の選び直しが同時に進んでいます。'.repeat(24) + '公開日と告知の順番を決めると、ここから先の作業を止めずに進められます。';
 let decisionMode = 'off';
 let failNextDelivery = false;
 let decisions = [];
@@ -152,15 +183,28 @@ const resetDecisions = () => {
       createdAt: iso(-20), updatedAt: iso(-1),
       answer: { optionIndex: 0, label: 'Driveに保存', note: null, answeredAt: iso(-1), deviceId: 'work-fixture' },
       delivery: { state: 'failed', attempts: 1, messageId: `${DECISION_IDS.failed}:answer:1`, deliveredAt: null, error: 'agent_archived' } },
+    { id: DECISION_IDS.long, ref: 'J4', status: 'open', title: '第4四半期の重点を決める',
+      summary: longSummary,
+      options: [
+        { label: '制作を優先し、公開は11月28日', detail: '写真と名刺を先に仕上げます。告知は公開の5日前から。', recommended: true },
+        { label: '公開を11月21日に固定', detail: '制作は公開に間に合わせ、足りない分は公開後に足します。', recommended: false },
+      ],
+      allowOther: true, impact: '公開日から逆算して、写真・名刺・告知の順番が決まります。', deadline: iso(30),
+      source: { paseoAgentId: 'agent-fixture-long', sessionId: null, name: 'HP｜四半期計画' }, sourceRef: 'S9',
+      createdAt: iso(-1), updatedAt: iso(-1), answer: null, delivery: null },
   ];
 };
 resetDecisions();
 const boardItems = () => {
-  if (decisionMode !== 'normal') return [];
-  const items = decisions.filter((d) => d.status === 'open' || d.delivery?.state === 'failed').map((d) => ({ kind: 'board', ...d }));
-  const waiting = sessions.find((session) => session.id === SESSION_IDS.decision);
-  items.push({ kind: 'session', sessionId: waiting.id, ref: null, title: waiting.name, summary: 'どちらにしますか？',
-    kinds: ['question'], createdAt: iso(-30), deadline: null });
+  if (decisionMode === 'off' || decisionMode === 'empty' || decisionMode === 'unsupported') return [];
+  let items = decisions.filter((d) => d.status === 'open' || d.delivery?.state === 'failed').map((d) => ({ kind: 'board', ...d }));
+  if (decisionMode === 'long') items = items.filter((d) => d.id === DECISION_IDS.long);
+  if (decisionMode !== 'normal' && decisionMode !== 'long') return [];
+  if (decisionMode === 'normal') {
+    const waiting = sessions.find((session) => session.id === SESSION_IDS.decision);
+    items.push({ kind: 'session', sessionId: waiting.id, ref: null, title: waiting.name, summary: 'どちらにしますか？',
+      kinds: ['question'], createdAt: iso(-30), deadline: null });
+  }
   return items.sort((a, b) => Number(b.delivery?.state === 'failed') - Number(a.delivery?.state === 'failed')
     || (Date.parse(a.deadline) || Infinity) - (Date.parse(b.deadline) || Infinity)
     || Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -181,6 +225,30 @@ const api = http.createServer(async (req, res) => {
   if (path === '/v1/devices/enroll') { req.resume(); return send(res, 201, { deviceId: 'work-fixture', token: 'fixture-token', scopes: ['tasks:read', 'tasks:write', 'sessions:read', 'sessions:write', 'calendar:read', 'calendar:write'] }); }
   if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); return res.end(); }
   if (path === '/v1/linear-owner-tasks' && req.method === 'GET') return send(res, 200, { items: tasks.filter(t => Boolean(t.archivedAt) === (url.searchParams.get('archived') === 'only')), nextCursor: null });
+  if (/^\/v1\/linear-owner-tasks\/[^/]+$/.test(path) && req.method === 'GET') {
+    const task = tasks.find(t => t.id === path.split('/').at(-1));
+    if (!task) { res.writeHead(404); return res.end(); }
+    return send(res, 200, task);
+  }
+  const completeMatch = path.match(/^\/v1\/linear-owner-tasks\/([^/]+)\/complete$/);
+  if (completeMatch && req.method === 'POST') {
+    req.resume();
+    const task = tasks.find(t => t.id === completeMatch[1]);
+    const fail = (status, code, message) => {
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { code, message, retryable: false }, requestId: 'fixture' }));
+    };
+    if (!task) return fail(404, 'not_found', 'no such task');
+    if (task.run?.state === 'running') return fail(409, 'session_running', 'the session is still working');
+    const ifMatch = req.headers['if-match'];
+    const key = req.headers['idempotency-key'];
+    if (!ifMatch) return fail(428, 'precondition_required', 'If-Match is required');
+    if (ifMatch !== task.updatedAt) return fail(412, 'precondition_failed', 'the task changed');
+    if (!key) return fail(400, 'idempotency_key_required', 'Idempotency-Key is required');
+    completed.push({ id: task.id, ifMatch, key, sessionArchived: Boolean(task.run?.sessionId) });
+    tasks = tasks.filter(t => t.id !== task.id);
+    return send(res, 200, { id: task.id, completed: true, sessionArchived: Boolean(task.run?.sessionId), archive: 'queued' });
+  }
   if (path.startsWith('/v1/linear-owner-tasks') && ['POST', 'PATCH', 'DELETE'].includes(req.method)) {
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : {};
@@ -194,7 +262,24 @@ const api = http.createServer(async (req, res) => {
       return send(res, 200, { id, archived: action === 'archive' });
     }
     if (req.method === 'POST') {
-      const task = { ...body, identifier: 'BUS-TEST3', status: 'todo', stateName: 'Todo', updatedAt: new Date().toISOString(), url: null };
+      if (refuseStaffCreate && body.assignee?.kind === 'staff') {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: { code: 'insufficient_scope', message: 'sessions:write is required', retryable: false }, requestId: 'fixture' }));
+      }
+      createdBodies.push(body);
+      const staffNames = { monet: 'Monet', argus: 'Argus', cfo: 'Morgan', cio: 'Sherlock', cos: 'Merlin', cso: 'Talos', cto: 'Ada' };
+      const assignee = body.assignee ?? { kind: 'owner' };
+      const run = {
+        creator: 'owner',
+        assignee: assignee.kind === 'staff' ? { kind: 'staff', staff: assignee.staff, name: staffNames[assignee.staff] ?? assignee.staff } : { kind: 'owner' },
+        profile: body.profile ?? null,
+        profileLabel: body.profile === 'opus-xhigh' ? 'Opus 5.5 · XHigh' : body.profile ? 'Opus 5.5 · High' : null,
+        state: assignee.kind === 'staff' ? 'queued' : null,
+        sessionId: null, sessionRef: null, decisionRef: null, report: null, error: null,
+      };
+      const task = { id: body.id, title: body.title, description: body.description, dueDate: body.dueDate,
+        priority: body.priority, identifier: `BUS-TEST${tasks.length + 1}`, status: 'todo', stateName: 'Todo',
+        updatedAt: new Date().toISOString(), url: null, run };
       tasks.push(task); return send(res, 201, task);
     }
     const task = tasks.find(t => t.id === id);
@@ -219,9 +304,12 @@ const api = http.createServer(async (req, res) => {
     if (decisionMatch[2] === 'answer') {
       if (decision.status !== 'open') { res.writeHead(409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code: 'decision_closed', message: 'closed', retryable: false }, requestId: 'fixture' })); }
       const option = Number.isInteger(body.optionIndex) ? decision.options[body.optionIndex] : null;
+      lastAnswer = { id: decision.id, optionIndex: Number.isInteger(body.optionIndex) ? body.optionIndex : null,
+        note: body.note ?? null };
       decision.status = 'answered';
-      decision.answer = { optionIndex: option ? body.optionIndex : null, label: option ? option.label : 'その他', note: body.note ?? null,
-        answeredAt: new Date().toISOString(), deviceId: 'work-fixture' };
+      // The Bridge stores a free answer in label and leaves note null.
+      decision.answer = { optionIndex: option ? body.optionIndex : null, label: option ? option.label : (body.note ?? 'その他'),
+        note: option ? (body.note ?? null) : null, answeredAt: new Date().toISOString(), deviceId: 'work-fixture' };
     }
     await new Promise((resolve) => setTimeout(resolve, 600));
     settleDecision(decision);
@@ -367,9 +455,11 @@ const control = http.createServer((req, res) => {
     imagesServed = 0;
     resetDecisions();
   }
-  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off)$/);
+  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long)$/);
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
+  if (req.url === '/tasks/refuse-staff') refuseStaffCreate = true;
+  if (req.url === '/tasks/allow-staff') refuseStaffCreate = false;
   if (req.url === '/hold-image') holdImages();
   if (req.url === '/slow-conversation/on') conversationDelay = 2000;
   if (req.url === '/slow-conversation/off') conversationDelay = 0;
@@ -381,7 +471,9 @@ const control = http.createServer((req, res) => {
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed,
-    answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null, delivery: d.delivery?.state ?? null })) }));
+    created: createdBodies, completed, lastAnswer,
+    answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null,
+      note: d.answer?.note ?? null, label: d.answer?.label ?? null, delivery: d.delivery?.state ?? null })) }));
 });
 // WORK_FIXTURE_PORT moves both servers (api, api + 1) when the usual pair is taken.
 const apiPort = Number(process.env.WORK_FIXTURE_PORT || 19584);

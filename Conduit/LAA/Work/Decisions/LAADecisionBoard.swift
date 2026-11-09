@@ -74,13 +74,35 @@ import SwiftUI
         items.removeAll { $0.id == id }
     }
 
+    /// The answer body. A free answer keeps `optionIndex` null on the wire
+    /// (not omitted) and carries the words in `note`; choosing an option may
+    /// still add a short note beside it.
+    struct AnswerBody: Encodable {
+        let optionIndex: Int?
+        let note: String?
+        let requestId: String
+
+        private enum CodingKeys: String, CodingKey { case optionIndex, note, requestId }
+        func encode(to encoder: Encoder) throws {
+            var values = encoder.container(keyedBy: CodingKeys.self)
+            if let optionIndex { try values.encode(optionIndex, forKey: .optionIndex) }
+            else { try values.encodeNil(forKey: .optionIndex) }
+            if let note { try values.encode(note, forKey: .note) }
+            else { try values.encodeNil(forKey: .note) }
+            try values.encode(requestId, forKey: .requestId)
+        }
+    }
+
+    static func answerBody(optionIndex: Int?, note: String?, requestId: String) -> AnswerBody {
+        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AnswerBody(optionIndex: optionIndex, note: trimmed?.isEmpty == false ? trimmed : nil, requestId: requestId)
+    }
+
     func answer(_ item: LAADecision, optionIndex: Int?, note: String?, bridge: LAABridgeSession) async -> Outcome {
-        struct Body: Encodable { let optionIndex: Int?; let note: String?; let requestId: String }
         let key = requestIDs[item.id] ?? LAABridgeIdempotencyKey()
         requestIDs[item.id] = key
-        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
         return await send(item, path: "/v1/decisions/\(item.id)/answer", key: key, bridge: bridge,
-                          body: Body(optionIndex: optionIndex, note: trimmed?.isEmpty == false ? trimmed : nil, requestId: key.value))
+                          body: Self.answerBody(optionIndex: optionIndex, note: note, requestId: key.value))
     }
 
     func retry(_ item: LAADecision, bridge: LAABridgeSession) async -> Outcome {

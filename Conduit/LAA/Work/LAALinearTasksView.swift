@@ -4,6 +4,7 @@ import SwiftUI
 struct LAALinearTasksView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var taskRoute = LAALinearTaskRoute.shared
     @ObservedObject var drafts: ComposerDraftStore
     /// The Work hub's search on the phone; the Mac column keeps its own field.
@@ -20,11 +21,13 @@ struct LAALinearTasksView: View {
     @State private var editor: Editor?
     @State private var detail: LAALinearTask?
     @State private var deleting: LAALinearTask?
+    @State private var completing: LAALinearTask?
     @State private var acknowledge = false
     @State private var desktopSelection: DesktopSelection?
     @State private var desktopSearch = ""
     @State private var hoveredID: String?
     @State private var reloadID = 0
+    @AppStorage(LAALinearTaskFilter.storageKey) private var filterRaw = LAALinearTaskFilter.related.rawValue
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
     private struct Editor: Identifiable {
@@ -41,9 +44,11 @@ struct LAALinearTasksView: View {
     }
     private var pending: ComposerDraftStore.Submission? { LAAWorkDrafts.pending(drafts, key: journalKey) }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var filter: LAALinearTaskFilter { LAALinearTaskFilter(rawValue: filterRaw) ?? .related }
 
     private var rows: [LAALinearTask] {
         items.filter { archivedOnly ? $0.isArchived : $0.isOpen }
+            .filter { archivedOnly || filter.matches($0) }
             .filter { archivedOnly || LAAWorkRef.matches(query, ref: $0.ref,
                                                          text: [$0.title, $0.description ?? "", $0.identifier]) }
             .sorted {
@@ -87,8 +92,20 @@ struct LAALinearTasksView: View {
                         Button { showingArchive = false } label: { Text(verbatim: "閉じる") }
                     } }
             }
+            .environmentObject(bridge)
         }
-        .task(id: "\(bridge.revision)-\(reloadID)") { await load() }
+        .task(id: "\(bridge.revision)-\(reloadID)-\(scenePhase == .active)") {
+            await load()
+            // Only a task a staff member is still working on changes quickly;
+            // leave the list quiet otherwise. The task ends with the view, so
+            // another Work section or the background stops the loop.
+            guard !archivedOnly, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                guard !Task.isCancelled, items.contains(where: { $0.isOpen && $0.isAgentActive }) else { continue }
+                await load(quiet: true)
+            }
+        }
         .sheet(item: $taskRoute.target) { target in
             NavigationStack {
                 LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
@@ -96,21 +113,28 @@ struct LAALinearTasksView: View {
                         Button { taskRoute.target = nil } label: { Text(verbatim: "閉じる") }
                     } }
             }
+            .environmentObject(bridge)
         }
         .sheet(item: $detail) { task in
             NavigationStack {
                 LAAPersonalTaskDetailView(id: task.identifier.isEmpty ? task.id : "linear:\(task.identifier)", drafts: drafts,
-                                          ref: task.ref)
+                                          ref: task.ref, ownerTask: task, onCompleted: { id in
+                    items.removeAll { $0.id == id }
+                    detail = nil
+                    Task { await load(quiet: true) }
+                })
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
                         Button { detail = nil } label: { Text(verbatim: "閉じる") }
                     } }
             }
+            .environmentObject(bridge)
         }
         .sheet(item: $editor) { value in
-            LAALinearTaskEditor(id: value.id, task: value.task, busy: busy || pending != nil, failure: failure) { body in
+            LAALinearTaskEditor(id: value.id, task: value.task, busy: busy || pending != nil, failure: $failure) { body in
                 submit(method: value.task == nil ? "POST" : "PATCH", id: value.id,
                        body: body, version: value.task?.updatedAt)
             }
+            .environmentObject(bridge)
         }
         .confirmationDialog(Text(verbatim: "このタスクを削除しますか？"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button(role: .destructive) {
@@ -119,6 +143,16 @@ struct LAALinearTasksView: View {
             } label: { Text(verbatim: "削除") }
             Button(role: .cancel) { deleting = nil } label: { Text(verbatim: "キャンセル") }
         } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
+        .confirmationDialog(Text(verbatim: "完了にしますか？"), isPresented: Binding(get: { completing != nil },
+            set: { if !$0 { completing = nil } }), titleVisibility: .visible) {
+            Button {
+                if let task = completing { complete(task) }
+                completing = nil
+            } label: { Text(verbatim: "完了") }
+            Button(role: .cancel) { completing = nil } label: { Text(verbatim: "キャンセル") }
+        } message: {
+            Text(verbatim: completing.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
+        }
         .confirmationDialog(Text(verbatim: "操作の控えを閉じますか？"), isPresented: $acknowledge) {
             Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
             label: { Text(verbatim: "結果を確認して閉じる") }
@@ -161,28 +195,22 @@ struct LAALinearTasksView: View {
             if loading || busy { ProgressView().frame(maxWidth: .infinity) }
             Section {
                 ForEach(rows) { task in
-                    HStack(alignment: .top, spacing: LAASpacing.x3) {
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         Button { editor = Editor(id: task.id, task: task) } label: {
-                            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                                    LAAWorkRefLabel(ref: task.ref)
-                                    Text(verbatim: task.title).foregroundStyle(LAAColor.text).fontWeight(.medium)
-                                }
-                                HStack(spacing: LAASpacing.x2) {
-                                    if task.priority != 0 {
-                                        Text(verbatim: LAALinearTask.priorityLabel(task.priority))
-                                            .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
-                                    }
-                                    if let due = task.dueDate {
-                                        Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }
-                                            .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
-                                    }
-                                }.laaTextStyle(.secondary)
+                            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                LAAWorkRefLabel(ref: task.ref)
+                                Text(verbatim: task.title).foregroundStyle(LAAColor.text).fontWeight(.medium)
+                                Spacer(minLength: 0)
                             }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
                         }.buttonStyle(.borderless).disabled(archivedOnly)
+                        taskMeta(task)
                     }
                     .contextMenu {
-                        if !archivedOnly { Button { detail = task } label: { Text(verbatim: "詳細・コメント") } }
+                        if !archivedOnly {
+                            Button { detail = task } label: { Text(verbatim: "詳細・コメント") }
+                            if task.isOpen { Button { completing = task } label: { Text(verbatim: "完了") }
+                                .disabled(busy || pending != nil || task.completionBlockedReason != nil) }
+                        }
                     }
                     .disabled(busy || pending != nil)
                     .listRowBackground(LAAColor.surface)
@@ -192,6 +220,14 @@ struct LAALinearTasksView: View {
                                 Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") }
                             }.tint(LAAColor.link).disabled(busy || pending != nil)
                         } else {
+                            // First on the trailing edge, so a swipe ends on 完了.
+                            Button {
+                                guard task.completionBlockedReason == nil else { return }
+                                completing = task
+                            } label: {
+                                Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark") }
+                            }.tint(LAAColor.link)
+                                .disabled(busy || pending != nil || task.completionBlockedReason != nil)
                             Button(role: .destructive) { deleting = task } label: {
                                 Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
                             }.disabled(busy || pending != nil)
@@ -199,7 +235,11 @@ struct LAALinearTasksView: View {
                     }
                 }
             } header: {
-                Text(verbatim: archivedOnly ? "アーカイブ" : "社長のタスク")
+                if archivedOnly {
+                    Text(verbatim: "アーカイブ")
+                } else {
+                    filterMenu
+                }
             } footer: {
                 Text(verbatim: archivedOnly ? "アーカイブしたタスクです。スワイプで戻せます。" : "Linear · LAA担当")
             }
@@ -214,6 +254,75 @@ struct LAALinearTasksView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+
+    /// The list's filter: a menu on its own heading, so the current range is
+    /// what the rows below are called. The choice stays on the device.
+    private var filterMenu: some View {
+        Menu {
+            ForEach(LAALinearTaskFilter.allCases) { option in
+                Button { filterRaw = option.rawValue } label: {
+                    if option == filter {
+                        Label { Text(verbatim: option.title) } icon: { Image(systemName: "checkmark") }
+                    } else {
+                        Text(verbatim: option.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: LAASpacing.x1) {
+                Text(verbatim: filter.title).fontWeight(.semibold)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(LAAColor.text)
+        }
+        .accessibilityLabel(Text(verbatim: "絞り込み、\(filter.title)"))
+        .accessibilityIdentifier("work.tasks.filter")
+    }
+
+    /// 担当 · status · priority · due, one quiet line under the title. The
+    /// status is the Bridge's own wording; only a task with a session links to
+    /// it, and a missing run (an older Bridge) reads as 担当 社長 with no badge.
+    private func taskMeta(_ task: LAALinearTask) -> some View {
+        HStack(spacing: LAASpacing.x2) {
+            Text(verbatim: task.assigneeDisplay).lineLimit(1)
+                .foregroundStyle(LAAColor.secondaryText)
+            if let status = task.runStatus { statusLabel(status, task: task) }
+            if task.priority != 0 {
+                Text(verbatim: LAALinearTask.priorityLabel(task.priority)).lineLimit(1)
+                    .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
+            }
+            if let due = task.dueDate {
+                Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }.lineLimit(1)
+                    .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
+            }
+            Spacer(minLength: 0)
+        }
+        .laaTextStyle(.secondary)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private func statusLabel(_ status: LAATaskRunStatus, task: LAALinearTask) -> some View {
+        let label = Text(verbatim: status.label).lineLimit(1)
+            .fontWeight(status.tone == .quiet ? .regular : .semibold)
+            .foregroundStyle(status.color)
+            .padding(.horizontal, status.tone == .quiet ? 0 : LAASpacing.x2)
+            .padding(.vertical, status.tone == .quiet ? 0 : 1)
+            .background(status.tone == .quiet ? Color.clear : status.color.opacity(0.12), in: Capsule())
+        if let session = status.sessionID {
+            // The same handler the deep link uses. A Link would send the URL
+            // through the system and back, which the hub has already missed.
+            Button {
+                guard let url = URL(string: "laa://work/sessions/\(session)") else { return }
+                LAAWorkLinkRequest.shared.open(url)
+            } label: { label }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isLink)
+                .accessibilityLabel(Text(verbatim: "状態 \(status.label)。会話を開く"))
+                .accessibilityIdentifier("work.task.status.\(task.id)")
+        } else {
+            label.accessibilityIdentifier("work.task.status.\(task.id)")
+        }
     }
 
     private var desktopRows: [LAALinearTask] {
@@ -274,9 +383,13 @@ struct LAALinearTasksView: View {
                         desktopNavRow("Inbox", icon: "tray", selection: .inbox, identifier: "work.linear.inbox")
                         desktopNavRow("All tasks · search · projects", icon: "magnifyingglass", selection: .browse, identifier: "work.linear.browse")
                         Divider().overlay(LAAColor.separator).padding(.vertical, LAASpacing.x2)
-                        Text(verbatim: "TASKS")
-                            .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                            .padding(.horizontal, LAASpacing.x4).padding(.bottom, LAASpacing.x1)
+                        HStack(spacing: LAASpacing.x2) {
+                            Text(verbatim: "TASKS")
+                                .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
+                            Spacer(minLength: 0)
+                            filterMenu
+                        }
+                        .padding(.horizontal, LAASpacing.x4).padding(.bottom, LAASpacing.x1)
                         ForEach(desktopRows) { task in desktopTaskRow(task) }
                         if loaded && desktopRows.isEmpty && !loading && failure == nil {
                             Text(verbatim: desktopSearch.isEmpty ? "No tasks yet." : "No matching tasks.")
@@ -331,45 +444,58 @@ struct LAALinearTasksView: View {
     }
 
     private func desktopTaskRow(_ task: LAALinearTask) -> some View {
-        Button { desktopSelection = .task(task.id) } label: {
-            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                    LAAWorkRefLabel(ref: task.ref)
-                    Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
-                        .foregroundStyle(LAAColor.text).lineLimit(2)
+        HStack(alignment: .center, spacing: LAASpacing.x2) {
+            Button { desktopSelection = .task(task.id) } label: {
+                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                        LAAWorkRefLabel(ref: task.ref)
+                        Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
+                            .foregroundStyle(LAAColor.text).lineLimit(2)
+                    }
+                    HStack(spacing: LAASpacing.x2) {
+                        Text(verbatim: task.assigneeDisplay)
+                            .foregroundStyle(LAAColor.secondaryText)
+                        if task.priority != 0 {
+                            Text(verbatim: LAALinearTask.priorityLabel(task.priority))
+                                .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
+                        }
+                        if let due = task.dueDate {
+                            Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }
+                                .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
+                        }
+                    }.laaTextStyle(.secondary)
                 }
-                HStack(spacing: LAASpacing.x2) {
-                    if task.priority != 0 {
-                        Text(verbatim: LAALinearTask.priorityLabel(task.priority))
-                            .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
-                    }
-                    if let due = task.dueDate {
-                        Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }
-                            .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
-                    }
-                }.laaTextStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, LAASpacing.x4)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(rowBackground(task.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selectedTask?.id == task.id ? .isSelected : [])
+            .accessibilityIdentifier("work.task.\(task.id)")
+            // Outside the row's select button, so a click opens the session
+            // rather than selecting the row.
+            if let status = task.runStatus { statusLabel(status, task: task) }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, LAASpacing.x4)
+        .background(rowBackground(task.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
         .onHover { hoveredID = $0 ? task.id : (hoveredID == task.id ? nil : hoveredID) }
         .contextMenu {
             Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "Open") }
             Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "Edit") }
+            Button { completing = task } label: { Text(verbatim: "Complete") }
+                .disabled(busy || pending != nil || !task.isOpen || task.completionBlockedReason != nil)
             Button(role: .destructive) { deleting = task } label: { Text(verbatim: "Archive") }
         }
         .disabled(busy || pending != nil)
-        .accessibilityAddTraits(selectedTask?.id == task.id ? .isSelected : [])
-        .accessibilityIdentifier("work.task.\(task.id)")
     }
 
     @ViewBuilder private var desktopDetail: some View {
         if let selectedTask {
             NavigationStack {
                 LAAPersonalTaskDetailView(id: selectedTask.identifier.isEmpty ? selectedTask.id : "linear:\(selectedTask.identifier)", drafts: drafts,
-                                          ref: selectedTask.ref)
+                                          ref: selectedTask.ref, ownerTask: selectedTask, onCompleted: { id in
+                    items.removeAll { $0.id == id }
+                    Task { await load(quiet: true) }
+                })
                     .id(selectedTask.id)
             }
         } else if desktopSelection == .inbox {
@@ -428,6 +554,20 @@ struct LAALinearTasksView: View {
               let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes), mutation.isValid else { return }
         failure = nil
         let device = bridge.deviceID
+        if mutation.action == "complete" {
+            switch await LAALinearTaskCompletion.send(item, bridge: bridge, drafts: drafts, device: device) {
+            case .completed:
+                items.removeAll { $0.id.lowercased() == mutation.id.lowercased() }
+                detail = nil
+                await load(quiet: true)
+            case .failed(let message):
+                failure = message
+                await load(quiet: true)
+            case .unknown:
+                failure = "保存結果を確認できません。接続を確認して、もう一度お試しください。"
+            }
+            return
+        }
         do {
             if let action = mutation.action {
                 struct ArchiveResult: Decodable { let id: String; let archived: Bool }
@@ -450,12 +590,14 @@ struct LAALinearTasksView: View {
             guard bridge.deviceID == device else { return }
             let archivedMessage = error.status == 409 && error.code == "linear_owner_task_archived"
                 ? "このタスクはアーカイブ済みです。読み直してください。" : nil
+            let scopeMessage = mutation.action == nil
+                ? LAALinearTaskCreate.refusalMessage(status: error.status, code: error.code, body: mutation.body) : nil
             if retry {
-                failure = archivedMessage ?? "前の操作の結果は未確認です。Linearで状態を確認してください。"
+                failure = scopeMessage ?? archivedMessage ?? "前の操作の結果は未確認です。Linearで状態を確認してください。"
             } else if !drafts.finishSubmission(item.id, restoring: false) {
                 failure = "端末の控えを更新できません。入力を保持しています。"
             } else {
-                failure = archivedMessage ?? (error.status == 412 ? "Linearで更新されています。編集画面を閉じて読み直してください。" : "操作が受け付けられませんでした。入力と接続を確認してください。")
+                failure = scopeMessage ?? archivedMessage ?? (error.status == 412 ? "Linearで更新されています。編集画面を閉じて読み直してください。" : "操作が受け付けられませんでした。入力と接続を確認してください。")
             }
         } catch {
             guard bridge.deviceID == device else { return }
@@ -476,7 +618,29 @@ struct LAALinearTasksView: View {
         }
     }
 
-    private func load() async {
+    /// Completing from a row or the detail: one confirmation, then the same
+    /// protected request path as every other task write.
+    private func complete(_ task: LAALinearTask) {
+        guard bridge.status == .paired, !busy, pending == nil else { return }
+        if let reason = task.completionBlockedReason { failure = reason; return }
+        busy = true
+        Task {
+            defer { busy = false }
+            switch await LAALinearTaskCompletion.complete(task, bridge: bridge, drafts: drafts, key: journalKey) {
+            case .completed:
+                items.removeAll { $0.id == task.id }
+                detail = nil
+                await load(quiet: true)
+            case .failed(let message):
+                failure = message
+                await load(quiet: true)
+            case .unknown:
+                failure = "保存結果を確認できません。接続を確認して、もう一度お試しください。"
+            }
+        }
+    }
+
+    private func load(quiet: Bool = false) async {
         let device = bridge.deviceID
         if loadedDevice != device {
             items = []; loaded = false; loadedDevice = device; editor = nil
@@ -486,8 +650,8 @@ struct LAALinearTasksView: View {
         }
         guard bridge.status == .paired else { return }
         let epoch = UUID(); loadID = epoch
-        loading = true
-        defer { if loadID == epoch { loading = false } }
+        if !quiet { loading = true }
+        defer { if !quiet, loadID == epoch { loading = false } }
         do {
             let page: LAAWorkPage<LAALinearTask> = try await bridge.read(archivedOnly ? "/v1/linear-owner-tasks?archived=only" : "/v1/linear-owner-tasks")
             guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
@@ -506,33 +670,65 @@ struct LAALinearTasksView: View {
             }
         } catch is CancellationError { return }
         catch {
-            guard loadID == epoch, device == bridge.deviceID else { return }
+            guard loadID == epoch, device == bridge.deviceID, !quiet else { return }
             failure = loaded ? "最新のタスクを取得できません。前回の内容を表示しています。" : "Linearのタスクを取得できません。接続を確認して読み直してください。"
         }
     }
 }
 
-private struct LAALinearTaskEditor: View {
+struct LAALinearTaskEditor: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dismiss) private var dismiss
     let id: String
     let task: LAALinearTask?
     let busy: Bool
-    let failure: String?
+    /// Live, so a refusal from the Bridge reaches the open form.
+    @Binding var failure: String?
     let save: (Data) -> Void
     @State private var title: String
     @State private var detail: String
     @State private var priority: Int
     @State private var hasDueDate: Bool
     @State private var dueDate: Date
+    /// "" is 社長; anything else is a `LAAStaff` raw value.
+    @State private var assignee: String
+    @State private var profile: String
+    @State private var options: LAAWorkSessionOptions?
+    @State private var optionsFailed = false
+    @State private var localFailure: String?
 
-    init(id: String, task: LAALinearTask?, busy: Bool, failure: String?, save: @escaping (Data) -> Void) {
-        self.id = id; self.task = task; self.busy = busy; self.failure = failure; self.save = save
+    init(id: String, task: LAALinearTask?, busy: Bool, failure: Binding<String?>, save: @escaping (Data) -> Void) {
+        self.id = id; self.task = task; self.busy = busy; self._failure = failure; self.save = save
         _title = State(initialValue: task?.title ?? "")
         _detail = State(initialValue: task?.description ?? "")
         _priority = State(initialValue: task?.priority ?? 0)
         _hasDueDate = State(initialValue: task?.dueDate != nil)
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
         _dueDate = State(initialValue: task?.dueDate.flatMap { formatter.date(from: $0) } ?? Date())
+        // A new task goes to Monet until the owner chooses someone else, as
+        // the create form promises.
+        _assignee = State(initialValue: task == nil ? LAAStaff.monet.rawValue : "")
+        _profile = State(initialValue: "")
+    }
+
+    #if DEBUG
+    /// Snapshots show the create form with its model rows already resolved.
+    init(id: String, task: LAALinearTask?, busy: Bool, failure: Binding<String?>, options: LAAWorkSessionOptions?,
+         save: @escaping (Data) -> Void) {
+        self.init(id: id, task: task, busy: busy, failure: failure, save: save)
+        _options = State(initialValue: options)
+        _profile = State(initialValue: options?.defaultProfile ?? options?.profiles.first?.id ?? "")
+    }
+    #endif
+
+    private var staff: String? { assignee.isEmpty ? nil : assignee }
+    private var selectedProfile: LAAWorkSessionOptions.Profile? { options?.profiles.first { $0.id == profile } }
+    private var titleText: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSave: Bool {
+        guard !busy, !titleText.isEmpty, titleText.utf16.count <= 200, detail.utf16.count <= 20000 else { return false }
+        guard task == nil, staff != nil else { return true }
+        // A staff task is refused without one of the Bridge's profiles.
+        return selectedProfile != nil
     }
 
     var body: some View {
@@ -544,13 +740,38 @@ private struct LAALinearTaskEditor: View {
                     TextField(text: $detail, axis: .vertical) { Text(verbatim: "説明") }.lineLimit(4...10)
                 }
                 Section {
+                    if let task {
+                        LabeledContent { Text(verbatim: task.assigneeDisplay) } label: { Text(verbatim: "担当") }
+                        if let model = task.run?.profileLabel ?? task.run?.profile {
+                            LabeledContent { Text(verbatim: model) } label: { Text(verbatim: "モデル") }
+                        }
+                        Text(verbatim: "担当とモデルは作成後に変えません。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    } else {
+                        Picker(selection: $assignee) {
+                            Text(verbatim: "社長").tag("")
+                            ForEach(LAATaskStaff.assignable, id: \.rawValue) { item in
+                                Text(verbatim: item.name).tag(item.rawValue)
+                            }
+                        } label: { Text(verbatim: "担当") }
+                        .accessibilityIdentifier("work.linear.assignee")
+                        if staff != nil { modelPicker }
+                        if let footer = LAALinearTaskCreate.footer(staff: staff) {
+                            Text(verbatim: footer)
+                                .laaTextStyle(.secondary)
+                                .foregroundStyle(LAAColor.secondaryText)
+                                .accessibilityIdentifier("work.linear.createFooter")
+                        }
+                    }
+                }
+                Section {
                     Toggle(isOn: $hasDueDate) { Text(verbatim: "期限") }
                     if hasDueDate { DatePicker(selection: $dueDate, displayedComponents: .date) { Text(verbatim: "期限日") } }
                     Picker(selection: $priority) {
                         ForEach(0...4, id: \.self) { value in Text(verbatim: LAALinearTask.priorityLabel(value)).tag(value) }
                     } label: { Text(verbatim: "優先度") }
                 }
-                if let failure { Text(verbatim: failure).foregroundStyle(LAAColor.attention) }
+                if let message = localFailure ?? failure { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
             .disabled(busy)
             .navigationTitle(Text(verbatim: task == nil ? "タスクを追加" : "タスクを編集"))
@@ -558,16 +779,60 @@ private struct LAALinearTaskEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "閉じる") } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        var body: [String: Any] = ["title": title.trimmingCharacters(in: .whitespacesAndNewlines),
-                            "description": detail, "priority": priority, "dueDate": hasDueDate ? LAALinearTask.today(dueDate) as Any : NSNull()]
-                        if task == nil { body["id"] = id }
-                        if let data = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) { save(data) }
-                    } label: { Text(verbatim: "保存") }
-                    .disabled(busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 200 || detail.utf16.count > 20000)
+                    Button { commit() } label: { Text(verbatim: "保存") }
+                        .disabled(!canSave)
+                        .accessibilityIdentifier("work.linear.save")
                 }
             }
-        }.interactiveDismissDisabled(busy)
+        }
+        .interactiveDismissDisabled(busy)
+        .task(id: bridge.revision) { await loadOptions() }
+    }
+
+    @ViewBuilder private var modelPicker: some View {
+        if let options, !options.profiles.isEmpty {
+            Picker(selection: $profile) {
+                ForEach(options.profiles) { item in
+                    Text(verbatim: LAAWorkSessionStyle.profileLabel(item)).tag(item.id)
+                }
+            } label: { Text(verbatim: "モデル・推論") }
+            .accessibilityIdentifier("work.linear.model")
+        } else if optionsFailed {
+            Button { Task { await loadOptions(force: true) } } label: { Text(verbatim: "モデルを取得できません。読み直す") }
+        } else {
+            Text(verbatim: "モデルを読み込み中").foregroundStyle(LAAColor.secondaryText)
+        }
+    }
+
+    private func loadOptions(force: Bool = false) async {
+        guard force || options == nil else { return }
+        optionsFailed = false
+        if let loaded: LAAWorkSessionOptions = try? await bridge.read("/v1/session-options") {
+            options = loaded
+            if profile.isEmpty || !loaded.profiles.contains(where: { $0.id == profile }) {
+                profile = loaded.defaultProfile.flatMap { id in loaded.profiles.contains { $0.id == id } ? id : nil }
+                    ?? loaded.profiles.first?.id ?? ""
+            }
+        } else {
+            optionsFailed = true
+        }
+    }
+
+    private func commit() {
+        localFailure = nil
+        if task == nil {
+            guard let data = LAALinearTaskCreate.body(id: id, title: titleText, description: detail,
+                priority: priority, dueDate: hasDueDate ? LAALinearTask.today(dueDate) : nil,
+                staff: staff, profile: staff == nil ? nil : profile) else {
+                localFailure = "モデルを選んでください。"
+                return
+            }
+            save(data)
+        } else {
+            let body: [String: Any] = ["title": titleText, "description": detail, "priority": priority,
+                "dueDate": hasDueDate ? LAALinearTask.today(dueDate) as Any : NSNull()]
+            if let data = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) { save(data) }
+        }
     }
 }
 #endif
