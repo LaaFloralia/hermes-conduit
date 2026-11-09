@@ -165,7 +165,7 @@ struct LAATodayView: View {
         let events = calendar.events.filter { $0.overlaps(start: first, end: last) }
         return VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Text(verbatim: Calendar.current.isDateInToday(first) ? "今日" : first.formatted(.dateTime.month().day().weekday())).fontWeight(.semibold)
-            if events.isEmpty { Text(verbatim: "予定はありません").foregroundStyle(LAAColor.secondaryText) }
+            if events.isEmpty { Text(verbatim: "予定はありません。").foregroundStyle(LAAColor.secondaryText) }
             ForEach(events) { event in
                 Button { selectedEvent = event } label: {
                     HStack(alignment: .top, spacing: LAASpacing.x3) {

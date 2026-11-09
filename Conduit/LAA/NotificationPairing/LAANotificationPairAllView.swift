@@ -48,7 +48,7 @@ struct LAANotificationPairAllControls: View {
         .tint(LAAColors.teal)
         .accessibilityIdentifier("notifications.pair-all")
 
-        Text(verbatim: "戻すには以前のアプリの「設定＞通知」で、対象プロフィールを再ペアリングします。")
+        Text(verbatim: "元に戻すには、以前のアプリの「設定」>「通知」で対象のAI社員を選び直します。")
             .font(.footnote)
             .foregroundStyle(LAAColors.muted)
 
@@ -88,8 +88,8 @@ struct LAANotificationPairAllControls: View {
         case .waiting: return "待機中"
         case .checking: return "確認中"
         case .pairing: return "設定中"
-        case .done: return "済"
-        case .already: return "既に" + LAADeviceCopy.thisDevice
+        case .done: return "完了"
+        case .already: return "登録済み"
         case .failed(let reason): return "失敗：\(reason)"
         }
     }

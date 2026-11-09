@@ -94,7 +94,7 @@ private struct LAAInstructionEditor: View {
         do {
             let result: LAAInstructionDocument = try await bridge.read("/v1/instructions/\(id)")
             document = result; text = result.text
-        } catch { message = "読み込めません。Bridgeの接続と権限を確認してください。" }
+        } catch { message = "読み込めません。Macとの接続を確認してください。" }
     }
     @MainActor private func save() async {
         guard let document else { return }
