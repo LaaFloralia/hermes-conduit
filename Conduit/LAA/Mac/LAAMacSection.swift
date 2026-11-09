@@ -156,9 +156,16 @@ extension FocusedValues {
 extension View {
     /// Offers this section's menu commands to the window's menu bar. Scene
     /// scope, not focus scope: the list keeps its own keyboard focus, and the
-    /// menu still knows what the column can do.
+    /// menu still knows what the column can do. Mac only: the Mac shows one
+    /// section at a time, but the phone keeps every tab alive, and several
+    /// tabs writing the one scene value redrew each other without end.
+    @ViewBuilder
     func laaMacSectionCommands(_ commands: LAAMacSectionCommands) -> some View {
+        #if targetEnvironment(macCatalyst)
         focusedSceneValue(\.laaMacSectionCommands, commands)
+        #else
+        self
+        #endif
     }
 }
 
