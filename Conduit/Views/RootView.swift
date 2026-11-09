@@ -13,6 +13,9 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var isPrimaryWindow = false
+    /// The phase last handed to AppState, so the one an already-active
+    /// window appears in is never handed over twice.
+    @State private var deliveredScenePhase: ScenePhase?
 
     var body: some View {
         ZStack {
@@ -87,7 +90,7 @@ struct RootView: View {
             // transient duplicate window's .background must never suspend a
             // conversation the primary window still presents.
             if isPrimaryWindow {
-                appState.handleScenePhase(newPhase)
+                deliverScenePhase(newPhase)
             }
         }
         .onAppear {
@@ -98,6 +101,10 @@ struct RootView: View {
             if ConduitWindowClaimKeeper.claimPrimaryWindow() {
                 isPrimaryWindow = true
                 appState.startWakeListeningLifecycle()
+                // The Mac's window comes up already active and stays active
+                // behind other apps, so no change would ever report it, and
+                // widget and employee links would wait for that foreground.
+                if scenePhase == .active { deliverScenePhase(.active) }
             } else {
                 // Environment-scoped dismissal: close THIS duplicate window
                 // only. ID-scoped dismissal targets the WindowGroup and
@@ -110,6 +117,12 @@ struct RootView: View {
                 ConduitWindowClaimKeeper.releaseClaim()
             }
         }
+    }
+
+    private func deliverScenePhase(_ phase: ScenePhase) {
+        guard phase != deliveredScenePhase else { return }
+        deliveredScenePhase = phase
+        appState.handleScenePhase(phase)
     }
 }
 
