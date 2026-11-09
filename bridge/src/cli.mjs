@@ -42,7 +42,7 @@ Usage:
   laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
   laa-bridge grant-instructions <device-id|prefix> --reason <text>  grant instruction scopes
   laa-bridge status [--json]               local health check of the running service
-  laa-bridge tasks <add|list|get|update|status|import-linear|backup|restore>
+  laa-bridge tasks <add|list|get|update|status|report|import-linear|backup|restore>
                                            owner tasks (same store as the app; see below)
   ${REFS_USAGE}
   laa-bridge version
