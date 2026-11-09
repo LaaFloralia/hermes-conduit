@@ -25,11 +25,16 @@ bundle_names = {"watch": "LAA Watch", "watch-widget": "LAA Watch",
 COPY = json.loads(Path(__file__).with_name("brand-copy.json").read_text())
 STATIC_COPY_KEYS = {
     "AI usage": "usage",
+    # Four causes became one sentence, so the screen no longer said which one
+    # had happened. Each key now names its own next step.
     "Run hermes gateway status on the host to see why.": "check_mac",
-    "It may still be finishing running tasks. Run hermes gateway status on the host to check.": "check_mac",
-    "Update Hermes, or run hermes gateway restart on the host.": "check_mac",
-    "The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.": "check_mac",
+    "It may still be finishing running tasks. Run hermes gateway status on the host to check.": "check_mac_running",
+    "Update Hermes, or run hermes gateway restart on the host.": "check_mac_update",
+    "The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.": "check_mac_restart",
     "On the host, `hermes conduit-push prefs export` and `prefs import` move the same set between hosts.": "sync_mac",
+    "The Bridge connection changed. Reopen the file.": "drive_reconnected",
+    "The Mac has not allowed the Bridge to read Google Drive.": "drive_permission",
+    "Monthly": "monthly",
     "Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server.": "qwen",
     "Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.": "fast_model",
     "GPT-Live calls will use your Hermes server's OpenAI API key, which OpenAI bills per minute of call time, separately from any ChatGPT plan. Your Hermes server has to allow it too (voice.gpt_live.conduit_api_billing in the profile's config).": "billing",
@@ -87,6 +92,9 @@ def display(value, source_key=None, locale="en"):
                      ("Hermesのプロファイル", "AI社員"),
                      ("Hermesプロファイル", "AI社員"),
                      ("Hermes cron", "scheduled runs"),
+                     # The app's notes screen is Doc; upstream calls the vault
+                     # Brain. Three display values still said Brain.
+                     ("Brain", "Doc"),
                      ("Hermes", "LAA"), ("Conduit", "LAA"),
                      ("Paseo", "Work"), ("パセオ", "Work")):
         value = value.replace(old, new)
@@ -158,8 +166,26 @@ def permission_strings(catalog, locale):
             if not match:
                 raise ValueError(f"Cannot isolate upstream-developer sentence for {key}/{locale}")
             text = match.group(1).strip()
-        result[key] = display(text, english, locale)
+        result[key] = without_server_and_agent(display(text, english, locale), locale)
     return result
+
+
+def without_server_and_agent(text, locale):
+    """No server of LAA's own, and the profiles are AI社員, not agents.
+
+    After branding, permission copy still sent the owner's data to "your own
+    LAA server" and named the AI employee "agent". The Mac is the destination
+    and the owner's word for a profile is AI社員 (名称の辞書).
+    """
+    if locale == "ja":
+        for old, new in (("あなた自身のLAAサーバ", "お使いのMac"), ("LAAサーバー", "Mac"),
+                         ("LAAサーバ", "Mac"), ("LAAエージェント", "AI社員"), ("エージェント", "AI社員")):
+            text = text.replace(old, new)
+        return text
+    for old, new in (("your own LAA server", "your Mac"), ("LAA server", "Mac"),
+                     ("LAA agent", "AI employee"), ("agent", "AI employee")):
+        text = text.replace(old, new)
+    return text
 
 
 def brand_info(info, kind, source, name=None, bundle_name=None):

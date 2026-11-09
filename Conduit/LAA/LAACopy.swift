@@ -42,7 +42,7 @@ enum LAACopy {
     static let macRePairRequired = "Re-pair required"
     static let macKeychainError = "Keychain error"
     static let macConnectionError = "Connection error"
-    static let macConnectingBody = "Macに接続しています。しばらくしてからもう一度お試しください。"
+    static let macConnectingBody = "Macに接続しています。そのままお待ちください。"
     static let macVoiceSettingsUnavailable = "Macの音声設定を取得できません。テキストの会話は引き続き使えます。"
     static let callsFromMonet = "Calls from LAA"
     static let callsFromMonetDetail = "When LAA may call you"
@@ -64,17 +64,17 @@ enum LAACopy {
     static let callNoOutput = "No output"
     static let callReturn = "Return to call"
     static let pluginVersion = "Version"
-    static let pluginDashboard = "Dashboard"
+    static let pluginDashboard = "Mac"
     static let pluginConnection = "Connection"
     static let pluginConnected = "Connected"
     static let pluginNotConnected = "Not connected"
     static let pluginUnavailable = "Unavailable"
     static let pluginChecking = "Checking…"
     static let pluginNotChecked = "Not checked yet"
-    static let pluginNotificationsUnavailable = "Notifications are unavailable for this dashboard's plugin."
-    static let pluginCardsUnavailable = "Approval and clarify cards are unavailable for this profile."
-    static let pluginEncryptionUnavailable = "Not end-to-end encrypted, so notifications from this host show only generic text and don't open the chat."
-    static let pluginRotationUnavailable = "End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Automatic key rotation is unavailable."
+    static let pluginNotificationsUnavailable = "Notifications are unavailable for this Mac's LAA."
+    static let pluginCardsUnavailable = "Approval and clarify cards are unavailable for this AI employee."
+    static let pluginEncryptionUnavailable = "Not end-to-end encrypted, so notifications from this Mac show only generic text and don't open the chat."
+    static let pluginRotationUnavailable = "End-to-end encrypted. Only this iPhone can read these notifications; the notification service sees when they arrive, not what they say. Automatic key rotation is unavailable."
     static let loading = "読み込み中"
     static let notFetched = "未取得"
     static let needsAttention = "要確認"
@@ -85,28 +85,7 @@ enum LAACopy {
 
     // MARK: Bridge
 
-    static let bridgeNotPairedBody = "この端末はMacとペアリングされていません。"
-
-    // MARK: A tab's own line about what it will hold
-
-    /// What the tab will show once the Bridge is paired, one line, so an
-    /// empty screen explains what belongs there.
-    static func emptyReason(_ tab: LAATab) -> String {
-        switch tab {
-        case .chats: return "まだ会話がありません。"
-        case .today: return "今日の予定を表示します。"
-        case .studio: return "Studioの作品を表示します。"
-        case .work: return "Projectやタスクを作ると、ここに並びます。"
-        case .brain: return "Docに項目がありません。保存するとここに並びます。"
-        case .source: return "まだ素材がありません。Drive・Inspiration・Studioの項目がここに並びます。"
-        case .usage: return "利用枠・実利用・費用・Macの状態を、更新時刻と一緒に出します。"
-        }
-    }
-
-    // MARK: Failures
-
-    static let failureTitle = "Bridgeから読めませんでした"
-    static let failureBody = "データを取得できませんでした。Bridgeの接続を確認してください。"
+    static let bridgeNotPairedBody = "この端末はMacと接続されていません。"
 }
 
 #endif

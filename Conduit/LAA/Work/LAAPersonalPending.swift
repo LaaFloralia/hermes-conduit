@@ -100,7 +100,7 @@ struct LAAPersonalPendingView: View {
                                 if !value.second.isEmpty { Text(verbatim: value.second).textSelection(.enabled) }
                             }
                             if let operation = originalResults[item.id] {
-                                Text(verbatim: "\(operation.status) · 対象: \(operation.targetId)").textSelection(.enabled)
+                                Text(verbatim: "\(operation.displayKind) · \(operation.displayStatus)").textSelection(.enabled)
                                 if ["create", "update"].contains(operation.kind) {
                                     taskLink(operation)
                                 }
@@ -110,7 +110,7 @@ struct LAAPersonalPendingView: View {
                             }
                             Button() { Task { await checkOriginal(item) } } label: { Text(verbatim: "元の要求の状態を確認") }.disabled(busy)
                             if compactedResults[item.id] == nil || compactedResults[item.id] == .rejected {
-                                Button() { Task { await checkOriginal(item, abandonIfUnsent: true) } } label: { Text(verbatim: "未送信・未適用なら下書きに戻す") }.disabled(busy)
+                                Button() { Task { await checkOriginal(item, abandonIfUnsent: true) } } label: { Text(verbatim: LAACopy.WorkTab.restoreDraft) }.disabled(busy)
                             }
                         } else if let device = bridge.deviceID, LAAPersonalTaskQueue.isDependency(item, device: device, viewer: viewerId) {
                             if let value = LAAPersonalTaskQueue.dependency(item, device: device, viewer: viewerId) {
@@ -135,7 +135,7 @@ struct LAAPersonalPendingView: View {
                             }
                             Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }.disabled(busy)
                             if compactedResults[item.id] == nil || compactedResults[item.id] == .rejected {
-                                Button() { Task { await check(item, abandonIfUnsent: true) } } label: { Text(verbatim: "Return to Draft if Unsent") }.disabled(busy)
+                                Button() { Task { await check(item, abandonIfUnsent: true) } } label: { Text(verbatim: LAACopy.WorkTab.restoreDraft) }.disabled(busy)
                             }
                         }
                         if item.personalOrigin == nil && !LAAWorkDrafts.canRepeat(item) {
@@ -166,10 +166,8 @@ struct LAAPersonalPendingView: View {
                 if loaded && operations.isEmpty { Text(verbatim: "未解決の記録はありません。") }
                 ForEach(operations) { operation in
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        Text(verbatim: "\(operation.kind) · \(operation.status)").fontWeight(.semibold)
-                        Text(verbatim: "対象: \(operation.targetId)").textSelection(.enabled)
+                        Text(verbatim: "\(operation.displayKind) · \(operation.displayStatus)").fontWeight(.semibold)
                         if let context = operation.contextId {
-                            Text(verbatim: "タスク: \(context)").textSelection(.enabled)
                             NavigationLink(destination: LAAPersonalTaskDetailView(id: context, drafts: drafts)) { Text(verbatim: "課題を開く") }
                         } else if operation.kind.hasPrefix("inbox_") {
                             NavigationLink(destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: operation.targetId)) { Text(verbatim: "通知を開く") }
@@ -186,8 +184,8 @@ struct LAAPersonalPendingView: View {
                         }
                     }.padding(.vertical, LAASpacing.x1)
                 }
-            } header: { Text(verbatim: "Unresolved on Mac") }
-            Button() { Task { await processQueue() } } label: { Text(verbatim: "更新") }.disabled(busy)
+            } header: { Text(verbatim: "Mac側で未解決") }
+            Button() { Task { await processQueue() } } label: { Text(verbatim: LAACopy.macRefresh) }.disabled(busy)
         }
         .navigationTitle(Text(verbatim: "送信待ち"))
         .task(id: bridge.revision) { verifiedTaskIDs.removeAll(); await processQueue() }
@@ -378,10 +376,10 @@ struct LAAPersonalPendingView: View {
                 return
             } else if failure.code == "operation_not_found" {
                 if !LAAWorkDrafts.canRepeat(item) {
-                    error = "Macに記録がなく、再送期限も過ぎています。Linearを確認し、必要ならPendingで破棄してください。"
+                    error = "Macに記録がなく、再送期限も過ぎています。Linearを確認し、必要なら送信待ちで破棄してください。"
                 } else {
                     error = inboxTarget(item) != nil
-                        ? "Macに記録がありません。Return to Draft if Unsent で未送信を確定してください。"
+                        ? "Macに記録がありません。未送信なら下書きに戻してください。"
                         : "Macに記録がありません。元の編集画面で同じ要求を再試行できます。"
                 }
             } else { error = LAAWorkHTTP.message(failure) }

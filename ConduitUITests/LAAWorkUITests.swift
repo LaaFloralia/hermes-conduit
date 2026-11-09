@@ -565,7 +565,7 @@ final class LAAWorkUITests: XCTestCase {
             add(attachment)
         }
         XCTAssertTrue(waitUntilReady(app.buttons["work.sessions.new"], timeout: 30))
-        XCTAssertTrue(app.staticTexts["ピン留め"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Pinned"].waitForExistence(timeout: 30))
         shot("sessions")
         app.buttons["work.sessions.new"].tap()
         XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 10))

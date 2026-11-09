@@ -305,6 +305,40 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
     }
 }
 
+extension LAAPersonalOperationResponse.Operation {
+    /// Short Japanese names for the ledger's vocabulary. The Pending screen
+    /// used to show `kind` and `status` raw, so a Japanese screen read
+    /// "create · preflight_retryable" and the owner could not tell whether a
+    /// change had been applied. An unknown value says "処理中" rather than
+    /// leaking a new internal name.
+    var displayKind: String {
+        switch kind {
+        case "create": return "作成"
+        case "update": return "更新"
+        case "comment": return "コメント"
+        case "relation": return "関連付け"
+        case "attachment", "file": return "添付"
+        case "delete": return "削除"
+        case "abandoned": return "取り消し"
+        default: return kind.hasPrefix("inbox") ? "通知" : "操作"
+        }
+    }
+
+    var displayStatus: String {
+        switch status {
+        case "succeeded": return "送信済み"
+        case "resolved": return resolution == "applied" ? "反映済み" : "未反映"
+        case "pending": return "送信中"
+        case "running": return "実行中"
+        case "preflight_retryable": return "再試行待ち"
+        case "outcome_unknown": return "結果不明"
+        case "abandoned": return "取り消し済み"
+        case "rejected": return "失敗"
+        default: return "処理中"
+        }
+    }
+}
+
 #if !LAATASK_QUEUE_STANDALONE
 struct LAAPersonalDependencyEditor: View {
     @Environment(\.dismiss) private var dismiss

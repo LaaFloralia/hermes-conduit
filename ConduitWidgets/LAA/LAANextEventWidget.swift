@@ -34,8 +34,8 @@ struct LAANextEventWidget: Widget {
                 if let event = entry.event {
                     Text(verbatim: event.allDay ? "終日" : event.start.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(Locale(identifier: "ja_JP")))).font(.headline)
                     Text(verbatim: event.title).font(.body).lineLimit(3)
-                } else if entry.authorized { Text(verbatim: "予定はありません").font(.body) }
-                else { Text(verbatim: "Todayを開いて予定を更新してください").font(.body) }
+                } else if entry.authorized { Text(verbatim: "予定はありません。").font(.body) }
+                else { Text(verbatim: "予定を変えるにはTodayを開いてください").font(.body) }
                 Spacer(minLength: 0)
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .containerBackground(.background, for: .widget)

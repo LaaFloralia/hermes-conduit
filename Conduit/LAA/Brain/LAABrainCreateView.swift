@@ -57,9 +57,9 @@ struct LAABrainCreateView: View {
                             .accessibilityIdentifier("laa.brain.newContent")
                             .disabled(pending != nil || saving)
                     } header: { Text(verbatim: LAACopy.Brain.newNote) }
-                    footer: { Text(verbatim: "InboxにMarkdownとして新規保存します。同名のメモは上書きしません。本文は48 KBまでです。") }
+                    footer: { Text(verbatim: "Inboxにメモとして保存します。同じ名前のメモは上書きしません。本文は48KBまでです。") }
                     if scopeAllowed == false {
-                        Section { Text(verbatim: "この端末にはメモを新規作成する権限（brain:create）がありません。Macで権限を付けた接続コードを発行し、再接続してください。") }
+                        Section { Text(verbatim: "メモを新規作成する権限がありません。Macで権限を付けた接続コードを発行し、再接続してください。") }
                     } else if let scopeError, pending == nil {
                         Section {
                             Text(verbatim: scopeError.japaneseText).foregroundStyle(LAAColor.attention)

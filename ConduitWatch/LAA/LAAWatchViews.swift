@@ -3,6 +3,13 @@ import SwiftUI
 import WatchKit
 import UIKit
 
+/// Lines the Watch says in more than one place: the ask screen and the
+/// polling timeout, so the two cannot drift.
+enum LAAWatchCopy {
+    static let stillWorking = "作業中です。返事はiPhoneのChatに届きます"
+    static let notConnected = "iPhoneに接続できません。"
+}
+
 private extension View {
     @ViewBuilder func laaPrimaryAction() -> some View {
         if #available(watchOS 11, *) { handGestureShortcut(.primaryAction) }
@@ -151,7 +158,7 @@ private struct LAAWatchRecording: View {
         case .received, .transcribing: return "文字にしています"
         case .sending: return "送っています"
         case .answered: return state.reply ?? "返事がありません"
-        case .stillWorking, .queued: return "作業中です。返事はiPhoneのChatに届きます"
+        case .stillWorking, .queued: return LAAWatchCopy.stillWorking
         case .needsInput: return "iPhoneのChatで返事を待っています"
         case .silent: return "音声がありません"
         case .failed: return state.failure ?? "送信できませんでした"

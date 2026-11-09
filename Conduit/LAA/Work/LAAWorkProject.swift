@@ -108,7 +108,7 @@ struct LAAWorkProjectEditor: View {
                             .scrollContentBackground(.hidden).background(LAAColor.surface)
                             .accessibilityIdentifier("work.project.instructions")
                     } else {
-                        Text(verbatim: "Bridgeが指示本文を返すまで編集できません。")
+                        Text(verbatim: "MacのLAAアプリが指示本文を返すまで編集できません。")
                             .foregroundStyle(LAAColor.secondaryText)
                     }
                 }

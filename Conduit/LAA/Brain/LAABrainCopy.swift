@@ -4,7 +4,7 @@ import Foundation
 extension LAACopy {
     enum Brain {
         static let title = "Doc"
-        static let subtitle = "Notes and ideas, close at hand."
+        static let subtitle = "Notes and ideas."
         static let search = "Search Doc"
         static let clearSearch = "Clear search"
         static let recent = "Recent"
@@ -32,7 +32,9 @@ extension LAACopy {
         static let chooseFolder = "Choose folder"
         static let changeFolder = "Change folder"
         static let useMac = "Use Mac connection"
-        static let localFolder = "On this iPhone"
+        /// The phone's own folder. On the Mac the same line is about this Mac,
+        /// which is why it goes through the device copy.
+        static var localFolder: String { LAADeviceCopy.shown("On this iPhone") }
         static let macConnection = "Mac connection"
         static let settings = "Settings"
         static let close = "Close"

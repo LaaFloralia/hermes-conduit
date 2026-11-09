@@ -30,13 +30,13 @@ struct LAAWorkSessionsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            LAAWorkPrimaryButton(title: "新しいセッション", systemImage: "plus") { showLauncher = true }
+            LAAWorkPrimaryButton(title: LAACopy.WorkTab.newSession, systemImage: "plus") { showLauncher = true }
                 .accessibilityIdentifier("work.sessions.new")
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && sessions.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
 
             if query == nil {
-                TextField("", text: $search, prompt: Text(verbatim: "セッションを検索"))
+                TextField("", text: $search, prompt: Text(verbatim: LAACopy.WorkTab.searchSessions))
                     .textFieldStyle(.roundedBorder).accessibilityIdentifier("work.sessions.search")
             }
             let matches = filteredSessions
@@ -47,14 +47,14 @@ struct LAAWorkSessionsSection: View {
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .padding(.vertical, LAASpacing.x4)
             }
-            if !visible.pinned.isEmpty { group("ピン留め", shown(visible.pinned), children) }
-            if !visible.recent.isEmpty { group(showArchived ? "アーカイブ" : "最近", shown(visible.recent), children) }
+            if !visible.pinned.isEmpty { group(LAACopy.WorkTab.pinned, shown(visible.pinned), children) }
+            if !visible.recent.isEmpty { group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent, shown(visible.recent), children) }
 
             Button {
                 showArchived.toggle()
                 Task { await load() }
             } label: {
-                Label { Text(verbatim: showArchived ? "最近のセッションへ戻る" : "アーカイブを表示") }
+                Label { Text(verbatim: showArchived ? LAACopy.WorkTab.backToRecent : LAACopy.WorkTab.showArchive) }
                     icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
                     .frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -107,10 +107,10 @@ struct LAAWorkSessionsSection: View {
                     let open = searching || expanded.contains(session.id)
                     HStack(spacing: 0) {
                         LAAWorkSwipeRow(id: session.id, openID: $openRow,
-                                        leading: .init(title: session.isArchived ? "戻す" : "アーカイブ",
+                                        leading: .init(title: session.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive,
                                                        systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox",
                                                        tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } },
-                                        trailing: .init(title: session.isFavorite ? "ピン解除" : "ピン留め",
+                                        trailing: .init(title: session.isFavorite ? LAACopy.WorkTab.unpin : LAACopy.WorkTab.pin,
                                                         systemImage: session.isFavorite ? "pin.slash" : "pin",
                                                         tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } },
                                         onOpen: { opened = session }) {
@@ -120,10 +120,10 @@ struct LAAWorkSessionsSection: View {
                         }
                         .contextMenu {
                             Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
-                                Label { Text(verbatim: session.isFavorite ? "ピン解除" : "ピン留め") } icon: { Image(systemName: "pin") }
+                                Label { Text(verbatim: session.isFavorite ? LAACopy.WorkTab.unpin : LAACopy.WorkTab.pin) } icon: { Image(systemName: "pin") }
                             }
                             Button { Task { await update(session, archived: !session.isArchived) } } label: {
-                                Label { Text(verbatim: session.isArchived ? "アーカイブから戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                                Label { Text(verbatim: session.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
                             }
                         }
                         if !folded.isEmpty && !searching {
@@ -214,7 +214,7 @@ struct LAAWorkSessionsSection: View {
             // Archiving takes the children along.
             if archived != nil { await load() }
         } catch let error as LAABridgeHTTPError {
-            failure = error.status == 404 || error.status == 405 ? "MacのBridgeを更新すると使えます。" : LAAWorkHTTP.message(error)
+            failure = error.status == 404 || error.status == 405 ? "MacのLAAアプリを最新にすると使えます。" : LAAWorkHTTP.message(error)
         } catch {
             failure = "変更を保存できませんでした。"
         }
@@ -266,7 +266,7 @@ struct LAAWorkSessionRow: View {
                         .accessibilityIdentifier("work.session.\(session.id)")
                     if session.isFavorite {
                         Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(LAAColor.secondaryText)
-                            .accessibilityLabel(Text(verbatim: "ピン留め"))
+                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.pinned))
                     }
                 }
                 Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
@@ -486,7 +486,7 @@ struct LAAWorkFailure: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
             Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
             Spacer(minLength: LAASpacing.x2)
-            Button { retry() } label: { Text(verbatim: "再試行").laaTextStyle(.secondary).foregroundStyle(LAAColor.link) }
+            Button { retry() } label: { Text(verbatim: LAACopy.WorkTab.retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link) }
                 .buttonStyle(.plain)
         }
         .padding(LAASpacing.x3)

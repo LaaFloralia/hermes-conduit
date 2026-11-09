@@ -344,7 +344,7 @@ struct LAAWorkProjectHome: View {
                                                                          body: body, key: LAABridgeIdempotencyKey())
                 project = updated; error = nil
             } catch let failure as LAABridgeHTTPError {
-                error = failure.status == 404 || failure.status == 405 ? "MacのBridgeを更新すると資料を追加できます。"
+                error = failure.status == 404 || failure.status == 405 ? "MacのLAAアプリを最新にすると資料を追加できます。"
                     : failure.code == "file_limit_reached" ? "資料は20件までです。" : LAAWorkHTTP.message(failure)
                 return
             } catch {

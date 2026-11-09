@@ -2,28 +2,36 @@
 extension LAACopy {
     static let serverUnavailableTitle = "Unavailable"
     static let serverFeatureUnavailable = "この機能はこのMacではまだ利用できません。"
-    static let artifactsUnavailable = "成果物の一覧はこのMacではまだ利用できません。"
-    static let workspaceActionsUnavailable = "フォルダ内の検索とファイルの作成・移動・削除は、このMacではまだ利用できません。"
-    static let groupFilesUnavailable = "グループへのファイル送信はこのMacではまだ利用できません。"
-    static let gptLiveUnavailable = "GPT-LiveはこのMacではまだ利用できません。"
-    static let gptLiveAPIUnavailable = "GPT-LiveのAPIキー通話はこのMacではまだ利用できません。"
+
+    /// What this Mac cannot do yet, in one sentence: the feature, not the
+    /// cause and not a retry that would not help. Eighteen call sites shared
+    /// one wording, so it is written once here.
+    static func notAvailable(_ feature: String) -> String {
+        "このMacでは\(feature)をまだ利用できません。"
+    }
+
+    static let artifactsUnavailable = notAvailable("成果物の一覧")
+    static let workspaceActionsUnavailable = notAvailable("フォルダ内の検索とファイルの作成・移動・削除")
+    static let groupFilesUnavailable = notAvailable("グループへのファイル送信")
+    static let gptLiveUnavailable = notAvailable("GPT-Live")
+    static let gptLiveAPIUnavailable = notAvailable("GPT-LiveのAPIキー通話")
     static let employeePersonalityUnavailable = "社員の人格はこのMacではまだ読み込めません。"
-    static let phoneSharingUnavailable = "カレンダーと端末の状態の共有はこのMacではまだ利用できません。"
-    static let healthSharingUnavailable = "ヘルスケアの共有はこのMacではまだ利用できません。"
-    static let locationSharingUnavailable = "位置情報の共有はこのMacではまだ利用できません。"
-    static let syncedPreferencesUnavailable = "設定の端末間同期はこのMacではまだ利用できません。"
-    static let predictiveUnavailable = "予測機能はこのMacではまだ利用できません。"
-    static let speechServerUnavailable = "音声サーバーはこのMacではまだ利用できません。"
-    static let fastModelUnavailable = "高速モデルはこのMacではまだ利用できません。"
-    static let localLiveUnavailable = "Local LiveはこのMacではまだ利用できません。"
-    static let voiceHistoryUnavailable = "通話の保存はこのMacではまだ利用できません。通話はこの端末に保持されています。"
-    static let shortcutInboxUnavailable = "記録の表示と削除はこのMacではまだ利用できません。"
-    static let shortcutEventKept = "記録はこのMacではまだ利用できません。このイベントは端末に保持されています。"
-    static let shortcutEventNotKept = "記録はこのMacではまだ利用できません。このイベントは保持されていません。"
+    static let phoneSharingUnavailable = notAvailable("カレンダーと端末の状態の共有")
+    static let healthSharingUnavailable = notAvailable("ヘルスケアの共有")
+    static let locationSharingUnavailable = notAvailable("位置情報の共有")
+    static let syncedPreferencesUnavailable = notAvailable("設定の端末間同期")
+    static let predictiveUnavailable = notAvailable("予測機能")
+    static let speechServerUnavailable = notAvailable("音声サーバー")
+    static let fastModelUnavailable = notAvailable("高速モデル")
+    static let localLiveUnavailable = notAvailable("Local Live")
+    static let voiceHistoryUnavailable = notAvailable("通話の保存") + "通話はこの端末に保持されています。"
+    static let shortcutInboxUnavailable = notAvailable("記録の表示と削除")
+    static let shortcutEventKept = notAvailable("記録") + "このイベントは端末に保持されています。"
+    static let shortcutEventNotKept = notAvailable("記録") + "このイベントは保持されていません。"
     static let unreadableServerResponse = "Macからの応答を読み取れませんでした。"
     static let unscopedNotificationUnavailable = "この通知には送信元の情報が含まれていないため、このMacではまだ開けません。"
     static let watchVoiceStatusUnavailable = "WatchのGPT-Liveの状態を確認できませんでした。"
-    static let watchCallUnavailable = "Watchの音声通話を開始できませんでした。Macと通知リレーの接続を確認してください。"
+    static let watchCallUnavailable = "Watchの音声通話を開始できませんでした。Macとの接続を確認してください。"
     static let voiceSetupManaged = "音声接続はMac側で管理されています。"
     static let voiceNotConfirmed = "Macが選択した声を確認できませんでした。"
     static let otherCallInProgress = "別の通話を終了してください"

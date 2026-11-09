@@ -111,7 +111,7 @@ final class LAAWatchVoice: ObservableObject {
         }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: .laaWatchTransferFailed).sink { [weak self] note in
             guard let self, note.object as? String == self.requestID else { return }
-            self.fail("iPhoneに接続できません")
+            self.fail(LAAWatchCopy.notConnected)
         }.store(in: &cancellables)
     }
     func openDefault() { open(LAAStaff.allCases[0], autoRoute: true) }
@@ -165,7 +165,7 @@ final class LAAWatchVoice: ObservableObject {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("laa-voice-\(id).pcm")
         do { try data.write(to: url, options: .atomic) } catch { fail("録音を保存できません"); return }
         guard WatchLink.shared.transferAsk(url, request: .init(requestID: id, profile: profile)) else {
-            try? FileManager.default.removeItem(at: url); fail("iPhoneに接続できません"); return
+            try? FileManager.default.removeItem(at: url); fail(LAAWatchCopy.notConnected); return
         }
         begin(id, phase: .transcribing)
     }
@@ -177,7 +177,7 @@ final class LAAWatchVoice: ObservableObject {
         begin(id, phase: .sending)
         WatchLink.shared.send(.laaAskText(requestID: id, profile: profile, text: typed), reply: { [weak self] in
             if case .laaAskState(let state) = $0 { self?.accept(state) }
-        }, failure: { [weak self] _ in self?.fail("iPhoneに接続できません") })
+        }, failure: { [weak self] _ in self?.fail(LAAWatchCopy.notConnected) })
         textEntry = false
     }
     private func begin(_ id: String, phase: LAAWatchAsk.Phase) {
@@ -202,7 +202,7 @@ final class LAAWatchVoice: ObservableObject {
     }
     private func poll() {
         guard let id = requestID else { return }
-        guard let deadline, Date() < deadline else { fail("作業中です。返事はiPhoneのChatに届きます"); return }
+        guard let deadline, Date() < deadline else { fail(LAAWatchCopy.stillWorking); return }
         WatchLink.shared.send(.laaAskStatus(requestID: id), reply: { [weak self] message in
             if case .laaAskState(let state) = message, state.phase != .unknown { self?.accept(state) }
         })

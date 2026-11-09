@@ -231,7 +231,7 @@ struct LAAEmployeeWidgetView: View {
         if Calendar.current.component(.year, from: observation) != Calendar.current.component(.year, from: date) {
             formatter.dateFormat = "yyyy/M/d HH:mm"
         }
-        return formatter.string(from: observation) + "時点"
+        return formatter.string(from: observation) + " 時点"
     }
 
     static func displayValue(_ meter: WidgetUsageMeter, entryDate: Date, renderedAt: Date, anchor: Date? = nil) -> String {

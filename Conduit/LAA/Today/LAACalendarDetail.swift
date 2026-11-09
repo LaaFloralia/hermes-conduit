@@ -37,7 +37,7 @@ struct LAACalendarDetail: View {
                 }
                 if writable {
                     if event.recurringEventId != nil {
-                        Text(verbatim: "編集・削除はこの回だけに適用します。全体を変えるには繰り返し全体を開いてください。").font(.caption)
+                        Text(verbatim: "この予定だけを変更します。繰り返し全体を変えるには「繰り返し全体を開く」を選んでください。").font(.caption)
                         Button { Task { await openSeries() } } label: { Text(verbatim: "繰り返し全体を開く") }.disabled(busy)
                     }
                     Button { editing = true } label: { Text(verbatim: "編集") }.disabled(busy)
@@ -68,7 +68,7 @@ struct LAACalendarDetail: View {
             .sheet(item: $series) { value in LAACalendarDetail(event: value, calendars: calendars) { changed(); dismiss() }.environmentObject(bridge) }
             .confirmationDialog(Text(verbatim: event.recurrence?.isEmpty == false ? "繰り返し全体を削除しますか？" : "この予定を削除しますか？"), isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button(role: .destructive) { Task { await remove() } } label: { Text(verbatim: "削除") }
-            } message: { Text(verbatim: "参加者がいる場合は、Googleから取消通知が送られます。") }
+            } message: { Text(verbatim: "参加者にはGoogleから取消通知が届きます。") }
         }
     }
     private func safeURL(_ text: String) -> URL? {

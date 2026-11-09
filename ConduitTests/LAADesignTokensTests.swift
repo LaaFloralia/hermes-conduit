@@ -126,7 +126,7 @@ final class LAATabModelTests: XCTestCase {
         XCTAssertEqual([LAACopy.call, LAACopy.callMute, LAACopy.callUnmute, LAACopy.callSpeaker,
                         LAACopy.callChat, LAACopy.callEnd, LAACopy.callAudioRoute],
                        ["Call", "Mute", "Unmute", "Speaker", "Chat", "End", "Audio output"])
-        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "この端末はMacとペアリングされていません。")
+        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "この端末はMacと接続されていません。")
     }
 
     func testBuiltAppHasLAANameAndPermissionCopy() throws {
