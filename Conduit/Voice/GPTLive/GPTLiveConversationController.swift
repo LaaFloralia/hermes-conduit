@@ -300,6 +300,11 @@ final class GPTLiveConversationController: ObservableObject {
     /// for one and the host didn't already (#290). Once per call.
     private let openingPrompt: @MainActor () -> String?
     private var hasSentOpening = false
+    #if LAA_BUILD
+    /// Who answers an LAA employee's call, given as quiet context when each
+    /// session connects (LAAStaff.callIdentity). Nil outside such a call.
+    var callIdentity: @MainActor () -> String? = { nil }
+    #endif
     /// Until the greeting has played, nothing of Conduit's goes in: a quiet
     /// note arriving first (a reply that finished in the chat as the call
     /// connected) could stop the model greeting at all (#761). Cleared once
@@ -682,6 +687,12 @@ final class GPTLiveConversationController: ObservableObject {
             if session?.briefingApplied != true {
                 session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
             }
+            #if LAA_BUILD
+            // Before the greeting, on every session of the call.
+            if let identity = callIdentity(), !identity.isEmpty {
+                session?.appendContext(identity, channel: .commentary, delegationID: nil)
+            }
+            #endif
             sendOpeningIfNeeded()
             phase = endRequestedAt != nil ? .ending : audioPaused ? .paused : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil { deliverPendingJobUpdates() }

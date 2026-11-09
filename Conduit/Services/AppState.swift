@@ -3558,6 +3558,9 @@ final class AppState: ObservableObject {
             guard let self else { return nil }
             return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.activeProfile).gptLiveAPIMaxMinutes)
         }
+        #if LAA_BUILD
+        controller.callIdentity = { [weak self] in self?.laaGPTLiveStaff.map { $0.callIdentity } }
+        #endif
         return controller
     }()
 

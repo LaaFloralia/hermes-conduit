@@ -92,6 +92,32 @@ final class LAAStaffCallTransportTests: XCTestCase {
         XCTAssertNil(app.liveVoiceStyle.greeting)
     }
 
+    func testTheEmployeeIsToldWhoTheyAreBeforeTheGreetingOnEverySession() async {
+        let session = FakeGPTLiveSessionControl()
+        session.briefingApplied = true
+        let client = FakeGPTLiveClient()
+        let jobs = FakeVoiceJobBackend()
+        let controller = GPTLiveConversationController(
+            makeSession: { session },
+            availability: { try await client.availability() },
+            briefing: { "[rules]" },
+            openingPrompt: { "[greet]" },
+            supervisor: VoiceBackgroundJobSupervisor(backend: jobs.backend, pollInterval: .seconds(3_600)),
+            requestPermission: { true },
+            headsetMute: HeadsetMicrophoneMute(system: FakeSystemInputMute())
+        )
+        controller.callIdentity = { LAAStaff.cto.callIdentity }
+        await controller.start()
+        session.becomeReady()
+        XCTAssertEqual(session.appended.map(\.channel), [.commentary, .speakable])
+        XCTAssertTrue(session.appended.first?.text.contains("You are Ada, CTO at LAA") == true)
+        XCTAssertEqual(session.appended.last?.text, "[greet]")
+        session.becomeReady()
+        XCTAssertEqual(session.appended.count, 3, "a new session hears it again, the greeting stays once per call")
+        XCTAssertEqual(session.appended.last?.channel, .commentary)
+        controller.stop()
+    }
+
     func testAGreetingTheOwnerSetForTheEmployeeStillWins() throws {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
