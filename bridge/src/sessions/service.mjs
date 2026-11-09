@@ -33,7 +33,12 @@ import { DELEGATION_ORIGIN } from './adapter.mjs';
 import { readConversation } from './history.mjs';
 import { settleLocalImages } from './local-images.mjs';
 import { daemonSessionID, snapshot } from './daemon.mjs';
+import { fastAvailable, fastValue } from './features.mjs';
 import { notifyOwner } from '../notify/index.mjs';
+
+// Kept exported from here for callers and tests that read a feature list
+// without the service; the shapes themselves live in features.mjs.
+export { fastValue } from './features.mjs';
 
 export const CHILD_NAME_PREFIX = '子｜';
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
@@ -48,6 +53,13 @@ const DEFAULT_NAME_GRAPHEMES = 24;
 // A session that starts in the owner's home folder instead of a repo or worktree.
 export const HOME_WORKSPACE_ID = 'home';
 const MODES = new Set(['bypass', 'default']);
+// How long a new session is exempt from the "gone from Paseo" check: Paseo's
+// directory can lag its own creation by a moment.
+const DELETED_GRACE_MS = 2 * 60 * 1000;
+const MAX_DELETED_CHECKS = 20;
+// An unlisted agent that Paseo confirmed it still holds is not asked again
+// for this long, so the same rows cannot take every sync's checks.
+const PRESENT_RECHECK_MS = 10 * 60 * 1000;
 
 const sha = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const count = (text) => [...text].length;
@@ -276,6 +288,44 @@ export function createSessionService({
     return { session: sessionStore.get(stored.record.id) ?? stored.record, created: stored.created };
   }
 
+  // A missing directory row is not proof: Paseo's directory leaves out many
+  // old archived agents it still holds (2026-11-09: 191 of 193 unlisted rows).
+  // Only rows still shown are checked, since an archived row holds no number
+  // and is already hidden; each is re-read, and only Paseo's own 404 marks it
+  // gone. A daemon error is "unknown" and changes nothing. A session that just
+  // started is exempt because the directory can lag it.
+  const presentCheckedAt = new Map();
+  async function markDeletedAgents(agents) {
+    const listed = new Set(agents.map((agent) => agent.id));
+    const cutoff = now() - DELETED_GRACE_MS;
+    const candidates = sessionStore.all().filter((record) => {
+      const agentId = record.delegate?.sessionId;
+      if (typeof agentId !== 'string' || record.daemonDeletedAt) return false;
+      if (record.archivedAt || record.daemonArchivedAt || listed.has(agentId)) return false;
+      if (now() - (presentCheckedAt.get(agentId) ?? -Infinity) < PRESENT_RECHECK_MS) return false;
+      const created = Date.parse(record.createdAt ?? '');
+      return Number.isFinite(created) && created <= cutoff;
+    }).slice(0, MAX_DELETED_CHECKS);
+    for (const record of candidates) {
+      let exists;
+      try {
+        exists = await daemon.exists(record.delegate.sessionId);
+      } catch {
+        continue;
+      }
+      if (exists) {
+        presentCheckedAt.set(record.delegate.sessionId, now());
+        continue;
+      }
+      const deletedAt = new Date(now()).toISOString();
+      sessionStore.update(record.id, (current) => {
+        if (current.daemonDeletedAt) return [];
+        current.daemonDeletedAt = deletedAt;
+        return [];
+      });
+    }
+  }
+
   let syncInFlight;
   async function syncDaemon() {
     await decisions?.sync();
@@ -315,7 +365,7 @@ export function createSessionService({
           workspaceTitle, workspaceRootCount: rootAgents,
           requested: model, observed: state.modelCheck.observed, phase: state.phase,
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
-          observedFast: fastValue(state.features),
+          observedFast: fastValue(state.features), fastAvailable: fastAvailable(state.features),
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
           // favourite the owner set here survives a Paseo that has no pin yet.
           favorite: pins?.get(workspaceId) === true ? true : undefined, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
@@ -324,6 +374,7 @@ export function createSessionService({
           observedAt: new Date(now()).toISOString(), attentionTimestamp: a.attentionTimestamp ?? a.updatedAt, attentionReason: a.attentionReason, requiresAttention: a.requiresAttention };
       });
       const transitions = sessionStore.importDirectory(rows);
+      await markDeletedAgents(agents);
       for (const { previous, current } of transitions) {
         const phase = current.phase;
         const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
@@ -355,7 +406,7 @@ export function createSessionService({
   function visibleRecords() {
     return sessionStore.all().filter((record) =>
       (daemon !== null || !isWorktree(record))
-      && !record.archivedAt && !record.daemonArchivedAt);
+      && !record.daemonDeletedAt && !record.archivedAt && !record.daemonArchivedAt);
   }
 
   async function listSessions(query = {}) {
@@ -382,7 +433,8 @@ export function createSessionService({
       .filter((record) => (requestId ? record.requestId === requestId : true))
       .filter((record) => (phase ? record.phase === phase : true))
       .filter((record) => (parentId === undefined ? true : (record.parentId ?? null) === parentId))
-      .filter((record) => scopeAll || ((daemon || !isWorktree(record)) && Boolean(record.archivedAt || record.daemonArchivedAt) === archivedOnly))
+      .filter((record) => scopeAll || (!record.daemonDeletedAt && (daemon || !isWorktree(record))
+        && Boolean(record.archivedAt || record.daemonArchivedAt) === archivedOnly))
       .sort((a, b) => (b.sourceUpdatedAt ?? b.updatedAt ?? '').localeCompare(a.sourceUpdatedAt ?? a.updatedAt ?? '') || a.id.localeCompare(b.id));
 
     const page = filtered.slice(offset, offset + limit);
@@ -478,8 +530,9 @@ export function createSessionService({
     const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
     const name = body.name === undefined ? undefined : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
     const effort = body.effort === undefined ? undefined : parseEffort(body.effort);
-    if (favorite === undefined && archived === undefined && name === undefined && effort === undefined) {
-      throw badRequest('payload_invalid', 'favorite, archived, name or effort is required');
+    const fast = body.fast === undefined ? undefined : parseBoolean(body.fast, 'fast');
+    if (favorite === undefined && archived === undefined && name === undefined && effort === undefined && fast === undefined) {
+      throw badRequest('payload_invalid', 'favorite, archived, name, effort or fast is required');
     }
     if (effort !== undefined) {
       if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
@@ -491,6 +544,17 @@ export function createSessionService({
       // Do it before any local field so a refused provider change cannot leave
       // a half-applied PATCH. The read-back inside setThinking is the proof.
       const status = await daemon.setThinking(existing.delegate.sessionId, effort);
+      applyObservation(id, status);
+    }
+    if (fast !== undefined) {
+      if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
+        throw new BridgeError(409, 'fast_unsupported', 'Fast can only be changed for a Paseo session');
+      }
+      if (existing.stopRequestedAt || ['stopped', 'stop_unconfirmed'].includes(existing.phase)) {
+        throw conflict('session_stopped', 'the session is stopped; change Fast after it is running again');
+      }
+      // The provider's own read-back inside setFast is the proof it applied.
+      const status = await daemon.setFast(existing.delegate.sessionId, fast);
       applyObservation(id, status);
     }
     // A workspace's pin is where Paseo keeps the same choice. Sessions in the
@@ -739,7 +803,11 @@ export function createSessionService({
       // clears the remembered value: "unknown now" must not stay "was on".
       // Sources that never report features (no key) and failed observations
       // leave it alone.
-      if (Object.hasOwn(status, 'features')) record.observedFast = fastValue(status.features);
+      if (Object.hasOwn(status, 'features')) {
+        record.observedFast = fastValue(status.features);
+        // A read without a feature list (null) keeps the last confirmed answer.
+        if (Array.isArray(status.features)) record.fastAvailable = fastAvailable(status.features);
+      }
       // The list row and the detail header must show one name. Paseo names the
       // workspace from the request, so the single root agent in a workspace
       // takes that title; an agent that renamed itself (HQ PASEO-HERMES.md) or
@@ -816,6 +884,9 @@ export function createSessionService({
       capabilities: {
         effort: daemon !== null && typeof record.delegate?.sessionId === 'string'
           && daemon.capabilities?.().effortUpdate === true,
+        // The provider must have said it has a Fast setting; a session without
+        // one is offered no switch rather than a 409 on tap.
+        fast: daemon !== null && typeof record.delegate?.sessionId === 'string' && record.fastAvailable === true,
       },
       phase: record.phase,
       daemonStatus: record.daemonStatus ?? null,
@@ -969,13 +1040,6 @@ function parseEffort(raw) {
     throw badRequest('payload_invalid', 'effort must be a thinking option id');
   }
   return raw;
-}
-
-// Paseo reports provider toggles (Fast) with their actual value. Absent means
-// unknown: never derive a displayed setting from the Bridge's request.
-export function fastValue(features) {
-  const row = Array.isArray(features) ? features.find((feature) => feature?.id === 'fast_mode') : null;
-  return typeof row?.value === 'boolean' ? row.value : null;
 }
 
 function parseRequestId(raw) {
