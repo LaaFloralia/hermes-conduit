@@ -186,6 +186,10 @@ final class LAAChatDesignUITests: XCTestCase {
         field.typeText("Team update")
         let send = app.buttons["room.composer.send"]
         XCTAssertTrue(send.isEnabled)
+        // Send ends the row under the field, as in a chat; no mic.
+        XCTAssertGreaterThanOrEqual(send.frame.minY, field.frame.maxY - 1)
+        XCTAssertGreaterThan(send.frame.minX, field.frame.midX)
+        XCTAssertFalse(app.buttons["Dictate"].exists)
         send.tap()
         let message = app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "Team update")).firstMatch
         XCTAssertTrue(message.waitForExistence(timeout: 10))
@@ -236,6 +240,34 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertLessThanOrEqual(app.scrollViews["chat.transcript"].frame.maxY, field.frame.minY + 1,
                                      "The growing composer must reserve space for its controls row")
             capture(app, "\(name)-multiline")
+            app.terminate()
+        }
+    }
+
+    /// The group room's composer in the chat's form, empty and on the
+    /// keyboard: Send ends the row under the field, and there is no mic.
+    func testGroupComposerScreenshots() {
+        for (dark, kind) in [(false, "paper"), (true, "paper"), (false, "photo")] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
+                                   "-LAA_CAPTURE_SURFACE", "group", "-LAA_CAPTURE_KIND", kind]
+                + (dark ? ["-LAA_V2_DARK"] : [])
+            app.launch()
+            XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 25))
+            let field = app.textViews["room.composer.field"]
+            XCTAssertTrue(field.waitForExistence(timeout: 15))
+            let name = "group-composer-\(dark ? "dark" : "light")-\(kind)"
+            capture(app, "\(name)-empty")
+            field.tap()
+            field.typeText("明日の打ち合わせの資料")
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+            capture(app, "\(name)-keyboard")
+            let send = app.buttons["room.composer.send"]
+            XCTAssertGreaterThanOrEqual(send.frame.minY, field.frame.maxY - 1)
+            XCTAssertGreaterThan(send.frame.minX, field.frame.midX)
+            XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY + 1)
+            XCTAssertFalse(app.buttons["Dictate"].exists)
             app.terminate()
         }
     }

@@ -143,12 +143,12 @@ struct GroupRoomComposer: View {
             }
 #if LAA_BUILD
             VStack(spacing: 0) {
+                // Send ends the row below, as in a chat.
                 HStack(alignment: .bottom, spacing: LAASpacing.x2) {
                     attachButton
                     field
                         .laaComposerPhotoInk()
                         .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
-                    sendSlot()
                 }
                 if !rests {
                     controlsRow.laaComposerPhotoInk(bare: true)
@@ -316,7 +316,9 @@ struct GroupRoomComposer: View {
                     if !attachments.isEmpty { attachmentStrip }
                 },
                 dictateButton: {
+#if !LAA_BUILD
                     if !dictationHoldsSendSlot { dictateButton }
+#endif
                 },
                 actionButton: { sendSlot(identifier: "room.composer.fullEditor.dictation.stop") }
             )
@@ -458,14 +460,17 @@ struct GroupRoomComposer: View {
 
     private var controlsRow: some View {
         HStack(spacing: 8) {
-#if !LAA_BUILD
+#if LAA_BUILD
+            // As in a chat: no mic, and Send is Work's size at the row's
+            // end (owner, 2026-11-09).
+            Spacer(minLength: 0)
+            sendSlot(size: ComposerShared.rowControlSize)
+#else
             attachButton
-#endif
             Spacer(minLength: 0)
             if !dictationHoldsSendSlot {
                 dictateButton
             }
-#if !LAA_BUILD
             sendSlot()
 #endif
         }
@@ -604,15 +609,16 @@ struct GroupRoomComposer: View {
     }
 
     @ViewBuilder
-    private func sendSlot(identifier: String = "room.composer.dictation.stop") -> some View {
+    private func sendSlot(identifier: String = "room.composer.dictation.stop",
+                          size: CGFloat = ComposerShared.controlSize) -> some View {
         if dictationHoldsSendSlot {
             ComposerDictationStopButton(dictation: dictation, identifier: identifier)
         } else {
-            sendButton
+            sendButton(size: size)
         }
     }
 
-    private var sendButton: some View {
+    private func sendButton(size: CGFloat) -> some View {
         Button {
             send()
         } label: {
@@ -623,7 +629,12 @@ struct GroupRoomComposer: View {
                         .tint(.white)
                 } else {
                     Image(systemName: "arrow.up")
+#if LAA_BUILD
+                        // Work's Send glyph, as in a chat.
+                        .font(.system(size: 15, weight: .bold))
+#else
                         .font(.system(size: 14, weight: .semibold))
+#endif
                 }
             }
 #if LAA_BUILD
@@ -632,7 +643,7 @@ struct GroupRoomComposer: View {
 #else
             .foregroundStyle(canSend || isUploading ? Color.white : Color.secondary.opacity(0.48))
 #endif
-            .frame(width: controlSize, height: controlSize)
+            .frame(width: size, height: size)
             .contentShape(ComposerShared.controlHitShape)
         }
         .disabled(!canSend)

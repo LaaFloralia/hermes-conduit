@@ -2769,13 +2769,14 @@ notifier (not needed, dictation is app-side)
 **Rulings**
 - Send isn't offered while dictating, from the tap that starts it until its last words are in (a Hermes upload included). A wide Stop holds its place and the small mic steps aside; Send comes back with the words in the draft. Send doesn't stop and send in one tap (Eric, 2026-10-26, #1309, #1315).
 - The Stop takes the whole slot, so a running reply's Stop, Steer or Queue comes back after the dictation too (2026-10-26, #1315).
+- The LAA build has no mic in a chat's or a group room's composer or their full editors (owner, 2026-11-09), so there no dictation takes Send's place; the upstream build keeps both.
 - Once stopped, the Stop shows Transcribing (an Apple engine finalizing, or Hermes) and waits out a 3.5 second grace, so a tap can't cut off its final words. That outlasts either Apple engine's whole settle, so only Hermes ever offers Done: past the grace it reads Done and ends the dictation there, keeping the draft's words, so a slow host never holds Send back. A Hermes dictation none of whose words are in yet waits throughout; once its first words land it settles like any engine's, and typing ends it (2026-10-26, #1315 review).
 
 **Open gaps**
 - A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message. A dropped connection now adds up to about two minutes of retries to that wait, longer when each attempt runs to its timeout, up to the watchdog; Cancel ends it and keeps the recording for Retry (2026-10-27, #1380).
 - Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
 
-**Checked:** 2026-10-27, at #1385.
+**Checked:** 2026-11-09, laa/group-composer (LAA: no composer mic in chats or group rooms); 2026-10-27, at #1385.
 
 ## Hermes dictation kept until transcribed
 
@@ -4081,14 +4082,14 @@ and rollback instructions · the upstream App Store build
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
 - Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture.
 - The LAA transcript reserves the entire growing composer height, including Model and context controls, so an eight-line draft cannot expose message text behind that row. Group placeholders use primary ink on photo glass.
-- The chat composer is + and the field on one row; the row under it holds the model and effort, context and, at its end, Send in Work's 36-point glass, with the row's other controls at the same size. It has no mic or voice button: calls start from the header's phone (owner, 2026-11-09). Resting, that row hides, and a running turn's Stop sits beside the field. The group room's composer keeps its own row.
+- The chat composer is + and the field on one row; the row under it holds the model and effort, context and, at its end, Send in Work's 36-point glass, with the row's other controls at the same size. It has no mic or voice button: calls start from the header's phone (owner, 2026-11-09). Resting, that row hides, and a running turn's Stop sits beside the field. The group room's composer takes the same form: + and the field, and under them Send at the row's end in the same glass, with no mic (owner, 2026-11-09).
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
 
 **Open gaps**
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
-**Checked:** 2026-11-09, laa/chat-composer-dots-cron (Send at the end of the row under the field, no mic or voice button); 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+**Checked:** 2026-11-09, laa/group-composer (the group room's composer in the same form); 2026-11-09, laa/chat-composer-dots-cron (Send at the end of the row under the field, no mic or voice button); 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
 
 
 ## LAA Work session presentation
