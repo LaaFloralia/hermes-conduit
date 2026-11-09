@@ -16,6 +16,10 @@ import { BridgeError } from './errors.mjs';
 import { TaskSourceError } from './tasks/errors.mjs';
 import { DEFAULT_BACKUP_GENERATIONS, createOwnerTaskStore } from './tasks/owner-store.mjs';
 import { createOwnerTaskService } from './tasks/owner-service.mjs';
+import { createTaskRunStore, createTaskDispatchService } from './tasks/dispatch.mjs';
+import { createSessionStore } from './sessions/store.mjs';
+import { daemonAdapter } from './sessions/daemon.mjs';
+import { createRefRegistry } from './refs/registry.mjs';
 import {
   assertManifestCurrent,
   buildManifest,
@@ -36,6 +40,7 @@ export const TASKS_USAGE = `laa-bridge tasks — 社長タスク（保存先は 
               [--due YYYY-MM-DD | --clear-due] [--link <url>]… | --input <file|->
               [--json]
   tasks status [--json]
+  tasks report <uuid|T12|BUS-401> --summary <text> [--json]
   tasks import-linear --dry-run [--assignee <linear-user-id>] [--include-closed]
               [--out <file>] [--json]
   tasks import-linear --manifest <file> --approve <content-hash> [--json]
@@ -251,6 +256,18 @@ function commandStatus(flags, io) {
   return 0;
 }
 
+async function commandReport(given, flags, io) {
+  const summary = requireFlag(flags, 'summary');
+  const dir = resolveStateDir();
+  const service = createTaskDispatchService({ store: createTaskRunStore({ dir }),
+    sessionStore: createSessionStore({ file: join(dir, 'sessions.json') }),
+    refs: createRefRegistry({ file: join(dir, 'refs.json') }), daemon: daemonAdapter() });
+  const run = await service.report(given, summary, process.env.PASEO_AGENT_ID || null);
+  if (io.json) io.write(`${JSON.stringify({ ok: true, taskId: run.taskId, report: run.report })}\n`);
+  else io.write(`${run.identifier} の報告を保存しました。ここで手番を終えてください。\n`);
+  return 0;
+}
+
 function manifestFileName() {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
   return join(resolveStateDir(), 'imports', `linear-${stamp}.json`);
@@ -440,10 +457,10 @@ export async function tasksCommand(argv, flags, io = {}) {
       add: 'request-id title input memo status due link source id json',
       list: 'status limit cursor json', get: 'id json',
       update: 'id if-match request-id title input memo status due clear-due link json',
-      status: 'json', 'import-linear': 'dry-run assignee include-closed out manifest approve json',
+      status: 'json', report: 'summary json', 'import-linear': 'dry-run assignee include-closed out manifest approve json',
       backup: 'keep out json', restore: 'from to allow-live force expect-state json', help: 'json help',
     };
-    if (argv.length > 1) usage('unexpected positional argument');
+    if (sub === 'report' ? argv.length !== 2 : argv.length > 1) usage('unexpected positional argument');
     if (allowed[sub]) for (const flag of Object.keys(flags)) {
       if (!allowed[sub].split(' ').includes(flag)) usage(`unknown flag --${flag} for ${sub}`);
     }
@@ -453,6 +470,7 @@ export async function tasksCommand(argv, flags, io = {}) {
       case 'get': return commandGet(flags, context);
       case 'update': return commandUpdate(flags, context);
       case 'status': return commandStatus(flags, context);
+      case 'report': return await commandReport(argv[1], flags, context);
       case 'import-linear': return await commandImport(flags, context);
       case 'backup': return commandBackup(flags, context);
       case 'restore': return commandRestore(flags, context);
