@@ -138,7 +138,7 @@ private struct LAADriveOfflinePreview: View {
     }
 
     private var status: String {
-        let checked = record.verifiedAt.formatted(date: .abbreviated, time: .shortened)
+        let checked = LAADateText.string(record.verifiedAt, .dayTime)
         let age = record.access == .stale ? "古いコピー · " : ""
         return "\(age)最終確認 \(checked)" + (opened.checkedOnline ? "" : " · オフライン")
     }

@@ -40,7 +40,7 @@ struct LAAStudioHomeView: View {
                     LAAStudioReviewQueue(snapshot: snapshot, reviewed: reviewed)
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         HStack {
-                            Text(verbatim: "作品").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                            LAASectionHeader("作品")
                             Spacer()
                             Menu {
                                 Button(String("検索"), systemImage: "magnifyingglass") { searching.toggle() }
@@ -143,7 +143,7 @@ private struct LAAStudioProgressSection: View {
     var body: some View {
         if !records.isEmpty {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Text(verbatim: "進行中").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                LAASectionHeader("進行中")
                 VStack(spacing: 0) {
                     ForEach(records) { record in
                         NavigationLink {
@@ -151,9 +151,8 @@ private struct LAAStudioProgressSection: View {
                         } label: {
                             LAAStudioProgressRow(record: record, title: LAAStudioPresentation.title(for: record, project: snapshot.projects.first { $0.id == record.request.projectId }))
                         }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.request.\(record.id)")
-                        if record.id != records.last?.id { Divider().padding(.horizontal, LAASpacing.x4) }
                     }
-                }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                }
             }
         }
     }
@@ -188,16 +187,42 @@ private struct LAAStudioReviewQueue: View {
     var body: some View {
         if !projects.isEmpty {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Text(verbatim: "確認待ち").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
-                ForEach(projects) { project in
-                    NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
-                        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-                            LAAStudioThumbnail(path: project.pages.first?.preview ?? project.assets?.first?.poster, symbol: LAAStudioPresentation.symbol(project))
-                                .frame(height: 190)
-                            HStack { Text(verbatim: project.title).foregroundStyle(LAAColor.text); Spacer(); Text(verbatim: "見る").foregroundStyle(LAAColor.link) }
-                        }.padding(LAASpacing.x3).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                    }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.review-work.\(project.id)")
+                HStack {
+                    Text(verbatim: "確認待ち").laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                    Spacer()
+                    Text(verbatim: "\(projects.count)件").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: LAASpacing.x4) {
+                        ForEach(projects) { project in
+                            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                                NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
+                                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                                        LAAStudioThumbnail(path: project.pages.first?.preview ?? project.assets?.first?.poster,
+                                                           symbol: LAAStudioPresentation.symbol(project))
+                                            .frame(width: 300, height: 200).clipShape(RoundedRectangle(cornerRadius: 20))
+                                        HStack {
+                                            Text(verbatim: project.title).font(.system(size: 15, weight: .semibold))
+                                                .foregroundStyle(LAAColor.text).lineLimit(1)
+                                            Spacer(minLength: LAASpacing.x1)
+                                            Text(verbatim: LAAStudioPresentation.relativeDate(project.syncedAt))
+                                                .font(.system(size: 12)).foregroundStyle(LAAColor.secondaryText)
+                                        }
+                                    }
+                                }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.review-work.\(project.id)")
+                                if snapshot.supportsV2 {
+                                    HStack(alignment: .top, spacing: LAASpacing.x2) {
+                                        NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
+                                            Text(verbatim: "直しを頼む").font(.system(size: 15, weight: .semibold))
+                                                .frame(maxWidth: .infinity, minHeight: 50).laaComposerGlass(in: Capsule())
+                                        }.buttonStyle(.plain)
+                                        LAAStudioAdoptButton(project: project, reviews: [])
+                                    }
+                                }
+                            }.frame(width: 300)
+                        }
+                    }
+                }.scrollIndicators(.hidden)
             }
         }
     }
@@ -246,6 +271,12 @@ struct LAAStudioThumbnail: View {
     }
     @MainActor private func load(refreshReviews: Bool = false) async {
         image = nil
+        #if DEBUG
+        if LAAStudioData.fixture != nil, let path, let cover = LAAStudioData.fixtureCover(path: path) {
+            image = cover
+            return
+        }
+        #endif
         guard let path = LAAStudioMedia.bridgePath(path, allowed: ["jpg", "png", "webp"]),
               let suffix = path.split(separator: ".").last,
               let mime = ["jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"][String(suffix)] else { return }

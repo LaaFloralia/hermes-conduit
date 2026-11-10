@@ -1332,7 +1332,7 @@ final class SelectableTextViewHostView: UIView {
     var omitsLinkUnderline = false { didSet { configureLinkUnderline() } }
     func configureLinkUnderline() {
         guard omitsLinkUnderline, let textView else { return }
-        var attributes = textView.linkTextAttributes
+        var attributes = textView.linkTextAttributes ?? [:]
         attributes[.underlineStyle] = NSUnderlineStyle.none.rawValue
         textView.linkTextAttributes = attributes
     }

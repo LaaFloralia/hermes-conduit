@@ -13,7 +13,13 @@ struct LAAStudioAdoptButton: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             Button(adopted ? String("採用済み") : (sending ? "保存中" : "採用")) { Task { await adopt() } }
-                .laaGlassButton().disabled(sending || adopted)
+                .buttonStyle(.plain)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(LAAColor.filledButtonText)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(LAAColor.filledButton, in: Capsule())
+                .opacity(sending || adopted ? 0.65 : 1)
+                .disabled(sending || adopted)
                 .accessibilityIdentifier("laa.studio.adopt")
             if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }.onChange(of: project.revision) { _, _ in adopted = false }

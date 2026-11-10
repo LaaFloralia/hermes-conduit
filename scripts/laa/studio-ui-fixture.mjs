@@ -185,7 +185,8 @@ export function createStudioUIFixture() {
           if (mode === 'create-busy-once') {
             mode = 'normal'; release(ledger, reservation); fail(res, 409, 'studio_work_busy'); return;
           }
-          const created = { request: body, status: 'queued', bootId: null, updatedAt: stamp, report: null };
+          const created = { request: body, status: mode === 'create-queued' ? 'bridge_waiting' : 'queued',
+            bootId: null, updatedAt: stamp, report: null };
           records.set(body.id, created); finish(res, reservation.key, 202, created); return;
         }
         actionCalls += 1;
@@ -215,7 +216,7 @@ export function createStudioUIFixture() {
     if (req.url === '/action-requests') { res.end(String(actionRequests)); return; }
     if (req.url === '/create-reference') { res.end(String([...records.values()].filter(x => x.request.prompt.includes('https://drive.google.com/file/d/studio-reference/view')).length)); return; }
     if (req.url === '/create-count') { res.end(String(records.size)); return; }
-    if (req.url === '/create-kinds') { res.end([...records.values()].map(x => x.request.prompt.split('制作の種類: ')[1]?.split('\n')[0] ?? '').join(',')); return; }
+    if (req.url === '/create-kinds') { res.end([...records.values()].map(x => x.request.prompt.split('制作の種類: ')[1]?.split('\n')[0] ?? '').filter(Boolean).join(',')); return; }
     if (req.url === '/create-consistent') {
       res.end(String(createAttempts.length === 2 && createAttempts[0].key === createAttempts[1].key && createAttempts[0].body === createAttempts[1].body)); return;
     }

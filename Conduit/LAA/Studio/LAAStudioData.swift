@@ -1,5 +1,8 @@
 #if LAA_BUILD
 import Foundation
+#if DEBUG
+import UIKit
+#endif
 
 extension LAACopy {
     enum Studio {
@@ -174,13 +177,41 @@ enum LAAStudioData {
         return [.unauthorized, .revoked, .forbidden, .keychain].contains(failure)
     }
     #if DEBUG
+    private static let fixtureProjectID = "70175325-5cf4-421f-8a6f-95beae8fca92"
+    private static func fixtureCoverPath(_ variant: String) -> String {
+        "/v1/studio/media/\(fixtureProjectID)/\(String(repeating: variant, count: 64)).png"
+    }
+
+    @MainActor static func fixtureCover(path: String) -> UIImage? {
+        let colors: (UIColor, UIColor)
+        switch path {
+        case fixtureCoverPath("a"): colors = (UIColor(red: 0.12, green: 0.23, blue: 0.27, alpha: 1), UIColor(red: 0.62, green: 0.76, blue: 0.71, alpha: 1))
+        case fixtureCoverPath("b"): colors = (UIColor(red: 0.44, green: 0.25, blue: 0.31, alpha: 1), UIColor(red: 0.84, green: 0.69, blue: 0.64, alpha: 1))
+        default: return nil
+        }
+        let size = CGSize(width: 400, height: 533)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            colors.0.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            colors.1.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 85, y: 188, width: 294, height: 294)).fill()
+            colors.0.setStroke()
+            let line = UIBezierPath()
+            line.move(to: CGPoint(x: 100, y: 458)); line.addLine(to: CGPoint(x: 361, y: 218)); line.lineWidth = 1
+            line.stroke()
+            ("サービス紹介資料" as NSString).draw(at: CGPoint(x: 28, y: 44), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 34, weight: .semibold), .foregroundColor: UIColor.white
+            ])
+        }
+    }
+
     static func sample(_ mode: String) throws -> LAAStudioSnapshot {
         if mode == "offline" { throw LAABridgeError.networkUnreachable }
         if mode == "disconnected" || mode == "error" {
             throw LAABridgeHTTPError(status: 503, code: mode == "disconnected" ? "studio_not_connected" : "failure", message: nil, retryable: false, details: nil, requestId: nil, currentETag: nil)
         }
         let requestID = "0f6b1c2e-6f1a-4c55-9d43-0d5f6f3b8a11"
-        let projectID = "70175325-5cf4-421f-8a6f-95beae8fca92"
+        let projectID = fixtureProjectID
         let questionID = "5e2c1c2e-6f1a-4c55-9d43-0d5f6f3b8a11"
         let text = mode == "long" ? String(repeating: "制作の進捗を確認しています。", count: 150) : "資料の構成を確認しています。"
         let fields = [LAAStudioApproval.Field(name: "format", title: "形式", type: "string", required: true, options: ["PDF", "Slides"]),
@@ -189,8 +220,12 @@ enum LAAStudioData {
         let report = LAAStudioReport(id: requestID, bootId: projectID, sequence: 2, status: "approval", text: text, revision: nil, approvals: [approval], computerCalls: nil)
         let request = LAAStudioRequest(id: requestID, projectId: projectID, expectedRevision: 3, prompt: "新しい紹介資料を作ってください。", create: nil, principle: nil)
         let record = LAAStudioRecord(request: request, status: mode == "v2-completed" ? "completed" : "approval", bootId: projectID, updatedAt: "2026-10-31T09:00:00Z", report: mode == "v2-completed" ? nil : report)
+        let pages: [LAAStudioPage] = mode.hasPrefix("v2") ? [
+            .init(id: "page1", name: "A案", preview: fixtureCoverPath("a")),
+            .init(id: "page2", name: "B案", preview: fixtureCoverPath("b"))
+        ] : [.init(id: "page1", name: "Cover", preview: nil)]
         let project = LAAStudioProject(id: projectID, title: "サービス紹介資料", revision: 3,
-                                       pages: [.init(id: "page1", name: "Cover", preview: nil)], assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
+                                       pages: pages, assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
         let principle = LAAStudioPrinciple(id: "principle1", name: "LAA", version: "6", revision: 3, status: "adopted")
         var snapshot = LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: mode == "empty" ? [] : [project], principles: [principle], requests: mode == "empty" ? [] : [record])
         if mode.hasPrefix("v2") { snapshot.contract = 2 }

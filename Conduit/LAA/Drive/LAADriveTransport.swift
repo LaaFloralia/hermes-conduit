@@ -117,6 +117,18 @@ extension LAABridgeClient {
 
 enum LAADriveContent {
     static let chunkSize = 512 * 1024
+
+    #if DEBUG
+    static func fixtureMediaURL(_ id: String) -> URL? {
+        let name: String
+        switch id {
+        case "video1": name = "monet-idle-512.mov"
+        case "image1": name = "monet-avatar-512.png"
+        default: return nil
+        }
+        return Bundle.main.resourceURL?.appendingPathComponent("staff/monet/" + name)
+    }
+    #endif
     // Images and PDFs are materialized for UIKit/PDFKit; media is never subject to this limit.
     static let previewLimit: Int64 = 64 * 1024 * 1024
 
@@ -124,11 +136,8 @@ enum LAADriveContent {
                                  bridge: LAABridgeSession, expectedVersion: String? = nil) async throws -> LAADriveRangeResponse {
         #if DEBUG
         if LAADriveData.fixture != nil {
-            let directory = Bundle.main.bundleURL.appendingPathComponent("staff/monet")
             let data: Data
-            if item.id == "video1", let file = try? Data(contentsOf: directory.appendingPathComponent("monet-idle-512.mov")) {
-                data = file
-            } else if item.id == "image1", let file = try? Data(contentsOf: directory.appendingPathComponent("monet-avatar-512.png")) {
+            if let url = fixtureMediaURL(item.id), let file = try? Data(contentsOf: url) {
                 data = file
             } else if item.isPDF {
                 let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 400))

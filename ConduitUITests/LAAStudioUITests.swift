@@ -84,23 +84,18 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertEqual(try helper("action-count"), "2")
         XCTAssertEqual(try helper("action-requests"), "4")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let create = app.buttons["laa.studio.create"]
-        XCTAssertTrue(create.waitForExistence(timeout: 10)); create.tap()
         let body = composer(app)
         body.tap(); body.typeText("Make a short overview")
         app.buttons["laa.studio.kind.資料"].tap()
         XCTAssertFalse(app.buttons["laa.studio.composer.textSize"].exists)
         let send = app.buttons["laa.studio.composer.send"]
         if !send.isHittable { app.swipeUp() }
-        _ = try helper("mode/create-busy-once")
+        _ = try helper("mode/create-queued")
         XCTAssertTrue(send.waitForExistence(timeout: 10)); XCTAssertGreaterThanOrEqual(send.frame.height, 44); send.tap()
-        XCTAssertTrue(app.staticTexts["Studioが使用中です。少し待ってから送り直してください。"].waitForExistence(timeout: 15))
-        let retryCreation = app.buttons["laa.studio.retry"]
-        XCTAssertTrue(retryCreation.waitForExistence(timeout: 10))
-        if !retryCreation.isHittable { app.swipeUp() }
-        retryCreation.tap()
-        XCTAssertTrue(app.staticTexts["依頼しました"].waitForExistence(timeout: 15))
-        XCTAssertEqual(try helper("create-consistent"), "true")
+        XCTAssertTrue(app.staticTexts["順番待ち"].waitForExistence(timeout: 15))
+        XCTAssertFalse(send.isEnabled)
+        XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
+        XCTAssertEqual(try helper("create-count"), "1")
     }
 
     func testV2ReviewRetryAndLibraryThroughMockBridge() throws {
@@ -134,12 +129,9 @@ final class LAAStudioUITests: XCTestCase {
         adopt.tap()
         XCTAssertTrue(app.buttons["採用済み"].waitForExistence(timeout: 20))
         XCTAssertEqual(try helper("review-count"), "1")
-        let revise = app.buttons["laa.studio.revise"]
-        if !revise.isHittable { app.swipeUp() }
-        revise.tap()
-        XCTAssertTrue(app.navigationBars["制作を依頼"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["laa.studio.project"].label.contains("サービス紹介資料"))
-        app.buttons["キャンセル"].tap()
+        let revise = composer(app)
+        XCTAssertTrue(revise.exists)
+        XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let menu = app.buttons["laa.studio.menu"]
         if !menu.isHittable { app.swipeUp() }
@@ -169,12 +161,11 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }; pair.tap()
-        for (kind, prompt) in [("画像", "image"), ("動画", "video"), ("資料", "document"), ("その他", "other")] {
-            let create = app.buttons["laa.studio.create"]
-            if !create.isHittable { app.swipeDown() }
-            XCTAssertTrue(create.waitForExistence(timeout: 30)); create.tap()
-            let input = composer(app); input.tap(); input.typeText("Fixture " + prompt)
-            app.buttons["laa.studio.kind." + kind].tap()
+        for (kind, prompt) in [("画像", "image"), ("動画", "video"), ("資料", "document"), ("", "automatic")] {
+            let input = composer(app)
+            if !input.isHittable { app.swipeDown() }
+            input.tap(); input.typeText("Fixture " + prompt)
+            if !kind.isEmpty { app.buttons["laa.studio.kind." + kind].tap() }
             if kind == "画像" {
                 app.buttons["参考を添付"].tap(); app.buttons["Driveから選ぶ"].tap()
                 let reference = app.buttons["Reference.png"]
@@ -183,12 +174,13 @@ final class LAAStudioUITests: XCTestCase {
             }
             let send = app.buttons["laa.studio.composer.send"]
             if !send.isHittable { app.swipeUp() }; send.tap()
-            XCTAssertTrue(app.staticTexts["依頼しました"].waitForExistence(timeout: 15))
+            let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: send)
+            XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 15), .completed)
             XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
         }
         XCTAssertEqual(try helper("create-count"), "4")
         XCTAssertEqual(try helper("create-reference"), "1")
-        XCTAssertEqual(try helper("create-kinds"), "画像,動画,資料,その他")
+        XCTAssertEqual(try helper("create-kinds"), "画像,動画,資料")
     }
 
     func testDocumentShowsLoadingWhileDriveRetrievesIt() throws {

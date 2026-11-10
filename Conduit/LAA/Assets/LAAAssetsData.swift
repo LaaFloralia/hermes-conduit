@@ -170,7 +170,14 @@ enum LAADriveData {
                 let isWorkspace = object["kind"] == "workspace_document"
                 result["version"] = "1"
                 result["downloadable"] = !isWorkspace
-                if isWorkspace { result["size"] = NSNull() } else { result["size"] = 1024 }
+                if isWorkspace {
+                    result["size"] = NSNull()
+                } else if let id = object["id"], let url = LAADriveContent.fixtureMediaURL(id),
+                          let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                    result["size"] = size
+                } else {
+                    result["size"] = NSNull()
+                }
                 result["hasThumbnail"] = false
                 result["exportFormats"] = []
                 if isWorkspace && fixture != "workspaceNoLink" {

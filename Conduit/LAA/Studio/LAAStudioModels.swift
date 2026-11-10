@@ -74,17 +74,8 @@ struct LAAStudioRecord: Codable, Identifiable {
 enum LAAStudioPresentation {
     static func relativeDate(_ stamp: String?, now: Date = Date()) -> String {
         guard let stamp else { return "" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let fractional = formatter.date(from: stamp)
-        formatter.formatOptions = [.withInternetDateTime]
-        guard let date = fractional ?? formatter.date(from: stamp) else { return "" }
-        let age = max(0, now.timeIntervalSince(date))
-        if age < 60 { return "たった今" }
-        if age < 3600 { return "\(Int(age / 60))分前" }
-        if age < 86400 { return "\(Int(age / 3600))時間前" }
-        if age < 172800 { return "昨日" }
-        return "\(Int(age / 86400))日前"
+        guard let date = MessageTimestampFormatter.date(from: stamp) else { return "" }
+        return LAADateText.relative(date, now: now)
     }
     static func symbol(_ project: LAAStudioProject) -> String {
         if project.assets?.contains(where: { $0.kind == "video" }) == true { return "play.rectangle" }

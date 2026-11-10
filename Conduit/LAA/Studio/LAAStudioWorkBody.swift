@@ -46,6 +46,7 @@ private enum LAAStudioFilter: String, CaseIterable, Identifiable {
 struct LAAStudioWorkBody: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
+    @Environment(\.dismiss) private var dismiss
     let project: LAAStudioProject
     let snapshot: LAAStudioSnapshot?
     @State private var fetchedSnapshot: LAAStudioSnapshot?
@@ -78,19 +79,26 @@ struct LAAStudioWorkBody: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
                 if !gallery.isEmpty {
-                    LAAStudioGallery(items: gallery, selection: $selectedItem, driveURL: driveURL).id("gallery")
+                    LAAStudioGallery(items: gallery, selection: $selectedItem, driveURL: driveURL,
+                                     height: laaDesktop ? 420 : 533).id("gallery")
                 }
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: current.title).font(.custom("Georgia", size: 22, relativeTo: .title2)).foregroundStyle(LAAColor.text)
-                    Text(verbatim: summary)
-                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if laaDesktop {
+                        Text(verbatim: current.title).font(LAAType.title(current.title, size: 22, relativeTo: .title2))
+                            .foregroundStyle(LAAColor.text)
+                        Text(verbatim: summary).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                    if let note = activeSnapshot?.requests.first(where: { $0.request.projectId == current.id })?.report?.text,
+                       !note.isEmpty {
+                        Text(verbatim: note).font(.system(size: 15)).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
+                    }
                 }
                 if let error { LAAStudioConnectionLine(message: error) { Task { await load() } } }
                 if let snapshot = activeSnapshot, snapshot.supportsV2 {
                     LAAStudioCreateView(snapshot: snapshot, initialProject: current, draftID: current.id,
-                        inline: true, onSubmitted: { Task { await load() } })
+                        inline: true, adoption: LAAStudioAdoptButton(project: current, reviews: detail?.reviews ?? []),
+                        onSubmitted: { Task { await load() } })
                         .id(current.id)
-                    LAAStudioAdoptButton(project: current, reviews: detail?.reviews ?? [])
                 }
                 if !versions.isEmpty || LAAStudioMedia.driveURL(driveURL) != nil {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
@@ -145,8 +153,20 @@ struct LAAStudioWorkBody: View {
                     }
                 }
             }.padding(LAASpacing.horizontal).laaPageWidth()
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(String("作品"))
+        }.background(LAAColor.background.ignoresSafeArea())
             .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(!laaDesktop)
+            .toolbar {
+                if !laaDesktop {
+                    LAABackToolbar(action: { dismiss() })
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 2) {
+                            Text(verbatim: current.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
+                            Text(verbatim: summary).font(.system(size: 12)).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                        }
+                    }
+                }
+            }
             .task(id: bridge.revision) {
                 detail = LAAStudioCache.load(LAAStudioProjectDetail.self, scope: LAAStudioCache.scope(bridge), item: project.id)
                 await load()
@@ -215,7 +235,9 @@ private struct LAAStudioGallery: View {
     let items: [LAAStudioWorkItem]
     @Binding var selection: String
     let driveURL: String?
+    let height: CGFloat
     var body: some View {
+        VStack(spacing: LAASpacing.x2) {
         TabView(selection: $selection) {
             ForEach(items) { item in
                 Group {
@@ -232,12 +254,30 @@ private struct LAAStudioGallery: View {
                     } else {
                         LAAStudioThumbnail(path: item.thumbnail, symbol: item.symbol)
                     }
-                }.tag(item.id).padding(.bottom, items.count > 1 ? LAASpacing.x6 : 0)
+                }.tag(item.id)
                     .accessibilityLabel(item.name)
             }
-        }.tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
-            .frame(height: 350).background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        }.tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: height).background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: 24))
+            .clipShape(RoundedRectangle(cornerRadius: 24))
             .accessibilityIdentifier("laa.studio.gallery")
+            if let index = items.firstIndex(where: { $0.id == selection }) {
+                HStack {
+                    Text(verbatim: items[index].name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Spacer()
+                    if items.count > 1 {
+                        HStack(spacing: 6) {
+                            ForEach(items) { item in
+                                Circle().fill(item.id == selection ? LAAColor.text : LAAColor.secondaryText.opacity(0.4))
+                                    .frame(width: 8, height: 8)
+                            }
+                        }.accessibilityHidden(true)
+                    }
+                    Spacer()
+                    Text(verbatim: "\(index + 1) / \(items.count)").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                }
+            }
+        }
             .onAppear { if selection.isEmpty { selection = items.first?.id ?? "" } }
             .onChange(of: items.map(\.id)) { _, ids in if !ids.contains(selection) { selection = ids.first ?? "" } }
     }
@@ -269,7 +309,7 @@ private struct LAAStudioItemView: View {
                     Spacer()
                     Button { index += 1 } label: { Label { Text(verbatim: "次へ") } icon: { Image(systemName: "chevron.right") }.frame(minHeight: LAASpacing.minimumTouchTarget) }.disabled(index + 1 == items.count)
                 }
-                Text(verbatim: item.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: item.name).font(LAAType.title(item.name)).foregroundStyle(LAAColor.text)
                 Text(verbatim: "\(item.kind.capitalized) · Revision \(item.revision)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let bytes = item.bytes {
                     Text(verbatim: "\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)) · \(LAAWorkPresentation.date(item.createdAt))")

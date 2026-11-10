@@ -135,7 +135,7 @@ struct LAADriveOfflineList: View {
     }
 
     private func status(_ record: LAADriveOfflineRecord) -> String {
-        let checked = record.verifiedAt.formatted(date: .abbreviated, time: .shortened)
+        let checked = LAADateText.string(record.verifiedAt, .dayTime)
         switch record.access {
         case .verified: return "最終確認 \(checked)"
         case .stale: return "古いコピー · 最終確認 \(checked)"

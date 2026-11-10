@@ -219,7 +219,7 @@ struct LAADriveDetailView: View {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let date = fractional.date(from: text) ?? ISO8601DateFormatter().date(from: text) else { return text }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        return LAADateText.string(date, .dayTime)
     }
     @MainActor private func load() async {
         loading = true; error = nil; metadata = nil
@@ -270,15 +270,17 @@ struct LAADrivePreviewView: View {
                             .id(currentMedia.id)
                         let siblings = media.filter { $0.id != currentMedia.id }
                         if !siblings.isEmpty {
-                            Text(verbatim: "同じフォルダ").laaTextStyle(.section).foregroundStyle(LAAColor.text)
-                            ForEach(siblings) { file in
-                                Button { currentMediaID = file.id } label: {
-                                    Label { Text(verbatim: file.name) } icon: { Image(systemName: file.symbol) }
-                                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                                }.buttonStyle(LAAListRowStyle())
-                            }
+                            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                                Text(verbatim: "同じフォルダ").laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                                ForEach(siblings) { file in
+                                    Button { currentMediaID = file.id } label: {
+                                        Label { Text(verbatim: file.name) } icon: { Image(systemName: file.symbol) }
+                                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                    }.buttonStyle(LAAListRowStyle())
+                                }
+                            }.padding(.horizontal, LAASpacing.horizontal)
                         }
-                    }.padding(.horizontal, LAASpacing.horizontal)
+                    }
                 }
             } else if item.isImage, images.count > 1 {
                 LAADriveImagePager(items: images, initialID: item.id)

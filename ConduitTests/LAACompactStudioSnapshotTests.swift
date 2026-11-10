@@ -18,7 +18,7 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
         for style in [UIUserInterfaceStyle.light, .dark] {
             LAAStudioData.snapshotFixture = "normal"
             try capture("list-after", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
-                        try capture("detail-after", style, bridge) { AnyView(LAAStudioWorkView(project: project)) }
+            try capture("detail-after", style, bridge) { AnyView(LAAStudioWorkView(project: project)) }
             try capture("request-inline-after", style, bridge) {
                 AnyView(LAAStudioCreateView(snapshot: normal, initialProject: project, inline: true)
                     .padding(.horizontal, LAASpacing.horizontal))
@@ -53,7 +53,7 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
             LAAStudioData.snapshotFixture = "v2"
             try capture("v2-works", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
             try capture("v2-library", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true, initialStudioSection: 2)) }
-            try capture("v2-work", style, bridge) { AnyView(LAAStudioWorkView(project: project, snapshot: snapshot)) }
+            try capture("work-review-after", style, bridge) { AnyView(LAAStudioWorkView(project: project, snapshot: snapshot)) }
             try capture("v2-review", style, bridge) {
                 AnyView(LAAStudioReviewView(snapshot: snapshot, project: project, target: .project,
                                             targetName: project.title, revision: project.revision, reviews: []))

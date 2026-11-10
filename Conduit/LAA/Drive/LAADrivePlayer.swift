@@ -117,7 +117,7 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
         // AVFoundation's initial information probe needs no media round trip
         // when the versioned listing already supplies size and type. Actual
         // bytes still go through fresh permission/version checks in the Bridge.
-        if studioPath == nil, resolvedVersion != nil, let info = request.contentInformationRequest,
+        if dataRequest == nil, studioPath == nil, resolvedVersion != nil, let info = request.contentInformationRequest,
            let size = item.size, size > 0 {
             info.contentType = UTType(mimeType: item.mimeType)?.identifier ?? UTType.data.identifier
             info.contentLength = size
@@ -225,6 +225,10 @@ struct LAADrivePlayerContent: View {
                     if owner.state == .loading { LAALoadingDots().allowsHitTesting(false) }
                 }
                 .accessibilityIdentifier("laa.drive.player")
+                #if DEBUG
+                .accessibilityValue(Text(verbatim: LAADriveData.fixture != nil && hasPresentedFrame && owner.source.position > 0
+                    ? "映像再生を確認" : ""))
+                #endif
             switch owner.state {
             case .loading:
                 EmptyView()

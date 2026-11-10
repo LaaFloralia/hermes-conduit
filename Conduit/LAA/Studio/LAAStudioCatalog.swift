@@ -88,7 +88,7 @@ private struct LAAStudioPrincipleView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
-                Text(verbatim: principle.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: principle.name).font(LAAType.title(principle.name)).foregroundStyle(LAAColor.text)
                 Text(verbatim: "\(principle.status == "adopted" ? "採用済み" : "下書き") · v\(principle.version) · 第\(principle.revision)版")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: principle.description).laaTextStyle(.body)
@@ -155,7 +155,7 @@ private struct LAAStudioDocumentView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                Text(verbatim: document.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: document.title).font(LAAType.title(document.title)).foregroundStyle(LAAColor.text)
                 Text(verbatim: "\(document.category) · \(document.detail)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let url = LAAStudioMedia.driveURL(document.driveUrl) {
                     Link(destination: url) { Label { Text(verbatim: "Driveで開く") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }

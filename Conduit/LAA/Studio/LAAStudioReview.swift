@@ -32,7 +32,7 @@ struct LAAStudioReviewView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
-                Text(verbatim: targetName).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: targetName).font(LAAType.title(targetName)).foregroundStyle(LAAColor.text)
                 Text(verbatim: "講評は記録です。作品や納品は変更されません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if unavailableInListing {

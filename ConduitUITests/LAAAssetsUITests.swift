@@ -42,7 +42,10 @@ final class LAAAssetsUITests: XCTestCase {
             XCTAssertTrue(item("video1", in: app).waitForExistence(timeout: 10))
             XCTAssertFalse(item("folder1", in: app).exists)
             item("video1", in: app).tap()
-            XCTAssertTrue(app.otherElements["laa.drive.player"].waitForExistence(timeout: 10))
+            let player = app.otherElements["laa.drive.player"]
+            XCTAssertTrue(player.waitForExistence(timeout: 10))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value == %@", "映像再生を確認"), object: player)], timeout: 12), .completed)
             capture("player-after", appearance)
             app.terminate()
         }
@@ -115,22 +118,12 @@ final class LAAAssetsUITests: XCTestCase {
         video.tap()
         let surface = app.otherElements["laa.drive.player"]
         XCTAssertTrue(surface.waitForExistence(timeout: 10))
-        let play = app.buttons["Play"]
-        let pause = app.buttons["Pause"]
-        let replay = app.buttons["laa.drive.player.replay"]
-        // The fixture is four seconds long and playback starts automatically.
-        // It may already be playing or finished by the time XCTest gets here.
-        if replay.exists { replay.tap() }
-        if !pause.exists && !play.exists { surface.tap() }
-        if play.exists { play.tap() }
-        if !pause.waitForExistence(timeout: 3), replay.exists {
-            replay.tap()
-            if !pause.exists { surface.tap() }
-        }
-        XCTAssertTrue(pause.waitForExistence(timeout: 4))
-        // Pause the short fixture before seeking so it cannot finish while
-        // accessibility queries are locating the native slider.
-        pause.tap()
+        let toggle = app.buttons.matching(NSPredicate(format: "label IN %@ OR identifier == %@", ["Play", "Pause", "Play/Pause"], "Play/Pause")).firstMatch
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "映像再生を確認"), object: surface)], timeout: 12), .completed)
+        if !toggle.exists { surface.tap() }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.tap()
         let slider = app.sliders.firstMatch
         let enabled = NSPredicate(format: "enabled == true")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: enabled, object: slider)], timeout: 20), .completed)

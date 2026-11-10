@@ -43,7 +43,7 @@ struct LAAAssetsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: onRequestSettings) }
+            LAASettingsToolbar(action: onRequestSettings)
             if !studioSelected {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { driveLayoutToggle &+= 1 } label: { Image(systemName: "square.grid.2x2") }
@@ -265,12 +265,9 @@ struct LAAAssetsView: View {
     }
 
     private var segments: some View {
-        Picker("Studio", selection: $studioSelected) {
-            Text("Studio").tag(true).accessibilityIdentifier("studio.section.studio")
-            Text("Drive").tag(false).accessibilityIdentifier("studio.drive")
-        }
-        .pickerStyle(.segmented)
-        .frame(minHeight: LAASpacing.minimumTouchTarget)
+        LAASegmentedControl(values: [true, false], selection: $studioSelected, title: { $0 ? "Works" : "Drive" },
+                            identifier: { $0 ? "studio.section.studio" : "studio.drive" })
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("studio.segment")
     }
 

@@ -113,7 +113,6 @@ struct LAADriveBrowserView: View {
             desktopBreadcrumb
             if desktop { searchField }
             if availableKinds.count > 1 { filters }
-            header
             results
         }
         .tint(LAAColor.link)
@@ -193,6 +192,7 @@ struct LAADriveBrowserView: View {
                 .buttonStyle(.plain).frame(minHeight: LAASpacing.minimumTouchTarget)
             }
             Spacer(minLength: 0)
+            fileMenu
         }
         .frame(minHeight: LAASpacing.minimumTouchTarget)
     }
@@ -239,10 +239,7 @@ struct LAADriveBrowserView: View {
         }
     }
 
-    private var header: some View {
-        HStack {
-            Text(verbatim: "ファイル").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
-            Spacer()
+    private var fileMenu: some View {
             Menu {
                 Picker(String("場所"), selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
                     ForEach(LAADriveBrowseSection.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
@@ -258,7 +255,6 @@ struct LAADriveBrowserView: View {
             } label: {
                 Image(systemName: "ellipsis").frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
             }.accessibilityLabel(String("ファイルの表示と操作")).accessibilityIdentifier("laa.drive.browser.menu")
-        }
     }
 
     @ViewBuilder private var results: some View {
@@ -326,7 +322,7 @@ struct LAADriveBrowserView: View {
                     Text(verbatim: entry.item.name).font(.body).foregroundStyle(LAAColor.text).lineLimit(2)
                     Spacer(minLength: 8)
                     if !entry.item.isFolder, let text = entry.item.modifiedAt, let date = Self.date(text) {
-                        Text(date, style: .relative).font(.footnote).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                        Text(verbatim: LAADateText.relative(date)).font(.footnote).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                     }
                 }.padding(.horizontal, LAASpacing.x4).frame(minHeight: LAASpacing.minimumRowHeight)
                     .background(selectedID == entry.id ? LAAColor.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 12))

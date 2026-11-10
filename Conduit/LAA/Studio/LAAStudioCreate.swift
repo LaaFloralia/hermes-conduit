@@ -9,6 +9,7 @@ struct LAAStudioCreateView: View {
     var draftID: String? = nil
     var initialPrinciple: LAAStudioRequest.Principle? = nil
     var inline = false
+    var adoption: LAAStudioAdoptButton? = nil
     var onSubmitted: () -> Void = {}
     @State private var draft = LAAStudioDraft()
     @State private var initialized = false
@@ -32,7 +33,11 @@ struct LAAStudioCreateView: View {
     @State private var selectUploadedReference = false
     @FocusState private var promptFocused: Bool
     var body: some View {
-        Group { if inline { composer } else { form } }
+        Group {
+            if let adoption { reviewComposer(adoption) }
+            else if inline { composer }
+            else { form }
+        }
         .tint(LAAColor.link)
         .sheet(isPresented: $referencePicker) {
             LAAStudioReferencePicker { reference in
@@ -185,20 +190,50 @@ struct LAAStudioCreateView: View {
                     .accessibilityLabel(Text(verbatim: initialProject == nil ? "依頼する" : "直しを頼む"))
                     .accessibilityIdentifier("laa.studio.composer.send")
             }
-            if draft.pending && !sending {
-                HStack {
-                    Button(String("状態を確認")) { Task { await check() } }.frame(minHeight: 44)
-                        .accessibilityIdentifier("laa.studio.check")
-                    if canRetry {
-                        Button(String("再試行")) { Task { await submit() } }.frame(minHeight: 44)
-                            .accessibilityIdentifier("laa.studio.retry")
-                    }
-                }.disabled(storageBlocked)
-            }
-            if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+            inlineFeedback
         }.padding(LAASpacing.x4)
             .frame(maxWidth: .infinity, minHeight: 112)
             .laaComposerGlass(in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    private func reviewComposer(_ adoption: LAAStudioAdoptButton) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            TextField(String("直してほしい点（任意）"), text: $draft.prompt, axis: .vertical)
+                .lineLimit(1...8).focused($promptFocused).disabled(editingBlocked)
+                .padding(.horizontal, LAASpacing.x4).frame(minHeight: 44)
+                .laaComposerGlass(in: Capsule())
+                .accessibilityIdentifier("laa.studio.composer.field")
+            HStack(alignment: .top, spacing: LAASpacing.x3) {
+                Button {
+                    if draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        draft.prompt = "修正の相談をお願いします。"
+                    }
+                    promptFocused = false
+                    Task { await submit() }
+                } label: {
+                    Text(verbatim: "直しを頼む").font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .laaComposerGlass(in: Capsule())
+                }.buttonStyle(.plain).disabled(editingBlocked || draft.prompt.utf16.count > 10000)
+                    .accessibilityIdentifier("laa.studio.composer.send")
+                adoption
+            }
+            inlineFeedback
+        }
+    }
+
+    @ViewBuilder private var inlineFeedback: some View {
+        if draft.pending && !sending {
+            HStack {
+                Button(String("状態を確認")) { Task { await check() } }.frame(minHeight: 44)
+                    .accessibilityIdentifier("laa.studio.check")
+                if canRetry {
+                    Button(String("再試行")) { Task { await submit() } }.frame(minHeight: 44)
+                        .accessibilityIdentifier("laa.studio.retry")
+                }
+            }.disabled(storageBlocked)
+        }
+        if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
     }
 
     private func finish(_ record: LAAStudioRecord) {
