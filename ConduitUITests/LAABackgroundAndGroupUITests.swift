@@ -13,6 +13,11 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))
     }
 
+    private func closeBackground(_ app: XCUIApplication) {
+        app.navigationBars["背景"].buttons["完了"].tap()
+        app.navigationBars["会話の情報"].buttons["完了"].tap()
+    }
+
     func testAllBackgroundsAndPhotoControlsPersist() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND"]
@@ -33,8 +38,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         let blurValue = blur.value as? String
         XCTAssertNotNil(dimValue)
         XCTAssertNotNil(blurValue)
-        app.buttons["完了"].tap()
-        app.buttons["完了"].tap()
+        closeBackground(app)
         app.terminate()
         app.launch()
         openBackground(app)
@@ -48,7 +52,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         for (mode, expected) in [
             ("empty", "グループはまだありません。"),
             ("error", "グループを読み込めませんでした"),
-            ("offline", "Macに接続できません。")
+            ("offline", "グループを開くにはMacに接続してください。")
         ] {
             let app = XCUIApplication()
             app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_GROUPS_STATE", mode]
@@ -81,8 +85,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         // The expanded photo canvas must not intercept controls above it.
         openBackground(app)
         app.buttons["background.fixture.photo"].tap()
-        app.buttons["完了"].tap()
-        app.buttons["完了"].tap()
+        closeBackground(app)
         let create = app.buttons["fixture.create"]
         XCTAssertTrue(create.waitForExistence(timeout: 20))
         create.tap()
@@ -112,7 +115,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertTrue(created.waitForExistence(timeout: 5))
         XCTAssertTrue(created.label.contains("2"))
         app.buttons["fixture.groups.list"].tap()
-        let openCreate = app.buttons["laa.chats.new"]
+        let openCreate = app.buttons["groups.create.open"]
         XCTAssertTrue(openCreate.waitForExistence(timeout: 15))
         openCreate.tap()
         XCTAssertTrue(app.textFields["groups.create.name"].waitForExistence(timeout: 5))
@@ -128,7 +131,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
 
     private func assertWhitePhotoIsDrawn(surface: String, file: StaticString = #filePath, line: UInt = #line) throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_CAPTURE_SURFACE", surface,
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_CAPTURE_SURFACE", surface,
                                "-LAA_CAPTURE_KIND", "photo", "-LAA_CAPTURE_WHITE"]
         app.launch()
         defer { app.terminate() }
@@ -147,7 +150,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         if surface == "chat" {
             let header = app.buttons["laa.employee.header"]
             XCTAssertTrue(header.waitForExistence(timeout: 5), file: file, line: line)
-            XCTAssertTrue(app.buttons["laa.employee.call"].exists, file: file, line: line)
+            XCTAssertFalse(app.buttons["laa.employee.call"].exists, file: file, line: line)
             let attachment = XCTAttachment(screenshot: app.screenshot())
             attachment.name = "staff-chat-photo-white"
             attachment.lifetime = .keepAlways

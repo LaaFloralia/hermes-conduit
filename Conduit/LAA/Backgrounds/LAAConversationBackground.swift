@@ -145,12 +145,14 @@ private struct LAAConversationFeaturesModifier: ViewModifier {
     @StateObject private var features = LAAConversationFeatures()
     @ObservedObject private var store = LAABackgroundStore.shared
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         let _ = store.revision
         let kind = LAAConversationScope.current(appState).map { store.setting(for: $0).kind } ?? .paper
-        let configured = content
+        content
             .environment(\.laaBackgroundKind, kind)
+            .environment(\.colorScheme, kind == .paper ? colorScheme : .dark)
             .environmentObject(features)
             .sheet(item: $features.sheet) { sheet in
                 switch sheet {
@@ -158,12 +160,6 @@ private struct LAAConversationFeaturesModifier: ViewModifier {
                 case .group: LAAGroupSettingsView().environmentObject(appState)
                 }
             }
-        if kind == .paper {
-            configured
-        } else {
-            configured
-                .environment(\.colorScheme, .dark)
-        }
     }
 }
 
