@@ -46,6 +46,9 @@ final class LAAAssetsUITests: XCTestCase {
             XCTAssertTrue(player.waitForExistence(timeout: 10))
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
                 predicate: NSPredicate(format: "value == %@", "映像再生を確認"), object: player)], timeout: 12), .completed)
+            let replay = app.buttons["laa.drive.player.replay"]
+            if replay.exists { replay.tap() }
+            XCTAssertFalse(replay.exists, "Capture an active player before the clip ends")
             capture("player-after", appearance)
             app.terminate()
         }

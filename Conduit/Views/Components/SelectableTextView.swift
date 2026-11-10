@@ -150,6 +150,9 @@ struct SelectableTextView: UIViewRepresentable {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
         context.coordinator.pinReplyAction = context.environment.chatPinReplyAction
+#if LAA_BUILD
+        context.coordinator.linkUnderlineStyle = context.environment.laaRichContentStyle ? 0 : NSUnderlineStyle.single.rawValue
+#endif
         let hostView = makeUIViewForTests(
             coordinator: context.coordinator,
             drawsUntilTouched: drawsUntilTouched(in: context.environment)
@@ -159,7 +162,6 @@ struct SelectableTextView: UIViewRepresentable {
 #if LAA_BUILD
         hostView.usesMessageMenu = context.environment.laaUsesMessageMenu
         hostView.openMessageMenu = context.environment.laaOpenMessageMenu
-        hostView.omitsLinkUnderline = context.environment.laaRichContentStyle
 #endif
         return hostView
     }
@@ -168,6 +170,9 @@ struct SelectableTextView: UIViewRepresentable {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
         context.coordinator.pinReplyAction = context.environment.chatPinReplyAction
+#if LAA_BUILD
+        context.coordinator.linkUnderlineStyle = context.environment.laaRichContentStyle ? 0 : NSUnderlineStyle.single.rawValue
+#endif
         // VoiceOver or Switch Control came on: they read the text view.
         if uiView.canvas != nil, !drawsUntilTouched(in: context.environment) {
             uiView.needsTextView = true
@@ -178,7 +183,6 @@ struct SelectableTextView: UIViewRepresentable {
 #if LAA_BUILD
         uiView.usesMessageMenu = context.environment.laaUsesMessageMenu
         uiView.openMessageMenu = context.environment.laaOpenMessageMenu
-        uiView.omitsLinkUnderline = context.environment.laaRichContentStyle
 #endif
     }
 
@@ -233,13 +237,14 @@ struct SelectableTextView: UIViewRepresentable {
             // from this view's inputs.
             coordinator.latestView = self
             uiView.coordinator = coordinator
-            let presentation = Coordinator.Presentation(view: self)
+            let presentation = Coordinator.Presentation(view: self, linkUnderlineStyle: coordinator.linkUnderlineStyle)
             if coordinator.canvasPresentation != presentation {
                 TranscriptPerf.note(.selectableTextViewTextRebuild)
                 canvas.configure(
                     text: styledText(),
                     font: font,
                     linkColor: linkColor,
+                    linkUnderlineStyle: coordinator.linkUnderlineStyle,
                     maximumNumberOfLines: maximumNumberOfLines,
                     wrapsLines: wrapsLines
                 )
@@ -303,10 +308,10 @@ struct SelectableTextView: UIViewRepresentable {
         // invalidation) — skip it entirely. Selection registration below is
         // deliberately NOT part of the gate: coordinator/segment changes must
         // keep flowing without forcing text restyling.
-        let presentation = Coordinator.Presentation(view: self)
+        let presentation = Coordinator.Presentation(view: self, linkUnderlineStyle: coordinator.linkUnderlineStyle)
         let presentationIsUnchanged = coordinator.appliedPresentation == presentation
         if !presentationIsUnchanged {
-            configure(textView, styledText: uiView.canvas?.text)
+            configure(textView, linkUnderlineStyle: coordinator.linkUnderlineStyle, styledText: uiView.canvas?.text)
             coordinator.appliedPresentation = presentation
             coordinator.presentationGeneration &+= 1
         }
@@ -531,7 +536,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
     }
 
-    private func configure(_ textView: UITextView, styledText precomputed: NSAttributedString? = nil) {
+    private func configure(_ textView: UITextView, linkUnderlineStyle: Int, styledText precomputed: NSAttributedString?) {
         textView.font = font
         textView.textColor = textColor
         textView.textContainer.widthTracksTextView = wrapsLines
@@ -544,7 +549,7 @@ struct SelectableTextView: UIViewRepresentable {
             : (wrapsLines ? .byWordWrapping : .byClipping)
         textView.linkTextAttributes = [
             .foregroundColor: linkColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue
+            .underlineStyle: linkUnderlineStyle
         ]
 
         let styledText = precomputed ?? self.styledText()
@@ -812,11 +817,12 @@ struct SelectableTextView: UIViewRepresentable {
             let maximumNumberOfLines: Int
             let wrapsLines: Bool
             let linkColor: UIColor
+            let linkUnderlineStyle: Int
             let textAlignment: NSTextAlignment
             let selfSizingWidthRange: ClosedRange<CGFloat>?
             let keepsParagraphStyles: Bool
 
-            init(view: SelectableTextView) {
+            init(view: SelectableTextView, linkUnderlineStyle: Int) {
                 self.attributedText = view.attributedText
                 self.font = view.font
                 self.textColor = view.textColor
@@ -824,6 +830,7 @@ struct SelectableTextView: UIViewRepresentable {
                 self.maximumNumberOfLines = view.maximumNumberOfLines
                 self.wrapsLines = view.wrapsLines
                 self.linkColor = view.linkColor
+                self.linkUnderlineStyle = linkUnderlineStyle
                 self.textAlignment = view.textAlignment
                 self.selfSizingWidthRange = view.selfSizingWidthRange
                 self.keepsParagraphStyles = view.keepsParagraphStyles
@@ -848,6 +855,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
         var linkColor: UIColor
+        var linkUnderlineStyle = NSUnderlineStyle.single.rawValue
         weak var selectionCoordinator: MarkdownSelectionCoordinator?
         var selectionSegment: MarkdownSelectionSegmentDescriptor?
 
@@ -1329,13 +1337,6 @@ final class SelectableTextViewHostView: UIView {
     var usesMessageMenu = false {
         didSet { configureMessageMenuGestures() }
     }
-    var omitsLinkUnderline = false { didSet { configureLinkUnderline() } }
-    func configureLinkUnderline() {
-        guard omitsLinkUnderline, let textView else { return }
-        var attributes = textView.linkTextAttributes ?? [:]
-        attributes[.underlineStyle] = 0
-        textView.linkTextAttributes = attributes
-    }
     var openMessageMenu: (() -> Void)? {
         didSet {
             if openMessageMenu != nil {
@@ -1531,7 +1532,6 @@ final class SelectableTextViewHostView: UIView {
         guard let textView else { return }
 #if LAA_BUILD
         configureMessageMenuGestures()
-        configureLinkUnderline()
 #endif
         addSubview(textView)
         textView.translatesAutoresizingMaskIntoConstraints = false

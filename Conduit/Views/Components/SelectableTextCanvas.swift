@@ -65,6 +65,7 @@ final class SelectableTextCanvas: UIView {
         text: NSAttributedString,
         font: UIFont,
         linkColor: UIColor,
+        linkUnderlineStyle: Int = NSUnderlineStyle.single.rawValue,
         maximumNumberOfLines: Int,
         wrapsLines: Bool
     ) {
@@ -80,7 +81,7 @@ final class SelectableTextCanvas: UIView {
         }
         linkStyle.attributes = [
             .foregroundColor: linkColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue
+            .underlineStyle: linkUnderlineStyle
         ]
         let lineBreakMode: NSLineBreakMode = maximumNumberOfLines > 0
             ? .byTruncatingTail

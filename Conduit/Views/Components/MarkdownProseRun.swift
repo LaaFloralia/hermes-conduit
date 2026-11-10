@@ -209,11 +209,19 @@ enum MarkdownProseRun {
 
         func listItems(_ items: [String], ordered: Bool, start: Int = 1) -> [Paragraph] {
             let markerColumn = ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize)
+            var numberColor = markerColor
+            var numberFont = markerFont
+#if LAA_BUILD
+            if ordered && usesLAARichContentStyle {
+                if !usesAccentSurface { numberColor = UIColor(LAAColor.secondaryText) }
+                numberFont = bodyFont
+            }
+#endif
             return items.enumerated().map { (index, item) -> Paragraph in
                 let marker = ordered ? "\(start + index)." : "•"
                 let markerAttributes: [NSAttributedString.Key: Any] = [
-                    .font: markerFont,
-                    .foregroundColor: markerColor
+                    .font: numberFont,
+                    .foregroundColor: numberColor
                 ]
                 let markerWidth = (marker as NSString).size(withAttributes: markerAttributes).width
                 let style = lineStyle(Spacing.listItemLineSpacing)

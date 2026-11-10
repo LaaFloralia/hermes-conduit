@@ -23,7 +23,7 @@ enum LAATab: String, CaseIterable, Identifiable {
         case .chats: return "bubble.left.and.bubble.right"
         case .today: return "calendar"
         case .studio: return "sparkles.rectangle.stack"
-        case .work: return "checklist"
+        case .work: return "list.bullet"
         case .brain: return "doc.text"
         case .source: return "photo.on.rectangle"
         case .usage: return "gauge.medium"

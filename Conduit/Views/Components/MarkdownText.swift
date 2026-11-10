@@ -1331,8 +1331,10 @@ enum InlineMarkdownContent {
             } else if let string = attributes[.link] as? String, let url = URL(string: string) {
                 run.link = url
             }
-            // Underlined, as a text view's link attributes draw a link.
-            if run.link != nil || attributes[.underlineStyle] != nil {
+            let underlineStyle = attributes[.underlineStyle] as? Int
+            if underlineStyle == 0 {
+                run[SwiftUIKeys.UnderlineStyleAttribute.self] = Text.LineStyle(pattern: .solid, color: .clear)
+            } else if run.link != nil || underlineStyle != nil {
                 run[SwiftUIKeys.UnderlineStyleAttribute.self] = .single
             }
             if attributes[.strikethroughStyle] != nil {

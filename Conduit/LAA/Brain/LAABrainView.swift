@@ -703,8 +703,9 @@ struct LAABrainView: View {
                     Image(systemName: "folder").foregroundStyle(LAAColor.link)
                     Text(verbatim: name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     Spacer(minLength: 0)
-                }.padding(LAASpacing.x4).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                    .overlay(alignment: .bottom) { LAAColor.separator.frame(height: 0.5) }
+                }
+                .padding(.vertical, LAASpacing.x3)
+                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
             }.buttonStyle(.plain)
         }
     }

@@ -72,8 +72,12 @@ final class LAABrainUITests: XCTestCase {
         focusLocalEditor(editor)
         app.buttons["laa.markdown.format.checkbox"].tap()
         editor.typeText("first\nsecond\nthird")
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["laa.markdown.format.checkbox"].isHittable)
+        let keyboard = app.keyboards.firstMatch
+        let checkbox = app.buttons["laa.markdown.format.checkbox"]
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            checkbox.isHittable && abs(keyboard.frame.minY - checkbox.frame.maxY) < 40
+        }, object: nil)], timeout: 5), .completed)
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "doc-checklist-" + style.lowercased(); shot.lifetime = .keepAlways; add(shot)
         XCTAssertEqual(editor.value as? String, "- [ ] first\n- [ ] second\n- [ ] third")
@@ -778,10 +782,13 @@ final class LAABrainUITests: XCTestCase {
         openNoteMenu(app)
         app.buttons["laa.brain.rawToggle"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.raw"].label.contains("追記"))
-        app.buttons["BackButton"].tap()
-        let dateNote = app.staticTexts["11月11日（水）"].firstMatch
+        app.terminate()
+        app.launch()
+        let dateNote = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@",
+                                                         "laa.brain.note", "11月11日")).firstMatch
         XCTAssertTrue(dateNote.waitForExistence(timeout: 10))
         dateNote.tap()
+        XCTAssertEqual(app.staticTexts["laa.brain.note.title"].label, "11月11日（水）")
         XCTAssertTrue(app.staticTexts["11月10日 更新"].waitForExistence(timeout: 10))
         let read = XCTAttachment(screenshot: app.screenshot()); read.name = "doc-reading-" + style; read.lifetime = .keepAlways; add(read)
     }

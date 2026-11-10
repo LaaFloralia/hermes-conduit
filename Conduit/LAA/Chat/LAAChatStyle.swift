@@ -92,7 +92,7 @@ enum LAALinkDecoration {
         guard !ranges.isEmpty else { return text }
         let result = NSMutableAttributedString(attributedString: text)
         for range in ranges.reversed() {
-            result.removeAttribute(.underlineStyle, range: range)
+            result.addAttribute(.underlineStyle, value: 0, range: range)
             var attributes = text.attributes(at: NSMaxRange(range) - 1, effectiveRange: nil)
             attributes[MarkdownProseRun.copiesAs] = ""
             attributes[.underlineStyle] = 0
