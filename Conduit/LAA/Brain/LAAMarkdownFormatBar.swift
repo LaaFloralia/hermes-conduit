@@ -1,169 +1,75 @@
 #if LAA_BUILD
 import SwiftUI
 
-/// The Liquid Glass format menu above the editor. It acts on the caret and
-/// selection of the text run that has focus, the way a word processor's
-/// toolbar does, and shows which block the caret is in.
-/// One sheet of glass holds the whole row; the glyphs are plain and only the
-/// block under the caret is filled.
-private enum LAAMarkdownBarMetrics {
-    static let content: CGFloat = 36
-    static let height: CGFloat = 54
-}
-
+/// One row above the keyboard; less frequent formats live in the heading menu.
 struct LAAMarkdownFormatBar: View {
     @ObservedObject var session: LAAMarkdownEditingSession
-
-    private struct Item: Identifiable {
-        let id: String
-        let label: String
-        let symbol: String
-        let accessibility: String
-        let action: LAAMarkdownEditingSession.Action
-        let selected: Bool
-    }
-
-    private var items: [Item] {
-        let block = session.block
-        // The owner's block formats come first, so they stay on a 440pt screen
-        // without scrolling; the character formats follow.
-        return [
-            Item(id: "bullet", label: "•", symbol: "list.bullet", accessibility: "箇条書き",
-                 action: .block(.bullet), selected: block == .bullet),
-            Item(id: "ordered", label: "1.", symbol: "list.number", accessibility: "番号付きリスト",
-                 action: .block(.ordered), selected: block == .ordered),
-            Item(id: "checkbox", label: "☑", symbol: "checklist", accessibility: "チェックボックス",
-                 action: .checkbox, selected: block == .checkbox),
-            Item(id: "quote", label: "❝", symbol: "text.quote", accessibility: "引用",
-                 action: .block(.quote), selected: block == .quote),
-            Item(id: "bold", label: "B", symbol: "bold", accessibility: "太字",
-                 action: .inline("**"), selected: false),
-            Item(id: "italic", label: "I", symbol: "italic", accessibility: "斜体",
-                 action: .inline("*"), selected: false),
-            Item(id: "strike", label: "S", symbol: "strikethrough", accessibility: "取り消し線",
-                 action: .inline("~~"), selected: false),
-            Item(id: "code", label: "`", symbol: "chevron.left.forwardslash.chevron.right", accessibility: "コード",
-                 action: .inline("`"), selected: false)
-        ]
-    }
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        // The bar is one row tall, and the row itself is the glass: ten
-        // separate pieces of glass in one line were neither the HIG's
-        // "sparingly" nor cheap to composite while scrolling. The table
-        // action sits outside the scroll view, pinned to the trailing edge,
-        // so it is reachable on a 440pt screen without scrolling.
         HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: LAASpacing.x1) {
-                    headingMenu
-                    Divider().frame(height: 22)
-                    ForEach(items) { item in
-                        Button { session.apply(item.action) } label: {
-                            formatGlyph(item)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text(verbatim: item.accessibility))
-                        .accessibilityIdentifier("laa.markdown.format.\(item.id)")
-                    }
-                }
-                .padding(.horizontal, LAASpacing.x2)
-            }
-            Button { session.apply(.table) } label: {
-                Image(systemName: "tablecells").font(.callout.weight(.semibold))
-                    .foregroundStyle(LAAColor.text)
-                    .frame(minWidth: LAAMarkdownBarMetrics.content, minHeight: LAAMarkdownBarMetrics.content)
-                    .padding(.horizontal, LAASpacing.x1)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: "表を挿入"))
-            .accessibilityIdentifier("laa.markdown.format.table")
-            .padding(.trailing, LAASpacing.x2)
+            control("checkbox", "checklist", LAACopy.Brain.checklist, .block(.checkbox), selected: session.block == .checkbox)
+            control("bullet", "list.bullet", LAACopy.Brain.bullet, .block(.bullet), selected: session.block == .bullet)
+            control("ordered", "list.number", LAACopy.Brain.ordered, .block(.ordered), selected: session.block == .ordered)
+            Menu {
+                Button("見出し1") { session.apply(.block(.heading1)) }
+                Button("見出し2") { session.apply(.block(.heading2)) }
+                Button("見出し3") { session.apply(.block(.heading3)) }
+                Button("本文") { session.apply(.block(.body)) }
+                Divider()
+                Button("引用") { session.apply(.block(.quote)) }
+                Button("太字") { session.apply(.inline("**")) }
+                Button("斜体") { session.apply(.inline("*")) }
+                Button("コード") { session.apply(.inline("`")) }
+                Button("表を挿入") { session.apply(.table) }
+                    .accessibilityIdentifier("laa.markdown.format.table")
+            } label: { glyph("textformat", selected: isHeading) }
+                .accessibilityLabel(Text(verbatim: LAACopy.Brain.format))
+                .accessibilityIdentifier("laa.markdown.format.heading")
+            control("outdent", "decrease.indent", LAACopy.Brain.outdent, .indent(outdent: true))
+            control("indent", "increase.indent", LAACopy.Brain.indent, .indent(outdent: false))
+            control("undo", "arrow.uturn.backward", LAACopy.Brain.undo, .undo)
+                .contextMenu { Button("やり直す") { session.apply(.redo) } }
+            control("dismiss", "keyboard.chevron.compact.down", LAACopy.Brain.dismissKeyboard, .dismissKeyboard)
         }
-        .frame(height: LAAMarkdownBarMetrics.height)
+        .frame(maxWidth: .infinity)
         .modifier(LAAFormatBarGlass())
-        // `contain` keeps the bar itself addressable while each button keeps
-        // its own identifier: a bare identifier on a container is inherited by
-        // its direct children, which hid the pinned table button from tests
-        // and VoiceOver alike.
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.markdown.formatBar")
-    }
-
-    @ViewBuilder private func formatGlyph(_ item: Item) -> some View {
-        Group {
-            if item.id == "bold" || item.id == "italic" {
-                Text(verbatim: item.label).font(.callout.weight(.semibold))
-            } else if item.id == "strike" {
-                Text(verbatim: item.label).strikethrough()
-            } else if item.id == "code" {
-                Text(verbatim: item.label).font(.system(.callout, design: .monospaced))
-            } else {
-                Text(verbatim: item.label).font(.callout.weight(.semibold))
-            }
-        }
-        .foregroundStyle(item.selected ? LAAColor.link : LAAColor.text)
-        .frame(minWidth: LAAMarkdownBarMetrics.content, minHeight: LAAMarkdownBarMetrics.content)
-        // The fill covers the 44pt-wide target, not just the glyph.
-        .padding(.horizontal, LAASpacing.x1)
-        .background {
-            if item.selected {
-                Capsule().fill(LAAColor.selectionFill)
-            }
-        }
-        .contentShape(Rectangle())
     }
 
     private var isHeading: Bool {
         session.block == .heading1 || session.block == .heading2 || session.block == .heading3
     }
 
-    private var headingMenu: some View {
-        Menu {
-            Button { session.apply(.block(.heading1)) } label: {
-                Text(verbatim: "見出し1")
-            }
-            Button { session.apply(.block(.heading2)) } label: {
-                Text(verbatim: "見出し2")
-            }
-            Button { session.apply(.block(.heading3)) } label: {
-                Text(verbatim: "見出し3")
-            }
-            Button { session.apply(.block(.body)) } label: {
-                Text(verbatim: "本文")
-            }
-        } label: {
-            HStack(spacing: 2) {
-                Text(verbatim: "H").font(.callout.weight(.semibold))
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
-            }
-            .foregroundStyle(isHeading ? LAAColor.link : LAAColor.text)
-            .frame(minWidth: LAASpacing.minimumTouchTarget - 6, minHeight: LAAMarkdownBarMetrics.content)
+    private func control(_ id: String, _ symbol: String, _ label: String,
+                         _ action: LAAMarkdownEditingSession.Action, selected: Bool = false) -> some View {
+        Button { session.apply(action) } label: { glyph(symbol, selected: selected) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: label))
+            .accessibilityIdentifier("laa.markdown.format.\(id)")
+    }
+
+    private func glyph(_ symbol: String, selected: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
+            .frame(minWidth: LAASpacing.minimumTouchTarget)
             .background {
-                if isHeading {
-                    Capsule().fill(LAAColor.selectionFill)
-                }
+                if selected { Circle().fill(LAAColor.selectionFill).padding(LAASpacing.x1) }
             }
             .contentShape(Rectangle())
-        }
-        .accessibilityLabel(Text(verbatim: "見出し"))
-        .accessibilityIdentifier("laa.markdown.format.heading")
     }
 }
 
-/// The row's single sheet of glass. Before iOS 26 and with Reduce
-/// Transparency it falls back to the opaque card with a hairline, as
-/// `LAAGlassControl` does.
 private struct LAAFormatBarGlass: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26.0, *), !reduceTransparency {
             content.glassEffect(.regular, in: .capsule)
         } else {
-            content
-                .background(LAAColor.surface, in: Capsule())
+            content.background(LAAColor.surface, in: Capsule())
                 .overlay { Capsule().strokeBorder(LAAColor.separator, lineWidth: 1) }
         }
     }

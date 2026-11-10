@@ -90,7 +90,11 @@ enum LAAMarkdownStyler {
             let level = line.listLevel
             let indent = gutter * CGFloat(level)
             let paragraph = NSMutableParagraphStyle()
-            paragraph.lineSpacing = 2
+            paragraph.lineHeightMultiple = 1.6
+            // Markdown's blank source line supplies the paragraph gap. Adding
+            // another margin to every source line doubles that space and spreads lists apart.
+            paragraph.paragraphSpacing = 0
+            paragraph.lineBreakMode = .byWordWrapping
 
             // Glyphs are collected for every line; the text view draws them
             // from its own geometry, so limiting the runs below cannot make a
@@ -120,10 +124,11 @@ enum LAAMarkdownStyler {
                 attributes[.foregroundColor] = secondary
             case .heading(let headingLevel):
                 attributes[.font] = headingFont(headingLevel)
-                paragraph.paragraphSpacingBefore = headingLevel == 1 ? 14 : 10
-                paragraph.paragraphSpacing = 4
+                paragraph.paragraphSpacingBefore = 24
+                paragraph.paragraphSpacing = 0
                 markerIsGlyph = true
             case .bullet, .checkbox:
+                if case .checkbox(checked: true) = line.kind { attributes[.foregroundColor] = secondary }
                 paragraph.firstLineHeadIndent = indent + gutter
                 paragraph.headIndent = indent + gutter
                 markerIsGlyph = true
@@ -146,7 +151,11 @@ enum LAAMarkdownStyler {
                 attributes[.foregroundColor] = secondary
             case .rule:
                 attributes[.foregroundColor] = UIColor(LAAColor.separator)
-            case .blank, .paragraph:
+            case .blank:
+                paragraph.lineHeightMultiple = 1
+                paragraph.minimumLineHeight = 12
+                paragraph.maximumLineHeight = 12
+            case .paragraph:
                 break
             }
 
@@ -189,12 +198,13 @@ enum LAAMarkdownStyler {
                     spanAttributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 }
                 if !spanAttributes.isEmpty {
-                    runs.append(Run(range: span.range, reset: false, attributes: spanAttributes))
+                    runs.append(Run(range: NSRange(location: line.range.location + span.range.location, length: span.range.length),
+                                    reset: false, attributes: spanAttributes))
                 }
                 if !editingThisLine {
                     let length = (line.text as NSString).length
                     for marker in span.markers where marker.length > 0 && NSMaxRange(marker) <= length {
-                        runs.append(Run(range: marker, reset: false,
+                        runs.append(Run(range: NSRange(location: line.range.location + marker.location, length: marker.length), reset: false,
                                         attributes: [.font: hiddenFont, .foregroundColor: clearInk]))
                     }
                 }

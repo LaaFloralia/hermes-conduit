@@ -11,6 +11,7 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         enum Content {
             case text(String)
             case table(LAAMarkdownTable)
+            case attachment(String)
         }
         let id: UUID
         var content: Content
@@ -45,7 +46,7 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     var sourceText: String {
         LAAMarkdownParser.text(from: segments.filter { !($0.isTrailingEntry && $0.isEmptyText) }.map { segment -> LAAMarkdownSegment in
             switch segment.content {
-            case .text(let text): return .text(text)
+            case .text(let text), .attachment(let text): return .text(text)
             case .table(let table): return .table(table)
             }
         })
@@ -63,16 +64,32 @@ final class LAAMarkdownDocumentModel: ObservableObject {
     }
 
     private static func build(_ text: String) -> [Segment] {
-        var result = LAAMarkdownParser.segments(in: text).map { segment -> Segment in
-            switch segment {
-            case .text(let text): return Segment(id: UUID(), content: .text(text))
-            case .table(let table): return Segment(id: UUID(), content: .table(table))
+        var result: [Segment] = []
+        for part in LAAMarkdownParser.segments(in: text) {
+            switch part {
+            case .table(let table): result.append(Segment(id: UUID(), content: .table(table)))
+            case .text(let source):
+                let kinds = LAAMarkdownParser.lines(in: source)
+                var pending: [String] = []
+                func flush() {
+                    if !pending.isEmpty { result.append(Segment(id: UUID(), content: .text(pending.joined(separator: "\n")))); pending.removeAll() }
+                }
+                for (index, line) in source.components(separatedBy: "\n").enumerated() {
+                    let literal: Bool
+                    if kinds.indices.contains(index) {
+                        switch kinds[index].kind { case .code, .fence, .frontmatter: literal = true; default: literal = false }
+                    } else { literal = false }
+                    if !literal, let embed = LAABrainEmbedSpec.parse(line), !embed.hasSurroundingText {
+                        flush(); result.append(Segment(id: UUID(), content: .attachment(line)))
+                    } else { pending.append(line) }
+                }
+                flush()
             }
         }
         // A note that ends on a table row has no text run after it, so the
         // caret has nowhere to go and the toolbar has no run to insert into.
         // Offer an empty one; it disappears from the saved text while empty.
-        if case .table? = result.last?.content {
+        if result.last.map({ if case .table = $0.content { return true }; if case .attachment = $0.content { return true }; return false }) == true {
             result.append(Segment(id: UUID(), content: .text(""), isTrailingEntry: true))
         }
         return result
@@ -84,6 +101,14 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         guard let index = segments.firstIndex(where: { $0.id == id }) else { return }
         segments[index].content = .text(text)
         onChange(sourceText)
+    }
+
+    func updateAttachment(_ id: UUID, source: String) {
+        guard let index = segments.firstIndex(where: { $0.id == id }), case .attachment(let previous) = segments[index].content,
+              source != previous else { return }
+        segments.replaceSubrange(index...index, with: Self.build(source))
+        onChange(sourceText)
+        revision += 1
     }
 
     func table(_ id: UUID) -> LAAMarkdownTable? {
@@ -140,12 +165,7 @@ final class LAAMarkdownDocumentModel: ObservableObject {
         if index + 1 < segments.count, isTable(segments[index + 1]), Self.endsWithTableRow(edit.text) {
             edit = LAAMarkdownEdit(text: edit.text + "\n", selection: edit.selection)
         }
-        let replacement = LAAMarkdownParser.segments(in: edit.text).map { segment -> Segment in
-            switch segment {
-            case .text(let text): return Segment(id: UUID(), content: .text(text))
-            case .table(let table): return Segment(id: UUID(), content: .table(table))
-            }
-        }
+        let replacement = Self.build(edit.text)
         segments.replaceSubrange(index...index, with: replacement)
         if case .text(let first)? = segments.first?.content, first.isEmpty, segments.count > 1 {
             segments.removeFirst()

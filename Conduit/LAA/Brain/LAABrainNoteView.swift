@@ -15,6 +15,7 @@ struct LAABrainNoteView: View {
     @Binding var path: [LAABrainRoute]
     @Binding var autoEditPath: String?
     @Binding var editorIsOpen: Bool
+    var readingPositions: LAABrainReadingPositions
     /// The Mac detail column has no list to go back to and takes the window
     /// title from the shell.
     var showsBackButton = true
@@ -33,16 +34,29 @@ struct LAABrainNoteView: View {
     @State private var showQuickSwitch = false
     @State private var showManage = false
     @State private var managedNote: LAABrainNote?
-    @State private var editorRoot: URL?
-    @State private var editorAutoFocus = false
+    @State private var showInfo = false
+    @State private var autoFocusRequested = false
 
     var body: some View {
         ScrollViewReader { proxy in
+            Group {
+                if isLocal, let root = try? local.snapshot(), !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
+                    LAABrainSaveEditor(root: root, path: reference.path,
+                        autoFocus: autoFocusRequested, inline: true,
+                        showsBackButton: showsBackButton, isPinned: isPinned, togglePin: togglePin,
+                        leave: { if let leave { leave() } else if !path.isEmpty { path.removeLast() } },
+                        manage: { managedNote = note; editorIsOpen = true; showManage = true },
+                        readingPositions: readingPositions,
+                        onOpenLink: { target in openLink(target) },
+                        attachments: { source in AnyView(attachmentPreviews(source)) }) { Task { await load() } }
+                        .id(root.absoluteString + reference.path)
+                } else {
             ZStack {
                 LAAColor.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                        Text(verbatim: reference.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent)
+                            .font(.custom("Georgia", size: 34, relativeTo: .largeTitle))
                         if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                             Text(verbatim: "競合コピー").foregroundStyle(LAAColor.attention)
                                 .accessibilityIdentifier("laa.brain.conflictCopy")
@@ -90,47 +104,32 @@ struct LAABrainNoteView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .foregroundStyle(LAAColor.text)
                 }
+                .modifier(LAABrainReadingPosition(store: readingPositions,
+                          key: ((try? local.snapshot())?.absoluteString ?? "bridge") + reference.path,
+                          loaded: note != nil, hasAnchor: reference.anchor != nil))
             }
-            .navigationTitle(Text(verbatim: usesNavigationTitle
-                                    ? (reference.path.split(separator: "/").last.map(String.init) ?? reference.path)
-                                    : ""))
+                }
+            }
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
-                if showsBackButton {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { if !path.isEmpty { path.removeLast() } } label: {
-                            Label { Text(verbatim: LAACopy.Brain.back) } icon: { Image(systemName: "chevron.left") }
-                        }.accessibilityIdentifier("laa.brain.back")
+                if !isLocal || LAABrainSaveCoordinator.isConflictCopy(reference.path) {
+                    if showsBackButton {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { if !path.isEmpty { path.removeLast() } } label: { Image(systemName: "chevron.left") }
+                                .accessibilityLabel("戻る").accessibilityIdentifier("laa.brain.back")
+                        }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showQuickSwitch = true } label: { Image(systemName: "doc.text.magnifyingglass") }
-                        .accessibilityLabel(Text(verbatim: "Switch note"))
-                        .accessibilityIdentifier("laa.brain.quickSwitch")
-                }
-                if isLocal && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("編集") { openEditor() }
-                            .accessibilityLabel(Text(verbatim: "ノートを編集"))
-                            .accessibilityIdentifier("laa.brain.edit")
+                        Menu {
+                            Button("文書内検索") { showQuickSwitch = true }
+                            Button(isPinned ? "ピン留めを外す" : "ピン留めする", action: togglePin)
+                            Button(raw ? "本文を表示" : "Markdownを表示") { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
+                            Button("情報") { showInfo = true }
+                        } label: { Image(systemName: "ellipsis") }
+                            .accessibilityLabel("ノートのメニュー").accessibilityIdentifier("laa.brain.menu")
                     }
-                }
-                if isLocal && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { managedNote = note; editorIsOpen = true; showManage = true } label: { Image(systemName: "ellipsis.circle") }
-                            .accessibilityLabel(Text(verbatim: "ノートの管理"))
-                            .accessibilityIdentifier("laa.brain.manage")
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: togglePin) { Image(systemName: isPinned ? "pin.fill" : "pin") }
-                        .accessibilityLabel(Text(verbatim: isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin))
-                        .accessibilityIdentifier("laa.brain.pin")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { raw.toggle() } label: { Text(verbatim: raw ? LAACopy.Brain.formatted : LAACopy.Brain.raw) }
-                        .accessibilityIdentifier("laa.brain.rawToggle")
                 }
             }
             .environment(\.openURL, OpenURLAction { url in
@@ -180,29 +179,41 @@ struct LAABrainNoteView: View {
                     path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox)))
                 }
             }
-            .sheet(isPresented: Binding(get: { editorRoot != nil }, set: { if !$0 { editorRoot = nil; editorIsOpen = false } })) {
-                if let editorRoot {
-                    LAABrainSaveEditor(root: editorRoot, path: reference.path, autoFocus: editorAutoFocus) { Task { await load() } }
+            .sheet(isPresented: $showInfo) {
+                NavigationStack {
+                    List { LabeledContent("場所", value: reference.path)
+                        if let metadata = note.map({ LAABrainDocument($0.text).frontmatter }) ?? nil {
+                            Text(verbatim: metadata).textSelection(.enabled)
+                        }
+                    }.navigationTitle("情報")
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
                 }
             }
             .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : 0, isLocal: isLocal)) { await load() }
-            .onChange(of: note?.path, initial: true) { _, _ in openRequestedEditorIfReady() }
-            .onChange(of: autoEditPath) { _, _ in openRequestedEditorIfReady() }
+            .onAppear { if autoEditPath == reference.path { autoFocusRequested = true; autoEditPath = nil } }
         }
     }
 
-    private func openEditor(autoFocus: Bool = false) {
-        guard let root = try? local.snapshot() else { return }
-        editorAutoFocus = autoFocus
-        editorIsOpen = true
-        editorRoot = root
+    @ViewBuilder private func attachmentPreviews(_ source: String) -> some View {
+        let images = LAABrainDocument(source).parts(currentPath: reference.path, files: files).compactMap { part -> String? in
+            if case .image(let value) = part { return value }; return nil
+        }
+        ForEach(Array(images.enumerated()), id: \.offset) { _, image in
+            LAABrainEmbedView(source: image, currentPath: reference.path, files: files, local: local,
+                              isLocal: true, visited: [reference.path], depth: 0, maxPixelSize: 1600,
+                              open: { path.append(.note($0)) }, lookup: LAABrainPathLookup(files: files))
+        }
     }
 
-    private func openRequestedEditorIfReady() {
-        guard isLocal, note != nil, autoEditPath == reference.path, editorRoot == nil,
-              !LAABrainSaveCoordinator.isConflictCopy(reference.path) else { return }
-        openEditor(autoFocus: true)
-        if editorRoot != nil { autoEditPath = nil }
+    private func openLink(_ target: String) {
+        let rawTarget = target.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? target
+        if let file = LAABrainPaths.resolve(rawTarget, currentPath: reference.path, files: files) {
+            let pieces = rawTarget.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+            path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox,
+                                              anchor: pieces.count > 1 ? String(pieces[1]) : nil)))
+        } else if let url = URL(string: rawTarget), ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "") {
+            UIApplication.shared.open(url)
+        }
     }
 
     @ViewBuilder private func relatedLinks(_ title: String, files: [LAABrainFile]) -> some View {
@@ -218,7 +229,8 @@ struct LAABrainNoteView: View {
     }
 
     @MainActor private func load() async {
-        loading = true; error = nil; localError = nil; note = nil
+        if note?.path != reference.path { loading = true; note = nil }
+        error = nil; localError = nil
         if isLocal {
             do {
                 let root = try local.snapshot()
@@ -265,9 +277,9 @@ private struct LAABrainQuickSwitch: View {
                     }
                 }.accessibilityIdentifier("laa.brain.quickSwitch.note")
             }
-            .searchable(text: $query, prompt: "Find a note")
-            .navigationTitle("Switch note")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            .searchable(text: $query, prompt: "ノートを検索")
+            .navigationTitle("ノートを切り替える")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
         }
     }
 }

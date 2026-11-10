@@ -45,13 +45,13 @@ struct LAABrainManageNoteView: View {
             .navigationTitle(Text(verbatim: "ノートの管理"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Text(verbatim: LAACopy.close) }.disabled(busy)
+                    Button { dismiss() } label: { Text(verbatim: LAACopy.Brain.close) }.disabled(busy)
                 }
             }
             .confirmationDialog(Text(verbatim: "このノートをゴミ箱へ移動しますか？"), isPresented: $confirmTrash, titleVisibility: .visible) {
                 Button(role: .destructive) { perform(trash: true) } label: { Text(verbatim: "ゴミ箱へ移動") }
                     .accessibilityIdentifier("laa.brain.manage.confirmTrash")
-                Button(role: .cancel) {} label: { Text(verbatim: LAACopy.cancel) }
+                Button(role: .cancel) {} label: { Text(verbatim: LAACopy.Brain.cancel) }
             }
         }
         .interactiveDismissDisabled(busy)
