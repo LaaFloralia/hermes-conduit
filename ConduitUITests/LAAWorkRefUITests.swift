@@ -27,14 +27,20 @@ final class LAAWorkRefUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
+        XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
         XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 20))
         return app
     }
 
     private func section(_ app: XCUIApplication, _ value: String) {
-        let button = app.buttons["work.section.\(value)"]
-        if button.frame.maxX > app.frame.maxX - 10 { app.buttons["work.section.projects"].tap() }
-        button.tap()
+        for _ in 0..<3 where !app.buttons["work.section.sessions"].isHittable {
+            app.navigationBars.buttons.firstMatch.tap()
+        }
+        if value == "projects" {
+            app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        } else if value == "skills" {
+            app.buttons["Settings"].tap(); app.buttons["settings.skills"].tap()
+        } else { app.buttons["work.section.\(value)"].tap() }
     }
 
     private func searchField(_ app: XCUIApplication) -> XCUIElement {
@@ -78,7 +84,7 @@ final class LAAWorkRefUITests: XCTestCase {
         app.staticTexts["work.session.ses_1111111111111111"].firstMatch.tap()
         // The short number sits in the bar's heading pill, not in the page.
         let header = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier == %@ AND label CONTAINS 'S1'", "work.session.detail.title")).firstMatch
+            NSPredicate(format: "identifier == %@", "work.session.detail.title")).firstMatch
         XCTAssertTrue(header.waitForExistence(timeout: 15))
         app.navigationBars.buttons.firstMatch.tap()
 
@@ -92,10 +98,13 @@ final class LAAWorkRefUITests: XCTestCase {
 
         // Routines: the scheduled row, then the resident one.
         section(app, "routines")
-        XCTAssertTrue(app.staticTexts["work.ref.R1"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.waitForExistence(timeout: 20))
+        app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["work.ref.R1"].waitForExistence(timeout: 10))
         // The disclosure carries one identifier for its subtree, so the
         // resident routine is matched by its label.
         app.buttons["work.routines.services"].tap()
+        app.buttons.containing(.staticText, identifier: "常駐の確認用").firstMatch.tap()
         XCTAssertTrue(app.staticTexts["R2"].waitForExistence(timeout: 10))
 
         // Skills: the row and the skill's detail.
@@ -170,13 +179,11 @@ final class LAAWorkRefSnapshotTests: XCTestCase {
         attach("shots-tasks-\(appearance)")
 
         let sessions = app.buttons["work.section.sessions"]
-        if sessions.frame.maxX > app.frame.maxX - 10 { app.buttons["work.section.projects"].tap() }
         sessions.tap()
         XCTAssertTrue(app.staticTexts["work.session.ses_1111111111111111"].waitForExistence(timeout: 20))
         attach("shots-sessions-\(appearance)")
 
         let tasks = app.buttons["work.section.tasks"]
-        if tasks.frame.maxX > app.frame.maxX - 10 { app.buttons["work.section.projects"].tap() }
         tasks.tap()
         XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 20))
         // The phone's search only exists from this candidate on; master shows

@@ -1,7 +1,7 @@
 #if LAA_BUILD
 import SwiftUI
 
-struct LAAWorkSkill: Decodable, Identifiable {
+struct LAAWorkSkill: Codable, Identifiable {
     let id: String
     let name: String
     let description: String
@@ -83,7 +83,8 @@ enum LAAWorkRoutineTime {
         let calendar = Calendar.autoupdatingCurrent
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         let clock = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-        guard !calendar.isDate(date, inSameDayAs: now) else { return clock }
+        guard !calendar.isDate(date, inSameDayAs: now) else { return "今日 " + clock }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) { return "明日 " + clock }
         let day = calendar.dateComponents([.month, .day], from: date)
         return "\(day.month ?? 0)/\(day.day ?? 0) " + clock
     }
@@ -95,6 +96,13 @@ struct LAAWorkCatalogView: View {
     /// The Work hub's search on the phone; the Mac column keeps its own field.
     var query = ""
     @EnvironmentObject private var bridge: LAABridgeSession
+    @StateObject private var cache: ComposerDraftStore
+
+    @MainActor init(kind: Kind, query: String = "") {
+        self.kind = kind; self.query = query
+        let name = kind == .routines ? "routines" : "skills"
+        _cache = StateObject(wrappedValue: LAAWorkDrafts.makeStore(fileURL: LAAWorkDrafts.fileURL.deletingLastPathComponent().appendingPathComponent("catalog-" + name + "-cache-v1.json")))
+    }
     @State private var routines: [LAAWorkRoutine] = []
     @State private var skills: [LAAWorkSkill] = []
     @State private var loading = false
@@ -106,6 +114,7 @@ struct LAAWorkCatalogView: View {
     /// Rows the Bridge skipped in the last routines read; any makes the list
     /// partial, so the screen says so instead of calling it complete.
     @State private var skipped = 0
+    @State private var expandedRoutines = Set<String>()
     /// A first read the Bridge was still preparing is asked again, so a cold
     /// cache does not leave "could not load" on screen until someone taps.
     @State private var retryTask: Task<Void, Never>?
@@ -114,10 +123,9 @@ struct LAAWorkCatalogView: View {
     var body: some View {
         List {
             if let failure {
-                Text(verbatim: failure).foregroundStyle(LAAColor.attention)
-                Button { Task { await load() } } label: { Text(verbatim: "読み直す") }
+                LAAWorkFailure(text: "一覧を取得できません") { Task { await load() } }
             }
-            if loading { ProgressView().frame(maxWidth: .infinity) }
+            if loading && !loaded { LAAWorkSkeleton().listRowBackground(Color.clear) }
             if kind == .routines, skipped > 0 {
                 Text(verbatim: "一部（\(skipped)件）を読み取れませんでした。表示は前回の内容です。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -129,13 +137,11 @@ struct LAAWorkCatalogView: View {
                     .accessibilityIdentifier("work.routines.fetchedAt")
             }
             if kind == .routines {
-                ForEach(LAAWorkRoutineGrouping.groups(shownRoutines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" })) { group in
-                    Section {
-                        ForEach(group.routines) { routine in routineRow(routine) }
-                    } header: {
-                        Text(verbatim: group.destination).accessibilityIdentifier("work.routines.group")
-                    }
-                }
+                Section {
+                    ForEach(shownRoutines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }.sorted {
+                        (LAAWorkRoutineTime.date($0.nextRunAt) ?? .distantFuture) < (LAAWorkRoutineTime.date($1.nextRunAt) ?? .distantFuture)
+                    }) { routine in routineRow(routine) }
+                } header: { Text(verbatim: "Routines") }
                 let services = shownRoutines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
                 if !services.isEmpty {
                     DisclosureGroup {
@@ -171,16 +177,8 @@ struct LAAWorkCatalogView: View {
                 }.listRowBackground(Color.clear)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.insetGrouped).textCase(nil)
         .scrollContentBackground(.hidden)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
-                    .accessibilityLabel(Text(verbatim: "読み直す"))
-                    .accessibilityIdentifier("work.catalog.refresh")
-                    .disabled(loading)
-            }
-        }
         .refreshable { await load() }
         .task(id: "\(bridge.revision)-\(kind == .routines)") { await load() }
         .onDisappear { retryTask?.cancel(); retryTask = nil }
@@ -222,27 +220,30 @@ struct LAAWorkCatalogView: View {
     }
 
     private func routineRow(_ routine: LAAWorkRoutine) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { expandedRoutines.formSymmetricDifference([routine.id]) } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: routine.name).font(.system(size: 17)).foregroundStyle(LAAColor.text).multilineTextAlignment(.leading)
+                        Text(verbatim: [routine.destination, "次回 " + LAAWorkRoutineTime.next(routine.nextRunAt)].compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: routine.result == "error" || routine.state == "error" ? "exclamationmark" : routine.lastRunAt == nil ? "minus" : "checkmark")
+                        .foregroundStyle(routine.state == "error" ? LAAColor.end : LAAColor.secondaryText)
+                }.frame(minHeight: 64).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityValue(expandedRoutines.contains(routine.id) ? "詳細を表示中" : "詳細を閉じています")
+            if expandedRoutines.contains(routine.id) {
                 LAAWorkRefLabel(ref: routine.ref)
-                Text(verbatim: routine.name).fontWeight(.semibold)
-            }
-            Text(verbatim: routine.schedule ?? "時刻未確認").foregroundStyle(LAAColor.link)
-            detail("次回", LAAWorkRoutineTime.next(routine.nextRunAt))
-            detail("配信先チャット", routine.destination ?? "設定なし・未確認")
-            detail("状態", stateLabel(routine.state))
-            detail("前回", routine.previousRunSummary())
-            if routine.runId != nil || routine.reasonCode != nil {
-                DisclosureGroup("実行の記録") {
-                    detail("予定", LAAWorkRoutine.recordedTime(routine.expectedRunAt ?? routine.scheduledAt))
+                detail("予定", routine.schedule ?? "時刻未確認")
+                detail("状態", stateLabel(routine.state))
+                detail("前回", routine.previousRunSummary())
+                if routine.runId != nil || routine.reasonCode != nil {
                     detail("開始", LAAWorkRoutine.recordedTime(routine.startedAt))
                     detail("終了", LAAWorkRoutine.recordedTime(routine.finishedAt))
-                    detail("チャット受付", LAAWorkRoutine.recordedTime(routine.notificationAcceptedAt))
-                    detail("送信", LAAWorkRoutine.recordedTime(routine.notificationSentAt))
                     detail("端末受信", LAAWorkRoutine.recordedTime(routine.notificationReceivedAt))
                 }
             }
-        }.padding(.vertical, LAASpacing.x2).listRowBackground(LAAColor.surface)
+        }.listRowBackground(LAAColor.surface)
     }
 
     private func stateLabel(_ value: String?) -> String {
@@ -283,7 +284,12 @@ struct LAAWorkCatalogView: View {
     private func readList() async -> LAAWorkCatalogFailure? {
         let epoch = UUID(); loadID = epoch
         let device = bridge.deviceID
-        if device != deviceID { routines = []; skills = []; loaded = false; fetchedAt = nil; skipped = 0; deviceID = device }
+        if device != deviceID {
+            routines = LAAWorkSessionCache.read([LAAWorkRoutine].self, store: cache, device: device, target: "routines") ?? []
+            skills = LAAWorkSessionCache.read([LAAWorkSkill].self, store: cache, device: device, target: "skills") ?? []
+            loaded = kind == .routines ? !routines.isEmpty : !skills.isEmpty
+            fetchedAt = nil; skipped = 0; deviceID = device
+        }
         guard bridge.status == .paired else { return nil }
         loading = true; failure = nil
         defer { if loadID == epoch { loading = false } }
@@ -293,6 +299,7 @@ struct LAAWorkCatalogView: View {
                 guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return nil }
                 guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
                 routines = page.items
+                LAAWorkSessionCache.save(routines, store: cache, device: device, target: "routines")
                 skipped = max(0, page.skipped ?? 0)
                 fetchedAt = LAAWorkFreshness.date(page.fetchedAt)
             } else {
@@ -300,6 +307,7 @@ struct LAAWorkCatalogView: View {
                 guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return nil }
                 guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
                 skills = page.items
+                LAAWorkSessionCache.save(skills, store: cache, device: device, target: "skills")
             }
             loaded = true
             return nil

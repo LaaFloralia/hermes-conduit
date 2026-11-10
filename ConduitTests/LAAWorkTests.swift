@@ -5,13 +5,13 @@ import XCTest
 @MainActor
 final class LAAWorkTests: XCTestCase {
     private func session(_ id: String, name: String, parent: String? = nil,
-                         updated: String, requested: [String: String] = [:],
+                         updated: String, phase: String = "running", requested: [String: String] = [:],
                          observed: [String: String]? = nil) throws -> LAAWorkSession {
         let json: [String: Any] = [
             "id": id, "name": name, "nameSource": "owner", "requestId": id,
             "parentId": parent as Any? ?? NSNull(), "workspaceId": "ws_test",
             "profile": "test", "requested": requested, "observed": observed as Any? ?? NSNull(),
-            "phase": "running", "createdAt": updated, "updatedAt": updated,
+            "phase": phase, "createdAt": updated, "updatedAt": updated,
             "events": ["lastSeq": 1, "oldestSeq": 1, "cursor": "cursor"]
         ]
         return try JSONDecoder().decode(LAAWorkSession.self, from: JSONSerialization.data(withJSONObject: json))
@@ -556,6 +556,26 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNil(try session(#""capabilities":{"effort":true}"#).capabilities?.fast)
         // A session answer with no capabilities at all still decodes.
         XCTAssertNil(try session(#""capabilities":null"#).capabilities)
+    }
+
+    func testWorkHasOnlyThreeSectionsInTheReadingOrder() {
+        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue), ["sessions", "tasks", "routines"])
+    }
+
+    func testActiveChildPromotesItsWholeTreeAheadOfPinnedCompletedWork() throws {
+        let parent = try session("parent", name: "parent", updated: "2026-11-01T00:00:00Z", phase: "awaiting_review")
+        let child = try session("child", name: "child", parent: "parent", updated: "2026-11-02T00:00:00Z", phase: "awaiting_decision")
+        let finished = try session("finished", name: "finished", updated: "2026-11-03T00:00:00Z", phase: "awaiting_review")
+        let groups = LAAWorkSessionOrder.sections([finished, child, parent])
+        XCTAssertEqual(groups.active.map(\.id), ["parent", "child"])
+        XCTAssertEqual(groups.recent.map(\.id), ["finished"])
+        XCTAssertTrue(groups.pinned.isEmpty)
+    }
+
+    func testRawModelArrayUsesADisplayName() {
+        XCTAssertEqual(LAAWorkSessionStyle.displayModel(#"["opencode-go","deepseek-v4.1-flash"]"#), "DeepSeek V4.1 Flash")
+        XCTAssertEqual(LAAWorkSessionStyle.displayModel("gpt-6.1-sol"), "GPT Sol 6.1")
+        XCTAssertEqual(LAAWorkSessionStyle.displayModel(#"["private-provider","unknown"]"#), "AI")
     }
 
 }

@@ -174,7 +174,7 @@ struct LAAWorkView: View {
                 Button(LAACopy.WorkTab.retry) { Task { await load() } }
             }.workCard()
         }
-        if isLoading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+        if isLoading { LAAWorkSkeleton() }
         switch section {
         case 0: sessionList
         case 1: projectList

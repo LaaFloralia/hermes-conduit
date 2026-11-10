@@ -37,7 +37,7 @@ struct LAAWorkTaskDetailView: View {
                             Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
                         }
                     } else {
-                        ProgressView().accessibilityLabel(Text(verbatim: "読み込み中"))
+                        LAAWorkSkeleton()
                     }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).laaPageWidth()
             }

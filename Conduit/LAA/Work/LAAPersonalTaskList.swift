@@ -59,7 +59,7 @@ struct LAAPersonalTaskList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             HStack {
-                Text(verbatim: "TASKS").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "Tasks").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                 Spacer()
                 Button(LAACopy.WorkTab.newTask) { showCreate = true }
                     .laaGlassButton(prominent: true).disabled(viewerId == nil)
@@ -140,7 +140,7 @@ struct LAAPersonalTaskList: View {
                 Text(verbatim: "更新: \(LAAWorkPresentation.date(observedAt)) · ページ間で内容が変わる場合があります。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if loading { ProgressView() }
+            if loading { LAAWorkSkeleton() }
             if items.isEmpty && !loading && error == nil {
                 Text(verbatim: "該当するタスクはありません。").foregroundStyle(LAAColor.secondaryText).workCard()
             }

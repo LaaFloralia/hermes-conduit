@@ -4338,3 +4338,10 @@ through the host's GPT-Live bridge. This is enabled only in LAA builds.
 **Checked:** 2026-11-08, LAA laa/apple-watch, baseline b01a62d9.
 
 - LAA employee call continuity (2026-11-11): persona reminders, recent same-chat context, Japanese delegation fallback, reconnect result buffering, Japanese call controls. See `docs/laa/EMPLOYEE-CALLS.md` and `ConduitTests/LAAEmployeeCallContinuityTests.swift`.
+
+### LAA Work v3 integration (2026-11-11)
+
+Work presents Sessions, Tasks and Routines. Decisions appear above them (at most three, then show all); existing answer sheets handle replies. Projects are grouped within Sessions and retain their management screen, rename, instructions, archive and restore. Skills live in Settings, Usage opens from the Work gauge. Session tools are collapsed into one work record disclosure; cached transcripts remain visible during refresh. iPhone and Mac retain their list/detail routes and existing task/session mutations.
+
+**Code:** `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAAWorkDecisionSummary.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`.
+**Checked:** 2026-11-11, WORK v3; targeted unit/UI and rendered evidence in the stage2 WORK report.

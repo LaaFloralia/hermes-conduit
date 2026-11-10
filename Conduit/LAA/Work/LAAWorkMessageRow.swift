@@ -19,7 +19,7 @@ enum LAAWorkSpeaker {
         }
         if let model = session.observed?.model ?? session.requested?.model, !model.isEmpty {
             let label = options?.profiles.first { $0.model == model }?.label
-            return LAAWorkSessionStyle.shortLabel(label ?? model)
+            return LAAWorkSessionStyle.displayModel(label ?? model)
         }
         return "AI"
     }

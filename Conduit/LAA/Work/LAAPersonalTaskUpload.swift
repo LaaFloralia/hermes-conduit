@@ -45,11 +45,11 @@ struct LAAPersonalTaskUpload: View {
                     if let prepared { Text(verbatim: prepared.filename); Text(verbatim: "\(prepared.size) bytes").laaTextStyle(.secondary) }
                     else { Text(verbatim: "ファイルを選んでください（最大20 MiB）。") }
                     Button() { selecting = true } label: { Text(verbatim: "ファイルを選択") }.disabled(pending != nil)
-                    Button() { submit() } label: { Text(verbatim: "Upload") }.disabled(prepared == nil || pending != nil || drafts.persistenceFailed)
-                } header: { Text(verbatim: "File") }
+                    Button() { submit() } label: { Text(verbatim: "追加") }.disabled(prepared == nil || pending != nil || drafts.persistenceFailed)
+                } header: { Text(verbatim: "ファイル") }
             }
             .disabled(busy)
-            .navigationTitle(Text(verbatim: "Upload File"))
+            .navigationTitle(Text(verbatim: "ファイルを追加"))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
             .fileImporter(isPresented: $selecting, allowedContentTypes: [.item]) { result in
                 switch result {

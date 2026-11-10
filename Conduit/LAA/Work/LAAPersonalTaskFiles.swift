@@ -57,7 +57,7 @@ struct LAAPersonalFileButton: View {
     var body: some View {
         VStack(alignment: .leading) {
             Button(title) { Task { await open() } }.disabled(loading)
-            if loading { ProgressView() }
+            if loading { LAAWorkSkeleton() }
             if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention).laaTextStyle(.secondary) }
         }
         .quickLookPreview($preview)

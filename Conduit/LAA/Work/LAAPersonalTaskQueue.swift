@@ -374,13 +374,13 @@ struct LAAPersonalDependencyEditor: View {
                 }
                 if value.kind == .relation {
                     Picker(selection: $value.relationType) {
-                        Text(verbatim: "Related").tag("related"); Text(verbatim: "Blocks").tag("blocks")
-                        Text(verbatim: "Duplicate").tag("duplicate"); Text(verbatim: "Similar").tag("similar")
+                        Text(verbatim: "関連").tag("related"); Text(verbatim: "ブロック").tag("blocks")
+                        Text(verbatim: "重複").tag("duplicate"); Text(verbatim: "類似").tag("similar")
                     } label: { Text(verbatim: "関連") }
                 } else if value.kind == .link {
-                    TextField(text: $value.second) { Text(verbatim: "HTTPS URL") }.keyboardType(.URL).textInputAutocapitalization(.never)
+                    TextField(text: $value.second) { Text(verbatim: "リンク") }.keyboardType(.URL).textInputAutocapitalization(.never)
                 }
-                Button() { reserve() } label: { Text(verbatim: "Queue Follow-up") }.disabled(!ready || !value.valid || drafts.persistenceFailed)
+                Button() { reserve() } label: { Text(verbatim: "追加依頼を保存") }.disabled(!ready || !value.valid || drafts.persistenceFailed)
             }
             .navigationTitle(Text(verbatim: "後続操作"))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }

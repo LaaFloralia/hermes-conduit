@@ -43,7 +43,7 @@ struct LAAWorkConversationMessage: Codable, Identifiable {
     var toolStatus: String? = nil
 }
 
-struct LAAWorkRoutine: Decodable, Identifiable {
+struct LAAWorkRoutine: Codable, Identifiable {
     let id: String
     let name: String
     let schedule: String?

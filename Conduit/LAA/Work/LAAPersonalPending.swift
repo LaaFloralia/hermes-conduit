@@ -105,7 +105,7 @@ struct LAAPersonalPendingView: View {
                                     taskLink(operation)
                                 }
                                 if operation.status == "outcome_unknown" {
-                                    Button() { originalToResolve = item; showOriginalConfirmation = true } label: { Text(verbatim: "Reconcile") }.disabled(busy)
+                                    Button() { originalToResolve = item; showOriginalConfirmation = true } label: { Text(verbatim: "状態を確認") }.disabled(busy)
                                 }
                             }
                             Button() { Task { await checkOriginal(item) } } label: { Text(verbatim: "元の要求の状態を確認") }.disabled(busy)
@@ -180,7 +180,7 @@ struct LAAPersonalPendingView: View {
                                 .laaTextStyle(.secondary)
                         }
                         if operation.status == "outcome_unknown" {
-                            Button() { selected = operation; showConfirmation = true } label: { Text(verbatim: "Reconcile") }.disabled(busy)
+                            Button() { selected = operation; showConfirmation = true } label: { Text(verbatim: "状態を確認") }.disabled(busy)
                         }
                     }.padding(.vertical, LAASpacing.x1)
                 }

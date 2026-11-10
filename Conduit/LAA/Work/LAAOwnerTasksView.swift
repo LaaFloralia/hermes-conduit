@@ -74,7 +74,7 @@ struct LAAOwnerTasksView: View {
                 Text(verbatim: "タスクを保存するには、この端末とMacの接続が必要です。")
                     .foregroundStyle(LAAColor.secondaryText)
             }
-            if loading { ProgressView().accessibilityLabel(Text(verbatim: "タスクを読み込み中")) }
+            if loading && items.isEmpty { LAAWorkSkeleton() }
             LAAOwnerTaskListContent(tasks: items, newTitle: $newTitle, adding: false,
                                     inputEnabled: bridge.deviceID != nil, showEmpty: loaded,
                                     disabledIDs: blockedIDs, checkboxDisabledIDs: draftIDs,
@@ -159,10 +159,10 @@ struct LAAOwnerTasksView: View {
                                 }
                                 HStack {
                                     if request.conflict == true {
-                                        Button("Restore to draft") { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
+                                        Button("下書きに戻す") { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
                                             .disabled(sending.contains(request.taskID))
                                     } else {
-                                        Button("Retry") { pendingAction = PendingAction(kind: .retry, item: item) }
+                                        Button("再試行") { pendingAction = PendingAction(kind: .retry, item: item) }
                                             .disabled(bridge.status != .paired || sending.contains(request.taskID) || !LAAOwnerTaskOutbox.canRetry(request))
                                     }
                                     Button(LAAOwnerTaskCopy.inspectCurrent) { Task { await inspect(item) } }
@@ -216,7 +216,7 @@ struct LAAOwnerTasksView: View {
                 }
             }
             .navigationTitle(LAAOwnerTaskCopy.pending)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { showingPending = false } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showingPending = false } } }
         }
         .accessibilityIdentifier("work.ownerTasks.pending.sheet")
         .confirmationDialog(LAAOwnerTaskCopy.confirmAction,
@@ -225,7 +225,7 @@ struct LAAOwnerTasksView: View {
             if action.kind == .retry, let item = action.item {
                 Button(LAAOwnerTaskCopy.retryRequest) { Task { await send(item) } }
             } else if action.kind == .restoreConflict, let item = action.item {
-                Button("Restore to draft") {
+                Button("下書きに戻す") {
                     guard let latest = LAAOwnerTaskOutbox.entries(in: drafts).first(where: { $0.id == item.id }),
                           let request = LAAOwnerTaskOutbox.request(latest), request.conflict == true,
                           request.deviceID == bridge.deviceID, !sending.contains(request.taskID),
@@ -259,7 +259,7 @@ struct LAAOwnerTasksView: View {
                     }
                 }
             }
-            Button("Cancel", role: .cancel) { }
+            Button("キャンセル", role: .cancel) { }
         } message: { action in
             Text(verbatim: action.kind == .retry
                  ? "未反映なら、この再送で初めて保存されます。同じ識別子と内容を使います。"

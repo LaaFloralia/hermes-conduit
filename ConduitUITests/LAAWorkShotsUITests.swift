@@ -69,7 +69,7 @@ final class LAAWorkShotsUITests: XCTestCase {
     /// An off-screen pill has no hit point, so the strip is moved with a drag
     /// on its own row rather than with `swipeLeft` on an element.
     private func scrollToUsage(_ app: XCUIApplication) {
-        let usage = app.buttons["work.section.usage"]
+        let usage = app.buttons["work.usage"]
         var moves = 0
         while usage.exists && usage.frame.maxX > app.frame.width - 8 && moves < 6 {
             let start = app.coordinate(withNormalizedOffset: .zero)
@@ -86,7 +86,7 @@ final class LAAWorkShotsUITests: XCTestCase {
     /// the strip is moved.
     private func openUsage(_ app: XCUIApplication) {
         scrollToUsage(app)
-        app.buttons["work.section.usage"].tap()
+        app.buttons["work.usage"].tap()
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {
