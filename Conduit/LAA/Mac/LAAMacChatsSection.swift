@@ -165,8 +165,11 @@ enum LAAMacChatDetail: Equatable {
 enum LAAMacLogin {
     static func isRequired(_ appState: AppState) -> Bool {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
-           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1" {
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
+            if arguments.contains("-LAA_UI_TEST_CHATS"), LAAMacWindow.snapshotPath != nil { return false }
+        }
         #endif
         return appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
     }

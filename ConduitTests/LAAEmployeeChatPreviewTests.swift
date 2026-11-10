@@ -96,7 +96,7 @@ final class LAAEmployeeChatPreviewTests: XCTestCase {
                                                   perform: { _, _ in XCTFail("must not open"); return .handled },
                                                   finish: { result = $0 })
         let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat,
-                         workspace: .init(dashboardID: dashboard, profile: "employee-a"), reference: nil))
+                         workspace: .init(dashboardID: dashboard, profile: "laa-monet"), reference: nil))
         coordinator.receive(link)
         for _ in 0..<20 { await Task.yield() }
         time = .seconds(8)

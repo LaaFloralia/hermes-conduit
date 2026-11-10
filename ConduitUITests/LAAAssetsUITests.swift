@@ -11,7 +11,12 @@ final class LAAAssetsUITests: XCTestCase {
         if let appearance { app.launchArguments += ["-conduit.themePreference", appearance] }
         app.launch()
         let drive = app.buttons["studio.drive"]
-        XCTAssertTrue(drive.waitForExistence(timeout: 30))
+        if !drive.waitForExistence(timeout: 4) {
+            let studio = app.buttons["Studio"].firstMatch
+            XCTAssertTrue(studio.waitForExistence(timeout: 20))
+            studio.tap()
+        }
+        XCTAssertTrue(drive.waitForExistence(timeout: 15))
         drive.tap()
         return app
     }

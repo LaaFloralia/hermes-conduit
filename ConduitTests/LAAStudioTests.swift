@@ -270,10 +270,10 @@ final class LAAStudioTests: XCTestCase {
     }
 
     func testStatusNamesAndWorkTitle() {
-        let statuses = ["queued": "Queued", "unreceived": "Not received", "accepted": "Accepted", "running": "Running",
-                        "approval": "Needs approval", "completed": "Completed", "failed": "Failed", "stopped": "Stopped", "interrupted": "Interrupted"]
+        let statuses = ["queued": "受付済み", "unreceived": "受付待ち", "accepted": "受付済み", "running": "制作中",
+                        "approval": "確認待ち", "completed": "完了", "failed": "失敗", "stopped": "停止済み", "interrupted": "中断"]
         for (status, label) in statuses { XCTAssertEqual(LAAStudioPresentation.status(status), label) }
-        XCTAssertEqual(LAAStudioPresentation.status("new-state"), "Unknown")
+        XCTAssertEqual(LAAStudioPresentation.status("new-state"), "未確認")
         let request = LAAStudioRequest(id: requestID, projectId: requestID, expectedRevision: 0, prompt: "test",
                                        create: .init(title: "New work title"), principle: nil)
         let record = LAAStudioRecord(request: request, status: "queued", bootId: nil, updatedAt: "now", report: nil)

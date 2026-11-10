@@ -152,7 +152,7 @@ final class LAATabModelTests: XCTestCase {
     func testDisplayOrderNamesSymbolsAndPersistentIdentifiers() {
         XCTAssertEqual(LAATab.destinations.map(\.rawValue), ["chats", "work", "today", "brain", "studio"])
         XCTAssertEqual(LAATab.destinations.map(\.title), ["Chat", "Work", "Today", "Doc", "Studio"])
-        XCTAssertEqual(LAATab.destinations.map(\.symbol), ["bubble.left.and.bubble.right", "checklist", "calendar", "doc.text", "sparkles.rectangle.stack"])
+        XCTAssertEqual(LAATab.destinations.map(\.symbol), ["bubble.left.and.bubble.right", "list.bullet", "calendar", "doc.text", "sparkles.rectangle.stack"])
         XCTAssertEqual(LAATab(rawValue: "source"), .source)
         XCTAssertNil(LAATab(rawValue: "assets"))
         XCTAssertEqual(LAACopy.settings, "Settings")

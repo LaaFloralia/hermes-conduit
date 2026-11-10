@@ -498,7 +498,7 @@ final class LAAWorkTests: XCTestCase {
         let data = Data(#"{"id":"s","name":"短い題名","nameSource":"agent","requestId":"s","workspaceId":"w","profile":"opus-xhigh","requested":{"provider":"claude","model":"claude-opus-5-5","effort":"xhigh"},"observed":{"provider":"claude","model":"claude-opus-5-5","effort":"xhigh"},"runtimeVerified":true,"observedFast":false,"capabilities":{"effort":true},"phase":"awaiting_review","createdAt":"2026-11-06T00:00:00Z","updatedAt":"2026-11-06T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
         let session = try JSONDecoder().decode(LAAWorkSession.self, from: data)
         let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(#"{"profiles":[{"id":"opus-xhigh","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"xhigh","fast":true},{"id":"opus-high","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"high","fast":true}],"defaultProfile":"opus-xhigh","defaultMode":"bypass"}"#.utf8))
-        XCTAssertEqual(LAAWorkSessionStyle.appliedModel(session, options: options), "Opus 5.5 XHigh")
+        XCTAssertEqual(LAAWorkSessionStyle.appliedModel(session, options: options), "Opus 5.5 · XHigh")
         XCTAssertEqual(LAAWorkSessionStyle.effortChoices(session, options: options), ["high", "xhigh"])
         XCTAssertEqual(session.observedFast, false)
         XCTAssertEqual(session.capabilities?.effort, true)

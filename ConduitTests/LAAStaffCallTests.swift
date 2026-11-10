@@ -54,7 +54,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertTrue(LocationSyncPause.pluginMissing.message.contains("一時停止"))
         for text in [LAACopy.artifactsUnavailable, LAACopy.workspaceActionsUnavailable,
                      LAACopy.groupFilesUnavailable, LAACopy.gptLiveUnavailable] {
-            XCTAssertTrue(text.contains("まだ利用できません"))
+            XCTAssertTrue(text.hasPrefix("このMacでは") && text.hasSuffix("を利用できません"))
             XCTAssertFalse(text.lowercased().contains("plugin"))
             XCTAssertFalse(text.contains("更新"))
         }
@@ -179,7 +179,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertFalse(calls.startEmployeeConversation(app))
     }
 
-    func testDotsPhoneHandsTheCallToChatGPT() {
+    func testDotsHasNoInAppCallAndRetainsItsExternalLinkConfiguration() {
         let shortcut = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
         let page = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
         XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: nil), shortcut)
@@ -199,9 +199,7 @@ final class LAAStaffCallTests: XCTestCase {
         app.noteBotChatSessionForTesting("dots-chat", profile: "laa-monet-dots")
         app.activeSessionId = "dots-chat"
         let calls = LAAEmployeeCallCoordinator(control: FakeControl())
-        // The call runs in ChatGPT, so pairing does not hold the phone back,
-        // and no in-app call starts.
-        XCTAssertNil(LAAEmployeeCallAvailability.reason(appState: app, bridge: .unpaired, calls: calls))
+        XCTAssertEqual(LAAEmployeeCallAvailability.reason(appState: app, bridge: .unpaired, calls: calls), "この会話はテキスト専用です")
         XCTAssertFalse(calls.startEmployeeConversation(app))
         app.noteBotChatSessionForTesting("uncensored-chat", profile: "laa-monet-uncensored")
         app.activeSessionId = "uncensored-chat"
@@ -676,13 +674,13 @@ final class LAAStaffCallTests: XCTestCase {
     }
 
     func testAudioRouteLabelsUseTheActualOutputName() {
-        XCTAssertEqual(LAAAudioRouteLabel.labels([]), "No output")
-        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInReceiver, name: "Receiver"), "Receiver")
-        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInSpeaker, name: "Speaker"), "Speaker")
+        XCTAssertEqual(LAAAudioRouteLabel.labels([]), "出力先なし")
+        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInReceiver, name: "Receiver"), "受話口")
+        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInSpeaker, name: "Speaker"), "スピーカー")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothHFP, name: " Monet’s AirPods "), "Monet’s AirPods")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothA2DP, name: ""), "Bluetooth")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .headphones, name: "Headphones"), "Headphones")
-        XCTAssertEqual(LAAAudioRouteLabel.labels([(.builtInSpeaker, "Speaker"), (.bluetoothLE, "AirPods")]), "Speaker, AirPods")
+        XCTAssertEqual(LAAAudioRouteLabel.labels([(.builtInSpeaker, "Speaker"), (.bluetoothLE, "AirPods")]), "スピーカー, AirPods")
     }
 }
 

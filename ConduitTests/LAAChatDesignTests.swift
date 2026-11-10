@@ -94,9 +94,12 @@ final class LAAChatDesignTests: XCTestCase {
         source.addAttribute(.link, value: try XCTUnwrap(URL(string: "https://example.com/news")), range: plain.range(of: "News"))
         source.addAttribute(.link, value: try XCTUnwrap(URL(string: "conduit-mention://agent/monet")), range: plain.range(of: "@Monet"))
         let displayed = LAALinkDecoration.addingIndicators(to: source)
-        XCTAssertEqual(displayed.string, "Read Notes ↗, then News ↗ and @Monet.")
+        XCTAssertEqual(displayed.string, "Read Notes ›, then News › and @Monet.")
         XCTAssertEqual(MarkdownProseRun.copyableText(displayed).string, source.string)
-        let arrowRange = (displayed.string as NSString).range(of: "↗")
+        let arrowRange = (displayed.string as NSString).range(of: "›")
+        XCTAssertNotEqual(arrowRange.location, NSNotFound)
+        guard arrowRange.location != NSNotFound else { return }
+        XCTAssertEqual(displayed.attribute(.underlineStyle, at: arrowRange.location, effectiveRange: nil) as? Int, 0)
         XCTAssertEqual(displayed.attribute(.link, at: arrowRange.location, effectiveRange: nil) as? URL,
                        URL(string: "https://example.com/notes"))
 
@@ -105,7 +108,7 @@ final class LAAChatDesignTests: XCTestCase {
             foregroundStyle: LAAColor.text, usesAccentSurface: false, newestCharacterOpacities: [],
             usesLAARichContentStyle: true
         ))
-        XCTAssertEqual(rendered.string, "Read Notes ↗ now.")
+        XCTAssertEqual(rendered.string, "Read Notes › now.")
         XCTAssertEqual(MarkdownProseRun.copyableText(rendered).string, "Read Notes now.")
     }
 

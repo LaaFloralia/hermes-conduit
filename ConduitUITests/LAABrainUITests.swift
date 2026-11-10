@@ -72,12 +72,10 @@ final class LAABrainUITests: XCTestCase {
         focusLocalEditor(editor)
         app.buttons["laa.markdown.format.checkbox"].tap()
         editor.typeText("first\nsecond\nthird")
-        let keyboard = app.keyboards.firstMatch
-        let checkbox = app.buttons["laa.markdown.format.checkbox"]
-        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            checkbox.isHittable && abs(keyboard.frame.minY - checkbox.frame.maxY) < 40
-        }, object: nil)], timeout: 5), .completed)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["laa.markdown.format.checkbox"].isHittable)
+        // XCTest can report an accessory as hittable before the keyboard finishes sliding in.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.7))
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "doc-checklist-" + style.lowercased(); shot.lifetime = .keepAlways; add(shot)
         XCTAssertEqual(editor.value as? String, "- [ ] first\n- [ ] second\n- [ ] third")

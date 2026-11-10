@@ -42,7 +42,13 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertEqual(ComposerPasteTextView.minimumHeight(for: nil, size: .larger), ceil(font.lineHeight * 3) + 16)
 #endif
         XCTAssertEqual(ComposerPasteTextView.maximumHeight(for: nil, size: .larger), ceil(font.lineHeight * 8) + 16)
+#if LAA_BUILD
+        XCTAssertEqual(ComposerPasteTextView.minimumHeight(for: nil, size: .smallest), 44)
+        XCTAssertGreaterThanOrEqual(ComposerPasteTextView.minimumHeight(for: nil, size: .largest), 44)
+        XCTAssertGreaterThan(ComposerPasteTextView.maximumHeight(for: nil, size: .largest), ComposerPasteTextView.maximumHeight(for: nil, size: .smallest))
+#else
         XCTAssertGreaterThan(ComposerPasteTextView.minimumHeight(for: nil, size: .largest), ComposerPasteTextView.minimumHeight(for: nil, size: .smallest))
+#endif
     }
 
     // Tests that mutate UIPasteboard.general wrap their body in

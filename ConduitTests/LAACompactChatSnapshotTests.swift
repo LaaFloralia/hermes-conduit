@@ -38,7 +38,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         let backgroundKey = try XCTUnwrap(LAAConversationScope.current(fixture.state))
         XCTAssertEqual(LAABackgroundStore.shared.setting(for: backgroundKey).kind, .paper)
         XCTAssertEqual(fixture.state.composerPlaceholder, "Monetにメッセージを送信…")
-        let bridge = LAABridgeSession(statusForTesting: .unpaired)
+        let bridge = LAABridgeSession(statusForTesting: .paired)
         let calls = LAAEmployeeCallCoordinator(control: SnapshotCallControl())
         var swiftUISizeClass: UserInterfaceSizeClass?
         let screen = NavigationStack {

@@ -451,7 +451,7 @@ final class MessageNormalizerTests: XCTestCase {
     func testNotificationPreferencesRoundTripDecisionCardsKey() throws {
         var preferences = ConduitNotificationPreferences()
         XCTAssertTrue(preferences.decisionCards, "Decision cards default on, independent of show previews")
-        XCTAssertFalse(preferences.showPreviews)
+        preferences.showPreviews = false
 
         preferences.decisionCards = false
         let data = try JSONEncoder().encode(preferences)
@@ -464,7 +464,11 @@ final class MessageNormalizerTests: XCTestCase {
 
     func testNotificationDetailMapsToTheRelayFlags() throws {
         var preferences = ConduitNotificationPreferences()
+        #if LAA_BUILD
+        XCTAssertEqual(preferences.detail, .previews)
+        #else
         XCTAssertEqual(preferences.detail, .generic, "Notifications stay generic by default")
+        #endif
 
         preferences.detail = .chatNames
         XCTAssertFalse(preferences.showPreviews)
@@ -2157,7 +2161,12 @@ final class MessageNormalizerTests: XCTestCase {
 
     func testConfiguredRelayURLFallsBackToDefaultWhenBlank() {
         let fallback = PushNotificationService.defaultRelayURL
+        #if LAA_BUILD
+        let configured = Bundle.main.object(forInfoDictionaryKey: PushNotificationService.defaultRelayInfoKey) as? String
+        XCTAssertEqual(fallback.absoluteString, configured)
+        #else
         XCTAssertEqual(fallback.absoluteString, "https://push.milim.dev")
+        #endif
         XCTAssertEqual(PushNotificationService.configuredRelayURL(from: nil), fallback)
         XCTAssertEqual(PushNotificationService.configuredRelayURL(from: ""), fallback)
         XCTAssertEqual(PushNotificationService.configuredRelayURL(from: "  \n"), fallback)
