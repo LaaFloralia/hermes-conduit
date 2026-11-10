@@ -25,6 +25,9 @@ final class LAAPaseoUITests: XCTestCase {
         let stop = app.buttons["work.session.stop"].firstMatch
         XCTAssertTrue(stop.waitForExistence(timeout: 15))
         XCTAssertEqual(stop.frame.midY, send.frame.midY, accuracy: 2)
+        let records = app.buttons["work.session.records"]
+        XCTAssertTrue(records.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Read"].exists, "Tool traffic stays collapsed")
         capture(app, "session-detail", "light")
     }
 
@@ -40,7 +43,7 @@ final class LAAPaseoUITests: XCTestCase {
                     withVelocity: XCUIGestureVelocity(120), thenHoldForDuration: 0.3)
         capture(app, "partial-swipe", "light")
         XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["work.sessions.new"].isHittable, "A partial swipe must not open the session")
+        XCTAssertTrue(app.buttons["work.create"].isHittable, "A partial swipe must not open the session")
         XCTAssertTrue(waitForFavorite(true), "A partial swipe must not change the pin")
 
         let fullStart = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width / 2, dy: y))
@@ -49,7 +52,7 @@ final class LAAPaseoUITests: XCTestCase {
         capture(app, "full-swipe", "light")
         XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 2))
         XCTAssertTrue(waitForFavorite(false), "A full swipe must pin or unpin without opening the session")
-        XCTAssertTrue(app.buttons["work.sessions.new"].isHittable, "A full swipe must not open the session")
+        XCTAssertTrue(app.buttons["work.create"].isHittable, "A full swipe must not open the session")
 
         let moved = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(moved.waitForExistence(timeout: 10))
@@ -60,7 +63,8 @@ final class LAAPaseoUITests: XCTestCase {
 
     func testProjectOpensAndArchivesWithASwipe() throws {
         let app = try launchFixture("light")
-        app.buttons["work.section.projects"].tap()
+        app.buttons["work.sessions.menu"].tap()
+        app.buttons["work.projects.manage"].tap()
         let row = app.descendants(matching: .any)["work.project.prj_aaaaaaaaaaaa"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
@@ -99,7 +103,7 @@ final class LAAPaseoUITests: XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, "Tab did not return: \(name)")
         }
         app.buttons["Chat"].tap()
-        XCTAssertFalse(app.buttons["work.sessions.new"].isHittable)
+        XCTAssertFalse(app.buttons["work.create"].isHittable)
     }
 
     func testVerticalScrollDoesNotOpenOrPinSession() throws {

@@ -4,165 +4,136 @@ import SwiftUI
 struct LAAWorkHub: View {
     let onRequestSettings: () -> Void
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
-    // The Usage tab keeps its own state: Work opens it rarely, and the screen
-    // refreshes on appear. The shell's instance keeps the main Usage tab.
     @StateObject private var usageState = LAAUsageState()
     @StateObject private var decisions = LAADecisionBoard()
-    @State private var section: Section = .tasks
+    @State private var section: Section = .sessions
     @State private var showPairing = false
-    /// The phone's one search: it filters whichever section is showing.
+    @State private var showUsage = false
+    @State private var showDecisions = false
+    @State private var showNewProject = false
+    @State private var createID = 0
+    @State private var refreshID = 0
+    @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var search = ""
+    @State private var decisionDevice: String?
 
     enum Section: String, CaseIterable, Identifiable {
-        case decisions, tasks, sessions, projects, routines, skills, usage
+        case sessions, tasks, routines
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .decisions: LAACopy.WorkTab.decisions
-            case .tasks: LAACopy.WorkTab.tasks
-            case .sessions: LAACopy.WorkTab.sessions
-            case .projects: LAACopy.WorkTab.projects
-            case .routines: LAACopy.WorkTab.routines
-            case .skills: LAACopy.WorkTab.skills
-            case .usage: AppLocalization.string("AI usage")
+            case .sessions: "Sessions"
+            case .tasks: "Tasks"
+            case .routines: "Routines"
             }
         }
-        /// The Mac header row and the phone list use the same words.
-        var desktopTitle: String { title }
     }
 
     var body: some View {
-        Group {
-            if laaDesktop { desktopBody } else { phoneBody }
-        }
-        .onChange(of: linkRequest.generation, initial: true) { _, _ in
-            let url = linkRequest.url
-            if url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
-            if linkRequest.decisionsLink { section = .decisions; decisions.choseDefaultSection = true; decisions.linkedID = linkRequest.decisionTarget }
-        }
-        .background(LAAColor.background.ignoresSafeArea())
-        .foregroundStyle(LAAColor.text)
-        .navigationTitle(Text(verbatim: laaDesktop ? "" : "Work"))
-        .navigationBarTitleDisplayMode(laaDesktop ? .inline : .large)
-        .modifier(LAAWorkToolbar(onRequestSettings: onRequestSettings))
-        .tint(LAAColor.link)
-        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .task(id: bridge.revision) { if await decisions.loadForDefaultSection(bridge) { section = .decisions } }
-    }
-
-    private var phoneBody: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: LAASpacing.x2) {
-                        ForEach(Section.allCases) { value in
-                            pill(value).id(value)
-                        }
-                    }
-                    .padding(.horizontal, LAASpacing.horizontal)
-                    .padding(.vertical, LAASpacing.x2)
-                }
-                .onChange(of: section) { _, value in withAnimation { proxy.scrollTo(value, anchor: .center) } }
-            }
-            .accessibilityIdentifier("work.segment")
-            if bridge.status != .paired {
-                connectionState
-            } else {
-                // One field for the whole hub, above the list and in the same
-                // capsule as Chat, Doc and Studio. The sections it filters take
-                // it as `query`; Usage and Decisions have nothing to filter.
-                if searchable {
-                    LAASearchField(placeholder: "検索", text: $search, identifier: "laa.work.search")
-                        .padding(.horizontal, LAASpacing.horizontal)
-                        .padding(.bottom, LAASpacing.x2)
-                }
-                switch section {
-                case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
-                case .tasks: LAALinearTasksView(drafts: drafts, query: search)
-                case .sessions: LAAWorkView(embeddedSection: 0, onRequestSettings: onRequestSettings, query: search)
-                case .projects: LAAWorkView(embeddedSection: 1, onRequestSettings: onRequestSettings, query: search)
-                case .routines: LAAWorkCatalogView(kind: .routines, query: search).id(section)
-                case .skills: LAAWorkCatalogView(kind: .skills, query: search).id(section)
-                case .usage: LAAUsageView(state: usageState, showsSettingsButton: false, onRequestSettings: onRequestSettings)
-                }
-            }
-        }
-        .onChange(of: section) { _, _ in search = "" }
-        // The field stays put; scrolling the list puts the keyboard away, as
-        // on Chat.
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    /// Usage has nothing to filter, and Decisions carries its own board.
-    private var searchable: Bool { section != .usage && section != .decisions }
-
-    private var desktopBody: some View {
-        VStack(spacing: 0) {
-            desktopHeader
-            Rectangle().fill(LAAColor.separator).frame(height: 1)
-            if bridge.status != .paired {
-                connectionState
-            } else {
-                desktopSection
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-    }
-
-    private var desktopHeader: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x4) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
-                    Text(verbatim: LAACopy.WorkTab.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
-                Spacer(minLength: LAASpacing.x4)
-            }
-            HStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+            Text(verbatim: "Work")
+                .font(.custom("Georgia", size: 34, relativeTo: .largeTitle))
+                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("laa.work.title")
+                .padding(.horizontal, 20)
+            LAAWorkDecisionSummary(board: decisions, drafts: drafts, showAll: $showDecisions)
+                .padding(.horizontal, 20)
+            Picker("区分", selection: $section) {
                 ForEach(Section.allCases) { value in
-                    Button { section = value } label: {
-                        Text(verbatim: value.desktopTitle)
-                            .laaTextStyle(.secondary)
-                            .fontWeight(value == section ? .semibold : .regular)
-                            .foregroundStyle(value == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
-                            .padding(.horizontal, LAASpacing.x3)
-                            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
-                            .background(value == section ? LAAColor.filledButton : .clear,
-                                        in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(value == section ? .isSelected : [])
-                    .accessibilityIdentifier("work.section.\(value.rawValue)")
+                    Text(verbatim: value.title).tag(value)
+                        .accessibilityIdentifier("work.section.\(value.rawValue)")
                 }
             }
-            .padding(3)
-            .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip + 3))
-            // Centred at a readable width instead of a narrow fixed column
-            // pinned to the leading edge.
-            .laaReadableWidth()
+            .pickerStyle(.segmented).padding(.horizontal, 20)
             .accessibilityIdentifier("work.segment")
+            if bridge.status != .paired { connectionState }
+            else {
+                if !laaDesktop {
+                    LAASearchField(placeholder: "検索", text: $search, identifier: "laa.work.search")
+                        .padding(.horizontal, 20)
+                }
+                sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .padding(.horizontal, LAASpacing.x6)
-        .padding(.top, LAASpacing.x4)
-        .padding(.bottom, LAASpacing.x3)
+        .padding(.top, LAASpacing.x2)
+        .background(LAAColor.background.ignoresSafeArea()).foregroundStyle(LAAColor.text)
+        .navigationTitle(Text(verbatim: "")).navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if section == .sessions {
+                    Menu {
+                        Button("新しいセッション") { createID += 1 }.accessibilityIdentifier("work.sessions.new")
+                        Button("新しいプロジェクト") { showNewProject = true }.accessibilityIdentifier("work.projects.new")
+                    } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
+                    .accessibilityLabel("作成").accessibilityIdentifier("work.create")
+                    .disabled(bridge.status != .paired)
+                } else {
+                    Button { if section == .routines { section = .tasks }; createID += 1 } label: {
+                        Image(systemName: "plus").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("新しいタスク").accessibilityIdentifier("work.linear.add")
+                    .disabled(bridge.status != .paired)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showUsage = true } label: { Image(systemName: "gauge.with.dots.needle.33percent").frame(width: 44, height: 44) }
+                    .accessibilityLabel("Usage").accessibilityIdentifier("work.usage")
+            }
+            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+        }
+        .tint(LAAColor.link)
+        .scrollDismissesKeyboard(.interactively)
+        .onChange(of: section) { _, _ in search = "" }
+        .onChange(of: linkRequest.generation, initial: true) { _, _ in
+            if linkRequest.url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
+            if linkRequest.decisionsLink { decisions.linkedID = linkRequest.decisionTarget; showDecisions = true }
+        }
+        .task(id: "\(bridge.revision)-\(scenePhase == .active)") {
+            if decisionDevice != bridge.deviceID { decisions.reset(); decisionDevice = bridge.deviceID }
+            if let cached = LAAWorkSessionCache.read([LAADecision].self, store: drafts, device: bridge.deviceID, target: "decisions") {
+                decisions.restoreIfNeeded(cached)
+            }
+            await decisions.refreshIfStale(bridge)
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                await decisions.refreshIfStale(bridge)
+            }
+        }
+        .onChange(of: decisions.items) { _, items in
+            LAAWorkSessionCache.save(items, store: drafts, device: bridge.deviceID, target: "decisions")
+        }
+        .onChange(of: decisions.count, initial: true) { _, count in decisionCount = count }
+        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+        .sheet(isPresented: $showNewProject) {
+            LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+        }
+        .navigationDestination(isPresented: $showUsage) {
+            LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+        }
+        .navigationDestination(isPresented: $showDecisions) {
+            LAADecisionBoardView(board: decisions, drafts: drafts).navigationTitle("Decisions")
+        }
     }
 
-    @ViewBuilder private var desktopSection: some View {
+    @ViewBuilder private var sectionContent: some View {
         switch section {
-        case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
-        case .tasks: LAALinearTasksView(drafts: drafts)
-        case .sessions: LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0)
-        case .projects: LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0)
-        case .routines: LAAWorkDesktopCatalogView(kind: .routines)
-        case .skills: LAAWorkDesktopCatalogView(kind: .skills)
-        case .usage: LAAUsageView(state: usageState, showsSettingsButton: false, onRequestSettings: onRequestSettings)
+        case .sessions:
+            if laaDesktop { LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0, createID: createID, onCreateConsumed: { createID = 0 }) }
+            else {
+                ScrollView {
+                    LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID, query: search, createID: createID, onCreateConsumed: { createID = 0 }, onRequestDecisions: { showDecisions = true })
+                        .padding(.horizontal, 20).padding(.bottom, 32)
+                }.refreshable { refreshID += 1; await decisions.load(bridge) }
+            }
+        case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
+        case .routines:
+            if laaDesktop { LAAWorkDesktopCatalogView(kind: .routines) }
+            else { LAAWorkCatalogView(kind: .routines, query: search) }
         }
     }
 
@@ -191,46 +162,5 @@ struct LAAWorkHub: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder private func pill(_ value: Section) -> some View {
-        if #available(iOS 26.0, *), !reduceTransparency {
-            pillButton(value)
-                .glassEffect(.regular.tint(value == section ? LAAColor.selectionFill : .clear).interactive(), in: .capsule)
-        } else {
-            pillButton(value)
-                .background(value == section ? LAAColor.selectionFill : LAAColor.surface, in: Capsule())
-        }
-    }
-
-    private func pillButton(_ value: Section) -> some View {
-        Button { section = value } label: {
-            LAADecisionPillTitle(title: value.title, count: value == .decisions ? decisions.count : 0)
-                .laaTextStyle(.secondary)
-                .fontWeight(value == section ? .semibold : .regular)
-                .foregroundStyle(value == section ? LAAColor.link : LAAColor.secondaryText)
-                .padding(.horizontal, LAASpacing.x4)
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(value == section ? .isSelected : [])
-        .accessibilityIdentifier("work.section.\(value.rawValue)")
-    }
-}
-/// Settings at the bar's trailing end, where every tab has it. Work carries
-/// no search item: its field sits above the list, in the same capsule as the
-/// other sections. The Mac shows no bar item at all — Settings sits under the
-/// sidebar.
-private struct LAAWorkToolbar: ViewModifier {
-    let onRequestSettings: () -> Void
-    @Environment(\.laaDesktop) private var laaDesktop
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if laaDesktop {
-            content
-        } else {
-            content.toolbar {
-                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
-            }
-        }
-    }
 }
 #endif

@@ -1398,9 +1398,6 @@ private struct SettingsHome: View {
     @ViewBuilder private var laaSections: some View {
         LAAMacSettingsCard()
         LAAOwnerAvatarSettingsCard()
-        homeSection("", tint: .conduitAccent) {
-            settingsLink(.usage, icon: "gauge.medium", title: AppLocalization.string("AI usage"), detail: "", identifier: "settings.ai-usage")
-        }
         homeSection(LAACopy.agent, tint: .conduitAura) {
             settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
             settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
@@ -1410,6 +1407,7 @@ private struct SettingsHome: View {
             }
         }
         homeSection(AppLocalization.string("App"), tint: .conduitAccent) {
+            LAASkillsSettingsRow()
             settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"), identifier: "settings.appearance")
             settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"), identifier: "settings.notifications")
             settingsLink(.about, icon: "shield", title: LAACopy.dataAndLicenses, detail: LAACopy.dataAndLicensesDetail)

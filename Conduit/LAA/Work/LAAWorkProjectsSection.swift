@@ -25,7 +25,7 @@ struct LAAWorkProjectsSection: View {
             LAAWorkPrimaryButton(title: "新しいプロジェクト", systemImage: "plus") { showNew = true }
                 .accessibilityIdentifier("work.projects.new")
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
-            if loading && projects.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+            if loading && projects.isEmpty { LAAWorkSkeleton() }
             if visibleProjects.isEmpty && !loading && failure == nil {
                 Text(verbatim: showArchived ? "アーカイブしたプロジェクトはありません。" : "名前・指示・資料をまとめ、その中でセッションを始められます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -241,7 +241,7 @@ struct LAAWorkProjectHome: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             heading("資料", action: uploading ? nil : ("追加", "plus", { showImporter = true }))
             let files = project.files ?? []
-            if uploading { ProgressView().accessibilityLabel(Text(verbatim: "資料を送信中")) }
+            if uploading { Text("送信中").foregroundStyle(LAAColor.secondaryText) }
             if files.isEmpty && !uploading {
                 Text(verbatim: "PDF・画像・メモなどを追加すると、セッションが必要な時に読みます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)

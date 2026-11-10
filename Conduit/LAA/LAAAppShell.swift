@@ -16,6 +16,7 @@ struct LAAAppShell: View {
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var showUsage = false
+    @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var chatsPath: [V2Route] = []
     #if DEBUG
     @State private var seededDailyFixture = false
@@ -249,6 +250,7 @@ struct LAAAppShell: View {
                 }
                 .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                .badge(tab == .work ? decisionCount : 0)
                 .tag(tab)
             }
         }

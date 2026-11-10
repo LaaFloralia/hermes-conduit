@@ -21,6 +21,8 @@ struct LAAWorkDesktopSessionsView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let refreshID: Int
+    var createID = 0
+    var onCreateConsumed: () -> Void = {}
     @State private var sessions: [LAAWorkSession] = []
     @State private var projects: [LAAWorkProject] = []
     @State private var options: LAAWorkSessionOptions?
@@ -30,9 +32,13 @@ struct LAAWorkDesktopSessionsView: View {
     @State private var hoveredID: String?
     @State private var failure: String?
     @State private var loading = false
+    @State private var hasLoaded = false
     @State private var showLauncher = false
     @State private var reloadID = 0
     @State private var expanded = Set<String>()
+    @State private var projectOrder = false
+    @State private var showProjects = false
+    @State private var editingProject: LAAWorkProject?
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
@@ -45,8 +51,16 @@ struct LAAWorkDesktopSessionsView: View {
     }
 
     private var ordered: [LAAWorkSession] {
-        let rows = LAAWorkSessionOrder.rows(filtered)
-        return searching ? rows.pinned + rows.recent : LAAWorkSessionOrder.visible(rows.pinned + rows.recent, expanded: expanded)
+        let groups = LAAWorkSessionOrder.sections(filtered)
+        var rows = groups.active + groups.pinned + groups.recent
+        if projectOrder {
+            rows = rows.sorted {
+                let a = LAAWorkSessionOrder.projectID($0, in: filtered) ?? "~"
+                let b = LAAWorkSessionOrder.projectID($1, in: filtered) ?? "~"
+                return a < b
+            }
+        }
+        return searching ? rows : LAAWorkSessionOrder.visible(rows, expanded: expanded)
     }
 
     private var selected: LAAWorkSession? { sessions.first { $0.id == selectedID } }
@@ -55,33 +69,24 @@ struct LAAWorkDesktopSessionsView: View {
         LAAMacListDetail {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
-                    HStack(spacing: LAASpacing.x2) {
-                        Button { showLauncher = true } label: {
-                            Label {
-                                    Text(verbatim: "New session").foregroundStyle(LAAColor.filledButtonText)
-                                } icon: {
-                                    Image(systemName: "plus").foregroundStyle(LAAColor.filledButtonText)
-                                }
-                                .laaTextStyle(.secondary).fontWeight(.semibold)
-                                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                        }
-                        .buttonStyle(.plain)
-                        .background(LAAColor.filledButton, in: Capsule())
-                        .accessibilityIdentifier("work.sessions.new")
-                        .macTooltip("Start a new session")
-                        Spacer(minLength: 0)
-                        Button { reloadID += 1 } label: { Image(systemName: "arrow.clockwise") }
-                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                            .accessibilityLabel(Text(verbatim: "Reload sessions"))
-                            .macTooltip("Reload (⌘R)")
+                    HStack {
+                        Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
+                        Spacer()
+                        Menu {
+                            Button("新しい順") { projectOrder = false }
+                            Button("プロジェクト別") { projectOrder = true }
+                            Button(showArchived ? "最近のセッションに戻る" : "アーカイブを表示") { showArchived.toggle(); reloadID += 1 }
+                            Button("プロジェクトを管理") { showProjects = true }
+                        } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                        .accessibilityLabel("一覧の表示").accessibilityIdentifier("work.sessions.menu")
                     }
-                    LAASearchField(placeholder: "Search sessions", text: $search,
+                    LAASearchField(placeholder: "検索", text: $search,
                                    identifier: "work.sessions.desktop.search", focus: $searchFocused)
                         .accessibilityIdentifier("work.sessions.search")
                     if let failure {
                         Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
-                    if loading && sessions.isEmpty { ProgressView().controlSize(.small) }
+                    if loading && !hasLoaded && sessions.isEmpty { LAAWorkSkeleton() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
@@ -90,11 +95,17 @@ struct LAAWorkDesktopSessionsView: View {
                         let ordered = self.ordered
                         let children = LAAWorkSessionOrder.descendants(filtered)
                         ForEach(Array(ordered.enumerated()), id: \.element.id) { index, session in
-                            if index == 0 || ordered[index - 1].isFavorite != session.isFavorite {
-                                Text(verbatim: session.isFavorite ? "PINNED" : "RECENT")
-                                    .laaTextStyle(.section).fontWeight(.semibold)
-                                    .foregroundStyle(LAAColor.secondaryText)
-                                    .padding(.horizontal, LAASpacing.x3).padding(.top, LAASpacing.x3).padding(.bottom, LAASpacing.x1)
+                            if projectOrder, index == 0 || LAAWorkSessionOrder.projectID(ordered[index - 1], in: filtered) != LAAWorkSessionOrder.projectID(session, in: filtered) {
+                                let project = projects.first { $0.id == LAAWorkSessionOrder.projectID(session, in: filtered) }
+                                Text(verbatim: project?.name ?? "プロジェクトなし")
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
+                                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                                    .contextMenu {
+                                        if let project {
+                                            Button("名前と指示を変更") { editingProject = project }
+                                            Button("アーカイブ") { Task { try? await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge); reloadID += 1 } }
+                                        }
+                                    }
                             }
                             sessionRow(session, children: children[session.id] ?? [], in: ordered)
                         }
@@ -103,17 +114,7 @@ struct LAAWorkDesktopSessionsView: View {
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
                         }
-                        Button {
-                            showArchived.toggle(); reloadID += 1
-                        } label: {
-                            Label { Text(verbatim: showArchived ? "Back to recent" : "Show archive") }
-                                icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                                .padding(.horizontal, LAASpacing.x3)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("work.sessions.archiveToggle")
+
                     }
                 }
             }
@@ -126,7 +127,7 @@ struct LAAWorkDesktopSessionsView: View {
             .onKeyPress(.return) { if selectedID == nil { selectedID = ordered.first?.id }; return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "New Session",
+                newTitle: "新しいセッション",
                 canCreate: bridge.status == .paired,
                 create: { showLauncher = true },
                 canSearch: true,
@@ -145,6 +146,13 @@ struct LAAWorkDesktopSessionsView: View {
             }
         }
         .accessibilityIdentifier("work.desktop.sessions")
+        .sheet(item: $editingProject, onDismiss: { reloadID += 1 }) { project in
+            LAAWorkProjectEditor(project: project, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+        }
+        .navigationDestination(isPresented: $showProjects) { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0) }
+        .onChange(of: createID, initial: true) { _, value in
+            guard value > 0 else { return }; showLauncher = true; onCreateConsumed()
+        }
         .sheet(isPresented: $showLauncher, onDismiss: { reloadID += 1 }) {
             LAAWorkSessionLauncher(projects: projects, options: options, drafts: drafts) { created in
                 showLauncher = false; selectedID = created.id; reloadID += 1
@@ -152,7 +160,13 @@ struct LAAWorkDesktopSessionsView: View {
             .environmentObject(bridge)
             .laaSheetSize(.form)
         }
-        .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") { await load() }
+        .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") {
+            if !hasLoaded {
+                sessions = LAAWorkSessionCache.read([LAAWorkSession].self, store: drafts, device: bridge.deviceID,
+                                                   target: showArchived ? "archived" : "list") ?? []
+            }
+            await load()
+        }
     }
 
     private func sessionRow(_ session: LAAWorkSession, children: [LAAWorkSession], in rows: [LAAWorkSession]) -> some View {
@@ -180,10 +194,10 @@ struct LAAWorkDesktopSessionsView: View {
         .onHover { hoveredID = $0 ? session.id : (hoveredID == session.id ? nil : hoveredID) }
         .contextMenu {
             Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
-                Label { Text(verbatim: session.isFavorite ? "Unpin" : "Pin") } icon: { Image(systemName: "pin") }
+                Label { Text(verbatim: session.isFavorite ? "ピンを外す" : "ピン留め") } icon: { Image(systemName: "pin") }
             }
             Button { Task { await update(session, archived: !session.isArchived) } } label: {
-                Label { Text(verbatim: session.isArchived ? "Restore" : "Archive") } icon: { Image(systemName: "archivebox") }
+                Label { Text(verbatim: session.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
             }
         }
         .accessibilityAddTraits(selectedID == session.id ? .isSelected : [])
@@ -205,7 +219,7 @@ struct LAAWorkDesktopSessionsView: View {
     @MainActor private func load() async {
         guard bridge.status == .paired else { return }
         loading = true
-        defer { loading = false }
+        defer { loading = false; hasLoaded = true }
         do {
             let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
             async let page: [LAAWorkSession] = LAAWorkPaging.all(bridge, "/v1/sessions", query: query)
@@ -213,6 +227,7 @@ struct LAAWorkDesktopSessionsView: View {
             let (loaded, loadedProjects) = try await (page, projectPage)
             guard !Task.isCancelled else { return }
             sessions = loaded.filter { $0.isArchived == showArchived }
+            LAAWorkSessionCache.save(sessions, store: drafts, device: bridge.deviceID, target: showArchived ? "archived" : "list")
             projects = loadedProjects
             failure = nil
             if selectedID == nil || !sessions.contains(where: { $0.id == selectedID }) { selectedID = sessions.first?.id }
@@ -274,7 +289,7 @@ struct LAAWorkDesktopProjectsView: View {
                     HStack {
                         Button { showNew = true } label: {
                             Label {
-                                    Text(verbatim: "New project").foregroundStyle(LAAColor.filledButtonText)
+                                    Text(verbatim: "新しいプロジェクト").foregroundStyle(LAAColor.filledButtonText)
                                 } icon: {
                                     Image(systemName: "plus").foregroundStyle(LAAColor.filledButtonText)
                                 }
@@ -287,13 +302,13 @@ struct LAAWorkDesktopProjectsView: View {
                         Spacer(minLength: 0)
                         Button { reloadID += 1 } label: { Image(systemName: "arrow.clockwise") }
                             .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                            .accessibilityLabel(Text(verbatim: "Reload projects"))
+                            .accessibilityLabel(Text(verbatim: "プロジェクトを再読込み"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    LAASearchField(placeholder: "Search projects", text: $search,
+                    LAASearchField(placeholder: "検索", text: $search,
                                    identifier: "work.projects.desktop.search", focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                    if loading && projects.isEmpty { ProgressView().controlSize(.small) }
+                    if loading && projects.isEmpty { LAAWorkSkeleton() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
@@ -322,7 +337,7 @@ struct LAAWorkDesktopProjectsView: View {
                             .onHover { hoveredID = $0 ? project.id : (hoveredID == project.id ? nil : hoveredID) }
                             .contextMenu {
                                 Button { Task { await setArchived(project) } } label: {
-                                    Label { Text(verbatim: project.isArchived ? "Restore" : "Archive") } icon: { Image(systemName: "archivebox") }
+                                    Label { Text(verbatim: project.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
                                 }
                             }
                             .accessibilityAddTraits(selectedID == project.id ? .isSelected : [])
@@ -336,7 +351,7 @@ struct LAAWorkDesktopProjectsView: View {
                         Button {
                             showArchived.toggle()
                         } label: {
-                            Label { Text(verbatim: showArchived ? "Back to projects" : "Show archive") }
+                            Label { Text(verbatim: showArchived ? "プロジェクトへ戻る" : "アーカイブを表示") }
                                 icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
                                 .frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -356,7 +371,7 @@ struct LAAWorkDesktopProjectsView: View {
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "New Project",
+                newTitle: "新しいプロジェクト",
                 canCreate: bridge.status == .paired,
                 create: { showNew = true },
                 canSearch: true,
@@ -383,8 +398,8 @@ struct LAAWorkDesktopProjectsView: View {
     }
 
     private func summary(_ project: LAAWorkProject) -> String {
-        let instructions = (project.instructionHash ?? "").isEmpty ? "No instructions" : "Instructions"
-        let files = (project.fileCount ?? 0) > 0 ? "\(project.fileCount ?? 0) files" : "No files"
+        let instructions = (project.instructionHash ?? "").isEmpty ? "指示なし" : "指示あり"
+        let files = (project.fileCount ?? 0) > 0 ? "資料 \(project.fileCount ?? 0)" : "資料なし"
         return [instructions, files, LAAWorkSessionStyle.relative(project.updatedAt ?? "")].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -434,6 +449,14 @@ struct LAAWorkDesktopCatalogView: View {
     enum Kind { case routines, skills }
     let kind: Kind
     @EnvironmentObject private var bridge: LAABridgeSession
+    @StateObject private var cache: ComposerDraftStore
+    @State private var cacheDevice: String?
+
+    @MainActor init(kind: Kind) {
+        self.kind = kind
+        let name = kind == .routines ? "routines" : "skills"
+        _cache = StateObject(wrappedValue: LAAWorkDrafts.makeStore(fileURL: LAAWorkDrafts.fileURL.deletingLastPathComponent().appendingPathComponent("catalog-" + name + "-cache-v1.json")))
+    }
     @State private var routines: [LAAWorkRoutine] = []
     @State private var skills: [LAAWorkSkill] = []
     @State private var search = ""
@@ -462,12 +485,12 @@ struct LAAWorkDesktopCatalogView: View {
         if kind == .routines {
             let scheduled = routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
                 .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
-            var result = LAAWorkRoutineGrouping.groups(scheduled).flatMap { group in
-                group.routines.map { routine in
-                    CatalogRow(id: routine.id, title: routine.name,
-                               subtitle: "Next \(LAAWorkRoutineTime.next(routine.nextRunAt)) · \(routine.schedule ?? "Schedule unknown")",
-                               group: group.destination, ref: routine.ref)
-                }
+            var result = scheduled.sorted {
+                (LAAWorkRoutineTime.date($0.nextRunAt) ?? .distantFuture) < (LAAWorkRoutineTime.date($1.nextRunAt) ?? .distantFuture)
+            }.map { routine in
+                CatalogRow(id: routine.id, title: routine.name,
+                           subtitle: [routine.destination, "次回 " + LAAWorkRoutineTime.next(routine.nextRunAt)].compactMap { $0 }.joined(separator: " · "),
+                           group: "", ref: routine.ref)
             }
             // Always-on and manual services have no schedule to place them by;
             // the phone lists them under their own note, so the Mac does too.
@@ -476,7 +499,7 @@ struct LAAWorkDesktopCatalogView: View {
                 let title = "常駐・手動・時刻未確認（\(services.count)）"
                 result += services.map { routine in
                     CatalogRow(id: routine.id, title: routine.name,
-                               subtitle: "Next \(LAAWorkRoutineTime.next(routine.nextRunAt)) · \(routine.schedule ?? "Schedule unknown")",
+                               subtitle: "次回 \(LAAWorkRoutineTime.next(routine.nextRunAt))",
                                group: title, ref: routine.ref, service: true)
                 }
             }
@@ -487,7 +510,7 @@ struct LAAWorkDesktopCatalogView: View {
             .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.explanation]) }
             .sorted { $0.name < $1.name }
             .map { CatalogRow(id: $0.id, title: $0.name,
-                              subtitle: $0.explanation.isEmpty ? "No description" : $0.explanation, group: "", ref: $0.ref) }
+                              subtitle: $0.explanation.isEmpty ? "説明はありません" : $0.explanation, group: "", ref: $0.ref) }
     }
 
     private var services: [LAAWorkRoutine] {
@@ -500,15 +523,13 @@ struct LAAWorkDesktopCatalogView: View {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     HStack {
-                        Text(verbatim: kind == .routines ? "ROUTINES" : "SKILLS")
+                        Text(verbatim: kind == .routines ? "Routines" : "スキル")
                             .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
-                        Button { reloadID += 1 } label: { Image(systemName: "arrow.clockwise") }
-                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                            .accessibilityLabel(Text(verbatim: "Reload"))
-                            .macTooltip("Reload (⌘R)")
+                        Menu { Button("再読込") { reloadID += 1 } } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                            .accessibilityLabel("一覧の表示")
                     }
-                    LAASearchField(placeholder: kind == .routines ? "Search routines" : "Search skills", text: $search,
+                    LAASearchField(placeholder: kind == .routines ? "検索" : "検索", text: $search,
                                    identifier: "work.\(kind == .routines ? "routines" : "skills").desktop.search",
                                    focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
@@ -522,7 +543,7 @@ struct LAAWorkDesktopCatalogView: View {
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                             .accessibilityIdentifier("work.routines.fetchedAt")
                     }
-                    if loading && !loaded { ProgressView().controlSize(.small) }
+                    if loading && !loaded { LAAWorkSkeleton() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
@@ -571,7 +592,7 @@ struct LAAWorkDesktopCatalogView: View {
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: kind == .routines ? "New Routine" : "New Skill",
+                newTitle: kind == .routines ? "新しい定期実行" : "新しいスキル",
                 canCreate: false,
                 canSearch: true,
                 focusSearch: { searchFocused = true },
@@ -593,10 +614,10 @@ struct LAAWorkDesktopCatalogView: View {
                     Text(verbatim: routine.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     Text(verbatim: routine.schedule ?? LAACopy.macScheduleUnknown).foregroundStyle(LAAColor.link)
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        detailLine("Next run", LAAWorkRoutineTime.next(routine.nextRunAt))
-                        detailLine("Destination", routine.destination ?? "Not set")
-                        detailLine("State", stateLabel(routine.state))
-                        detailLine("Last run", routine.previousRunSummary())
+                        detailLine("次回", LAAWorkRoutineTime.next(routine.nextRunAt))
+                        detailLine("担当", routine.destination ?? "未設定")
+                        detailLine("状態", stateLabel(routine.state))
+                        detailLine("前回", routine.previousRunSummary())
                         if routine.runId != nil || routine.reasonCode != nil {
                             DisclosureGroup("実行の記録") {
                                 detailLine("予定", LAAWorkRoutine.recordedTime(routine.expectedRunAt ?? routine.scheduledAt))
@@ -618,7 +639,7 @@ struct LAAWorkDesktopCatalogView: View {
                     LAAWorkRefLabel(ref: skill.ref)
                     Text(verbatim: skill.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     Text(verbatim: skill.group).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    Text(verbatim: skill.explanation.isEmpty ? "No description" : skill.explanation).workCard()
+                    Text(verbatim: skill.explanation.isEmpty ? "説明はありません" : skill.explanation).workCard()
                     if let body = skill.detail, !body.isEmpty, body != skill.explanation {
                         Text(verbatim: body).workCard()
                     }
@@ -642,11 +663,11 @@ struct LAAWorkDesktopCatalogView: View {
 
     private func stateLabel(_ value: String?) -> String {
         switch value {
-        case "running": "Running"
-        case "paused": "Paused"
-        case "error": "Needs attention"
-        case "scheduled": "Scheduled"
-        default: "Unknown"
+        case "running": "実行中"
+        case "paused": "一時停止"
+        case "error": "要確認"
+        case "scheduled": "実行待ち"
+        default: "未確認"
         }
     }
 
@@ -669,6 +690,12 @@ struct LAAWorkDesktopCatalogView: View {
     }
 
     @MainActor private func load() async {
+        if cacheDevice != bridge.deviceID {
+            cacheDevice = bridge.deviceID
+            routines = LAAWorkSessionCache.read([LAAWorkRoutine].self, store: cache, device: cacheDevice, target: "routines") ?? []
+            skills = LAAWorkSessionCache.read([LAAWorkSkill].self, store: cache, device: cacheDevice, target: "skills") ?? []
+            loaded = kind == .routines ? !routines.isEmpty : !skills.isEmpty
+        }
         guard bridge.status == .paired else { return }
         loading = true
         defer { loading = false }
@@ -677,12 +704,14 @@ struct LAAWorkDesktopCatalogView: View {
                 let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
                 guard !Task.isCancelled else { return }
                 routines = page.items
+                LAAWorkSessionCache.save(routines, store: cache, device: cacheDevice, target: "routines")
                 skipped = max(0, page.skipped ?? 0)
                 fetchedAt = LAAWorkFreshness.date(page.fetchedAt)
             } else {
                 let page: LAAWorkPage<LAAWorkSkill> = try await bridge.read("/v1/skills")
                 guard !Task.isCancelled else { return }
                 skills = page.items
+                LAAWorkSessionCache.save(skills, store: cache, device: cacheDevice, target: "skills")
             }
             loaded = true; failure = nil
             if selectedID == nil || !rows.contains(where: { $0.id == selectedID }) { selectedID = rows.first?.id }

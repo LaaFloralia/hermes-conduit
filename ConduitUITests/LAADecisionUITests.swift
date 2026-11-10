@@ -24,7 +24,7 @@ final class LAADecisionUITests: XCTestCase {
         return payload
     }
 
-    private func launch(board mode: String, dark: Bool = false) throws -> XCUIApplication {
+    private func launch(board mode: String, dark: Bool = false, root: Bool = false) throws -> XCUIApplication {
         guard fixture("/reset") != nil else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
         fixture("/decisions/\(mode)")
         continueAfterFailure = false
@@ -42,7 +42,12 @@ final class LAADecisionUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
-        XCTAssertTrue(app.buttons["work.section.decisions"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["work.section.sessions"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["work.sessions.menu"].waitForExistence(timeout: 20))
+        if !root {
+            app.buttons["work.sessions.menu"].tap()
+            app.buttons["work.decisions.open"].tap()
+        }
         return app
     }
 
@@ -67,7 +72,7 @@ final class LAADecisionUITests: XCTestCase {
     func testChooseRecommendedDeliversAndLeavesTheBoard() throws {
         let app = try launch(board: "normal")
         XCTAssertTrue(row(hpID, app).waitForExistence(timeout: 20), "The hub did not open on the board")
-        XCTAssertTrue(app.buttons["work.section.decisions"].isSelected)
+        XCTAssertTrue(app.navigationBars["Decisions"].exists)
         XCTAssertTrue(row(hpID, app).label.hasPrefix("判断、J1、HPの公開日を決める、推奨 11月15日（土）に公開"))
         XCTAssertTrue(app.buttons["work.decision.retry.\(failedID)"].exists, "A failed delivery shows its retry on the row")
         screenshot("ui-decisions-list-light", app)
@@ -130,8 +135,7 @@ final class LAADecisionUITests: XCTestCase {
     /// An empty board keeps the hub's usual first section and reads calmly.
     func testEmptyBoard() throws {
         let app = try launch(board: "empty")
-        XCTAssertFalse(app.buttons["work.section.decisions"].isSelected)
-        app.buttons["work.section.decisions"].tap()
+        XCTAssertFalse(app.buttons["work.section.decisions"].exists)
         XCTAssertTrue(app.staticTexts["判断待ちはありません"].waitForExistence(timeout: 10))
         screenshot("ui-decisions-empty-light", app)
     }
@@ -139,8 +143,38 @@ final class LAADecisionUITests: XCTestCase {
     /// A Mac whose Bridge predates the board answers 404: a short note, no crash.
     func testOlderMacShowsUpdateNote() throws {
         let app = try launch(board: "unsupported")
-        app.buttons["work.section.decisions"].tap()
         XCTAssertTrue(app.staticTexts["Macのアップデート待ち"].waitForExistence(timeout: 10))
     }
+    func testWorkOverviewSectionsAndProjectOrderLightAndDark() throws {
+        for dark in [false, true] {
+            let app = try launch(board: "normal", dark: dark, root: true)
+            let style = dark ? "dark" : "light"
+            XCTAssertTrue(app.buttons["work.decisions.all"].waitForExistence(timeout: 15))
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'work.decision.dec_'")).count, 3)
+            XCTAssertFalse(app.buttons["work.section.projects"].exists)
+            XCTAssertFalse(app.buttons["work.section.skills"].exists)
+            XCTAssertTrue(app.buttons["work.usage"].exists)
+            screenshot("work-head-after-\(style)", app)
+            app.buttons["work.sessions.menu"].tap()
+            app.buttons["work.sessions.byProject"].tap()
+            screenshot("work-projects-after-\(style)", app)
+            app.buttons["work.section.tasks"].tap()
+            XCTAssertTrue(app.buttons["work.tasks.filter"].waitForExistence(timeout: 15))
+            screenshot("work-tasks-after-\(style)", app)
+            app.buttons["work.section.routines"].tap()
+            XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 15))
+            screenshot("work-routines-after-\(style)", app)
+            XCTAssertEqual(app.activityIndicators.count, 0)
+            app.buttons["work.usage"].tap()
+            XCTAssertTrue(app.staticTexts["Usage"].waitForExistence(timeout: 15))
+            screenshot("work-usage-entry-after-\(style)", app)
+            app.terminate()
+            let empty = try launch(board: "empty", dark: dark, root: true)
+            XCTAssertTrue(empty.descendants(matching: .any)["work.decisions.summary"].firstMatch.waitForNonExistence(timeout: 15))
+            screenshot("work-no-decisions-after-\(style)", empty)
+            empty.terminate()
+        }
+    }
+
 }
 #endif

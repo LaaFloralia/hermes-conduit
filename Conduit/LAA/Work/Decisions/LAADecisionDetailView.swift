@@ -336,7 +336,7 @@ struct LAADecisionDetailView: View {
 
     private func sendLabel(fullWidth: Bool) -> some View {
         HStack(spacing: LAASpacing.x2) {
-            if sending { ProgressView().tint(LAAColor.filledButtonText) }
+            if sending { Text("送信中").foregroundStyle(LAAColor.filledButtonText) }
             Text(verbatim: sendTitle).fontWeight(.semibold)
         }
         // The screen's text colour must not reach the filled button.

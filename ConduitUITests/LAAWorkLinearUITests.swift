@@ -22,14 +22,17 @@ final class LAAWorkLinearUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
+        XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
         XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 15))
         return app
     }
 
     func testFirstProjectToolbarAllowsSharedInstructions() throws {
         let app = try launch()
-        app.buttons["work.section.projects"].tap()
-        let add = app.buttons["プロジェクトを追加"]
+        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["work.create"].tap()
+        let add = app.buttons["work.projects.new"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         add.tap()
         XCTAssertTrue(app.textViews["work.project.instructions"].waitForExistence(timeout: 10))
@@ -179,7 +182,6 @@ final class LAAWorkLinearUITests: XCTestCase {
         let button = app.buttons["work.section.\(section)"]
         // Selecting a visible middle section lets the hub's ScrollViewReader
         // bring the right-hand sections into view before the next tap.
-        if button.frame.maxX > app.frame.maxX - 10 { app.buttons["work.section.projects"].tap() }
         button.tap()
     }
     private func attach(_ name: String) {

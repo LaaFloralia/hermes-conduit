@@ -92,7 +92,7 @@ struct LAAPersonalTaskEditor: View {
                     Picker(selection: $draft.priority) {
                         if let metadata { ForEach(metadata.priorities) { Text(verbatim: $0.label).tag($0.priority) } }
                         else { ForEach(0...4, id: \.self) { Text(verbatim: String($0)).tag($0) } }
-                    } label: { Text(verbatim: "Priority") }
+                    } label: { Text(verbatim: "優先度") }
                     Picker(selection: projectBinding) {
                         Text(verbatim: "なし").tag("")
                         ForEach(projects) { Text(verbatim: $0.displayName).tag($0.id) }
@@ -131,7 +131,7 @@ struct LAAPersonalTaskEditor: View {
                     .disabled(!ready || !identityOK || !hasFullTask || pending != nil || busy || drafts.persistenceFailed)
                     .accessibilityIdentifier("work.task.save")
                 if !identityOK {
-                    Button() { save(sendImmediately: false) } label: { Text(verbatim: "Queue Until Connected") }
+                    Button() { save(sendImmediately: false) } label: { Text(verbatim: "接続後に送信") }
                         .disabled(!ready || pending != nil || busy || drafts.persistenceFailed)
                     Text(verbatim: "端末に保存し、本人を確認できる接続に戻った時に送信します。")
                         .laaTextStyle(.secondary)

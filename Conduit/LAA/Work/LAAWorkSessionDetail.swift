@@ -84,6 +84,11 @@ struct LAAWorkSessionDetail: View {
     @State private var session: LAAWorkSession?
     @State private var events: [LAAWorkEvent] = []
     @State private var messages: [LAAWorkConversationMessage] = []
+    @State private var conversationMessages: [LAAWorkConversationMessage] = []
+    @State private var historyReady = false
+    @State private var workRecords: [LAAWorkConversationMessage] = []
+    @State private var lastDetailData: Data?
+    @State private var lastHistoryData: Data?
     @State private var conversationUnavailable = false
     @State private var cursor: String?
     @State private var notice: String?
@@ -219,12 +224,14 @@ struct LAAWorkSessionDetail: View {
                                           continues: LAASenderRun.continues(speakers, at: index),
                                           columnWidth: columnWidth, responseSize: responseSize)
                     }
+                    if !workRecords.isEmpty { LAAWorkRecordDisclosure(records: workRecords) }
                     if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                 } else if let failure {
                     Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
                     Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
-                } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+                } else { LAAWorkSkeleton() }
             }
+            .accessibilityIdentifier(historyReady ? "work.session.history.ready" : "work.session.history.loading")
             if let session { followUp(session) }
             // The end of the page, outside the lazy transcript. New arrivals
             // follow only while this sentinel is on screen.
@@ -328,9 +335,6 @@ struct LAAWorkSessionDetail: View {
         scrollRequest.move(to: .bottom)
     }
 
-    private var conversationMessages: [LAAWorkConversationMessage] {
-        messages.filter { $0.role != "tool" }
-    }
 
     /// The chat's 85% reading column, of the screen on a phone and of the
     /// reading width on a Mac.
@@ -399,12 +403,20 @@ struct LAAWorkSessionDetail: View {
             async let detailRead: LAAWorkSession = bridge.read("/v1/sessions/\(id)")
             async let historyRead: LAAWorkPage<LAAWorkConversationMessage> = bridge.read("/v1/sessions/\(id)/conversation")
             let detail = try await detailRead
-            session = detail
-            LAAWorkSessionCache.save(detail, store: drafts, device: bridge.deviceID, target: id)
+            let detailData = try? snapshotData(detail)
+            if detailData != lastDetailData {
+                session = detail; lastDetailData = detailData
+                LAAWorkSessionCache.save(detail, store: drafts, device: bridge.deviceID, target: id)
+            }
             do {
                 let history = try await historyRead
-                messages = history.items
-                LAAWorkSessionCache.save(messages, store: drafts, device: bridge.deviceID, target: id + ":messages")
+                let data = try? snapshotData(history.items)
+                if data != lastHistoryData {
+                    messages = history.items; lastHistoryData = data
+                    prepareTranscript()
+                    LAAWorkSessionCache.save(messages, store: drafts, device: bridge.deviceID, target: id + ":messages")
+                }
+                historyReady = true
                 conversationUnavailable = false
             } catch {
                 conversationUnavailable = true
@@ -424,9 +436,23 @@ struct LAAWorkSessionDetail: View {
         return false
     }
 
+    private func snapshotData<T: Encodable>(_ value: T) throws -> Data {
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        return try encoder.encode(value)
+    }
+
+    private func prepareTranscript() {
+        conversationMessages = messages.filter { $0.role != "tool" }
+        workRecords = messages.filter { $0.role == "tool" }
+    }
+
     @MainActor private func observe() async {
         session = LAAWorkSessionCache.read(LAAWorkSession.self, store: drafts, device: bridge.deviceID, target: id)
-        messages = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages") ?? []
+        let cachedHistory = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages")
+        messages = cachedHistory ?? []; historyReady = cachedHistory != nil
+        prepareTranscript()
+        lastDetailData = session.flatMap { try? snapshotData($0) }
+        lastHistoryData = try? snapshotData(messages)
         cursor = nil
         events.removeAll()
         // The remembered conversation is enough to place the page: waiting for
@@ -522,15 +548,12 @@ struct LAAWorkSessionHeaderPill: View {
     @Environment(\.laaClearGlassControls) private var clearGlass
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .center, spacing: 2) {
             Text(verbatim: session.name)
                 .font(.custom("Georgia", size: 16, relativeTo: .headline))
                 .lineLimit(1).minimumScaleFactor(0.8).truncationMode(.tail)
                 .accessibilityIdentifier("work.session.detail.title")
             HStack(spacing: 0) {
-                if let ref = LAAWorkRef.display(session.ref) {
-                    Text(verbatim: ref + " · ").foregroundStyle(.secondary)
-                }
                 Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase))
                     .foregroundStyle(LAAWorkSessionStyle.statusColor(session.phase))
                 Text(verbatim: " " + LAAWorkPresentation.phase(session.phase)).foregroundStyle(.secondary)

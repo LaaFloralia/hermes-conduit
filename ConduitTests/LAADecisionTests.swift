@@ -161,5 +161,21 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertFalse(chose)
         XCTAssertEqual(board.phase, .idle)
     }
+    func testBoardCacheRetainsNativeQuestionsAndFailedDelivery() throws {
+        let values = [
+            LAADecision(kind: .session, id: "ses_native", title: "判断", summary: "どちら", sessionId: "ses_native"),
+            LAADecision(id: "dec_failed", title: "保存先", summary: "", options: [.init(label: "Drive", recommended: true)],
+                        answer: .init(optionIndex: 0, label: "Drive", note: nil, answeredAt: nil),
+                        delivery: .init(state: "failed", attempts: 1, deliveredAt: nil, error: "not_found"))
+        ]
+        let restored = try JSONDecoder().decode([LAADecision].self, from: JSONEncoder().encode(values))
+        XCTAssertEqual(restored, values)
+        let board = LAADecisionBoard(); board.restoreIfNeeded(restored)
+        XCTAssertEqual(board.items.map(\.id), ["dec_failed", "ses_native"])
+        board.reset()
+        XCTAssertTrue(board.items.isEmpty)
+        XCTAssertEqual(board.phase, .idle)
+    }
+
 }
 #endif

@@ -7,23 +7,26 @@ final class LAAShellNavigationUITests: XCTestCase {
 
     func testTabLabelsNavigationAndSettings() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "work"]
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
         for name in ["Chat", "Today", "Doc", "Studio", "Work"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["work.section.tasks"].isSelected)
+        XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
         app.buttons["Doc"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
         // Selecting a visible section centers it and reveals the next section.
-        for name in ["projects", "routines", "skills", "usage"] {
+        for name in ["sessions", "tasks", "routines"] {
             let segment = app.buttons["work.section.\(name)"]
             XCTAssertTrue(segment.waitForExistence(timeout: 10))
             segment.tap()
         }
-        XCTAssertTrue(app.buttons["work.section.usage"].isSelected)
+        XCTAssertTrue(app.buttons["work.section.routines"].isSelected)
+        XCTAssertFalse(app.buttons["work.section.projects"].exists)
+        XCTAssertFalse(app.buttons["work.section.skills"].exists)
+        XCTAssertTrue(app.buttons["work.usage"].exists)
         // Unpaired, AI usage waits for the Mac like the other Work sections.
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 10))
         app.buttons["Studio"].tap()

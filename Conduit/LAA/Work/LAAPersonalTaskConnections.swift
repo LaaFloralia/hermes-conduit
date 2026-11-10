@@ -162,7 +162,7 @@ private struct LAAPersonalDetailSection<Item: Decodable & Identifiable, Row: Vie
                 if !state.items.isEmpty { Text(verbatim: "前回取得した内容です。") }
                 Button(LAACopy.WorkTab.retry) { Task { await load(reset: true) } }
             }
-            if state.loading { ProgressView() }
+            if state.loading && state.items.isEmpty { LAAWorkSkeleton() }
             if state.loaded && state.items.isEmpty && state.error == nil && !state.loading {
                 Text(verbatim: "表示する項目はありません。 ").foregroundStyle(LAAColor.secondaryText)
             }
@@ -210,7 +210,7 @@ struct LAAPersonalTaskConnections: View {
             relationSection("Relations", section: "relations")
             relationSection("Referenced By", section: "inverse-relations")
             Button() { itemMode = .attachment } label: { Text(verbatim: "リンクを追加") }.buttonStyle(.bordered)
-            Button() { showUpload = true } label: { Text(verbatim: "Upload File") }.buttonStyle(.bordered)
+            Button() { showUpload = true } label: { Text(verbatim: "ファイルを追加") }.buttonStyle(.bordered)
             LAAPersonalDetailSection("Attachments", path: path + "/attachments", viewerId: viewerId, revision: revision) { (item: LAAPersonalAttachment) in
                 VStack(alignment: .leading) {
                     if let url = URL(string: item.url), url.scheme?.lowercased() == "https",
@@ -357,17 +357,17 @@ private struct LAAPersonalItemEditor: View {
                 }
                 if mode == .relation {
                     Section() {
-                        TextField(text: $draft.first) { Text(verbatim: "Task ID") }.textInputAutocapitalization(.characters)
+                        TextField(text: $draft.first) { Text(verbatim: "課題番号") }.textInputAutocapitalization(.characters)
                         Picker(selection: $draft.relationType) {
-                            Text(verbatim: "Related").tag("related"); Text(verbatim: "Blocks").tag("blocks")
-                            Text(verbatim: "Duplicate").tag("duplicate"); Text(verbatim: "Similar").tag("similar")
+                            Text(verbatim: "関連").tag("related"); Text(verbatim: "ブロック").tag("blocks")
+                            Text(verbatim: "重複").tag("duplicate"); Text(verbatim: "類似").tag("similar")
                         } label: { Text(verbatim: "関連") }
                         Text(verbatim: "このタスクから入力したタスクへの関係です。").laaTextStyle(.secondary)
-                    } header: { Text(verbatim: "Related Task") }.disabled(!ready || pending != nil)
+                    } header: { Text(verbatim: "関連する課題") }.disabled(!ready || pending != nil)
                 } else {
                     Section() {
                         TextField(text: $draft.first) { Text(verbatim: "題名") }
-                        TextField(text: $draft.second) { Text(verbatim: "HTTPS URL") }.keyboardType(.URL).textInputAutocapitalization(.never)
+                        TextField(text: $draft.second) { Text(verbatim: "リンク") }.keyboardType(.URL).textInputAutocapitalization(.never)
                         Text(verbatim: "外部リンクを追加します。ファイルは別の操作でアップロードできます。").laaTextStyle(.secondary)
                     } header: { Text(verbatim: "リンク") }.disabled(!ready || pending != nil)
                 }

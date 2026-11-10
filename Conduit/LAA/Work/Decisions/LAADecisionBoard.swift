@@ -30,6 +30,15 @@ import SwiftUI
 
     var count: Int { items.count }
 
+    func reset() {
+        items = []; phase = .idle; loadedAt = nil
+    }
+
+    func restoreIfNeeded(_ cached: [LAADecision]) {
+        guard phase == .idle, items.isEmpty else { return }
+        items = LAADecisionOrder.sorted(cached)
+    }
+
     /// The hub's first read: true once, when the board has something waiting
     /// and the owner has not been sent elsewhere by a link.
     func loadForDefaultSection(_ bridge: LAABridgeSession) async -> Bool {

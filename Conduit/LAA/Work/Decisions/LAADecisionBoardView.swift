@@ -62,7 +62,7 @@ struct LAADecisionBoardView: View {
             message(title: "判断ボードを読めません", detail: text,
                     identifier: "work.decisions.failure", retry: true)
         case .idle where board.loading:
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            LAAWorkSkeleton().padding(20)
         default:
             if openItems.isEmpty && answeredItems.isEmpty && !board.loading {
                 message(title: LAADecisionCopy.empty, identifier: "work.decisions.empty")
@@ -129,7 +129,7 @@ struct LAADecisionBoardView: View {
         LAAMacListDetail {
             VStack(spacing: 0) {
                 HStack(spacing: LAASpacing.x2) {
-                    if board.loading { ProgressView().controlSize(.small) }
+                    if board.loading && board.items.isEmpty { LAAWorkSkeleton() }
                     Spacer(minLength: 0)
                     Button { Task { await board.load(bridge) } } label: { Image(systemName: "arrow.clockwise") }
                         .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
@@ -248,7 +248,7 @@ struct LAADecisionBoardView: View {
             Spacer(minLength: 0)
             Button { Task { await retry(item) } } label: {
                 Group {
-                    if retrying == item.id { ProgressView() }
+                    if retrying == item.id { Text("送信中") }
                     else {
                         Label { Text(verbatim: "届け直す") } icon: { Image(systemName: "arrow.clockwise") }
                             .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)
@@ -473,12 +473,7 @@ private struct LAADecisionRow: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if !desktop {
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(LAAColor.separator)
-                        .accessibilityHidden(true)
-                }
+
             }
             .padding(.horizontal, desktop ? LAASpacing.x3 : 0)
             .padding(.vertical, desktop ? LAASpacing.x3 : LAASpacing.x2)

@@ -5,8 +5,8 @@ import Foundation
 /// records an agent posted through `laa-bridge decide`; session items are a
 /// Paseo conversation's own pending question, answered through the existing
 /// session decision endpoints.
-struct LAADecision: Decodable, Identifiable, Equatable {
-    struct Option: Decodable, Equatable {
+struct LAADecision: Codable, Identifiable, Equatable {
+    struct Option: Codable, Equatable {
         let label: String
         let detail: String?
         let recommended: Bool
@@ -21,24 +21,24 @@ struct LAADecision: Decodable, Identifiable, Equatable {
         }
         private enum CodingKeys: String, CodingKey { case label, detail, recommended }
     }
-    struct Source: Decodable, Equatable {
+    struct Source: Codable, Equatable {
         let paseoAgentId: String?
         let sessionId: String?
         let name: String?
     }
-    struct Answer: Decodable, Equatable {
+    struct Answer: Codable, Equatable {
         let optionIndex: Int?
         let label: String
         let note: String?
         let answeredAt: String?
     }
-    struct Delivery: Decodable, Equatable {
+    struct Delivery: Codable, Equatable {
         let state: String
         let attempts: Int?
         let deliveredAt: String?
         let error: String?
     }
-    enum Kind: String, Decodable { case board, session }
+    enum Kind: String, Codable { case board, session }
 
     let kind: Kind
     let id: String
@@ -119,13 +119,13 @@ struct LAADecision: Decodable, Identifiable, Equatable {
     }
 }
 
-struct LAADecisionPage: Decodable {
+struct LAADecisionPage: Codable {
     let items: [LAADecision]
     let fetchedAt: String?
 }
 
 /// The answer endpoint's envelope.
-struct LAADecisionAnswerResult: Decodable { let decision: LAADecision }
+struct LAADecisionAnswerResult: Codable { let decision: LAADecision }
 
 enum LAADecisionOrder {
     /// The Bridge's order, applied again so a merged or cached list reads the

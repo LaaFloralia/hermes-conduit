@@ -10,6 +10,13 @@ struct LAAWorkSessionsSection: View {
     let refreshID: Int
     /// The Work hub's search on the phone; nil keeps this list's own field.
     var query: String? = nil
+    var createID = 0
+    var onCreateConsumed: () -> Void = {}
+    var onRequestDecisions: () -> Void = {}
+    @State private var projectOrder = false
+    @State private var editingProject: LAAWorkProject?
+    @State private var projectHome: LAAWorkProject?
+    @State private var showingProjects = false
 
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @State private var search = ""
@@ -22,6 +29,7 @@ struct LAAWorkSessionsSection: View {
     @State private var opened: LAAWorkSession?
     @State private var failure: String?
     @State private var loading = false
+    @State private var hasLoaded = false
     @State private var openRow: String?
     @State private var expanded = Set<String>()
 
@@ -30,10 +38,21 @@ struct LAAWorkSessionsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            LAAWorkPrimaryButton(title: LAACopy.WorkTab.newSession, systemImage: "plus") { showLauncher = true }
-                .accessibilityIdentifier("work.sessions.new")
+            HStack {
+                Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
+                Spacer()
+                Menu {
+                    Button("新しい順") { projectOrder = false }
+                    Button("プロジェクト別") { projectOrder = true }.accessibilityIdentifier("work.sessions.byProject")
+                    Button(showArchived ? "最近のセッションに戻る" : "アーカイブを表示") { showArchived.toggle(); Task { await load() } }
+                        .accessibilityIdentifier("work.sessions.archiveToggle")
+                    Button("判断の一覧", action: onRequestDecisions).accessibilityIdentifier("work.decisions.open")
+                    Button("プロジェクトを管理") { showingProjects = true }.accessibilityIdentifier("work.projects.manage")
+                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                .accessibilityLabel("一覧の表示").accessibilityIdentifier("work.sessions.menu")
+            }
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
-            if loading && sessions.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+            if loading && !hasLoaded && sessions.isEmpty { LAAWorkSkeleton() }
 
             if query == nil {
                 TextField("", text: $search, prompt: Text(verbatim: LAACopy.WorkTab.searchSessions))
@@ -47,20 +66,29 @@ struct LAAWorkSessionsSection: View {
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .padding(.vertical, LAASpacing.x4)
             }
-            if !visible.pinned.isEmpty { group(LAACopy.WorkTab.pinned, shown(visible.pinned), children) }
-            if !visible.recent.isEmpty { group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent, shown(visible.recent), children) }
-
-            Button {
-                showArchived.toggle()
-                Task { await load() }
-            } label: {
-                Label { Text(verbatim: showArchived ? LAACopy.WorkTab.backToRecent : LAACopy.WorkTab.showArchive) }
-                    icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+            if projectOrder {
+                ForEach(projects.filter { !$0.isArchived }) { project in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(verbatim: project.name).font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(LAAColor.secondaryText).frame(minHeight: 44)
+                            .contextMenu {
+                                Button("開く") { projectHome = project }
+                                Button("名前と指示を変更") { editingProject = project }
+                                Button("アーカイブ") { Task { await archiveProject(project) } }
+                            }
+                        let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
+                        if rows.isEmpty { Text("セッションはありません").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText) }
+                        else { group("", rows, children) }
+                    }
+                }
+                let ungrouped = shown((visible.pinned + visible.recent).filter { row in !projects.contains { $0.id == LAAWorkSessionOrder.projectID(row, in: matches) && !$0.isArchived } })
+                if !ungrouped.isEmpty { group("プロジェクトなし", ungrouped, children) }
+            } else {
+                let sections = LAAWorkSessionOrder.sections(matches)
+                if !sections.active.isEmpty { group("実行中・判断待ち", shown(sections.active), children) }
+                if !sections.pinned.isEmpty { group(LAACopy.WorkTab.pinned, shown(sections.pinned), children) }
+                if !sections.recent.isEmpty { group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent, shown(sections.recent), children) }
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("work.sessions.archiveToggle")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.sessions")
@@ -69,6 +97,16 @@ struct LAAWorkSessionsSection: View {
         }
         .navigationDestination(item: $linkedSessionID) { id in
             LAAWorkSessionDetail(id: id, projects: projects, workspaces: [], drafts: drafts)
+        }
+        .onChange(of: createID, initial: true) { _, value in
+            guard value > 0 else { return }; showLauncher = true; onCreateConsumed()
+        }
+        .sheet(item: $editingProject, onDismiss: { Task { await load() } }) { project in
+            LAAWorkProjectEditor(project: project, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+        }
+        .navigationDestination(item: $projectHome) { LAAWorkProjectHome(project: $0, drafts: drafts) }
+        .navigationDestination(isPresented: $showingProjects) {
+            ScrollView { LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).padding(20) }.navigationTitle("プロジェクト")
         }
         .task(id: linkRequest.generation) { await openLinkedSession() }
         .sheet(isPresented: $showLauncher) {
@@ -83,7 +121,9 @@ struct LAAWorkSessionsSection: View {
             .environmentObject(bridge)
         }
         .task(id: "\(bridge.revision)-\(refreshID)") {
-            sessions = LAAWorkSessionCache.read([LAAWorkSession].self, store: drafts, device: bridge.deviceID, target: "list") ?? []
+            if sessions.isEmpty {
+                sessions = LAAWorkSessionCache.read([LAAWorkSession].self, store: drafts, device: bridge.deviceID, target: showArchived ? "archived" : "list") ?? []
+            }
             await load()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
@@ -99,8 +139,10 @@ struct LAAWorkSessionsSection: View {
 
     private func group(_ title: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                .padding(.bottom, LAASpacing.x2)
+            if !title.isEmpty {
+                Text(verbatim: title).font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
+                    .padding(.bottom, LAASpacing.x2)
+            }
             VStack(spacing: 0) {
                 ForEach(rows) { session in
                     let folded = children[session.id] ?? []
@@ -176,7 +218,7 @@ struct LAAWorkSessionsSection: View {
     @MainActor private func load() async {
         guard bridge.status == .paired else { return }
         loading = true
-        defer { loading = false }
+        defer { loading = false; hasLoaded = true }
         do {
             let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
             async let page: [LAAWorkSession] = LAAWorkPaging.all(bridge, "/v1/sessions", query: query)
@@ -197,6 +239,11 @@ struct LAAWorkSessionsSection: View {
             failure = "Macからの応答を読み取れませんでした。"
         }
         if options == nil { options = try? await bridge.read("/v1/session-options") }
+    }
+
+    @MainActor private func archiveProject(_ project: LAAWorkProject) async {
+        do { try await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge); await load() }
+        catch { failure = "変更を保存できません" }
     }
 
     @MainActor private func update(_ session: LAAWorkSession, favorite: Bool? = nil, archived: Bool? = nil) async {
@@ -255,35 +302,25 @@ struct LAAWorkSessionRow: View {
     var childNeedsDecision = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
-            Circle().fill(LAAWorkSessionStyle.statusColor(session.phase)).frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: LAASpacing.x1) {
-                    LAAWorkRefLabel(ref: session.ref)
-                    Text(verbatim: session.name).laaTextStyle(.body).fontWeight(.semibold)
-                        .foregroundStyle(LAAColor.text).lineLimit(1)
+        HStack(alignment: .center, spacing: 12) {
+            LAAWorkStatusMark(phase: session.needsDecision || childNeedsDecision ? "awaiting_decision" : session.phase)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Text(verbatim: session.name).font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(LAAColor.text).lineLimit(2).multilineTextAlignment(.leading)
                         .accessibilityIdentifier("work.session.\(session.id)")
-                    if session.isFavorite {
-                        Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(LAAColor.secondaryText)
-                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.pinned))
-                    }
+                    if session.isFavorite { Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(LAAColor.secondaryText) }
                 }
-                Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
-            }
-            Spacer(minLength: LAASpacing.x2)
-            if LAAWorkPresentation.phaseNeedsAttention(session.phase) || session.needsDecision || childNeedsDecision {
-                Text(verbatim: session.needsDecision || childNeedsDecision ? "判断待ち" : LAAWorkPresentation.phase(session.phase))
-                    .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.attention)
-            }
+                Text(verbatim: detail).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            LAAWorkRefLabel(ref: session.ref)
         }
-        .padding(.horizontal, LAASpacing.x4)
-        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-        .contentShape(Rectangle())
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading).contentShape(Rectangle())
     }
 
     private var detail: String {
-        [projectName, LAAWorkSessionStyle.model(session, options: options), LAAWorkSessionStyle.relative(session.updatedAt)]
+        [LAAWorkSessionStyle.model(session, options: options), LAAWorkSessionStyle.relative(session.updatedAt)]
             .compactMap { $0 }.joined(separator: " · ")
     }
 }
@@ -310,14 +347,40 @@ struct LAAWorkChildDisclosure: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: laaDesktop ? (open ? "Hide child agents" : "Show child agents")
-                                                      : (open ? "子エージェントを閉じる" : "子エージェントを開く")))
+        .accessibilityLabel(Text(verbatim: open ? "子エージェントを閉じる" : "子エージェントを開く"))
         .accessibilityValue(Text(verbatim: "\(count)"))
         .accessibilityIdentifier("work.session.\(id).children")
     }
 }
 
 enum LAAWorkSessionOrder {
+    static func isActive(_ row: LAAWorkSession) -> Bool {
+        row.needsDecision || ["running", "created", "awaiting_decision"].contains(row.phase)
+    }
+
+    static func projectID(_ row: LAAWorkSession, in rows: [LAAWorkSession]) -> String? {
+        var current = row
+        var seen = Set<String>()
+        while let parent = current.parentId, seen.insert(parent).inserted, let found = rows.first(where: { $0.id == parent }) { current = found }
+        return current.projectId ?? row.projectId
+    }
+
+    /// Keep a whole conversation tree together, promoting a parent when any
+    /// child is running or waiting for a decision.
+    static func sections(_ sessions: [LAAWorkSession]) -> (active: [LAAWorkSession], pinned: [LAAWorkSession], recent: [LAAWorkSession]) {
+        let ordered = rows(sessions)
+        let all = ordered.pinned + ordered.recent
+        let children = descendants(all)
+        let ids = Set(all.map(\.id))
+        let roots = all.filter { $0.parentId == nil || !ids.contains($0.parentId!) }
+        var active = Set<String>()
+        for root in roots {
+            let tree = [root] + (children[root.id] ?? [])
+            if tree.contains(where: isActive) { active.formUnion(tree.map(\.id)) }
+        }
+        return (all.filter { active.contains($0.id) }, ordered.pinned.filter { !active.contains($0.id) }, ordered.recent.filter { !active.contains($0.id) })
+    }
+
     /// Favourites first, then the rest; each newest first.
     static func rows(_ sessions: [LAAWorkSession]) -> (pinned: [LAAWorkSession], recent: [LAAWorkSession]) {
         let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }
@@ -399,7 +462,19 @@ enum LAAWorkSessionStyle {
             return profileLabel(profile, fast: session.fast == true)
         }
         let model = session.observed?.model ?? session.requested?.model
-        return model.map { [$0, effort(session.requested?.effort)].compactMap { $0 }.joined(separator: " ") }
+        return model.map { [displayModel($0), effort(session.requested?.effort)].compactMap { $0 }.joined(separator: " · ") }
+    }
+
+    static func displayModel(_ raw: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("deepseek") { return "DeepSeek V4.1 Flash" }
+        if lower.contains("gpt-6.1-sol") { return "GPT Sol 6.1" }
+        if lower.contains("gpt-6.1-terra") { return "GPT Terra 6.1" }
+        if lower.contains("opus") {
+            return shortLabel(raw).replacingOccurrences(of: "claude-opus-", with: "Opus ").replacingOccurrences(of: "-", with: ".")
+        }
+        if raw.contains("[") || raw.contains("/") || raw.hasPrefix("laa-") { return "AI" }
+        return shortLabel(raw)
     }
 
     /// What the daemon reports as applied, not what the Bridge requested. Nil
@@ -408,7 +483,7 @@ enum LAAWorkSessionStyle {
     static func appliedModel(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
         guard let observed = session.observed, let model = observed.model, !model.isEmpty else { return nil }
         let label = options?.profiles.first { $0.provider == observed.provider && $0.model == model }?.label
-        return [shortLabel(label ?? model), effort(observed.effort) ?? "推論未確認"].joined(separator: " ")
+        return [displayModel(label ?? model), effort(observed.effort) ?? "推論未確認"].joined(separator: " ")
     }
 
     /// The effort values the daemon can apply to the observed model, in the same
@@ -484,10 +559,10 @@ struct LAAWorkFailure: View {
     var body: some View {
         HStack(alignment: .top, spacing: LAASpacing.x2) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
-            Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
+            Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.text).lineLimit(1)
             Spacer(minLength: LAASpacing.x2)
             Button { retry() } label: { Text(verbatim: LAACopy.WorkTab.retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link) }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).frame(minHeight: 44)
         }
         .padding(LAASpacing.x3)
         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))

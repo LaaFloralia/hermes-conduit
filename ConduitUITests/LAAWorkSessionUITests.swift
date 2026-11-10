@@ -399,7 +399,7 @@ final class LAAWorkSessionUITests: XCTestCase {
     /// a second gear beside it.
     func testUsageInsideWorkHasOneSettingsButton() throws {
         let app = try launchFixture()
-        let usage = app.buttons["work.section.usage"]
+        let usage = app.buttons["work.usage"]
         var moves = 0
         while usage.exists && usage.frame.maxX > app.frame.width - 8 && moves < 6 {
             let start = app.coordinate(withNormalizedOffset: .zero)

@@ -79,7 +79,7 @@ struct LAAPersonalTaskDetailView: View {
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
                             Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
                         }
-                    } else if error == nil { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+                    } else if error == nil { LAAWorkSkeleton() }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                     .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
@@ -151,7 +151,7 @@ struct LAAPersonalTaskDetailView: View {
                 .disabled(completing || owner.completionBlockedReason != nil)
                 .accessibilityIdentifier("work.task.detail.complete")
             }
-            if completing { ProgressView().controlSize(.small) }
+            if completing { Text("保存中").font(.caption) }
             if let completionFailure {
                 Text(verbatim: completionFailure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .fixedSize(horizontal: false, vertical: true)

@@ -61,7 +61,7 @@ struct LAAWorkSessionDecision: View {
                     Button(role: .destructive) { reply(request, decision: "deny") } label: { Text(verbatim: "拒否") }.disabled(pendingSubmission(request.id) != nil)
                     Divider()
                 }
-            } else { ProgressView() }
+            } else { LAAWorkSkeleton() }
             if let failure { Text(verbatim: failure).foregroundStyle(LAAColor.attention) }
             Button { Task { await load() } } label: { Text(verbatim: "確認内容を更新") }
         }
