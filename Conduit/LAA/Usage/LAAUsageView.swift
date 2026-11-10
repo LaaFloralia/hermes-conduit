@@ -6,7 +6,8 @@ import Combine
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
-    @Environment(\.locale) private var locale
+    @Environment(\.dismiss) private var dismiss
+    private let locale = LAADateText.locale
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
@@ -48,6 +49,10 @@ struct LAAUsageView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(laaDesktop ? .automatic : .hidden, for: .navigationBar)
+        .toolbar {
+            if !laaDesktop { LAABackToolbar(action: { dismiss() }) }
+        }
+        .navigationBarBackButtonHidden(!laaDesktop)
         .refreshable { await refresh() }
         .sheet(isPresented: $showPairing) {
             LAAPairingView().environmentObject(bridge).laaSheetSize(.form)
@@ -68,7 +73,7 @@ struct LAAUsageView: View {
             Text(verbatim: "Usage").font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 .accessibilityAddTraits(.isHeader)
             Button { Task { await refresh() } } label: {
-                Text(verbatim: state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "未取得")
+                Text(verbatim: state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                     .contentShape(Rectangle())
@@ -76,7 +81,7 @@ struct LAAUsageView: View {
             .buttonStyle(.plain)
             .disabled(state.isRefreshing || bridge.status != .paired)
             .accessibilityLabel(Text(verbatim: "更新"))
-            .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "未取得")
+            .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
             .accessibilityIdentifier("laa.usage.refresh")
             Spacer(minLength: 0)
         }
@@ -126,7 +131,7 @@ struct LAAUsageView: View {
                     ForEach(groups) { group in
                         VStack(spacing: 0) {
                             if group.items.isEmpty {
-                                readingRow(name: group.label, result: "未取得", age: nil, fraction: nil, note: nil)
+                                readingRow(name: group.label, result: "—", age: nil, fraction: nil, note: nil)
                             } else {
                                 ForEach(group.items) { item in serviceRow(item, name: group.label) }
                             }
@@ -148,7 +153,7 @@ struct LAAUsageView: View {
                 readingRow(name: label, result: value(window.remainingPercent, unit: "percent"), age: age,
                            fraction: window.remainingPercent.map { $0 / 100 },
                            note: item.retainedReason.map { Self.unavailableReason($0) }
-                               ?? (reset ? "リセット済み" : LAAUsageItem.date(window.resetsAt).map { "リセット " + resetTime($0) }))
+                               ?? (reset ? "リセット済み" : LAAUsageItem.date(window.resetsAt).map { resetTime($0) }))
             }
         } else {
             let amount = item.kind == "usage" ? item.detail?.recordedCostUsd : item.availableValue
@@ -167,11 +172,11 @@ struct LAAUsageView: View {
             sectionTitle("Storage")
             VStack(spacing: 0) {
                 if items.isEmpty {
-                    readingRow(name: "容量", result: "未取得", age: nil, fraction: nil, note: nil)
+                    readingRow(name: "容量", result: "—", age: nil, fraction: nil, note: nil)
                 }
                 ForEach(items) { item in
                     let reading = LAACapacity.reading(item, at: evaluatedAt, allowHistorical: true)
-                    let result = reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? "未取得"
+                    let result = reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? "—"
                     let note = reason(item) ?? reading.map {
                         "使用 " + LAACapacity.bytes($0.usedBytes, locale: locale) + " / " + LAACapacity.bytes($0.totalBytes, locale: locale)
                     }
@@ -187,8 +192,7 @@ struct LAAUsageView: View {
     }
 
     private func sectionTitle(_ text: String) -> some View {
-        Text(verbatim: text).font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
-            .accessibilityAddTraits(.isHeader)
+        LAASectionHeader(text)
     }
 
     private func readingRow(name: String, result: String, age: String?, fraction: Double?, note: String?, alert: Bool = false) -> some View {
@@ -221,8 +225,14 @@ struct LAAUsageView: View {
 
     private func readingValue(_ result: String, age: String?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-            Text(verbatim: result).font(LAAType.usageRowValue).foregroundStyle(LAAColor.text)
-            if let age { Text(verbatim: age).laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText) }
+            let parts = result.hasSuffix(" credits") ? result.split(separator: " ", maxSplits: 1) : [result[...]]
+            Text(verbatim: String(parts[0]))
+                .font(result == "—" ? .system(size: 15) : LAAType.usageRowValue)
+                .foregroundStyle(result == "—" ? LAAColor.secondaryText : LAAColor.text)
+            if parts.count > 1 {
+                Text(verbatim: String(parts[1])).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
+            if let age { Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
         }
     }
 
@@ -239,9 +249,7 @@ struct LAAUsageView: View {
     }
 
     private func resetTime(_ date: Date) -> String {
-        var style = Date.FormatStyle().weekday(.wide).hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
-        style.locale = locale; style.timeZone = .autoupdatingCurrent
-        return date.formatted(style)
+        LAADateText.string(date, .weekday) + " " + LAADateText.string(date, .time) + "に戻る"
     }
 
     private func refresh() async {
@@ -266,7 +274,7 @@ struct LAAUsageView: View {
     }
 
     private func value(_ number: Double?, unit: String) -> String {
-        guard let number, number.isFinite else { return "未取得" }
+        guard let number, number.isFinite else { return "—" }
         if unit == "usd" { return LAAUsageMoney.text(number, locale: locale) }
         if unit == "percent", number > 0, number < 0.01 { return "<0.01%" }
         if unit == "percent", number < 100, number > 99.99 { return ">99.99%" }
@@ -306,7 +314,7 @@ struct LAAUsageMeter: View {
             let clamped = fraction.isFinite ? min(max(fraction, 0), 1) : 0
             ZStack(alignment: .leading) {
                 Capsule().fill(LAAColor.subtleSurface).frame(height: Self.height)
-                Capsule().fill(alert ? LAAColor.attention : LAAColor.link)
+                Capsule().fill(alert || clamped >= 0.9 ? LAAColor.attention : LAAColor.link)
                     .frame(width: max(width * clamped, showsSliver && clamped > 0 ? Self.height : 0),
                            height: Self.height)
             }

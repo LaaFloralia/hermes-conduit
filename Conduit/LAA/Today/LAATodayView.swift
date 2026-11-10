@@ -34,6 +34,7 @@ struct LAATodayView: View {
             if laaDesktop { desktopBody } else { phoneBody }
         }
         .background(LAAColor.background)
+        .environment(\.locale, LAADateText.locale)
         .toolbar {
             LAAScreenToolbar(createLabel: "予定を追加", createIdentifier: "laa.calendar.create",
                              canCreate: calendar.calendars.contains(where: \.writable),
@@ -76,29 +77,11 @@ struct LAATodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.section) {
                 LAATabHeading(title: "Today", identifier: "laa.today.title")
-                Picker(selection: $calendar.mode) {
-                    ForEach(LAACalendarMode.visibleModes, id: \.self) { mode in Text(verbatim: mode.title).tag(mode) }
-                } label: { Text(verbatim: "表示") }
-                .pickerStyle(.segmented).accessibilityIdentifier("laa.calendar.mode")
+                LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("laa.calendar.mode")
                 if calendar.mode != .list {
-                HStack {
-                    Button { move(-1) } label: { Image(systemName: "chevron.left").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel(Text(verbatim: "前へ"))
-                    DatePicker(selection: $calendar.selectedDate, displayedComponents: .date) { Text(verbatim: "日付") }.labelsHidden()
-                    Button { calendar.selectedDate = Date() } label: { Text(verbatim: "今日") }
-                    Button { move(1) } label: { Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel(Text(verbatim: "次へ"))
-                }
-                }
-                if !calendar.calendars.isEmpty {
-                    LAASectionHeader("カレンダー") {
-                        ForEach(calendar.calendars) { item in
-                            Button {
-                                if calendar.selectedCalendarIDs.contains(item.id) { calendar.selectedCalendarIDs.remove(item.id) }
-                                else { calendar.selectedCalendarIDs.insert(item.id) }
-                            } label: {
-                                Label { Text(verbatim: item.title) } icon: { Image(systemName: calendar.selectedCalendarIDs.contains(item.id) ? "checkmark.circle.fill" : "circle") }
-                            }
-                        }
-                    }
+                    dateNavigation
                 }
                 if let deepLinkError { Text(verbatim: deepLinkError).foregroundStyle(LAAColor.attention) }
                 if calendar.isLoading && !calendar.loaded { LAALoadingDots() }
@@ -110,7 +93,10 @@ struct LAATodayView: View {
                 if calendar.skippedCount > 0 { Text(verbatim: "読み取れない予定を\(calendar.skippedCount)件除外しました。").font(.caption).foregroundStyle(LAAColor.attention) }
                 if calendar.mode == .month { monthGrid }
                 if calendar.loaded {
-                    ForEach(displayedDays, id: \.timeIntervalSince1970) { date in day(date) }
+                    let days = displayedDays
+                    ForEach(days, id: \.timeIntervalSince1970) { date in
+                        day(date, showsCalendarMenu: date == days.first)
+                    }
                 }
             }.laaPageWidth()
                 .padding(LAASpacing.horizontal)
@@ -155,20 +141,54 @@ struct LAATodayView: View {
         let step = calendar.mode == .week || calendar.mode == .list ? 7 : 1
         calendar.selectedDate = Calendar.current.date(byAdding: component, value: direction * step, to: calendar.selectedDate) ?? calendar.selectedDate
     }
+    private var dateNavigation: some View {
+        HStack {
+            Button { move(-1) } label: {
+                Image(systemName: "chevron.left").frame(width: 44, height: 44)
+            }.accessibilityLabel(Text(verbatim: "前へ"))
+            Spacer(minLength: 4)
+            if calendar.mode == .month {
+                Text(verbatim: LAADateText.string(calendar.selectedDate, .yearMonth))
+                    .laaTextStyle(.section)
+            } else {
+                DatePicker(selection: $calendar.selectedDate, displayedComponents: .date) {
+                    Text(verbatim: "日付")
+                }.labelsHidden()
+                Button { calendar.selectedDate = .now } label: { Text(verbatim: "今日") }
+            }
+            Spacer(minLength: 4)
+            Button { move(1) } label: {
+                Image(systemName: "chevron.right").frame(width: 44, height: 44)
+            }.accessibilityLabel(Text(verbatim: "次へ"))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(LAAColor.text)
+    }
+
     private var monthGrid: some View {
         let range = LAACalendarMode.month.range(containing: calendar.selectedDate)
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: LAASpacing.x1) {
+            ForEach(["日", "月", "火", "水", "木", "金", "土"], id: \.self) { weekday in
+                Text(verbatim: weekday).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
             ForEach(0..<42, id: \.self) { offset in
                 let date = Calendar.current.date(byAdding: .day, value: offset, to: range.start)!
                 let end = Calendar.current.date(byAdding: .day, value: 1, to: date)!
                 let count = calendar.events.filter { $0.overlaps(start: date, end: end) }.count
+                let inMonth = Calendar.current.isDate(date, equalTo: calendar.selectedDate, toGranularity: .month)
+                let selected = Calendar.current.isDate(date, inSameDayAs: calendar.selectedDate)
+                let today = Calendar.current.isDateInToday(date)
                 Button { calendar.selectedDate = date } label: {
                     VStack(spacing: 2) {
-                        Text(verbatim: date.formatted(.dateTime.day()))
+                        Text(verbatim: LAADateText.string(date, .dayNumber))
+                            .foregroundStyle(inMonth ? LAAColor.text : LAAColor.secondaryText)
                         Circle().fill(count > 0 ? LAAColor.link : .clear).frame(width: 4, height: 4)
                     }.frame(maxWidth: .infinity, minHeight: 44)
-                        .background(Calendar.current.isDate(date, inSameDayAs: calendar.selectedDate) ? LAAColor.subtleSurface : .clear, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                }.accessibilityLabel(Text(verbatim: date.formatted(date: .complete, time: .omitted) + " · \(count)件"))
+                        .background(today ? LAAColor.selectionFill : selected ? LAAColor.subtleSurface : .clear,
+                                    in: RoundedRectangle(cornerRadius: LAARadius.card))
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityLabel(Text(verbatim: LAADateText.string(date, .day) + " · \(count)件"))
             }
         }
     }
@@ -179,21 +199,43 @@ struct LAATodayView: View {
         return (0..<(Calendar.current.dateComponents([.day], from: range.start, to: range.end).day ?? 1))
             .compactMap { Calendar.current.date(byAdding: .day, value: $0, to: range.start) }
     }
-    private func day(_ first: Date) -> some View {
+    private func day(_ first: Date, showsCalendarMenu: Bool) -> some View {
         let last = Calendar.current.date(byAdding: .day, value: 1, to: first)!
         let events = calendar.events.filter { $0.overlaps(start: first, end: last) }
-        return LAATodayDaySection(date: first, events: events, select: { selectedEvent = $0 })
+        return LAATodayDaySection(date: first, events: events, select: { selectedEvent = $0 }) {
+            if showsCalendarMenu && !calendar.calendars.isEmpty {
+                Menu {
+                    ForEach(calendar.calendars) { item in
+                        Button {
+                            if calendar.selectedCalendarIDs.contains(item.id) { calendar.selectedCalendarIDs.remove(item.id) }
+                            else { calendar.selectedCalendarIDs.insert(item.id) }
+                        } label: {
+                            Label { Text(verbatim: item.title) } icon: {
+                                Image(systemName: calendar.selectedCalendarIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis").frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(Text(verbatim: "表示するカレンダー"))
+            }
+        }
     }
 }
 
-private struct LAATodayDaySection: View {
+private struct LAATodayDaySection<MenuContent: View>: View {
     let date: Date
     let events: [LAACalendarEvent]
     let select: (LAACalendarEvent) -> Void
+    @ViewBuilder let menu: MenuContent
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: Calendar.current.isDateInToday(date) ? "今日 · " + date.formatted(.dateTime.month().day().weekday()) : date.formatted(.dateTime.month().day().weekday()))
-                .font(.title3.weight(.semibold)).foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
+            HStack {
+                let day = LAADateText.string(date, .day)
+                LAASectionHeader(Calendar.current.isDateInToday(date) ? "今日 · " + day : day)
+                menu
+            }
             if events.isEmpty { LAAEmptyState(message: "予定はありません") }
             else {
                 LAAListSurface {
@@ -201,7 +243,7 @@ private struct LAATodayDaySection: View {
                         if event.id != events.first?.id { LAAListDivider() }
                         LAAListRow(action: { select(event) }) {
                             HStack(alignment: .top, spacing: 12) {
-                                Text(verbatim: event.allDay ? "終日" : event.start.formatted(date: .omitted, time: .shortened))
+                                Text(verbatim: event.allDay ? "終日" : LAADateText.string(event.start, .time))
                                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).frame(minWidth: 48, alignment: .leading)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(verbatim: event.title).laaTextStyle(.rowTitle)

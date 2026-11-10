@@ -127,10 +127,15 @@ enum LAAMarkdownStyler {
                 paragraph.paragraphSpacingBefore = 32
                 paragraph.paragraphSpacing = 10
                 markerIsGlyph = true
-            case .bullet, .checkbox:
-                if case .checkbox(checked: true) = line.kind { attributes[.foregroundColor] = secondary }
+            case .bullet:
                 paragraph.firstLineHeadIndent = indent + gutter
                 paragraph.headIndent = indent + gutter
+                markerIsGlyph = true
+            case .checkbox(let checked):
+                if checked { attributes[.foregroundColor] = secondary }
+                paragraph.firstLineHeadIndent = indent + 31
+                paragraph.headIndent = indent + 31
+                paragraph.paragraphSpacing = 8
                 markerIsGlyph = true
             case .ordered:
                 paragraph.firstLineHeadIndent = indent

@@ -5,7 +5,7 @@ struct LAAScreenHeader: View {
     let title: String
     var identifier = ""
     var body: some View {
-        Text(verbatim: title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+        Text(verbatim: title).font(LAAType.title(title)).foregroundStyle(LAAColor.text)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier(identifier)
     }
@@ -34,6 +34,125 @@ struct LAASectionHeader<MenuContent: View>: View {
 }
 extension LAASectionHeader where MenuContent == EmptyView {
     init(_ title: String) { self.init(title) { EmptyView() } }
+}
+
+/// A single glass track for the phone and desktop segment controls.
+struct LAASegmentedControl<Value: Hashable>: View {
+    let values: [Value]
+    @Binding var selection: Value
+    let title: (Value) -> String
+    var identifier: (Value) -> String = { _ in "" }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(values, id: \.self) { value in
+                let selected = selection == value
+                Button { selection = value } label: {
+                    Text(verbatim: title(value))
+                        .font(.system(size: 15, weight: selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .background(selected ? LAAColor.surface : .clear, in: Capsule())
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier(identifier(value))
+            }
+        }
+        .padding(.horizontal, 3)
+        .background {
+            Capsule().fill(.clear).frame(height: 36).laaGlass(in: Capsule())
+        }
+    }
+}
+
+struct LAABackToolbar: ToolbarContent {
+    let action: () -> Void
+
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        if #available(iOS 26.0, *) { item.sharedBackgroundVisibility(.hidden) }
+        else { item }
+    }
+
+    private var item: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            LAAToolbarIconButton(systemName: "chevron.left", label: "戻る", identifier: "BackButton",
+                                 tint: LAAColor.text, action: action)
+        }
+    }
+}
+
+struct LAASettingsToolbar: ToolbarContent {
+    let action: () -> Void
+
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        if #available(iOS 26.0, *) { item.sharedBackgroundVisibility(.hidden) }
+        else { item }
+    }
+
+    private var item: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: action) }
+    }
+}
+
+enum LAADateText {
+    static let locale = Locale(identifier: "ja_JP")
+
+    enum Format: String, CaseIterable {
+        case time = "H:mm"
+        case dateFile = "yyyy-MM-dd"
+        case day = "M月d日（E）"
+        case monthDay = "M月d日"
+        case yearMonth = "yyyy年M月"
+        case dayNumber = "d"
+        case weekday = "E"
+        case dayTime = "M月d日（E） H:mm"
+    }
+
+    private static let formatters = Dictionary(uniqueKeysWithValues: Format.allCases.map { format in
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateFormat = format.rawValue
+        return (format, formatter)
+    })
+
+    static func string(_ date: Date, _ format: Format, timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        if timeZone == .autoupdatingCurrent, let formatter = formatters[format] {
+            return formatter.string(from: date)
+        }
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = format.rawValue
+        return formatter.string(from: date)
+    }
+
+    static func noteTitle(_ name: String) -> String {
+        guard name.count == 10, let formatter = formatters[.dateFile],
+              let date = formatter.date(from: name), formatter.string(from: date) == name else { return name }
+        return string(date, .day)
+    }
+
+    static func relative(_ date: Date, now: Date = .now) -> String {
+        let interval = now.timeIntervalSince(date)
+        let seconds = abs(interval)
+        let amount: String
+        switch seconds {
+        case ..<60: return "たった今"
+        case ..<3_600: amount = "\(Int(seconds / 60))分"
+        case ..<86_400: amount = "\(Int(seconds / 3_600))時間"
+        case ..<604_800: amount = "\(Int(seconds / 86_400))日"
+        default: return string(date, .day)
+        }
+        return amount + (interval >= 0 ? "前" : "後")
+    }
 }
 
 /// A section of rows on the same paper background as the screen.
@@ -75,11 +194,12 @@ struct LAAToolbarIconButton: View {
     let systemName: String
     let label: String
     var identifier = ""
+    var tint = LAAColor.link
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName).font(.system(size: 20, weight: .regular))
-                .foregroundStyle(LAAColor.link).frame(width: 44, height: 44).contentShape(Circle())
+                .foregroundStyle(tint).frame(width: 44, height: 44).contentShape(Circle())
         }
         .buttonStyle(.plain).laaGlass(in: Circle())
         .accessibilityLabel(Text(verbatim: label)).accessibilityIdentifier(identifier).macTooltip(label)

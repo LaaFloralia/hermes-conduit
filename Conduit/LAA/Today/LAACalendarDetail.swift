@@ -20,7 +20,8 @@ struct LAACalendarDetail: View {
                 Section {
                     Text(verbatim: event.title).font(.title2).textSelection(.enabled)
                     .accessibilityIdentifier("laa.calendar.detail.title")
-                Text(verbatim: event.start.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened) + " – " + event.end.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened))
+                Text(verbatim: LAADateText.string(event.start, event.allDay ? .day : .dayTime)
+                             + " – " + LAADateText.string(event.end, event.allDay ? .day : .dayTime))
                 if let location = event.location, !location.isEmpty {
                     Text(verbatim: location).textSelection(.enabled)
                     if let url = URL(string: "https://maps.apple.com/?q=" + (location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")) {

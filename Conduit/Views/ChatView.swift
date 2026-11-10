@@ -1417,7 +1417,7 @@ struct UserBubble: View {
     var body: some View {
         // The owner's picture, name and role, as in groups and Work.
         LAAOwnerMessageRow(continues: continuesRun, timestamp: message.timestamp) {
-            stack.accessibilityIdentifier("chat.message.user").laaMessageMenu(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
+            stack.accessibilityIdentifier("chat.message.user").laaMessageMenu(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content, isMine: true,
                 reply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
             LAAChatDelivery(message: message)
         }.laaChatColumn(.trailing)
@@ -1447,6 +1447,10 @@ struct UserBubble: View {
                         reactions: message.reactions,
                         agentName: agentName
                     )
+#if LAA_BUILD
+                    .padding(.top, -12)
+                    .zIndex(1)
+#endif
                 }
 
 #if !LAA_BUILD
@@ -2533,12 +2537,6 @@ struct SettledAssistantMessageContent: View, Equatable {
                 ChatCodeBlock(source: code)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-#if LAA_BUILD
-            HStack {
-                Spacer(minLength: 0)
-                MessageTimestampLabel(timestamp: message.timestamp)
-            }
-#endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2803,6 +2801,10 @@ struct AssistantBubble: View {
                     agentName: identity.name,
                     onTap: rowState.canReact(to: message) ? { showsTapback = true } : nil
                 )
+#if LAA_BUILD
+                .padding(.top, -14)
+                .zIndex(1)
+#endif
             }
 
 #if !LAA_BUILD
@@ -3276,10 +3278,14 @@ enum MessageTimestampFormatter {
             // display-ready timestamp. Keep it visible instead of dropping it.
             return value
         }
+        #if LAA_BUILD
+        return LAADateText.string(date, Calendar.current.isDateInToday(date) ? .time : .dayTime)
+        #else
         if Calendar.current.isDateInToday(date) {
             return date.formatted(date: .omitted, time: .shortened)
         }
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        #endif
     }
 
     static func date(from rawTimestamp: String) -> Date? {

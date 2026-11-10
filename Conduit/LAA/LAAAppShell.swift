@@ -220,7 +220,7 @@ struct LAAAppShell: View {
         TabView(selection: $selectedTab) {
             chatsTab
                 .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
-                .tabItem { Label(LAATab.chats.title, systemImage: LAATab.chats.symbol) }
+                .tabItem { tabLabel(.chats) }
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
                 LAANonChatTab(tab: tab, isActive: selectedTab == tab,
@@ -232,11 +232,20 @@ struct LAAAppShell: View {
                               onRequestSettings: onRequestSettings)
                     .equatable()
                 .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
-                .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                .tabItem { tabLabel(tab) }
                 .badge(tab == .work ? decisionCount : 0)
                 .tag(tab)
             }
         }
+    }
+
+    private func tabLabel(_ tab: LAATab) -> some View {
+        Label {
+            Text(verbatim: tab.title).font(.system(size: 10, weight: .semibold))
+        } icon: {
+            Image(systemName: tab.symbol).environment(\.symbolVariants, .none).fontWeight(.regular)
+        }
+        .environment(\.symbolVariants, .none)
     }
 
     @ViewBuilder

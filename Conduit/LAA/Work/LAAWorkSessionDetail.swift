@@ -153,6 +153,15 @@ struct LAAWorkSessionDetail: View {
                 .onAppear { screenWidth = proxy.size.width }
                 .onChange(of: proxy.size.width) { _, width in screenWidth = width }
         })
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let session {
+                followUp(session)
+                    .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, 8)
+                    .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720)
+                    .frame(maxWidth: .infinity)
+                    .background(LAAColor.background)
+            }
+        }
         .navigationTitle(Text(verbatim: session?.name ?? LAACopy.WorkTab.sessions))
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
@@ -193,9 +202,7 @@ struct LAAWorkSessionDetail: View {
 
     private var page: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            // Only the transcript is lazy. The composer and the bottom
-            // sentinel are ordinary children, so the end of the page is a real
-            // target instead of a position inside a lazy estimate.
+            // The bottom sentinel stays outside the lazy transcript.
             LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
                 Color.clear.frame(height: 0).id("top-start")
                 if let session {
@@ -232,7 +239,6 @@ struct LAAWorkSessionDetail: View {
                 } else { LAALoadingDots() }
             }
             .accessibilityIdentifier(historyReady ? "work.session.history.ready" : "work.session.history.loading")
-            if let session { followUp(session) }
             // The end of the page, outside the lazy transcript. New arrivals
             // follow only while this sentinel is on screen.
             Color.clear.frame(height: 1).id("bottom-end")
@@ -365,8 +371,8 @@ struct LAAWorkSessionDetail: View {
             Image(systemName: "stop.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(LAAColor.end)
-                .frame(width: 36, height: 36)
-                .conduitGlassControl(cornerRadius: 18, tint: LAAColor.end.opacity(0.1), interactive: true)
+                .frame(width: 44, height: 44)
+                .laaGlass(in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(stopping)

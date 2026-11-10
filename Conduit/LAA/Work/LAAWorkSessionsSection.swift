@@ -469,8 +469,8 @@ enum LAAWorkSessionStyle {
     static func displayModel(_ raw: String) -> String {
         let lower = raw.lowercased()
         if lower.contains("deepseek") { return "DeepSeek V4.1 Flash" }
-        if lower.contains("gpt-6.1-sol") { return "GPT Sol 6.1" }
-        if lower.contains("gpt-6.1-terra") { return "GPT Terra 6.1" }
+        if lower.contains("gpt-6.1-sol") { return "GPT 6.1 Sol" }
+        if lower.contains("gpt-6.1-terra") { return "GPT 6.1 Terra" }
         if lower.contains("opus") {
             return shortLabel(raw).replacingOccurrences(of: "claude-opus-", with: "Opus ").replacingOccurrences(of: "-", with: ".")
         }
@@ -484,7 +484,7 @@ enum LAAWorkSessionStyle {
     static func appliedModel(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
         guard let observed = session.observed, let model = observed.model, !model.isEmpty else { return nil }
         let label = options?.profiles.first { $0.provider == observed.provider && $0.model == model }?.label
-        return [displayModel(label ?? model), effort(observed.effort) ?? "推論未確認"].joined(separator: " ")
+        return [displayModel(label ?? model), effort(observed.effort)].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// The effort values the daemon can apply to the observed model, in the same
@@ -508,13 +508,7 @@ enum LAAWorkSessionStyle {
     }
 
     static func relative(_ text: String) -> String? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = fractional.date(from: text) ?? ISO8601DateFormatter().date(from: text) else { return nil }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        MessageTimestampFormatter.date(from: text).map { LAADateText.relative($0) }
     }
 }
 

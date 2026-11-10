@@ -77,6 +77,13 @@ enum LAAType {
     static let sectionSize: CGFloat = 15
     static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
     #endif
+    static func title(_ value: String, size: CGFloat = 34, relativeTo style: Font.TextStyle = .largeTitle) -> Font {
+        let latinOnly = value.unicodeScalars.allSatisfy {
+            !$0.properties.isAlphabetic || (0x0041...0x024F).contains($0.value)
+        }
+        return latinOnly ? .custom("Georgia", size: size, relativeTo: style) : .system(size: size, weight: .semibold)
+    }
+
     static let employeeName = Font.custom("Georgia", size: 17, relativeTo: .body)
     static let usageValue = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
 

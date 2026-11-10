@@ -49,6 +49,10 @@ struct V2ConversationScreen: View {
     #if LAA_BUILD
     @EnvironmentObject private var employeeCalls: LAAEmployeeCallCoordinator
     @EnvironmentObject private var laaBridge: LAABridgeSession
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.laaDesktop) private var laaDesktop
+    @State private var messageMenu: LAAChatMenuSelection?
+    private var usesLAAChatBack: Bool { shell.isRootCovered && !shell.isSplit && !laaDesktop }
     #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
@@ -147,6 +151,13 @@ struct V2ConversationScreen: View {
         .toolbar { toolbarItems }
 #if LAA_BUILD
         .modifier(LAAInCallBarModifier())
+        .navigationBarBackButtonHidden(usesLAAChatBack)
+        .environment(\.laaPresentChatMenu, laaDesktop ? nil : { messageMenu = $0 })
+        .overlay {
+            if let messageMenu {
+                LAAChatMenuOverlay(selection: messageMenu) { self.messageMenu = nil }
+            }
+        }
 #endif
         .laaConversationFeatures()
         .sheet(item: $artifactSessionIDs) { sheet in
@@ -230,6 +241,9 @@ struct V2ConversationScreen: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
+#if LAA_BUILD
+        if usesLAAChatBack { LAABackToolbar(action: { dismiss() }) }
+#endif
         // Beside the list on a wide window there is no Back: this
         // closes the chat, as Back does on a phone, and the column goes
         // back to offering a new one.

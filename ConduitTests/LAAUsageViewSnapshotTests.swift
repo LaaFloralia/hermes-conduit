@@ -170,7 +170,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
 
     private func capture(state: LAAUsageState, paired: Bool, style: UIUserInterfaceStyle, name: String) throws {
         let bridge = LAABridgeSession(statusForTesting: paired ? .paired : .unpaired)
-        let screen = LAAUsageView(snapshotState: state).environmentObject(bridge)
+        let screen = NavigationStack { LAAUsageView(snapshotState: state) }.environmentObject(bridge)
             .environment(\.locale, Locale(identifier: "ja_JP"))
             .preferredColorScheme(style == .dark ? .dark : .light)
         let host = UIHostingController(rootView: screen)

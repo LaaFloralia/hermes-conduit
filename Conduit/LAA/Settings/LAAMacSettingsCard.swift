@@ -84,7 +84,6 @@ struct LAAMacSettingsCard: View {
         }
         .padding(LAASpacing.x4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .task(id: "\(bridge.revision)-\(refreshCount)") { await verify() }
     }

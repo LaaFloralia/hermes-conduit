@@ -390,7 +390,7 @@ enum LAAWorkPresentation {
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()
         guard let date = fractional.date(from: text) ?? plain.date(from: text) else { return text }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        return LAADateText.string(date, .dayTime)
     }
 
     static func path(_ path: String, query: [URLQueryItem]) -> String {

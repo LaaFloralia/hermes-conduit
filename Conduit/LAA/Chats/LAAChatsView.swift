@@ -17,6 +17,18 @@ struct LAAChatsView: View {
     @State private var groupReadDashboard: UUID?
     @State private var groupReadState: LAAChatsLoadState = .loading
     @State private var loadedRooms: [GroupRoom] = []
+    @State private var cachedPreviews: [String: OfflineCachedMessage] = [:]
+    @State private var previewDashboard: UUID?
+
+    private struct PreviewRequest: Hashable {
+        let dashboard: UUID?
+        let profiles: [String]
+        let visible: Bool
+    }
+
+    private var previewRequest: PreviewRequest {
+        PreviewRequest(dashboard: appState.activeDashboardID, profiles: appState.profiles, visible: shown)
+    }
 
     private var shown: Bool { shell.isTabActive && !shell.isRootCovered }
 
@@ -28,12 +40,15 @@ struct LAAChatsView: View {
             let profile = found ?? expected
             let name = staff.name
             let localMessage = appState.activeRoomSurface == nil && appState.conversationIdentityProfile == profile
-                ? appState.messages.last(where: { $0.role == .assistant || $0.role == .user }) : nil
+                ? appState.messages.last(where: { ($0.role == .assistant || $0.role == .user) && !$0.content.isEmpty }) : nil
+            let cached = previewDashboard == appState.activeDashboardID ? cachedPreviews[profile] : nil
             let rosterPreview = appState.botRoster.first(where: { AppState.profilesMatch($0.name, profile) })?.lastPreview
+            let text = localMessage?.content ?? cached?.content ?? rosterPreview
+            let timestamp = localMessage?.timestamp ?? cached?.timestamp
             return LAAChatsPerson(profile: profile, name: name, role: staff.role,
                                   available: found == expected,
-                                  lastMessage: (localMessage?.content ?? rosterPreview).map { ChatQuote.excerpt(of: $0) },
-                                  lastMessageAt: localMessage.flatMap { MessageTimestampFormatter.date(from: $0.timestamp) })
+                                  lastMessage: text.map { ChatQuote.excerpt(of: ReplyQuoteEnvelope.parse($0)?.message ?? $0) },
+                                  lastMessageAt: timestamp.flatMap(MessageTimestampFormatter.date(from:)))
         }
         let groupsState: LAAChatsLoadState
         if !appState.isConnected {
@@ -71,6 +86,7 @@ struct LAAChatsView: View {
             liveContent
             #endif
         }
+        .task(id: previewRequest) { await refreshLocalPreviews(previewRequest) }
     }
 
     private var liveContent: some View {
@@ -184,6 +200,30 @@ struct LAAChatsView: View {
             // owns the section; this answer is not the one to show.
             break
         }
+    }
+
+    private func refreshLocalPreviews(_ request: PreviewRequest) async {
+        guard request.visible, let dashboard = request.dashboard else { return }
+        let profiles = snapshot.people.filter { $0.lastMessage == nil || $0.profile != appState.conversationIdentityProfile }.map(\.profile)
+        let directory = appState.laaChatPreviewDirectory
+        let result = await Task.detached(priority: .utility) {
+            let store = OfflineChatCacheStore(directory: directory)
+            var result: [String: OfflineCachedMessage] = [:]
+            for profile in profiles {
+                guard let snapshot = store.load(dashboardID: dashboard, profile: profile) else { continue }
+                let chatIDs = Set(snapshot.sessions.filter { $0.source == .chat }.map(\.id))
+                guard let entry = snapshot.transcripts.filter({ chatIDs.contains($0.sessionID) })
+                    .max(by: { $0.savedAt < $1.savedAt }),
+                      let transcript = store.loadTranscript(entry.sessionID, dashboardID: dashboard, profile: profile) else { continue }
+                result[profile] = transcript.messages.last {
+                    ($0.role == .assistant || $0.role == .user) && !$0.content.isEmpty
+                }
+            }
+            return result
+        }.value
+        guard !Task.isCancelled, request == previewRequest else { return }
+        previewDashboard = dashboard
+        cachedPreviews = result
     }
 
     private func openPerson(_ person: LAAChatsPerson) {

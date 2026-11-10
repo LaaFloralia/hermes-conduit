@@ -72,13 +72,8 @@ struct LAATodayDesktopView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             LAAScreenHeader(title: "Today", identifier: "laa.today.title")
-            Picker(selection: $calendar.mode) {
-                ForEach(LAACalendarMode.visibleModes, id: \.self) { mode in
-                    Text(verbatim: mode.title).tag(mode)
-                }
-            } label: { Text(verbatim: "表示") }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("laa.calendar.mode")
 
             if calendar.mode != .list {
@@ -131,8 +126,8 @@ struct LAATodayDesktopView: View {
         let events = calendar.events.filter { $0.overlaps(start: day, end: end) }
         return VStack(alignment: .leading, spacing: LAASpacing.x2) {
             LAASectionHeader(Calendar.current.isDateInToday(day)
-                 ? "今日 · " + day.formatted(.dateTime.month().day())
-                 : day.formatted(.dateTime.weekday(.wide).month().day()))
+                 ? "今日 · " + LAADateText.string(day, .day)
+                 : LAADateText.string(day, .day))
             if events.isEmpty {
                 LAAEmptyState(message: "予定はありません")
             } else {
@@ -151,7 +146,7 @@ struct LAATodayDesktopView: View {
             HStack(alignment: .top, spacing: LAASpacing.x3) {
                 RoundedRectangle(cornerRadius: 2).fill(color(for: event)).frame(width: 4)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: event.allDay ? "終日" : event.start.formatted(date: .omitted, time: .shortened) + "–" + event.end.formatted(date: .omitted, time: .shortened))
+                    Text(verbatim: event.allDay ? "終日" : LAADateText.string(event.start, .time) + "–" + LAADateText.string(event.end, .time))
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     Text(verbatim: event.title).laaTextStyle(.rowTitle)
                         .foregroundStyle(LAAColor.text).lineLimit(2)
@@ -199,12 +194,12 @@ struct LAATodayDesktopView: View {
     private var monthOverview: some View {
         let monthRange = LAACalendarMode.month.range(containing: calendar.selectedDate)
         let days = (0..<42).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: monthRange.start) }
-        let month = calendar.selectedDate.formatted(.dateTime.month(.wide).year())
+        let month = LAADateText.string(calendar.selectedDate, .yearMonth)
         return ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                Text(verbatim: month).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: month).font(LAAType.title(month)).foregroundStyle(LAAColor.text)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 7), spacing: 1) {
-                    ForEach(Calendar.current.shortWeekdaySymbols, id: \.self) { symbol in
+                    ForEach(["日", "月", "火", "水", "木", "金", "土"], id: \.self) { symbol in
                         Text(verbatim: symbol).laaTextStyle(.secondary).fontWeight(.semibold)
                             .foregroundStyle(LAAColor.secondaryText)
                             .frame(maxWidth: .infinity, minHeight: 26)
@@ -231,7 +226,7 @@ struct LAATodayDesktopView: View {
             calendar.selectedDate = day; selectedEventID = nil
         } label: {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: day.formatted(.dateTime.day()))
+                Text(verbatim: LAADateText.string(day, .dayNumber))
                     .font(.system(size: 15, weight: selected ? .semibold : .regular))
                     .foregroundStyle(inMonth ? LAAColor.text : LAAColor.secondaryText.opacity(0.55))
                 if count > 0 {
@@ -248,7 +243,7 @@ struct LAATodayDesktopView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: day.formatted(date: .complete, time: .omitted) + " · \(count)件"))
+        .accessibilityLabel(Text(verbatim: LAADateText.string(day, .day) + " · \(count)件"))
     }
 
     private func rowBackground(_ id: String) -> Color {

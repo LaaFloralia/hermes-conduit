@@ -214,7 +214,8 @@ struct LAAEmployeeWidgetView: View {
         let hasValue = meter.hasRecordedValue(at: renderedAt)
         return VStack(alignment: .leading, spacing: LAASpacing.x1 / 2) {
             HStack(spacing: LAASpacing.x1) {
-            Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.75)
+            Text(verbatim: meter.label.replacingOccurrences(of: " Weekly", with: ""))
+                .font(.system(size: 11, weight: .medium)).lineLimit(1).fixedSize(horizontal: true, vertical: false)
             Spacer(minLength: LAASpacing.x1)
             HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1 / 2) {
                 Text(verbatim: hasValue ? Self.valueText(meter) : "未取得")
@@ -273,7 +274,7 @@ struct LAAEmployeeWidgetView: View {
         switch meter.unit {
         case .percent: return percentageText(meter.amount)
         case .usd: return (meter.amount < 0 ? "-$" : "$") + abs(meter.amount).formatted(.number.precision(.fractionLength(2)))
-        case .credits: return meter.amount.formatted(.number.precision(.fractionLength(0...2))) + " credits"
+        case .credits: return meter.amount.formatted(.number.locale(Locale(identifier: "ja_JP")).precision(.fractionLength(0...2)))
         }
     }
 

@@ -826,7 +826,7 @@ struct GroupUserBubble<Footer: View>: View {
 #if LAA_BUILD
         // The owner's picture, name and role, as in chats and Work.
         LAAOwnerMessageRow(continues: continuesRun, timestamp: timestamp.map { ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0)) }) {
-            stack.laaMessageMenu(text: GroupRoomReplyQuote.parse(text)?.message ?? text,
+            stack.laaMessageMenu(text: GroupRoomReplyQuote.parse(text)?.message ?? text, isMine: true,
                 reply: { appState.replyInRoomComposer(text: text, authorName: "LAA", isOwnMessage: true) })
         }
             .laaChatColumn(.trailing)

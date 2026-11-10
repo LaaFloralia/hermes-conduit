@@ -156,7 +156,7 @@ enum LAAUsageFreshness {
 enum LAAUsageAge {
     static func text(_ observed: Date, at now: Date) -> String {
         let minutes = max(0, Int(now.timeIntervalSince(observed) / 60))
-        if minutes == 0 { return "1分未満前" }
+        if minutes == 0 { return "たった今" }
         if minutes < 60 { return "\(minutes)分前" }
         if minutes < 1440 { return "\(minutes / 60)時間前" }
         return "\(minutes / 1440)日前"

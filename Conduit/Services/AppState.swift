@@ -5458,6 +5458,9 @@ final class AppState: ObservableObject {
     private var pendingApprovalsRequestGeneration: UInt64 = 0
     private let sessionPresentationCache: SessionPresentationCache
     private let offlineChatCache: OfflineChatCacheStore
+    #if LAA_BUILD
+    var laaChatPreviewDirectory: URL { offlineChatCache.laaPreviewDirectory }
+    #endif
     private let sessionYoloStore: SessionYoloStore
     private let conversationIdentityIndex: ConversationIdentityIndex
     private var sessionYoloWriteRevision: UInt64 = 0

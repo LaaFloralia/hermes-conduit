@@ -2,7 +2,7 @@
 import XCTest
 
 final class LAAChatDesignUITests: XCTestCase {
-    private func launch(_ fixture: String = "simple", dark: Bool = false, group: Bool = false, pushed: Bool = false) -> XCUIApplication {
+    private func launch(_ fixture: String = "simple", dark: Bool = false, group: Bool = false, pushed: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", fixture,
                                "-LAA_CAPTURE_SURFACE", group ? "group" : "chat", "-LAA_CAPTURE_KIND", "paper"]
@@ -25,7 +25,8 @@ final class LAAChatDesignUITests: XCTestCase {
             let app = launch(dark: dark)
             let theme = dark ? "dark" : "light"
             XCTAssertTrue(app.buttons["laa.employee.header"].exists)
-            XCTAssertTrue(app.buttons["laa.employee.call"].exists)
+            XCTAssertTrue(app.buttons["BackButton"].exists)
+            XCTAssertFalse(app.buttons["laa.employee.call"].exists)
             XCTAssertFalse(app.buttons["conversation.menu"].exists)
             XCTAssertFalse(app.buttons["chat.replyMoreMenu"].exists)
             XCTAssertFalse(app.buttons["chat.message.quote.assistant"].exists)
@@ -42,16 +43,11 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue(app.buttons["テキストを選択"].exists)
             XCTAssertTrue(app.buttons["返信"].exists)
             capture(app, "message-menu-after-\(theme)")
-            let reaction = app.buttons["❤️"]
-            XCTAssertTrue(reaction.exists)
-            reaction.tap()
-            capture(app, "reaction-after-\(theme)")
-            reply.press(forDuration: 0.8)
             app.buttons["テキストを選択"].tap()
             let selected = app.textViews["chat.message.selection"]
             XCTAssertTrue(selected.waitForExistence(timeout: 5))
             XCTAssertTrue((selected.value as? String ?? "").contains("午前"))
-            app.buttons["完了"].tap()
+            app.navigationBars["テキストを選択"].buttons["完了"].tap()
             reply.press(forDuration: 0.8)
             app.buttons["返信"].tap()
             XCTAssertTrue(app.buttons["composer.reply-reference.remove"].waitForExistence(timeout: 5))
@@ -77,6 +73,16 @@ final class LAAChatDesignUITests: XCTestCase {
             app.buttons["composer.collapse-editor"].tap()
             XCTAssertTrue((field.value as? String ?? "").contains("三行目"))
             app.terminate()
+
+            let reactionApp = launch(dark: dark)
+            bubble(reactionApp, "assistant").press(forDuration: 0.8)
+            let reaction = reactionApp.buttons["❤️"]
+            XCTAssertTrue(reaction.waitForExistence(timeout: 5))
+            reaction.tap()
+            XCTAssertTrue(reactionApp.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@", "❤️")).firstMatch.waitForExistence(timeout: 5))
+            capture(reactionApp, "reaction-after-\(theme)")
+            reactionApp.terminate()
         }
     }
 
@@ -153,7 +159,7 @@ final class LAAChatDesignUITests: XCTestCase {
             capture(app, "conversation-information-after-\(dark ? "dark" : "light")")
             app.buttons["conversation.background"].tap()
             XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))
-            app.buttons["完了"].tap()
+            app.navigationBars["背景"].buttons["完了"].tap()
             XCTAssertTrue(app.buttons["会話内を検索"].waitForExistence(timeout: 5))
             app.terminate()
         }

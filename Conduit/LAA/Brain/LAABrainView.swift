@@ -98,9 +98,7 @@ struct LAABrainView: View {
                             .accessibilityIdentifier("laa.brain.create")
                     }
                 }
-                ToolbarItem(placement: .topBarLeading) {
-                    LAASettingsButton(action: onRequestSettings)
-                }
+                LAASettingsToolbar(action: onRequestSettings)
             }
             }
             }
@@ -512,7 +510,7 @@ struct LAABrainView: View {
         VStack(alignment: .leading, spacing: 0, content: content)
             .padding(.horizontal, LAASpacing.x4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+
     }
 
     private var noteHome: some View {
@@ -526,7 +524,7 @@ struct LAABrainView: View {
                         Button { dailyRequest.enqueue() } label: {
                             HStack(spacing: LAASpacing.x3) {
                                 Image(systemName: "calendar").foregroundStyle(LAAColor.link)
-                                Text(Date(), format: .dateTime.month().day().weekday()).font(.body)
+                                Text(verbatim: LAADateText.string(.now, .day)).font(.body)
                                 Spacer()
                                 Image(systemName: "square.and.pencil").foregroundStyle(LAAColor.secondaryText)
                             }.frame(minHeight: LAASpacing.minimumRowHeight)
@@ -541,11 +539,10 @@ struct LAABrainView: View {
                     ForEach(Array(sorted.prefix(5))) { noteLink($0) }
                 }
             }
-            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                sectionHeading("ピン留め")
-                paperPanel {
-                    if pinned.isEmpty { Text(verbatim: "ピン留めしたノートはありません。").foregroundStyle(LAAColor.secondaryText).frame(minHeight: LAASpacing.minimumRowHeight) }
-                    ForEach(pinned) { noteLink($0) }
+            if !pinned.isEmpty {
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    sectionHeading("ピン留め")
+                    paperPanel { ForEach(pinned) { noteLink($0) } }
                 }
             }
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
@@ -653,7 +650,7 @@ struct LAABrainView: View {
 
     private func sectionHeading(_ title: String) -> some View {
         Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold)
-            .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
+            .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
     }
 
     private var connectionView: some View {
@@ -746,16 +743,17 @@ struct LAABrainView: View {
                 HStack(alignment: .top, spacing: LAASpacing.x4) {
                     Image(systemName: "doc.text").foregroundStyle(LAAColor.link)
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        Text(verbatim: file.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                        Text(verbatim: LAADateText.noteTitle(file.title)).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                         if !local.isReady { Text(verbatim: file.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                         if file.conflictOriginalPath != nil { Text(verbatim: local.isReady ? "競合コピー" : "Sync conflict").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                         if file.unreadable != nil { Text(verbatim: "本文を読み込めません").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     }
                     Spacer(minLength: 0)
-                    if !local.isReady { Text(verbatim: String(file.modifiedAt.prefix(10))).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                    if !local.isReady, let date = MessageTimestampFormatter.date(from: file.modifiedAt) {
+                        Text(verbatim: LAADateText.string(date, .monthDay)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
                 }
                 .padding(.vertical, LAASpacing.x3).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                .overlay(alignment: .bottom) { LAAColor.separator.frame(height: 0.5) }
             }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.note")
         }
     }

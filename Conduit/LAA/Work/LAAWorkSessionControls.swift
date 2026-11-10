@@ -50,10 +50,7 @@ struct LAAWorkSessionControls: View {
     /// False when the last read could not reach Paseo. The value we hold is then
     /// the last confirmed one, not the current setting.
     private var observing: Bool { session.observation?.available != false }
-    private var modelText: String {
-        guard let applied else { return "モデル未確認" }
-        return observing ? applied : "最終確認 \(applied)"
-    }
+    private var modelText: String? { applied.map { observing ? $0 : "最終確認 " + $0 } }
     private var canChangeEffort: Bool {
         observing && session.capabilities?.effort == true && !changing && choices.count > 1
     }
@@ -64,14 +61,14 @@ struct LAAWorkSessionControls: View {
 
     var body: some View {
         HStack(spacing: LAASpacing.x2) {
-            modelPill
+            if let modelText { modelPill(modelText) }
             if let fast { fastPill(fast) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.session.settings")
     }
 
-    @ViewBuilder private var modelPill: some View {
+    @ViewBuilder private func modelPill(_ modelText: String) -> some View {
         if canChangeEffort {
             Menu {
                 ForEach(choices, id: \.self) { effort in
@@ -85,14 +82,14 @@ struct LAAWorkSessionControls: View {
                     }
                 }
             } label: {
-                pill(interactive: true)
+                pill(modelText, interactive: true)
             }
             .accessibilityLabel(Text(verbatim: "モデルと推論"))
             .accessibilityValue(Text(verbatim: modelText))
             .accessibilityHint(Text(verbatim: "推論の強さを変更"))
             .accessibilityIdentifier("work.session.effort")
         } else {
-            pill(interactive: false)
+            pill(modelText, interactive: false)
                 .accessibilityLabel(Text(verbatim: "モデルと推論"))
                 .accessibilityValue(Text(verbatim: modelText))
                 .accessibilityHint(Text(verbatim: observing ? "開始後は変更できません"
@@ -101,7 +98,7 @@ struct LAAWorkSessionControls: View {
         }
     }
 
-    private func pill(interactive: Bool) -> some View {
+    private func pill(_ modelText: String, interactive: Bool) -> some View {
         HStack(spacing: LAASpacing.x1) {
             if changing { Text(verbatim: "変更中").font(.caption) }
             // The row keeps every control on one line: only the model name

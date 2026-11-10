@@ -59,8 +59,12 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                 .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                 .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
         }
-        if LAAStaff(profile: profile)?.supportsCalls != false {
-            LAAConversationControlItems(call: callButton)
+        if reason == nil, LAAStaff(profile: profile)?.supportsCalls != false {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarTrailing) { callButton }.sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarTrailing) { callButton }
+            }
         }
     }
 
@@ -186,7 +190,7 @@ struct LAAEmployeeHeader: View {
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
     /// The mascot is the bar's one picture: larger than the controls around it.
-    private static let mascotSize: CGFloat = 66
+    private var mascotSize: CGFloat { compact ? 64 : 86 }
 
     var body: some View {
         headerLabel
@@ -214,11 +218,11 @@ struct LAAEmployeeHeader: View {
 
     private var headerLabel: some View {
         VStack(spacing: 0) {
-            StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 64,
+            StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: mascotSize,
                             scrolling: showDetails || isObscured, activity: activity)
             VStack(spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(verbatim: LAAChatPerson.name(name)).font(.custom("Georgia", size: 17, relativeTo: .headline))
+                    Text(verbatim: LAAChatPerson.name(name)).font(LAAType.title(name, size: 17, relativeTo: .headline))
                         .lineLimit(1).minimumScaleFactor(0.8)
                     if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
                 }
@@ -267,7 +271,7 @@ private struct LAAStaffDetailView: View {
         NavigationStack {
             VStack(spacing: 12) {
                 StaffMascotView(profile: profile, name: name, fallbackURL: avatarURL, size: 220)
-                Text(name).font(.custom("Georgia", size: 26, relativeTo: .title))
+                Text(name).font(LAAType.title(name, size: 26, relativeTo: .title))
                 if let role = LAAStaff(profile: profile)?.role { Text(role).font(.subheadline) }
                 Text(status).font(.caption).foregroundStyle(.secondary)
                 if let voiceSetting {
@@ -306,10 +310,13 @@ struct LAAEmployeeCallButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "phone.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(LAAColor.link)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
-                .laaToolbarGlass()
         }
+        .buttonStyle(.plain)
+        .laaComposerGlass(in: Circle())
         .disabled(reason != nil)
         .accessibilityLabel(Text(verbatim: "電話"))
         .accessibilityHint(reason ?? hint ?? "この会話の社員と通話します")

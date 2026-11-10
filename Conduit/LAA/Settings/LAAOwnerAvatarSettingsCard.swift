@@ -26,13 +26,7 @@ struct LAAOwnerAvatarSettingsCard: View {
             HStack(spacing: LAASpacing.x3) {
                 LAAOwnerAvatarView(size: 56)
                     .accessibilityIdentifier("laa.settings.ownerIcon.preview")
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: LAACopy.ownerIcon)
-                        .laaTextStyle(.body)
-                        .foregroundStyle(LAAColor.text)
-                    // How the owner's messages are signed.
-                    LAAOwnerHeader()
-                }
+                LAAOwnerHeader()
                 Spacer(minLength: 0)
 
             }
@@ -44,7 +38,7 @@ struct LAAOwnerAvatarSettingsCard: View {
             }
             HStack(spacing: LAASpacing.x4) {
                 PhotosPicker(selection: $photo, matching: .images) {
-                    Text(verbatim: LAACopy.ownerIconChoose)
+                    Text(verbatim: "写真を変更")
                         .frame(minHeight: LAASpacing.minimumTouchTarget).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("laa.settings.ownerIcon.choose")
@@ -62,7 +56,6 @@ struct LAAOwnerAvatarSettingsCard: View {
         }
         .padding(LAASpacing.x4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         .onChange(of: photo) { _, item in
             guard let item else { return }
             photo = nil

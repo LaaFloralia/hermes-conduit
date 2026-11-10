@@ -75,12 +75,7 @@ enum LAAChatDay {
         if calendar.isDate(date, inSameDayAs: now) { return LAACopy.chatToday }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(date, inSameDayAs: yesterday) { return LAACopy.chatYesterday }
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "M月d日（E）"
-        return formatter.string(from: date)
+        return LAADateText.string(date, .day, timeZone: calendar.timeZone)
     }
 }
 
@@ -97,10 +92,11 @@ enum LAALinkDecoration {
         guard !ranges.isEmpty else { return text }
         let result = NSMutableAttributedString(attributedString: text)
         for range in ranges.reversed() {
+            result.removeAttribute(.underlineStyle, range: range)
             var attributes = text.attributes(at: NSMaxRange(range) - 1, effectiveRange: nil)
             attributes[MarkdownProseRun.copiesAs] = ""
             attributes[.underlineStyle] = 0
-            result.insert(NSAttributedString(string: " ↗", attributes: attributes), at: NSMaxRange(range))
+            result.insert(NSAttributedString(string: " ›", attributes: attributes), at: NSMaxRange(range))
         }
         return result
     }
@@ -136,7 +132,7 @@ private struct LAAChatColumn: ViewModifier {
     let alignment: Alignment
     func body(content: Content) -> some View {
         content
-            .containerRelativeFrame(.horizontal) { width, _ in min(720, width - 40) }
+            .containerRelativeFrame(.horizontal) { width, _ in max(1, width - 40) }
             .frame(maxWidth: .infinity, alignment: alignment)
     }
 }

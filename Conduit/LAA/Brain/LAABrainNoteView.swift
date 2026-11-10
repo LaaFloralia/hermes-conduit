@@ -43,6 +43,7 @@ struct LAABrainNoteView: View {
                 if isLocal, let root = try? local.snapshot(), !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     LAABrainSaveEditor(root: root, path: reference.path,
                         autoFocus: autoFocusRequested, inline: true,
+                        updatedAt: files.first { $0.path == reference.path }.flatMap { MessageTimestampFormatter.date(from: $0.modifiedAt) },
                         showsBackButton: showsBackButton, isPinned: isPinned, togglePin: togglePin,
                         leave: { if let leave { leave() } else if !path.isEmpty { path.removeLast() } },
                         manage: { managedNote = note; editorIsOpen = true; showManage = true },
@@ -60,8 +61,13 @@ struct LAABrainNoteView: View {
                             Text(verbatim: breadcrumb).laaTextStyle(.secondary)
                                 .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                         }
-                        Text(verbatim: URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent)
+                        Text(verbatim: LAADateText.noteTitle(URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent))
                             .font(.system(size: 30, weight: .bold))
+                        if let file = files.first(where: { $0.path == reference.path }),
+                           let updated = MessageTimestampFormatter.date(from: file.modifiedAt) {
+                            Text(verbatim: LAADateText.string(updated, .monthDay) + " 更新")
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        }
                         if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                             Text(verbatim: "競合コピー").foregroundStyle(LAAColor.attention)
                                 .accessibilityIdentifier("laa.brain.conflictCopy")
@@ -104,8 +110,6 @@ struct LAABrainNoteView: View {
                     }
                     .padding(LAASpacing.horizontal)
                     .frame(maxWidth: contentMaxWidth ?? 720, alignment: .leading)
-                    .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                    .padding(.horizontal, LAASpacing.horizontal)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .foregroundStyle(LAAColor.text)
                 }
@@ -223,12 +227,11 @@ struct LAABrainNoteView: View {
 
     @ViewBuilder private func relatedLinks(_ title: String, files: [LAABrainFile]) -> some View {
         if !files.isEmpty {
-            Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold)
-                .foregroundStyle(LAAColor.secondaryText).padding(.top, LAASpacing.x4)
+            LAASectionHeader(title).padding(.top, LAASpacing.x4)
             ForEach(files) { file in
-                Button { path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox))) } label: {
-                    Label { Text(verbatim: file.path) } icon: { Image(systemName: "doc.text") }
-                }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                LAAListRow(action: { path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox))) }) {
+                    Label { Text(verbatim: LAADateText.noteTitle(file.title)) } icon: { Image(systemName: "doc.text") }
+                }
             }
         }
     }

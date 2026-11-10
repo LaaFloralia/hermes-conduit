@@ -175,7 +175,7 @@ struct LAAOwnerTaskEditor: View {
                 if let task = draft.base {
                     Section("Details") {
                         Text(verbatim: "作成元: \(task.source.label)")
-                        Text(verbatim: "更新: \(task.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                        Text(verbatim: "更新: \(LAADateText.string(task.updatedAt, .dayTime))")
                     }
                 }
                 if draft.base != nil {

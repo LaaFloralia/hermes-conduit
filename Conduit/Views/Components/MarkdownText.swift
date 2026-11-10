@@ -162,7 +162,12 @@ struct MarkdownText: View {
             && newestCharacterOpacities.isEmpty
             && rendering.selectableText == nil
             && !rendering.needsRichBounding
-            ? rendering.proseRuns
+            ? rendering.proseRuns.filter { range in
+                !usesLAARichContentStyle || !range.contains { index in
+                    if case .quote = rendering.blocks[index] { return true }
+                    return false
+                }
+            }
             : []
         let selectionSegments = rendering.selectableText == nil
             ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks, joiningRuns: proseRuns)
@@ -615,6 +620,10 @@ enum MarkdownSelectionFormatter {
         usesLAARichContentStyle: Bool = false
     ) -> NSAttributedString? {
         guard !blocks.isEmpty, blocks.allSatisfy(\.isSelectableFlowBlock) else { return nil }
+        if usesLAARichContentStyle, blocks.contains(where: {
+            if case .quote = $0 { return true }
+            return false
+        }) { return nil }
 
         // All fonts resolve through ChatTypography (issue #85): the selected
         // chat size scales ON TOP of the current Dynamic Type size, and
@@ -635,7 +644,8 @@ enum MarkdownSelectionFormatter {
                 markerColor: markerColor,
                 usesAccentSurface: usesAccentSurface,
                 foregroundStyle: foregroundStyle,
-                chatTextSize: chatTextSize
+                chatTextSize: chatTextSize,
+                usesLAARichContentStyle: usesLAARichContentStyle
             ) else {
                 return nil
             }
@@ -668,7 +678,8 @@ enum MarkdownSelectionFormatter {
         markerColor: UIColor,
         usesAccentSurface: Bool,
         foregroundStyle: Color,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        usesLAARichContentStyle: Bool
     ) -> NSAttributedString? {
         switch block {
         case .heading(let level, let text):
@@ -704,8 +715,10 @@ enum MarkdownSelectionFormatter {
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
-                markerColor: markerColor,
-                chatTextSize: chatTextSize
+                markerColor: orderedMarkerColor(fallback: markerColor, usesAccentSurface: usesAccentSurface,
+                                                usesLAARichContentStyle: usesLAARichContentStyle),
+                chatTextSize: chatTextSize,
+                regularMarker: usesLAARichContentStyle
             )
 
         case .quote(let lines):
@@ -736,6 +749,13 @@ enum MarkdownSelectionFormatter {
         }
     }
 
+    private static func orderedMarkerColor(fallback: UIColor, usesAccentSurface: Bool, usesLAARichContentStyle: Bool) -> UIColor {
+#if LAA_BUILD
+        if usesLAARichContentStyle && !usesAccentSurface { return UIColor(LAAColor.secondaryText) }
+#endif
+        return fallback
+    }
+
     private static func list(
         _ items: [String],
         ordered: Bool,
@@ -745,10 +765,11 @@ enum MarkdownSelectionFormatter {
         textColor: UIColor,
         linkColor: UIColor,
         markerColor: UIColor,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        regularMarker: Bool = false
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        let markerFont = bodyFont.withTraits(.traitBold)
+        let markerFont = regularMarker ? bodyFont : bodyFont.withTraits(.traitBold)
 
         for (index, item) in items.enumerated() {
             if index > 0 {
@@ -1406,7 +1427,7 @@ private struct MarkdownList: View {
 
     private var markerColor: Color {
 #if LAA_BUILD
-        if laaRichContentStyle { return usesAccentSurface ? LAAColor.ownBubbleText : LAAColor.link }
+        if laaRichContentStyle { return usesAccentSurface ? LAAColor.ownBubbleText : (ordered ? LAAColor.secondaryText : LAAColor.link) }
 #endif
         return usesAccentSurface ? Color.white.opacity(0.92) : Color.conduitAccent
     }
@@ -1423,6 +1444,13 @@ private struct MarkdownList: View {
         if laaRichContentStyle { return usesAccentSurface ? LAAColor.ownBubbleText : LAAColor.secondaryText }
 #endif
         return usesAccentSurface ? Color.white.opacity(0.82) : Color.secondary
+    }
+
+    private var markerWeight: Font.Weight {
+#if LAA_BUILD
+        if laaRichContentStyle && ordered { return .regular }
+#endif
+        return .semibold
     }
 
     /// Marker glyphs resolve Dynamic Type through the environment category
@@ -1449,7 +1477,7 @@ private struct MarkdownList: View {
                             .frame(minHeight: markerFont.lineHeight)
                     } else {
                         Text(ordered ? "\(start + index)." : "•")
-                            .font(.system(size: markerFont.pointSize, weight: .semibold, design: chatTextSize.style.fontDesign))
+                            .font(.system(size: markerFont.pointSize, weight: markerWeight, design: chatTextSize.style.fontDesign))
                             .foregroundStyle(markerColor)
                             .frame(width: ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize), alignment: .trailing)
                             .frame(minHeight: markerFont.lineHeight)
@@ -1490,10 +1518,23 @@ private struct MarkdownQuote: View {
         return usesAccentSurface ? Color.white.opacity(0.78) : Color.conduitAccent.opacity(0.78)
     }
 
-    private var quoteFill: Color {
+    private var paperQuote: Bool {
 #if LAA_BUILD
-        if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
+        return laaRichContentStyle
+#else
+        return false
 #endif
+    }
+
+    private var quoteTextColor: Color {
+#if LAA_BUILD
+        if paperQuote && !usesAccentSurface { return LAAColor.secondaryText }
+#endif
+        return foregroundStyle.opacity(0.90)
+    }
+
+    private var quoteFill: Color {
+        if paperQuote { return .clear }
         return usesAccentSurface ? Color.black.opacity(0.13) : Color.conduitAccent.opacity(0.07)
     }
 
@@ -1522,12 +1563,12 @@ private struct MarkdownQuote: View {
                     HStack(alignment: .top, spacing: 8) {
                         HStack(spacing: 3) {
                             ForEach(0..<max(line.depth, 1), id: \.self) { _ in
-                                Capsule().fill(quoteLineColor).frame(width: 3)
+                                Capsule().fill(quoteLineColor).frame(width: paperQuote ? 2 : 3)
                             }
                         }
                         InlineMarkdown(
                             source: line.text,
-                            foregroundStyle: foregroundStyle.opacity(0.90),
+                            foregroundStyle: quoteTextColor,
                             usesAccentSurface: usesAccentSurface,
                             font: ChatTypography.font(for: .quote, appearance: chatTextSize),
                             lineSpacing: 3,
@@ -1540,8 +1581,8 @@ private struct MarkdownQuote: View {
                     }
                 }
             }
-            .padding(.horizontal, MarkdownRichMetrics.inset)
-            .padding(.vertical, MarkdownRichMetrics.verticalInset)
+            .padding(.horizontal, paperQuote ? 0 : MarkdownRichMetrics.inset)
+            .padding(.vertical, paperQuote ? 0 : MarkdownRichMetrics.verticalInset)
             .background(
                 quoteFill,
                 in: RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
@@ -3236,13 +3277,6 @@ struct ChatCodeBlock: View {
     @Environment(\.laaRichContentStyle) private var laaRichContentStyle
 #endif
 
-    private var showsInlineCopy: Bool {
-#if LAA_BUILD
-        return !laaChatDesign
-#else
-        return true
-#endif
-    }
     private var codeFill: Color {
 #if LAA_BUILD
         if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
@@ -3298,26 +3332,30 @@ struct ChatCodeBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
+                if !highlightedInLAA {
+                    Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
+                }
                 Spacer()
-                if showsInlineCopy {
                 Button {
                     UIPasteboard.general.string = source
                     Haptics.light()
                     copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
                 } label: {
-                    Label(copyTitle, systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+                    if highlightedInLAA {
+                        Text(verbatim: copyTitle).font(.system(size: 12, weight: .semibold))
+                    } else {
+                        Label(copyTitle, systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+                    }
                 }
-                .tint(codeLink)
+                .foregroundStyle(codeLink)
                 .accessibilityIdentifier("chat.code.copy")
-                }
             }
             .padding(.horizontal, MarkdownRichMetrics.inset)
             .padding(.vertical, MarkdownRichMetrics.codeVerticalInset)
-            .background(codeHeaderFill)
+            .background(highlightedInLAA ? Color.clear : codeHeaderFill)
             ScrollView(.horizontal, showsIndicators: false) {
                 Group {
                     if usesAccentSurface {
@@ -3348,7 +3386,7 @@ struct ChatCodeBlock: View {
         }
         .background(
             codeFill,
-            in: RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
+            in: RoundedRectangle(cornerRadius: highlightedInLAA ? 10 : MarkdownRichMetrics.radius, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)

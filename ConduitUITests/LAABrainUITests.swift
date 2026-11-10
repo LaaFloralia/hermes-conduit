@@ -72,7 +72,9 @@ final class LAABrainUITests: XCTestCase {
         focusLocalEditor(editor)
         app.buttons["laa.markdown.format.checkbox"].tap()
         editor.typeText("first\nsecond\nthird")
-        let shot = XCTAttachment(screenshot: app.screenshot())
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["laa.markdown.format.checkbox"].isHittable)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "doc-checklist-" + style.lowercased(); shot.lifetime = .keepAlways; add(shot)
         XCTAssertEqual(editor.value as? String, "- [ ] first\n- [ ] second\n- [ ] third")
     }
@@ -117,7 +119,7 @@ final class LAABrainUITests: XCTestCase {
         focusLocalEditor(editor)
         let longLine = "https://example.com/" + String(repeating: "abcdefgh0123456789", count: 12)
         editor.typeText("LEFT " + longLine + " RIGHT\n")
-        let longShot = XCTAttachment(screenshot: app.screenshot())
+        let longShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         longShot.name = "doc-wrap-" + style.lowercased(); longShot.lifetime = .keepAlways; add(longShot)
         XCTAssertLessThanOrEqual(editor.frame.width, app.frame.width, "body must fit the viewport")
         app.buttons["laa.markdown.format.checkbox"].tap()
@@ -756,12 +758,12 @@ final class LAABrainUITests: XCTestCase {
 
     private func documentHomeAndReading(style: String) {
         let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+        app.launchArguments = ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-review-fixture",
                                "-conduit.themePreference", style]
         app.launch()
         XCTAssertTrue(app.buttons["laa.brain.daily"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["最近"].exists)
-        XCTAssertTrue(app.staticTexts["ピン留め"].exists)
+        XCTAssertFalse(app.staticTexts["ピン留め"].exists)
         let home = XCTAttachment(screenshot: app.screenshot()); home.name = "doc-list-" + style; home.lifetime = .keepAlways; add(home)
         app.staticTexts["Start"].firstMatch.tap()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
@@ -769,7 +771,6 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertFalse(app.buttons["laa.brain.edit"].exists)
         XCTAssertFalse(app.buttons["laa.brain.edit.save"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["laa.markdown.formatBar"].exists)
-        let read = XCTAttachment(screenshot: app.screenshot()); read.name = "doc-reading-" + style; read.lifetime = .keepAlways; add(read)
         focusLocalEditor(editor)
         editor.typeText("追記")
         waitForAutosave(app)
@@ -777,6 +778,12 @@ final class LAABrainUITests: XCTestCase {
         openNoteMenu(app)
         app.buttons["laa.brain.rawToggle"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.raw"].label.contains("追記"))
+        app.buttons["BackButton"].tap()
+        let dateNote = app.staticTexts["11月11日（水）"].firstMatch
+        XCTAssertTrue(dateNote.waitForExistence(timeout: 10))
+        dateNote.tap()
+        XCTAssertTrue(app.staticTexts["11月10日 更新"].waitForExistence(timeout: 10))
+        let read = XCTAttachment(screenshot: app.screenshot()); read.name = "doc-reading-" + style; read.lifetime = .keepAlways; add(read)
     }
 
     func testMetadataIsHiddenAndRetainedThroughAutomaticSave() {

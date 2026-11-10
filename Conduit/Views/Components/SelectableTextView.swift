@@ -158,6 +158,8 @@ struct SelectableTextView: UIViewRepresentable {
         hostView.replyMessageID = context.environment.chatPinReplyAction?.messageID
 #if LAA_BUILD
         hostView.usesMessageMenu = context.environment.laaUsesMessageMenu
+        hostView.openMessageMenu = context.environment.laaOpenMessageMenu
+        hostView.omitsLinkUnderline = context.environment.laaRichContentStyle
 #endif
         return hostView
     }
@@ -175,6 +177,8 @@ struct SelectableTextView: UIViewRepresentable {
         uiView.replyMessageID = context.environment.chatPinReplyAction?.messageID
 #if LAA_BUILD
         uiView.usesMessageMenu = context.environment.laaUsesMessageMenu
+        uiView.openMessageMenu = context.environment.laaOpenMessageMenu
+        uiView.omitsLinkUnderline = context.environment.laaRichContentStyle
 #endif
     }
 
@@ -1325,6 +1329,32 @@ final class SelectableTextViewHostView: UIView {
     var usesMessageMenu = false {
         didSet { configureMessageMenuGestures() }
     }
+    var omitsLinkUnderline = false { didSet { configureLinkUnderline() } }
+    func configureLinkUnderline() {
+        guard omitsLinkUnderline, let textView else { return }
+        var attributes = textView.linkTextAttributes
+        attributes[.underlineStyle] = NSUnderlineStyle.none.rawValue
+        textView.linkTextAttributes = attributes
+    }
+    var openMessageMenu: (() -> Void)? {
+        didSet {
+            if openMessageMenu != nil {
+                if messageHold.view == nil { addGestureRecognizer(messageHold) }
+                messageHold.isEnabled = true
+            } else if let installed = gestureRecognizers?.first(where: { $0.name == "LAA message menu" }) {
+                installed.isEnabled = false
+            }
+        }
+    }
+    private lazy var messageHold: UILongPressGestureRecognizer = {
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(handleMessageHold(_:)))
+        hold.minimumPressDuration = 0.4
+        hold.name = "LAA message menu"
+        return hold
+    }()
+    @objc private func handleMessageHold(_ hold: UILongPressGestureRecognizer) {
+        if hold.state == .began { openMessageMenu?() }
+    }
     private func configureMessageMenuGestures() {
         for gesture in textView?.gestureRecognizers ?? [] where gesture is UILongPressGestureRecognizer {
             gesture.isEnabled = !usesMessageMenu
@@ -1501,6 +1531,7 @@ final class SelectableTextViewHostView: UIView {
         guard let textView else { return }
 #if LAA_BUILD
         configureMessageMenuGestures()
+        configureLinkUnderline()
 #endif
         addSubview(textView)
         textView.translatesAutoresizingMaskIntoConstraints = false

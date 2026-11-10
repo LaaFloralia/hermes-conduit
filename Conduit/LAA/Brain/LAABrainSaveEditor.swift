@@ -16,6 +16,8 @@ struct LAABrainSaveEditor: View {
     let root: URL
     let path: String
     let autoFocus: Bool
+    var updatedAt: Date?
+    @State private var hasSaved = false
     let didSave: () -> Void
     var inline = false
     var showsBackButton = true
@@ -61,7 +63,7 @@ struct LAABrainSaveEditor: View {
     @State private var injectFixtureMissingStage = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-missing-stage-fixture")
     #endif
 
-    init(root: URL, path: String, autoFocus: Bool = false, inline: Bool = false,
+    init(root: URL, path: String, autoFocus: Bool = false, inline: Bool = false, updatedAt: Date? = nil,
          showsBackButton: Bool = true, isPinned: Bool = false, togglePin: @escaping () -> Void = {},
          leave: (() -> Void)? = nil, manage: (() -> Void)? = nil,
          readingPositions: LAABrainReadingPositions? = nil, onOpenLink: ((String) -> Void)? = nil,
@@ -70,6 +72,7 @@ struct LAABrainSaveEditor: View {
         self.root = root
         self.path = path
         self.autoFocus = autoFocus
+        self.updatedAt = updatedAt
         self.didSave = didSave
         self.inline = inline; self.showsBackButton = showsBackButton
         self.isPinned = isPinned; self.togglePin = togglePin; self.leave = leave; self.manage = manage
@@ -172,12 +175,14 @@ struct LAABrainSaveEditor: View {
             }
     }
 
-    private var noteTitle: String { URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent }
+    private var noteTitle: String { LAADateText.noteTitle(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) }
     private var visibleBody: String { draft.hasPrefix(metadataPrefix) ? String(draft.dropFirst(metadataPrefix.count)) : draft }
-    private var saveStatus: String {
+    private var saveStatus: String? {
         if saving { return "保存中…" }
         if autoSaveBlocked || recoveryUnavailable { return "保存できません" }
-        return snapshot?.base == Data(draft.utf8) ? "保存済み" : "編集中"
+        if snapshot?.base != Data(draft.utf8) { return "編集中" }
+        if hasSaved { return "保存済み" }
+        return updatedAt.map { LAADateText.string($0, .monthDay) + " 更新" }
     }
 
     var body: some View {
@@ -429,6 +434,7 @@ struct LAABrainSaveEditor: View {
             switch outcome {
             case .saved(.exchange):
                 self.snapshot = .init(vault: snapshot.vault, path: path, base: data)
+                hasSaved = true
                 if Data(draft.utf8) == data { try drafts.clear(vault: snapshot.vault, path: path) }
                 else { preserveDraft() }
                 if !automatically {
@@ -601,8 +607,8 @@ private struct BrainHistoryView: View {
                     } label: {
                         VStack(alignment: .leading) {
                             Text(version.kind.label)
-                            Text(version.created, style: .date).font(.caption)
-                            Text(version.created, style: .time).font(.caption)
+                            Text(verbatim: LAADateText.string(version.created, .day)).font(.caption)
+                            Text(verbatim: LAADateText.string(version.created, .time)).font(.caption)
                         }
                     }.accessibilityIdentifier("laa.brain.history.version.\(version.kind.rawValue)")
                 }
@@ -816,8 +822,8 @@ private struct BrainRecoveryPathView: View {
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(version.kind.label)
-                                Text(version.created, style: .date).font(.caption)
-                                Text(version.created, style: .time).font(.caption)
+                                Text(verbatim: LAADateText.string(version.created, .day)).font(.caption)
+                                Text(verbatim: LAADateText.string(version.created, .time)).font(.caption)
                             }
                         }.accessibilityIdentifier("laa.brain.recovery.version.\(version.kind.rawValue)")
                     }

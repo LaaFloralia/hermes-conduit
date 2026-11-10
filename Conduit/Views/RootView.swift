@@ -139,6 +139,13 @@ struct MainView: View {
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_KEYCHAIN_ERROR") {
             return LAABridgeSession(statusForTesting: .keychainError)
         }
+        let arguments = ProcessInfo.processInfo.arguments
+        if let fixture = arguments.firstIndex(of: "-LAA_UI_TEST_WORK_FIXTURE_PORT"),
+           arguments.indices.contains(fixture + 1), let port = UInt16(arguments[fixture + 1]), port > 1024,
+           let url = URL(string: "http://127.0.0.1:\(port)") {
+            return LAABridgeSession(credentialsForTesting: LAABridgeCredentials(
+                baseURL: url, deviceID: "work-fixture", token: "fixture-token"))
+        }
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BRIDGE_OFFLINE") {
             return LAABridgeSession(credentialsForTesting: LAABridgeCredentials(
                 baseURL: URL(string: "http://127.0.0.1:1")!, deviceID: "fixture", token: "fixture"))

@@ -6,6 +6,8 @@ import XCTest
 /// The fixture serves an empty session, a waiting decision, a long history
 /// (65 turns, two pictures, tool calls) and the Fast variants.
 final class LAAWorkSessionUITests: XCTestCase {
+    private let fixturePort = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
+
     private let emptyID = "ses_1111111111111111"
     private let decisionID = "ses_2222222222222222"
     private let longID = "ses_3333333333333333"
@@ -24,7 +26,7 @@ final class LAAWorkSessionUITests: XCTestCase {
     private func fixture(_ path: String) -> [String: Any]? {
         let done = expectation(description: "fixture \(path)")
         var payload: [String: Any]?
-        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19585\(path)")!) { data, _, _ in
+        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:\(fixturePort + 1)\(path)")!) { data, _, _ in
             if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
             done.fulfill()
         }.resume()
@@ -39,7 +41,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", "light",
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"] + extra
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19584"
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(fixturePort)"
         app.launch()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()

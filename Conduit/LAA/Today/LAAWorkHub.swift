@@ -41,13 +41,10 @@ struct LAAWorkHub: View {
                 .padding(.horizontal, 20)
             LAAWorkDecisionSummary(board: decisions, drafts: drafts, showAll: $showDecisions)
                 .padding(.horizontal, 20)
-            Picker(String("区分"), selection: $section) {
-                ForEach(Section.allCases) { value in
-                    Text(verbatim: value.title).tag(value)
-                        .accessibilityIdentifier("work.section.\(value.rawValue)")
-                }
-            }
-            .pickerStyle(.segmented).padding(.horizontal, 20)
+            LAASegmentedControl(values: Section.allCases, selection: $section, title: \.title,
+                                identifier: { "work.section.\($0.rawValue)" })
+            .padding(.horizontal, 20)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("work.segment")
             if bridge.status != .paired { connectionState }
             else {
@@ -81,7 +78,7 @@ struct LAAWorkHub: View {
                     .disabled(bridge.status != .paired)
                 }
             }
-            ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: onRequestSettings) }
+            LAASettingsToolbar(action: onRequestSettings)
         }
         .tint(LAAColor.link)
         .scrollDismissesKeyboard(.interactively)

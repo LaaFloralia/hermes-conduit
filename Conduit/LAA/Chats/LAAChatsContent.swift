@@ -83,7 +83,7 @@ struct LAAChatsContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            if settingsAvailable { ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: openSettings) } }
+            if settingsAvailable { LAASettingsToolbar(action: openSettings) }
             if !laaDesktop { ToolbarItem(placement: .topBarTrailing) { newChatButton } }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -200,12 +200,12 @@ struct LAAChatsContent: View {
                                 Text(verbatim: "Monet").font(.custom("Georgia", size: 22, relativeTo: .title3))
                                 LAARoleBadge(role: "Secretary")
                                 if let unread = snapshot.unreadByProfile[monet.profile], unread > 0 {
-                                    unreadDot(unread)
+                                    if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                                 }
                             }
                             if let preview = monet.lastMessage, !preview.isEmpty {
                                 Text(verbatim: preview).font(.system(size: 15))
-                                    .lineLimit(2).foregroundStyle(LAAColor.secondaryText)
+                                    .lineLimit(1).foregroundStyle(LAAColor.secondaryText)
                             }
                         }
                         Spacer(minLength: 0)
@@ -213,7 +213,7 @@ struct LAAChatsContent: View {
                 }.buttonStyle(LAAListRowStyle())
                     .disabled(!monet.available)
                     .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
-                if let callPerson {
+                if let callPerson, monet.available {
                     Button { callPerson(monet) } label: {
                         Image(systemName: "phone.fill").foregroundStyle(LAAColor.link).frame(width: 44, height: 44)
                     }.buttonStyle(.plain).laaComposerGlass(in: Circle())
@@ -301,7 +301,7 @@ struct LAAChatsContent: View {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 HStack(spacing: 6) {
-                    Text(verbatim: LAAChatPerson.name(person.name)).font(.custom("Georgia", size: 17, relativeTo: .body))
+                    Text(verbatim: LAAChatPerson.name(person.name)).font(LAAType.title(person.name, size: 17, relativeTo: .body))
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                     if let role = LAAChatPerson.role(profile: person.profile, existingRole: person.role) { LAARoleBadge(role: role) }
                 }
@@ -311,13 +311,13 @@ struct LAAChatsContent: View {
             }
             Spacer(minLength: LAASpacing.x2)
             VStack(alignment: .trailing, spacing: 8) {
-                if let date = person.lastMessageAt { Text(date, style: .relative).font(.caption2).foregroundStyle(LAAColor.secondaryText) }
+                if let date = person.lastMessageAt { Text(verbatim: LAADateText.relative(date)).font(.caption2).foregroundStyle(LAAColor.secondaryText) }
                 if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
                     if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: selection == nil && (person.lastMessage ?? "").isEmpty ? 56 : rowHeight, alignment: .leading)
         .contentShape(Rectangle())
     }
 
@@ -336,7 +336,7 @@ struct LAAChatsContent: View {
             .foregroundStyle(.white)
             .padding(.horizontal, LAASpacing.x2)
             .frame(minWidth: 22, minHeight: 22)
-            .background(LAAColor.attention, in: Capsule())
+            .background(LAAColor.link, in: Capsule())
             .accessibilityLabel(Text(verbatim: LAACopy.chatsUnread(count)))
     }
 

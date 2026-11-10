@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Reactions on a message, one chip per emoji (both authors picking the
-/// same emoji share a chip with a count). The user's own reaction is
-/// outlined in the accent colour, like Messages' Tapback.
+/// same emoji share a chip with a count).
 struct MessageReactionChips: View {
     /// Re-renders the labels when the app language changes.
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -59,6 +58,10 @@ struct MessageReactionChips: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
+#if LAA_BUILD
+        .background(LAAColor.surface, in: Capsule())
+        .overlay { Capsule().strokeBorder(LAAColor.separator, lineWidth: 0.75) }
+#else
         .background(Capsule().fill(Color.conduitSurface))
         .overlay(
             Capsule().strokeBorder(
@@ -66,14 +69,19 @@ struct MessageReactionChips: View {
                 lineWidth: 1
             )
         )
+#endif
 
         if let onTap {
             // The capsule stays small inside a 44 pt touch area of its own,
             // so it never takes taps from the reply text or the action row.
             Button(action: onTap) {
                 label
+#if LAA_BUILD
+                    .contentShape(Capsule())
+#else
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
+#endif
             }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel(for: group))

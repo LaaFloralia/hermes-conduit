@@ -27,6 +27,12 @@ struct LAAWorkComposer: View {
     @State private var warning: String?
     @AppStorage(ChatTypography.inputPreferenceKey) private var inputSize = ChatTypography.defaultInputSize.rawValue
 
+    private var showsCompactExpansion: Bool {
+        let size = ChatTypography.inputSize(rawValue: inputSize)
+        let font = ChatTypography.inputFont(for: nil, size: size)
+        return height >= ceil(font.lineHeight * 2) + 17
+    }
+
     private var canSubmit: Bool { enabled && canSend && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -103,7 +109,7 @@ struct LAAWorkComposer: View {
         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
         .overlay(alignment: .topTrailing) {
-            if compact { expandButton }
+            if compact && showsCompactExpansion { expandButton }
         }
     }
 

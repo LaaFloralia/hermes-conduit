@@ -24,7 +24,7 @@ struct LAASenderName: View {
     let text: String
     var body: some View {
         Text(verbatim: text)
-            .font(.custom("Georgia", size: 15, relativeTo: .caption))
+            .font(LAAType.title(text, size: 15, relativeTo: .caption))
             .foregroundStyle(LAAColor.secondaryText)
             .lineLimit(1)
             .laaPhotoSupportingText()
@@ -68,7 +68,7 @@ struct LAAOwnerMessageRow<Content: View>: View {
                     LAAOwnerAvatarView().frame(width: 30, height: 30)
                 }.accessibilityIdentifier("chat.sender.owner")
             }
-            content.padding(.trailing, 40)
+            content.frame(maxWidth: 332, alignment: .trailing).padding(.trailing, 40)
         }.frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
@@ -91,7 +91,7 @@ struct LAAAgentMessageRow<Avatar: View, Content: View>: View {
                     LAAMessageTime(timestamp: timestamp)
                 }.accessibilityIdentifier("chat.sender.agent")
             }
-            content.padding(.leading, 40)
+            content.frame(maxWidth: 332, alignment: .leading).padding(.leading, 40)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

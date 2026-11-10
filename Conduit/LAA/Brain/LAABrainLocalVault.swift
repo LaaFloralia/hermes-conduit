@@ -89,6 +89,14 @@ import Darwin
                 try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other#Details|次のメモ]]\n\n![[Assets/fixture.png]]\n\n![[Other]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-review-fixture") {
+                    let note = root.appendingPathComponent("Company/2026-11-11.md")
+                    let text = "# 今日の記録\n\n午前は予定を確認し、午後は紹介資料を仕上げる。\n\n[[Other#Details|次のメモ]]\n"
+                    try Data(text.utf8).write(to: note)
+                    if let updated = ISO8601DateFormatter().date(from: "2026-11-10T09:00:00Z") {
+                        try FileManager.default.setAttributes([.modificationDate: updated], ofItemAtPath: note.path)
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-document-fixture") {
                     let lines = (1...45).map { "段落\($0)：長いノートを読み進めても、リンクから戻った位置を保持します。" }
                     let text = "---\r\ncustom: [keep, exact]\r\nunknown: |\r\n  untouched\r\n---\r\n" + lines.joined(separator: "\n\n") + "\n\n[[Other#Details|次のメモ]]\n\n:::custom unsupported\n\n![[Other]]\n"

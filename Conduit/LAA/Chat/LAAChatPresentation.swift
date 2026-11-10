@@ -45,33 +45,123 @@ enum LAAChatVisibility {
     static let reactions = ["❤️", "👍", "👎", "‼️", "😂", "✅"]
 }
 
-/// The system context menu floats the selected bubble and supplies the
-/// glass palette. All mutations use the existing conversation actions.
+struct LAAChatMenuSelection {
+    let text: String
+    let isMine: Bool
+    let reply: (() -> Void)?
+    let react: ((String) -> Void)?
+    let read: (() -> Void)?
+    let select: () -> Void
+    let moreReactions: () -> Void
+}
+
+private struct LAAPresentChatMenuKey: EnvironmentKey {
+    static let defaultValue: ((LAAChatMenuSelection) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    @Entry var laaOpenMessageMenu: (() -> Void)? = nil
+
+    var laaPresentChatMenu: ((LAAChatMenuSelection) -> Void)? {
+        get { self[LAAPresentChatMenuKey.self] }
+        set { self[LAAPresentChatMenuKey.self] = newValue }
+    }
+}
+
+struct LAAChatMenuOverlay: View {
+    let selection: LAAChatMenuSelection
+    let dismiss: () -> Void
+    @AccessibilityFocusState private var menuFocused: Bool
+
+    var body: some View {
+        ZStack {
+            LAAColor.background.opacity(0.84).ignoresSafeArea()
+                .onTapGesture(perform: dismiss)
+                .accessibilityHidden(true)
+            ViewThatFits(in: .vertical) {
+                contents
+                ScrollView { contents }.scrollBounceBehavior(.basedOnSize)
+            }
+            .padding(20)
+        }
+        .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape, dismiss)
+        .onAppear { menuFocused = true }
+    }
+
+    private var contents: some View {
+        VStack(spacing: 8) {
+            if let react = selection.react {
+                HStack(spacing: 1) {
+                    ForEach(LAAChatVisibility.reactions, id: \.self) { emoji in
+                        Button { dismiss(); react(emoji) } label: {
+                            Text(verbatim: emoji).font(.system(size: 24)).frame(width: 38, height: 44)
+                        }
+                        .accessibilityLabel(Text(verbatim: emoji))
+                    }
+                    Button { dismiss(); selection.moreReactions() } label: {
+                        Image(systemName: "plus").font(.system(size: 18)).frame(width: 38, height: 44)
+                    }.accessibilityLabel(Text(verbatim: "スタンプを追加"))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 6)
+                .laaGlass(in: Capsule())
+            }
+            MarkdownText(source: selection.text, usesAccentSurface: selection.isMine)
+                .allowsHitTesting(false)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .frame(maxWidth: 332, maxHeight: 160, alignment: .topLeading)
+                .background(selection.isMine ? LAAColor.ownBubble : LAAColor.surface,
+                            in: RoundedRectangle(cornerRadius: LAARadius.bubble))
+                .clipped().accessibilityHidden(true)
+            VStack(spacing: 0) {
+                menuItem("返信", icon: "arrowshape.turn.up.left", action: selection.reply)
+                    .accessibilityFocused($menuFocused)
+                menuItem("コピー", icon: "doc.on.doc", action: { UIPasteboard.general.string = selection.text })
+                menuItem("テキストを選択", icon: "text.cursor", action: selection.select)
+                menuItem("読み上げ", icon: "speaker.wave.2", action: selection.read, last: true)
+            }
+            .frame(width: 250)
+            .laaGlass(in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    private func menuItem(_ title: String, icon: String, action: (() -> Void)?, last: Bool = false) -> some View {
+        Button {
+            dismiss()
+            action?()
+        } label: {
+            HStack {
+                Text(verbatim: title)
+                Spacer()
+                Image(systemName: icon).font(.system(size: 17))
+            }
+            .foregroundStyle(action == nil ? LAAColor.secondaryText : LAAColor.text)
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                if !last { Rectangle().fill(LAAColor.separator).frame(height: 1).padding(.horizontal, 16) }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(action == nil)
+    }
+}
+
 private struct LAAChatMessageMenu: ViewModifier {
     let text: String
+    var isMine: Bool
     var reply: (() -> Void)?
     var react: ((String) -> Void)?
     var read: (() -> Void)?
+    @Environment(\.laaPresentChatMenu) private var present
     @State private var selecting = false
     @State private var moreReactions = false
     @State private var customReaction = ""
 
     func body(content: Content) -> some View {
-        content.environment(\.laaUsesMessageMenu, true).contextMenu {
-            if let react {
-                ControlGroup {
-                    ForEach(LAAChatVisibility.reactions, id: \.self) { emoji in
-                        Button(emoji) { react(emoji) }
-                            .accessibilityLabel(String("スタンプ \(emoji)")).accessibilityIdentifier("chat.reaction.\(emoji)")
-                    }
-                    Button(String("スタンプを追加"), systemImage: "plus") { moreReactions = true }
-                }.controlGroupStyle(.palette)
-            }
-            Button(String("コピー"), systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
-            Button(String("テキストを選択"), systemImage: "text.cursor") { selecting = true }
-            Button(String("返信"), systemImage: "arrowshape.turn.up.left") { reply?() }.disabled(reply == nil)
-            Button(String("読み上げ"), systemImage: "speaker.wave.2") { read?() }.disabled(read == nil)
-        }
+        surface(content.environment(\.laaUsesMessageMenu, true))
         .sheet(isPresented: $selecting) {
             NavigationStack {
                 LAASelectableMessageText(text: text)
@@ -89,12 +179,41 @@ private struct LAAChatMessageMenu: ViewModifier {
             Button("キャンセル", role: .cancel) { customReaction = "" }
         }
     }
+
+    @ViewBuilder private func surface<Content: View>(_ content: Content) -> some View {
+        if let present {
+            let open = {
+                present(.init(text: text, isMine: isMine, reply: reply, react: react, read: read,
+                              select: { selecting = true }, moreReactions: { moreReactions = true }))
+            }
+            content.environment(\.laaOpenMessageMenu, open)
+                .contentShape(Rectangle())
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in open() })
+                .accessibilityAction(named: Text(verbatim: "メッセージの操作"), open)
+        } else {
+            content.contextMenu {
+                if let react {
+                    ControlGroup {
+                        ForEach(LAAChatVisibility.reactions, id: \.self) { emoji in
+                            Button(emoji) { react(emoji) }
+                        }
+                        Button(String("スタンプを追加"), systemImage: "plus") { moreReactions = true }
+                    }.controlGroupStyle(.palette)
+                }
+                Button(String("返信"), systemImage: "arrowshape.turn.up.left") { reply?() }.disabled(reply == nil)
+                Button(String("コピー"), systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+                Button(String("テキストを選択"), systemImage: "text.cursor") { selecting = true }
+                Button(String("読み上げ"), systemImage: "speaker.wave.2") { read?() }.disabled(read == nil)
+            }
+        }
+    }
+
 }
 
 extension View {
-    func laaMessageMenu(text: String, reply: (() -> Void)? = nil,
+    func laaMessageMenu(text: String, isMine: Bool = false, reply: (() -> Void)? = nil,
                         react: ((String) -> Void)? = nil, read: (() -> Void)? = nil) -> some View {
-        modifier(LAAChatMessageMenu(text: text, reply: reply, react: react, read: read))
+        modifier(LAAChatMessageMenu(text: text, isMine: isMine, reply: reply, react: react, read: read))
     }
 }
 

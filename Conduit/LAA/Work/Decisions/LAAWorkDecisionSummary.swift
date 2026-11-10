@@ -13,6 +13,7 @@ struct LAAWorkDecisionSummary: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(verbatim: "判断待ち").font(.system(size: 15, weight: .semibold))
+                        .accessibilityIdentifier("work.decisions.summary")
                     Spacer()
                     Text(verbatim: String(board.items.count))
                         .font(.custom("Georgia", size: 20, relativeTo: .title3))
@@ -40,7 +41,6 @@ struct LAAWorkDecisionSummary: View {
                     Button(String("すべて表示")) { showAll = true }.frame(minHeight: 44).accessibilityIdentifier("work.decisions.all")
                 }
             }.padding(12).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
-            .accessibilityIdentifier("work.decisions.summary")
             .sheet(item: $selected) { item in
                 NavigationStack {
                     LAADecisionDetailView(item: item, board: board, drafts: drafts, onAnswered: { board.remove($0.id) }) { _ in selected = nil; Task { await board.load(bridge) } }

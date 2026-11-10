@@ -28,12 +28,6 @@ struct LAAEmployeeCallView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(LAAColor.secondaryText)
                                     .accessibilityIdentifier("laa.call.status")
-                                if LAAStaff(profile: snapshot.context.profile) != nil {
-                                    Text(verbatim: "音声通話")
-                                        .laaTextStyle(.secondary)
-                                        .foregroundStyle(LAAColor.link)
-                                        .accessibilityIdentifier("laa.call.engine")
-                                }
                                 if snapshot.voiceNote != nil {
                                     Text(verbatim: "音声の設定を反映できませんでした")
                                         .laaTextStyle(.secondary)
@@ -67,10 +61,6 @@ struct LAAEmployeeCallView: View {
 
     private func header(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
         ZStack {
-            Text(verbatim: "通話")
-                .laaTextStyle(.section)
-                .fontWeight(.semibold)
-                .foregroundStyle(LAAColor.secondaryText)
             HStack {
                 Button(action: calls.showChat) {
                     Label {

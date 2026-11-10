@@ -446,7 +446,7 @@ struct GroupRoomComposer: View {
                 if draft.isEmpty {
                     Text(messagePlaceholder)
 #if LAA_BUILD
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(LAAColor.secondaryText)
 #else
                         .foregroundStyle(.tertiary)
 #endif

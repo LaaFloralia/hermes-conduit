@@ -13,7 +13,7 @@ final class LAAStaffCallUITests: XCTestCase {
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["laa.call.name"].exists)
-        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "音声通話")
+        XCTAssertFalse(app.staticTexts["laa.call.engine"].exists)
         XCTAssertEqual(app.buttons["laa.call.mute"].label, "消音")
         XCTAssertEqual(app.buttons["laa.call.chat"].label, "チャット")
         XCTAssertEqual(app.buttons["laa.call.end"].label, "終了")
@@ -48,7 +48,7 @@ final class LAAStaffCallUITests: XCTestCase {
         // The gate uses an English simulator; the sheet localizes its close label.
         app.buttons["Close"].tap()
         app.buttons["laa.employee.call"].tap()
-        XCTAssertTrue(app.staticTexts["laa.call.engine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
         attachScreenshot(name: "employee-gpt-live-call")
     }
 
@@ -79,7 +79,7 @@ final class LAAStaffCallUITests: XCTestCase {
         let name = app.staticTexts["laa.call.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         XCTAssertEqual(name.label, "Morgan")
-        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "音声通話")
+        XCTAssertFalse(app.staticTexts["laa.call.engine"].exists)
         app.buttons["laa.call.chat"].tap()
         let context = app.staticTexts["laa.fixture.call-context"]
         XCTAssertTrue(context.waitForExistence(timeout: 5))
