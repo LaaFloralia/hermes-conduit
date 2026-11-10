@@ -19,7 +19,7 @@ import Combine
         let key = key(device: device, target: target)
         // Long polls often return the same history. Do not rewrite the entire
         // protected draft store (or publish its changes) every two seconds.
-        guard store.draft(for: key).text != text else { return }
+        guard store.draft(for: key).text != text || store.persistenceFailed else { return }
         _ = store.save(ComposerDraft(text: text, attachments: []), for: key)
     }
 }

@@ -74,8 +74,10 @@ final class LAAEmployeeChatPreview: ObservableObject {
             + snapshot.transcripts.map(\.sessionID)
         guard let id = candidates.first(where: { chatIDs.contains($0) && snapshot.transcript(for: $0) != nil }),
               let transcript = store.loadTranscript(id, dashboardID: workspace.dashboardID, profile: workspace.profile) else { return nil }
-        return OfflineChatPresentation(dashboardID: workspace.dashboardID, profile: workspace.profile,
-                                       snapshot: snapshot, displayedTranscript: transcript)
+        return TranscriptPerf.withoutRecording {
+            OfflineChatPresentation(dashboardID: workspace.dashboardID, profile: workspace.profile,
+                                    snapshot: snapshot, displayedTranscript: transcript)
+        }
     }
 }
 #endif

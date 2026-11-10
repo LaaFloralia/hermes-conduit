@@ -4,6 +4,14 @@ import QuartzCore
 
 /// Opt-in, real Release UI. No fixtures, live messages, or document mutations.
 final class LAAPerformanceUITests: XCTestCase {
+    private static let keychainNamespace = UUID().uuidString
+
+    private func application() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-tab", "work"]
+        app.launchEnvironment["LAA_PERF_KEYCHAIN_NAMESPACE"] = Self.keychainNamespace
+        return app
+    }
     private func enabled() throws {
         guard ProcessInfo.processInfo.environment["LAA_PERF_RUN"] == "1" else {
             throw XCTSkip("Run scripts/laa/perf/run.py")
@@ -13,8 +21,7 @@ final class LAAPerformanceUITests: XCTestCase {
 
     func test00PairReadOnlyBridge() throws {
         try enabled()
-        let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work"]
+        let app = application()
         app.launch()
         XCTAssertTrue(app.buttons["Work"].waitForExistence(timeout: 30))
         app.buttons["Work"].tap()
@@ -49,19 +56,18 @@ final class LAAPerformanceUITests: XCTestCase {
 
     func test10NavigationFiveRuns() throws {
         try enabled()
-        let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work"]
+        let app = application()
         for iteration in 1...5 {
             app.terminate()
             sample("cold_launch_interactive", iteration, action: { app.launch() }, ready: {
                 app.buttons["Work"].waitForExistence(timeout: 30) && app.buttons["Work"].isHittable
             })
-            for (tab, marker) in [("Work", "work.section.sessions"), ("Today", "laa.calendar.mode"),
-                                  ("Doc", "laa.brain.title"), ("Studio", "studio.drive"), ("Chat", "")] {
+            for (tab, marker) in [("Today", "laa.calendar.mode"), ("Doc", "laa.brain.title"),
+                                  ("Studio", "studio.drive"), ("Chat", ""), ("Work", "work.section.sessions")] {
                 sample("tab_" + tab.lowercased(), iteration, action: { app.buttons[tab].tap() }, ready: {
                     if marker.isEmpty { return app.buttons[tab].isSelected }
                     // Selection + a mounted destination, not a network completion.
-                    let item = app.descendants(matching: .any)[marker].firstMatch
+                    let item = app.descendants(matching: .any).matching(identifier: marker).firstMatch
                     return item.waitForExistence(timeout: 15) || app.buttons[tab].isSelected
                 })
             }
@@ -70,13 +76,13 @@ final class LAAPerformanceUITests: XCTestCase {
             if sessions.waitForExistence(timeout: 10) { sessions.tap() }
             let row = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "work.session.ses_")).firstMatch
             if row.waitForExistence(timeout: 30), row.isHittable {
-                sample("work_open_session", iteration, action: { row.tap() }, ready: {
-                    app.descendants(matching: .any)["work.session.detail.title"].firstMatch.waitForExistence(timeout: 30)
+                sample("work_open_session_shell", iteration, action: { row.tap() }, ready: {
+                    app.descendants(matching: .any).matching(identifier: "work.session.detail.title").firstMatch.waitForExistence(timeout: 30)
                 })
                 app.navigationBars.buttons.element(boundBy: 0).tap()
-            } else { print("LAA_PERF_UNAVAILABLE work_open_session") }
+            } else { print("LAA_PERF_UNAVAILABLE work_open_session_shell") }
             app.buttons["Doc"].tap()
-            let note = app.buttons["laa.brain.note"].firstMatch
+            let note = app.buttons.matching(identifier: "laa.brain.note").firstMatch
             if note.waitForExistence(timeout: 15), note.isHittable {
                 sample("doc_open_document", iteration, action: { note.tap() }, ready: {
                     app.buttons["laa.brain.back"].waitForExistence(timeout: 30)
@@ -93,6 +99,15 @@ final class LAAPerformanceUITests: XCTestCase {
         }
         print("LAA_PERF_UNAVAILABLE chat_open_conversation_requires_hermes_pairing")
         print("LAA_PERF_UNAVAILABLE send_to_display_live_send_not_authorized")
+    }
+
+    func test99ClearOnlyTrialCredentials() throws {
+        try enabled()
+        let app = application()
+        app.launchEnvironment["LAA_PERF_CLEAR_KEYCHAIN"] = "1"
+        app.launch()
+        XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
+        app.terminate()
     }
 }
 #endif

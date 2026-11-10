@@ -1990,6 +1990,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, presentKeptBotChatCopy, keptBotChatCopies)
 - Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`
+- LAA employee opening: `Conduit/LAA/Chats/LAAEmployeeChatPreviewModel.swift`, `Conduit/Services/WidgetLaunchCoordinator.swift` (eight-second employee deadline; other widget actions retain thirty seconds), `ConduitTests/LAAEmployeeChatPreviewTests.swift`, `scripts/laa/perf/`. The saved preview is isolated from live profile/session state; connecting it to the opening screen belongs to CHAT.
 
 **Rulings**
 - What shows while a chat opens is presentation only: it never enters the live transcript, so approvals, paging and resume never read it, and the live transcript replaces it wholesale (2026-10-27, #1404, Eric picked this over seeding the live transcript or keeping chat views alive).

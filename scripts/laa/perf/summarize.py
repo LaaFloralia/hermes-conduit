@@ -8,6 +8,7 @@ from pathlib import Path
 
 def summarize(log):
     samples = {}
+    failed = {}
     unavailable = set()
     for line in log.splitlines():
         if "LAA_PERF_UNAVAILABLE " in line:
@@ -17,8 +18,12 @@ def summarize(log):
         row = json.loads(line.split("LAA_PERF ", 1)[1])
         if row["ready"]:
             samples.setdefault(row["metric"], []).append(row["ms"])
+        else:
+            failed.setdefault(row["metric"], []).append(row["ms"])
     return {"metrics": {name: {"count": len(values), "median_ms": round(statistics.median(values), 2),
                                "samples_ms": values} for name, values in sorted(samples.items())},
+            "failed_samples_ms": failed,
+            "incomplete_metrics": sorted(name for name, values in samples.items() if len(values) != 5),
             "unavailable": sorted(unavailable)}
 
 
