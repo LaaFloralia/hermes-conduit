@@ -1,0 +1,171 @@
+#if LAA_BUILD
+import SwiftUI
+
+struct LAAScreenHeader: View {
+    let title: String
+    var identifier = ""
+    var body: some View {
+        Text(verbatim: title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader).accessibilityIdentifier(identifier)
+    }
+}
+
+struct LAASectionHeader<MenuContent: View>: View {
+    let title: String
+    private let menu: MenuContent
+    init(_ title: String, @ViewBuilder menu: () -> MenuContent) {
+        self.title = title; self.menu = menu()
+    }
+    var body: some View {
+        HStack {
+            Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: LAASpacing.x2)
+            if MenuContent.self != EmptyView.self {
+                Menu { menu } label: {
+                    Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+                }
+                .foregroundStyle(LAAColor.link)
+                .accessibilityLabel(Text(verbatim: "\(title)のメニュー"))
+            }
+        }.textCase(nil)
+    }
+}
+extension LAASectionHeader where MenuContent == EmptyView {
+    init(_ title: String) { self.init(title) { EmptyView() } }
+}
+
+/// Place rows and LAAListDivider in one surface, never a surface per row.
+struct LAAListSurface<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
+    }
+}
+struct LAAListDivider: View {
+    var body: some View { Rectangle().fill(LAAColor.separator).frame(height: 0.5).padding(.horizontal, 16).accessibilityHidden(true) }
+}
+struct LAAListRow<Content: View>: View {
+    private let action: (() -> Void)?
+    private let content: Content
+    init(action: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
+        self.action = action; self.content = content()
+    }
+    var body: some View {
+        if let action {
+            Button(action: action) { row }.buttonStyle(LAAListRowStyle())
+        } else { row }
+    }
+    private var row: some View {
+        content.laaTextStyle(.rowTitle).foregroundStyle(LAAColor.text)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 4).contentShape(Rectangle())
+    }
+}
+private struct LAAListRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.background(configuration.isPressed ? LAAColor.selectionFill : .clear)
+    }
+}
+
+struct LAAToolbarIconButton: View {
+    let systemName: String
+    let label: String
+    var identifier = ""
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName).font(.system(size: 20, weight: .regular))
+                .foregroundStyle(LAAColor.link).frame(width: 44, height: 44).contentShape(Circle())
+        }
+        .buttonStyle(.plain).laaGlass(in: Circle())
+        .accessibilityLabel(Text(verbatim: label)).accessibilityIdentifier(identifier).macTooltip(label)
+    }
+}
+
+/// Each control gets a separate ToolbarItem, including on Catalyst.
+struct LAAScreenToolbar: ToolbarContent {
+    let createLabel: String
+    var createIdentifier = ""
+    var canCreate = true
+    let create: () -> Void
+    let settings: () -> Void
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            LAAToolbarIconButton(systemName: "plus", label: createLabel, identifier: createIdentifier, action: create).disabled(!canCreate)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            LAAToolbarIconButton(systemName: "gearshape", label: "設定", identifier: "laa.settings.open", action: settings)
+        }
+    }
+}
+
+enum LAAButtonKind { case primary, secondary, text, destructive }
+private struct LAAActionButtonStyle: ButtonStyle {
+    let kind: LAAButtonKind
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        Group {
+            if kind == .secondary { label(configuration).laaGlass(in: Capsule()) }
+            else { label(configuration).background(kind == .primary ? LAAColor.filledButton : .clear, in: Capsule()) }
+        }.opacity(!enabled ? 0.45 : configuration.isPressed ? 0.7 : 1)
+    }
+    private func label(_ configuration: Configuration) -> some View {
+        configuration.label.font(.body.weight(.semibold))
+            .foregroundStyle(kind == .primary ? LAAColor.filledButtonText : kind == .destructive ? LAAColor.end : LAAColor.link)
+            .padding(.horizontal, 20).frame(minHeight: kind == .primary ? 50 : 44)
+            .contentShape(Capsule())
+    }
+}
+extension View {
+    func laaButton(_ kind: LAAButtonKind = .secondary) -> some View { buttonStyle(LAAActionButtonStyle(kind: kind)) }
+}
+struct LAAStatusTag: View {
+    let title: String
+    var attention = false
+    var body: some View {
+        Text(verbatim: title).laaTextStyle(.note).fontWeight(.semibold)
+            .foregroundStyle(attention ? LAAColor.attention : LAAColor.link)
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .background(LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: 4))
+    }
+}
+struct LAASkeletonRows: View {
+    var count = 3
+    var body: some View {
+        LAAListSurface {
+            ForEach(0..<count, id: \.self) { index in
+                if index > 0 { LAAListDivider() }
+                LAAListRow {
+                    VStack(alignment: .leading, spacing: 8) {
+                        RoundedRectangle(cornerRadius: 4).fill(LAAColor.subtleSurface).frame(width: 148, height: 14)
+                        RoundedRectangle(cornerRadius: 4).fill(LAAColor.subtleSurface).frame(width: 96, height: 10)
+                    }
+                }
+            }
+        }.accessibilityElement(children: .ignore).accessibilityLabel(Text(verbatim: "読み込み中"))
+    }
+}
+struct LAAInlineFailure: View {
+    let reason: String
+    let retry: () -> Void
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+            Spacer(minLength: 0)
+            Button(action: retry) { Text(verbatim: "再試行") }.laaButton(.text).fixedSize()
+        }
+    }
+}
+struct LAAEmptyState: View {
+    let message: String
+    var body: some View {
+        Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+            .multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 112)
+    }
+}
+#endif

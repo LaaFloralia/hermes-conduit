@@ -76,19 +76,10 @@ extension View {
     }
 }
 
-/// The tabs' shared heading: the brand above a Georgia title, under a bare
-/// navigation bar whose controls are the only glass.
+/// Compatibility entry point; all tabs use the same unbranded heading.
 struct LAATabHeading: View {
     let title: String
     var identifier = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: LAACopy.brand).laaTextStyle(.section).fontWeight(.bold).foregroundStyle(LAAColor.link)
-            Text(verbatim: title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier(identifier)
-        }
-    }
+    var body: some View { LAAScreenHeader(title: title, identifier: identifier) }
 }
 #endif
