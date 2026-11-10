@@ -2,35 +2,35 @@
 import SwiftUI
 
 extension LAACopy {
-    static let chatToday = "TODAY"
-    static let chatYesterday = "YESTERDAY"
-    static let chatAttach = "Attach"
-    static let chatSend = "Send"
-    static let chatExpandEditor = "Expand editor"
-    static let chatCopy = "Copy"
-    static let chatCopied = "Copied"
-    static let chatCode = "Code"
-    static let chatStop = "Stop response"
-    static let chatSteer = "Steer with message"
-    static let chatInterrupt = "Interrupt and correct response"
-    static let chatQueue = "Queue message"
-    static let chatComposerUnavailable = "Composer unavailable"
-    static let chatFileUnavailable = "This group cannot open this file here."
-    static let chatCall = "Call"
-    static let chatGroupCallUnavailable = "Group calls are unavailable on this connection."
-    static let chatBackground = "Background"
-    static let chatGroupSettings = "Group settings"
-    static let chatPaper = "Paper"
-    static let chatTealNight = "Teal night"
-    static let chatInk = "Ink"
-    static let chatDevicePhoto = "Device photo"
-    static let chatSelected = "Selected"
-    static let chatDone = "Done"
-    static let chatPhotoAdjustments = "Photo adjustments"
-    static let chatPhotoDim = "Dim"
-    static let chatPhotoBlur = "Blur"
-    static let chatLoadingPhoto = "Loading photo"
-    static let chatFixturePhoto = "Test photo"
+    static let chatToday = "今日"
+    static let chatYesterday = "昨日"
+    static let chatAttach = "添付"
+    static let chatSend = "送信"
+    static let chatExpandEditor = "入力欄を拡大"
+    static let chatCopy = "コピー"
+    static let chatCopied = "コピーしました"
+    static let chatCode = "コード"
+    static let chatStop = "応答を中断"
+    static let chatSteer = "メッセージで指示"
+    static let chatInterrupt = "中断して指示"
+    static let chatQueue = "送信待ちに追加"
+    static let chatComposerUnavailable = "入力できません"
+    static let chatFileUnavailable = "このファイルを開けません"
+    static let chatCall = "電話"
+    static let chatGroupCallUnavailable = "このグループは通話に対応していません"
+    static let chatBackground = "背景"
+    static let chatGroupSettings = "グループの設定"
+    static let chatPaper = "紙"
+    static let chatTealNight = "青緑"
+    static let chatInk = "墨"
+    static let chatDevicePhoto = "写真"
+    static let chatSelected = "選択中"
+    static let chatDone = "完了"
+    static let chatPhotoAdjustments = "写真の調整"
+    static let chatPhotoDim = "暗さ"
+    static let chatPhotoBlur = "ぼかし"
+    static let chatLoadingPhoto = "写真を読み込み中"
+    static let chatFixturePhoto = "試験用の写真"
 }
 
 private struct LAAChatDesignKey: EnvironmentKey {
@@ -75,7 +75,12 @@ enum LAAChatDay {
         if calendar.isDate(date, inSameDayAs: now) { return LAACopy.chatToday }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(date, inSameDayAs: yesterday) { return LAACopy.chatYesterday }
-        return date.formatted(.dateTime.month(.abbreviated).day().year().locale(Locale(identifier: "en_US"))).uppercased()
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M月d日（E）"
+        return formatter.string(from: date)
     }
 }
 
@@ -118,9 +123,9 @@ private struct LAAChatDaySection: ViewModifier {
     let date: Date?
     let previous: Date?
     func body(content: Content) -> some View {
-        VStack(spacing: LAASpacing.x2) {
+        VStack(spacing: 14) {
             if let date, LAAChatDay.startsSection(date, after: previous) {
-                LAAChatDateSeparator(date: date)
+                LAAChatDateSeparator(date: date).padding(.top, 24)
             }
             content
         }
@@ -131,7 +136,7 @@ private struct LAAChatColumn: ViewModifier {
     let alignment: Alignment
     func body(content: Content) -> some View {
         content
-            .containerRelativeFrame(.horizontal) { width, _ in width * 0.85 }
+            .containerRelativeFrame(.horizontal) { width, _ in min(720, width - 40) }
             .frame(maxWidth: .infinity, alignment: alignment)
     }
 }

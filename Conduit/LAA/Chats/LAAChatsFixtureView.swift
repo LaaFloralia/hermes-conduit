@@ -54,6 +54,7 @@ struct LAAChatsFixtureView: View {
     var body: some View {
         LAAChatsContent(snapshot: snapshot, settingsAvailable: true,
                         openPerson: { selection = Selection(label: "person:\($0.profile)") },
+                        callPerson: { selection = Selection(label: "call:\($0.profile)") },
                         openRoom: { selection = Selection(label: "group:\($0.roomID)") },
                         newChat: { selection = Selection(label: "new-chat") },
                         newGroup: { showingGroupCreator = true },

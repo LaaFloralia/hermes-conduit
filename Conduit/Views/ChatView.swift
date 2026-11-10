@@ -134,7 +134,11 @@ struct ChatView: View {
     /// like any row (ChatStepPlacement.drawsRow). Its scroll target stays.
     /// Without such a step, the targets themselves, uncopied.
     private var drawnMessageScrollTargets: [ChatMessageScrollTarget] {
+#if LAA_BUILD
+        let targets = chatMessageScrollTargets.filter { LAAChatVisibility.shows($0.message) }
+#else
         let targets = chatMessageScrollTargets
+#endif
         _ = stepToggleRevision
         let preferences = appState.displayPreferences
         let isBusy = appState.isBusy
@@ -556,7 +560,7 @@ struct ChatView: View {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }
 #if LAA_BUILD
-            .padding(.horizontal, LAASpacing.horizontal)
+            .padding(.horizontal, 20)
 #else
             .padding(.horizontal, 18)
 #endif
@@ -1407,11 +1411,16 @@ struct UserBubble: View {
     @Environment(\.chatTextSize) private var chatTextSize
 #if LAA_BUILD
     @Environment(\.laaSenderContinues) private var continuesRun
+    @Environment(\.chatRowActions) private var laaRowActions
+    @Environment(\.chatRowState) private var laaRowState
 
     var body: some View {
         // The owner's picture, name and role, as in groups and Work.
-        LAAOwnerMessageRow(continues: continuesRun) { stack }
-            .laaChatColumn(.trailing)
+        LAAOwnerMessageRow(continues: continuesRun, timestamp: message.timestamp) {
+            stack.accessibilityIdentifier("chat.message.user").laaMessageMenu(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
+                reply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
+            LAAChatDelivery(message: message)
+        }.laaChatColumn(.trailing)
     }
 #else
     var body: some View {
@@ -1440,6 +1449,7 @@ struct UserBubble: View {
                     )
                 }
 
+#if !LAA_BUILD
                 HStack(spacing: 2) {
                     Spacer(minLength: 0)
                     MessageTimestampLabel(timestamp: message.timestamp)
@@ -1448,6 +1458,7 @@ struct UserBubble: View {
 #endif
                     UserMessageCopyButton(message: message)
                 }
+#endif
             }
     }
 }
@@ -1840,7 +1851,7 @@ struct UserMessageContent: View, Equatable {
             }
         }
 #if LAA_BUILD
-        .padding(LAASpacing.x4)
+        .padding(.horizontal, 14).padding(.vertical, 10)
         .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
 #else
         .padding(.horizontal, 17)
@@ -2749,12 +2760,17 @@ struct AssistantBubble: View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
 #if LAA_BUILD
         // The employee's picture and name, as in groups and Work.
-        LAAAgentMessageRow(name: LAASender.agentName(profile: appState.conversationIdentityProfile,
-                                                     identity: rowState.agentIdentity),
-                           continues: continuesRun) {
-            ConduitAgentMark(identity: rowState.agentIdentity)
+        LAAAgentMessageRow(name: LAAChatPerson.name(LAASender.agentName(profile: appState.conversationIdentityProfile,
+                                                     identity: rowState.agentIdentity)),
+                           continues: continuesRun,
+                           role: LAAChatPerson.role(profile: appState.conversationIdentityProfile),
+                           timestamp: message.timestamp) {
+            StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name, size: 30, scrolling: true)
         } content: {
-            reply
+            reply.accessibilityIdentifier("chat.message.assistant").laaMessageMenu(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
+                reply: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
+                react: rowState.canReact(to: message) ? { emoji in Task { await appState.react(to: message.id, with: emoji) } } : nil,
+                read: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
         }
         .laaChatColumn(.leading)
 #else
@@ -2789,6 +2805,7 @@ struct AssistantBubble: View {
                 )
             }
 
+#if !LAA_BUILD
             HStack(spacing: 4) {
                 Spacer(minLength: 0)
                 if message.role == .assistant {
@@ -2819,6 +2836,7 @@ struct AssistantBubble: View {
             .padding(.top, 2)
             // Fixed 34 pt buttons: larger glyphs would overlap each other.
             .conduitFixedGlyph()
+#endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -4790,6 +4808,7 @@ struct ChatLiveTurnRows: View {
         // card, never the ForEach data or the scroll-target cache.
         // Chronology matches the pre-projection transcript — thinking
         // streams at the tail, before the assistant answer.
+#if !LAA_BUILD
         if let segment = projection.reasoningSegment {
             ThinkingCard(
                 message: ChatMessage(
@@ -4804,16 +4823,20 @@ struct ChatLiveTurnRows: View {
             .reportsLiveRowFrame(id: segment.id)
         }
 
+#endif
         if !projection.streamingText.isEmpty {
             StreamingBubble(
                 text: projection.streamingText,
-                active: isBusy
+                active: isBusy, startedAt: turnStartedAt
             )
             .id("streaming")
             .reportsLiveRowFrame(id: "streaming")
         }
 
         if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
+#if LAA_BUILD
+            LAAChatTypingRow(startedAt: turnStartedAt, projection: projection)
+#else
             ChatWorkingLine(
                 currentToolName: currentToolName,
                 currentToolInput: currentToolInput,
@@ -4822,6 +4845,7 @@ struct ChatLiveTurnRows: View {
                 startedAt: turnStartedAt,
                 repliesElsewhere: repliesElsewhere
             )
+#endif
             .id("typing")
             .reportsLiveRowFrame(id: "typing")
         }
@@ -4833,17 +4857,29 @@ struct ChatLiveTurnRows: View {
 struct StreamingBubble: View {
     let text: String
     let active: Bool
+    var startedAt: Date? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
 
     var body: some View {
+#if LAA_BUILD
+        LAAAgentMessageRow(name: LAAChatPerson.name(rowState.agentIdentity.name),
+            continues: appState.messages.last(where: LAAChatVisibility.shows)?.role == .assistant,
+            role: LAAChatPerson.role(profile: appState.conversationIdentityProfile),
+            timestamp: startedAt.map { ISO8601DateFormatter().string(from: $0) }) {
+                StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name, size: 30, scrolling: true)
+            } content: {
+                streamingContent.laaAssistantSurface()
+            }.laaChatColumn(.leading)
+#else
         let identity = rowState.agentIdentity
         return VStack(alignment: .leading, spacing: 6) {
             // Streaming uses the same reading column and Markdown renderer as
             // a completed reply. Only the active mark/status changes, so the
             // final message settles in rather than swapping presentation.
+#if !LAA_BUILD
             HStack(spacing: 8) {
                 ConduitAgentMark(
                     isActive: true,
@@ -4865,20 +4901,18 @@ struct StreamingBubble: View {
                     .tint(.conduitAccent)
             }
 
-            StreamingText(
-                text: text,
-                active: active,
-                gatewayMediaDataURL: { path in
-                    await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
-                }
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
+#endif
+            streamingContent
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .laaAssistantSurface()
-#if LAA_BUILD
-        .laaChatColumn(.leading)
 #endif
+    }
+
+    private var streamingContent: some View {
+        StreamingText(text: text, active: active, gatewayMediaDataURL: { path in
+            await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
+        }).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -4914,6 +4948,13 @@ struct EmptyChatState: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
+#if LAA_BUILD
+        VStack(spacing: 8) {
+            StaffAvatarView(profile: appState.conversationIdentityProfile,
+                name: appState.conversationAgentIdentity.name, size: 132)
+            Text(verbatim: LAAChatPerson.name(appState.conversationAgentIdentity.name)).font(LAAType.employeeName)
+        }.frame(maxWidth: .infinity).padding(28)
+#else
         VStack(spacing: 18) {
             ConduitAppIconArtwork(
                 assetName: appState.appIconChoice.previewAssetName,
@@ -4929,6 +4970,7 @@ struct EmptyChatState: View {
         }
         .padding(28)
         .conduitGlassSurface(cornerRadius: 28, tint: .conduitAccent.opacity(0.06))
+#endif
     }
 }
 struct ConduitAgentMark: View {

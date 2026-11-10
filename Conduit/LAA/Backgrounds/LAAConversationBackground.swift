@@ -110,25 +110,22 @@ final class LAAConversationFeatures: ObservableObject {
 @MainActor
 struct LAAConversationMenuItems: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var features: LAAConversationFeatures
-
+    @State private var sheet: LAAConversationFeatures.Sheet?
     var body: some View {
-        Button {
-            if let key = LAAConversationScope.current(appState) { features.sheet = .background(key) }
-        } label: {
-            Label(LAACopy.chatBackground, systemImage: "photo.on.rectangle")
-        }
-        .disabled(LAAConversationScope.current(appState) == nil)
-        .accessibilityIdentifier("conversation.background")
-        if appState.activeRoomSurface != nil {
-            Button { features.sheet = .group } label: {
-                Label(LAACopy.chatGroupSettings, systemImage: "person.2")
+        Group {
+            Button {
+                if let key = LAAConversationScope.current(appState) { sheet = .background(key) }
+            } label: { Label(LAACopy.chatBackground, systemImage: "photo.on.rectangle") }
+                .disabled(LAAConversationScope.current(appState) == nil)
+                .accessibilityIdentifier("conversation.background")
+            if appState.activeRoomSurface != nil {
+                Button { sheet = .group } label: { Label(LAACopy.chatGroupSettings, systemImage: "person.2") }
             }
-            Button {} label: {
-                Label(LAACopy.chatGroupCallUnavailable, systemImage: "phone")
+        }.sheet(item: $sheet) { selection in
+            switch selection {
+            case .background(let key): LAABackgroundPicker(key: key)
+            case .group: LAAGroupSettingsView().environmentObject(appState)
             }
-            .disabled(true)
-            .accessibilityIdentifier("room.call.reason")
         }
     }
 }
@@ -280,7 +277,7 @@ struct LAABackgroundPicker: View {
 
 private struct LAAAssistantSurface: ViewModifier {
     func body(content: Content) -> some View {
-        content.padding(LAASpacing.x4)
+        content.padding(.horizontal, 14).padding(.vertical, 10)
             .foregroundStyle(LAAColor.text)
             .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
     }

@@ -46,6 +46,20 @@ final class LAABackgroundFixture: ObservableObject {
                            authorityEpoch: 1, payload: ["text": .string(Self.richMessage)], createdAt: now),
             ]
         }
+        if chatFixture == "empty" { events = [] }
+        if chatFixture == "simple" {
+            events = [
+                GroupEvent(roomID: room.roomID, seq: 1, eventID: "one", kind: "message.user",
+                    actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+                    authorityEpoch: 1, payload: ["text": .string("今日の予定を整理して。")], createdAt: now - 120),
+                GroupEvent(roomID: room.roomID, seq: 2, eventID: "two", kind: "message.member",
+                    actor: GroupActor(kind: "member", id: "laa-monet", profile: "laa-monet", displayName: "Monet", connectionID: nil),
+                    authorityEpoch: 1, payload: ["text": .string("午前は予定を確認しましょう。")], createdAt: now - 60),
+                GroupEvent(roomID: room.roomID, seq: 3, eventID: "three", kind: "message.member",
+                    actor: GroupActor(kind: "member", id: "laa-cto", profile: "laa-cto", displayName: "Ada", connectionID: nil),
+                    authorityEpoch: 1, payload: ["text": .string("午後の資料は私が用意します。")], createdAt: now)
+            ]
+        }
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in
                 if mode == "error" { throw URLError(.cannotConnectToHost) }
@@ -94,6 +108,20 @@ final class LAABackgroundFixture: ObservableObject {
                     ChatMessage(id: "user", role: .user, content: "今日の予定を整理して、次の一手を教えて。", timestamp: String(now - 60)),
                     ChatMessage(id: "assistant", role: .assistant, content: Self.richMessage, timestamp: String(now))
                 ]
+            }
+        }
+        if chatFixture == "simple" || chatFixture == "typing" || chatFixture == "empty" {
+            app.messages = chatFixture == "empty" ? [] : [
+                ChatMessage(id: "user", role: .user, content: "今日の予定を整理して。", timestamp: String(now - 60), rowId: 1),
+                ChatMessage(id: "assistant", role: .assistant, content: "午前は予定を確認し、午後は資料を仕上げましょう。", timestamp: String(now), rowId: 2)
+            ]
+            app.messageReactionSender = { _, _, emoji in
+                MessageReactionResult(rowId: 2, reactions: emoji.map { [MessageReaction(emoji: $0, author: "user", at: now)] } ?? [])
+            }
+            if chatFixture == "typing" {
+                app.messages.removeLast()
+                app.messages.append(ChatMessage(id: "reason", role: .reasoning, content: "予定を確認しています。", timestamp: String(now)))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
             }
         }
         self.state = app

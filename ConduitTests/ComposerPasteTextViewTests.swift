@@ -36,7 +36,11 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
     func testComposerHeightTracksThreeThroughEightScaledLines() {
         let font = ChatTypography.inputFont(for: nil, size: .larger)
+#if LAA_BUILD
+        XCTAssertEqual(ComposerPasteTextView.minimumHeight(for: nil, size: .larger), max(44, ceil(font.lineHeight) + 16))
+#else
         XCTAssertEqual(ComposerPasteTextView.minimumHeight(for: nil, size: .larger), ceil(font.lineHeight * 3) + 16)
+#endif
         XCTAssertEqual(ComposerPasteTextView.maximumHeight(for: nil, size: .larger), ceil(font.lineHeight * 8) + 16)
         XCTAssertGreaterThan(ComposerPasteTextView.minimumHeight(for: nil, size: .largest), ComposerPasteTextView.minimumHeight(for: nil, size: .smallest))
     }

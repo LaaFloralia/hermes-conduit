@@ -231,6 +231,10 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var textInsets: UIEdgeInsets = .zero
     var maxLines: Int?
     var minLines = 1
+#if LAA_BUILD
+    var onMeasuredLines: ((Int) -> Void)? = nil
+    var onCompositionChanged: ((Bool) -> Void)? = nil
+#endif
     var inputTextSize: ChatTextSize = .larger
     /// A revision distinguishes intentional replacements from a lagging
     /// binding echo while UIKit is composing text.
@@ -310,6 +314,13 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         // Not laid out yet: retain the requested minimum.
         guard width > 0 else { return CGSize(width: width, height: minimum) }
         let fitting = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+#if LAA_BUILD
+        let lines = max(1, Int(((fitting - insets) / font.lineHeight).rounded()))
+        if context.coordinator.measuredLines != lines {
+            context.coordinator.measuredLines = lines
+            DispatchQueue.main.async { context.coordinator.parent.onMeasuredLines?(lines) }
+        }
+#endif
         let cap = ceil(font.lineHeight * CGFloat(maxLines) + insets)
         let scrolls = fitting > cap
         if uiView.isScrollEnabled != scrolls {
@@ -320,6 +331,9 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ReturnKeyTextEditor
+#if LAA_BUILD
+        var measuredLines = 0
+#endif
 
         /// A change made elsewhere while the IME was composing. It lands
         /// once the composition ends, never replacing it mid-way.
@@ -377,6 +391,9 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         }
 
         func textDidChange(in textView: UITextView, hasMarkedText: Bool) {
+#if LAA_BUILD
+            defer { parent.onCompositionChanged?(hasMarkedText) }
+#endif
             if !hasMarkedText, let pending = pendingText {
                 // The composition ended: the change made meanwhile wins.
                 // Spent first, so one already in place can't linger.

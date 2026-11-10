@@ -1,9 +1,62 @@
 #if LAA_BUILD
 import XCTest
 import SwiftUI
+import UIKit
 @testable import Conduit
 
 final class LAAChatDesignTests: XCTestCase {
+
+    func testPeopleRolesAndParentheses() {
+        XCTAssertEqual(LAAChatPerson.name("Morgan（CFO）"), "Morgan")
+        XCTAssertEqual(LAAChatPerson.role(profile: "laa-monet-dots"), "Secretary")
+        XCTAssertEqual(LAAChatPerson.role(profile: "laa-argus"), "Head Trader")
+        XCTAssertEqual(LAAChatPerson.role(profile: nil, name: "Ada"), "CTO")
+        XCTAssertEqual(LAAChatPerson.role(profile: "laa-cfo", existingRole: "Finance"), "Finance")
+        XCTAssertNil(LAAChatPerson.role(profile: "unknown"))
+    }
+
+    func testTranscriptHidesWorkButPreservesConversationContent() {
+        XCTAssertFalse(LAAChatVisibility.shows(ChatMessage(id: "reason", role: .reasoning, content: "private work", timestamp: "")))
+        XCTAssertFalse(LAAChatVisibility.shows(ChatMessage(id: "tool", role: .tool, content: "execution", timestamp: "")))
+        XCTAssertTrue(LAAChatVisibility.shows(ChatMessage(id: "reply", role: .assistant, content: "本文", timestamp: "")))
+        XCTAssertTrue(LAAChatVisibility.shows(ChatMessage(id: "user", role: .user, content: "依頼", timestamp: "")))
+        XCTAssertEqual(LAAChatVisibility.reactions, ["❤️", "👍", "👎", "‼️", "😂", "✅"])
+    }
+
+    func testReadReceiptRequiresResponseEvidenceAndOnlyMarksLatestOwnerMessage() {
+        let first = ChatMessage(id: "one", role: .user, content: "依頼", timestamp: "1")
+        let reply = ChatMessage(id: "reply", role: .assistant, content: "回答", timestamp: "2")
+        let next = ChatMessage(id: "two", role: .user, content: "次の依頼", timestamp: "3")
+        XCTAssertFalse(LAAChatReadReceipt.wasRead("one", messages: [first]))
+        XCTAssertTrue(LAAChatReadReceipt.wasRead("one", messages: [first, reply]))
+        XCTAssertFalse(LAAChatReadReceipt.wasRead("one", messages: [first, reply, next]))
+        XCTAssertFalse(LAAChatReadReceipt.wasRead("two", messages: [first, reply, next]))
+        XCTAssertTrue(LAAChatReadReceipt.wasRead("two", messages: [first, reply, next], hasLiveResponse: true))
+    }
+
+    @MainActor
+    func testBubbleMenuOwnsHoldWhileKeepingLinkTapsAvailable() {
+        let text = SelectableTextView.makeTextView()
+        let hold = UILongPressGestureRecognizer()
+        let tap = UITapGestureRecognizer()
+        text.addGestureRecognizer(hold)
+        text.addGestureRecognizer(tap)
+        let host = SelectableTextViewHostView(textView: text)
+        host.usesMessageMenu = true
+        XCTAssertFalse(hold.isEnabled)
+        XCTAssertTrue(tap.isEnabled)
+        XCTAssertTrue(text.isSelectable)
+        host.usesMessageMenu = false
+        XCTAssertTrue(hold.isEnabled)
+    }
+
+    func testConversationActionsUseJapaneseWithoutExposingInternalNames() {
+        XCTAssertEqual(LAAChatLabels.text("Sending…"), "送信中…")
+        XCTAssertEqual(LAAChatLabels.groupAction("Disband Group"), "グループを解散")
+        XCTAssertEqual(LAAChatLabels.text("Expand editor"), "入力欄を拡大")
+        XCTAssertEqual(LAAChatLabels.text("Dictation with Hermes needs a connection to Hermes."), "音声入力にはMacとの接続が必要です。")
+    }
+
     func testDateSectionsUseCalendarDaysAndSkipMissingDates() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
@@ -15,8 +68,8 @@ final class LAAChatDesignTests: XCTestCase {
         XCTAssertFalse(LAAChatDay.startsSection(sameDay, after: day, calendar: calendar))
         XCTAssertTrue(LAAChatDay.startsSection(day, after: yesterday, calendar: calendar))
         XCTAssertFalse(LAAChatDay.startsSection(nil, after: day, calendar: calendar))
-        XCTAssertEqual(LAAChatDay.label(day, now: sameDay, calendar: calendar), "TODAY")
-        XCTAssertEqual(LAAChatDay.label(yesterday, now: day, calendar: calendar), "YESTERDAY")
+        XCTAssertEqual(LAAChatDay.label(day, now: sameDay, calendar: calendar), "今日")
+        XCTAssertEqual(LAAChatDay.label(yesterday, now: day, calendar: calendar), "昨日")
     }
 
     func testDateSectionUsesPreviousVisibleRow() throws {

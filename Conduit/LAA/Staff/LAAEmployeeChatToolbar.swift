@@ -24,12 +24,11 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         LAAEmployeeCallAvailability.reason(appState: appState, bridge: bridge.status, calls: calls)
     }
     private var status: String {
-        if let reason { return reason }
         if sameCall {
-            if case .failed = calls.snapshot?.phase { return "▲ 通話を確認" }
-            return "● 通話中"
+            if case .failed = calls.snapshot?.phase { return "通話を確認" }
+            return "通話中"
         }
-        return appState.isBusy ? "● 応答中" : "● 待機中"
+        return appState.isBusy ? "入力中…" : (appState.isConnected ? "" : "接続中…")
     }
 
     private var header: some View {
@@ -37,7 +36,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                           status: status, activity: appState.isBusy ? .lively : .resting,
                           isObscured: calls.isShowingCall,
                           voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected,
-                          compact: (LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth) ?? 200) < 140 || dynamicTypeSize.isAccessibilitySize)
+                          compact: dynamicTypeSize.isAccessibilitySize, information: menu)
             .laaPhotoGlassScope()
     }
 
@@ -64,7 +63,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                 .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                 .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
         }
-        LAAConversationControlItems(call: callButton, menu: menu)
+        LAAConversationControlItems(call: callButton)
     }
 
     private func voiceSetting(for profile: String) -> Binding<String>? {
@@ -115,7 +114,7 @@ enum LAAConversationHeaderLayout {
     /// What the call/menu capsule and its margin take on the trailing side.
     /// A name no wider than the screen less this on both sides fits between
     /// equal margins, so the bar keeps it on the screen's center.
-    static let sideReserve: CGFloat = 136
+    static let sideReserve: CGFloat = 76
 
     /// The widest the name may be; nil until the screen width is known.
     static func nameWidth(screenWidth: CGFloat) -> CGFloat? {
@@ -189,6 +188,7 @@ struct LAAEmployeeHeader: View {
     var voiceSetting: Binding<String>? = nil
     var voiceSettingEnabled = true
     var compact = false
+    var information: AnyView? = nil
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
     /// The mascot is the bar's one picture: larger than the controls around it.
@@ -196,33 +196,38 @@ struct LAAEmployeeHeader: View {
 
     var body: some View {
         Button { showDetails = true } label: {
-            HStack(spacing: 6) {
-                if !compact {
-                    // Outside the pill and taller than it: the mascot stands
-                    // in the bar on its own, with nothing drawn around it.
-                    StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: Self.mascotSize,
-                                    scrolling: showDetails || isObscured, activity: activity)
-                        .frame(height: LAASpacing.minimumTouchTarget)
+            VStack(spacing: 0) {
+                StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 64,
+                                scrolling: showDetails || isObscured, activity: activity)
+                    .accessibilityHidden(true)
+                VStack(spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: LAAChatPerson.name(name)).font(.custom("Georgia", size: 17, relativeTo: .headline))
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                        if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
+                    }
+                    if !status.isEmpty { Text(verbatim: status).font(.caption2).foregroundStyle(LAAColor.secondaryText).lineLimit(1) }
+                }.modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
+            }.fixedSize(horizontal: false, vertical: true)
+        }.buttonStyle(.plain)
+            .sheet(isPresented: $showDetails) {
+                if let information {
+                    NavigationStack {
+                        information.environment(\.laaDismissConversationInfo, { showDetails = false }).navigationTitle("会話の情報").navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了") { showDetails = false } } }
+                    }.laaSheetSize(.page)
+                } else {
+                    LAAStaffDetailView(profile: profile, name: name, avatarURL: avatarURL, status: status,
+                        voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled)
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name).font(.custom("Georgia", size: 16, relativeTo: .headline))
-                        .lineLimit(1).minimumScaleFactor(compact ? 0.5 : 0.8)
-                        .multilineTextAlignment(compact ? .center : .leading)
-                    if !compact { Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                .modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
             }
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-        }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $showDetails) {
-            LAAStaffDetailView(profile: profile, name: name, avatarURL: avatarURL, status: status,
-                               voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(verbatim: name + ", " + status))
-        .accessibilityIdentifier("laa.employee.header")
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(verbatim: name + "、会話の情報"))
+            .accessibilityIdentifier("laa.employee.header")
+            // The mascot floats beneath the navigation bar, as in Dots.
+            .frame(height: 44, alignment: .top)
     }
+
 }
 
 private struct LAAEmployeeHeaderGlass: ViewModifier {
@@ -298,7 +303,7 @@ struct LAAEmployeeCallButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "phone.fill")
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
                 .laaToolbarGlass()
         }

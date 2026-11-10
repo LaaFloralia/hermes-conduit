@@ -156,6 +156,9 @@ struct SelectableTextView: UIViewRepresentable {
         )
         hostView.selectionTint = context.environment.textSelectionTint
         hostView.replyMessageID = context.environment.chatPinReplyAction?.messageID
+#if LAA_BUILD
+        hostView.usesMessageMenu = context.environment.laaUsesMessageMenu
+#endif
         return hostView
     }
 
@@ -170,6 +173,9 @@ struct SelectableTextView: UIViewRepresentable {
         updateUIViewForTests(uiView, coordinator: context.coordinator)
         uiView.selectionTint = context.environment.textSelectionTint
         uiView.replyMessageID = context.environment.chatPinReplyAction?.messageID
+#if LAA_BUILD
+        uiView.usesMessageMenu = context.environment.laaUsesMessageMenu
+#endif
     }
 
     /// Whether this text is drawn until something needs its text view: on
@@ -1313,6 +1319,18 @@ enum SelectableTextViewPool {
 }
 
 final class SelectableTextViewHostView: UIView {
+#if LAA_BUILD
+    // Text selection is available from the bubble's standard menu. Leave
+    // link taps and accessibility enabled, and let that menu own the hold.
+    var usesMessageMenu = false {
+        didSet { configureMessageMenuGestures() }
+    }
+    private func configureMessageMenuGestures() {
+        for gesture in textView?.gestureRecognizers ?? [] where gesture is UILongPressGestureRecognizer {
+            gesture.isEnabled = !usesMessageMenu
+        }
+    }
+#endif
     /// Draws the text while the host has no text view: only hosts made to
     /// draw until touched have one (`SelectableTextView.drawsUntilTouched`).
     let canvas: SelectableTextCanvas?
@@ -1481,6 +1499,9 @@ final class SelectableTextViewHostView: UIView {
 
     private func embedMountedTextView() {
         guard let textView else { return }
+#if LAA_BUILD
+        configureMessageMenuGestures()
+#endif
         addSubview(textView)
         textView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([

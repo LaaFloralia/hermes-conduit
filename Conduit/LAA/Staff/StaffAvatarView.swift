@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import AVFoundation
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -60,7 +61,8 @@ struct StaffAvatarView: View {
     @State private var videoOnScreen = false
     @StateObject private var loop = StaffAvatarLoop()
 
-    private var assets: StaffAssets { StaffAssetResolver.bundled.resolve(profile: profile) }
+    @State private var assets = StaffAssets()
+    @State private var stillImage: UIImage?
     private var policy: StaffAvatarPlaybackPolicy {
         StaffAvatarPlaybackPolicy(visible: visible, active: scenePhase == .active,
                                   reduceMotion: reduceMotion, lowPower: lowPower,
@@ -79,25 +81,34 @@ struct StaffAvatarView: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+        .task(id: profile) {
+            let result = await LAAStaffStillCache.load(profile: profile)
+            guard !Task.isCancelled else { return }
+            assets = result.assets
+            stillImage = result.image
+            syncPlayback()
+        }
         .onAppear { visible = true; syncPlayback() }
         .onDisappear { visible = false; loop.stop() }
         .onChange(of: policy) { _, _ in syncPlayback() }
         .onChange(of: activity) { _, _ in loop.setRate(activity.playbackRate) }
-        .onChange(of: profile) { _, _ in videoOnScreen = false; loop.stop(); syncPlayback() }
+        .onChange(of: profile) { _, _ in videoOnScreen = false; assets = StaffAssets(); stillImage = nil; loop.stop() }
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
             lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
     }
 
     @ViewBuilder private var still: some View {
-        if let url = assets.avatar, let image = UIImage(contentsOfFile: url.path) {
+        if assets.avatar != nil, let image = stillImage {
             Image(uiImage: image).resizable().scaledToFill()
-        } else if let url = assets.defaultMark, let image = UIImage(contentsOfFile: url.path) {
+        } else if assets.defaultMark != nil, let image = stillImage {
             Image(uiImage: image).renderingMode(.template).resizable().scaledToFit()
                 .foregroundStyle(LAAColors.teal)
                 .padding(size * 0.20)
                 .background(LAAColors.surface)
                 .clipShape(Circle())
+        } else if LAAStaff(profile: profile) != nil {
+            Color.clear
         } else {
             ProfileAvatarView(profile: profile, displayName: name, url: fallbackURL, size: size)
         }
@@ -246,6 +257,48 @@ private struct StaffVideoLayer: UIViewRepresentable {
     final class PlayerView: UIView {
         override class var layerClass: AnyClass { AVPlayerLayer.self }
         var layerPlayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    }
+}
+#endif
+
+#if LAA_BUILD
+@MainActor
+private enum LAAStaffStillCache {
+    struct Loaded {
+        let assets: StaffAssets
+        let image: UIImage?
+    }
+    static let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 24
+        cache.totalCostLimit = 8 * 1024 * 1024
+        return cache
+    }()
+    private static var assetsByProfile: [String: StaffAssets] = [:]
+
+    static func load(profile: String) async -> Loaded {
+        let key = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let assets = assetsByProfile[key], let image = cache.object(forKey: key as NSString) {
+            return Loaded(assets: assets, image: image)
+        }
+        let found = assetsByProfile[key]
+        let result = await Task.detached(priority: .userInitiated) {
+            let assets = found ?? StaffAssetResolver.bundled.resolve(profile: key)
+            guard let url = assets.avatar ?? assets.defaultMark,
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 256,
+                    kCGImageSourceCreateThumbnailWithTransform: true
+                  ] as CFDictionary) else { return Loaded(assets: assets, image: nil) }
+            return Loaded(assets: assets, image: UIImage(cgImage: cg))
+        }.value
+        if assetsByProfile.count >= 24 { assetsByProfile.removeAll(keepingCapacity: true) }
+        assetsByProfile[key] = result.assets
+        if let image = result.image {
+            cache.setObject(image, forKey: key as NSString, cost: (image.cgImage?.bytesPerRow ?? 0) * (image.cgImage?.height ?? 0))
+        }
+        return result
     }
 }
 #endif

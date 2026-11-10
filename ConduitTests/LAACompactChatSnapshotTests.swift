@@ -129,7 +129,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         let bubbleTrailing = try XCTUnwrap(bubbleTrailingEdge(image, style: style), "Own bubble must be visible")
         // The owner's picture holds the trailing margin; the bubble ends beside it.
         XCTAssertEqual(canvas.width - bubbleTrailing,
-                       LAASpacing.horizontal + LAASender.avatarSize + LAASender.avatarSpacing, accuracy: 2,
+                       20 + 40, accuracy: 2,
                        "The own bubble must end beside the owner's picture at the chat's trailing margin")
         // The bar sits under the status bar (about 59pt), not in the top 60.
         let headerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 56..<106), "The header controls must be visible")
@@ -145,7 +145,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual((header.lowerBound + header.upperBound) / 2, canvas.width / 2, accuracy: 8,
                        "The employee header \(header) must sit on the screen's center")
         let composerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 800..<940), "The composer controls must be visible")
-        XCTAssertEqual(canvas.width - composerTrailing, LAASpacing.horizontal, accuracy: 3,
+        XCTAssertEqual(canvas.width - composerTrailing, 20, accuracy: 3,
                        "The send control must end at the chat's trailing margin")
         let attachment = XCTAttachment(image: image)
         attachment.name = "compact-440x956-\(style == .dark ? "dark" : "light")"

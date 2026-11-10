@@ -38,7 +38,11 @@ final class ComposerFullEditorTests: XCTestCase {
     }
 
     func testTheFullEditorIsAvailableForShortAndLongDrafts() {
+#if LAA_BUILD
+        XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.minimumHeight))
+#else
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.minimumHeight))
+#endif
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.maximumHeight))
     }
 

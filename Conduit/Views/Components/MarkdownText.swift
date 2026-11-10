@@ -3232,9 +3232,17 @@ struct ChatCodeBlock: View {
     @State private var copied = false
     @Environment(\.chatTextSize) private var chatTextSize
 #if LAA_BUILD
+    @Environment(\.laaChatDesign) private var laaChatDesign
     @Environment(\.laaRichContentStyle) private var laaRichContentStyle
 #endif
 
+    private var showsInlineCopy: Bool {
+#if LAA_BUILD
+        return !laaChatDesign
+#else
+        return true
+#endif
+    }
     private var codeFill: Color {
 #if LAA_BUILD
         if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
@@ -3294,6 +3302,7 @@ struct ChatCodeBlock: View {
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
                 Spacer()
+                if showsInlineCopy {
                 Button {
                     UIPasteboard.general.string = source
                     Haptics.light()
@@ -3304,6 +3313,7 @@ struct ChatCodeBlock: View {
                 }
                 .tint(codeLink)
                 .accessibilityIdentifier("chat.code.copy")
+                }
             }
             .padding(.horizontal, MarkdownRichMetrics.inset)
             .padding(.vertical, MarkdownRichMetrics.codeVerticalInset)

@@ -31,7 +31,7 @@ final class LAAConversationHeaderSnapshotTests: XCTestCase {
                     }
                     ToolbarItem(placement: .principal) {
                         LAAEmployeeHeader(profile: "laa-monet-uncensored", name: "Monet（無検閲）",
-                                          status: "この会話はテキスト専用です", isObscured: true,
+                                          status: "", isObscured: true,
                                           compact: available < 140 || size.isAccessibilitySize)
                             .frame(maxWidth: available)
                             .frame(minHeight: 44)
@@ -39,7 +39,6 @@ final class LAAConversationHeaderSnapshotTests: XCTestCase {
                     ToolbarItem(placement: .topBarTrailing) {
                         LAAConversationControls {
                             LAAEmployeeCallButton(reason: nil) {}
-                            Button {} label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         }
                     }
                 }

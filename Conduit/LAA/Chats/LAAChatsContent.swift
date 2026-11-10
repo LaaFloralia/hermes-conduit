@@ -8,9 +8,8 @@ struct LAAChatsContent: View {
     /// The Mac's split list: the highlighted row and the menu bar's requests.
     var selection: LAAChatsListSelection? = nil
     var openPerson: (LAAChatsPerson) -> Void
+    var callPerson: ((LAAChatsPerson) -> Void)? = nil
     var openRoom: (GroupRoom) -> Void
-    /// A cron run's own conversation, from the scheduled section's history.
-    var openRun: (SessionSummary) -> Void = { _ in }
     var newChat: () -> Void
     var newGroup: () -> Void
     var openSettings: () -> Void
@@ -26,17 +25,26 @@ struct LAAChatsContent: View {
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var monet: LAAChatsPerson? { snapshot.people.first { LAAStaff(profile: $0.profile) == .monet } }
     private var employees: [LAAChatsPerson] {
-        snapshot.people.filter { LAAStaff(profile: $0.profile) != .monet && LAAChatsSearch.person($0, matches: query) }
+        snapshot.people.filter { LAAStaff(profile: $0.profile).map { [.monet, .monetDots, .monetUncensored].contains($0) } != true && LAAChatsSearch.person($0, matches: query) }
     }
     private var rooms: [GroupRoom] { snapshot.rooms.filter { LAAChatsSearch.room($0, matches: query) } }
     private var matchingMonet: LAAChatsPerson? {
         monet.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
     }
-    private var hasResults: Bool { matchingMonet != nil || !employees.isEmpty || !rooms.isEmpty }
+    private var hasResults: Bool { matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !rooms.isEmpty }
+
+    private var failure: String? {
+        switch snapshot.groupsState {
+        case .failed(let reason): return reason.isEmpty ? LAACopy.chatsIncomplete : reason
+        case .offline: return LAACopy.chatsOffline
+        case .unsupported: return LAACopy.chatsGroupUnsupported
+        default: return nil
+        }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: LAASpacing.x6) {
+            VStack(alignment: .leading, spacing: 32) {
                 // The Mac's window bar belongs to the whole window, so the
                 // list's own new button sits by its heading there.
                 HStack(alignment: .bottom) {
@@ -46,19 +54,26 @@ struct LAAChatsContent: View {
                         newChatButton.buttonStyle(.borderless).foregroundStyle(LAAColor.link)
                     }
                 }
-                if !snapshot.canCreateChat { note(LAACopy.chatsNewUnavailable) }
                 search
+                if let failure {
+                    HStack(spacing: 8) {
+                        Text(verbatim: failure).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                        Spacer(minLength: 0)
+                        if snapshot.groupsState != .unsupported {
+                            Button("再試行", action: retry).font(.system(size: 13)).foregroundStyle(LAAColor.link).frame(minHeight: 44)
+                        }
+                    }
+                }
                 if searching && !hasResults {
                     searchEmpty
                 } else {
-                    if let monet = matchingMonet { monetSection(monet) }
+                    if let monet, matchingMonet != nil || !monetVariants.isEmpty { monetSection(monet) }
                     if !searching || !employees.isEmpty { employeeSection }
                     if !searching || !rooms.isEmpty { groupSection }
-                    if !searching { scheduledSection }
                     if searching { searchIncomplete }
                 }
             }
-            .padding(.horizontal, LAASpacing.horizontal)
+            .padding(.horizontal, 20)
             .padding(.top, LAASpacing.x3)
             .padding(.bottom, LAASpacing.x8)
         }
@@ -82,9 +97,9 @@ struct LAAChatsContent: View {
         .onKeyPress(.upArrow) { moveFocus(by: -1) }
         .onKeyPress(.return) { openFocusedRow() }
         .laaMacSectionCommands(LAAMacSectionCommands(
-            newTitle: LAACopy.macNewChat,
-            canCreate: snapshot.canCreateChat,
-            create: newChat,
+            newTitle: LAACopy.chatsNewGroup,
+            canCreate: snapshot.canCreateGroup,
+            create: newGroup,
             canSearch: true,
             focusSearch: { searchFocused = true },
             canReload: true,
@@ -99,6 +114,7 @@ struct LAAChatsContent: View {
     private var rowIDs: [String] {
         var ids: [String] = []
         if let monet = matchingMonet, monet.available { ids.append("person.\(monet.profile)") }
+        ids += monetVariants.filter(\.available).map { "person.\($0.profile)" }
         ids += employees.filter(\.available).map { "person.\($0.profile)" }
         if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
         return ids
@@ -116,7 +132,7 @@ struct LAAChatsContent: View {
     private func rowTarget(_ id: String) -> LAAChatsRowTarget? {
         if id.hasPrefix("person.") {
             let profile = String(id.dropFirst("person.".count))
-            let people = ([matchingMonet].compactMap { $0 } + employees)
+            let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees)
             return people.first { $0.profile == profile }.map(LAAChatsRowTarget.person)
         }
         let roomID = String(id.dropFirst("room.".count))
@@ -164,33 +180,60 @@ struct LAAChatsContent: View {
                        identifier: "laa.chats.search", focus: $searchFocused)
     }
 
+    private var monetVariants: [LAAChatsPerson] {
+        snapshot.people.filter { LAAStaff(profile: $0.profile).map { [.monetDots, .monetUncensored].contains($0) } == true && LAAChatsSearch.person($0, matches: query) }
+    }
+
     private func monetSection(_ monet: LAAChatsPerson) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionHeader(LAACopy.chatsMonet)
-            Button { openPerson(monet) } label: {
-                personRow(monet, size: 56, selected: isSelected("person.\(monet.profile)"))
-                    .padding(LAASpacing.x3)
-                    .background(isSelected("person.\(monet.profile)") ? LAAColor.selectionFill : LAAColor.surface,
-                                in: RoundedRectangle(cornerRadius: LAARadius.card))
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Button { openPerson(monet) } label: {
+                    HStack(spacing: 12) {
+                        avatar(profile: monet.profile, name: monet.name, size: 64)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Monet").font(.custom("Georgia", size: 22, relativeTo: .title3))
+                            Text("社長秘書・総合アドバイザー").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                        }
+                        Spacer(minLength: 0)
+                    }.frame(minHeight: 88).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .disabled(!monet.available)
+                    .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
+                if let callPerson {
+                    Button { callPerson(monet) } label: {
+                        Image(systemName: "phone.fill").foregroundStyle(LAAColor.link).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).laaComposerGlass(in: Circle())
+                        .disabled(!monet.available).accessibilityLabel("Monetに電話")
+                        .accessibilityIdentifier("laa.chats.monet.call")
+                }
+            }.padding(.horizontal, 12)
+            ForEach(monetVariants) { person in
+                Divider().overlay(LAAColor.separator).padding(.leading, 60)
+                Button { openPerson(person) } label: {
+                    HStack(spacing: 12) {
+                        avatar(profile: person.profile, name: person.name, size: 36)
+                        Text(LAAStaff(profile: person.profile) == .monetDots ? "Monet · Dots" : "Monet · 無検閲")
+                            .font(.custom("Georgia", size: 17, relativeTo: .body))
+                        Spacer(minLength: 0)
+                    }.frame(minHeight: 56).padding(.horizontal, 16).contentShape(Rectangle())
+                }.buttonStyle(.plain).disabled(!person.available)
+                    .accessibilityIdentifier("laa.chats.person.\(person.profile)")
             }
-            .buttonStyle(.plain)
-            .disabled(!monet.available)
-            .accessibilityHint(Text(verbatim: monet.available ? "" : LAACopy.chatsUnavailable))
-            .accessibilityAddTraits(isSelected("person.\(monet.profile)") ? .isSelected : [])
-            .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
-            .focused($focusedRow, equals: "person.\(monet.profile)")
-            .onHover(perform: hover("person.\(monet.profile)"))
-            if !monet.available { note(LAACopy.chatsUnavailable) }
-        }
+        }.foregroundStyle(LAAColor.text)
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var employeeSection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(LAACopy.chatsEmployees)
-            if employees.isEmpty {
+            if employees.isEmpty && snapshot.groupsState == .loading {
+                LAAChatListSkeleton()
+            } else if employees.isEmpty {
                 note(LAACopy.chatsNoEmployees)
             } else {
+                VStack(spacing: 0) {
                 ForEach(employees) { employee in
+                    if employee.id != employees.first?.id { Divider().overlay(LAAColor.separator).padding(.leading, 76) }
                     Button { openPerson(employee) } label: { personRow(employee, size: 48, selected: isSelected("person.\(employee.profile)")) }
                         .buttonStyle(.plain)
                         .disabled(!employee.available)
@@ -200,44 +243,35 @@ struct LAAChatsContent: View {
                         .modifier(rowChrome("person.\(employee.profile)"))
                         .focused($focusedRow, equals: "person.\(employee.profile)")
                         .onHover(perform: hover("person.\(employee.profile)"))
+                        .padding(.horizontal, 12).padding(.vertical, 4)
                 }
+                }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
             }
         }
     }
 
     private var newChatButton: some View {
-        Button(action: newChat) {
+        Button(action: newGroup) {
             Image(systemName: "plus")
                 .frame(minWidth: laaDesktop ? LAASpacing.minimumTouchTarget : nil,
                        minHeight: laaDesktop ? LAASpacing.minimumTouchTarget : nil)
         }
-        .disabled(!snapshot.canCreateChat)
+        .disabled(!snapshot.canCreateGroup)
         .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
-        .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
+        .accessibilityHint(Text(verbatim: snapshot.canCreateGroup ? "" : LAACopy.chatsNewUnavailable))
         .accessibilityIdentifier("laa.chats.new")
         .macTooltip(LAACopy.chatsNew)
     }
 
     private var groupSection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack {
-                sectionHeader(LAACopy.chatsGroups)
-                Spacer()
-                Button(action: newGroup) {
-                    Image(systemName: "plus").laaTextStyle(.body)
-                        .foregroundStyle(LAAColor.link)
-                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-                }
-                .disabled(!snapshot.canCreateGroup)
-                .accessibilityLabel(Text(verbatim: LAACopy.chatsNewGroup))
-                .accessibilityHint(Text(verbatim: snapshot.canCreateGroup ? "" : groupUnavailableReason))
-                .accessibilityIdentifier("laa.chats.group.new")
-                .macTooltip(LAACopy.chatsNewGroup)
-            }
+            sectionHeader(LAACopy.chatsGroups)
             if rooms.isEmpty {
                 loadNote(snapshot.groupsState, empty: LAACopy.chatsNoGroups)
             } else {
+                VStack(spacing: 0) {
                 ForEach(rooms) { room in
+                    if room.id != rooms.first?.id { Divider().overlay(LAAColor.separator).padding(.leading, 76) }
                     Button { openRoom(room) } label: { roomRow(room, selected: isSelected("room.\(room.roomID)")) }
                         .buttonStyle(.plain)
                         .disabled(snapshot.groupsState == .offline)
@@ -246,7 +280,9 @@ struct LAAChatsContent: View {
                         .modifier(rowChrome("room.\(room.roomID)"))
                         .focused($focusedRow, equals: "room.\(room.roomID)")
                         .onHover(perform: hover("room.\(room.roomID)"))
+                        .padding(.horizontal, 12).padding(.vertical, 4)
                 }
+                }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
                 if snapshot.groupsState != .ready { loadNote(snapshot.groupsState, empty: "") }
             }
         }
@@ -256,18 +292,21 @@ struct LAAChatsContent: View {
         HStack(spacing: LAASpacing.x3) {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: person.name).font(LAAType.employeeName)
-                    .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                Text(verbatim: person.role).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                HStack(spacing: 6) {
+                    Text(verbatim: LAAChatPerson.name(person.name)).font(.custom("Georgia", size: 17, relativeTo: .body))
+                        .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                    if let role = LAAChatPerson.role(profile: person.profile, existingRole: person.role) { LAARoleBadge(role: role) }
+                }
+                if let preview = person.lastMessage, !preview.isEmpty {
+                    Text(verbatim: preview).font(.system(size: 13)).lineLimit(1).foregroundStyle(LAAColor.secondaryText)
+                }
             }
             Spacer(minLength: LAASpacing.x2)
-            if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
-                unreadBadge(unread)
-            }
-            // Beside the conversation the row only selects; a chevron there
-            // would promise a push that never comes.
-            if selection == nil {
-                Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            VStack(alignment: .trailing, spacing: 8) {
+                if let date = person.lastMessageAt { Text(date, style: .relative).font(.caption2).foregroundStyle(LAAColor.secondaryText) }
+                if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
+                    Circle().fill(LAAColor.link).frame(width: 6, height: 6).accessibilityLabel(LAACopy.chatsUnread(unread))
+                }
             }
         }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
@@ -298,13 +337,10 @@ struct LAAChatsContent: View {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 Text(verbatim: room.name).laaTextStyle(.body)
                     .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                let names = room.members.compactMap { $0.displayName ?? $0.profile ?? $0.handle }.joined(separator: ", ")
-                if !names.isEmpty { Text(verbatim: names).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                Text("\(room.members.count)人").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
-            if selection == nil {
-                Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            }
+
         }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
@@ -319,152 +355,14 @@ struct LAAChatsContent: View {
             }
         }
         .frame(width: size, height: size)
-        .background(LAAColor.selectionFill)
-        .clipShape(Circle())
         .accessibilityHidden(true)
     }
 
     private func sectionHeader(_ title: String) -> some View {
-        Text(verbatim: title.uppercased())
-            .laaTextStyle(.section).fontWeight(.bold).tracking(0.8)
+        Text(verbatim: title)
+            .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(LAAColor.secondaryText)
             .accessibilityAddTraits(.isHeader)
-    }
-
-    // MARK: Scheduled jobs
-
-    /// What this profile's jobs do, split by where their results land, with
-    /// the next run and whether the job runs at all. Jobs stay Hermes' own:
-    /// this only reads them, and the runs are the cron chats the list holds.
-    /// An unread or failed read says so; only a read, empty answer says there
-    /// are no scheduled jobs, so a display failure never reads as "stopped".
-    private var scheduledSection: some View {
-        let jobs = snapshot.cronJobs
-        return VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionHeader(LAACopy.chatsCron)
-            if jobs.isEmpty {
-                cronNote(snapshot.cronState)
-            } else {
-                ForEach(scheduledGroups, id: \.0) { group in
-                    scheduledGroup(group.0, jobs: group.1)
-                }
-                if case .failed = snapshot.cronState { cronNote(.failed("")) }
-            }
-            if snapshot.cronSkipped > 0 {
-                note(LAACopy.chatsCronPartial(snapshot.cronSkipped))
-                    .accessibilityIdentifier("laa.chats.cron.partial")
-            }
-            if !snapshot.cronRuns.isEmpty { recentRuns }
-        }
-    }
-
-    /// The scheduled section's own read state: loading, offline, or a failure
-    /// with a way to ask again. Never the "no jobs" line.
-    @ViewBuilder private func cronNote(_ state: LAAChatsLoadState) -> some View {
-        switch state {
-        case .ready: note(LAACopy.chatsCronNone)
-        case .loading:
-            HStack(spacing: LAASpacing.x2) { ProgressView(); note(LAACopy.chatsCronPending) }
-        case .offline: note(LAACopy.chatsOffline)
-        case .unsupported: note(LAACopy.chatsCronUnavailable)
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                note(message.isEmpty ? LAACopy.chatsCronStale : message)
-                Button(LAACopy.chatsCronRetry, action: retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                    .frame(minHeight: LAASpacing.minimumTouchTarget)
-            }
-        }
-    }
-
-    /// Jobs under the person whose chat receives them: a bot-chat target names
-    /// its profile, and anything else runs in this connection's own conversation.
-    private var scheduledGroups: [(String, [CronJob])] {
-        var order: [String] = snapshot.people.map(\.profile).filter { !$0.isEmpty }
-        var buckets: [String: [CronJob]] = [:]
-        for job in snapshot.cronJobs {
-            let profile = Self.deliveryProfile(job) ?? snapshot.cronProfile
-            if !order.contains(profile) { order.append(profile) }
-            buckets[profile, default: []].append(job)
-        }
-        return order.compactMap { profile in
-            guard let jobs = buckets[profile], !jobs.isEmpty else { return nil }
-            let name = Self.profileName(profile, people: snapshot.people)
-            let sorted = jobs.sorted { ($0.nextRunAt ?? "~") < ($1.nextRunAt ?? "~") }
-            return (name, sorted)
-        }
-    }
-
-    private static func deliveryProfile(_ job: CronJob) -> String? {
-        guard let deliver = job.deliver, deliver.hasPrefix("bot-chat:") else { return nil }
-        let profile = String(deliver.dropFirst("bot-chat:".count))
-        return profile.isEmpty ? nil : profile
-    }
-
-    private static func profileName(_ profile: String, people: [LAAChatsPerson]) -> String {
-        if let person = people.first(where: { $0.profile == profile }) { return person.name }
-        return profile.hasPrefix("laa-") ? String(profile.dropFirst("laa-".count)) : profile
-    }
-
-    private func scheduledGroup(_ title: String, jobs: [CronJob]) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: title).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            ForEach(jobs) { job in scheduledRow(job) }
-        }
-    }
-
-    private func scheduledRow(_ job: CronJob) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            HStack(spacing: LAASpacing.x2) {
-                Text(verbatim: job.displayName).laaTextStyle(.body).fontWeight(.medium)
-                Spacer(minLength: LAASpacing.x2)
-                Text(verbatim: job.statusLabel).laaTextStyle(.secondary)
-                    .foregroundStyle(job.isActive ? LAAColor.link : LAAColor.secondaryText)
-            }
-            HStack(spacing: LAASpacing.x2) {
-                if let schedule = CronScheduleText.describe(job, zoneLabel: snapshot.cronZoneLabel) {
-                    Text(verbatim: schedule).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
-                Spacer(minLength: LAASpacing.x2)
-                if let next = Self.nextRunText(job.nextRunAt) {
-                    Text(verbatim: "次回 \(next)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
-            }
-        }
-        .padding(LAASpacing.x3)
-        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("laa.chats.cron.\(job.id)")
-    }
-
-    private var recentRuns: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: LAACopy.chatsCronRuns).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            ForEach(snapshot.cronRuns) { run in
-                Button { openRun(run) } label: {
-                    HStack(spacing: LAASpacing.x2) {
-                        Text(verbatim: run.title).laaTextStyle(.body).lineLimit(1)
-                        Spacer(minLength: LAASpacing.x2)
-                        Text(verbatim: run.updatedLabel).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    }
-                    .padding(.vertical, LAASpacing.x1)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("laa.chats.cronRun.\(run.id)")
-            }
-        }
-    }
-
-    /// Hermes' ISO instants, shown in the device's own words.
-    private static func nextRunText(_ raw: String?) -> String? {
-        guard let raw, !raw.isEmpty else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var date = formatter.date(from: raw)
-        if date == nil { formatter.formatOptions = [.withInternetDateTime]; date = formatter.date(from: raw) }
-        guard let date else { return raw }
-        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func note(_ message: String) -> some View {
@@ -480,15 +378,8 @@ struct LAAChatsContent: View {
         switch state {
         case .ready: note(empty)
         case .loading:
-            HStack(spacing: LAASpacing.x2) { ProgressView(); note(LAACopy.chatsLoading) }
-        case .offline: note(LAACopy.chatsOffline)
-        case .unsupported: note(LAACopy.chatsGroupUnsupported)
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                note(message.isEmpty ? LAACopy.chatsIncomplete : message)
-                Button(LAACopy.chatsRetry, action: retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                    .frame(minHeight: LAASpacing.minimumTouchTarget)
-            }
+            LAAChatListSkeleton()
+        case .offline, .unsupported, .failed: EmptyView()
         }
     }
 
@@ -569,10 +460,7 @@ struct LAAGroupFaces: View {
             }
         }
         .frame(width: diameter, height: diameter)
-        .background(LAAColor.selectionFill)
-        .clipShape(Circle())
-        // The page's own colour as a ring, so overlapping faces stay apart.
-        .overlay(Circle().stroke(LAAColor.background, lineWidth: 1.5))
+
     }
 }
 
