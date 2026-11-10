@@ -72,6 +72,32 @@ struct LAAStudioRecord: Codable, Identifiable {
 }
 
 enum LAAStudioPresentation {
+    static func relativeDate(_ stamp: String?, now: Date = Date()) -> String {
+        guard let stamp else { return "" }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fractional = formatter.date(from: stamp)
+        formatter.formatOptions = [.withInternetDateTime]
+        guard let date = fractional ?? formatter.date(from: stamp) else { return "" }
+        let age = max(0, now.timeIntervalSince(date))
+        if age < 60 { return "たった今" }
+        if age < 3600 { return "\(Int(age / 60))分前" }
+        if age < 86400 { return "\(Int(age / 3600))時間前" }
+        if age < 172800 { return "昨日" }
+        return "\(Int(age / 86400))日前"
+    }
+    static func symbol(_ project: LAAStudioProject) -> String {
+        if project.assets?.contains(where: { $0.kind == "video" }) == true { return "play.rectangle" }
+        if !project.pages.isEmpty { return "doc.richtext" }
+        if project.assets?.contains(where: { $0.kind == "image" }) == true { return "photo" }
+        return "square.stack.3d.up"
+    }
+    static func awaitingReview(_ snapshot: LAAStudioSnapshot) -> [LAAStudioProject] {
+        let latest = Dictionary(grouping: snapshot.requests, by: { $0.request.projectId })
+            .compactMapValues { $0.max { $0.updatedAt < $1.updatedAt } }
+        return snapshot.projects.filter { latest[$0.id]?.status == "completed" }
+    }
+
     static func status(_ value: String) -> String {
         switch value {
         case "queued": LAACopy.Studio.queued

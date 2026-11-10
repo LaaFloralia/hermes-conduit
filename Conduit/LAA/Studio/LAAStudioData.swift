@@ -3,49 +3,49 @@ import Foundation
 
 extension LAACopy {
     enum Studio {
-        static let works = "Works"
-        static let requests = "Requests"
-        static let requestDetail = "Request"
-        static let newRequest = "New request"
-        static let newWork = "New work"
-        static let work = "Work"
-        static let existingWork = "Existing work"
-        static let title = "Title"
-        static let prompt = "Request"
-        static let principle = "Principle"
-        static let none = "None"
-        static let choose = "Choose"
-        static let yes = "Yes"
-        static let no = "No"
-        static let send = "Send request"
-        static let retry = "Retry"
-        static let refresh = "Refresh"
-        static let check = "Check status"
-        static let stop = "Stop"
-        static let cancel = "Cancel"
-        static let allow = "Allow"
-        static let deny = "Deny"
-        static let persist = "Allow for this session"
-        static let askAgain = "Request with latest version"
-        static let active = "In progress"
-        static let finished = "Finished"
-        static let queued = "Queued"
-        static let notReceived = "Not received"
-        static let accepted = "Accepted"
-        static let running = "Running"
-        static let needsApproval = "Needs approval"
-        static let completed = "Completed"
-        static let failed = "Failed"
-        static let stopped = "Stopped"
-        static let interrupted = "Interrupted"
-        static let unknownStatus = "Unknown"
-        static let deliverables = "Deliverables"
-        static let assets = "Assets"
-        static let pages = "Pages"
-        static let open = "Open"
-        static let openOnMac = "Open on Mac"
-        static let disconnected = "MacのStudioに接続できません。Studioの起動と接続を確認してください。"
-        static let notAccepting = "Studioは現在依頼を受け付けていません。しばらくしてから確認してください。"
+        static let works = "作品"
+        static let requests = "依頼"
+        static let requestDetail = "依頼"
+        static let newRequest = "制作を依頼"
+        static let newWork = "新規"
+        static let work = "作品"
+        static let existingWork = "既存の作品"
+        static let title = "題名"
+        static let prompt = "依頼"
+        static let principle = "原則"
+        static let none = "なし"
+        static let choose = "選ぶ"
+        static let yes = "はい"
+        static let no = "いいえ"
+        static let send = "依頼する"
+        static let retry = "再試行"
+        static let refresh = "更新"
+        static let check = "状態を確認"
+        static let stop = "停止"
+        static let cancel = "キャンセル"
+        static let allow = "許可"
+        static let deny = "許可しない"
+        static let persist = "この依頼で許可"
+        static let askAgain = "直しを頼む"
+        static let active = "進行中"
+        static let finished = "完了した依頼"
+        static let queued = "受付済み"
+        static let notReceived = "受付待ち"
+        static let accepted = "受付済み"
+        static let running = "制作中"
+        static let needsApproval = "確認待ち"
+        static let completed = "完了"
+        static let failed = "失敗"
+        static let stopped = "停止済み"
+        static let interrupted = "中断"
+        static let unknownStatus = "未確認"
+        static let deliverables = "納品"
+        static let assets = "素材"
+        static let pages = "ページ"
+        static let open = "開く"
+        static let openOnMac = "Macで開く"
+        static let disconnected = "Studioに接続できません"
+        static let notAccepting = "Studioは制作中です"
         static let workBusy = "Studioが使用中です。少し待ってから送り直してください。"
         static let permission = "この端末にはStudioの権限がありません。Macで権限を追加してください。"
         static let draft = "下書きはこの端末に保存されています。まだ送信していません。"
@@ -57,7 +57,7 @@ extension LAACopy {
         static let actionInFlight = "元の操作を確認中です。少し待ってから再試行してください。"
         static let actionDisconnected = "Studioに接続できません。操作が受け付け済みの可能性があります。接続後に状態を確認してください。"
         static let stopping = "Studioは停止処理中です。状態が変わるまでお待ちください。"
-        static let reenter = "Enter again"
+        static let reenter = "入力し直す"
         static let saveFailed = "下書きを保存できません。保存できるまで送信しません。"
         static let pageUnsupported = "このページはアプリでプレビューできません。LAA Studioで開いてください。"
         static let unsupported = "この形式はアプリでプレビューできません。LAA Studioで開いてください。"
@@ -69,6 +69,8 @@ extension LAACopy {
         static let tooLong = "依頼文は10,000字以内にしてください。"
     }
 }
+
+extension Notification.Name { static let laaStudioChanged = Notification.Name("laa.studio.changed") }
 
 enum LAAStudioData {
     #if DEBUG
@@ -183,12 +185,12 @@ enum LAAStudioData {
         let approval = LAAStudioApproval(id: questionID, message: mode == "unsupported" ? "有料生成の確認が必要です。" : "出力形式を選んでください。", supported: mode != "unsupported", allowSession: true, fields: fields)
         let report = LAAStudioReport(id: requestID, bootId: projectID, sequence: 2, status: "approval", text: text, revision: nil, approvals: [approval], computerCalls: nil)
         let request = LAAStudioRequest(id: requestID, projectId: projectID, expectedRevision: 3, prompt: "新しい紹介資料を作ってください。", create: nil, principle: nil)
-        let record = LAAStudioRecord(request: request, status: "approval", bootId: projectID, updatedAt: "2026-10-31T09:00:00Z", report: report)
+        let record = LAAStudioRecord(request: request, status: mode == "v2-completed" ? "completed" : "approval", bootId: projectID, updatedAt: "2026-10-31T09:00:00Z", report: mode == "v2-completed" ? nil : report)
         let project = LAAStudioProject(id: projectID, title: "サービス紹介資料", revision: 3,
                                        pages: [.init(id: "page1", name: "Cover", preview: nil)], assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
         let principle = LAAStudioPrinciple(id: "principle1", name: "LAA", version: "6", revision: 3, status: "adopted")
         var snapshot = LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: mode == "empty" ? [] : [project], principles: [principle], requests: mode == "empty" ? [] : [record])
-        if mode == "v2" { snapshot.contract = 2 }
+        if mode.hasPrefix("v2") { snapshot.contract = 2 }
         return snapshot
     }
     #endif
@@ -204,16 +206,24 @@ struct LAAStudioDraft: Codable, Equatable {
     var pending = false
     var submissionBody: Data?
     var submissionKey: String?
+    var kind: String?
+    var references: [String]?
     var workBusy: Bool?
     var isNew: Bool { projectID == nil }
     func request() -> LAAStudioRequest? {
         guard let requestID, UUID(uuidString: requestID) != nil,
-              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, prompt.utf16.count <= 10000,
+              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, composedPrompt.utf16.count <= 10000,
               !isNew || (!title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && title.utf16.count <= 300) else { return nil }
         return LAAStudioRequest(id: requestID, projectId: projectID ?? requestID, expectedRevision: isNew ? 0 : expectedRevision,
-                                prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
+                                prompt: composedPrompt,
                                 create: isNew ? .init(title: title.trimmingCharacters(in: .whitespacesAndNewlines)) : nil,
                                 principle: principle)
+    }
+    var composedPrompt: String {
+        var parts = [prompt.trimmingCharacters(in: .whitespacesAndNewlines)]
+        if let kind { parts.append("制作の種類: " + kind) }
+        if let references, !references.isEmpty { parts.append("参考資料（Drive）:\n" + references.joined(separator: "\n")) }
+        return parts.joined(separator: "\n\n")
     }
     mutating func submission(rotateKey: Bool = false) throws -> (request: LAAStudioRequest, body: Data, key: LAABridgeIdempotencyKey)? {
         guard let request = request() else { return nil }

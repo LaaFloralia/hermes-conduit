@@ -9,19 +9,19 @@ struct LAAStudioCatalogView: View {
     @State private var loading = false
     @State private var loadID: UUID?
     @State private var error: String?
-    @State private var category = "All"
-    private var categories: [String] { ["All"] + Array(Set(catalog?.documents.map(\.category) ?? [])).sorted() }
+    @State private var category = "すべて"
+    private var categories: [String] { ["すべて"] + Array(Set(catalog?.documents.map(\.category) ?? [])).sorted() }
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             if let error {
                 Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                 Button { Task { await load() } } label: { Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget) }
             }
-            if loading { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+            if loading && catalog == nil { LAAStudioSkeleton() }
             if let catalog {
                 if stale { Text(verbatim: "接続できないため、この端末に保存した内容を表示しています。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                Text(verbatim: "更新 \(LAAWorkPresentation.date(catalog.updatedAt))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "更新 \(LAAStudioPresentation.relativeDate(catalog.updatedAt))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 HStack {
                     Text(verbatim: "原則 · \(catalog.principles.count)").laaTextStyle(.section).fontWeight(.semibold)
                     Spacer()
@@ -48,7 +48,7 @@ struct LAAStudioCatalogView: View {
                         }
                     }
                 }.scrollClipDisabled()
-                ForEach(catalog.documents.filter { category == "All" || $0.category == category }) { document in
+                ForEach(catalog.documents.filter { category == "すべて" || $0.category == category }) { document in
                     NavigationLink { LAAStudioDocumentView(document: document) } label: {
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             Text(verbatim: document.title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
@@ -89,7 +89,7 @@ private struct LAAStudioPrincipleView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
                 Text(verbatim: principle.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                Text(verbatim: "\(principle.status == "adopted" ? "採用済み" : "下書き") · v\(principle.version) · Revision \(principle.revision)")
+                Text(verbatim: "\(principle.status == "adopted" ? "採用済み" : "下書き") · v\(principle.version) · 第\(principle.revision)版")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: principle.description).laaTextStyle(.body)
                 NavigationLink {
