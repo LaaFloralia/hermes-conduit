@@ -127,7 +127,7 @@ struct PhoneSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {
-            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
+            Text(AppLocalization.string("Last synced \(AppDateText.display(last, as: .relative))"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -363,7 +363,7 @@ struct PhoneSettingsPage: View {
                     HStack {
                         Text(verbatim: "\(entry.modeName): \(entry.action)")
                         Spacer()
-                        Text(entry.at.formatted(.relative(presentation: .named)))
+                        Text(AppDateText.display(entry.at, as: .relative))
                             .foregroundStyle(.secondary)
                     }
                     .font(.caption)
@@ -665,10 +665,10 @@ enum PhoneChangeWording {
         if kind == .setTimer, let seconds = fields.seconds {
             parts.append(Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated)))
         } else if let at = fields.at {
-            parts.append(at.formatted(date: .abbreviated, time: .shortened))
+            parts.append(AppDateText.display(at, as: .dayTime))
         } else if let time = fields.time {
             let clock = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: Date())
-                .map { $0.formatted(date: .omitted, time: .shortened) } ?? time.text
+                .map { AppDateText.display($0, as: .time) } ?? time.text
             parts.append([clock, days(fields.repeats)].compactMap { $0 }.joined(separator: " "))
         }
         if parts.isEmpty {
@@ -699,16 +699,16 @@ enum PhoneChangeWording {
         let allDay = change.fields.allDay ?? false
         if let start = change.fields.start {
             if allDay {
-                parts.append(start.formatted(date: .abbreviated, time: .omitted))
+                parts.append(AppDateText.display(start, as: .day))
             } else if let end = change.fields.end {
-                parts.append(start.formatted(date: .abbreviated, time: .shortened) + "–" + end.formatted(date: .omitted, time: .shortened))
+                parts.append(AppDateText.display(start, as: .dayTime) + "–" + AppDateText.display(end, as: .time))
             } else {
-                parts.append(start.formatted(date: .abbreviated, time: .shortened))
+                parts.append(AppDateText.display(start, as: .dayTime))
             }
         }
         if let due = change.fields.due {
             let dueAllDay = change.fields.dueAllDay ?? (change.fields.dueText?.count == 10)
-            parts.append(dueAllDay ? due.formatted(date: .abbreviated, time: .omitted) : due.formatted(date: .abbreviated, time: .shortened))
+            parts.append(AppDateText.display(due, as: dueAllDay ? .day : .dayTime))
         }
         if let location = change.fields.location, !location.isEmpty { parts.append(location) }
         return parts.joined(separator: " · ")

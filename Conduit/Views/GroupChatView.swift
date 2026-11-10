@@ -1339,7 +1339,8 @@ enum GroupBubbleTime {
     }()
 
     static func text(_ value: Double) -> String {
-        formatter.string(from: Date(timeIntervalSince1970: value))
+        let date = Date(timeIntervalSince1970: value)
+        return AppDateText.display(date, as: .time, fallback: formatter.string(from: date))
     }
 }
 

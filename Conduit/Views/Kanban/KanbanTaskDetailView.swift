@@ -1477,7 +1477,8 @@ struct KanbanTaskDetailView: View {
         guard let epoch else { return "" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: Date(timeIntervalSince1970: Double(epoch)), relativeTo: Date())
+        let date = Date(timeIntervalSince1970: Double(epoch))
+        return AppDateText.display(date, as: .relative, fallback: formatter.localizedString(for: date, relativeTo: .now))
     }
 }
 

@@ -152,7 +152,7 @@ private struct OfflineChatBanner: View {
                 Text(title)
                     .font(.footnote.weight(.semibold))
                 if let savedAt {
-                    Text("Saved \(savedAt.formatted(.relative(presentation: .named)))")
+                    Text("Saved \(AppDateText.display(savedAt, as: .relative))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

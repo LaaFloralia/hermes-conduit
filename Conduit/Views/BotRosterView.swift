@@ -702,7 +702,8 @@ private struct BotRosterRow: View {
         let seconds = lastActive > 10_000_000_000 ? lastActive / 1000 : lastActive
         let formatter = Self.activityFormatter
         formatter.locale = AppLocalization.formattingLocale
-        return formatter.localizedString(for: Date(timeIntervalSince1970: seconds), relativeTo: Date())
+        let date = Date(timeIntervalSince1970: seconds)
+        return AppDateText.display(date, as: .relative, fallback: formatter.localizedString(for: date, relativeTo: .now))
     }
 
     /// The pin badge and the subtitle, spoken after the name; the label

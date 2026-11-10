@@ -70,10 +70,7 @@ struct LAAWorkRoutine: Codable, Identifiable {
 
     static func recordedTime(_ value: String?) -> String {
         guard let date = LAAWorkFreshness.date(value) else { return "未確認" }
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "ja_JP")
-        format.dateFormat = "M月d日 H:mm"
-        return format.string(from: date)
+        return LAADateText.string(date, .monthDayTime)
     }
 
     var notificationSummary: String? {
@@ -113,11 +110,7 @@ struct LAAWorkRoutine: Codable, Identifiable {
         let plain = ISO8601DateFormatter()
         let time: String
         if let date = fractional.date(from: lastRunAt) ?? plain.date(from: lastRunAt) {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "ja_JP")
-            formatter.timeZone = timeZone
-            formatter.dateFormat = "M月d日 H:mm"
-            time = formatter.string(from: date)
+            time = LAADateText.string(date, .monthDayTime, timeZone: timeZone)
         } else { time = "時刻未確認" }
         return ([time] + results).joined(separator: "・")
     }

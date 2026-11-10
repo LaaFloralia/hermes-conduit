@@ -262,7 +262,7 @@ struct LocationSettingsPage: View {
         if let until = settings.pausedUntil, settings.isPaused(at: Date()) {
             Text(until == .distantFuture
                 ? AppLocalization.string("Paused until you turn it back on.")
-                : AppLocalization.string("Paused until \(until.formatted(date: .abbreviated, time: .shortened))."))
+                : AppLocalization.string("Paused until \(AppDateText.display(until, as: .dayTime))."))
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if let pause = engine.state.pause {
@@ -270,7 +270,7 @@ struct LocationSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastFixSent {
-            Text(AppLocalization.string("Last sent \(last.formatted(.relative(presentation: .named)))"))
+            Text(AppLocalization.string("Last sent \(AppDateText.display(last, as: .relative))"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -628,7 +628,7 @@ struct LocationSettingsPage: View {
 
     private func readDetail(_ read: LocationRead) -> String {
         var parts: [String] = []
-        if let date = read.date { parts.append(date.formatted(date: .abbreviated, time: .shortened)) } else { parts.append(read.at) }
+        if let date = read.date { parts.append(AppDateText.display(date, as: .dayTime)) } else { parts.append(read.at) }
         if let title = read.sessionTitle, !title.isEmpty { parts.append(title) }
         if let platform = read.platform, !platform.isEmpty { parts.append(platform) }
         return parts.joined(separator: " · ")

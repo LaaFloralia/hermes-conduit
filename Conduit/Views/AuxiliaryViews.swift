@@ -4373,7 +4373,7 @@ private struct NotificationsSettingsDetail: View {
                 .font(.footnote)
                 .foregroundStyle(.orange)
         } else if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
-            let date = createdAt.formatted(date: .abbreviated, time: .omitted)
+            let date = AppDateText.display(createdAt, as: .day)
             #if LAA_BUILD
             let noRotation = deviceCopy(LAACopy.pluginRotationUnavailable)
             #else

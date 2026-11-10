@@ -132,7 +132,7 @@ struct HealthSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {
-            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
+            Text(AppLocalization.string("Last synced \(AppDateText.display(last, as: .relative))"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -141,7 +141,7 @@ struct HealthSettingsPage: View {
                 .foregroundStyle(.secondary)
         }
         if let cursor = engine.state.backfillCursor, let start = engine.state.historyStart, cursor > start {
-            Text(AppLocalization.string("Bringing in history: back to \(cursor.formatted(date: .abbreviated, time: .omitted)) so far."))
+            Text(AppLocalization.string("Bringing in history: back to \(AppDateText.display(cursor, as: .day)) so far."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -175,7 +175,7 @@ struct HealthSettingsPage: View {
                     HStack {
                         Text(verbatim: "\(entry.modeName): \(entry.action)")
                         Spacer()
-                        Text(entry.at.formatted(.relative(presentation: .named)))
+                        Text(AppDateText.display(entry.at, as: .relative))
                             .foregroundStyle(.secondary)
                     }
                     .font(.caption)

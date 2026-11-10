@@ -277,3 +277,35 @@ enum AppLocalization {
         return String(localized: keyAndValue, table: table, bundle: bundle, locale: Locale(identifier: identifier))
     }
 }
+
+
+enum AppDateText {
+    enum Presentation {
+        case time, day, dayTime, yearDay, monthDay, weekdayTime, relative
+    }
+
+    static func display(_ date: Date, as presentation: Presentation, fallback: @autoclosure () -> String? = nil) -> String {
+        #if LAA_BUILD
+        switch presentation {
+        case .time: LAADateText.string(date, .time)
+        case .day: LAADateText.string(date, .day)
+        case .dayTime: LAADateText.string(date, .dayTime)
+        case .yearDay: LAADateText.string(date, .yearDay)
+        case .monthDay: LAADateText.string(date, .monthDay)
+        case .weekdayTime: LAADateText.string(date, .weekdayTime)
+        case .relative: LAADateText.relative(date)
+        }
+        #else
+        if let fallback = fallback() { return fallback }
+        switch presentation {
+        case .time: return date.formatted(date: .omitted, time: .shortened)
+        case .day: return date.formatted(date: .abbreviated, time: .omitted)
+        case .dayTime: return date.formatted(date: .abbreviated, time: .shortened)
+        case .yearDay: return date.formatted(.dateTime.month(.abbreviated).day().year())
+        case .monthDay: return date.formatted(.dateTime.month().day().locale(AppLocalization.formattingLocale))
+        case .weekdayTime: return date.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(AppLocalization.formattingLocale))
+        case .relative: return date.formatted(.relative(presentation: .named))
+        }
+        #endif
+    }
+}

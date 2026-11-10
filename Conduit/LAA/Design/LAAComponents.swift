@@ -111,6 +111,9 @@ enum LAADateText {
         case dayNumber = "d"
         case weekday = "E"
         case dayTime = "M月d日（E） H:mm"
+        case monthDayTime = "M月d日 H:mm"
+        case yearDay = "yyyy年M月d日（E）"
+        case weekdayTime = "E H:mm"
     }
 
     private static let formatters = Dictionary(uniqueKeysWithValues: Format.allCases.map { format in

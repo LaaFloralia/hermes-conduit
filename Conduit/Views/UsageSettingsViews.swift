@@ -220,7 +220,7 @@ struct UsageSettingsDetail: View {
     /// The chart for VoiceOver: the busiest day and the period's total.
     private func dailySummary(_ report: UsageReport) -> String {
         guard let busiest = report.daily.max(by: { $0.usage.total < $1.usage.total }) else { return "" }
-        let day = busiest.date.formatted(.dateTime.month().day().locale(AppLocalization.formattingLocale))
+        let day = AppDateText.display(busiest.date, as: .monthDay, fallback: busiest.date.formatted(.dateTime.month().day().locale(AppLocalization.formattingLocale)))
         let amount = tokens(busiest.usage.total)
         return AppLocalization.string("Busiest day \(day), \(amount) tokens")
     }
@@ -400,10 +400,10 @@ struct UsageSettingsDetail: View {
     }
 
     private func relative(_ date: Date) -> String {
-        date.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale))
+        AppDateText.display(date, as: .relative, fallback: date.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)))
     }
 
     private func absolute(_ date: Date) -> String {
-        date.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(AppLocalization.formattingLocale))
+        AppDateText.display(date, as: .weekdayTime, fallback: date.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(AppLocalization.formattingLocale)))
     }
 }

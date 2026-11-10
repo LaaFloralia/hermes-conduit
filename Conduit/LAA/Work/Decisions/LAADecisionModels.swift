@@ -162,10 +162,7 @@ enum LAADecisionDeadline {
         if hours < 24 { return ("あと\(hours)時間", true) }
         let days = hours / 24
         if days < 7 { return ("あと\(days)日", false) }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "M月d日まで"
-        return (formatter.string(from: date), false)
+        return (LAADateText.string(date, .monthDay) + "まで", false)
     }
 }
 

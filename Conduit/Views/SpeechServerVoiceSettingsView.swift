@@ -141,7 +141,7 @@ struct SpeechServerVoiceSettingsView: View {
     @ViewBuilder
     private func lastAskedRow(_ date: Date?) -> some View {
         if let date {
-            Label(AppLocalization.string("Your speech server last asked for words \(date.formatted(.relative(presentation: .named))). It's pointed here."), systemImage: "checkmark.circle.fill")
+            Label(AppLocalization.string("Your speech server last asked for words \(AppDateText.display(date, as: .relative)). It's pointed here."), systemImage: "checkmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.green)
         } else {

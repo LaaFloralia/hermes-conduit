@@ -532,7 +532,7 @@ private struct ArtifactsList: View {
             parts.append(host)
         }
         if chatIsOpen {
-            parts.append(item.date.formatted(date: .omitted, time: .shortened))
+            parts.append(AppDateText.display(item.date, as: .time))
         } else if let chat = chatName(item) {
             parts.append(chat)
         }

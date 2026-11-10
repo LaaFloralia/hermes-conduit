@@ -694,9 +694,12 @@ struct WorkspaceFolderView: View {
     }
 
     static func dateText(_ date: Date) -> String {
-        if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
+        if Calendar.current.isDateInToday(date) {
+            return AppDateText.display(date, as: .time, fallback: date.formatted(date: .omitted, time: .shortened))
+        }
         let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
-        return date.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
+        return AppDateText.display(date, as: sameYear ? .day : .yearDay,
+                                   fallback: date.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year()))
     }
 
     /// Where a file sits in the open folder, for search and recent rows.

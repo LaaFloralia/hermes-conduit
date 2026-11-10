@@ -843,7 +843,8 @@ final class PhoneSyncEngine: ObservableObject {
         guard change.kind == .cancelAlarm,
               let alarm = alarmSource.alarms(now: now(), calendar: calendar)?.first(where: { ($0["id"] as? String)?.lowercased() == change.alarmID?.lowercased() })
         else { return nil }
-        let ring = (alarm["fires_at"] as? String).flatMap(PhoneDates.parse)?.formatted(date: .abbreviated, time: .shortened)
+        let ring = (alarm["fires_at"] as? String).flatMap(PhoneDates.parse)
+            .map { AppDateText.display($0, as: .dayTime) }
         let parts = [alarm["label"] as? String, ring].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

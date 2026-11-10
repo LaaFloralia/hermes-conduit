@@ -4068,9 +4068,9 @@ enum MessageNormalizer {
         let date = Date(timeIntervalSince1970: seconds)
         guard date.timeIntervalSince1970 > 0 else { return String(timestamp) }
         if Calendar.current.isDateInToday(date) {
-            return date.formatted(date: .omitted, time: .shortened)
+            return AppDateText.display(date, as: .time, fallback: date.formatted(date: .omitted, time: .shortened))
         }
-        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        return AppDateText.display(date, as: .dayTime, fallback: date.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
     }
 
     static func classifySource(_ obj: [String: AnyCodable]) -> SessionSource {
