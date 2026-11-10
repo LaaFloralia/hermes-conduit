@@ -4,6 +4,33 @@ import SwiftUI
 @testable import Conduit
 
 final class LAATodayCalendarTests: XCTestCase {
+    func testAgendaKeepsTodayAndOnlyFutureDaysWithEvents() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let today = calendar.date(from: DateComponents(year: 2026, month: 11, day: 11))!
+        let future = calendar.date(byAdding: .day, value: 3, to: today)!
+        let event = LAACalendarEvent(id: "later", title: "予定", start: future,
+                                     end: future.addingTimeInterval(3600), allDay: false, location: nil)
+        XCTAssertEqual(LAACalendarMode.agendaDays(events: [event], now: today, calendar: calendar), [today, future])
+        XCTAssertEqual(LAACalendarMode.agendaDays(events: [], now: today, calendar: calendar), [today])
+        XCTAssertEqual(LAACalendarMode.visibleModes, [.list, .week, .month])
+    }
+
+    @MainActor func testMidnightFollowsTodayAndPreservesBrowsedMonth() {
+        let state = LAATodayCalendar()
+        let today = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        state.selectedDate = today
+        XCTAssertTrue(state.updateToday(now: tomorrow))
+        XCTAssertEqual(state.selectedDate, tomorrow)
+        XCTAssertFalse(state.updateToday(now: tomorrow.addingTimeInterval(3600)))
+        state.mode = .month
+        let past = Calendar.current.date(byAdding: .month, value: -1, to: today)!
+        state.selectedDate = past
+        XCTAssertTrue(state.updateToday(now: Calendar.current.date(byAdding: .day, value: 2, to: today)!))
+        XCTAssertEqual(state.selectedDate, past)
+    }
+
     func testCalendarEventPathStrictlyEncodesOpaqueIDs() throws {
         for id in ["invite@host", "part#name", "a+b", "a_b", "all@#+_/?%"] {
             let path = try LAACalendarRequest.eventPath(id: id, calendarID: id)
@@ -103,7 +130,7 @@ final class LAATodayCalendarTests: XCTestCase {
         XCTAssertFalse(snapshot.isFresh(at: now.addingTimeInterval(-1)))
     }
 
-    @MainActor func testSuccessfulReadThenFailureClearsEventsAndDoesNotReportEmptySuccess() async {
+    @MainActor func testSuccessfulReadThenFailureKeepsSavedEventsWithFailureReason() async {
         let state = LAATodayCalendar()
         await state.refresh(isPaired: true) {
             LAACalendarResponse(items: [.init(id: "one", title: "打合せ", start: "2026-11-02T10:00:00+09:00",
@@ -112,8 +139,8 @@ final class LAATodayCalendarTests: XCTestCase {
         XCTAssertTrue(state.loaded)
         XCTAssertEqual(state.events.first?.title, "打合せ")
         await state.refresh(isPaired: true) { throw URLError(.notConnectedToInternet) }
-        XCTAssertFalse(state.loaded)
-        XCTAssertTrue(state.events.isEmpty)
+        XCTAssertTrue(state.loaded)
+        XCTAssertEqual(state.events.first?.title, "打合せ")
         XCTAssertNotNil(state.errorMessage)
     }
 

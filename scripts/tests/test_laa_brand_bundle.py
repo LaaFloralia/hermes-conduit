@@ -469,6 +469,16 @@ class LAABrandBundleTests(unittest.TestCase):
         self.assertIn("%@", result)
         self.assertNotRegex(result, re.compile(r"Conduit|Hermes", re.I))
 
+    def test_japanese_operations_keep_lookup_keys_and_other_languages(self):
+        source = {"Cancel": "Cancel", "Message": "Message", "Chat": "Chat", "user-content": "Cancel"}
+        result = brand.values_only(source, locale="ja")
+        self.assertEqual(set(result), set(source))
+        self.assertEqual(result["Cancel"], "キャンセル")
+        self.assertEqual(result["Message"], "メッセージ")
+        self.assertEqual(result["Chat"], "チャット")
+        self.assertEqual(result["user-content"], "Cancel")
+        self.assertEqual(brand.values_only(source, locale="en"), source)
+
     def test_all_catalog_display_values_pass_the_artifact_inspector(self):
         for path in ("Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings",
                      "Conduit/AppShortcuts.xcstrings"):

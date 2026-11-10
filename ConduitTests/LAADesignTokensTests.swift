@@ -102,11 +102,21 @@ final class LAADesignTokensTests: XCTestCase {
         XCTAssertEqual(contrast(LAAColor.filledControlText, LAAColor.filledControl, style: .dark), 5.54, accuracy: 0.01)
     }
 
+    func testModelDisplayHidesRoutesAndKeepsKnownNames() {
+        XCTAssertEqual(LAAModelDisplay.name("[\"opencode-go\",\"deepseek-v4.1-flash\"]"), "DeepSeek V4.1 Flash")
+        XCTAssertEqual(LAAModelDisplay.name("anthropic/claude-opus-5-5"), "Opus 5.5")
+        XCTAssertEqual(LAAModelDisplay.name("gpt-6.1-sol"), "GPT-6.1 Sol")
+        XCTAssertEqual(LAAModelDisplay.name("[\"openai\",\"gpt-6.1-sol\"]", label: "gpt-6.1-sol"), "GPT-6.1 Sol")
+        XCTAssertEqual(LAAModelDisplay.name("private/model", label: "Human name"), "Human name")
+        XCTAssertEqual(LAAModelDisplay.name("/Users/example/private"), "その他のモデル")
+        XCTAssertEqual(LAAModelDisplay.reasoning("xhigh"), "XHigh")
+    }
+
     func testSpacingAndRadiusValues() {
         XCTAssertEqual([LAASpacing.x1, LAASpacing.x2, LAASpacing.x3, LAASpacing.x4, LAASpacing.x6, LAASpacing.x8], [4, 8, 12, 16, 24, 32])
-        XCTAssertEqual([LAASpacing.horizontal, LAASpacing.compactHorizontal, LAASpacing.section, LAASpacing.minimumRowHeight, LAASpacing.minimumTouchTarget], [24, 16, 32, 56, 44])
+        XCTAssertEqual([LAASpacing.horizontal, LAASpacing.compactHorizontal, LAASpacing.section, LAASpacing.minimumRowHeight, LAASpacing.minimumTouchTarget], [20, 20, 32, 56, 44])
         XCTAssertEqual([LAARadius.card, LAARadius.bubble, LAARadius.selectionChip, LAARadius.photo, LAARadius.control], [16, 18, 16, 24, 28])
-        XCTAssertEqual([LAAType.bodySize, LAAType.secondarySize, LAAType.sectionSize], [16, 13, 12])
+        XCTAssertEqual([LAAType.bodySize, LAAType.secondarySize, LAAType.sectionSize], [16, 13, 15])
     }
 }
 
@@ -118,15 +128,15 @@ final class LAATabModelTests: XCTestCase {
         XCTAssertEqual(LAAProductBrand.display("Conduit · conduit://widget"), "LAA · conduit://widget")
     }
 
-    func testEnglishControlsAndJapaneseExplanations() {
-        XCTAssertEqual(LAACopy.pairingTitle, "Connect to Mac")
-        XCTAssertEqual(LAACopy.pairingAddress, "Address")
-        XCTAssertEqual(LAACopy.pairingCode, "Pairing code")
-        XCTAssertEqual(LAACopy.pairingConnect, "Connect")
+    func testJapaneseOperationsAndEnglishStructureNames() {
+        XCTAssertEqual(LAACopy.pairingTitle, "Macに接続")
+        XCTAssertEqual(LAACopy.pairingAddress, "アドレス")
+        XCTAssertEqual(LAACopy.pairingCode, "接続コード")
+        XCTAssertEqual(LAACopy.pairingConnect, "接続")
         XCTAssertEqual([LAACopy.call, LAACopy.callMute, LAACopy.callUnmute, LAACopy.callSpeaker,
                         LAACopy.callChat, LAACopy.callEnd, LAACopy.callAudioRoute],
-                       ["Call", "Mute", "Unmute", "Speaker", "Chat", "End", "Audio output"])
-        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "この端末はMacと接続されていません。")
+                       ["電話", "消音", "消音を解除", "スピーカー", "チャット", "終了", "音声の出力先"])
+        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "Macに接続してください")
     }
 
     func testBuiltAppHasLAANameAndPermissionCopy() throws {

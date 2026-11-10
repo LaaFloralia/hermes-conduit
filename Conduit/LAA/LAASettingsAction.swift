@@ -23,8 +23,8 @@ struct LAASettingsButton: View {
 
     var body: some View {
         if !laaDesktop {
-            Button(action: action) { Image(systemName: "gearshape") }
-                .accessibilityLabel(Text(verbatim: LAACopy.settings))
+            LAAToolbarIconButton(systemName: "gearshape", label: "設定", action: action)
+                .accessibilityLabel(Text(verbatim: "設定"))
                 .accessibilityIdentifier("laa.settings.open")
                 .macTooltip(LAACopy.settings)
         }

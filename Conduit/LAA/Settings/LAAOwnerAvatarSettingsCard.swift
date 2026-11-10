@@ -3,14 +3,12 @@ import PhotosUI
 import SwiftUI
 
 extension LAACopy {
-    static let ownerIcon = "Your icon"
-    static let ownerIconChoose = "Choose Photo"
-    static let ownerIconRemove = "Remove"
-    static let ownerIconHelp = "Macに保存し、iPhoneとMacのすべての会話で同じアイコンを使います。"
-    static let ownerIconNeedsMac = "Macとペアリングすると設定できます。"
-    static let ownerIconSaveFailed = "アイコンを保存できませんでした。Macへの接続を確かめてください。"
-    static let ownerIconRemoveFailed = "アイコンを外せませんでした。Macへの接続を確かめてください。"
-    static let ownerIconUnreadable = "この写真は読み込めません。別の写真を選んでください。"
+    static let ownerIcon = "アイコン"
+    static let ownerIconChoose = "写真を選ぶ"
+    static let ownerIconRemove = "写真を外す"
+    static let ownerIconSaveFailed = "アイコンを保存できません"
+    static let ownerIconRemoveFailed = "アイコンを外せません"
+    static let ownerIconUnreadable = "写真を読み込めません"
 }
 
 /// The owner's picture: choose a photo (cropped square, 256 px) or remove
@@ -36,12 +34,8 @@ struct LAAOwnerAvatarSettingsCard: View {
                     LAAOwnerHeader()
                 }
                 Spacer(minLength: 0)
-                if store.busy { ProgressView() }
+
             }
-            Text(verbatim: paired ? LAACopy.ownerIconHelp : LAACopy.ownerIconNeedsMac)
-                .laaTextStyle(.secondary)
-                .foregroundStyle(LAAColor.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
             if let notice {
                 Label(notice, systemImage: "exclamationmark.triangle.fill")
                     .laaTextStyle(.secondary)

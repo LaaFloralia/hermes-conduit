@@ -36,6 +36,7 @@ enum LAAMacConnectionState: Equatable {
 }
 
 struct LAAMacSettingsCard: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @State private var probe: LAAMacConnectionState.Probe = .checking
     @State private var showPairing = false
@@ -67,16 +68,15 @@ struct LAAMacSettingsCard: View {
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             HStack(spacing: LAASpacing.x4) {
-                Button { showPairing = true } label: {
-                    Text(verbatim: LAACopy.macRePair).frame(minHeight: LAASpacing.minimumTouchTarget).contentShape(Rectangle())
-                }
-                    .accessibilityIdentifier("laa.settings.mac.repair")
-                if bridge.status == .paired {
-                    Button { refreshCount += 1 } label: {
-                        Text(verbatim: LAACopy.macRefresh).frame(minHeight: LAASpacing.minimumTouchTarget).contentShape(Rectangle())
-                    }
-                        .accessibilityIdentifier("laa.settings.mac.refresh")
-                }
+                Button {
+                    if bridge.status == .paired {
+                        refreshCount += 1
+                        Task { await appState.reconnect() }
+                    } else { showPairing = true }
+                } label: {
+                    Text(verbatim: LAACopy.macRePair)
+                        .frame(minHeight: LAASpacing.minimumTouchTarget).contentShape(Rectangle())
+                }.accessibilityIdentifier("laa.settings.mac.repair")
             }
             .laaTextStyle(.body)
             .foregroundStyle(LAAColor.link)

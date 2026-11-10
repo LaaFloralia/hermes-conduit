@@ -36,7 +36,7 @@ struct LAASearchField: View {
         // The clear button carries the touch target, so the trailing inset is
         // the gap it leaves around its glyph; the leading one lines the icon up
         // with the text inside a card.
-        .padding(.leading, LAASpacing.x4)
+        .padding(.leading, 18)
         .padding(.trailing, LAASpacing.x1)
         .frame(minHeight: LAASpacing.minimumTouchTarget)
         .laaGlass(in: Capsule())

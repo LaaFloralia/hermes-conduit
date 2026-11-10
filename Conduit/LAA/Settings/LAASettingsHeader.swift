@@ -7,13 +7,7 @@ struct LAASettingsHeader: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: LAASpacing.x4) {
-            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: LAACopy.brand)
-                    .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                Text(verbatim: LAACopy.settings)
-                    .font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                    .accessibilityAddTraits(.isHeader)
-            }
+            LAAScreenHeader(title: LAACopy.settings)
             Spacer(minLength: LAASpacing.x2)
             if let close { closeButton(close) }
         }
@@ -36,7 +30,8 @@ struct LAASettingsHeader: View {
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
         }
         .tint(LAAColor.link)
-        .accessibilityLabel(Text(verbatim: "Close Settings"))
+        .accessibilityLabel(Text(verbatim: "設定を閉じる"))
+        .accessibilityIdentifier("laa.settings.done")
     }
 }
 #endif

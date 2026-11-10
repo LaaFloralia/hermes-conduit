@@ -30,14 +30,14 @@ struct LAACalendarDetail: View {
                 if let link = event.meetingLink, let url = safeURL(link) { Link(destination: url) { Text(verbatim: "会議に参加") } }
                 if let notes = event.notes, !notes.isEmpty { Text(verbatim: notes).textSelection(.enabled) }
                 ForEach(Array((event.attendees ?? []).enumerated()), id: \.offset) { _, attendee in
-                    VStack(alignment: .leading) { Text(verbatim: attendee.name ?? attendee.email); Text(verbatim: attendee.email + " · " + (attendee.response ?? "")).font(.caption) }
+                    VStack(alignment: .leading) { Text(verbatim: attendee.name ?? attendee.email); Text(verbatim: attendee.email + " · " + (["accepted": "参加", "declined": "不参加", "tentative": "未定", "needsAction": "未回答"][attendee.response ?? ""] ?? "未回答")).font(.caption) }
                 }
                 ForEach(Array((event.attachments ?? []).enumerated()), id: \.offset) { _, attachment in
                     if let url = safeURL(attachment.url) { Link(destination: url) { Text(verbatim: attachment.title) } }
                 }
                 if writable {
                     if event.recurringEventId != nil {
-                        Text(verbatim: "この予定だけを変更します。繰り返し全体を変えるには「繰り返し全体を開く」を選んでください。").font(.caption)
+                        Text(verbatim: "この回だけを変更します").font(.caption)
                         Button { Task { await openSeries() } } label: { Text(verbatim: "繰り返し全体を開く") }.disabled(busy)
                     }
                     Button { editing = true } label: { Text(verbatim: "編集") }.disabled(busy)
@@ -48,10 +48,11 @@ struct LAACalendarDetail: View {
                 .listRowBackground(LAAColor.surface)
                 .listRowSeparatorTint(LAAColor.separator)
             }
+            .laaTextStyle(.body)
             .foregroundStyle(LAAColor.text)
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(LAAColor.surface)
+            .background(LAAColor.background)
             .toolbar {
                 if onClose == nil {
                     ToolbarItem(placement: .cancellationAction) {

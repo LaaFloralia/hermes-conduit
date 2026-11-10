@@ -19,7 +19,16 @@ enum LAACalendarDates {
 }
 enum LAACalendarMode: String, CaseIterable {
     case day, week, month, list
-    var title: String { switch self { case .day: return AppLocalization.string("Day view"); case .week: return AppLocalization.string("Week view"); case .month: return AppLocalization.string("Month view"); case .list: return AppLocalization.string("Agenda view") } }
+    static let visibleModes: [Self] = [.list, .week, .month]
+    var title: String { switch self { case .day, .list: return AppLocalization.string("Agenda view"); case .week: return AppLocalization.string("Week view"); case .month: return AppLocalization.string("Month view") } }
+    static func agendaDays(events: [LAACalendarEvent], now: Date, calendar: Calendar = .current) -> [Date] {
+        let today = calendar.startOfDay(for: now)
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }.filter { day in
+            if day == today { return true }
+            let end = calendar.date(byAdding: .day, value: 1, to: day)!
+            return events.contains { $0.overlaps(start: day, end: end) }
+        }
+    }
     func range(containing date: Date, calendar: Calendar = .current) -> DateInterval {
         let day = calendar.startOfDay(for: date)
         switch self {

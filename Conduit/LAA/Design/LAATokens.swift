@@ -74,7 +74,7 @@ enum LAAType {
     #else
     static let bodySize: CGFloat = 16
     static let secondarySize: CGFloat = 13
-    static let sectionSize: CGFloat = 13
+    static let sectionSize: CGFloat = 15
     static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
     #endif
     static let employeeName = Font.custom("Georgia", size: 17, relativeTo: .body)
@@ -96,7 +96,7 @@ private struct LAATextStyle: ViewModifier {
         case .secondary: content.font(.system(size: secondarySize))
         case .section: content.font(.system(size: sectionSize, weight: .semibold))
         case .rowTitle: content.font(.system(size: bodySize + 1))
-        case .note: content.font(.system(size: secondarySize - 1))
+        case .note: content.font(.system(size: secondarySize - 1, weight: .medium))
         }
     }
 }

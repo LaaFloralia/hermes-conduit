@@ -19,7 +19,7 @@ struct LAASectionHeader<MenuContent: View>: View {
     }
     var body: some View {
         HStack {
-            Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.text)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: LAASpacing.x2)
             if MenuContent.self != EmptyView.self {
@@ -66,7 +66,7 @@ struct LAAListRow<Content: View>: View {
             .padding(.horizontal, 16).padding(.vertical, 4).contentShape(Rectangle())
     }
 }
-private struct LAAListRowStyle: ButtonStyle {
+struct LAAListRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.background(configuration.isPressed ? LAAColor.selectionFill : .clear)
     }
@@ -89,38 +89,60 @@ struct LAAToolbarIconButton: View {
 
 /// Each control gets a separate ToolbarItem, including on Catalyst.
 struct LAAScreenToolbar: ToolbarContent {
+    @Environment(\.laaDesktop) private var desktop
     let createLabel: String
     var createIdentifier = ""
     var canCreate = true
     let create: () -> Void
     let settings: () -> Void
-    var body: some ToolbarContent {
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            createItem.sharedBackgroundVisibility(.hidden)
+            if !desktop { settingsItem.sharedBackgroundVisibility(.hidden) }
+        } else {
+            createItem
+            if !desktop { settingsItem }
+        }
+    }
+    private var createItem: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             LAAToolbarIconButton(systemName: "plus", label: createLabel, identifier: createIdentifier, action: create).disabled(!canCreate)
         }
+    }
+    private var settingsItem: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             LAAToolbarIconButton(systemName: "gearshape", label: "設定", identifier: "laa.settings.open", action: settings)
         }
     }
+
 }
 
 enum LAAButtonKind { case primary, secondary, text, destructive }
-private struct LAAActionButtonStyle: ButtonStyle {
+struct LAAActionButtonStyle: ButtonStyle {
     let kind: LAAButtonKind
-    @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        Group {
-            if kind == .secondary { label(configuration).laaGlass(in: Capsule()) }
-            else { label(configuration).background(kind == .primary ? LAAColor.filledButton : .clear, in: Capsule()) }
-        }.opacity(!enabled ? 0.45 : configuration.isPressed ? 0.7 : 1)
+        LAAActionButtonLabel(kind: kind, isPressed: configuration.isPressed, label: configuration.label)
     }
-    private func label(_ configuration: Configuration) -> some View {
-        configuration.label.font(.body.weight(.semibold))
-            .foregroundStyle(kind == .primary ? LAAColor.filledButtonText : kind == .destructive ? LAAColor.end : LAAColor.link)
+}
+private struct LAAActionButtonLabel<Label: View>: View {
+    let kind: LAAButtonKind
+    let isPressed: Bool
+    let label: Label
+    @Environment(\.isEnabled) private var enabled
+    var body: some View {
+        Group {
+            if kind == .secondary || kind == .destructive { styledLabel.laaGlass(in: Capsule()) }
+            else { styledLabel.background(kind == .primary ? LAAColor.filledButton : .clear, in: Capsule()) }
+        }.opacity(!enabled ? 0.45 : isPressed ? 0.7 : 1)
+    }
+    private var styledLabel: some View {
+        label.font(kind == .primary ? .body.weight(.semibold) : .callout.weight(.semibold))
+            .foregroundStyle(kind == .primary ? LAAColor.filledButtonText : kind == .destructive ? LAAColor.end : kind == .secondary ? LAAColor.text : LAAColor.link)
             .padding(.horizontal, 20).frame(minHeight: kind == .primary ? 50 : 44)
             .contentShape(Capsule())
     }
 }
+
 extension View {
     func laaButton(_ kind: LAAButtonKind = .secondary) -> some View { buttonStyle(LAAActionButtonStyle(kind: kind)) }
 }
@@ -128,12 +150,23 @@ struct LAAStatusTag: View {
     let title: String
     var attention = false
     var body: some View {
-        Text(verbatim: title).laaTextStyle(.note).fontWeight(.semibold)
-            .foregroundStyle(attention ? LAAColor.attention : LAAColor.link)
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: 4))
+        Text(verbatim: markedTitle).laaTextStyle(.note).fontWeight(.semibold)
+            .foregroundStyle(waiting ? LAAColor.background : failed ? LAAColor.attention : complete ? LAAColor.secondaryText : LAAColor.link)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(waiting ? LAAColor.attention : failed || complete ? LAAColor.subtleSurface : LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: 4))
     }
 }
+private extension LAAStatusTag {
+    var waiting: Bool { attention || title.contains("判断待ち") }
+    var failed: Bool { title.contains("失敗") }
+    var complete: Bool { title.contains("完了") }
+    var markedTitle: String {
+        guard !["●", "?", "✓", "!"].contains(where: title.hasPrefix) else { return title }
+        let mark = waiting ? "?" : failed ? "!" : complete ? "✓" : "●"
+        return "\(mark) \(title)"
+    }
+}
+
 struct LAASkeletonRows: View {
     var count = 3
     var body: some View {
