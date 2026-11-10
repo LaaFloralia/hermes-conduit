@@ -15,6 +15,7 @@ struct LAAMarkdownEditor: View {
     let autoFocus: Bool
     let isEnabled: Bool
     var title: String? = nil
+    var breadcrumb: String? = nil
     var status: String? = nil
     var readingPositions: LAABrainReadingPositions? = nil
     var positionKey = ""
@@ -26,7 +27,7 @@ struct LAAMarkdownEditor: View {
     private let incomingText: String
 
     init(text: String, autoFocus: Bool = false, isEnabled: Bool = true,
-         title: String? = nil, status: String? = nil,
+         title: String? = nil, breadcrumb: String? = nil, status: String? = nil,
          readingPositions: LAABrainReadingPositions? = nil, positionKey: String = "",
          attachments: ((String) -> AnyView)? = nil,
          onOpenLink: ((String) -> Void)? = nil,
@@ -35,7 +36,7 @@ struct LAAMarkdownEditor: View {
         self.incomingText = text
         self.autoFocus = autoFocus
         self.isEnabled = isEnabled
-        self.title = title; self.status = status
+        self.title = title; self.breadcrumb = breadcrumb; self.status = status
         self.readingPositions = readingPositions; self.positionKey = positionKey
         self.onOpenLink = onOpenLink; self.attachments = attachments
     }
@@ -46,10 +47,14 @@ struct LAAMarkdownEditor: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     if let title {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                            if let breadcrumb, !breadcrumb.isEmpty {
+                                Text(verbatim: breadcrumb).laaTextStyle(.secondary)
+                                    .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                            }
                             Text(verbatim: title).font(.system(size: 30, weight: .bold))
                                 .foregroundStyle(LAAColor.text).accessibilityIdentifier("laa.brain.note.title")
                             if let status {
-                                Text(verbatim: status).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                                Text(verbatim: status).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                     .accessibilityIdentifier("laa.brain.edit.status")
                             }
                         }.padding(.bottom, LAASpacing.x3)
@@ -78,11 +83,11 @@ struct LAAMarkdownEditor: View {
         .sheet(item: $attachmentSelection) { selected in
             NavigationStack {
                 TextEditor(text: $attachmentSource).font(.body.monospaced()).padding(LAASpacing.x4)
-                    .navigationTitle("添付のリンク")
+                    .navigationTitle(String("添付のリンク"))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { attachmentSelection = nil } }
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("適用") { model.updateAttachment(selected.id, source: attachmentSource); attachmentSelection = nil }
+                            Button(String("適用")) { model.updateAttachment(selected.id, source: attachmentSource); attachmentSelection = nil }
                         }
                     }
             }
@@ -120,7 +125,7 @@ struct LAAMarkdownEditor: View {
                 if let attachments { attachments(source) }
                 else { Text(verbatim: source).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
             }.id(segment.id)
-                .contextMenu { Button("リンクを編集") { attachmentSource = source; attachmentSelection = AttachmentSelection(id: segment.id) } }
+                .contextMenu { Button(String("リンクを編集")) { attachmentSource = source; attachmentSelection = AttachmentSelection(id: segment.id) } }
         case .table:
             LAAMarkdownTableEditor(model: model, segmentID: segment.id)
                 .id(segment.id)

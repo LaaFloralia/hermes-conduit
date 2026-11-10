@@ -96,7 +96,9 @@ struct LAABrainSaveEditor: View {
                                 .foregroundStyle(LAAColor.attention)
                         }
                         LAAMarkdownEditor(text: visibleBody, autoFocus: autoFocus || visibleBody.isEmpty, isEnabled: !busy,
-                                          title: inline ? noteTitle : nil, status: saveStatus,
+                                          title: inline ? noteTitle : nil,
+                                          breadcrumb: path.split(separator: "/").dropLast().joined(separator: " › "),
+                                          status: saveStatus,
                                           readingPositions: readingPositions, positionKey: root.absoluteString + path,
                                           attachments: attachments,
                                           onOpenLink: { target in
@@ -144,24 +146,24 @@ struct LAABrainSaveEditor: View {
                     if showsBackButton {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { Task { await close() } } label: { Image(systemName: "chevron.left") }
-                                .accessibilityLabel("戻る").accessibilityIdentifier("laa.brain.back")
+                                .accessibilityLabel(String("戻る")).accessibilityIdentifier("laa.brain.back")
                                 .disabled(saving || busy)
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button("文書内検索", systemImage: "magnifyingglass") { showFind = true }
-                            Button(isPinned ? "ピン留めを外す" : "ピン留めする", systemImage: "pin", action: togglePin)
+                            Button(String("文書内検索"), systemImage: "magnifyingglass") { showFind = true }
+                            Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), systemImage: "pin", action: togglePin)
                                 .accessibilityIdentifier("laa.brain.pin")
                             Button("履歴", systemImage: "clock.arrow.circlepath") { showHistory = true }
                                 .accessibilityIdentifier("laa.brain.history")
-                            Button("Markdownを表示", systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
+                            Button(String("Markdownを表示"), systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
                                 .accessibilityIdentifier("laa.brain.rawToggle")
-                            Button("情報", systemImage: "info.circle") { showInfo = true }
-                            if let manage { Button("名前・保存先を変更", systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
-                            if autoSaveBlocked { Button("保存を再試行") { autoSaveBlocked = false; Task { await save(automatically: true) } } }
+                            Button(String("情報"), systemImage: "info.circle") { showInfo = true }
+                            if let manage { Button(String("名前・保存先を変更"), systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
+                            if autoSaveBlocked { Button(String("保存を再試行")) { autoSaveBlocked = false; Task { await save(automatically: true) } } }
                         } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel("ノートのメニュー").accessibilityIdentifier("laa.brain.menu")
+                            .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
                     }
                 } else {
                     ToolbarItem(placement: .cancellationAction) { Button("閉じる") { Task { await close() } }.disabled(busy || saving) }
@@ -206,21 +208,21 @@ struct LAABrainSaveEditor: View {
             NavigationStack {
                 ScrollView { Text(verbatim: draft).font(.body.monospaced()).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(LAASpacing.horizontal).accessibilityIdentifier("laa.brain.raw") }
-                    .navigationTitle("Markdown")
+                    .navigationTitle(String("Markdown"))
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showRaw = false } } }
             }
         }
         .sheet(isPresented: $showInfo) {
             NavigationStack {
                 List {
-                    LabeledContent("場所", value: path)
+                    LabeledContent(String("場所"), value: path)
                     ForEach(Array(LAABrainDocument(draft).properties.enumerated()), id: \.offset) { _, property in
                         LabeledContent(property.name, value: property.value)
                     }
                     if let metadata = LAABrainDocument(draft).frontmatter {
                         Text(verbatim: metadata).font(.footnote.monospaced()).textSelection(.enabled)
                     }
-                }.navigationTitle("情報")
+                }.navigationTitle(String("情報"))
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
             }
         }
@@ -230,7 +232,7 @@ struct LAABrainSaveEditor: View {
                     ForEach(Array(visibleBody.components(separatedBy: "\n").enumerated()).filter {
                         !findText.isEmpty && $0.element.localizedStandardContains(findText)
                     }, id: \.offset) { _, line in Text(verbatim: line).textSelection(.enabled) }
-                }.searchable(text: $findText, prompt: "文書内を検索").navigationTitle("文書内検索")
+                }.searchable(text: $findText, prompt: "文書内を検索").navigationTitle(String("文書内検索"))
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showFind = false } } }
             }
         }

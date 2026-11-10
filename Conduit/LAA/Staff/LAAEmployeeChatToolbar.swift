@@ -189,37 +189,46 @@ struct LAAEmployeeHeader: View {
     private static let mascotSize: CGFloat = 66
 
     var body: some View {
-        Button { showDetails = true } label: {
-            VStack(spacing: 0) {
-                StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 64,
-                                scrolling: showDetails || isObscured, activity: activity)
-                    .accessibilityHidden(true)
-                VStack(spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(verbatim: LAAChatPerson.name(name)).font(.custom("Georgia", size: 17, relativeTo: .headline))
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                        if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
-                    }
-                    if !status.isEmpty { Text(verbatim: status).font(.caption2).foregroundStyle(LAAColor.secondaryText).lineLimit(1) }
-                }.modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
-            }.fixedSize(horizontal: false, vertical: true)
-        }.buttonStyle(.plain)
+        headerLabel
+            .frame(height: 44, alignment: .top)
+            .overlay(alignment: .top) {
+                Button { showDetails = true } label: {
+                    Color.clear.frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityLabel(Text(verbatim: name + "、会話の情報"))
+                    .accessibilityIdentifier("laa.employee.header")
+            }
             .sheet(isPresented: $showDetails) {
                 if let information {
                     NavigationStack {
-                        information.environment(\.laaDismissConversationInfo, { showDetails = false }).navigationTitle("会話の情報").navigationBarTitleDisplayMode(.inline)
-                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了") { showDetails = false } } }
+                        information.environment(\.laaDismissConversationInfo, { showDetails = false }).navigationTitle(String("会話の情報")).navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { showDetails = false } } }
                     }.laaSheetSize(.page)
                 } else {
                     LAAStaffDetailView(profile: profile, name: name, avatarURL: avatarURL, status: status,
                         voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled)
                 }
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(Text(verbatim: name + "、会話の情報"))
-            .accessibilityIdentifier("laa.employee.header")
-            // The mascot floats beneath the navigation bar, as in Dots.
-            .frame(height: 44, alignment: .top)
+    }
+
+    private var headerLabel: some View {
+        VStack(spacing: 0) {
+            StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 64,
+                            scrolling: showDetails || isObscured, activity: activity)
+            VStack(spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(verbatim: LAAChatPerson.name(name)).font(.custom("Georgia", size: 17, relativeTo: .headline))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
+                }
+                if !status.isEmpty {
+                    Text(verbatim: status).font(.caption2).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                }
+            }.modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
+        }.fixedSize(horizontal: false, vertical: true)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 
 }

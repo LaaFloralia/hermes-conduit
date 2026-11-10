@@ -14,7 +14,7 @@ struct LAAStudioReferencePicker: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     if folder != nil {
-                        Button("戻る") { folder = parents.isEmpty ? nil : parents.removeLast(); Task { await load() } }.frame(minHeight: 44)
+                        Button(String("戻る")) { folder = parents.isEmpty ? nil : parents.removeLast(); Task { await load() } }.frame(minHeight: 44)
                     }
                     ForEach(browser.items) { entry in
                         Button {
@@ -29,13 +29,13 @@ struct LAAStudioReferencePicker: View {
                                 .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                         }.buttonStyle(.plain)
                     }
-                    if browser.cursor != nil { Button("さらに表示") { Task { await browser.loadMore(using: page) } }.frame(minHeight: 44) }
+                    if browser.cursor != nil { Button(String("さらに表示")) { Task { await browser.loadMore(using: page) } }.frame(minHeight: 44) }
                     if browser.error != nil { LAAStudioConnectionLine(message: "Driveを読み込めません") { Task { await load() } } }
-                    if browser.loading && browser.items.isEmpty { LAAStudioSkeleton() }
+                    if browser.loading && browser.items.isEmpty { LAALoadingDots() }
                 }.padding(LAASpacing.horizontal)
             }.background(LAAColor.background).searchable(text: $search, prompt: "検索")
                 .onSubmit(of: .search) { Task { await load() } }
-                .navigationTitle("参考を添付").navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(String("参考を添付")).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
                 .task(id: bridge.revision) { browser.invalidate(); folder = nil; parents = []; await load() }
         }.tint(LAAColor.link)

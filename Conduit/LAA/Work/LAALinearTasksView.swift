@@ -91,7 +91,7 @@ struct LAALinearTasksView: View {
             LAAPersonalInboxEntry(drafts: drafts)
         }
         .navigationDestination(isPresented: Binding(get: { !laaDesktop && desktopSelection == .browse }, set: { if !$0 { desktopSelection = nil } })) {
-            ScrollView { LAAPersonalTaskList(drafts: drafts, refreshID: 0).padding(20) }.navigationTitle("すべての課題")
+            ScrollView { LAAPersonalTaskList(drafts: drafts, refreshID: 0).padding(20) }.navigationTitle(String("すべての課題"))
         }
         .sheet(isPresented: $showingArchive, onDismiss: { Task { await load() } }) {
             NavigationStack {
@@ -259,9 +259,9 @@ struct LAALinearTasksView: View {
     /// what the rows below are called. The choice stays on the device.
     private var filterMenu: some View {
         Menu {
-            Button("受信箱") { desktopSelection = .inbox }
-            Button("すべての課題") { desktopSelection = .browse }
-            Button("アーカイブを表示") { showingArchive = true }.accessibilityIdentifier("work.linear.archive")
+            Button(String("受信箱")) { desktopSelection = .inbox }
+            Button(String("すべての課題")) { desktopSelection = .browse }
+            Button(String("アーカイブを表示")) { showingArchive = true }.accessibilityIdentifier("work.linear.archive")
             Divider()
             ForEach(LAALinearTaskFilter.allCases) { option in
                 Button { filterRaw = option.rawValue } label: {

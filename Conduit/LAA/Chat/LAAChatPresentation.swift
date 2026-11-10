@@ -62,26 +62,26 @@ private struct LAAChatMessageMenu: ViewModifier {
                 ControlGroup {
                     ForEach(LAAChatVisibility.reactions, id: \.self) { emoji in
                         Button(emoji) { react(emoji) }
-                            .accessibilityLabel("スタンプ \(emoji)").accessibilityIdentifier("chat.reaction.\(emoji)")
+                            .accessibilityLabel(String("スタンプ \(emoji)")).accessibilityIdentifier("chat.reaction.\(emoji)")
                     }
-                    Button("スタンプを追加", systemImage: "plus") { moreReactions = true }
+                    Button(String("スタンプを追加"), systemImage: "plus") { moreReactions = true }
                 }.controlGroupStyle(.palette)
             }
-            Button("コピー", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
-            Button("テキストを選択", systemImage: "text.cursor") { selecting = true }
-            Button("返信", systemImage: "arrowshape.turn.up.left") { reply?() }.disabled(reply == nil)
-            Button("読み上げ", systemImage: "speaker.wave.2") { read?() }.disabled(read == nil)
+            Button(String("コピー"), systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+            Button(String("テキストを選択"), systemImage: "text.cursor") { selecting = true }
+            Button(String("返信"), systemImage: "arrowshape.turn.up.left") { reply?() }.disabled(reply == nil)
+            Button(String("読み上げ"), systemImage: "speaker.wave.2") { read?() }.disabled(read == nil)
         }
         .sheet(isPresented: $selecting) {
             NavigationStack {
                 LAASelectableMessageText(text: text)
-                    .navigationTitle("テキストを選択").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了") { selecting = false } } }
+                    .navigationTitle(String("テキストを選択")).navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { selecting = false } } }
             }.laaSheetSize(.page)
         }
-        .alert("スタンプを追加", isPresented: $moreReactions) {
-            TextField("絵文字", text: $customReaction)
-            Button("追加") {
+        .alert(String("スタンプを追加"), isPresented: $moreReactions) {
+            TextField(String("絵文字"), text: $customReaction)
+            Button(String("追加")) {
                 let emoji = customReaction.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !emoji.isEmpty { react?(String(emoji.prefix(1))) }
                 customReaction = ""
@@ -110,26 +110,26 @@ struct LAATypingDots: View {
                         .frame(width: 64, height: 36)
                         .background(LAAColor.surface, in: Capsule())
                     if let startedAt, context.date.timeIntervalSince(startedAt) > 60 {
-                        Text("\(Int(context.date.timeIntervalSince(startedAt) / 60))分")
+                        Text(verbatim: "\(Int(context.date.timeIntervalSince(startedAt) / 60))分")
                             .font(.caption2).foregroundStyle(LAAColor.secondaryText)
                     }
                 }.frame(minHeight: 44)
             }
         }.buttonStyle(.plain)
-            .accessibilityLabel("入力中、作業の記録を表示")
+            .accessibilityLabel(String("入力中、作業の記録を表示"))
             .accessibilityIdentifier("chat.typing")
             .sheet(isPresented: $showingRecords) {
                 NavigationStack {
                     List {
-                        if records.isEmpty { Text("記録はありません").foregroundStyle(LAAColor.secondaryText) }
+                        if records.isEmpty { Text(verbatim: "記録はありません").foregroundStyle(LAAColor.secondaryText) }
                         ForEach(records) { record in
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(record.role == .reasoning ? "思考" : "道具の実行").font(.caption).foregroundStyle(LAAColor.secondaryText)
+                                Text(verbatim: record.role == .reasoning ? "思考" : "道具の実行").font(.caption).foregroundStyle(LAAColor.secondaryText)
                                 Text(verbatim: record.content).font(.body).textSelection(.enabled)
                             }
                         }
-                    }.navigationTitle("作業の記録").navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了") { showingRecords = false } } }
+                    }.navigationTitle(String("作業の記録")).navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { showingRecords = false } } }
                 }.laaSheetSize(.page)
             }
     }
@@ -160,7 +160,7 @@ private struct LAAChatLiveDelivery: View {
     var body: some View {
         if LAAChatReadReceipt.wasRead(message.id, messages: messages,
             hasLiveResponse: !projection.streamingText.isEmpty || projection.reasoningSegment != nil) {
-            Text("既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityIdentifier("chat.delivery.read")
         }
     }
@@ -204,7 +204,7 @@ struct LAAConversationSearchView: View {
                     Text(verbatim: message.content).textSelection(.enabled)
                 }
             }
-        }.searchable(text: $query, prompt: "検索").navigationTitle("会話内を検索")
+        }.searchable(text: $query, prompt: "検索").navigationTitle(String("会話内を検索"))
     }
 }
 struct LAAConversationHistoryView: View {
@@ -215,7 +215,7 @@ struct LAAConversationHistoryView: View {
             Button { dismissInfo(); appState.requestOpenSession(session.id) } label: {
                 Text(verbatim: session.title).foregroundStyle(LAAColor.text)
             }
-        }.navigationTitle("これまでの会話")
+        }.navigationTitle(String("これまでの会話"))
     }
 }
 #endif
@@ -301,7 +301,7 @@ struct LAAComposerReplyReference: View {
                 Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                     .frame(width: 44, height: 44)
             }.buttonStyle(.plain).foregroundStyle(LAAColor.secondaryText)
-                .accessibilityLabel("返信を取り消す")
+                .accessibilityLabel(String("返信を取り消す"))
                 .accessibilityIdentifier("composer.reply-reference.remove")
         }.padding(.leading, 12)
     }
@@ -317,7 +317,7 @@ struct LAAGroupDelivery: View {
         if events.last(where: \.isUserMessage)?.id == eventID,
            let index = events.firstIndex(where: { $0.id == eventID }),
            events.dropFirst(index + 1).contains(where: { $0.isMemberMessage || $0.kind == "turn.started" }) {
-            Text("既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityIdentifier("chat.delivery.read")
         }
     }

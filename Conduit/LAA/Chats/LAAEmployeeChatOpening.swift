@@ -42,7 +42,7 @@ struct LAAEmployeeChatOpeningView: View {
             maxLines: 8, canSubmitFromReturn: false, onSubmitFromReturn: { false })
         field.onCompositionChanged = compositionChanged
         return field.frame(minHeight: 22).background(alignment: .topLeading) {
-            if draft.isEmpty { Text("メッセージ").foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
+            if draft.isEmpty { Text(verbatim: "メッセージ").foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
         }
     }
     var body: some View {
@@ -92,8 +92,8 @@ struct LAAEmployeeChatOpeningView: View {
                             if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
                         }.padding(.horizontal, 8).padding(.vertical, 5).laaComposerGlass(in: Capsule(), interactive: false)
                         HStack(spacing: 6) {
-                            Text(preview.failure == nil ? "接続中…" : "Macに接続できません").font(.caption2)
-                            if preview.failure != nil { Button("再試行") { appState.laaRetryEmployeeChat() }.font(.caption2) }
+                            Text(verbatim: preview.failure == nil ? "接続中…" : "Macに接続できません").font(.caption2)
+                            if preview.failure != nil { Button(String("再試行")) { appState.laaRetryEmployeeChat() }.font(.caption2) }
                         }.foregroundStyle(LAAColor.secondaryText)
                     }.fixedSize().frame(height: 44, alignment: .top)
                 }

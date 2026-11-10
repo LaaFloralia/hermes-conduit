@@ -73,12 +73,12 @@ struct LAAWorkDesktopSessionsView: View {
                         Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
                         Menu {
-                            Button("新しい順") { projectOrder = false }
-                            Button("プロジェクト別") { projectOrder = true }
-                            Button(showArchived ? "最近のセッションに戻る" : "アーカイブを表示") { showArchived.toggle(); reloadID += 1 }
-                            Button("プロジェクトを管理") { showProjects = true }
+                            Button(String("新しい順")) { projectOrder = false }
+                            Button(String("プロジェクト別")) { projectOrder = true }
+                            Button(showArchived ? String("最近のセッションに戻る") : String("アーカイブを表示")) { showArchived.toggle(); reloadID += 1 }
+                            Button(String("プロジェクトを管理")) { showProjects = true }
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                        .accessibilityLabel("一覧の表示").accessibilityIdentifier("work.sessions.menu")
+                        .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
                     }
                     LAASearchField(placeholder: "検索", text: $search,
                                    identifier: "work.sessions.desktop.search", focus: $searchFocused)
@@ -102,8 +102,8 @@ struct LAAWorkDesktopSessionsView: View {
                                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                     .contextMenu {
                                         if let project {
-                                            Button("名前と指示を変更") { editingProject = project }
-                                            Button("アーカイブ") { Task { try? await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge); reloadID += 1 } }
+                                            Button(String("名前と指示を変更")) { editingProject = project }
+                                            Button(String("アーカイブ")) { Task { try? await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge); reloadID += 1 } }
                                         }
                                     }
                             }
@@ -526,8 +526,8 @@ struct LAAWorkDesktopCatalogView: View {
                         Text(verbatim: kind == .routines ? "Routines" : "スキル")
                             .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
-                        Menu { Button("再読込") { reloadID += 1 } } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                            .accessibilityLabel("一覧の表示")
+                        Menu { Button(String("再読込")) { reloadID += 1 } } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                            .accessibilityLabel(String("一覧の表示"))
                     }
                     LAASearchField(placeholder: kind == .routines ? "検索" : "検索", text: $search,
                                    identifier: "work.\(kind == .routines ? "routines" : "skills").desktop.search",

@@ -61,7 +61,7 @@ struct LAAChatsContent: View {
                         Text(verbatim: failure).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
                         Spacer(minLength: 0)
                         if snapshot.groupsState != .unsupported {
-                            Button("再試行", action: retry).font(.system(size: 13)).foregroundStyle(LAAColor.link).frame(minHeight: 44)
+                            Button(String("再試行"), action: retry).font(.system(size: 13)).foregroundStyle(LAAColor.link).frame(minHeight: 44)
                         }
                     }
                 }
@@ -217,7 +217,7 @@ struct LAAChatsContent: View {
                     Button { callPerson(monet) } label: {
                         Image(systemName: "phone.fill").foregroundStyle(LAAColor.link).frame(width: 44, height: 44)
                     }.buttonStyle(.plain).laaComposerGlass(in: Circle())
-                        .disabled(!monet.available).accessibilityLabel("Monetに電話")
+                        .disabled(!monet.available).accessibilityLabel(String("Monetに電話"))
                         .accessibilityIdentifier("laa.chats.monet.call")
                 }
             }
@@ -225,7 +225,7 @@ struct LAAChatsContent: View {
                 Button { openPerson(person) } label: {
                     HStack(spacing: 12) {
                         avatar(profile: person.profile, name: person.name, size: 36)
-                        Text(LAAStaff(profile: person.profile) == .monetDots ? "Monet · Dots" : "Monet · 無検閲")
+                        Text(verbatim: LAAStaff(profile: person.profile) == .monetDots ? "Monet · Dots" : "Monet · 無検閲")
                             .font(.custom("Georgia", size: 17, relativeTo: .body))
                         Spacer(minLength: 0)
                     }.frame(minHeight: 56).contentShape(Rectangle())
@@ -346,7 +346,7 @@ struct LAAChatsContent: View {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 Text(verbatim: room.name).laaTextStyle(.body)
                     .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                Text("\(room.members.count)人").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "\(room.members.count)人").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
 

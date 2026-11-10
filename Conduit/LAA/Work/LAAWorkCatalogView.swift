@@ -231,7 +231,7 @@ struct LAAWorkCatalogView: View {
                     Image(systemName: routine.result == "error" || routine.state == "error" ? "exclamationmark" : routine.lastRunAt == nil ? "minus" : "checkmark")
                         .foregroundStyle(routine.state == "error" ? LAAColor.end : LAAColor.secondaryText)
                 }.frame(minHeight: 64).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityValue(expandedRoutines.contains(routine.id) ? "詳細を表示中" : "詳細を閉じています")
+            }.buttonStyle(.plain).accessibilityValue(expandedRoutines.contains(routine.id) ? String("詳細を表示中") : String("詳細を閉じています"))
             if expandedRoutines.contains(routine.id) {
                 LAAWorkRefLabel(ref: routine.ref)
                 detail("予定", routine.schedule ?? "時刻未確認")

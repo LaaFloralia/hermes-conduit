@@ -148,6 +148,9 @@ enum LAAStudioData {
             case "studio_not_connected": return LAACopy.Studio.disconnected
             case "studio_not_accepting": return LAACopy.Studio.notAccepting
             case "studio_work_busy": return LAACopy.Studio.workBusy
+            case "studio_queue_dispatching": return "Studioへ渡しています。状態が更新されてからもう一度お試しください。"
+            case "studio_queue_full": return "Studioの順番待ちがいっぱいです。時間をおいてもう一度お試しください。"
+            case "studio_queue_unavailable": return "Studioの順番待ちを保存できませんでした。"
             case "insufficient_scope": return LAACopy.Studio.permission
             case "studio_request_missing": return LAACopy.Studio.missing
             case "studio_revision_changed": return "作品の版が変わりました。作品一覧を更新してください。"

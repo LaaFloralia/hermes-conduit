@@ -42,7 +42,7 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue(app.buttons["テキストを選択"].exists)
             XCTAssertTrue(app.buttons["返信"].exists)
             capture(app, "message-menu-after-\(theme)")
-            let reaction = app.buttons["chat.reaction.❤️"]
+            let reaction = app.buttons["❤️"]
             XCTAssertTrue(reaction.exists)
             reaction.tap()
             capture(app, "reaction-after-\(theme)")
@@ -149,7 +149,7 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertFalse(back.frame.intersects(header.frame))
             XCTAssertEqual(header.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 8)
             header.tap()
-            XCTAssertTrue(app.staticTexts["会話の情報"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["conversation.background"].waitForExistence(timeout: 10))
             capture(app, "conversation-information-after-\(dark ? "dark" : "light")")
             app.buttons["conversation.background"].tap()
             XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))

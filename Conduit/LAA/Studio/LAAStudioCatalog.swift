@@ -17,7 +17,7 @@ struct LAAStudioCatalogView: View {
                 Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                 Button { Task { await load() } } label: { Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget) }
             }
-            if loading && catalog == nil { LAAStudioSkeleton() }
+            if loading && catalog == nil { LAALoadingDots() }
             if let catalog {
                 if stale { Text(verbatim: "接続できないため、この端末に保存した内容を表示しています。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }

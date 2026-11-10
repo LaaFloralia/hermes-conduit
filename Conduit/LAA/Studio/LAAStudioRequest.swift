@@ -294,7 +294,7 @@ private struct LAAStudioRerequestView: View {
                 LAAStudioCreateView(snapshot: snapshot, initialProject: project, initialPrompt: previous.request.prompt, draftID: previous.id)
             } else if let error {
                 Text(verbatim: error).foregroundStyle(LAAColor.attention).padding(LAASpacing.horizontal)
-            } else { LAAStudioSkeleton() }
+            } else { LAALoadingDots() }
         }.task {
             do {
                 let current = try await LAAStudioData.snapshot(bridge)

@@ -25,14 +25,19 @@ struct LAAWorkDecisionSummary: View {
                                 Circle().fill(LAAColor.attention).frame(width: 8, height: 8)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(verbatim: item.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
-                                    if let source = item.sourceLine { Text(verbatim: source).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText).lineLimit(1) }
+                                    let elapsed = item.createdAt.flatMap(LAAWorkSessionStyle.relative)
+                                    let detail = [item.sourceLine, elapsed].compactMap { $0 }.joined(separator: " · ")
+                                    if !detail.isEmpty {
+                                        Text(verbatim: detail).laaTextStyle(.secondary)
+                                            .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                                    }
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                             }.padding(12).frame(minHeight: 64).contentShape(Rectangle())
-                        }.buttonStyle(.plain).accessibilityIdentifier("work.decision.\(item.id)")
+                        }.buttonStyle(LAAListRowStyle()).accessibilityIdentifier("work.decision.\(item.id)")
                     }
                 }
                 if board.items.count > 3 {
-                    Button("すべて表示") { showAll = true }.frame(minHeight: 44).accessibilityIdentifier("work.decisions.all")
+                    Button(String("すべて表示")) { showAll = true }.frame(minHeight: 44).accessibilityIdentifier("work.decisions.all")
                 }
             }.padding(12).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
             .accessibilityIdentifier("work.decisions.summary")

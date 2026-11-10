@@ -248,7 +248,7 @@ struct LAADecisionBoardView: View {
             Spacer(minLength: 0)
             Button { Task { await retry(item) } } label: {
                 Group {
-                    if retrying == item.id { Text("送信中") }
+                    if retrying == item.id { Text(verbatim: "送信中") }
                     else {
                         Label { Text(verbatim: "届け直す") } icon: { Image(systemName: "arrow.clockwise") }
                             .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)

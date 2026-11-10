@@ -26,9 +26,9 @@ struct LAAWorkHub: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .sessions: "Sessions"
-            case .tasks: "Tasks"
-            case .routines: "Routines"
+            case .sessions: String("Sessions")
+            case .tasks: String("Tasks")
+            case .routines: String("Routines")
             }
         }
     }
@@ -41,7 +41,7 @@ struct LAAWorkHub: View {
                 .padding(.horizontal, 20)
             LAAWorkDecisionSummary(board: decisions, drafts: drafts, showAll: $showDecisions)
                 .padding(.horizontal, 20)
-            Picker("区分", selection: $section) {
+            Picker(String("区分"), selection: $section) {
                 ForEach(Section.allCases) { value in
                     Text(verbatim: value.title).tag(value)
                         .accessibilityIdentifier("work.section.\(value.rawValue)")
@@ -68,8 +68,8 @@ struct LAAWorkHub: View {
                     .accessibilityLabel(Text(verbatim: "Usage")).accessibilityIdentifier("work.usage")
                 if section == .sessions {
                     Menu {
-                        Button("新しいセッション") { createID += 1 }.accessibilityIdentifier("work.sessions.new")
-                        Button("新しいプロジェクト") { showNewProject = true }.accessibilityIdentifier("work.projects.new")
+                        Button(String("新しいセッション")) { createID += 1 }.accessibilityIdentifier("work.sessions.new")
+                        Button(String("新しいプロジェクト")) { showNewProject = true }.accessibilityIdentifier("work.projects.new")
                     } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .accessibilityLabel("作成").accessibilityIdentifier("work.create")
                     .disabled(bridge.status != .paired)
@@ -77,7 +77,7 @@ struct LAAWorkHub: View {
                     Button { if section == .routines { section = .tasks }; createID += 1 } label: {
                         Image(systemName: "plus").frame(width: 44, height: 44)
                     }
-                    .accessibilityLabel("新しいタスク").accessibilityIdentifier("work.linear.add")
+                    .accessibilityLabel(String("新しいタスク")).accessibilityIdentifier("work.linear.add")
                     .disabled(bridge.status != .paired)
                 }
             }

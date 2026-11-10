@@ -103,7 +103,7 @@ struct LAAWorkSessionControls: View {
 
     private func pill(interactive: Bool) -> some View {
         HStack(spacing: LAASpacing.x1) {
-            if changing { Text("変更中").font(.caption) }
+            if changing { Text(verbatim: "変更中").font(.caption) }
             // The row keeps every control on one line: only the model name
             // gives way when the screen is narrow.
             Text(verbatim: modelText)
@@ -141,7 +141,7 @@ struct LAAWorkSessionControls: View {
 
     private func fastLabel(_ display: LAAWorkFastControl.Display, pressable: Bool) -> some View {
         HStack(spacing: LAASpacing.x1) {
-            if changingFast { Text("変更中").font(.caption) }
+            if changingFast { Text(verbatim: "変更中").font(.caption) }
             Image(systemName: display.value ? "bolt.fill" : "bolt")
                 .font(.system(size: 13, weight: .semibold))
             Text(verbatim: "Fast")

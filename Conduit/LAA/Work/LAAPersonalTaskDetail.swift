@@ -151,7 +151,7 @@ struct LAAPersonalTaskDetailView: View {
                 .disabled(completing || owner.completionBlockedReason != nil)
                 .accessibilityIdentifier("work.task.detail.complete")
             }
-            if completing { Text("保存中").font(.caption) }
+            if completing { Text(verbatim: "保存中").font(.caption) }
             if let completionFailure {
                 Text(verbatim: completionFailure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .fixedSize(horizontal: false, vertical: true)

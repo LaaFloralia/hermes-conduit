@@ -19,7 +19,10 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
             LAAStudioData.snapshotFixture = "normal"
             try capture("list-after", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
                         try capture("detail-after", style, bridge) { AnyView(LAAStudioWorkView(project: project)) }
-            try capture("request-sheet-after", style, bridge) { AnyView(LAAStudioCreateView(snapshot: normal)) }
+            try capture("request-inline-after", style, bridge) {
+                AnyView(LAAStudioCreateView(snapshot: normal, initialProject: project, inline: true)
+                    .padding(.horizontal, LAASpacing.horizontal))
+            }
             try capture("progress-after", style, bridge) { AnyView(LAAStudioRequestView(initial: record, initialProject: project)) }
             try capture("image", style, bridge) { AnyView(LAAStudioImageView(name: "Cover", path: nil)) }
             let path = "/v1/studio/media/\(project.id)/\(String(repeating: "a", count: 64)).mp4"

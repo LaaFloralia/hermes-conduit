@@ -33,7 +33,7 @@ struct PendingComposerSendBubble: View {
                 UserMessageContent(message: message, gatewayResolver: nil,
                     sizeCategory: sizeCategory, chatTextSize: chatTextSize)
                 HStack(spacing: 12) {
-                    Text("送信待ち").font(.caption)
+                    Text(verbatim: "送信待ち").font(.caption)
                     Button("編集") { Haptics.selection(); appState.editPendingComposerSend() }
                         .font(.caption.weight(.semibold)).frame(minHeight: 44)
                 }.foregroundStyle(LAAColor.secondaryText)

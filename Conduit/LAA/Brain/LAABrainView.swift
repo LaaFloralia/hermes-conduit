@@ -165,7 +165,7 @@ struct LAABrainView: View {
                 LAABrainRecoveryCatalogueView(root: root) { Task { await load() } }
                     .laaSheetSize(.page)
             } else {
-                Text("フォルダへのアクセスを確認してください。")
+                Text(verbatim: "フォルダへのアクセスを確認してください。")
             }
         }
         .fileImporter(isPresented: $chooseFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
@@ -469,7 +469,7 @@ struct LAABrainView: View {
 
     private func createMenu(parent: String) -> some View {
         Menu {
-            Button("今日のノート") { dailyRequest.enqueue() }
+            Button(String("今日のノート")) { dailyRequest.enqueue() }
                 .accessibilityIdentifier("laa.brain.daily")
             Button("新規ノート", systemImage: "square.and.pencil") { localCreate = LAABrainLocalCreateTarget(parent: parent, kind: .note) }
                 .accessibilityIdentifier("laa.brain.localCreate.note")
@@ -485,12 +485,12 @@ struct LAABrainView: View {
                            identifier: "laa.brain.search", focus: $searchFocused)
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { searchResults }
             else if localReadFailed {
-                Text("ノートを読み込めません。")
+                Text(verbatim: "ノートを読み込めません。")
                 Button("再読み込み") { Task { await load() } }
             } else if isLoading && files.isEmpty && folderPaths.isEmpty {
                 skeletonRows
             } else if (2...4).contains(localMode) {
-                Button("一覧に戻る") { localMode = 1 }
+                Button(String("一覧に戻る")) { localMode = 1 }
                 if localMode == 2 { tagBrowser }
                 else if localMode == 3 { conflictBrowser }
                 else { galleryBrowser }
@@ -505,7 +505,7 @@ struct LAABrainView: View {
     private var skeletonRows: some View {
         VStack(spacing: LAASpacing.x2) {
             ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface).frame(height: LAASpacing.minimumRowHeight) }
-        }.accessibilityLabel("読み込み中")
+        }.accessibilityLabel(String("読み込み中"))
     }
 
     private func paperPanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -537,14 +537,14 @@ struct LAABrainView: View {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 sectionHeading("最近")
                 paperPanel {
-                    if sorted.isEmpty { Text("ノートはありません。").foregroundStyle(LAAColor.secondaryText).frame(minHeight: LAASpacing.minimumRowHeight) }
+                    if sorted.isEmpty { Text(verbatim: "ノートはありません。").foregroundStyle(LAAColor.secondaryText).frame(minHeight: LAASpacing.minimumRowHeight) }
                     ForEach(Array(sorted.prefix(5))) { noteLink($0) }
                 }
             }
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 sectionHeading("ピン留め")
                 paperPanel {
-                    if pinned.isEmpty { Text("ピン留めしたノートはありません。").foregroundStyle(LAAColor.secondaryText).frame(minHeight: LAASpacing.minimumRowHeight) }
+                    if pinned.isEmpty { Text(verbatim: "ピン留めしたノートはありません。").foregroundStyle(LAAColor.secondaryText).frame(minHeight: LAASpacing.minimumRowHeight) }
                     ForEach(pinned) { noteLink($0) }
                 }
             }
@@ -553,17 +553,17 @@ struct LAABrainView: View {
                     sectionHeading("フォルダ")
                     Spacer()
                     Menu {
-                        Button("フォルダ") { localMode = 1 }
-                        Button("最近") { localMode = 0 }.accessibilityIdentifier("laa.brain.filter.recent")
+                        Button(String("フォルダ")) { localMode = 1 }
+                        Button(String("最近")) { localMode = 0 }.accessibilityIdentifier("laa.brain.filter.recent")
                         Button("タグ") { localMode = 2; selectedTag = nil }.accessibilityIdentifier("laa.brain.filter.tags")
-                        Button("ギャラリー") { localMode = 4 }.accessibilityIdentifier("laa.brain.filter.gallery")
+                        Button(String("ギャラリー")) { localMode = 4 }.accessibilityIdentifier("laa.brain.filter.gallery")
                         if files.contains(where: { $0.conflictOriginalPath != nil }) { Button("競合") { localMode = 3 } }
                         Divider()
-                        Button("名前順") { folderSortNewest = false }
-                        Button("更新日順") { folderSortNewest = true }
-                        Button("保存先を変更") { chooseFolder = true }
+                        Button(String("名前順")) { folderSortNewest = false }
+                        Button(String("更新日順")) { folderSortNewest = true }
+                        Button(String("保存先を変更")) { chooseFolder = true }
                         Button("復元履歴") { showRecovery = true }.accessibilityIdentifier("laa.brain.recovery.open")
-                        Button("Mac接続を使う") {
+                        Button(String("Mac接続を使う")) {
                             do { try local.disconnect(); showMacSource = true; path = []; query = "" }
                             catch { localError = LAABrainVaultError.unreadable.message }
                         }

@@ -55,7 +55,7 @@ struct LAAOwnerTaskListContent: View {
                     .onSubmit(createTask)
                     .disabled(!inputEnabled)
                     .accessibilityIdentifier("work.ownerTasks.newTitle")
-                Button("追加", action: createTask)
+                Button(String("追加"), action: createTask)
                     .disabled(!inputEnabled || adding || newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("work.ownerTasks.create")
             }
@@ -143,7 +143,7 @@ struct LAAOwnerTaskEditor: View {
         NavigationStack {
             Form {
                 Section("Task") {
-                    TextField("題名", text: $draft.title)
+                    TextField(String("題名"), text: $draft.title)
                         .accessibilityIdentifier("work.ownerTasks.editor.title")
                     Toggle(LAAOwnerTaskCopy.setDueDate, isOn: dueDateEnabled)
                     if !draft.dueDateText.isEmpty {
@@ -158,7 +158,7 @@ struct LAAOwnerTaskEditor: View {
                 Section {
                     ForEach($linkFields) { $field in
                         HStack {
-                            TextField("リンク", text: $field.value)
+                            TextField(String("リンク"), text: $field.value)
                             if let url = LAAOwnerTaskLink.openableURL(field.value) {
                                 Link(destination: url) { Image(systemName: "arrow.up.right.square") }
                                     .accessibilityLabel(Text(verbatim: "リンクを開く"))

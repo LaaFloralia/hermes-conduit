@@ -543,18 +543,18 @@ struct GroupRoomTitle: View {
                 LAAGroupFaces(members: members, size: 64)
                 VStack(spacing: 3) {
                     Text(verbatim: name).font(.custom("Georgia", size: 17, relativeTo: .headline)).lineLimit(1)
-                    Text("\(members.count)人").font(.caption2).foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: "\(members.count)人").font(.caption2).foregroundStyle(LAAColor.secondaryText)
                 }.padding(.horizontal, 12).padding(.vertical, 5)
                     .conduitGlassControl(cornerRadius: 20, tint: LAAColor.link.opacity(0.06), interactive: false)
             }
         }.buttonStyle(.plain).frame(height: 44, alignment: .top)
-            .accessibilityLabel("\(name)、会話の情報")
+            .accessibilityLabel(String("\(name)、会話の情報"))
             .accessibilityIdentifier("room.header")
             .sheet(isPresented: $showingInformation) {
                 NavigationStack {
                     if let information {
-                        information.environment(\.laaDismissConversationInfo, { showingInformation = false }).navigationTitle("会話の情報").navigationBarTitleDisplayMode(.inline)
-                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了") { showingInformation = false } } }
+                        information.environment(\.laaDismissConversationInfo, { showingInformation = false }).navigationTitle(String("会話の情報")).navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { showingInformation = false } } }
                     }
                 }.laaSheetSize(.page)
             }

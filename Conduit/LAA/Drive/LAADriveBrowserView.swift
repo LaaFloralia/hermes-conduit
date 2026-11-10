@@ -223,7 +223,7 @@ struct LAADriveBrowserView: View {
             HStack(spacing: LAASpacing.x3) {
                 Image(systemName: "magnifyingglass").foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)
-                TextField("検索", text: $search)
+                TextField(String("検索"), text: $search)
                     .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
                     .accessibilityIdentifier("laa.drive.browser.search")
                 if !search.isEmpty {
@@ -241,23 +241,23 @@ struct LAADriveBrowserView: View {
 
     private var header: some View {
         HStack {
-            Text("ファイル").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "ファイル").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
             Spacer()
             Menu {
-                Picker("場所", selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
+                Picker(String("場所"), selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
                     ForEach(LAADriveBrowseSection.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
-                Picker("並び順", selection: $sort) {
+                Picker(String("並び順"), selection: $sort) {
                     ForEach(LAADriveBrowseOrder.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
-                Button("アップロード", systemImage: "plus") { upload(folders.last?.id) }
+                Button(String("アップロード"), systemImage: "plus") { upload(folders.last?.id) }
                 if let folder = folders.last {
-                    Button("この端末に保存", systemImage: "arrow.down.circle") { saveFolder(folder) }
+                    Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFolder(folder) }
                 }
-                NavigationLink("この端末に保存済み") { LAADriveOfflineScreen() }
+                NavigationLink(String("この端末に保存済み")) { LAADriveOfflineScreen() }
             } label: {
                 Image(systemName: "ellipsis").frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-            }.accessibilityLabel("ファイルの表示と操作").accessibilityIdentifier("laa.drive.browser.menu")
+            }.accessibilityLabel(String("ファイルの表示と操作")).accessibilityIdentifier("laa.drive.browser.menu")
         }
     }
 
@@ -269,15 +269,15 @@ struct LAADriveBrowserView: View {
             if let error = controller.error {
                 HStack {
                     Text(verbatim: errorMessage(error)).lineLimit(2)
-                    Button("再試行") { Task { await reload(key, debounce: false) } }
+                    Button(String("再試行")) { Task { await reload(key, debounce: false) } }
                 }.laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             if controller.items.isEmpty && controller.error == nil {
-                Text("ファイルがありません").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "ファイルがありません").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
                     .frame(maxWidth: .infinity, minHeight: 160)
             }
             if controller.incompleteSearch == true {
-                Text("一部の結果を取得できませんでした").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                Text(verbatim: "一部の結果を取得できませんでした").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             rows(visibleItems.filter { $0.item.isFolder })
             if layout == .grid {
@@ -289,7 +289,7 @@ struct LAADriveBrowserView: View {
                 rows(visibleItems.filter { !$0.item.isFolder })
             }
             if controller.cursor != nil && controller.error == nil {
-                Button("さらに読み込む") { Task { await controller.loadMore(using: load) } }
+                Button(String("さらに読み込む")) { Task { await controller.loadMore(using: load) } }
                     .disabled(controller.loading).frame(minHeight: LAASpacing.minimumTouchTarget).accessibilityIdentifier("laa.drive.browser.more")
             }
         }
@@ -338,14 +338,14 @@ struct LAADriveBrowserView: View {
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")
         .contextMenu {
             if let url = entry.safeWebViewURL {
-                ShareLink(item: url) { Label("共有", systemImage: "square.and.arrow.up") }
-                Button("リンクをコピー", systemImage: "link") { UIPasteboard.general.url = url }
-                Link(destination: url) { Label("Driveで開く", systemImage: "arrow.up.right.square") }
+                ShareLink(item: url) { Label(String("共有"), systemImage: "square.and.arrow.up") }
+                Button(String("リンクをコピー"), systemImage: "link") { UIPasteboard.general.url = url }
+                Link(destination: url) { Label(String("Driveで開く"), systemImage: "arrow.up.right.square") }
             }
             if entry.item.isFolder {
-                Button("この端末に保存", systemImage: "arrow.down.circle") { saveFolder(entry) }
+                Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFolder(entry) }
             } else {
-                Button("この端末に保存", systemImage: "arrow.down.circle") { saveFile(entry) }
+                Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFile(entry) }
                     .disabled(LAADrivePresentation.reason(entry.item) != nil)
             }
         }
@@ -507,11 +507,11 @@ private struct LAADriveSearchPlacement: ViewModifier {
 private extension LAADriveBrowseSection {
     var title: String {
         switch self {
-        case .my: return "マイドライブ"
-        case .shared: return "共有ドライブ"
-        case .sharedWithMe: return "共有アイテム"
-        case .recent: return "最近"
-        case .starred: return "スター付き"
+        case .my: return String("マイドライブ")
+        case .shared: return String("共有ドライブ")
+        case .sharedWithMe: return String("共有アイテム")
+        case .recent: return String("最近")
+        case .starred: return String("スター付き")
         }
     }
 }

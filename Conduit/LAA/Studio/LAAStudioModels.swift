@@ -66,9 +66,9 @@ struct LAAStudioRecord: Codable, Identifiable {
     let updatedAt: String
     let report: LAAStudioReport?
     var id: String { request.id }
-    var active: Bool { ["queued", "unreceived", "accepted", "running", "approval"].contains(status) }
-    var canStop: Bool { ["queued", "accepted", "running", "approval"].contains(status) }
-    var canRequestAgain: Bool { ["completed", "failed", "stopped", "interrupted"].contains(status) }
+    var active: Bool { ["bridge_waiting", "queued", "unreceived", "accepted", "running", "approval"].contains(status) }
+    var canStop: Bool { ["bridge_waiting", "queued", "accepted", "running", "approval"].contains(status) }
+    var canRequestAgain: Bool { ["completed", "failed", "expired", "stopped", "interrupted"].contains(status) }
 }
 
 enum LAAStudioPresentation {
@@ -100,6 +100,8 @@ enum LAAStudioPresentation {
 
     static func status(_ value: String) -> String {
         switch value {
+        case "bridge_waiting": "順番待ち"
+        case "expired": "受付期限切れ"
         case "queued": LAACopy.Studio.queued
         case "unreceived": LAACopy.Studio.notReceived
         case "accepted": LAACopy.Studio.accepted

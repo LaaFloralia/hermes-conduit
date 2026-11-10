@@ -539,32 +539,32 @@ private struct V2ConversationMenu: View {
         Form {
             Section {
                 LAAConversationMenuItems()
-                NavigationLink("会話内を検索") { LAAConversationSearchView() }
+                NavigationLink(String("会話内を検索")) { LAAConversationSearchView() }
             }
             if appState.activeRoomSurface != nil {
                 Section { GroupRoomActionItems(onDisband: { confirmsDisband = true }, onChoosePicture: { pictureRequest = $0 }) }
             } else {
                 Section {
-                    Button("新しい会話") { dismissInfo(); appState.startNewChat() }.disabled(!appState.canTapNewChat)
-                    NavigationLink("これまでの会話") { LAAConversationHistoryView() }
-                    NavigationLink("モデル") { ModelPickerView() }
-                    Button("会話を更新") { Task { await appState.refreshActiveSession() } }.disabled(!appState.isConnected)
+                    Button(String("新しい会話")) { dismissInfo(); appState.startNewChat() }.disabled(!appState.canTapNewChat)
+                    NavigationLink(String("これまでの会話")) { LAAConversationHistoryView() }
+                    NavigationLink(String("モデル")) { ModelPickerView() }
+                    Button(String("会話を更新")) { Task { await appState.refreshActiveSession() } }.disabled(!appState.isConnected)
                 }
             }
-            Section("接続") {
-                Text(appState.isConnected ? "接続済み" : "Macに接続できません")
-                NavigationLink("接続の状態") { GatewayDiagnosticsSheet() }
+            Section(String("接続")) {
+                Text(verbatim: appState.isConnected ? "接続済み" : "Macに接続できません")
+                NavigationLink(String("接続の状態")) { GatewayDiagnosticsSheet() }
             }
         }
         .modifier(GroupRoomPicturePicker(request: $pictureRequest))
-        .confirmationDialog("このグループを解散しますか？", isPresented: $confirmsDisband, titleVisibility: .visible) {
-            Button("解散", role: .destructive) {
+        .confirmationDialog(String("このグループを解散しますか？"), isPresented: $confirmsDisband, titleVisibility: .visible) {
+            Button(String("解散"), role: .destructive) {
                 dismissInfo()
                 Task { await appState.disbandActiveRoom() }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("グループと会話の履歴が削除されます。この操作は取り消せません。")
+            Text(verbatim: "グループと会話の履歴が削除されます。この操作は取り消せません。")
         }
 #else
         Menu {

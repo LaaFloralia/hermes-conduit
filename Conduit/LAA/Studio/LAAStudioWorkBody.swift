@@ -73,7 +73,6 @@ struct LAAStudioWorkBody: View {
         }
     }
     @State private var selectedItem = ""
-    @State private var revising = false
     var body: some View {
         ScrollViewReader { scroll in
         ScrollView {
@@ -87,16 +86,15 @@ struct LAAStudioWorkBody: View {
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
                 if let error { LAAStudioConnectionLine(message: error) { Task { await load() } } }
-                if activeSnapshot?.supportsV2 == true {
-                    HStack(spacing: LAASpacing.x3) {
-                        LAAStudioAdoptButton(project: current, reviews: detail?.reviews ?? [])
-                        Button("直しを頼む") { revising = true }.laaGlassButton(prominent: true)
-                            .accessibilityIdentifier("laa.studio.revise")
-                    }
+                if let snapshot = activeSnapshot, snapshot.supportsV2 {
+                    LAAStudioCreateView(snapshot: snapshot, initialProject: current, draftID: current.id,
+                        inline: true, onSubmitted: { Task { await load() } })
+                        .id(current.id)
+                    LAAStudioAdoptButton(project: current, reviews: detail?.reviews ?? [])
                 }
                 if !versions.isEmpty || LAAStudioMedia.driveURL(driveURL) != nil {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        Text("納品").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "納品").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
                         ForEach(versions) { item in
                             NavigationLink { LAAStudioItemView(items: versions, startIndex: versions.firstIndex { $0.id == item.id } ?? 0,
                                 project: current, snapshot: activeSnapshot, reviews: detail?.reviews ?? [], driveURL: driveURL, allowsReview: detail != nil) } label: {
@@ -112,14 +110,14 @@ struct LAAStudioWorkBody: View {
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         HStack {
-                            Text("ページと素材").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                            Text(verbatim: "ページと素材").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
                             Spacer()
                             if Set(allItems.map(\.kind)).count > 1 {
                                 Menu {
-                                    Picker("種類", selection: $filter) {
+                                    Picker(String("種類"), selection: $filter) {
                                         ForEach(LAAStudioFilter.allCases) { Text(verbatim: $0.rawValue).tag($0) }
                                     }
-                                } label: { Image(systemName: "line.3.horizontal.decrease").frame(width: 44, height: 44) }.accessibilityLabel("種類")
+                                } label: { Image(systemName: "line.3.horizontal.decrease").frame(width: 44, height: 44) }.accessibilityLabel(String("種類"))
                             }
                         }
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LAASpacing.x2), count: 3), spacing: LAASpacing.x3) {
@@ -139,7 +137,7 @@ struct LAAStudioWorkBody: View {
                 }
                 if !displacedDrafts.isEmpty, let snapshot = activeSnapshot {
                     ForEach(displacedDrafts) { draft in
-                        NavigationLink("保存した講評の下書き") {
+                        NavigationLink(String("保存した講評の下書き")) {
                             LAAStudioReviewView(snapshot: snapshot, project: current, target: draft.target,
                                 targetName: draft.targetName ?? "保存した版", revision: draft.revision ?? current.revision,
                                 reviews: detail?.reviews ?? [], unavailableInListing: true)
@@ -147,19 +145,13 @@ struct LAAStudioWorkBody: View {
                     }
                 }
             }.padding(LAASpacing.horizontal).laaPageWidth()
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle("作品")
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(String("作品"))
             .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
             .task(id: bridge.revision) {
                 detail = LAAStudioCache.load(LAAStudioProjectDetail.self, scope: LAAStudioCache.scope(bridge), item: project.id)
                 await load()
             }.refreshable { await load() }
-            .sheet(isPresented: $revising, onDismiss: { Task { await load() } }) {
-                if let snapshot = activeSnapshot {
-                    NavigationStack {
-                        LAAStudioCreateView(snapshot: snapshot, initialProject: current, draftID: current.id)
-                    }.environmentObject(bridge)
-                }
-            }
+
         }
     }
     private func itemLabel(_ item: LAAStudioWorkItem) -> some View {
@@ -232,7 +224,7 @@ private struct LAAStudioGallery: View {
                         LAAStudioPlayerView(asset: .init(id: item.id, name: item.name, kind: "video", url: item.media,
                             poster: item.poster, unavailable: item.unavailable, previewOnly: item.previewOnly), path: path)
                     } else if item.preparing {
-                        Text("閲覧用コピーを準備中").foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "閲覧用コピーを準備中").foregroundStyle(LAAColor.secondaryText)
                     } else if let unavailable = item.unavailable {
                         Text(verbatim: unavailable).foregroundStyle(LAAColor.secondaryText)
                     } else if item.kind == "pdf" {
@@ -258,7 +250,6 @@ private struct LAAStudioItemView: View {
     let snapshot: LAAStudioSnapshot?
     let driveURL: String?
     let allowsReview: Bool
-    @State private var revising = false
     @State private var index: Int
     @State private var reviews: [LAAStudioReview]
     init(items: [LAAStudioWorkItem], startIndex: Int, project: LAAStudioProject,
@@ -288,17 +279,12 @@ private struct LAAStudioItemView: View {
                 if item.preparing { Text(verbatim: "閲覧用コピーを準備中です。時間をおいて作品を更新してください。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                 content.id(item.id)
                 if allowsReview, let snapshot, snapshot.supportsV2 {
-                    Button("直しを頼む") { revising = true }.laaGlassButton(prominent: true)
+                    LAAStudioCreateView(snapshot: snapshot, initialProject: project,
+                        initialPrompt: "「" + item.name + "」の直し: ", draftID: project.id, inline: true)
                 }
             }.padding(LAASpacing.horizontal).laaPageWidth()
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "閲覧"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
-            .sheet(isPresented: $revising) {
-                if let snapshot {
-                    NavigationStack { LAAStudioCreateView(snapshot: snapshot, initialProject: project,
-                        initialPrompt: "「" + item.name + "」の直し: ", draftID: project.id) }.environmentObject(bridge)
-                }
-            }
             .onAppear {
                 guard allowsReview else { return }
                 Task { if let detail = try? await LAAStudioData.project(project.id, bridge: bridge) { reviews = detail.reviews } }

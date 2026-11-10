@@ -92,7 +92,7 @@ struct LAAStudioFilePreview: View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if loader.loading && loader.image == nil && loader.file == nil {
                 RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface).frame(height: 240)
-                    .accessibilityLabel("資料を読み込み中").accessibilityIdentifier("laa.studio.document.loading")
+                    .accessibilityLabel(String("資料を読み込み中")).accessibilityIdentifier("laa.studio.document.loading")
             }
             if let image = loader.image { Image(uiImage: image).resizable().scaledToFit() }
             else if let file = loader.file, file.pathExtension == "pdf" {

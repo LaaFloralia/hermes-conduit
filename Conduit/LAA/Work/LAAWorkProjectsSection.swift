@@ -241,7 +241,7 @@ struct LAAWorkProjectHome: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             heading("資料", action: uploading ? nil : ("追加", "plus", { showImporter = true }))
             let files = project.files ?? []
-            if uploading { Text("送信中").foregroundStyle(LAAColor.secondaryText) }
+            if uploading { Text(verbatim: "送信中").foregroundStyle(LAAColor.secondaryText) }
             if files.isEmpty && !uploading {
                 Text(verbatim: "PDF・画像・メモなどを追加すると、セッションが必要な時に読みます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)

@@ -42,14 +42,14 @@ struct LAAWorkSessionsSection: View {
                 Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
                 Spacer()
                 Menu {
-                    Button("新しい順") { projectOrder = false }
-                    Button("プロジェクト別") { projectOrder = true }.accessibilityIdentifier("work.sessions.byProject")
-                    Button(showArchived ? "最近のセッションに戻る" : "アーカイブを表示") { showArchived.toggle(); Task { await load() } }
+                    Button(String("新しい順")) { projectOrder = false }
+                    Button(String("プロジェクト別")) { projectOrder = true }.accessibilityIdentifier("work.sessions.byProject")
+                    Button(showArchived ? String("最近のセッションに戻る") : String("アーカイブを表示")) { showArchived.toggle(); Task { await load() } }
                         .accessibilityIdentifier("work.sessions.archiveToggle")
-                    Button("判断の一覧", action: onRequestDecisions).accessibilityIdentifier("work.decisions.open")
-                    Button("プロジェクトを管理") { showingProjects = true }.accessibilityIdentifier("work.projects.manage")
+                    Button(String("判断の一覧"), action: onRequestDecisions).accessibilityIdentifier("work.decisions.open")
+                    Button(String("プロジェクトを管理")) { showingProjects = true }.accessibilityIdentifier("work.projects.manage")
                 } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                .accessibilityLabel("一覧の表示").accessibilityIdentifier("work.sessions.menu")
+                .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
             }
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
@@ -72,12 +72,12 @@ struct LAAWorkSessionsSection: View {
                         Text(verbatim: project.name).font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(LAAColor.secondaryText).frame(minHeight: 44)
                             .contextMenu {
-                                Button("開く") { projectHome = project }
-                                Button("名前と指示を変更") { editingProject = project }
-                                Button("アーカイブ") { Task { await archiveProject(project) } }
+                                Button(String("開く")) { projectHome = project }
+                                Button(String("名前と指示を変更")) { editingProject = project }
+                                Button(String("アーカイブ")) { Task { await archiveProject(project) } }
                             }
                         let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
-                        if rows.isEmpty { Text("セッションはありません").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText) }
+                        if rows.isEmpty { Text(verbatim: "セッションはありません").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText) }
                         else { group("", rows, children) }
                     }
                 }
@@ -106,7 +106,7 @@ struct LAAWorkSessionsSection: View {
         }
         .navigationDestination(item: $projectHome) { LAAWorkProjectHome(project: $0, drafts: drafts) }
         .navigationDestination(isPresented: $showingProjects) {
-            ScrollView { LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).padding(20) }.navigationTitle("プロジェクト")
+            ScrollView { LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).padding(20) }.navigationTitle(String("プロジェクト"))
         }
         .task(id: linkRequest.generation) { await openLinkedSession() }
         .sheet(isPresented: $showLauncher) {
@@ -140,8 +140,11 @@ struct LAAWorkSessionsSection: View {
     private func group(_ title: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !title.isEmpty {
-                Text(verbatim: title).font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
-                    .padding(.bottom, LAASpacing.x2)
+                HStack {
+                    Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                    Spacer()
+                    Text(verbatim: String(rows.count)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }.padding(.bottom, LAASpacing.x2)
             }
             VStack(spacing: 0) {
                 ForEach(rows) { session in

@@ -159,10 +159,10 @@ struct LAAOwnerTasksView: View {
                                 }
                                 HStack {
                                     if request.conflict == true {
-                                        Button("下書きに戻す") { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
+                                        Button(String("下書きに戻す")) { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
                                             .disabled(sending.contains(request.taskID))
                                     } else {
-                                        Button("再試行") { pendingAction = PendingAction(kind: .retry, item: item) }
+                                        Button(String("再試行")) { pendingAction = PendingAction(kind: .retry, item: item) }
                                             .disabled(bridge.status != .paired || sending.contains(request.taskID) || !LAAOwnerTaskOutbox.canRetry(request))
                                     }
                                     Button(LAAOwnerTaskCopy.inspectCurrent) { Task { await inspect(item) } }
@@ -225,7 +225,7 @@ struct LAAOwnerTasksView: View {
             if action.kind == .retry, let item = action.item {
                 Button(LAAOwnerTaskCopy.retryRequest) { Task { await send(item) } }
             } else if action.kind == .restoreConflict, let item = action.item {
-                Button("下書きに戻す") {
+                Button(String("下書きに戻す")) {
                     guard let latest = LAAOwnerTaskOutbox.entries(in: drafts).first(where: { $0.id == item.id }),
                           let request = LAAOwnerTaskOutbox.request(latest), request.conflict == true,
                           request.deviceID == bridge.deviceID, !sending.contains(request.taskID),

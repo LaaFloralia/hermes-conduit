@@ -76,16 +76,16 @@ struct LAAAssetsView: View {
         .onChange(of: linkRequest.generation) { _, _ in
             if linkRequest.url?.host == "assets" { studioSelected = false }
         }
-        .confirmationDialog("このフォルダを端末に保存しますか？", isPresented: $confirmFolder, titleVisibility: .visible) {
-            Button("ファイルを保存") { if let folderPlan { saveFolder(folderPlan) } }
+        .confirmationDialog(String("このフォルダを端末に保存しますか？"), isPresented: $confirmFolder, titleVisibility: .visible) {
+            Button(String("ファイルを保存")) { if let folderPlan { saveFolder(folderPlan) } }
             Button("キャンセル", role: .cancel) { folderPlan = nil }
         } message: {
             if let folderPlan {
                 let minimumSpace = ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)
-                Text("ファイル: \(folderPlan.files.count)") +
-                Text(verbatim: "\n") + Text("必要な空き容量: \(minimumSpace)") +
-                Text(verbatim: "\n") + Text("取得できなかった項目: \(folderPlan.issues.count)") +
-                Text(verbatim: "\n") + Text("失敗した場合も、保存済みのファイルは残ります。")
+                Text(verbatim: "ファイル: \(folderPlan.files.count)") +
+                Text(verbatim: "\n") + Text(verbatim: "必要な空き容量: \(minimumSpace)") +
+                Text(verbatim: "\n") + Text(verbatim: "取得できなかった項目: \(folderPlan.issues.count)") +
+                Text(verbatim: "\n") + Text(verbatim: "失敗した場合も、保存済みのファイルは残ります。")
             }
         }
     }

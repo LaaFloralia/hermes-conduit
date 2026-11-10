@@ -12,7 +12,7 @@ struct LAAWorkSessionImage: View {
         Group {
             if let image { Image(uiImage: image).resizable().scaledToFit().accessibilityLabel(Text(verbatim: "添付画像")).accessibilityIdentifier("work.session.image") }
             else if failed { Text(verbatim: "画像を取得できません。") }
-            else { RoundedRectangle(cornerRadius: 16).fill(LAAColor.subtleSurface).frame(height: 160).accessibilityLabel("添付画像を読み込み中") }
+            else { RoundedRectangle(cornerRadius: 16).fill(LAAColor.subtleSurface).frame(height: 160).accessibilityLabel(String("添付画像を読み込み中")) }
         }.task(id: imageID) {
             do {
                 let payload: LAAWorkImagePayload = try await bridge.read("/v1/sessions/\(sessionID)/images/\(imageID)")

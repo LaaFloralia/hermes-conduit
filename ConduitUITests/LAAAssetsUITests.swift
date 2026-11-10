@@ -97,7 +97,8 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(item("image1", in: app).waitForExistence(timeout: 10))
         XCTAssertFalse(item("folder1", in: app).exists)
         app.buttons["laa.drive.filter.all"].tap()
-        let search = app.textFields["laa.drive.browser.search"]
+        app.swipeDown()
+        let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
         search.typeText("Notes\n")

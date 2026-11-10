@@ -55,6 +55,11 @@ struct LAABrainNoteView: View {
                 LAAColor.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                        let breadcrumb = reference.path.split(separator: "/").dropLast().joined(separator: " › ")
+                        if !breadcrumb.isEmpty {
+                            Text(verbatim: breadcrumb).laaTextStyle(.secondary)
+                                .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                        }
                         Text(verbatim: URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent)
                             .font(.system(size: 30, weight: .bold))
                         if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
@@ -118,17 +123,17 @@ struct LAABrainNoteView: View {
                     if showsBackButton {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { if !path.isEmpty { path.removeLast() } } label: { Image(systemName: "chevron.left") }
-                                .accessibilityLabel("戻る").accessibilityIdentifier("laa.brain.back")
+                                .accessibilityLabel(String("戻る")).accessibilityIdentifier("laa.brain.back")
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button("文書内検索") { showQuickSwitch = true }
-                            Button(isPinned ? "ピン留めを外す" : "ピン留めする", action: togglePin)
-                            Button(raw ? "本文を表示" : "Markdownを表示") { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
-                            Button("情報") { showInfo = true }
+                            Button(String("文書内検索")) { showQuickSwitch = true }
+                            Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), action: togglePin)
+                            Button(raw ? String("本文を表示") : String("Markdownを表示")) { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
+                            Button(String("情報")) { showInfo = true }
                         } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel("ノートのメニュー").accessibilityIdentifier("laa.brain.menu")
+                            .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
                     }
                 }
             }
@@ -181,11 +186,11 @@ struct LAABrainNoteView: View {
             }
             .sheet(isPresented: $showInfo) {
                 NavigationStack {
-                    List { LabeledContent("場所", value: reference.path)
+                    List { LabeledContent(String("場所"), value: reference.path)
                         if let metadata = note.map({ LAABrainDocument($0.text).frontmatter }) ?? nil {
                             Text(verbatim: metadata).textSelection(.enabled)
                         }
-                    }.navigationTitle("情報")
+                    }.navigationTitle(String("情報"))
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
                 }
             }
@@ -278,7 +283,7 @@ private struct LAABrainQuickSwitch: View {
                 }.accessibilityIdentifier("laa.brain.quickSwitch.note")
             }
             .searchable(text: $query, prompt: "ノートを検索")
-            .navigationTitle("ノートを切り替える")
+            .navigationTitle(String("ノートを切り替える"))
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
         }
     }

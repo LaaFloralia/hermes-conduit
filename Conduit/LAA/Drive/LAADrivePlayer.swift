@@ -231,11 +231,11 @@ struct LAADrivePlayerContent: View {
             case .failed(let message):
                 Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                 if owner.canRetry {
-                    Button("再試行") { owner.playback.retry() }
+                    Button(String("再試行")) { owner.playback.retry() }
                         .accessibilityIdentifier("laa.drive.player.retry")
                 }
             case .ended:
-                Button("もう一度再生") { owner.playback.replay() }
+                Button(String("もう一度再生")) { owner.playback.replay() }
                     .accessibilityIdentifier("laa.drive.player.replay")
             case .paused, .playing:
                 EmptyView()
