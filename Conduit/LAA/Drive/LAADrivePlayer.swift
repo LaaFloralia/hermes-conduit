@@ -46,7 +46,7 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
         let asset = AVURLAsset(url: url)
         if localURL == nil { asset.resourceLoader.setDelegate(self, queue: .main) }
         let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredForwardBufferDuration = 15
+        playerItem.preferredForwardBufferDuration = localURL == nil ? 3 : 15
         statusObservation = playerItem.observe(\.status, options: [.new]) { [weak self] value, _ in
             guard value.status == .failed else { return }
             Task { @MainActor in
@@ -114,6 +114,16 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
 
     private func fill(_ request: AVAssetResourceLoadingRequest) async throws {
         let dataRequest = request.dataRequest
+        // AVFoundation's initial information probe needs no media round trip
+        // when the versioned listing already supplies size and type. Actual
+        // bytes still go through fresh permission/version checks in the Bridge.
+        if studioPath == nil, resolvedVersion != nil, let info = request.contentInformationRequest,
+           let size = item.size, size > 0 {
+            info.contentType = UTType(mimeType: item.mimeType)?.identifier ?? UTType.data.identifier
+            info.contentLength = size
+            info.isByteRangeAccessSupported = true
+            return
+        }
         var offset = dataRequest.map { max($0.requestedOffset, $0.currentOffset) } ?? 0
         let requestedEnd: Int64
         if let dataRequest, !dataRequest.requestsAllDataToEndOfResource {
@@ -122,16 +132,24 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
             requestedEnd = end
         } else { requestedEnd = Int64.max }
         var expectedTotal: Int64?
+        var pending: [Int64: Task<LAADriveRangeResponse, Error>] = [:]
+        defer { pending.values.forEach { $0.cancel() } }
+        func fetch(_ start: Int64, _ length: Int, _ version: String?) async throws -> LAADriveRangeResponse {
+            if let studioPath { return try await bridge.driveRange(path: studioPath, offset: start, length: length) }
+            return try await LAADriveContent.range(item, offset: start, length: length, bridge: bridge, expectedVersion: version)
+        }
         repeat {
             try Task.checkCancellation()
-            let remaining = requestedEnd == Int64.max ? LAADriveContent.chunkSize :
-                Int(min(Int64(LAADriveContent.chunkSize), max(1, requestedEnd - offset)))
+            let maximumPart = expectedTotal == nil ? min(256 * 1024, LAADriveContent.chunkSize) : LAADriveContent.chunkSize
+            let remaining = requestedEnd == Int64.max ? maximumPart :
+                Int(min(Int64(maximumPart), max(1, requestedEnd - offset)))
             let result: LAADriveRangeResponse
-            if let studioPath {
-                result = try await bridge.driveRange(path: studioPath, offset: offset, length: remaining)
-            } else {
-                result = try await LAADriveContent.range(item, offset: offset, length: remaining, bridge: bridge,
-                                                         expectedVersion: resolvedVersion)
+            if let task = pending[offset] {
+                result = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+                pending.removeValue(forKey: offset)
+            } else { result = try await fetch(offset, remaining, resolvedVersion) }
+            try Task.checkCancellation()
+            if studioPath == nil {
                 if let version = result.version {
                     guard resolvedVersion == nil || resolvedVersion == version else { throw LAADriveRangeError.versionChanged }
                     resolvedVersion = version
@@ -147,6 +165,19 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
             guard let dataRequest else { return }
             dataRequest.respond(with: result.data)
             offset += Int64(result.data.count)
+            // A sliding window keeps at most 4 MiB in flight per AVFoundation
+            // request. Each part still validates fresh permission and version.
+            // The first response stays small; canceled seeks cancel this window.
+            let end = min(requestedEnd, result.total)
+            var next = offset
+            while pending.count < 8 && next < end {
+                let length = Int(min(Int64(LAADriveContent.chunkSize), end - next))
+                if pending[next] == nil {
+                    let start = next, version = resolvedVersion
+                    pending[start] = Task { try await fetch(start, length, version) }
+                }
+                next += Int64(length)
+            }
         } while offset < min(requestedEnd, expectedTotal ?? 0)
     }
 }
@@ -154,50 +185,75 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
 struct LAADrivePlayerView: View {
     @StateObject private var owner: LAADrivePlayerOwner
     let item: LAADriveItem
+    let poster: UIImage?
+    let showsDetails: Bool
     let onStateChange: (LAADrivePlaybackState) -> Void
 
     /// Studio paths are validated content-addressed Bridge paths. Drive does
     /// not autoplay by default; callers can opt in and observe player state.
     init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil,
-         autoPlay: Bool = false, onStateChange: @escaping (LAADrivePlaybackState) -> Void = { _ in }) {
+         autoPlay: Bool = false, poster: UIImage? = nil, showsDetails: Bool = false, onStateChange: @escaping (LAADrivePlaybackState) -> Void = { _ in }) {
         self.item = item
+        self.poster = poster
+        self.showsDetails = showsDetails
         self.onStateChange = onStateChange
         _owner = StateObject(wrappedValue: LAADrivePlayerOwner(item: item, bridge: bridge,
                                                                 studioPath: studioPath, autoPlay: autoPlay))
     }
     var body: some View {
-        LAADrivePlayerContent(owner: owner, onStateChange: onStateChange)
+        LAADrivePlayerContent(owner: owner, poster: poster, presentationItem: showsDetails ? item : nil, onStateChange: onStateChange)
     }
 }
 
 /// Used by the offline screen with the same native controls and ownership.
 struct LAADrivePlayerContent: View {
     @ObservedObject var owner: LAADrivePlayerOwner
+    var poster: UIImage? = nil
+    var presentationItem: LAADriveItem? = nil
+    @State private var hasPresentedFrame = false
     var onStateChange: (LAADrivePlaybackState) -> Void = { _ in }
 
     var body: some View {
-        VStack(spacing: LAASpacing.x4) {
-            LAADriveNativePlayerSurface(player: owner.source.player, delegate: owner)
+        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+            LAADriveNativePlayerSurface(player: owner.source.player, delegate: owner, onReadyForDisplay: { hasPresentedFrame = true })
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .background(LAAColor.subtleSurface)
+                .overlay {
+                    if !hasPresentedFrame, owner.state == .loading, let poster {
+                        Image(uiImage: poster).resizable().scaledToFit().allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                    if owner.state == .loading { ProgressView().allowsHitTesting(false) }
+                }
                 .accessibilityIdentifier("laa.drive.player")
             switch owner.state {
             case .loading:
-                ProgressView("Loading")
+                EmptyView()
             case .failed(let message):
                 Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                 if owner.canRetry {
-                    Button("Retry") { owner.playback.retry() }
+                    Button("再試行") { owner.playback.retry() }
                         .accessibilityIdentifier("laa.drive.player.retry")
                 }
             case .ended:
-                Button("Play again") { owner.playback.replay() }
+                Button("もう一度再生") { owner.playback.replay() }
                     .accessibilityIdentifier("laa.drive.player.replay")
             case .paused, .playing:
                 EmptyView()
             }
+            if let presentationItem {
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: presentationItem.name).font(.headline).lineLimit(2)
+                    if let size = presentationItem.size {
+                        Text(verbatim: ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                            .font(.footnote).foregroundStyle(LAAColor.secondaryText)
+                    }
+                }
+                .padding(.horizontal, 20)
+                Spacer(minLength: 0)
+            }
         }
-        .padding(LAASpacing.horizontal)
+        .padding(presentationItem == nil ? LAASpacing.horizontal : 0)
+        .frame(maxWidth: .infinity, maxHeight: presentationItem == nil ? nil : .infinity, alignment: .top)
         .onAppear { owner.appear() }
         .onDisappear { owner.disappear() }
         .onChange(of: owner.state, initial: true) { _, state in onStateChange(state) }

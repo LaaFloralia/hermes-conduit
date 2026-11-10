@@ -143,13 +143,17 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     }
     const view = url.searchParams.get('view');
     if (view !== null && !VIEWS.has(view)) throw badRequest('view_invalid', 'unknown Drive view');
+    const fileType = url.searchParams.get('type') ?? 'all';
+    if (!['all', 'video', 'image', 'document'].includes(fileType)) throw badRequest('type_invalid', 'unknown Drive file type');
+    const order = url.searchParams.get('order') ?? 'name';
+    if (!['name', 'recent'].includes(order)) throw badRequest('order_invalid', 'unknown Drive order');
     const rawPageSize = url.searchParams.get('pageSize');
     const pageSize = rawPageSize === null ? DEFAULT_PAGE_SIZE : Number(rawPageSize);
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
       throw badRequest('page_size_invalid', `pageSize must be 1-${MAX_PAGE_SIZE}`);
     }
     // Preserve old unqualified cursors while binding new cursors to their view.
-    const filter = fingerprint([query, folderId ?? '', String(pageSize), ...(view === null ? [] : [view])]);
+    const filter = fingerprint([query, folderId ?? '', String(pageSize), ...(view === null ? [] : [view]), ...(fileType === 'all' ? [] : [fileType]), ...(order === 'name' ? [] : [order])]);
     const rawCursor = url.searchParams.get('cursor');
     const pageToken = rawCursor === null ? null : decodeCursor(rawCursor, filter, now());
 
@@ -159,7 +163,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     const clientClosed = () => { res.statusCode = 499; return undefined; };
     res.on('close', onClose);
     try {
-      page = await requireAdapter().list({ query, folderId, pageSize, pageToken, view, signal: abort.signal });
+      page = await requireAdapter().list({ query, folderId, pageSize, pageToken, view, fileType, order, signal: abort.signal });
       if (abort.signal.aborted) return clientClosed();
     } catch (error) {
       if (abort.signal.aborted) return clientClosed();
@@ -307,9 +311,23 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     const id = params[0];
     const started = now();
     const drive = requireAdapter();
+    const abort = new AbortController();
+    let aborted = false;
+    let opened;
+    const onClose = () => {
+      if (!res.writableEnded) { aborted = true; abort.abort(); }
+    };
+    res.on('close', onClose);
+    try {
     let found;
     try {
-      found = await drive.get(id);
+      const range = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
+      const bounded = range && Number.isSafeInteger(Number(range[2])) && Number(range[2]) >= Number(range[1]) &&
+        Number(range[2]) - Number(range[1]) < 512 * 1024;
+      if (req.method === 'GET' && bounded && typeof drive.prepareContent === 'function') {
+        ({ found, opened } = await drive.prepareContent(id, { range: req.headers.range, signal: abort.signal }));
+      } else { found = await drive.get(id, { signal: abort.signal }); }
+      if (abort.signal.aborted) return undefined;
     } catch (error) {
       throw driveError(error);
     }
@@ -363,19 +381,8 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
       return undefined;
     }
 
-    const abort = new AbortController();
-    let aborted = false;
-    const onClose = () => {
-      if (!res.writableEnded) {
-        aborted = true;
-        abort.abort();
-      }
-    };
-    res.on('close', onClose);
-
-    let opened;
     try {
-      opened = await drive.open(id, { range: rangeHeader ?? null, signal: abort.signal, expectedVersion: itemVersion(item) });
+      opened ??= await drive.open(id, { range: rangeHeader ?? null, signal: abort.signal, expectedVersion: itemVersion(item) });
     } catch (error) {
       res.off('close', onClose);
       if (error?.name === 'AbortError') return undefined;
@@ -435,6 +442,12 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
       }
     }
     return undefined;
+    } finally {
+      res.off('close', onClose);
+      // Includes permission/version rejection after a speculative Google read.
+      if (!res.writableEnded || (opened && !opened.stream.readableEnded)) abort.abort();
+      if (opened && !opened.stream.readableEnded) opened.stream.destroy();
+    }
   }
 
   const contentPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})\/content$/;

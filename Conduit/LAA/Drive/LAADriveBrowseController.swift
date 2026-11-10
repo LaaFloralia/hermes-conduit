@@ -31,9 +31,10 @@ final class LAADriveBrowseController: ObservableObject {
         generation &+= 1
         let expectedGeneration = generation
         let initial = LAADriveBrowseQuery(section: requested.section, folderID: requested.folderID,
-                                          search: requested.search, pageSize: requested.pageSize)
-        query = initial; items = cached?.items ?? []; cursor = nil; seenCursors = []
-        incompleteSearch = nil; error = nil
+                                          search: requested.search, pageSize: requested.pageSize, fileType: requested.fileType, order: requested.order)
+        let previousItems = query == initial ? items : []
+        query = initial; items = cached?.items ?? previousItems; cursor = nil; seenCursors = []
+        incompleteSearch = cached?.incompleteSearch; error = nil
         guard initial.path != nil else { loading = false; error = LAADriveBrowseError.invalidQuery; return }
         loading = true
         do {
@@ -56,7 +57,7 @@ final class LAADriveBrowseController: ObservableObject {
     func loadMore(using load: Loader) async {
         guard !loading, let base = query, let previous = cursor else { return }
         let requested = LAADriveBrowseQuery(section: base.section, folderID: base.folderID,
-                                            search: base.search, cursor: previous, pageSize: base.pageSize)
+                                            search: base.search, cursor: previous, pageSize: base.pageSize, fileType: base.fileType, order: base.order)
         let expectedGeneration = generation
         loading = true; error = nil
         do {

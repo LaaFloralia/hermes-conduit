@@ -41,7 +41,7 @@ struct NativePlaybackFixture {
         var acquires = 0
         var releases = 0
         let coordinator = LAADrivePlaybackCoordinator(
-            player: player, identity: identity, resumeStore: store,
+            player: player, identity: identity, resumeStore: store, startsBufferedPlayback: true,
             openSource: { opens += 1; player.replaceCurrentItem(with: AVPlayerItem(url: movie)) },
             closeSource: { closes += 1; player.replaceCurrentItem(with: nil) },
             acquireAudio: { acquires += 1 }, releaseAudio: { releases += 1 })
@@ -58,6 +58,8 @@ struct NativePlaybackFixture {
         try await Task.sleep(nanoseconds: 350_000_000)
         player.pause() // Native controls can operate on AVPlayer directly.
         try await waitFor("native pause: \(coordinator.state)") { coordinator.state == .paused }
+        try await Task.sleep(for: .milliseconds(200))
+        try check(player.rate == 0 && coordinator.state == .paused, "buffer observations resumed an explicit native pause")
         try check(releases > 0, "pausing did not release audio")
         try check((store.position(for: identity) ?? 0) > 0, "native pause did not save position")
         player.play()

@@ -249,6 +249,10 @@ struct LAADrivePreviewView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     let item: LAADriveItem
     var images: [LAADriveItem] = []
+    var poster: UIImage? = nil
+    @State private var currentMediaID: String?
+    private var media: [LAADriveItem] { images.filter(\.isMedia) }
+    private var currentMedia: LAADriveItem { media.first { $0.id == currentMediaID } ?? item }
     @State private var data: Data?
     @State private var error: String?
     @State private var loading = true
@@ -259,7 +263,14 @@ struct LAADrivePreviewView: View {
     var body: some View {
         Group {
             if item.isMedia {
-                LAADrivePlayerView(item: item, bridge: bridge)
+                LAADrivePlayerView(item: currentMedia, bridge: bridge, autoPlay: true, poster: currentMedia.id == item.id ? poster : nil, showsDetails: true)
+                    .id(currentMedia.id)
+                    .simultaneousGesture(DragGesture(minimumDistance: 100).onEnded { value in
+                        guard value.startLocation.y < 96, abs(value.translation.width) > abs(value.translation.height) * 2,
+                              let index = media.firstIndex(where: { $0.id == currentMedia.id }) else { return }
+                        let next = index + (value.translation.width < 0 ? 1 : -1)
+                        if media.indices.contains(next) { currentMediaID = media[next].id }
+                    })
             } else if item.isImage, images.count > 1 {
                 LAADriveImagePager(items: images, initialID: item.id)
             } else if let data {
@@ -275,9 +286,10 @@ struct LAADrivePreviewView: View {
             } else if loading { ProgressView() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LAAColor.background.ignoresSafeArea())
+        .background((item.isMedia ? LAAColorValues.color(LAAColorValues.backgroundDark) : LAAColor.background).ignoresSafeArea())
+        .preferredColorScheme(item.isMedia ? .dark : nil)
         .tint(LAAColor.link)
-        .navigationTitle(Text(verbatim: item.name)).navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(Text(verbatim: item.isMedia ? "" : item.name)).navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             if localFile != nil {

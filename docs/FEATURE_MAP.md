@@ -4350,3 +4350,10 @@ Work presents Sessions, Tasks and Routines. Decisions appear above them (at most
 
 **Code:** `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAAWorkDecisionSummary.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`.
 **Checked:** 2026-11-11, WORK v3; targeted unit/UI and rendered evidence in the stage2 WORK report.
+
+
+## LAA Drive stage 2 browsing and playback
+
+**Code:** `Conduit/LAA/Drive/`, `Conduit/LAA/Assets/`, `bridge/src/drive/google.mjs`, `bridge/src/routes/drive.mjs`.
+**Behavior:** Studio/Drive standard segment; clickable folder path; server-side video/image/document filters; folder/document rows and three-column media; per-folder layout/order; direct media preview with cached poster; long-press share/copy/open/save; four bounded Range reads in flight, permission/version validation, one read-only OAuth retry, six thumbnail transfers, protected bounded thumbnail disk cache, previous listing retained during refresh.
+**Validation:** `npm --prefix bridge test`; `bridge/bench/drive-{browse-models,thumbnails,native-playback}-test.mjs`; `drive-integration-typecheck.mjs`; `LAAAssetsTests`, `LAADriveRangeTests`, `LAAAssetsUITests`. Device Wi-Fi latency, long-play stalls, PiP, AirPlay and background audio require physical acceptance; macOS/synthetic measurements do not certify those targets. See `docs/laa/DRIVE-PLAYER-API.md`.

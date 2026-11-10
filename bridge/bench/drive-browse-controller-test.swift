@@ -31,13 +31,13 @@ private enum FixtureError: Error { case unavailable }
         let controller = LAADriveBrowseController()
         var queries: [LAADriveBrowseQuery] = []
         let original = LAADriveBrowseQuery(section: .starred, folderID: "fold_1", search: "a+b",
-                                           cursor: "must-be-ignored", pageSize: 4)
+                                           cursor: "must-be-ignored", pageSize: 4, fileType: .video, order: .recent)
         await controller.reload(original) { query in
             queries.append(query)
             return try page(["file_1", "file_1", "file_2"], cursor: "cursor_1", incomplete: nil)
         }
         expect(queries[0].section == .starred && queries[0].folderID == "fold_1" && queries[0].search == "a+b" &&
-               queries[0].pageSize == 4 && queries[0].cursor == nil, "first page scope and cursor")
+               queries[0].pageSize == 4 && queries[0].cursor == nil && queries[0].fileType == .video && queries[0].order == .recent, "first page scope and cursor")
         expect(controller.items.map(\.id) == ["file_1", "file_2"] && controller.cursor == "cursor_1" &&
                controller.incompleteSearch == nil && !controller.loading, "first page deduplicated")
         await controller.loadMore { query in
@@ -51,7 +51,7 @@ private enum FixtureError: Error { case unavailable }
             return try page(["file_2", "file_3"], cursor: "cursor_2", incomplete: false)
         }
         expect(queries.last?.cursor == "cursor_1" && queries.last?.section == .starred && queries.last?.folderID == "fold_1" &&
-               queries.last?.search == "a+b" && queries.last?.pageSize == 4, "page cursor stays bound to scope")
+               queries.last?.search == "a+b" && queries.last?.pageSize == 4 && queries.last?.fileType == .video && queries.last?.order == .recent, "page cursor stays bound to scope")
         expect(controller.items.map(\.id) == ["file_1", "file_2", "file_3"] && controller.cursor == "cursor_2" &&
                controller.incompleteSearch == nil && controller.error == nil, "subsequent page and unknown completeness")
         await controller.loadMore { _ in try page(["file_4"], cursor: "cursor_1", incomplete: true) }

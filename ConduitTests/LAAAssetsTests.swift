@@ -30,6 +30,17 @@ final class LAAAssetsTests: XCTestCase {
         XCTAssertEqual(stored.nextCursor, "opaque+cursor")
     }
 
+    func testFileTypeAndVideoDurationSurvivePaginationAndCaching() throws {
+        let query = LAADriveBrowseQuery(section: .my, folderID: "folder01", cursor: "cursor", fileType: .video, order: .recent)
+        let path = try XCTUnwrap(query.path)
+        XCTAssertEqual(URLComponents(string: path)?.queryItems?.first { $0.name == "type" }?.value, "video")
+        XCTAssertEqual(URLComponents(string: path)?.queryItems?.first { $0.name == "order" }?.value, "recent")
+        let source = #"{"items":[{"id":"video01","name":"Video","kind":"file","mimeType":"video/mp4","durationSeconds":125.5}],"incompleteSearch":false}"#
+        let page = try JSONDecoder().decode(LAADriveListingPage.self, from: Data(source.utf8))
+        XCTAssertEqual(page.items.first?.durationSeconds, 125.5)
+        XCTAssertEqual(try JSONDecoder().decode(LAADriveListingPage.self, from: JSONEncoder().encode(page)).items.first?.durationSeconds, 125.5)
+    }
+
     func testFiltersUseServerKindAndMimeWithoutDroppingUnknownFiles() throws {
         let folder = try item("Projects", mime: "application/vnd.google-apps.folder", kind: "folder")
         let image = try item("Portrait", mime: "image/png", kind: "file")

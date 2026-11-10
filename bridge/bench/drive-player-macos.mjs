@@ -16,7 +16,7 @@ import { parseRange } from '../src/routes/drive.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
 const repetitions = Number(process.argv[2] ?? '10');
-const chunkKiB = Number(process.argv[3] ?? '256');
+const chunkKiB = Number(process.argv[3] ?? '512');
 const idealCacheMs = Number(process.argv[4] ?? '0');
 const transport = process.argv[5] ?? 'bytes';
 const rttMs = Number(process.argv[6] ?? '50');
@@ -29,21 +29,29 @@ assert.ok(Number.isInteger(rttMs) && rttMs >= 0 && rttMs <= 2000);
 assert.ok(Number.isFinite(megabitsPerSecond) && megabitsPerSecond > 0 && megabitsPerSecond <= 1000);
 const tmp = mkdtempSync(join(tmpdir(), 'laa-drive-bench-'));
 let bridge;
+const machineLoad = () => ({ uptime: execFileSync("/usr/bin/uptime", [], { encoding: "utf8" }).trim(), swiftFrontends: execFileSync("/bin/sh", ["-c", "pgrep -x swift-frontend | wc -l"], { encoding: "utf8" }).trim() });
+const loadBefore = machineLoad();
 try {
-  const fixture = join(tmp, 'synthetic.mp4');
+  const duration = Number(process.env.LAA_BENCH_DURATION ?? '6');
+  assert.ok(Number.isFinite(duration) && duration >= 6 && duration <= 240);
+  const codec = process.env.LAA_BENCH_CODEC ?? 'h264';
+  assert.ok(['h264', 'hevc'].includes(codec));
+  const container = process.env.LAA_BENCH_CONTAINER ?? 'mp4';
+  assert.ok(['mp4', 'mov'].includes(container));
+  const fixture = join(tmp, 'synthetic.' + container);
   execFileSync('ffmpeg', [
-    '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=15:duration=6',
-    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=6',
-    '-c:v', 'libx264', '-profile:v', 'main', '-preset', 'ultrafast', '-g', '15',
+    '-v', 'error', '-f', 'lavfi', '-i', `testsrc2=size=320x180:rate=15:duration=${duration}`,
+    '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=44100:duration=${duration}`,
+    '-c:v', codec === 'hevc' ? 'libx265' : 'libx264', '-threads', '2', '-preset', 'ultrafast', '-g', '15',
     '-b:v', '4M', '-minrate', '4M', '-maxrate', '4M', '-bufsize', '8M',
-    '-x264-params', 'nal-hrd=cbr:force-cfr=1', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart', '-t', '6', '-y', fixture,
+    ...(codec === 'hevc' ? ['-x265-params', 'pools=2:frame-threads=2:log-level=error', '-tag:v', 'hvc1'] : ['-x264-params', 'nal-hrd=cbr:force-cfr=1']), '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '64k', ...(process.env.LAA_BENCH_FASTSTART === '0' ? [] : ['-movflags', '+faststart']), '-t', String(duration), '-y', fixture,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const size = statSync(fixture).size;
-  assert.ok(size > 0 && size <= 4 * 1024 * 1024, `fixture exceeds 4 MiB (${size})`);
+  assert.ok(size > 0 && size <= 128 * 1024 * 1024, `fixture exceeds 128 MiB (${size})`);
   const video = readFileSync(fixture);
   const state = { metadataLookups: 0, metadata: 0, media: 0, bytes: 0, ranges: [] };
-  const item = { name: 'synthetic.mp4', mimeType: 'video/mp4', kind: 'file',
+  const item = { name: 'synthetic.mp4', mimeType: container === 'mov' ? 'video/quicktime' : 'video/mp4', kind: 'file',
     size, downloadable: true, modifiedAt: null, parents: [], webViewLink: null };
   const idealCache = new Map();
   const drive = {
@@ -88,7 +96,7 @@ try {
   const token = await bridge.token(); // Throwaway pairing; never printed or written to source.
   const playerSource = readFileSync(join(root, 'Conduit/LAA/Drive/LAADrivePlayer.swift'), 'utf8');
   const transportSource = readFileSync(join(root, 'Conduit/LAA/Drive/LAADriveTransport.swift'), 'utf8');
-  assert.match(transportSource, /static let chunkSize = 256 \* 1024/, 'update the harness if the iOS chunk size changes');
+  assert.match(transportSource, /static let chunkSize = 512 \* 1024/, 'update the harness if the iOS chunk size changes');
   const start = playerSource.indexOf('@MainActor\nfinal class LAADrivePlayer:');
   const end = playerSource.indexOf('\nstruct LAADrivePlayerView:', start);
   assert.ok(start >= 0 && end > start, 'could not locate the current player class');
@@ -97,7 +105,7 @@ try {
   writeFileSync(swiftSource, `${harness}\n${playerSource.slice(start, end)}\n`);
   const binary = join(tmp, 'drive-player-bench');
   execFileSync('swiftc', ['-swift-version', '5', '-D', 'LAA_BUILD', '-O', '-parse-as-library', swiftSource,
-    '-o', binary], { stdio: ['ignore', 'pipe', 'pipe'] });
+    join(root, 'Conduit/LAA/Drive/LAADrivePlaybackState.swift'), join(root, 'Conduit/LAA/Drive/LAADrivePlaybackCoordinator.swift'), '-o', binary], { stdio: ['ignore', 'pipe', 'pipe'] });
   const result = await new Promise((resolveProcess, reject) => {
     const child = spawn(binary, [], {
       env: { ...process.env, LAA_BENCH_BASE: bridge.base, LAA_BENCH_FAKE_TOKEN: token,
@@ -119,7 +127,7 @@ try {
     const sorted = trials.map((trial) => trial[field]).sort((a, b) => a - b);
     return Math.round(sorted[Math.ceil(sorted.length * 0.9) - 1]);
   }
-  console.log(JSON.stringify({ fixtureBytes: size, fixtureSeconds: 6,
+  console.log(JSON.stringify({ loadBefore, loadAfter: machineLoad(), fixtureBytes: size, fixtureSeconds: duration, codec, container, bufferedStart: process.env.LAA_BENCH_START_BUFFERED === '1',
     network: `${rttMs} ms RTT per hop; ${megabitsPerSecond} Mbit/s per hop; no packet loss`,
     platform: 'macOS AVFoundation; current iOS player class; modeled transport; not iPhone',
     repetitions, chunkKiB, transport, idealizedMetadataCacheMs: idealCacheMs,

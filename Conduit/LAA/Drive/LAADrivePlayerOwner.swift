@@ -27,6 +27,7 @@ final class LAADrivePlayerOwner: NSObject, ObservableObject, @preconcurrency AVP
         let identity = LAADrivePlaybackIdentity(pairingID: bridge.deviceID, contentID: contentID, version: version)
         let playback = LAADrivePlaybackCoordinator(
             player: source.player, identity: identity,
+            startsBufferedPlayback: localURL == nil,
             openSource: { source.open() }, closeSource: { source.close() },
             acquireAudio: { try audio.acquire() }, releaseAudio: { audio.release() })
         self.source = source; self.audio = audio; self.playback = playback; self.autoPlay = autoPlay

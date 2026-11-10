@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import Foundation
+import CryptoKit
 
 enum LAADriveThumbnailError: Error, Equatable { case tooLarge }
 
@@ -13,6 +14,19 @@ extension LAABridgeClient {
     /// Fetch only from the authenticated Bridge; never expose its bearer to a
     /// thumbnail URL from Drive. The existing session refuses redirects.
     func driveThumbnail(id: String, credentials: LAABridgeCredentials) async throws -> Data {
+        try await LAADriveThumbnailQueue.shared.acquire()
+        do {
+            let result = try await fetchDriveThumbnail(id: id, credentials: credentials)
+            await LAADriveThumbnailQueue.shared.release()
+            return result
+        } catch {
+            await LAADriveThumbnailQueue.shared.release()
+            throw error
+        }
+    }
+
+    private func fetchDriveThumbnail(id: String, credentials: LAABridgeCredentials) async throws -> Data {
+        try Task.checkCancellation()
         let maximum = 2 * 1024 * 1024
         let path = try LAADrivePaths.metadata(id) + "/thumbnail"
         guard let url = URL(string: path, relativeTo: credentials.baseURL)?.absoluteURL,
@@ -84,8 +98,39 @@ extension LAABridgeClient {
     }
 }
 
-/// Memory-only, strictly bounded compressed bytes. A versionless image is
-/// never cached; a new pairing or thumbnail version has a different key.
+/// Leave connections for video, metadata and long polls when a grid appears.
+actor LAADriveThumbnailQueue {
+    static let shared = LAADriveThumbnailQueue()
+    private let maximum: Int
+    private var active = 0
+    private var waiters: [(UUID, CheckedContinuation<Void, Error>)] = []
+
+    init(maximum: Int = 6) { self.maximum = max(1, maximum) }
+
+    func acquire() async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+                else if active < maximum { active += 1; continuation.resume() }
+                else { waiters.append((id, continuation)) }
+            }
+        } onCancel: { Task { await self.cancel(id) } }
+    }
+
+    func release() {
+        if !waiters.isEmpty { waiters.removeFirst().1.resume() }
+        else { active -= 1 }
+    }
+
+    private func cancel(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.0 == id }) else { return }
+        waiters.remove(at: index).1.resume(throwing: CancellationError())
+    }
+}
+
+/// Strictly bounded compressed bytes. A versionless image is never cached;
+/// a new pairing or thumbnail version has a different key.
 struct LAADriveThumbnailKey: Hashable {
     let pairingID: String
     let fileID: String
@@ -106,14 +151,27 @@ actor LAADriveThumbnailCache {
     private var bytes = 0
     private var clock: UInt64 = 0
     private var entries: [LAADriveThumbnailKey: Entry] = [:]
+    private let diskDirectory: URL?
+    private let maximumDiskBytes: Int
 
-    init(maximumBytes: Int = 8 * 1024 * 1024, maximumEntries: Int = 100) {
+    init(maximumBytes: Int = 8 * 1024 * 1024, maximumEntries: Int = 100,
+         diskDirectory: URL? = nil, maximumDiskBytes: Int = 32 * 1024 * 1024) {
         self.maximumBytes = max(0, maximumBytes)
         self.maximumEntries = max(0, maximumEntries)
+        self.diskDirectory = diskDirectory
+        self.maximumDiskBytes = max(0, maximumDiskBytes)
     }
 
     func value(for key: LAADriveThumbnailKey?) -> Data? {
-        guard let key, var entry = entries[key] else { return nil }
+        guard let key else { return nil }
+        guard var entry = entries[key] else {
+            guard maximumDiskBytes > 0, let file = diskURL(key), let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+                  let size = values.fileSize, size > 0, size <= min(maximumBytes, 2 * 1024 * 1024),
+                  let modified = values.contentModificationDate, Date().timeIntervalSince(modified) < 86_400,
+                  let data = try? Data(contentsOf: file), data.count == size else { return nil }
+            insert(data, for: key)
+            return data
+        }
         clock &+= 1; entry.lastUsed = clock; entries[key] = entry
         return entry.data
     }
@@ -129,14 +187,59 @@ actor LAADriveThumbnailCache {
         clock &+= 1
         entries[key] = Entry(data: data, lastUsed: clock)
         bytes += data.count
+        if let file = diskURL(key), data.count <= maximumDiskBytes {
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            trimDisk()
+        }
     }
 
     /// Call when metadata reports access loss, or clear all on pairing changes.
     func invalidate(pairingID: String, fileID: String) {
         for key in entries.keys.filter({ $0.pairingID == pairingID && $0.fileID == fileID }) { remove(key) }
+        let prefix = diskPrefix(pairingID: pairingID, fileID: fileID) + "-"
+        for file in diskFiles() where file.lastPathComponent.hasPrefix(prefix) { try? FileManager.default.removeItem(at: file) }
     }
 
-    func removeAll() { entries.removeAll(); bytes = 0 }
+    func removeAll() {
+        entries.removeAll(); bytes = 0
+        for file in diskFiles() { try? FileManager.default.removeItem(at: file) }
+    }
+
+    static func defaultDirectory() -> URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("DriveThumbnails-v1", isDirectory: true)
+    }
+
+    private func diskPrefix(pairingID: String, fileID: String) -> String {
+        let data = (try? JSONEncoder().encode([pairingID, fileID])) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func diskURL(_ key: LAADriveThumbnailKey) -> URL? {
+        diskDirectory?.appendingPathComponent(diskPrefix(pairingID: key.pairingID, fileID: key.fileID) + "-" + key.version + ".thumb")
+    }
+
+    private func diskFiles() -> [URL] {
+        guard let diskDirectory else { return [] }
+        return ((try? FileManager.default.contentsOfDirectory(at: diskDirectory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? []).filter { $0.pathExtension == "thumb" }
+    }
+
+    private func trimDisk() {
+        let files = diskFiles().map { file in
+            (file, try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]))
+        }.sorted { ($0.1?.contentModificationDate ?? .distantPast) < ($1.1?.contentModificationDate ?? .distantPast) }
+        var total = files.reduce(0) { $0 + ($1.1?.fileSize ?? 0) }
+        var count = files.count
+        for (file, values) in files {
+            let expired = Date().timeIntervalSince(values?.contentModificationDate ?? .distantPast) >= 86_400
+            if expired || total > maximumDiskBytes || count > maximumEntries {
+                try? FileManager.default.removeItem(at: file)
+                total -= values?.fileSize ?? 0; count -= 1
+            }
+        }
+    }
 
     private func remove(_ key: LAADriveThumbnailKey) {
         if let previous = entries.removeValue(forKey: key) { bytes -= previous.data.count }

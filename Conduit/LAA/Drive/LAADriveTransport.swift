@@ -116,7 +116,7 @@ extension LAABridgeClient {
 }
 
 enum LAADriveContent {
-    static let chunkSize = 256 * 1024
+    static let chunkSize = 512 * 1024
     // Images and PDFs are materialized for UIKit/PDFKit; media is never subject to this limit.
     static let previewLimit: Int64 = 64 * 1024 * 1024
 

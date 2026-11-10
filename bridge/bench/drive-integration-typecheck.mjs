@@ -17,6 +17,7 @@ try {
     `struct LAAStudioAsset { let kind: String; let name: String }\n` +
     `enum VoicePhoneCalls { static let isOn = false }\n` +
     `enum LogRedaction { static func describing(_ error: Error) -> String { "redacted" } }\n` +
+    `@MainActor final class LAAWorkLinkRequest: ObservableObject { static let shared = LAAWorkLinkRequest(); @Published var generation = 0; var url: URL? }\n` +
     `struct LAAStudioHomeView: View { let initialSection: Int; var body: some View { EmptyView() } }\n` +
     `struct LAAPairingView: View { var body: some View { EmptyView() } }\n` +
     `struct LAASettingsButton: View { let action: () -> Void; var body: some View { Button("Settings", action: action) } }\n` +
@@ -28,14 +29,14 @@ try {
   if (studioStart < 0 || studioEnd <= studioStart) throw new Error('Studio player call site missing');
   const studioPlayer = join(temporary, 'StudioPlayer.swift');
   writeFileSync(studioPlayer, `import SwiftUI\n` + studioWork.slice(studioStart, studioEnd));
-  const drive = ['LAADriveBrowseModels', 'LAADriveBrowseController', 'LAADriveShortcutResolver',
+  const drive = ['LAADriveUpload', 'LAADriveBrowseModels', 'LAADriveBrowseController', 'LAADriveShortcutResolver',
     'LAADriveBrowserView', 'LAADriveThumbnails', 'LAADriveDocumentExport', 'LAADriveTransport',
     'LAADrivePlayer', 'LAADrivePlayerOwner', 'LAADrivePlaybackState', 'LAADrivePlaybackCoordinator',
     'LAADriveNativePlayerSurface', 'LAADriveViews', 'LAADriveImagePager', 'LAADriveOfflineStore', 'LAADriveOfflineAccess',
     'LAADriveOfflineList', 'LAADriveOfflineFolder', 'LAADriveOfflineOperations', 'LAADriveOfflineScreen',
     'LAADriveShareFiles', 'LAADriveShareSheet'];
   const sources = [stub, studioPlayer, source('LAATab.swift'), source('LAACopy.swift'), source('LAAColors.swift'),
-    source('Design/LAATokens.swift'), source('LAABridgeClient.swift'), source('LAABridgeStatus.swift'),
+    source('Design/LAAColorValues.swift'), source('Design/LAAGlass.swift'), source('Mac/LAADesktopLayout.swift'), source('Mac/LAAMacSection.swift'), source('Design/LAATokens.swift'), source('Settings/LAADeviceCopy.swift'), source('Google/LAAGoogleCache.swift'), source('LAABridgeClient.swift'), source('LAABridgeStatus.swift'),
     source('Assets/LAAAssetsData.swift'), source('Assets/LAAAssetsView.swift'),
     ...drive.map(name => source(`Drive/${name}.swift`)),
     join(root, 'Conduit/Voice/VoiceAudioSessionCoordinator.swift'),

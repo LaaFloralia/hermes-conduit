@@ -336,3 +336,93 @@ test('a ledger written before the marker keeps its rolling catch-up window', asy
     notify: async notice => { notices.push(notice); return { delivered: true }; } }).tick();
   assert.equal(notices.length, 1, 'an existing install still catches up the last day');
 });
+
+test('Drive bounded preparation overlaps fresh metadata and media without consuming the media first', async () => {
+  let releaseMetadata;
+  let metadataStarted;
+  let mediaStarted;
+  const metadataReady = new Promise(r => { metadataStarted = r; });
+  const mediaReady = new Promise(r => { mediaStarted = r; });
+  const metadataGate = new Promise(r => { releaseMetadata = r; });
+  const connection = mockConnection(async url => {
+    if (url.searchParams.get('alt') === 'media') {
+      mediaStarted();
+      return new Response('abcd', { status: 206, headers: { 'content-range': 'bytes 0-3/8' } });
+    }
+    metadataStarted(); await metadataGate; return json(file);
+  });
+  const drive = createGoogleDrive({ connection });
+  const pending = drive.prepareContent(file.id, { range: 'bytes=0-3' });
+  await Promise.all([metadataReady, mediaReady]);
+  releaseMetadata();
+  const prepared = await pending;
+  assert.equal(prepared.found.item.version, '1');
+  assert.equal(prepared.opened.stream.readableFlowing, null);
+  let bytes = ''; for await (const chunk of prepared.opened.stream) bytes += chunk;
+  assert.equal(bytes, 'abcd');
+  for (const range of ['bytes=0-', 'bytes=0-524288', 'bytes=8-4', 'bytes=0-1,4-5']) {
+    await assert.rejects(drive.prepareContent(file.id, { range }), e => e.code === 'drive_invalid_range');
+  }
+});
+
+test('Drive speculative media is discarded when fresh metadata refuses download or changes version', async t => {
+  for (const denied of [true, false]) {
+    let cancelled = false;
+    const connection = mockConnection(url => url.searchParams.get('alt') === 'media'
+      ? new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status: 206 })
+      : json({ ...file, capabilities: { canDownload: !denied } }));
+    const bridge = await startBridge({ drive: createGoogleDrive({ connection }) });
+    t.after(() => bridge.close());
+    const result = await bridge.request(`/v1/drive/files/${file.id}/content`, {
+      token: await bridge.token(['media:read']), headers: { range: 'bytes=0-3', 'x-laa-drive-version': denied ? '1' : '2' },
+    });
+    assert.equal(result.status, denied ? 403 : 409);
+    assert.equal(result.body.error.code, denied ? 'download_forbidden' : 'version_changed');
+    await new Promise(r => setImmediate(r));
+    assert.equal(cancelled, true);
+  }
+});
+
+test('Drive refreshes a rejected token once for reads and never automatically retries writes', async () => {
+  let refreshes = 0, reads = 0;
+  const connection = createGoogleConnection({ env: {}, readCredential: async () => credential, fetchImpl: async url => {
+    if (new URL(url).hostname === 'oauth2.googleapis.com') return json({ access_token: `fixture-${++refreshes}`, expires_in: 3600 });
+    reads++;
+    return reads === 1 ? json({}, 401) : json(file);
+  } });
+  const drive = createGoogleDrive({ connection });
+  assert.equal((await drive.get(file.id)).item.id, file.id);
+  assert.equal(refreshes, 2); assert.equal(reads, 2);
+  let writes = 0;
+  const denied = createGoogleDrive({ connection: mockConnection(() => {
+    writes++; throw Object.assign(new Error('fixture denied'), { code: 'drive_auth_required' });
+  }) });
+  await assert.rejects(denied.beginUpload({ name: 'fixture', mimeType: 'video/mp4', size: 10, deviceId: 'fixture' }));
+  assert.equal(writes, 1);
+  writes = 0;
+  await assert.rejects(denied.get(file.id));
+  assert.equal(writes, 2);
+});
+
+
+test('Drive filters before pagination and returns video duration without assuming folder counts', async () => {
+  const connection = mockConnection(() => json({ files: [{ ...file, videoMediaMetadata: { durationMillis: '125500' } }] }));
+  const drive = createGoogleDrive({ connection });
+  for (const [fileType, text] of [['video', "mimeType contains 'video/'"], ['image', "mimeType contains 'image/'"], ['document', "mimeType contains 'application/'"]]) {
+    const page = await drive.list({ fileType, folderId: 'folder123', pageToken: 'opaque', order: 'recent' });
+    assert.ok(connection.calls.at(-1).url.searchParams.get('q').includes(text));
+    assert.equal(connection.calls.at(-1).url.searchParams.get('pageToken'), 'opaque');
+    assert.equal(page.items[0].durationSeconds, 125.5);
+    assert.equal(connection.calls.at(-1).url.searchParams.get('orderBy'), 'modifiedTime desc,name');
+  }
+  const bridge = await startBridge({ drive: { list: async () => ({ items: [], nextPageToken: 'next' }) } });
+  try {
+    const token = await bridge.token(['media:read']);
+    const first = await bridge.request('/v1/drive/files?type=video', { token });
+    const cursor = first.body.data.nextCursor;
+    assert.equal((await bridge.request('/v1/drive/files?type=image&cursor=' + encodeURIComponent(cursor), { token })).status, 400);
+    assert.equal((await bridge.request('/v1/drive/files?type=video&order=recent&cursor=' + encodeURIComponent(cursor), { token })).status, 400);
+    assert.equal((await bridge.request('/v1/drive/files?order=unknown', { token })).status, 400);
+    assert.equal((await bridge.request('/v1/drive/files?type=unknown', { token })).status, 400);
+  } finally { await bridge.close(); }
+});
