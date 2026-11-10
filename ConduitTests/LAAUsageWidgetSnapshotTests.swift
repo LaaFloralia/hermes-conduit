@@ -130,6 +130,11 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
     }
 
+    func testMediumOnWallpaperLightAndDark() throws {
+        try capture(style: .light, mode: .fullColor, name: "medium-wallpaper-light-color", wallpaper: true)
+        try capture(style: .dark, mode: .fullColor, name: "medium-wallpaper-dark-color", wallpaper: true)
+    }
+
     func testSmallActionsOnWallpaperLightDarkAndTinted() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for mode in [WidgetRenderingMode.fullColor, .accented] {

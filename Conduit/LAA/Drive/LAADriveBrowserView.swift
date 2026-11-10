@@ -29,15 +29,17 @@ struct LAADriveBrowserView: View {
     /// visible while the detail column shows the file.
     var desktop = false
     var selectedID: String?
+    let layoutToggle: Int
 
     init(revision: Int, refreshID: Int = 0, cached: @escaping (LAADriveBrowseQuery) -> LAADriveListingPage? = { _ in nil }, upload: @escaping (String?) -> Void = { _ in }, load: @escaping Loader, loadThumbnail: @escaping ThumbnailLoader,
          resolveShortcut: @escaping ShortcutLoader,
          errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem, [LAADriveItem]) -> Void,
          saveFolder: @escaping (LAADriveListingItem) -> Void = { _ in },
          saveFile: @escaping (LAADriveListingItem) -> Void = { _ in },
-         desktop: Bool = false, selectedID: String? = nil) {
+         desktop: Bool = false, selectedID: String? = nil, layoutToggle: Int = 0) {
         self.desktop = desktop
         self.selectedID = selectedID
+        self.layoutToggle = layoutToggle
         self.cached = cached; self.upload = upload
         self.revision = revision; self.refreshID = refreshID
         self.load = load
@@ -91,14 +93,13 @@ struct LAADriveBrowserView: View {
     private var key: LoadKey {
         .init(revision: revision, refreshID: refreshID, section: section, folderID: folders.last?.id, search: search, fileType: fileType, order: sort)
     }
-    private var effectiveLayout: Layout { desktop ? .list : layout }
 
     private var columns: [GridItem] {
         if desktop {
-            return [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x6)]
+            return [GridItem(.adaptive(minimum: 180), spacing: LAASpacing.x6)]
         }
         return dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
-            Array(repeating: GridItem(.flexible(), spacing: LAASpacing.x2), count: 3)
+            Array(repeating: GridItem(.flexible(), spacing: LAASpacing.x3), count: 2)
     }
 
     var body: some View {
@@ -112,9 +113,10 @@ struct LAADriveBrowserView: View {
         .tint(LAAColor.link)
         .refreshable { await reload(key, debounce: false) }
         .task(id: preferenceKey) {
-            layout = Layout(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".layout") ?? "") ?? .grid
+            layout = Layout(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".layout") ?? "") ?? (desktop ? .list : .grid)
             sort = LAADriveBrowseOrder(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".sort") ?? "") ?? .name
         }
+        .onChange(of: layoutToggle) { _, _ in layout = layout == .grid ? .list : .grid }
         .onChange(of: layout) { _, value in UserDefaults.standard.set(value.rawValue, forKey: preferenceKey + ".layout") }
         .onChange(of: sort) { _, value in UserDefaults.standard.set(value.rawValue, forKey: preferenceKey + ".sort") }
         // Files dropped on the list take the upload sheet's existing path. Mac
@@ -253,7 +255,7 @@ struct LAADriveBrowserView: View {
                         Spacer()
                     }.padding(.horizontal, LAASpacing.x4).frame(height: LAASpacing.minimumRowHeight)
                 }
-            }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            }
                 .accessibilityLabel("ファイルを読み込み中")
         } else {
             if let navigationError { Text(verbatim: navigationError).foregroundStyle(LAAColor.attention) }
@@ -271,7 +273,7 @@ struct LAADriveBrowserView: View {
                 Text("一部の結果を取得できませんでした").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             rows(visibleItems.filter { $0.item.isFolder })
-            if effectiveLayout == .grid {
+            if layout == .grid {
                 LazyVGrid(columns: columns, spacing: LAASpacing.x4) {
                     ForEach(visibleItems.filter { !$0.item.isFolder && ($0.item.isImage || $0.item.isMedia) }) { cell($0, grid: true) }
                 }
@@ -291,9 +293,8 @@ struct LAADriveBrowserView: View {
             LazyVStack(spacing: 0) {
                 ForEach(items) { entry in
                     cell(entry, grid: false)
-                    if entry.id != items.last?.id { Divider().padding(.leading, 52) }
                 }
-            }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            }
         }
     }
 
@@ -301,7 +302,7 @@ struct LAADriveBrowserView: View {
         Button { select(entry) } label: {
             if grid {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    thumbnail(entry).aspectRatio(1, contentMode: .fit)
+                    thumbnail(entry).aspectRatio(4.0 / 3, contentMode: .fit)
                         .overlay(alignment: .bottomTrailing) {
                             if let duration = entry.durationSeconds, entry.item.mimeType.hasPrefix("video/") {
                                 Text(verbatim: String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60))
@@ -321,10 +322,10 @@ struct LAADriveBrowserView: View {
                         Text(date, style: .relative).font(.footnote).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                     }
                 }.padding(.horizontal, LAASpacing.x4).frame(minHeight: LAASpacing.minimumRowHeight)
-                    .background(selectedID == entry.id ? LAAColor.selectionFill : .clear)
+                    .background(selectedID == entry.id ? LAAColor.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .buttonStyle(.plain).disabled(resolvingID != nil)
+        .buttonStyle(LAAListRowStyle()).disabled(resolvingID != nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: entry.item.name)).accessibilityValue(Text(verbatim: kind(entry)))
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")

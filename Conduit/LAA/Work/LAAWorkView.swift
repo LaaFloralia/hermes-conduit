@@ -174,7 +174,7 @@ struct LAAWorkView: View {
                 Button(LAACopy.WorkTab.retry) { Task { await load() } }
             }.workCard()
         }
-        if isLoading { LAAWorkSkeleton() }
+        if isLoading { LAALoadingDots() }
         switch section {
         case 0: sessionList
         case 1: projectList

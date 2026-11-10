@@ -222,7 +222,7 @@ struct LAADrivePlayerContent: View {
                     if !hasPresentedFrame, owner.state == .loading, let poster {
                         Image(uiImage: poster).resizable().scaledToFit().allowsHitTesting(false).accessibilityHidden(true)
                     }
-                    if owner.state == .loading { ProgressView().allowsHitTesting(false) }
+                    if owner.state == .loading { LAALoadingDots().allowsHitTesting(false) }
                 }
                 .accessibilityIdentifier("laa.drive.player")
             switch owner.state {
@@ -242,7 +242,7 @@ struct LAADrivePlayerContent: View {
             }
             if let presentationItem {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: presentationItem.name).font(.headline).lineLimit(2)
+                    Text(verbatim: presentationItem.name).font(.system(size: 22, weight: .semibold)).lineLimit(2)
                     if let size = presentationItem.size {
                         Text(verbatim: ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
                             .font(.footnote).foregroundStyle(LAAColor.secondaryText)

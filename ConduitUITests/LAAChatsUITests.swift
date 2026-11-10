@@ -7,7 +7,7 @@ final class LAAChatsUITests: XCTestCase {
         app.launchArguments = ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://chats-ui-test.invalid",
                                "-LAA_UI_TEST_CHATS", "-LAA_CHATS_STATE", mode] + extra
         app.launch()
-        XCTAssertTrue(app.textFields["laa.chats.search"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["laa.chats.heading"].waitForExistence(timeout: 30))
         return app
     }
 
@@ -48,16 +48,10 @@ final class LAAChatsUITests: XCTestCase {
         }
     }
 
-    func testSearchAndNoResults() {
+    func testPhoneListHasNoSearchField() {
         let app = launch()
-        let search = app.textFields["laa.chats.search"]
-        search.tap(); search.typeText("LAA team")
-        XCTAssertTrue(app.buttons["laa.chats.group.team"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["laa.chats.person.laa-cto"].exists)
-        app.buttons["laa.chats.search.clear"].tap()
-        search.tap()
-        search.typeText("no-result-xyz")
-        XCTAssertTrue(app.staticTexts["laa.chats.search.empty"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields["laa.chats.search"].exists)
+        XCTAssertTrue(app.buttons["laa.chats.person.laa-monet"].exists)
     }
 
     func testGroupCreationUsesExistingForm() {

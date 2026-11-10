@@ -63,7 +63,9 @@ struct LAAWorkHub: View {
         .navigationTitle(Text(verbatim: "")).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { showUsage = true } label: { Image(systemName: "gauge.with.dots.needle.33percent").frame(width: 44, height: 44) }
+                    .accessibilityLabel(Text(verbatim: "Usage")).accessibilityIdentifier("work.usage")
                 if section == .sessions {
                     Menu {
                         Button("新しいセッション") { createID += 1 }.accessibilityIdentifier("work.sessions.new")
@@ -79,11 +81,7 @@ struct LAAWorkHub: View {
                     .disabled(bridge.status != .paired)
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showUsage = true } label: { Image(systemName: "gauge.with.dots.needle.33percent").frame(width: 44, height: 44) }
-                    .accessibilityLabel("Usage").accessibilityIdentifier("work.usage")
-            }
-            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+            ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: onRequestSettings) }
         }
         .tint(LAAColor.link)
         .scrollDismissesKeyboard(.interactively)

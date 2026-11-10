@@ -573,12 +573,12 @@ final class LAAMarkdownUITextView: UITextView {
                 ink.setFill()
                 UIBezierPath(ovalIn: dot).fill()
             case .checkbox(let checked):
-                let box = CGRect(x: x + 1, y: line.midY - 8, width: 16, height: 16)
-                let path = UIBezierPath(roundedRect: box, cornerRadius: 4)
+                let box = CGRect(x: x + 1, y: line.midY - 11, width: 22, height: 22)
+                let path = UIBezierPath(ovalIn: box)
                 path.lineWidth = 1.4
-                (checked ? accent : ink).setStroke()
-                path.stroke()
                 if checked {
+                    accent.setFill()
+                    path.fill()
                     let check = UIBezierPath()
                     check.move(to: CGPoint(x: box.minX + 4, y: box.midY))
                     check.addLine(to: CGPoint(x: box.minX + 7, y: box.maxY - 4))
@@ -586,8 +586,11 @@ final class LAAMarkdownUITextView: UITextView {
                     check.lineWidth = 2
                     check.lineCapStyle = .round
                     check.lineJoinStyle = .round
-                    accent.setStroke()
+                    UIColor(LAAColor.background).setStroke()
                     check.stroke()
+                } else {
+                    ink.setStroke()
+                    path.stroke()
                 }
             }
         }

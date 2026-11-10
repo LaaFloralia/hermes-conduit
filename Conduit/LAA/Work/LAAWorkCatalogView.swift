@@ -125,7 +125,7 @@ struct LAAWorkCatalogView: View {
             if let failure {
                 LAAWorkFailure(text: "一覧を取得できません") { Task { await load() } }
             }
-            if loading && !loaded { LAAWorkSkeleton().listRowBackground(Color.clear) }
+            if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
             if kind == .routines, skipped > 0 {
                 Text(verbatim: "一部（\(skipped)件）を読み取れませんでした。表示は前回の内容です。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)

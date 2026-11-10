@@ -140,7 +140,7 @@ struct LAAPersonalTaskList: View {
                 Text(verbatim: "更新: \(LAAWorkPresentation.date(observedAt)) · ページ間で内容が変わる場合があります。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if loading { LAAWorkSkeleton() }
+            if loading { LAALoadingDots() }
             if items.isEmpty && !loading && error == nil {
                 Text(verbatim: "該当するタスクはありません。").foregroundStyle(LAAColor.secondaryText).workCard()
             }

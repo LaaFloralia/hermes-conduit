@@ -33,7 +33,7 @@ struct LAATodayDesktopView: View {
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: LAASpacing.section) {
-                        if calendar.isLoading && !calendar.loaded { LAASkeletonRows() }
+                        if calendar.isLoading && !calendar.loaded { LAALoadingDots() }
                         ForEach(days, id: \.timeIntervalSince1970) { day in daySection(day) }
 
                     }.padding(LAASpacing.horizontal)

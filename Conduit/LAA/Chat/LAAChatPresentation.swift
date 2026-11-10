@@ -101,20 +101,13 @@ extension View {
 struct LAATypingDots: View {
     var startedAt: Date? = nil
     var records: [ChatMessage] = []
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingRecords = false
     var body: some View {
         Button { showingRecords = true } label: {
-            TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 15)) { context in
+            TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack(spacing: 8) {
-                    HStack(spacing: 4) {
-                        ForEach(0..<3) { index in
-                            let phase = context.date.timeIntervalSinceReferenceDate * 3.5 - Double(index) * 0.7
-                            Circle().fill(LAAColor.link).frame(width: 7, height: 7)
-                                .opacity(reduceMotion ? 0.65 : 0.65 + 0.35 * max(0, sin(phase)))
-                                .offset(y: reduceMotion ? 0 : -3 * max(0, sin(phase)))
-                        }
-                    }.frame(width: 64, height: 36)
+                    LAAActivityDots()
+                        .frame(width: 64, height: 36)
                         .background(LAAColor.surface, in: Capsule())
                     if let startedAt, context.date.timeIntervalSince(startedAt) > 60 {
                         Text("\(Int(context.date.timeIntervalSince(startedAt) / 60))分")
@@ -332,21 +325,7 @@ struct LAAGroupDelivery: View {
 #endif
 
 #if LAA_BUILD
-struct LAAChatListSkeleton: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<3) { index in
-                HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 8).fill(LAAColor.separator).frame(width: 40, height: 40)
-                    RoundedRectangle(cornerRadius: 4).fill(LAAColor.separator).frame(width: 120, height: 12)
-                    Spacer()
-                }.padding(12)
-                if index < 2 { Divider().padding(.leading, 64) }
-            }
-        }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
-            .accessibilityElement(children: .ignore).accessibilityLabel("読み込み中…")
-    }
-}
+
 #endif
 
 #if LAA_BUILD

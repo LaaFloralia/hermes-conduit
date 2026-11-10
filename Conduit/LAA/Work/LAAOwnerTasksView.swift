@@ -74,7 +74,7 @@ struct LAAOwnerTasksView: View {
                 Text(verbatim: "タスクを保存するには、この端末とMacの接続が必要です。")
                     .foregroundStyle(LAAColor.secondaryText)
             }
-            if loading && items.isEmpty { LAAWorkSkeleton() }
+            if loading && items.isEmpty { LAALoadingDots() }
             LAAOwnerTaskListContent(tasks: items, newTitle: $newTitle, adding: false,
                                     inputEnabled: bridge.deviceID != nil, showEmpty: loaded,
                                     disabledIDs: blockedIDs, checkboxDisabledIDs: draftIDs,

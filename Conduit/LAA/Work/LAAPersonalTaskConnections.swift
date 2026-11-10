@@ -162,7 +162,7 @@ private struct LAAPersonalDetailSection<Item: Decodable & Identifiable, Row: Vie
                 if !state.items.isEmpty { Text(verbatim: "前回取得した内容です。") }
                 Button(LAACopy.WorkTab.retry) { Task { await load(reset: true) } }
             }
-            if state.loading && state.items.isEmpty { LAAWorkSkeleton() }
+            if state.loading && state.items.isEmpty { LAALoadingDots() }
             if state.loaded && state.items.isEmpty && state.error == nil && !state.loading {
                 Text(verbatim: "表示する項目はありません。 ").foregroundStyle(LAAColor.secondaryText)
             }

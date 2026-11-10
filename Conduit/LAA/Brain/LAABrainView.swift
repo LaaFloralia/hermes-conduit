@@ -88,19 +88,17 @@ struct LAABrainView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                // Creation stays leading so the settings button sits where every
-                // other tab puts it (the common-position check compares frames).
                 if local.isReady {
-                    ToolbarItem(placement: .topBarLeading) { createMenu(parent: "") }
+                    ToolbarItem(placement: .topBarTrailing) { createMenu(parent: "") }
                 }
                 if !local.isSelected && (showMacSource || useBridgeFixture) && LAABrainData.available(bridge) {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { showCreate = true } label: { Image(systemName: "square.and.pencil") }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showCreate = true } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                             .accessibilityLabel(Text(verbatim: LAACopy.Brain.newNote))
                             .accessibilityIdentifier("laa.brain.create")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     LAASettingsButton(action: onRequestSettings)
                 }
             }

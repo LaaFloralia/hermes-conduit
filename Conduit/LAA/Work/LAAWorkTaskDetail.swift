@@ -37,7 +37,7 @@ struct LAAWorkTaskDetailView: View {
                             Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
                         }
                     } else {
-                        LAAWorkSkeleton()
+                        LAALoadingDots()
                     }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).laaPageWidth()
             }

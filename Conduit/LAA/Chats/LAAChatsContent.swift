@@ -18,6 +18,7 @@ struct LAAChatsContent: View {
 
     @Environment(\.laaDesktop) private var laaDesktop
     @State private var query = ""
+    @State private var showSearch = false
     @State private var hoveredRow: String?
     @FocusState private var searchFocused: Bool
     @FocusState private var focusedRow: String?
@@ -54,7 +55,7 @@ struct LAAChatsContent: View {
                         newChatButton.buttonStyle(.borderless).foregroundStyle(LAAColor.link)
                     }
                 }
-                search
+                if showSearch { search }
                 if let failure {
                     HStack(spacing: 8) {
                         Text(verbatim: failure).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
@@ -82,10 +83,8 @@ struct LAAChatsContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            // Creation sits on the leading edge so settings is the only
-            // trailing item, in the same place as every other tab's.
-            if !laaDesktop { ToolbarItem(placement: .topBarLeading) { newChatButton } }
-            if settingsAvailable { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: openSettings) } }
+            if settingsAvailable { ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: openSettings) } }
+            if !laaDesktop { ToolbarItem(placement: .topBarTrailing) { newChatButton } }
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in searchChanged() }
@@ -101,7 +100,7 @@ struct LAAChatsContent: View {
             canCreate: snapshot.canCreateGroup,
             create: newGroup,
             canSearch: true,
-            focusSearch: { searchFocused = true },
+            focusSearch: { showSearch = true; searchFocused = true },
             canReload: true,
             reload: retry
         ))
@@ -178,6 +177,12 @@ struct LAAChatsContent: View {
     private var search: some View {
         LAASearchField(placeholder: LAACopy.chatsSearch, text: $query,
                        identifier: "laa.chats.search", focus: $searchFocused)
+            .onAppear { searchFocused = true }
+            .onKeyPress(.escape) {
+                query = ""
+                showSearch = false
+                return .handled
+            }
     }
 
     private var monetVariants: [LAAChatsPerson] {
@@ -189,14 +194,23 @@ struct LAAChatsContent: View {
             HStack(spacing: 0) {
                 Button { openPerson(monet) } label: {
                     HStack(spacing: 12) {
-                        avatar(profile: monet.profile, name: monet.name, size: 64)
+                        avatar(profile: monet.profile, name: monet.name, size: 88)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Monet").font(.custom("Georgia", size: 22, relativeTo: .title3))
-                            Text("社長秘書・総合アドバイザー").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                            HStack(spacing: LAASpacing.x2) {
+                                Text(verbatim: "Monet").font(.custom("Georgia", size: 22, relativeTo: .title3))
+                                LAARoleBadge(role: "Secretary")
+                                if let unread = snapshot.unreadByProfile[monet.profile], unread > 0 {
+                                    unreadDot(unread)
+                                }
+                            }
+                            if let preview = monet.lastMessage, !preview.isEmpty {
+                                Text(verbatim: preview).font(.system(size: 15))
+                                    .lineLimit(2).foregroundStyle(LAAColor.secondaryText)
+                            }
                         }
                         Spacer(minLength: 0)
-                    }.frame(minHeight: 88).contentShape(Rectangle())
-                }.buttonStyle(.plain)
+                    }.frame(minHeight: 96).contentShape(Rectangle())
+                }.buttonStyle(LAAListRowStyle())
                     .disabled(!monet.available)
                     .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
                 if let callPerson {
@@ -206,36 +220,33 @@ struct LAAChatsContent: View {
                         .disabled(!monet.available).accessibilityLabel("Monetに電話")
                         .accessibilityIdentifier("laa.chats.monet.call")
                 }
-            }.padding(.horizontal, 12)
+            }
             ForEach(monetVariants) { person in
-                Divider().overlay(LAAColor.separator).padding(.leading, 60)
                 Button { openPerson(person) } label: {
                     HStack(spacing: 12) {
                         avatar(profile: person.profile, name: person.name, size: 36)
                         Text(LAAStaff(profile: person.profile) == .monetDots ? "Monet · Dots" : "Monet · 無検閲")
                             .font(.custom("Georgia", size: 17, relativeTo: .body))
                         Spacer(minLength: 0)
-                    }.frame(minHeight: 56).padding(.horizontal, 16).contentShape(Rectangle())
-                }.buttonStyle(.plain).disabled(!person.available)
+                    }.frame(minHeight: 56).contentShape(Rectangle())
+                }.buttonStyle(LAAListRowStyle()).disabled(!person.available)
                     .accessibilityIdentifier("laa.chats.person.\(person.profile)")
             }
         }.foregroundStyle(LAAColor.text)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var employeeSection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(LAACopy.chatsEmployees)
             if employees.isEmpty && snapshot.groupsState == .loading {
-                LAAChatListSkeleton()
+                LAALoadingDots()
             } else if employees.isEmpty {
                 note(LAACopy.chatsNoEmployees)
             } else {
                 VStack(spacing: 0) {
                 ForEach(employees) { employee in
-                    if employee.id != employees.first?.id { Divider().overlay(LAAColor.separator).padding(.leading, 76) }
                     Button { openPerson(employee) } label: { personRow(employee, size: 48, selected: isSelected("person.\(employee.profile)")) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(LAAListRowStyle())
                         .disabled(!employee.available)
                         .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))
                         .accessibilityAddTraits(isSelected("person.\(employee.profile)") ? .isSelected : [])
@@ -243,9 +254,8 @@ struct LAAChatsContent: View {
                         .modifier(rowChrome("person.\(employee.profile)"))
                         .focused($focusedRow, equals: "person.\(employee.profile)")
                         .onHover(perform: hover("person.\(employee.profile)"))
-                        .padding(.horizontal, 12).padding(.vertical, 4)
                 }
-                }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
+                }
             }
         }
     }
@@ -271,18 +281,16 @@ struct LAAChatsContent: View {
             } else {
                 VStack(spacing: 0) {
                 ForEach(rooms) { room in
-                    if room.id != rooms.first?.id { Divider().overlay(LAAColor.separator).padding(.leading, 76) }
                     Button { openRoom(room) } label: { roomRow(room, selected: isSelected("room.\(room.roomID)")) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(LAAListRowStyle())
                         .disabled(snapshot.groupsState == .offline)
                         .accessibilityAddTraits(isSelected("room.\(room.roomID)") ? .isSelected : [])
                         .accessibilityIdentifier("laa.chats.group.\(room.roomID)")
                         .modifier(rowChrome("room.\(room.roomID)"))
                         .focused($focusedRow, equals: "room.\(room.roomID)")
                         .onHover(perform: hover("room.\(room.roomID)"))
-                        .padding(.horizontal, 12).padding(.vertical, 4)
                 }
-                }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16))
+                }
                 if snapshot.groupsState != .ready { loadNote(snapshot.groupsState, empty: "") }
             }
         }
@@ -305,7 +313,7 @@ struct LAAChatsContent: View {
             VStack(alignment: .trailing, spacing: 8) {
                 if let date = person.lastMessageAt { Text(date, style: .relative).font(.caption2).foregroundStyle(LAAColor.secondaryText) }
                 if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
-                    Circle().fill(LAAColor.link).frame(width: 6, height: 6).accessibilityLabel(LAACopy.chatsUnread(unread))
+                    if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                 }
             }
         }
@@ -313,10 +321,11 @@ struct LAAChatsContent: View {
         .contentShape(Rectangle())
     }
 
-    /// A two-line row on the Mac is at least 72 points (rules §2); the phone
-    /// keeps its own 56.
-    private var rowHeight: CGFloat {
-        selection == nil ? LAASpacing.minimumRowHeight : 72
+    private var rowHeight: CGFloat { selection == nil ? 64 : 72 }
+
+    private func unreadDot(_ count: Int) -> some View {
+        Circle().fill(LAAColor.link).frame(width: 8, height: 8)
+            .accessibilityLabel(Text(verbatim: LAACopy.chatsUnread(count)))
     }
 
     /// A count, as the phone's chat lists show one: messages past the read
@@ -360,8 +369,8 @@ struct LAAChatsContent: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(verbatim: title)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(LAAColor.secondaryText)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(LAAColor.text)
             .accessibilityAddTraits(.isHeader)
     }
 
@@ -378,7 +387,7 @@ struct LAAChatsContent: View {
         switch state {
         case .ready: note(empty)
         case .loading:
-            LAAChatListSkeleton()
+            LAALoadingDots()
         case .offline, .unsupported, .failed: EmptyView()
         }
     }

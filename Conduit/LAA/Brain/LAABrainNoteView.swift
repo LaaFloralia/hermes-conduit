@@ -56,7 +56,7 @@ struct LAABrainNoteView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
                         Text(verbatim: URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent)
-                            .font(.custom("Georgia", size: 34, relativeTo: .largeTitle))
+                            .font(.system(size: 30, weight: .bold))
                         if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                             Text(verbatim: "競合コピー").foregroundStyle(LAAColor.attention)
                                 .accessibilityIdentifier("laa.brain.conflictCopy")
@@ -72,7 +72,7 @@ struct LAABrainNoteView: View {
                                     .laaTextStyle(.secondary)
                             }
                         }
-                        if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
+                        if loading { LAALoadingDots() }
                         else if let localError {
                             Text(verbatim: localError).foregroundStyle(LAAColor.attention)
                             Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }

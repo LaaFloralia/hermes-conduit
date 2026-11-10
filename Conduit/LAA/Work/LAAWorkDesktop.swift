@@ -86,7 +86,7 @@ struct LAAWorkDesktopSessionsView: View {
                     if let failure {
                         Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
-                    if loading && !hasLoaded && sessions.isEmpty { LAAWorkSkeleton() }
+                    if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
@@ -308,7 +308,7 @@ struct LAAWorkDesktopProjectsView: View {
                     LAASearchField(placeholder: "検索", text: $search,
                                    identifier: "work.projects.desktop.search", focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                    if loading && projects.isEmpty { LAAWorkSkeleton() }
+                    if loading && projects.isEmpty { LAALoadingDots() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
@@ -543,7 +543,7 @@ struct LAAWorkDesktopCatalogView: View {
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                             .accessibilityIdentifier("work.routines.fetchedAt")
                     }
-                    if loading && !loaded { LAAWorkSkeleton() }
+                    if loading && !loaded { LAALoadingDots() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)

@@ -79,7 +79,7 @@ struct LAAPersonalTaskDetailView: View {
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
                             Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
                         }
-                    } else if error == nil { LAAWorkSkeleton() }
+                    } else if error == nil { LAALoadingDots() }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                     .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)

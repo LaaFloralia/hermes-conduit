@@ -2452,7 +2452,7 @@ private struct ModelCatalogPlaceholder: View {
         switch state {
         case .loading:
             #if LAA_BUILD
-            LAASkeletonRows()
+            LAALoadingDots()
             #else
             ProgressView("Loading available models…")
             #endif
@@ -2738,7 +2738,7 @@ private struct DelegationPauseSettings: View {
                 .buttonStyle(.settings)
             } else {
                 #if LAA_BUILD
-                LAASkeletonRows()
+                LAALoadingDots()
                 #else
                 ProgressView().controlSize(.small)
                 #endif
@@ -2794,7 +2794,7 @@ private struct FallbackModelsSettings: View {
                 // replace the real one.
                 if error == nil {
                     #if LAA_BUILD
-            LAASkeletonRows()
+            LAALoadingDots()
             #else
             ProgressView("Loading available models…")
             #endif
@@ -3050,7 +3050,7 @@ struct ProfileConfigSettingsPage: View {
             }
             if loading {
                 #if LAA_BUILD
-            LAASkeletonRows()
+            LAALoadingDots()
             #else
             ProgressView("Loading profile settings…").frame(maxWidth: .infinity, minHeight: 180)
             #endif

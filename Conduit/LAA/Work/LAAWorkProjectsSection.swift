@@ -25,7 +25,7 @@ struct LAAWorkProjectsSection: View {
             LAAWorkPrimaryButton(title: "新しいプロジェクト", systemImage: "plus") { showNew = true }
                 .accessibilityIdentifier("work.projects.new")
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
-            if loading && projects.isEmpty { LAAWorkSkeleton() }
+            if loading && projects.isEmpty { LAALoadingDots() }
             if visibleProjects.isEmpty && !loading && failure == nil {
                 Text(verbatim: showArchived ? "アーカイブしたプロジェクトはありません。" : "名前・指示・資料をまとめ、その中でセッションを始められます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)

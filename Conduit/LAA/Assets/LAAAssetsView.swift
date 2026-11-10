@@ -15,8 +15,8 @@ struct LAAAssetsView: View {
     @State private var showUpload = false
     @State private var uploadFolderID: String?
     @State private var driveRevision = 0
+    @State private var driveLayoutToggle = 0
     @State private var studioSelected = false
-    @State private var requestGeneration = 0
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     private let initialStudioSection: Int
     @State private var showPairing = false
@@ -43,16 +43,14 @@ struct LAAAssetsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                if !studioSelected {
-                    Button {
-                        requestGeneration &+= 1
-                        studioSelected = true
-                    } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
-                    .accessibilityLabel("制作を依頼").accessibilityIdentifier("laa.assets.new-request")
+            ToolbarItem(placement: .topBarLeading) { LAASettingsButton(action: onRequestSettings) }
+            if !studioSelected {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { driveLayoutToggle &+= 1 } label: { Image(systemName: "square.grid.2x2") }
+                        .accessibilityLabel(Text(verbatim: "一覧表示を切り替える"))
+                        .accessibilityIdentifier("laa.drive.layout")
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showUpload) { LAADriveUpload(folderId: uploadFolderID) { driveRevision &+= 1 }.environmentObject(bridge).laaSheetSize(.form) }
@@ -72,9 +70,6 @@ struct LAAAssetsView: View {
             confirmFolder = false
             LAADriveDecodedThumbnails.removeAll()
             Task { await thumbnailCache.removeAll() }
-        }
-        .onChange(of: studioSelected) { _, selected in
-            if !selected { requestGeneration = 0 }
         }
         .onDisappear { folderTask?.cancel() }
         // A Drive link (laa://assets) opens the Studio tab on its Drive page.
@@ -103,7 +98,7 @@ struct LAAAssetsView: View {
                     heading
                     segments
                     if studioSelected {
-                        LAAStudioHomeView(initialSection: initialStudioSection, requestGeneration: requestGeneration)
+                        LAAStudioHomeView(initialSection: initialStudioSection)
                     } else if LAADriveData.available(bridge) {
                         driveBrowser
                         if let folderMessage {
@@ -188,7 +183,7 @@ struct LAAAssetsView: View {
             planFolder(entry)
         }, saveFile: { entry in
             saveFile(entry)
-        }, desktop: laaDesktop, selectedID: desktopSelected?.id)
+        }, desktop: laaDesktop, selectedID: desktopSelected?.id, layoutToggle: driveLayoutToggle)
     }
 
     private func saveFile(_ entry: LAADriveListingItem) {

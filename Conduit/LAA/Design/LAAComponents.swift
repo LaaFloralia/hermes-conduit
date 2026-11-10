@@ -36,18 +36,16 @@ extension LAASectionHeader where MenuContent == EmptyView {
     init(_ title: String) { self.init(title) { EmptyView() } }
 }
 
-/// Place rows and LAAListDivider in one surface, never a surface per row.
+/// A section of rows on the same paper background as the screen.
 struct LAAListSurface<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         VStack(spacing: 0) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-            .clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
     }
 }
 struct LAAListDivider: View {
-    var body: some View { Rectangle().fill(LAAColor.separator).frame(height: 0.5).padding(.horizontal, 16).accessibilityHidden(true) }
+    var body: some View { EmptyView() }
 }
 struct LAAListRow<Content: View>: View {
     private let action: (() -> Void)?
@@ -68,7 +66,8 @@ struct LAAListRow<Content: View>: View {
 }
 struct LAAListRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.background(configuration.isPressed ? LAAColor.selectionFill : .clear)
+        configuration.label.background(configuration.isPressed ? LAAColor.selectionFill : .clear,
+                                       in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -97,20 +96,20 @@ struct LAAScreenToolbar: ToolbarContent {
     let settings: () -> Void
     @ToolbarContentBuilder var body: some ToolbarContent {
         if #available(iOS 26.0, *) {
-            createItem.sharedBackgroundVisibility(.hidden)
+            if canCreate { createItem.sharedBackgroundVisibility(.hidden) }
             if !desktop { settingsItem.sharedBackgroundVisibility(.hidden) }
         } else {
-            createItem
+            if canCreate { createItem }
             if !desktop { settingsItem }
         }
     }
     private var createItem: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            LAAToolbarIconButton(systemName: "plus", label: createLabel, identifier: createIdentifier, action: create).disabled(!canCreate)
+        ToolbarItem(placement: .topBarTrailing) {
+            LAAToolbarIconButton(systemName: "plus", label: createLabel, identifier: createIdentifier, action: create)
         }
     }
     private var settingsItem: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItem(placement: .topBarLeading) {
             LAAToolbarIconButton(systemName: "gearshape", label: "設定", identifier: "laa.settings.open", action: settings)
         }
     }
@@ -167,22 +166,37 @@ private extension LAAStatusTag {
     }
 }
 
-struct LAASkeletonRows: View {
-    var count = 3
+struct LAAActivityDots: View {
     var body: some View {
-        LAAListSurface {
-            ForEach(0..<count, id: \.self) { index in
-                if index > 0 { LAAListDivider() }
-                LAAListRow {
-                    VStack(alignment: .leading, spacing: 8) {
-                        RoundedRectangle(cornerRadius: 4).fill(LAAColor.subtleSurface).frame(width: 148, height: 14)
-                        RoundedRectangle(cornerRadius: 4).fill(LAAColor.subtleSurface).frame(width: 96, height: 10)
-                    }
+        TimelineView(.periodic(from: .now, by: 0.24)) { context in
+            let step = Int(context.date.timeIntervalSinceReferenceDate / 0.24) % 3
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle().fill(LAAColor.link)
+                        .frame(width: 8, height: 8)
+                        .opacity([1.0, 0.60, 0.35][(index - step + 3) % 3])
                 }
             }
-        }.accessibilityElement(children: .ignore).accessibilityLabel(Text(verbatim: "読み込み中"))
+        }.accessibilityHidden(true)
     }
 }
+
+struct LAALoadingDots: View {
+    @State private var visible = false
+
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, minHeight: 88)
+            .overlay { if visible { LAAActivityDots() } }
+            .accessibilityLabel(Text(verbatim: "読み込み中"))
+            .accessibilityHidden(!visible)
+            .task {
+                do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+                visible = true
+            }
+    }
+}
+
 struct LAAInlineFailure: View {
     let reason: String
     let retry: () -> Void

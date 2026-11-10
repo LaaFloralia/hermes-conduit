@@ -8,7 +8,11 @@ final class LAAPaseoUITests: XCTestCase {
     /// The conversation's name lives in the bar, and the field under it is the
     /// one-line row: no heading card, no second title, no dictation.
     func testSessionHeaderIsTheBarAndTheRowIsOneLine() throws {
-        let app = try launchFixture("light")
+        for theme in ["light", "dark"] { try verifySessionDetail(theme) }
+    }
+
+    private func verifySessionDetail(_ theme: String) throws {
+        let app = try launchFixture(theme)
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
@@ -28,7 +32,10 @@ final class LAAPaseoUITests: XCTestCase {
         let records = app.buttons["work.session.records"]
         XCTAssertTrue(records.waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["Read"].exists, "Tool traffic stays collapsed")
-        capture(app, "session-detail", "light")
+        capture(app, "session-detail-closed", theme)
+        records.tap()
+        capture(app, "session-detail-open", theme)
+        app.terminate()
     }
 
     func testSessionLeftSwipesKeepTheListOpen() throws {

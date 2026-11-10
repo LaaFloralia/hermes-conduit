@@ -817,9 +817,7 @@ struct ComposerBar: View, Equatable {
                 HStack(alignment: .bottom, spacing: LAASpacing.x2) {
                     attachmentButton
                     composerField
-                    if hasText || !attachments.isEmpty || stopOnly {
-                        trailingSlot(size: 44).transition(.opacity)
-                    }
+                    trailingSlot(size: 44)
                 }
 #else
                 // The field spans the card; every control sits in the row

@@ -46,7 +46,7 @@ struct LAAMarkdownEditor: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     if let title {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            Text(verbatim: title).font(.custom("Georgia", size: 34, relativeTo: .largeTitle))
+                            Text(verbatim: title).font(.system(size: 30, weight: .bold))
                                 .foregroundStyle(LAAColor.text).accessibilityIdentifier("laa.brain.note.title")
                             if let status {
                                 Text(verbatim: status).font(.caption).foregroundStyle(LAAColor.secondaryText)

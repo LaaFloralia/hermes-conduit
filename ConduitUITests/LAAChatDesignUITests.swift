@@ -30,7 +30,8 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertFalse(app.buttons["chat.replyMoreMenu"].exists)
             XCTAssertFalse(app.buttons["chat.message.quote.assistant"].exists)
             XCTAssertFalse(app.buttons["composer.expand-editor"].exists)
-            XCTAssertFalse(app.buttons["composer.action"].exists)
+            XCTAssertTrue(app.buttons["composer.action"].exists)
+            XCTAssertFalse(app.buttons["composer.action"].isEnabled)
             XCTAssertTrue(app.staticTexts["chat.delivery.read"].exists)
             capture(app, "conversation-after-\(theme)")
 
@@ -44,6 +45,7 @@ final class LAAChatDesignUITests: XCTestCase {
             let reaction = app.buttons["chat.reaction.❤️"]
             XCTAssertTrue(reaction.exists)
             reaction.tap()
+            capture(app, "reaction-after-\(theme)")
             reply.press(forDuration: 0.8)
             app.buttons["テキストを選択"].tap()
             let selected = app.textViews["chat.message.selection"]
@@ -78,6 +80,18 @@ final class LAAChatDesignUITests: XCTestCase {
         }
     }
 
+    func testRichConversationScreenshots() {
+        for dark in [false, true] {
+            let app = launch("rich", dark: dark)
+            let theme = dark ? "dark" : "light"
+            XCTAssertTrue(bubble(app, "assistant").waitForExistence(timeout: 10))
+            capture(app, "conversation-rich-after-\(theme)")
+            app.swipeDown()
+            capture(app, "conversation-rich-opening-after-\(theme)")
+            app.terminate()
+        }
+    }
+
     func testTypingOnlyRevealsWorkOnRequest() {
         for dark in [false, true] {
             let app = launch("typing", dark: dark)
@@ -99,7 +113,8 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue(app.buttons["room.header"].exists)
             XCTAssertFalse(app.buttons["room.call.unavailable"].exists)
             XCTAssertFalse(app.buttons["conversation.menu"].exists)
-            XCTAssertFalse(app.buttons["room.composer.send"].exists)
+            XCTAssertTrue(app.buttons["room.composer.send"].exists)
+            XCTAssertFalse(app.buttons["room.composer.send"].isEnabled)
             capture(app, "group-after-\(dark ? "dark" : "light")")
             let field = app.textViews["room.composer.field"]
             field.tap(); field.typeText("Team update\nSecond line\nThird line")
@@ -125,19 +140,23 @@ final class LAAChatDesignUITests: XCTestCase {
     }
 
     func testNameOpensInformationAndBackground() {
-        let app = launch(pushed: true)
-        let header = app.buttons["laa.employee.header"]
-        let back = app.buttons["BackButton"]
-        XCTAssertTrue(back.waitForExistence(timeout: 10))
-        XCTAssertTrue(back.isHittable)
-        XCTAssertFalse(back.frame.intersects(header.frame))
-        XCTAssertEqual(header.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 8)
-        header.tap()
-        XCTAssertTrue(app.staticTexts["会話の情報"].waitForExistence(timeout: 5))
-        app.buttons["conversation.background"].tap()
-        XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))
-        app.buttons["完了"].tap()
-        XCTAssertTrue(app.buttons["会話内を検索"].waitForExistence(timeout: 5))
+        for dark in [false, true] {
+            let app = launch(dark: dark, pushed: true)
+            let header = app.buttons["laa.employee.header"]
+            let back = app.buttons["BackButton"]
+            XCTAssertTrue(back.waitForExistence(timeout: 10))
+            XCTAssertTrue(back.isHittable)
+            XCTAssertFalse(back.frame.intersects(header.frame))
+            XCTAssertEqual(header.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 8)
+            header.tap()
+            XCTAssertTrue(app.staticTexts["会話の情報"].waitForExistence(timeout: 5))
+            capture(app, "conversation-information-after-\(dark ? "dark" : "light")")
+            app.buttons["conversation.background"].tap()
+            XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))
+            app.buttons["完了"].tap()
+            XCTAssertTrue(app.buttons["会話内を検索"].waitForExistence(timeout: 5))
+            app.terminate()
+        }
     }
 }
 #endif

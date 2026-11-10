@@ -213,7 +213,9 @@ final class LAATodayCalendarTests: XCTestCase {
         samples[0].attendees = [.init(email: "guest@example.com", name: "参加者", response: "accepted")]
         let calendars = [LAAGoogleCalendar(id: "work@example.com", title: "仕事", color: "#1a73e8", selected: true, writable: true)]
         let month = LAATodayCalendar(eventsForTesting: samples, calendarsForTesting: calendars); month.mode = .month
+        let week = LAATodayCalendar(eventsForTesting: samples, calendarsForTesting: calendars); week.mode = .week
         let states: [(String, LAATodayCalendar)] = [
+            ("week", week),
             ("month", month),
             ("events", LAATodayCalendar(eventsForTesting: samples, calendarsForTesting: calendars)),
             ("empty", LAATodayCalendar(eventsForTesting: [])),

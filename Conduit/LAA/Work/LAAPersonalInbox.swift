@@ -18,7 +18,7 @@ struct LAAPersonalInboxEntry: View {
         Group {
             if let viewer { LAAPersonalInboxView(drafts: drafts, viewerId: viewer, onExit: {}) }
             else if let error { VStack { Text(verbatim: error); Button { Task { await load() } } label: { Text(verbatim: "読み直す") } } }
-            else { LAAWorkSkeleton() }
+            else { LAALoadingDots() }
         }
         .navigationTitle(Text(verbatim: "受信箱"))
         .task(id: bridge.revision) { viewer = nil; await load() }
@@ -78,7 +78,7 @@ struct LAAPersonalInboxView: View {
                         Button(LAACopy.WorkTab.loadMore) { Task { await load(reset: false) } }.disabled(loading || working)
                     }
                 }
-                if loading { LAAWorkSkeleton() }
+                if loading { LAALoadingDots() }
                 HStack {
                     Button() { Task { await refresh() } } label: { Text(verbatim: "更新") }.disabled(loading || working)
                     NavigationLink(destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId)) { Text(verbatim: "送信待ち") }
@@ -242,7 +242,7 @@ struct LAAPersonalInboxItemView: View {
                 if let item {
                     LAAPersonalNotificationContent(item: item, drafts: drafts).workCard()
                     Text(verbatim: "取得: \(LAAWorkPresentation.date(observedAt))").laaTextStyle(.secondary)
-                } else if error == nil { LAAWorkSkeleton() }
+                } else if error == nil { LAALoadingDots() }
                 Button() { Task { await load() } } label: { Text(verbatim: "更新") }
             }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
         }

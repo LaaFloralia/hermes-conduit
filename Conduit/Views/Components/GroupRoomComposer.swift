@@ -152,7 +152,7 @@ struct GroupRoomComposer: View {
                     field
                         .laaComposerPhotoInk()
                         .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
-                    if hasText || !attachments.isEmpty || dictationHoldsSendSlot { sendSlot(size: 44) }
+                    sendSlot(size: 44)
                 }
             }
             .laaComposerGlassGroup()

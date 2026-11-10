@@ -101,7 +101,7 @@ struct LAATodayView: View {
                     }
                 }
                 if let deepLinkError { Text(verbatim: deepLinkError).foregroundStyle(LAAColor.attention) }
-                if calendar.isLoading && !calendar.loaded { LAASkeletonRows() }
+                if calendar.isLoading && !calendar.loaded { LAALoadingDots() }
                 if let message = calendar.errorMessage {
                     LAAInlineFailure(reason: message) { Task { await refresh() } }
                         .accessibilityIdentifier("laa.today.error")

@@ -34,7 +34,7 @@ enum LAAMarkdownStyler {
     }
 
     /// Width of one list level's gutter. Glyphs are drawn inside it.
-    static let gutter: CGFloat = 22
+    static let gutter: CGFloat = 28
 
     // MARK: Fonts
 
@@ -52,9 +52,9 @@ enum LAAMarkdownStyler {
 
     private static func headingFont(_ level: Int) -> UIFont {
         switch level {
-        case 1: return UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: 26, weight: .bold))
-        case 2: return UIFontMetrics(forTextStyle: .title2).scaledFont(for: .systemFont(ofSize: 22, weight: .semibold))
-        default: return UIFontMetrics(forTextStyle: .title3).scaledFont(for: .systemFont(ofSize: 19, weight: .semibold))
+        case 1: return UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: 21, weight: .bold))
+        case 2: return UIFontMetrics(forTextStyle: .title2).scaledFont(for: .systemFont(ofSize: 21, weight: .bold))
+        default: return UIFontMetrics(forTextStyle: .title3).scaledFont(for: .systemFont(ofSize: 21, weight: .bold))
         }
     }
 
@@ -90,7 +90,7 @@ enum LAAMarkdownStyler {
             let level = line.listLevel
             let indent = gutter * CGFloat(level)
             let paragraph = NSMutableParagraphStyle()
-            paragraph.lineHeightMultiple = 1.6
+            paragraph.lineHeightMultiple = 1.7
             // Markdown's blank source line supplies the paragraph gap. Adding
             // another margin to every source line doubles that space and spreads lists apart.
             paragraph.paragraphSpacing = 0
@@ -124,8 +124,8 @@ enum LAAMarkdownStyler {
                 attributes[.foregroundColor] = secondary
             case .heading(let headingLevel):
                 attributes[.font] = headingFont(headingLevel)
-                paragraph.paragraphSpacingBefore = 24
-                paragraph.paragraphSpacing = 0
+                paragraph.paragraphSpacingBefore = 32
+                paragraph.paragraphSpacing = 10
                 markerIsGlyph = true
             case .bullet, .checkbox:
                 if case .checkbox(checked: true) = line.kind { attributes[.foregroundColor] = secondary }

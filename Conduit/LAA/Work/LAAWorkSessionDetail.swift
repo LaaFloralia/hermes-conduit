@@ -229,7 +229,7 @@ struct LAAWorkSessionDetail: View {
                 } else if let failure {
                     Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
                     Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
-                } else { LAAWorkSkeleton() }
+                } else { LAALoadingDots() }
             }
             .accessibilityIdentifier(historyReady ? "work.session.history.ready" : "work.session.history.loading")
             if let session { followUp(session) }

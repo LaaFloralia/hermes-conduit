@@ -27,7 +27,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
             if case .failed = calls.snapshot?.phase { return "通話を確認" }
             return "通話中"
         }
-        return appState.isBusy ? "入力中…" : (appState.isConnected ? "" : "接続中…")
+        return appState.isConnected ? "" : "接続中…"
     }
 
     private var header: some View {

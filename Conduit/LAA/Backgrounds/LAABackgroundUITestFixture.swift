@@ -105,8 +105,9 @@ final class LAABackgroundFixture: ObservableObject {
                 }
             } else {
                 app.messages = [
-                    ChatMessage(id: "user", role: .user, content: "今日の予定を整理して、次の一手を教えて。", timestamp: String(now - 60)),
-                    ChatMessage(id: "assistant", role: .assistant, content: Self.richMessage, timestamp: String(now))
+                    ChatMessage(id: "user", role: .user, content: "今日の予定を整理して、次の一手を教えて。", timestamp: String(now - 60), rowId: 1),
+                    ChatMessage(id: "assistant", role: .assistant, content: Self.richMessage, timestamp: String(now),
+                                rowId: 2, reactions: [MessageReaction(emoji: "❤️", author: "user", at: now)])
                 ]
             }
         }

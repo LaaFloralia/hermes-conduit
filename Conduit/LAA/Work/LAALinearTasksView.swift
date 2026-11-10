@@ -184,7 +184,7 @@ struct LAALinearTasksView: View {
                         .disabled(busy)
                 }
             }
-            if loading && !loaded { LAAWorkSkeleton().listRowBackground(Color.clear) }
+            if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
             Section {
                 ForEach(rows) { task in
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
@@ -354,7 +354,7 @@ struct LAALinearTasksView: View {
                         Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
                             .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
                     }
-                    if loading && !loaded { LAAWorkSkeleton() }
+                    if loading && !loaded { LAALoadingDots() }
                 }
                 .padding(LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)

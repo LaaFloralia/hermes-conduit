@@ -52,7 +52,7 @@ struct LAAWorkSessionsSection: View {
                 .accessibilityLabel("一覧の表示").accessibilityIdentifier("work.sessions.menu")
             }
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
-            if loading && !hasLoaded && sessions.isEmpty { LAAWorkSkeleton() }
+            if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
 
             if query == nil {
                 TextField("", text: $search, prompt: Text(verbatim: LAACopy.WorkTab.searchSessions))
@@ -174,10 +174,8 @@ struct LAAWorkSessionsSection: View {
                             }
                         }
                     }
-                    if session.id != rows.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 30) }
                 }
             }
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
         }
     }
