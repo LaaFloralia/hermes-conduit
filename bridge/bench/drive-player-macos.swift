@@ -11,7 +11,8 @@ import CoreVideo
 struct LAADriveItem {
     let id: String
     let mimeType: String
-    let version: String? = nil
+    var version: String? = nil
+    var size: Int64? = nil
 }
 
 enum LAABridgeError: Error {
@@ -90,7 +91,7 @@ private func measuredTransfer(_ request: URLRequest, offset: Int64, length: Int)
 
 enum LAADriveContent {
     // The default matches the iOS source; larger values are experiments only.
-    static let chunkSize = Int(ProcessInfo.processInfo.environment["LAA_BENCH_CHUNK_BYTES"] ?? "262144") ?? 262144
+    static let chunkSize = Int(ProcessInfo.processInfo.environment["LAA_BENCH_CHUNK_BYTES"] ?? "524288") ?? 524288
     @MainActor static var requests = 0
     @MainActor static var completedRanges: [[String: Double]] = []
     @MainActor static func range(_ item: LAADriveItem, offset: Int64, length: Int,
@@ -109,11 +110,11 @@ enum LAADriveContent {
 
 @main struct Benchmark {
     @MainActor static func waitForFrame(_ output: AVPlayerItemVideoOutput, player: AVPlayer,
-                                        atLeast minimum: Double, timeout: Double = 12) async throws -> Double {
+                                        atLeast minimum: Double, timeout: Double = 40) async throws -> Double {
         let started = Date()
         while Date().timeIntervalSince(started) < timeout {
             let time = player.currentTime()
-            if time.seconds.isFinite, time.seconds >= minimum,
+            if player.timeControlStatus == .playing, time.seconds.isFinite, time.seconds >= minimum,
                output.hasNewPixelBuffer(forItemTime: time) {
                 var displayTime = CMTime.invalid
                 if output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: &displayTime) != nil,
@@ -131,12 +132,15 @@ enum LAADriveContent {
 
     @MainActor static func main() async throws {
         let env = ProcessInfo.processInfo.environment
-        guard let base = env["LAA_BENCH_BASE"].flatMap(URL.init(string:)),
-              let token = env["LAA_BENCH_FAKE_TOKEN"] else { throw LAABridgeError.invalidResponse }
+        struct Input: Decodable { let base: URL; let token: String; let id: String; let mimeType: String; let version: String?; let size: Int64? }
+        let input = try? JSONDecoder().decode(Input.self, from: FileHandle.standardInput.readDataToEndOfFile())
+        guard let base = input?.base ?? env["LAA_BENCH_BASE"].flatMap(URL.init(string:)),
+              let token = input?.token ?? env["LAA_BENCH_FAKE_TOKEN"] else { throw LAABridgeError.invalidResponse }
         let repetitions = Int(env["LAA_BENCH_REPETITIONS"] ?? "10") ?? 10
         let bridge = LAABridgeSession(baseURL: base, token: token)
         for index in 0..<repetitions {
-            let player = LAADrivePlayer(item: .init(id: "fixture_video_\(index)", mimeType: "video/mp4"), bridge: bridge)
+            let player = LAADrivePlayer(item: .init(id: input?.id ?? "fixture_video_\(index)", mimeType: input?.mimeType ?? "video/mp4", version: input?.version, size: input?.size), bridge: bridge)
+            player.player.isMuted = true
             let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             ])
@@ -144,25 +148,47 @@ enum LAADriveContent {
             item.add(output)
             let before = LAADriveContent.requests
             let beforeRanges = LAADriveContent.completedRanges.count
-            player.player.play()
+            let coordinator = LAADrivePlaybackCoordinator(player: player.player, identity: nil,
+                startsBufferedPlayback: env["LAA_BENCH_START_BUFFERED"] == "1",
+                openSource: { player.open() }, closeSource: { player.close() },
+                acquireAudio: {}, releaseAudio: {})
+            coordinator.start(autoPlay: true)
             let startup = try await waitForFrame(output, player: player.player, atLeast: 0)
             let afterStartup = LAADriveContent.requests
+            let duration = item.duration.seconds
+            let seekSeconds = min(Double(env["LAA_BENCH_SEEK_SECONDS"] ?? "4") ?? 4, max(0.5, duration * 0.7))
             let startSeek = Date()
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                player.player.seek(to: CMTime(seconds: 4, preferredTimescale: 600),
+                player.player.seek(to: CMTime(seconds: seekSeconds, preferredTimescale: 600),
                                    toleranceBefore: .zero, toleranceAfter: .zero) { _ in continuation.resume() }
             }
-            _ = try await waitForFrame(output, player: player.player, atLeast: 3.95)
+            _ = try await waitForFrame(output, player: player.player, atLeast: seekSeconds - 0.05)
             let seek = Date().timeIntervalSince(startSeek) * 1_000
             let afterSeek = LAADriveContent.requests
-            let result: [String: Any] = ["trial": index + 1, "startupMs": startup, "seekMs": seek,
+            var stalls = 0
+            var wasWaiting = false
+            let monitoringStart = Date()
+            let monitoringSeconds = min(120, max(1, Double(env["LAA_BENCH_OBSERVE_SECONDS"] ?? "1") ?? 1))
+            while Date().timeIntervalSince(monitoringStart) < monitoringSeconds {
+                if player.player.currentTime().seconds >= duration - 0.1 { break }
+                let waiting = player.player.timeControlStatus != .playing && player.player.currentTime().seconds < duration - 0.1
+                if waiting && !wasWaiting { stalls += 1 }
+                wasWaiting = waiting
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let tracks = try await item.asset.loadTracks(withMediaType: .video)
+            let descriptions = try await tracks.first?.load(.formatDescriptions)
+            let subtype = descriptions?.first.map(CMFormatDescriptionGetMediaSubType) ?? 0
+            let codec = String(bytes: [24,16,8,0].map { UInt8((subtype >> $0) & 255) }, encoding: .ascii) ?? "unknown"
+            var result: [String: Any] = ["trial": index + 1, "startupMs": startup, "seekMs": seek, "duration": duration, "codec": codec, "stallsAfterSeek": stalls, "stallObservationSeconds": Date().timeIntervalSince(monitoringStart), "advancedAfterSeekSeconds": player.player.currentTime().seconds - seekSeconds,
                                          "startupRequests": afterStartup - before,
                                          "seekRequests": afterSeek - afterStartup,
                                          "completedRanges": Array(LAADriveContent.completedRanges.dropFirst(beforeRanges))]
+            if monitoringSeconds == 1 { result["stallsDuringOneSecondAfterSeek"] = stalls }
             let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
             print(String(decoding: data, as: UTF8.self))
             fflush(stdout)
-            player.close()
+            coordinator.stop()
         }
     }
 }

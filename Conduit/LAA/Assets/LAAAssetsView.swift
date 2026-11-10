@@ -4,6 +4,7 @@ import SwiftUI
 private struct LAADriveSelection: Hashable, Identifiable {
     let entry: LAADriveListingItem
     let images: [LAADriveItem]
+    var poster: UIImage? = nil
     var id: String { entry.id }
 }
 
@@ -15,12 +16,13 @@ struct LAAAssetsView: View {
     @State private var uploadFolderID: String?
     @State private var driveRevision = 0
     @State private var studioSelected = false
+    @State private var requestGeneration = 0
+    @State private var pendingCreateRequest = false
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private let initialStudioSection: Int
     @State private var showPairing = false
     @State private var selected: LAADriveSelection?
-    @State private var thumbnailCache = LAADriveThumbnailCache()
+    @State private var thumbnailCache = LAADriveThumbnailCache(diskDirectory: LAADriveThumbnailCache.defaultDirectory())
     @State private var folderTask: Task<Void, Never>?
     @State private var folderPlan: LAADriveOfflineFolderPlan?
     @State private var confirmFolder = false
@@ -36,19 +38,33 @@ struct LAAAssetsView: View {
 
     var body: some View {
         Group {
-            if laaDesktop { desktopContent } else { phoneContent }
+            if laaDesktop && !studioSelected { desktopContent } else { phoneContent }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if !studioSelected {
+                    Button {
+                        requestGeneration &+= 1
+                        pendingCreateRequest = true
+                        studioSelected = true
+                    } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
+                    .accessibilityLabel("制作を依頼").accessibilityIdentifier("laa.assets.new-request")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showUpload) { LAADriveUpload(folderId: uploadFolderID) { driveRevision &+= 1 }.environmentObject(bridge).laaSheetSize(.form) }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .navigationDestination(item: $selected) { selected in
-            LAADriveDetailView(item: selected.entry.item, webViewURL: selected.entry.safeWebViewURL, images: selected.images)
+            if selected.entry.item.isMedia || selected.entry.item.isImage {
+                LAADrivePreviewView(item: selected.entry.item, images: selected.images, poster: selected.poster)
+            } else {
+                LAADriveDetailView(item: selected.entry.item, webViewURL: selected.entry.safeWebViewURL, images: selected.images)
+            }
         }
         .onChange(of: bridge.revision) { _, _ in
             selected = nil
@@ -56,6 +72,7 @@ struct LAAAssetsView: View {
             folderTask?.cancel()
             folderPlan = nil
             confirmFolder = false
+            LAADriveDecodedThumbnails.removeAll()
             Task { await thumbnailCache.removeAll() }
         }
         .onDisappear { folderTask?.cancel() }
@@ -63,16 +80,16 @@ struct LAAAssetsView: View {
         .onChange(of: linkRequest.generation) { _, _ in
             if linkRequest.url?.host == "assets" { studioSelected = false }
         }
-        .confirmationDialog("Save this folder offline?", isPresented: $confirmFolder, titleVisibility: .visible) {
-            Button("Save files") { if let folderPlan { saveFolder(folderPlan) } }
-            Button("Cancel", role: .cancel) { folderPlan = nil }
+        .confirmationDialog("このフォルダを端末に保存しますか？", isPresented: $confirmFolder, titleVisibility: .visible) {
+            Button("ファイルを保存") { if let folderPlan { saveFolder(folderPlan) } }
+            Button("キャンセル", role: .cancel) { folderPlan = nil }
         } message: {
             if let folderPlan {
                 let minimumSpace = ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)
-                Text("Files: \(folderPlan.files.count)") +
-                Text(verbatim: "\n") + Text("Minimum space: \(minimumSpace)") +
-                Text(verbatim: "\n") + Text("Items or pages not included: \(folderPlan.issues.count)") +
-                Text(verbatim: "\n") + Text("Existing saved copies are kept if saving fails.")
+                Text("ファイル: \(folderPlan.files.count)") +
+                Text(verbatim: "\n") + Text("必要な空き容量: \(minimumSpace)") +
+                Text(verbatim: "\n") + Text("取得できなかった項目: \(folderPlan.issues.count)") +
+                Text(verbatim: "\n") + Text("失敗した場合も、保存済みのファイルは残ります。")
             }
         }
     }
@@ -86,14 +103,25 @@ struct LAAAssetsView: View {
                     segments
                     if studioSelected {
                         LAAStudioHomeView(initialSection: initialStudioSection)
+                            .onAppear {
+                                if pendingCreateRequest {
+                                    pendingCreateRequest = false
+                                    NotificationCenter.default.post(name: Notification.Name("LAAStudioCreateRequest"), object: nil)
+                                }
+                            }
                     } else if LAADriveData.available(bridge) {
-                        offlineEntry
                         driveBrowser
+                        if let folderMessage {
+                            HStack {
+                                Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                if folderTask != nil { Button("キャンセル") { folderTask?.cancel() } }
+                            }
+                        }
                     } else {
                         connection
                     }
                 }
-                .padding(.horizontal, LAASpacing.horizontal)
+                .padding(.horizontal, 20)
                 .padding(.vertical, LAASpacing.x4)
                 .laaPageWidth()
             }
@@ -118,7 +146,6 @@ struct LAAAssetsView: View {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 LAATabHeading(title: LAACopy.Assets.drive, identifier: "laa.assets.title")
                 if LAADriveData.available(bridge) {
-                    offlineEntry
                     driveBrowser
                 } else {
                     connection
@@ -145,19 +172,6 @@ struct LAAAssetsView: View {
         }
     }
 
-    @ViewBuilder private var offlineEntry: some View {
-        NavigationLink("Saved offline") { LAADriveOfflineScreen() }
-            .accessibilityIdentifier("laa.drive.offline.list")
-        if folderTask != nil {
-            HStack {
-                ProgressView(folderMessage ?? AppLocalization.string("Preparing…"))
-                Button("Cancel") { folderTask?.cancel() }
-            }
-        } else if let folderMessage {
-            Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-        }
-    }
-
     private var driveBrowser: some View {
         LAADriveBrowserView(revision: bridge.revision, refreshID: driveRevision, cached: { query in
             LAADriveData.cachedListing(query, bridge: bridge)
@@ -173,11 +187,25 @@ struct LAAAssetsView: View {
             if laaDesktop {
                 desktopSelected = .init(entry: entry, images: images)
             } else {
-                selected = .init(entry: entry, images: images)
+                selected = .init(entry: entry, images: images, poster: LAADriveDecodedThumbnails.value(entry: entry, revision: bridge.revision))
             }
         }, saveFolder: { entry in
             planFolder(entry)
+        }, saveFile: { entry in
+            saveFile(entry)
         }, desktop: laaDesktop, selectedID: desktopSelected?.id)
+    }
+
+    private func saveFile(_ entry: LAADriveListingItem) {
+        guard folderTask == nil else { return }
+        folderTask = Task {
+            do {
+                try await LAADriveOfflineOperations.shared.save(entry.item, bridge: bridge)
+                folderMessage = "この端末に保存しました"
+            } catch is CancellationError { }
+            catch { folderMessage = LAADriveOfflineOperations.message(error) }
+            folderTask = nil
+        }
     }
 
     private func planFolder(_ entry: LAADriveListingItem) {
@@ -222,7 +250,7 @@ struct LAAAssetsView: View {
     private func thumbnail(_ entry: LAADriveListingItem) async throws -> Data? {
         let pairingID = bridge.deviceID
         let revision = bridge.revision
-        let key = pairingID.flatMap { LAADriveThumbnailKey(pairingID: $0, fileID: entry.id, version: entry.thumbnailVersion) }
+        let key = pairingID.flatMap { LAADriveThumbnailKey(pairingID: $0, fileID: entry.id, version: entry.thumbnailVersion ?? entry.version) }
         if let cached = await thumbnailCache.value(for: key) {
             guard bridge.revision == revision, bridge.deviceID == pairingID else { throw CancellationError() }
             return cached
@@ -234,6 +262,7 @@ struct LAAAssetsView: View {
             return data
         } catch {
             if let error = error as? LAABridgeHTTPError, [403, 404].contains(error.status), let pairingID {
+                LAADriveDecodedThumbnails.invalidate(entry: entry, revision: revision)
                 await thumbnailCache.invalidate(pairingID: pairingID, fileID: entry.id)
             }
             throw error
@@ -245,39 +274,14 @@ struct LAAAssetsView: View {
         LAATabHeading(title: LAATab.studio.title, identifier: "laa.assets.title")
     }
 
-    /// Studio and Drive as the tab's two pages, in the Work tab's pill style.
     private var segments: some View {
-        HStack(spacing: LAASpacing.x2) {
-            segment(LAACopy.Assets.studio, symbol: "sparkles.rectangle.stack", selected: studioSelected,
-                    identifier: "studio.section.studio") { studioSelected = true }
-            segment(LAACopy.Assets.drive, symbol: "folder", selected: !studioSelected,
-                    identifier: "studio.drive") { studioSelected = false }
+        Picker("Studio", selection: $studioSelected) {
+            Text("Studio").tag(true).accessibilityIdentifier("studio.section.studio")
+            Text("Drive").tag(false).accessibilityIdentifier("studio.drive")
         }
-        .accessibilityElement(children: .contain)
+        .pickerStyle(.segmented)
+        .frame(minHeight: LAASpacing.minimumTouchTarget)
         .accessibilityIdentifier("studio.segment")
-    }
-
-    @ViewBuilder
-    private func segment(_ title: String, symbol: String, selected: Bool, identifier: String,
-                         action: @escaping () -> Void) -> some View {
-        let button = Button(action: action) {
-            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
-                .laaTextStyle(.secondary)
-                .fontWeight(selected ? .semibold : .regular)
-                .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
-                .padding(.horizontal, LAASpacing.x4)
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: title))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier(identifier)
-        if #available(iOS 26.0, *), !reduceTransparency {
-            button.glassEffect(.regular.tint(selected ? LAAColor.selectionFill : .clear).interactive(), in: .capsule)
-        } else {
-            button.background(selected ? LAAColor.selectionFill : LAAColor.surface, in: Capsule())
-        }
     }
 
     private var connection: some View {

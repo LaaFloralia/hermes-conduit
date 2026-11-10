@@ -5,18 +5,32 @@ enum LAADriveBrowseSection: String, CaseIterable {
     case my, shared, sharedWithMe, recent, starred
 }
 
+enum LAADriveFileFilter: String, CaseIterable, Codable {
+    case all, video, image, document
+    var title: String {
+        switch self { case .all: return "すべて"; case .video: return "動画"; case .image: return "画像"; case .document: return "書類" }
+    }
+}
+
+enum LAADriveBrowseOrder: String, CaseIterable {
+    case name, recent
+    var title: String { self == .name ? "名前順" : "更新順" }
+}
+
 /// A cursor belongs to this exact section, folder, query and page size.
 struct LAADriveBrowseQuery: Hashable {
     let section: LAADriveBrowseSection
     let folderID: String?
     let search: String
+    let fileType: LAADriveFileFilter
+    let order: LAADriveBrowseOrder
     let cursor: String?
     let pageSize: Int
 
     init(section: LAADriveBrowseSection, folderID: String? = nil, search: String = "",
-         cursor: String? = nil, pageSize: Int = 50) {
+         cursor: String? = nil, pageSize: Int = 50, fileType: LAADriveFileFilter = .all, order: LAADriveBrowseOrder = .name) {
         self.section = section; self.folderID = folderID; self.search = search
-        self.cursor = cursor; self.pageSize = pageSize
+        self.order = order; self.fileType = fileType; self.cursor = cursor; self.pageSize = pageSize
     }
 
     var path: String? {
@@ -28,6 +42,8 @@ struct LAADriveBrowseQuery: Hashable {
                      URLQueryItem(name: "pageSize", value: String(pageSize))]
         if let folderID { query.append(URLQueryItem(name: "folderId", value: folderID)) }
         if !search.isEmpty { query.append(URLQueryItem(name: "query", value: search)) }
+        if fileType != .all { query.append(URLQueryItem(name: "type", value: fileType.rawValue)) }
+        if order != .name { query.append(URLQueryItem(name: "order", value: order.rawValue)) }
         if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
         components.queryItems = query
         // URLSearchParams treats a literal + as space; preserve the search text.
@@ -59,11 +75,12 @@ struct LAADriveListingItem: Codable, Hashable, Identifiable {
     let hasThumbnail: Bool?
     let thumbnailVersion: String?
     let shortcut: LAADriveShortcut?
+    let durationSeconds: Double?
     private let webViewLink: URL?
     var id: String { item.id }
 
     private enum Keys: String, CodingKey {
-        case version, parents, starred, viewedAt, hasThumbnail, thumbnailVersion, shortcut, webViewLink
+        case version, parents, starred, viewedAt, hasThumbnail, thumbnailVersion, shortcut, webViewLink, durationSeconds
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +93,7 @@ struct LAADriveListingItem: Codable, Hashable, Identifiable {
         hasThumbnail = try values.decodeIfPresent(Bool.self, forKey: .hasThumbnail)
         thumbnailVersion = Self.validVersion(try values.decodeIfPresent(String.self, forKey: .thumbnailVersion))
         shortcut = try values.decodeIfPresent(LAADriveShortcut.self, forKey: .shortcut)
+        durationSeconds = try values.decodeIfPresent(Double.self, forKey: .durationSeconds).flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         webViewLink = try values.decodeIfPresent(URL.self, forKey: .webViewLink)
     }
 
@@ -90,6 +108,7 @@ struct LAADriveListingItem: Codable, Hashable, Identifiable {
         try container.encodeIfPresent(viewedAt, forKey: .viewedAt)
         try container.encodeIfPresent(hasThumbnail, forKey: .hasThumbnail)
         try container.encodeIfPresent(thumbnailVersion, forKey: .thumbnailVersion)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
         try container.encodeIfPresent(shortcut, forKey: .shortcut)
         try container.encodeIfPresent(webViewLink, forKey: .webViewLink)
     }

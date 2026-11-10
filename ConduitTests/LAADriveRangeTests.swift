@@ -68,7 +68,7 @@ final class LAADriveRangeTests: XCTestCase {
         let item = try JSONDecoder().decode(LAADriveItem.self, from: data)
         let player = LAADrivePlayer(item: item, bridge: bridge)
         defer { player.close() }
-        XCTAssertEqual(player.player.currentItem?.preferredForwardBufferDuration, 15)
+        XCTAssertEqual(player.player.currentItem?.preferredForwardBufferDuration, 3)
         player.toggle()
         let duration = try await waitForDuration(player)
         XCTAssertEqual(duration, 240, accuracy: 1)
@@ -77,9 +77,9 @@ final class LAADriveRangeTests: XCTestCase {
         // Include cancelled requests: their announced lengths are an upper
         // bound on bytes actually delivered by the fake server.
         let beforeBytes = before.reduce(0) { $0 + $1.length }
-        // 15 s at the fixture bitrate is about 1.5 MB. The controlled server
+        // Three seconds plus the bounded eight-part read-ahead window. The server
         // permits some metadata/prefetch overhead but never an entire download.
-        XCTAssertLessThanOrEqual(beforeBytes, 4 * 1024 * 1024)
+        XCTAssertLessThanOrEqual(beforeBytes, 6 * 1024 * 1024)
         XCTAssertTrue(before.allSatisfy { $0.length <= LAADriveContent.chunkSize })
         XCTAssertNil(player.error)
         let pendingBeforeSeek = server.pendingMediaIDs("long01")
@@ -97,7 +97,7 @@ final class LAADriveRangeTests: XCTestCase {
         XCTAssertNil(player.error)
     }
 
-    @MainActor func testShortPlayerDoesNotDownloadAgainAfterSeek() async throws {
+    @MainActor func testShortPlayerSeekAvoidsWholeFileRedownload() async throws {
         let media = try XCTUnwrap(VirtualDriveMedia.loadFixtures()[30])
         let server = try await DriveRangeServer.start(media: ["short01": media])
         defer { server.stop() }
@@ -118,7 +118,9 @@ final class LAADriveRangeTests: XCTestCase {
         let all = server.mediaRequests("short01")
         let afterBytes = all.dropFirst(before).reduce(0) { $0 + $1.length }
         XCTAssertLessThan(afterBytes, media.size)
-        XCTAssertLessThanOrEqual(all.reduce(0) { $0 + $1.length }, media.size)
+        // Announced bytes include a canceled read-ahead window; the seek itself
+        // must still request less than one complete copy of this short file.
+        XCTAssertLessThanOrEqual(all.reduce(0) { $0 + $1.length }, media.size + 8 * LAADriveContent.chunkSize)
         XCTAssertNil(player.error)
     }
 

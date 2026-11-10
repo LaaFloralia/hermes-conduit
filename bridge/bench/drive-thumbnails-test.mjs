@@ -13,10 +13,16 @@ const root = resolve(here, '../..');
 const temporary = mkdtempSync(join(tmpdir(), 'laa-drive-thumbnail-fixture-'));
 const seen = [];
 let slowClosed = false;
+let activeThumbnails = 0, peakThumbnails = 0;
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
 const server = createServer((req, res) => {
   seen.push({ method: req.method, url: req.url, authorization: req.headers.authorization, range: req.headers.range });
   const id = req.url.split('/')[4];
+  if (id.startsWith('file_queue')) {
+    activeThumbnails++; peakThumbnails = Math.max(peakThumbnails, activeThumbnails);
+    setTimeout(() => { activeThumbnails--; res.writeHead(200, { 'content-type': 'image/png', 'content-length': png.length }); res.end(png); }, 50);
+    return;
+  }
   if (id === 'file_slow') {
     res.writeHead(200, { 'content-type': 'image/png' });
     res.write(png);
@@ -67,7 +73,8 @@ try {
   const process = spawn(binary, [`http://127.0.0.1:${server.address().port}`], { stdio: 'inherit' });
   const [code] = await once(process, 'exit');
   assert.equal(code, 0, 'Swift fixture passed');
-  assert.ok(seen.length >= 8);
+  assert.ok(seen.length >= 28);
+  assert.ok(peakThumbnails <= 6 && peakThumbnails > 1, "thumbnail concurrency bounded at six");
   assert.ok(seen.every((item) => item.method === 'GET' && item.authorization === 'Bearer fixture-token' &&
     item.url.endsWith('/thumbnail') && !item.url.includes('fixture-token') && !item.range));
   assert.ok(!seen.some((item) => item.url === '/redirect-target'), 'redirect did not receive the bearer');

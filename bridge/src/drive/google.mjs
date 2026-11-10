@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { BridgeError } from '../errors.mjs';
 import { googleConnection } from '../google/connection.mjs';
 
-const fields = 'id,name,mimeType,size,version,modifiedTime,webViewLink,hasThumbnail,thumbnailLink,thumbnailVersion,capabilities(canDownload,canAddChildren),shortcutDetails,owners(displayName)';
+const fields = 'id,name,mimeType,size,version,modifiedTime,webViewLink,hasThumbnail,thumbnailLink,thumbnailVersion,capabilities(canDownload,canAddChildren),shortcutDetails,owners(displayName),videoMediaMetadata(durationMillis)';
 const api = 'https://www.googleapis.com/drive/v3';
 const folderType = 'application/vnd.google-apps.folder';
 const escapeQuery = value => value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
@@ -13,6 +13,7 @@ export function driveItem(f) {
   const workspace = f.mimeType.startsWith('application/vnd.google-apps.') && ![folderType, 'application/vnd.google-apps.shortcut'].includes(f.mimeType);
   return { id: f.id, name: f.name, mimeType: f.mimeType,
     kind: f.mimeType === folderType ? 'folder' : f.mimeType === 'application/vnd.google-apps.shortcut' ? 'shortcut' : workspace ? 'workspace_document' : 'file',
+    durationSeconds: Number(f.videoMediaMetadata?.durationMillis) > 0 ? Number(f.videoMediaMetadata.durationMillis) / 1000 : null,
     size: f.size == null ? null : Number(f.size), version: f.version ?? null, modifiedAt: f.modifiedTime ?? null,
     downloadable: f.capabilities?.canDownload ?? null, webViewLink: f.webViewLink ?? null,
     hasThumbnail: f.hasThumbnail ?? false, thumbnailVersion: f.thumbnailVersion ?? null,
@@ -21,7 +22,15 @@ export function driveItem(f) {
 }
 export function createGoogleDrive({ connection = googleConnection, now = Date.now } = {}) {
   const uploads = new Map();
-  const request = (url, options) => connection.request(url, options, 'drive');
+  const request = async (url, options = {}) => {
+    try { return await connection.request(url, options, 'drive'); }
+    catch (error) {
+      // The shared connection invalidates a rejected access token. Retry reads
+      // once with its refreshed token; never replay an upload or other write.
+      if (error?.code !== 'drive_auth_required' || !['GET', 'HEAD'].includes(options.method ?? 'GET') || options.signal?.aborted) throw error;
+      return connection.request(url, options, 'drive');
+    }
+  };
   const json = response => connection.json(response, 'drive');
   async function get(id, { signal } = {}) {
     const url = new URL(`${api}/files/${encodeURIComponent(id)}`);
@@ -37,9 +46,37 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
     }
     return Buffer.concat(parts);
   }
+  async function open(id, { range, signal } = {}) {
+    const response = await request(`${api}/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`,
+      { signal, headers: range ? { range } : {} });
+    return { status: response.status, headers: response.headers, stream: response.body ? Readable.fromWeb(response.body) : Readable.from([]) };
+  }
   return {
     get,
-    async list({ query = '', folderId, pageSize = 50, pageToken, view = 'my', signal } = {}) {
+    // Start only a bounded range while checking fresh permissions/version.
+    // Nothing is returned to the client until both requests have succeeded.
+    async prepareContent(id, { range, signal } = {}) {
+      const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? '');
+      if (!match || !Number.isSafeInteger(Number(match[2])) || Number(match[2]) < Number(match[1]) ||
+        Number(match[2]) - Number(match[1]) >= 512 * 1024) throw fail('drive_invalid_range', 'Unbounded speculative range', 400);
+      const abort = new AbortController();
+      const combined = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal;
+      let opened;
+      const media = open(id, { range, signal: combined }).then(value => {
+        opened = value;
+        if (combined.aborted) value.stream.destroy();
+        return value;
+      });
+      try {
+        const [found, result] = await Promise.all([get(id, { signal: combined }), media]);
+        return { found, opened: result };
+      } catch (error) {
+        abort.abort();
+        opened?.stream.destroy();
+        throw error;
+      }
+    },
+    async list({ query = '', folderId, pageSize = 50, pageToken, view = 'my', fileType = 'all', order = 'name', signal } = {}) {
       if (view === 'shared' && !folderId) {
         const url = new URL(`${api}/drives`);
         url.search = new URLSearchParams({ pageSize: String(pageSize), fields: 'drives(id,name),nextPageToken', ...(pageToken ? { pageToken } : {}) });
@@ -53,21 +90,19 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
       else if (view === 'sharedWithMe') q.push('sharedWithMe = true');
       else if (view === 'starred') q.push('starred = true');
       else if (view === 'my' && !query) q.push("'root' in parents");
+      const mediaQueries = { video: "mimeType contains 'video/'", image: "mimeType contains 'image/'", document: "(mimeType contains 'application/' or mimeType contains 'text/') and mimeType != 'application/vnd.google-apps.folder' and mimeType != 'application/vnd.google-apps.shortcut'" };
+      if (mediaQueries[fileType]) q.push(mediaQueries[fileType]);
       if (query) q.push(`fullText contains '${escapeQuery(query)}'`);
       const url = new URL(`${api}/files`);
       url.search = new URLSearchParams({ q: q.join(' and '), pageSize: String(pageSize), spaces: 'drive',
         supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
-        orderBy: view === 'recent' ? 'viewedByMeTime desc,modifiedTime desc' : 'folder,name',
+        orderBy: order === 'recent' ? 'modifiedTime desc,name' : view === 'recent' ? 'viewedByMeTime desc,modifiedTime desc' : 'folder,name',
         fields: `files(${fields}),nextPageToken,incompleteSearch`, ...(pageToken ? { pageToken } : {}) });
       const data = await json(await request(url, { signal }));
       if (!Array.isArray(data.files)) throw fail('drive_invalid_response', 'Invalid Google Drive listing');
       return { items: data.files.map(driveItem), nextPageToken: data.nextPageToken, incompleteSearch: data.incompleteSearch ?? false };
     },
-    async open(id, { range, signal } = {}) {
-      const response = await request(`${api}/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`,
-        { signal, headers: range ? { range } : {} });
-      return { status: response.status, headers: response.headers, stream: response.body ? Readable.fromWeb(response.body) : Readable.from([]) };
-    },
+    open,
     async exportPdf(id, { signal } = {}) {
       const response = await request(`${api}/files/${encodeURIComponent(id)}/export?mimeType=application%2Fpdf`, { signal });
       return { body: await bounded(response, 10_000_000), mimeType: 'application/pdf' };
@@ -79,6 +114,7 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
       // Only Google-issued image hosts, never a file's user-supplied link.
       if (url.protocol !== 'https:' || url.port || url.username || url.password ||
         !['lh3.googleusercontent.com', 'lh4.googleusercontent.com', 'lh5.googleusercontent.com', 'lh6.googleusercontent.com'].includes(url.hostname)) return null;
+      url.pathname = url.pathname.replace(/=s\d+(?:-[a-z]+)?$/, "=s480");
       const response = await request(url, { signal });
       return { body: await bounded(response, 2 * 1024 * 1024), mimeType: response.headers.get('content-type')?.split(';')[0] };
     },

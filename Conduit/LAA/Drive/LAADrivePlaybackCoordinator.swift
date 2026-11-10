@@ -18,9 +18,12 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
     private let identity: LAADrivePlaybackIdentity?
     private let playbackFailureMessage: String
     private let audioFailureMessage: String
+    private let startsBufferedPlayback: Bool
     private var currentItemObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
     private var itemStatusObservation: NSKeyValueObservation?
+    private var bufferedRangesObservation: NSKeyValueObservation?
+    private var waitingReasonObservation: NSKeyValueObservation?
     private var endObservation: NSObjectProtocol?
     private var timeObserver: Any?
     private weak var observedItem: AVPlayerItem?
@@ -38,6 +41,7 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
     init(player: AVPlayer, identity: LAADrivePlaybackIdentity?, resumeStore: LAADriveResumeStore? = nil,
          playbackFailureMessage: String = "このファイルを再生できませんでした。",
          audioFailureMessage: String = "いまは音声を再生できません。",
+         startsBufferedPlayback: Bool = false,
          openSource: @escaping () -> Void, closeSource: @escaping () -> Void,
          acquireAudio: @escaping () throws -> Void, releaseAudio: @escaping () -> Void) {
         self.player = player
@@ -45,6 +49,7 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
         self.resumeStore = resumeStore ?? LAADriveResumeStore()
         self.playbackFailureMessage = playbackFailureMessage
         self.audioFailureMessage = audioFailureMessage
+        self.startsBufferedPlayback = startsBufferedPlayback
         self.openSource = openSource
         self.closeSource = closeSource
         self.acquireAudio = acquireAudio
@@ -67,6 +72,9 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
             Task { @MainActor in self?.bindCurrentItem() }
         }
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in self?.refresh() }
+        }
+        waitingReasonObservation = player.observe(\.reasonForWaitingToPlay, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.refresh() }
         }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 1, preferredTimescale: 600), queue: .main) { [weak self] _ in
@@ -140,6 +148,7 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
         player.pause()
         endAudio()
         currentItemObservation = nil; timeControlObservation = nil; itemStatusObservation = nil
+        bufferedRangesObservation = nil; waitingReasonObservation = nil
         if let endObservation { NotificationCenter.default.removeObserver(endObservation); self.endObservation = nil }
         if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
         observedItem = nil
@@ -152,6 +161,7 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
         guard let item = player.currentItem else { refresh(); return }
         if observedItem === item { refresh(); return }
         itemStatusObservation = nil
+        bufferedRangesObservation = nil
         if let endObservation { NotificationCenter.default.removeObserver(endObservation) }
         observedItem = item
         restored = false; seeking = false; ended = false
@@ -160,6 +170,9 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
                 guard let self, let item, self.player.currentItem === item else { return }
                 self.itemStatusChanged(item)
             }
+        }
+        bufferedRangesObservation = item.observe(\.loadedTimeRanges, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in self?.refresh() }
         }
         endObservation = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                                  object: item, queue: .main) { [weak self, weak item] _ in
@@ -228,12 +241,29 @@ final class LAADrivePlaybackCoordinator: ObservableObject {
         case .waitingToPlayAtSpecifiedRate:
             guard beginAudio() else { return }
             transition(.loading)
+            startBufferedContent(item)
         case .paused:
             if state == .playing || state == .loading { savePosition() }
             endAudio()
             transition(.paused)
         @unknown default: transition(.loading)
         }
+    }
+
+    private func startBufferedContent(_ item: AVPlayerItem) {
+        guard startsBufferedPlayback,
+              player.reasonForWaitingToPlay == .toMinimizeStalls || player.reasonForWaitingToPlay == .evaluatingBufferingRate else { return }
+        // AVFoundation's network prediction does not understand our resource
+        // loader. Start actual buffered media instead of waiting for that
+        // prediction. Keep automatic waiting enabled so an empty buffer retains
+        // playback intent; a native pause always cancels that waiting state.
+        let position = player.currentTime().seconds
+        guard position.isFinite, item.loadedTimeRanges.contains(where: { value in
+            let range = value.timeRangeValue
+            let start = range.start.seconds, end = CMTimeRangeGetEnd(range).seconds
+            return start.isFinite && end.isFinite && start <= position + 0.05 && end - position >= min(1, max(0.1, item.duration.seconds - position))
+        }) else { return }
+        player.playImmediately(atRate: player.defaultRate)
     }
 
     private func beginAudio() -> Bool {

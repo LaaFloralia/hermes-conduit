@@ -4321,3 +4321,10 @@ through the host's GPT-Live bridge. This is enabled only in LAA builds.
 - iPhone and Watch physical-device acceptance remains pending. The uncensored employee uses Talk; its existing phone call plan refuses GPT-Live.
 
 **Checked:** 2026-11-08, LAA laa/apple-watch, baseline b01a62d9.
+
+
+## LAA Drive stage 2 browsing and playback
+
+**Code:** `Conduit/LAA/Drive/`, `Conduit/LAA/Assets/`, `bridge/src/drive/google.mjs`, `bridge/src/routes/drive.mjs`.
+**Behavior:** Studio/Drive standard segment; clickable folder path; server-side video/image/document filters; folder/document rows and three-column media; per-folder layout/order; direct media preview with cached poster; long-press share/copy/open/save; four bounded Range reads in flight, permission/version validation, one read-only OAuth retry, six thumbnail transfers, protected bounded thumbnail disk cache, previous listing retained during refresh.
+**Validation:** `npm --prefix bridge test`; `bridge/bench/drive-{browse-models,thumbnails,native-playback}-test.mjs`; `drive-integration-typecheck.mjs`; `LAAAssetsTests`, `LAADriveRangeTests`, `LAAAssetsUITests`. Device Wi-Fi latency, long-play stalls, PiP, AirPlay and background audio require physical acceptance; macOS/synthetic measurements do not certify those targets. See `docs/laa/DRIVE-PLAYER-API.md`.

@@ -37,6 +37,10 @@ private func expectError<T: Error & Equatable>(_ expected: T, _ run: () async th
         slow.cancel()
         do { _ = try await slow.value; fatalError("expected cancellation") } catch is CancellationError { }
 
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for i in 0..<20 { group.addTask { _ = try await client.driveThumbnail(id: "file_queue\(i)", credentials: credentials) } }
+            try await group.waitForAll()
+        }
         let cache = LAADriveThumbnailCache(maximumBytes: 8, maximumEntries: 2)
         let a = LAADriveThumbnailKey(pairingID: "device1", fileID: "file_1", version: "1")!
         let b = LAADriveThumbnailKey(pairingID: "device1", fileID: "file_2", version: "1")!
@@ -76,6 +80,23 @@ private func expectError<T: Error & Equatable>(_ expected: T, _ run: () async th
         let byteEvicted = await byteLimited.value(for: a)
         let byteKept = await byteLimited.value(for: b)
         expect(byteEvicted == nil && byteKept != nil, "byte limit evicts even below the entry limit")
+        let disk = FileManager.default.temporaryDirectory.appendingPathComponent("drive-thumbnail-test-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: disk) }
+        let persisted = LAADriveThumbnailCache(maximumBytes: 8, maximumEntries: 2, diskDirectory: disk, maximumDiskBytes: 6)
+        await persisted.insert(Data([1, 2, 3]), for: a)
+        let restored = LAADriveThumbnailCache(maximumBytes: 8, maximumEntries: 2, diskDirectory: disk, maximumDiskBytes: 6)
+        let diskHit = await restored.value(for: a)
+        let diskOther = await restored.value(for: otherDevice)
+        expect(diskHit == Data([1, 2, 3]) && diskOther == nil, "disk survives actor recreation and isolates devices")
+        await persisted.insert(Data([4, 5, 6]), for: b)
+        await persisted.insert(Data([7, 8, 9]), for: c)
+        let files = try FileManager.default.contentsOfDirectory(at: disk, includingPropertiesForKeys: [.fileSizeKey])
+        expect(files.count <= 2 && files.allSatisfy { !$0.lastPathComponent.contains("device1") && !$0.lastPathComponent.contains("file_") }, "disk bounded and names hashed")
+        await restored.invalidate(pairingID: "device1", fileID: "file_1")
+        let diskRevoked = await LAADriveThumbnailCache(diskDirectory: disk).value(for: a)
+        expect(diskRevoked == nil, "disk revocation removes persisted versions")
+        await restored.removeAll()
+        expect((try FileManager.default.contentsOfDirectory(atPath: disk.path)).isEmpty, "pairing reset clears disk")
         print("Drive thumbnail client and cache fixture passed")
     }
 }

@@ -23,6 +23,7 @@ struct LAADriveBrowserView: View {
     let resolveShortcut: ShortcutLoader
     let errorMessage: (Error) -> String
     let open: (LAADriveListingItem, [LAADriveItem]) -> Void
+    let saveFile: (LAADriveListingItem) -> Void
     let saveFolder: (LAADriveListingItem) -> Void
     /// The Mac list shows files as rows with columns and keeps the selection
     /// visible while the detail column shows the file.
@@ -33,6 +34,7 @@ struct LAADriveBrowserView: View {
          resolveShortcut: @escaping ShortcutLoader,
          errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem, [LAADriveItem]) -> Void,
          saveFolder: @escaping (LAADriveListingItem) -> Void = { _ in },
+         saveFile: @escaping (LAADriveListingItem) -> Void = { _ in },
          desktop: Bool = false, selectedID: String? = nil) {
         self.desktop = desktop
         self.selectedID = selectedID
@@ -43,7 +45,7 @@ struct LAADriveBrowserView: View {
         self.resolveShortcut = resolveShortcut
         self.errorMessage = errorMessage
         self.open = open
-        self.saveFolder = saveFolder
+        self.saveFolder = saveFolder; self.saveFile = saveFile
     }
 
     @StateObject private var controller = LAADriveBrowseController()
@@ -62,7 +64,16 @@ struct LAADriveBrowserView: View {
     @State private var dropTargeted = false
     @State private var droppedFile: DroppedFile?
 
-    private enum Layout { case grid, list }
+    @State private var fileType: LAADriveFileFilter = .all
+    @State private var sort: LAADriveBrowseOrder = .name
+    private enum Layout: String { case grid, list }
+    private var preferenceKey: String { "drive.presentation." + (bridge.deviceID ?? "none") + "." + section.rawValue + "." + (folders.last?.id ?? "root") }
+    private var visibleItems: [LAADriveListingItem] {
+        controller.items.sorted {
+            if sort == .recent, $0.item.modifiedAt != $1.item.modifiedAt { return ($0.item.modifiedAt ?? "") > ($1.item.modifiedAt ?? "") }
+            return $0.item.name.localizedStandardCompare($1.item.name) == .orderedAscending
+        }
+    }
     /// A dropped file copied where the upload sheet can read it.
     private struct DroppedFile: Identifiable {
         let id = UUID()
@@ -74,9 +85,11 @@ struct LAADriveBrowserView: View {
         let section: LAADriveBrowseSection
         let folderID: String?
         let search: String
+        let fileType: LAADriveFileFilter
+        let order: LAADriveBrowseOrder
     }
     private var key: LoadKey {
-        .init(revision: revision, refreshID: refreshID, section: section, folderID: folders.last?.id, search: search)
+        .init(revision: revision, refreshID: refreshID, section: section, folderID: folders.last?.id, search: search, fileType: fileType, order: sort)
     }
     private var effectiveLayout: Layout { desktop ? .list : layout }
 
@@ -85,40 +98,25 @@ struct LAADriveBrowserView: View {
             return [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x6)]
         }
         return dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
-            [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
+            Array(repeating: GridItem(.flexible(), spacing: LAASpacing.x2), count: 3)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            sections
+            desktopBreadcrumb
             searchField
-            if desktop {
-                desktopBreadcrumb
-            } else if let folder = folders.last {
-                HStack {
-                    Button {
-                        folders.removeLast()
-                        search = ""
-                    } label: {
-                        Label("Back to \(folders.dropLast().last?.item.name ?? section.title)", systemImage: "chevron.left")
-                    }
-                    .frame(minHeight: LAASpacing.minimumTouchTarget)
-                    .accessibilityIdentifier("laa.drive.browser.back")
-                    Spacer()
-                    Button("Save folder") { saveFolder(folder) }
-                        .frame(minHeight: LAASpacing.minimumTouchTarget)
-                        .accessibilityHint("Estimate space before saving this folder offline.")
-                    .accessibilityIdentifier("laa.drive.offline.folder")
-                }
-            }
-            HStack {
-                header
-                Button { upload(folders.last?.id) } label: { Image(systemName: "plus") }
-                    .frame(minWidth: 44, minHeight: 44).accessibilityLabel(Text(verbatim: "アップロード"))
-            }
+            filters
+            header
             results
         }
         .tint(LAAColor.link)
+        .refreshable { await reload(key, debounce: false) }
+        .task(id: preferenceKey) {
+            layout = Layout(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".layout") ?? "") ?? .grid
+            sort = LAADriveBrowseOrder(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".sort") ?? "") ?? .name
+        }
+        .onChange(of: layout) { _, value in UserDefaults.standard.set(value.rawValue, forKey: preferenceKey + ".layout") }
+        .onChange(of: sort) { _, value in UserDefaults.standard.set(value.rawValue, forKey: preferenceKey + ".sort") }
         // Files dropped on the list take the upload sheet's existing path. Mac
         // and iPad both accept the drop; nothing changes for a phone's taps.
         .onDrop(of: [.fileURL, .image], isTargeted: $dropTargeted) { providers in acceptDrop(providers) }
@@ -160,7 +158,7 @@ struct LAADriveBrowserView: View {
                 Text(verbatim: section.title).laaTextStyle(.secondary)
                     .foregroundStyle(folders.isEmpty ? LAAColor.text : LAAColor.link)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plain).frame(minHeight: LAASpacing.minimumTouchTarget)
             ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)
@@ -168,57 +166,32 @@ struct LAADriveBrowserView: View {
                     Text(verbatim: folder.item.name).laaTextStyle(.secondary).lineLimit(1)
                         .foregroundStyle(index == folders.count - 1 ? LAAColor.text : LAAColor.link)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).frame(minHeight: LAASpacing.minimumTouchTarget)
             }
             Spacer(minLength: 0)
-            if let folder = folders.last {
-                Button("Save folder") { saveFolder(folder) }
-                    .laaTextStyle(.secondary)
-                    .frame(minHeight: LAASpacing.minimumTouchTarget)
-                    .help("このフォルダをオフライン保存")
-                    .accessibilityIdentifier("laa.drive.offline.folder")
-            }
         }
         .frame(minHeight: LAASpacing.minimumTouchTarget)
     }
 
-    @ViewBuilder private var sections: some View {
-        if desktop {
-            LAAMacFlowLayout(spacing: LAASpacing.x2) {
-                ForEach(LAADriveBrowseSection.allCases, id: \.self) { option in
-                    sectionChip(option)
-                }
-            }
-        } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: LAASpacing.x2) {
-                    ForEach(LAADriveBrowseSection.allCases, id: \.self) { option in
-                        sectionChip(option)
-                    }
-                }
-            }
+    private var filters: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: LAASpacing.x2) { filterButtons }
+            VStack(alignment: .leading, spacing: LAASpacing.x2) { filterButtons }
         }
     }
 
-    private func sectionChip(_ option: LAADriveBrowseSection) -> some View {
-        Button {
-            guard option != section else { return }
-            section = option
-            folders = []
-            search = ""
-            searchFocused = false
-        } label: {
-            Text(verbatim: option.title).laaTextStyle(.secondary)
-                .fontWeight(option == section ? .semibold : .regular)
-                .foregroundStyle(option == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
-                .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
-                .background(option == section ? LAAColor.filledButton : LAAColor.subtleSurface,
-                            in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
+    @ViewBuilder private var filterButtons: some View {
+        ForEach(LAADriveFileFilter.allCases, id: \.self) { option in
+            Button { fileType = option; searchFocused = false } label: {
+                Text(verbatim: option.title).laaTextStyle(.secondary)
+                    .foregroundStyle(option == fileType ? LAAColor.link : LAAColor.secondaryText)
+                    .padding(.horizontal, LAASpacing.x3).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .background(option == fileType ? LAAColor.selectionFill : LAAColor.surface,
+                                in: Capsule())
+            }.buttonStyle(.plain)
+                .accessibilityAddTraits(option == fileType ? .isSelected : [])
+                .accessibilityIdentifier("laa.drive.filter.\(option.rawValue)")
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(option == section ? .isSelected : [])
-        .accessibilityIdentifier("laa.drive.browser.section.\(option.rawValue)")
     }
 
     private var searchField: some View {
@@ -226,153 +199,153 @@ struct LAADriveBrowserView: View {
             HStack(spacing: LAASpacing.x3) {
                 Image(systemName: "magnifyingglass").foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)
-                TextField("Search files", text: $search)
+                TextField("検索", text: $search)
                     .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
                     .accessibilityIdentifier("laa.drive.browser.search")
                 if !search.isEmpty {
                     Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .accessibilityLabel("Clear search")
+                        .accessibilityLabel("検索を消す")
                         .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                 }
             }
             .laaTextStyle(.body).padding(.horizontal, LAASpacing.x4)
             .frame(minHeight: LAASpacing.minimumTouchTarget)
             .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-            if !search.isEmpty {
-                Text(verbatim: searchScope).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            }
-        }
-    }
 
-    private var searchScope: String {
-        if !folders.isEmpty { return AppLocalization.string("Searching this folder only.") }
-        if section == .my { return "マイドライブ全体を検索します。" }
-        return AppLocalization.string("Searching \(section.title).")
+        }
     }
 
     private var header: some View {
         HStack {
-            // The desktop breadcrumb already names the folder, so only the
-            // actions are repeated here.
-            if !desktop {
-                Text(verbatim: folders.last?.item.name ?? section.title)
-                    .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                    .accessibilityAddTraits(.isHeader)
-            }
+            Text("ファイル").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
             Spacer()
-            Button { Task { await reload(key, debounce: false) } } label: {
-                Image(systemName: "arrow.clockwise")
-                    .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-            }
-            .accessibilityLabel("Refresh files")
-            .accessibilityIdentifier("laa.drive.browser.refresh")
-            if !desktop {
-                Button {
-                    layout = layout == .grid ? .list : .grid
-                } label: {
-                    Image(systemName: layout == .grid ? "list.bullet" : "square.grid.2x2")
-                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+            Menu {
+                Picker("場所", selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
+                    ForEach(LAADriveBrowseSection.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
-                .accessibilityLabel(layout == .grid ? AppLocalization.string("Show list") : AppLocalization.string("Show grid"))
-                .accessibilityIdentifier("laa.drive.browser.layout")
-            }
+                Picker("並び順", selection: $sort) {
+                    ForEach(LAADriveBrowseOrder.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
+                }
+                if !desktop {
+                    Picker("表示", selection: $layout) {
+                        Label("サムネイル", systemImage: "square.grid.3x3").tag(Layout.grid)
+                        Label("リスト", systemImage: "list.bullet").tag(Layout.list)
+                    }
+                }
+                Button("アップロード", systemImage: "plus") { upload(folders.last?.id) }
+                if let folder = folders.last {
+                    Button("この端末に保存", systemImage: "arrow.down.circle") { saveFolder(folder) }
+                }
+                NavigationLink("この端末に保存済み") { LAADriveOfflineScreen() }
+            } label: {
+                Image(systemName: "ellipsis").frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+            }.accessibilityLabel("ファイルの表示と操作").accessibilityIdentifier("laa.drive.browser.menu")
         }
     }
 
     @ViewBuilder private var results: some View {
-        if waiting || displayedKey != key || (controller.loading && controller.items.isEmpty) {
-            ProgressView().accessibilityLabel("Loading files")
-        } else {
-            if let navigationError {
-                Text(verbatim: navigationError).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-            }
-            if resolvingID != nil { ProgressView("Opening shortcut") }
-            if let error = controller.error {
-                Text(verbatim: (error as? LAADriveBrowseError) == .cursorExpired
-                     ? AppLocalization.string("Results expired. Retry to reload from the beginning.") : errorMessage(error))
-                    .laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-                Button("Retry") {
-                    Task {
-                        if controller.cursor != nil, !controller.items.isEmpty {
-                            await controller.loadMore(using: load)
-                        } else { await reload(key, debounce: false) }
-                    }
+        if (waiting || displayedKey != key || controller.loading) && controller.items.isEmpty {
+            VStack(spacing: LAASpacing.x2) {
+                ForEach(0..<3) { _ in
+                    HStack(spacing: LAASpacing.x3) {
+                        RoundedRectangle(cornerRadius: LAARadius.selectionChip).fill(LAAColor.subtleSurface).frame(width: 24, height: 24)
+                        RoundedRectangle(cornerRadius: LAARadius.selectionChip).fill(LAAColor.subtleSurface).frame(width: 140, height: 12)
+                        Spacer()
+                    }.padding(.horizontal, LAASpacing.x4).frame(height: LAASpacing.minimumRowHeight)
                 }
-                .disabled(controller.loading)
+            }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                .accessibilityLabel("ファイルを読み込み中")
+        } else {
+            if let navigationError { Text(verbatim: navigationError).foregroundStyle(LAAColor.attention) }
+            if let error = controller.error {
+                HStack {
+                    Text(verbatim: errorMessage(error)).lineLimit(2)
+                    Button("再試行") { Task { await reload(key, debounce: false) } }
+                }.laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             if controller.items.isEmpty && controller.error == nil {
-                Text("No items found.").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                Text("ファイルがありません").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                    .frame(maxWidth: .infinity, minHeight: 160)
             }
             if controller.incompleteSearch == true {
-                Text("Results may be incomplete.").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-            } else if controller.incompleteSearch == nil && controller.error == nil {
-                Text("Could not confirm that these are all results.")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Text("一部の結果を取得できませんでした").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
+            rows(visibleItems.filter { $0.item.isFolder })
             if effectiveLayout == .grid {
-                LazyVGrid(columns: columns, spacing: LAASpacing.x2) {
-                    ForEach(controller.items) { entry in cell(entry, grid: true) }
+                LazyVGrid(columns: columns, spacing: LAASpacing.x4) {
+                    ForEach(visibleItems.filter { !$0.item.isFolder && ($0.item.isImage || $0.item.isMedia) }) { cell($0, grid: true) }
                 }
+                rows(visibleItems.filter { !$0.item.isFolder && !$0.item.isImage && !$0.item.isMedia })
             } else {
-                LazyVStack(spacing: desktop ? 0 : LAASpacing.x2) {
-                    ForEach(controller.items) { entry in cell(entry, grid: false) }
-                }
+                rows(visibleItems.filter { !$0.item.isFolder })
             }
             if controller.cursor != nil && controller.error == nil {
-                Button("Load more") { Task { await controller.loadMore(using: load) } }
-                    .disabled(controller.loading).accessibilityIdentifier("laa.drive.browser.more")
+                Button("さらに読み込む") { Task { await controller.loadMore(using: load) } }
+                    .disabled(controller.loading).frame(minHeight: LAASpacing.minimumTouchTarget).accessibilityIdentifier("laa.drive.browser.more")
             }
-            if controller.loading { ProgressView().accessibilityLabel("Loading more files") }
+        }
+    }
+
+    @ViewBuilder private func rows(_ items: [LAADriveListingItem]) -> some View {
+        if !items.isEmpty {
+            LazyVStack(spacing: 0) {
+                ForEach(items) { entry in
+                    cell(entry, grid: false)
+                    if entry.id != items.last?.id { Divider().padding(.leading, 52) }
+                }
+            }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         }
     }
 
     @ViewBuilder private func cell(_ entry: LAADriveListingItem, grid: Bool) -> some View {
-        if desktop {
-            LAADriveDesktopRow(entry: entry, isSelected: selectedID == entry.id,
-                               select: { select(entry) }, saveFolder: { saveFolder(entry) })
-                .disabled(resolvingID != nil)
-        } else {
         Button { select(entry) } label: {
-            Group {
-                if grid {
-                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        thumbnail(entry).aspectRatio(1, contentMode: .fit)
-                        labels(entry)
-                    }
-                } else {
-                    HStack(spacing: LAASpacing.x3) {
-                        thumbnail(entry).frame(width: 56, height: 56)
-                        labels(entry)
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").foregroundStyle(LAAColor.secondaryText)
-                            .accessibilityHidden(true)
-                    }
+            if grid {
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    thumbnail(entry).aspectRatio(1, contentMode: .fit)
+                        .overlay(alignment: .bottomTrailing) {
+                            if let duration = entry.durationSeconds, entry.item.mimeType.hasPrefix("video/") {
+                                Text(verbatim: String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60))
+                                    .font(.caption.monospacedDigit()).foregroundStyle(LAAColor.text)
+                                    .padding(4).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip)).padding(4)
+                            }
+                        }
+                    Text(verbatim: entry.item.name).font(.footnote).foregroundStyle(LAAColor.text)
+                        .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
+            } else {
+                HStack(spacing: LAASpacing.x3) {
+                    Image(systemName: entry.item.symbol).font(.system(size: 24)).foregroundStyle(LAAColor.link).frame(width: 24)
+                    Text(verbatim: entry.item.name).font(.body).foregroundStyle(LAAColor.text).lineLimit(2)
+                    Spacer(minLength: 8)
+                    if !entry.item.isFolder, let text = entry.item.modifiedAt, let date = Self.date(text) {
+                        Text(date, style: .relative).font(.footnote).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                    }
+                }.padding(.horizontal, LAASpacing.x4).frame(minHeight: LAASpacing.minimumRowHeight)
+                    .background(selectedID == entry.id ? LAAColor.selectionFill : .clear)
             }
-            .padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         }
-        .buttonStyle(.plain)
-        .disabled(resolvingID != nil)
+        .buttonStyle(.plain).disabled(resolvingID != nil)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: entry.item.name))
-        .accessibilityValue(Text(verbatim: kind(entry)))
-        .accessibilityHint(entry.item.isFolder ? AppLocalization.string("Open folder") : entry.item.kind == "shortcut" ? AppLocalization.string("Open shortcut") : AppLocalization.string("Open file"))
+        .accessibilityLabel(Text(verbatim: entry.item.name)).accessibilityValue(Text(verbatim: kind(entry)))
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")
         .contextMenu {
-            if entry.item.isFolder {
-                Button("Save folder offline", systemImage: "arrow.down.circle") { saveFolder(entry) }
+            if let url = entry.safeWebViewURL {
+                ShareLink(item: url) { Label("共有", systemImage: "square.and.arrow.up") }
+                Button("リンクをコピー", systemImage: "link") { UIPasteboard.general.url = url }
+                Link(destination: url) { Label("Driveで開く", systemImage: "arrow.up.right.square") }
             }
-        }
+            if entry.item.isFolder {
+                Button("この端末に保存", systemImage: "arrow.down.circle") { saveFolder(entry) }
+            } else {
+                Button("この端末に保存", systemImage: "arrow.down.circle") { saveFile(entry) }
+                    .disabled(LAADrivePresentation.reason(entry.item) != nil)
+            }
         }
     }
 
-    private func labels(_ entry: LAADriveListingItem) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: entry.item.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(verbatim: kind(entry)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+    private static func date(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text)
     }
 
     private func kind(_ entry: LAADriveListingItem) -> String {
@@ -415,7 +388,7 @@ struct LAADriveBrowserView: View {
             search = ""
             searchFocused = false
         } else {
-            var images = controller.items.map(\.item).filter(\.isImage)
+            var images = visibleItems.map(\.item).filter { entry.item.isMedia ? $0.isMedia : $0.isImage }
             if entry.item.isImage && !images.contains(where: { $0.id == entry.id }) { images.append(entry.item) }
             open(entry, images)
         }
@@ -488,8 +461,12 @@ struct LAADriveBrowserView: View {
 
     private func reload(_ requested: LoadKey, debounce: Bool) async {
         guard !Task.isCancelled, key == requested else { return }
-        controller.invalidate()
-        waiting = true
+        if let previous = displayedKey,
+           previous.revision != requested.revision || previous.section != requested.section ||
+           previous.folderID != requested.folderID || previous.search != requested.search || previous.fileType != requested.fileType || previous.order != requested.order {
+            controller.invalidate()
+        }
+        waiting = controller.items.isEmpty
         displayedKey = requested
         navigationError = nil
         do {
@@ -497,7 +474,7 @@ struct LAADriveBrowserView: View {
             try Task.checkCancellation()
             guard key == requested else { return }
             waiting = false
-            let query = LAADriveBrowseQuery(section: requested.section, folderID: requested.folderID, search: requested.search)
+            let query = LAADriveBrowseQuery(section: requested.section, folderID: requested.folderID, search: requested.search, fileType: requested.fileType, order: requested.order)
             await controller.reload(query, cached: cached(query), using: load)
         } catch is CancellationError {
             if key == requested { waiting = false }
@@ -508,17 +485,17 @@ struct LAADriveBrowserView: View {
 private extension LAADriveBrowseSection {
     var title: String {
         switch self {
-        case .my: return AppLocalization.string("My Drive")
-        case .shared: return AppLocalization.string("Shared drives")
-        case .sharedWithMe: return AppLocalization.string("Shared with me")
-        case .recent: return AppLocalization.string("Recent")
-        case .starred: return AppLocalization.string("Starred")
+        case .my: return "マイドライブ"
+        case .shared: return "共有ドライブ"
+        case .sharedWithMe: return "共有アイテム"
+        case .recent: return "最近"
+        case .starred: return "スター付き"
         }
     }
 }
 
 @MainActor
-private struct LAADriveBrowserThumbnail: View {
+struct LAADriveBrowserThumbnail: View {
     let entry: LAADriveListingItem
     let revision: Int
     let load: LAADriveBrowserView.ThumbnailLoader
@@ -531,7 +508,7 @@ private struct LAADriveBrowserThumbnail: View {
         let hasThumbnail: Bool?
     }
     private var key: Key {
-        .init(revision: revision, id: entry.id, version: entry.thumbnailVersion, hasThumbnail: entry.hasThumbnail)
+        .init(revision: revision, id: entry.id, version: entry.thumbnailVersion ?? entry.version, hasThumbnail: entry.hasThumbnail)
     }
 
     var body: some View {
@@ -548,21 +525,45 @@ private struct LAADriveBrowserThumbnail: View {
         .task(id: key) {
             image = nil
             guard entry.hasThumbnail == true else { return }
+            image = LAADriveDecodedThumbnails.value(entry: entry, revision: revision)
+            if image != nil { return }
             do {
                 guard let data = try await load(entry), data.count <= 2 * 1024 * 1024 else { return }
                 try Task.checkCancellation()
-                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                      let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                let decoded = await Task.detached(priority: .utility) { () -> CGImage? in
+                    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+                    return CGImageSourceCreateThumbnailAtIndex(source, 0, [
                         kCGImageSourceCreateThumbnailFromImageAlways: true,
                         kCGImageSourceCreateThumbnailWithTransform: true,
                         kCGImageSourceThumbnailMaxPixelSize: 480,
                         kCGImageSourceShouldCacheImmediately: true
-                      ] as CFDictionary) else { return }
+                      ] as CFDictionary)
+                }.value
                 try Task.checkCancellation()
+                guard let thumbnail = decoded else { return }
                 image = UIImage(cgImage: thumbnail)
+                if let image { LAADriveDecodedThumbnails.insert(image, entry: entry, revision: revision) }
             } catch { }
         }
         .onDisappear { image = nil }
     }
+}
+@MainActor enum LAADriveDecodedThumbnails {
+    private static let images: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>(); cache.countLimit = 100; cache.totalCostLimit = 16 * 1024 * 1024; return cache
+    }()
+    private static func key(_ entry: LAADriveListingItem, _ revision: Int) -> NSString {
+        "\(revision):\(entry.id):\(entry.thumbnailVersion ?? entry.version ?? "none")" as NSString
+    }
+    static func value(entry: LAADriveListingItem, revision: Int) -> UIImage? {
+        guard entry.hasThumbnail == true, entry.thumbnailVersion ?? entry.version != nil else { return nil }
+        return images.object(forKey: key(entry, revision))
+    }
+    static func invalidate(entry: LAADriveListingItem, revision: Int) { images.removeObject(forKey: key(entry, revision)) }
+    static func insert(_ image: UIImage, entry: LAADriveListingItem, revision: Int) {
+        guard entry.thumbnailVersion ?? entry.version != nil else { return }
+        images.setObject(image, forKey: key(entry, revision), cost: Int(image.size.width * image.size.height * image.scale * image.scale * 4))
+    }
+    static func removeAll() { images.removeAllObjects() }
 }
 #endif

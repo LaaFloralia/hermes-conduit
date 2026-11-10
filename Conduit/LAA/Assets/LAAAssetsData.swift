@@ -87,6 +87,13 @@ enum LAADriveFilter: String, CaseIterable {
 }
 
 enum LAADriveData {
+    @MainActor private static var listingMemory: [String: LAADriveListingPage] = [:]
+
+    @MainActor private static func remember(_ page: LAADriveListingPage, key: String) {
+        if listingMemory.count >= 24 && listingMemory[key] == nil { listingMemory.removeAll() }
+        listingMemory[key] = page
+    }
+
     static func path(query: String, folderID: String?, cursor: String?) -> String? {
         guard query.utf16.count <= 200 else { return nil }
         var parts = URLComponents()
@@ -136,6 +143,7 @@ enum LAADriveData {
             let components = URLComponents(string: path)
             let folder = components?.queryItems?.first(where: { $0.name == "folderId" })?.value
             let search = components?.queryItems?.first(where: { $0.name == "query" })?.value
+            let type = components?.queryItems?.first(where: { $0.name == "type" })?.value
             let cursor = components?.queryItems?.first(where: { $0.name == "cursor" })?.value
             var objects: [[String: String]] = fixture == "empty" ? [] : folder == "folder1" ? [
                 ["id": "doc2", "name": "Inside", "mimeType": "application/pdf", "kind": "file"]
@@ -148,6 +156,12 @@ enum LAADriveData {
             ]
             if fixture == "paged" {
                 objects = cursor == nil ? Array(objects.prefix(1)) : Array(objects.dropFirst(1))
+            }
+            if let type {
+                objects = objects.filter { object in
+                    let mime = object["mimeType"] ?? ""
+                    switch type { case "video": return mime.hasPrefix("video/"); case "image": return mime.hasPrefix("image/"); case "document": return object["kind"] != "folder" && !mime.hasPrefix("video/") && !mime.hasPrefix("image/"); default: return true }
+                }
             }
             if let search, !search.isEmpty { objects = objects.filter { $0["name"]?.localizedCaseInsensitiveContains(search) == true } }
             let next: Any = fixture == "paged" && cursor == nil ? "page2" : NSNull()
@@ -184,13 +198,20 @@ enum LAADriveData {
         if let data = try fixturePage(path: path) { return try JSONDecoder().decode(LAADriveListingPage.self, from: data) }
         #endif
         let result: LAABridgeResponse<LAADriveListingPage> = try await bridge.request(method: "GET", path: path)
-        if let deviceID = bridge.deviceID { LAAGoogleCache.save(result.data, key: deviceID + path) }
+        if let deviceID = bridge.deviceID {
+            remember(result.data, key: deviceID + path)
+            LAAGoogleCache.save(result.data, key: deviceID + path)
+        }
         return result.data
     }
 
     @MainActor static func cachedListing(_ query: LAADriveBrowseQuery, bridge: LAABridgeSession) -> LAADriveListingPage? {
         guard bridge.status == .paired, let deviceID = bridge.deviceID, let path = query.path else { return nil }
-        return LAAGoogleCache.read(LAADriveListingPage.self, key: deviceID + path)
+        let key = deviceID + path
+        if let page = listingMemory[key] { return page }
+        guard let page = LAAGoogleCache.read(LAADriveListingPage.self, key: key) else { return nil }
+        remember(page, key: key)
+        return page
     }
 
     @MainActor static func listingMetadata(_ id: String, bridge: LAABridgeSession) async throws -> LAADriveListingItem {
