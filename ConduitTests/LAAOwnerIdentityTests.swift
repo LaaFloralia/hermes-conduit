@@ -106,8 +106,8 @@ final class LAAOwnerIdentityTests: XCTestCase {
         let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data("""
         {"profiles":[{"id":"opus-high","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"high","fast":true}]}
         """.utf8))
-        XCTAssertEqual(LAAWorkSpeaker.agentName(session, options: options), "Opus 5.5")
-        XCTAssertEqual(LAAWorkSpeaker.agentName(session, options: nil), "claude-opus-5-5")
+        XCTAssertEqual(LAAWorkSpeaker.agentName(session, options: options), "Opus 5.5 · High")
+        XCTAssertEqual(LAAWorkSpeaker.agentName(session, options: nil), "Opus 5.5 · High")
     }
 
     // MARK: - Picture

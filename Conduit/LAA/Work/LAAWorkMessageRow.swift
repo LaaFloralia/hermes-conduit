@@ -12,16 +12,9 @@ enum LAAWorkSpeaker {
         }
     }
 
-    /// "Opus 5.5" from the model table, else the model the Mac reports, else "AI".
+    /// Use the applied model and effort when the daemon has reported both.
     static func agentName(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String {
-        if let profile = options?.profiles.first(where: { $0.id == session.profile }) {
-            return LAAWorkSessionStyle.shortLabel(profile.label)
-        }
-        if let model = session.observed?.model ?? session.requested?.model, !model.isEmpty {
-            let label = options?.profiles.first { $0.model == model }?.label
-            return LAAWorkSessionStyle.displayModel(label ?? model)
-        }
-        return "AI"
+        LAAWorkSessionStyle.appliedModel(session, options: options) ?? "AI"
     }
 }
 

@@ -2,11 +2,13 @@
 import XCTest
 
 final class LAAChatDesignUITests: XCTestCase {
-    private func launch(_ fixture: String = "simple", dark: Bool = false, group: Bool = false, pushed: Bool = true) -> XCUIApplication {
+    private func launch(_ fixture: String = "simple", dark: Bool = false, group: Bool = false, pushed: Bool = true,
+                        callable: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", fixture,
                                "-LAA_CAPTURE_SURFACE", group ? "group" : "chat", "-LAA_CAPTURE_KIND", "paper"]
             + (dark ? ["-LAA_V2_DARK"] : []) + (pushed ? ["-LAA_FIXTURE_PUSH_CHAT"] : [])
+        if callable { app.launchArguments.append("-LAA_FIXTURE_CALLABLE") }
         app.launch()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews[group ? "room.composer.field" : "composer.field"].waitForExistence(timeout: 15))
@@ -95,6 +97,24 @@ final class LAAChatDesignUITests: XCTestCase {
             app.swipeDown()
             capture(app, "conversation-rich-opening-after-\(theme)")
             app.terminate()
+        }
+    }
+
+    func testCallableMonetScreenshots() {
+        for dark in [false, true] {
+            let theme = dark ? "dark" : "light"
+            for fixture in ["simple", "rich"] {
+                let app = launch(fixture, dark: dark, callable: true)
+                XCTAssertTrue(bubble(app, "assistant").waitForExistence(timeout: 10))
+                let call = app.buttons["laa.employee.call"]
+                XCTAssertTrue(call.isHittable && call.isEnabled)
+                capture(app, "conversation\(fixture == "rich" ? "-rich" : "")-after-\(theme)")
+                if fixture == "rich" {
+                    app.swipeDown()
+                    capture(app, "conversation-rich-opening-after-\(theme)")
+                }
+                app.terminate()
+            }
         }
     }
 

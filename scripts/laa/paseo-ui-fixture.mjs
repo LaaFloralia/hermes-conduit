@@ -9,8 +9,9 @@ const projectID = 'prj_aaaaaaaaaaaa';
 let projectArchivedAt = null;
 const project = () => ({ id: projectID, name: '試験プロジェクト', nameSource: 'owner', instructionHash: null, instructionVersion: 0, instructions: null,
   fileCount: 0, files: [], version: 1, etag: '"1"', createdAt: stamp, updatedAt: stamp, archivedAt: projectArchivedAt });
+const model = { provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' };
 const row = (id, name, parentId, phase) => ({ id, name, parentId, requestId: id, workspaceId: 'home', cwd: '/Users/laa', profile: 'sol-high',
-  requested: { provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' }, phase, favorite: id === rootID && favorite,
+  requested: model, observed: model, phase, favorite: id === rootID && favorite,
   pending: { count: phase === 'awaiting_decision' ? 1 : 0 }, createdAt: stamp, updatedAt: stamp,
   events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' } });
 const rows = () => [row(rootID, '移行の動作確認', null, 'running'), row(childID, '子｜資料の確認', rootID, replied ? 'running' : 'awaiting_decision'),

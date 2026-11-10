@@ -16,6 +16,9 @@ private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if LAA_BUILD && !targetEnvironment(macCatalyst)
+        UITabBarItem.appearance().badgeColor = UIColor(LAAColor.attention)
+        #endif
         UNUserNotificationCenter.current().delegate = self
         // A "Hermes wants to talk" notification's Talk button (#449).
         HermesCallNotifications.registerCategory()

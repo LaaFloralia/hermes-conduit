@@ -479,12 +479,12 @@ enum LAAWorkSessionStyle {
     }
 
     /// What the daemon reports as applied, not what the Bridge requested. Nil
-    /// while nothing has been observed, so the detail can say so instead of
-    /// presenting a request as the current setting.
+    /// unless the daemon has reported both the model and its applied effort.
     static func appliedModel(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
-        guard let observed = session.observed, let model = observed.model, !model.isEmpty else { return nil }
+        guard let observed = session.observed, let model = observed.model, !model.isEmpty,
+              let effort = effort(observed.effort), !effort.isEmpty else { return nil }
         let label = options?.profiles.first { $0.provider == observed.provider && $0.model == model }?.label
-        return [displayModel(label ?? model), effort(observed.effort)].compactMap { $0 }.joined(separator: " · ")
+        return "\(displayModel(label ?? model)) · \(effort)"
     }
 
     /// The effort values the daemon can apply to the observed model, in the same

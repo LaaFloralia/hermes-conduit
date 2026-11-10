@@ -31,6 +31,7 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertEqual(stop.frame.midY, send.frame.midY, accuracy: 2)
         let records = app.buttons["work.session.records"]
         XCTAssertTrue(records.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["GPT 6.1 Sol · High"].firstMatch.exists)
         XCTAssertFalse(app.staticTexts["Read"].exists, "Tool traffic stays collapsed")
         capture(app, "session-detail-closed", theme)
         records.tap()

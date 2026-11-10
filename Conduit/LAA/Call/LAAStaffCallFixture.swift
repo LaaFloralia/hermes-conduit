@@ -42,7 +42,10 @@ private final class LAAFixturePlacedCallKit: VoicePlacedCallKit {
 
 struct LAAStaffCallFixture: View {
     static let launchArgument = "-laa-staff-call-fixture"
-    @StateObject private var calls = LAAEmployeeCallCoordinator(control: LAAFixtureCallControl())
+    @MainActor static func makeCoordinator() -> LAAEmployeeCallCoordinator {
+        LAAEmployeeCallCoordinator(control: LAAFixtureCallControl())
+    }
+    @StateObject private var calls = Self.makeCoordinator()
     @State private var voice = LAAStaff.monet.defaultGPTLiveVoice
     private let args = ProcessInfo.processInfo.arguments
     private let profile = "laa-monet"

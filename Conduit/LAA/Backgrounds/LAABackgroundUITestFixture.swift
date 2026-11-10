@@ -161,11 +161,14 @@ struct LAABackgroundUITestFixtureScreen: View {
     }
 
     @StateObject private var fake = LAABackgroundFixture()
+    @StateObject private var fixtureCalls = LAAStaffCallFixture.makeCoordinator()
+    @StateObject private var pairedBridge = LAABridgeSession(statusForTesting: .paired)
     @State private var sheet: FixtureSheet?
     @State private var bridgeResult = "未確認"
     @State private var captureReady = false
     @State private var pushesChat = ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_PUSH_CHAT")
     @EnvironmentObject private var bridge: LAABridgeSession
+    @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
     @EnvironmentObject private var rootState: AppState
     @Environment(\.colorScheme) private var inheritedColorScheme
     private var appState: AppState { fake.state }
@@ -284,7 +287,14 @@ struct LAABackgroundUITestFixtureScreen: View {
         }
     }
 
-    @ViewBuilder private var conversationScreen: some View {
+    private var conversationScreen: some View {
+        let callable = ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_CALLABLE")
+        return baseConversationScreen
+            .environmentObject(callable ? pairedBridge : bridge)
+            .environmentObject(callable ? fixtureCalls : calls)
+    }
+
+    @ViewBuilder private var baseConversationScreen: some View {
         if ProcessInfo.processInfo.arguments.contains("-LAA_FORCE_COMPACT_CHAT") {
             V2ConversationScreen()
                 .frame(width: 440)
