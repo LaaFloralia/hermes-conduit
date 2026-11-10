@@ -46,8 +46,8 @@ enum LAAColor {
 
 /// Points rather than fixed frames: rows and content must grow with Dynamic Type.
 extension LAASpacing {
-    static let horizontal: CGFloat = x6
-    static let compactHorizontal: CGFloat = x4
+    static let horizontal: CGFloat = 20
+    static let compactHorizontal: CGFloat = 20
     static let section: CGFloat = x8
     static let minimumRowHeight: CGFloat = 56
     static let minimumTouchTarget: CGFloat = 44
@@ -70,17 +70,17 @@ enum LAAType {
     static let bodySize: CGFloat = 17
     static let secondarySize: CGFloat = 15
     static let sectionSize: CGFloat = 15
-    static let screenTitle = Font.custom("Georgia", size: 30, relativeTo: .largeTitle)
+    static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
     #else
     static let bodySize: CGFloat = 16
     static let secondarySize: CGFloat = 13
-    static let sectionSize: CGFloat = 12
+    static let sectionSize: CGFloat = 15
     static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
     #endif
-    static let employeeName = Font.custom("Georgia", size: 16, relativeTo: .body)
+    static let employeeName = Font.custom("Georgia", size: 17, relativeTo: .body)
     static let usageValue = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
 
-    enum TextRole { case body, secondary, section }
+    enum TextRole { case body, secondary, section, rowTitle, note }
 }
 
 /// Use for system-font text at the specified base size, scaled by Dynamic Type.
@@ -94,7 +94,9 @@ private struct LAATextStyle: ViewModifier {
         switch role {
         case .body: content.font(.system(size: bodySize))
         case .secondary: content.font(.system(size: secondarySize))
-        case .section: content.font(.system(size: sectionSize))
+        case .section: content.font(.system(size: sectionSize, weight: .semibold))
+        case .rowTitle: content.font(.system(size: bodySize + 1))
+        case .note: content.font(.system(size: secondarySize - 1, weight: .medium))
         }
     }
 }

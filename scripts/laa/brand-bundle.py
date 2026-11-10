@@ -156,6 +156,10 @@ def values_only(value, source_key=None, locale="en"):
         return [values_only(item, source_key, locale) for item in value]
     if not isinstance(value, str):
         return value
+    # Match catalog keys, never runtime text or user content. Keep upstream
+    # lookup keys and the non-Japanese translations unchanged.
+    if locale == "ja" and source_key in COPY.get("interface_ja", {}):
+        return COPY["interface_ja"][source_key]
     if source_key in STATIC_COPY_KEYS:
         translations = COPY[STATIC_COPY_KEYS[source_key]]
         return translations.get(locale, translations["en"])

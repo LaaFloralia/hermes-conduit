@@ -325,7 +325,9 @@ private struct LegacySettingsView: View {
 
             if isSavingBusyInputMode {
                 HStack(spacing: 8) {
+                    #if !LAA_BUILD
                     ProgressView().controlSize(.small)
+                    #endif
                     Text("Saving preference…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -513,6 +515,9 @@ private struct LegacySettingsView: View {
 
 private enum SettingsDestination: Hashable {
     case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, shortcutInbox, screenQuestion, about
+    #if LAA_BUILD
+    case laaPredictive
+    #endif
 
 #if LAA_BUILD && LAA_INSTRUCTION_EDITOR
     case instructions
@@ -1006,6 +1011,10 @@ struct SettingsView: View {
             #else
             UsageSettingsDetail()
             #endif
+        #if LAA_BUILD
+        case .laaPredictive:
+            PredictiveSettingsPage()
+        #endif
         case .capabilities:
             CapabilitiesView()
         case .gateway:
@@ -1190,8 +1199,8 @@ private struct SettingsHome: View {
 
     /// The Mac's detail columns keep 32 pt side margins; a phone 16.
     private var sidePadding: CGFloat {
-        #if LAA_BUILD && targetEnvironment(macCatalyst)
-        return LAASpacing.x8
+        #if LAA_BUILD
+        return LAASpacing.horizontal
         #else
         return 16
         #endif
@@ -1207,7 +1216,7 @@ private struct SettingsHome: View {
                 ConduitBackdrop()
             }
             ScrollView {
-                VStack(spacing: v2Layout ? 24 : 14) {
+                VStack(spacing: settingsSectionSpacing) {
                     #if !LAA_BUILD
                     if appState.notifierPlugin.needsAttention {
                         NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel) {
@@ -1392,28 +1401,61 @@ private struct SettingsHome: View {
             : AppLocalization.string("Share preferences with your other devices")
     }
 
+    private var settingsSectionSpacing: CGFloat {
+        #if LAA_BUILD
+        return LAASpacing.section
+        #else
+        return v2Layout ? 24 : 14
+        #endif
+    }
+
     #if LAA_BUILD
-    /// Only settings useful in LAA; dashboard and plugin administration stay
-    /// in the upstream build, while pairing uses the shared Bridge session.
     @ViewBuilder private var laaSections: some View {
-        LAAMacSettingsCard()
-        LAAOwnerAvatarSettingsCard()
-        homeSection("", tint: .conduitAccent) {
-            settingsLink(.usage, icon: "gauge.medium", title: AppLocalization.string("AI usage"), detail: "", identifier: "settings.ai-usage")
+        VStack(alignment: .leading, spacing: 8) {
+            LAASectionHeader("接続")
+            LAAMacSettingsCard()
         }
-        homeSection(LAACopy.agent, tint: .conduitAura) {
-            settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
-            settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
-            settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"), identifier: "settings.voice")
-            if appState.supportsHermesCalls {
-                settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: LAACopy.callsFromMonet, detail: LAACopy.callsFromMonetDetail, identifier: "settings.hermes-calls")
+        VStack(alignment: .leading, spacing: 8) {
+            LAASectionHeader("プロフィール")
+            LAAOwnerAvatarSettingsCard()
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            LAASectionHeader("AI社員")
+            LAAListSurface {
+                laaLink(.model, icon: "cpu", title: "モデル")
+                LAAListDivider()
+                laaLink(.chat, icon: "bubble.left.and.bubble.right", title: "チャット", identifier: "settings.chat")
+                LAAListDivider()
+                laaLink(.voice, icon: "mic.and.signal.meter", title: "音声", identifier: "settings.voice")
+                if appState.supportsHermesCalls {
+                    LAAListDivider()
+                    laaLink(.hermesCalls, icon: "phone.arrow.down.left", title: "着信", identifier: "settings.hermes-calls")
+                }
             }
         }
-        homeSection(AppLocalization.string("App"), tint: .conduitAccent) {
-            settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"), identifier: "settings.appearance")
-            settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"), identifier: "settings.notifications")
-            settingsLink(.about, icon: "shield", title: LAACopy.dataAndLicenses, detail: LAACopy.dataAndLicensesDetail)
+        VStack(alignment: .leading, spacing: 8) {
+            LAASectionHeader("アプリ")
+            LAAListSurface {
+                laaLink(.appearance, icon: "circle.lefthalf.filled", title: "外観", identifier: "settings.appearance")
+                LAAListDivider()
+                laaLink(.notifications, icon: "bell", title: "通知", identifier: "settings.notifications")
+                LAAListDivider()
+                LAAListRow { LAASkillsSettingsRow().frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(LAAListRowStyle())
+                LAAListDivider()
+                laaLink(.laaPredictive, icon: "text.cursor", title: "入力候補", identifier: "settings.predictive")
+                LAAListDivider()
+                laaLink(.about, icon: "shield", title: LAACopy.dataAndLicenses)
+            }
         }
+    }
+    private func laaLink(_ destination: SettingsDestination, icon: String, title: String, identifier: String = "") -> some View {
+        LAAListRow(action: { path.append(destination) }) {
+            HStack(spacing: 12) {
+                Image(systemName: icon).foregroundStyle(LAAColor.link).frame(width: 24).accessibilityHidden(true)
+                Text(verbatim: title)
+                Spacer(minLength: 0)
+            }
+        }.accessibilityIdentifier(identifier)
     }
     #endif
 
@@ -2409,7 +2451,11 @@ private struct ModelCatalogPlaceholder: View {
     var body: some View {
         switch state {
         case .loading:
+            #if LAA_BUILD
+            LAASkeletonRows()
+            #else
             ProgressView("Loading available models…")
+            #endif
         case .ready:
             // Callers show their pickers instead; never a spinner that
             // can't end.
@@ -2442,8 +2488,13 @@ private struct ProfileModelSettingsDetail: View {
     /// Keeps a saved model the catalog no longer lists visible instead of
     /// silently showing a different one.
     private var modelChoices: [(id: String, title: String)] {
+        #if LAA_BUILD
+        let listed = models.map { (id: $0.id, title: LAAModelDisplay.name($0.id, label: $0.label)) }
+        return model.isEmpty || models.contains(where: { $0.id == model }) ? listed : [(id: model, title: LAAModelDisplay.name(model))] + listed
+        #else
         let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
         return model.isEmpty || models.contains(where: { $0.id == model }) ? listed : [(id: model, title: model)] + listed
+        #endif
     }
 
     /// Keeps a saved provider the catalog does not list (e.g. `auto`)
@@ -2459,8 +2510,10 @@ private struct ProfileModelSettingsDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
+    #if !LAA_BUILD
                 Text("Select a provider first, then one of its available models. These defaults apply to new sessions in this profile.")
                     .font(.footnote).foregroundStyle(.secondary)
+    #endif
                 let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
                 if catalog == .ready, let defaults {
                     ConduitMenuPicker(
@@ -2485,7 +2538,13 @@ private struct ProfileModelSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
                 ConduitMenuPicker(
                     value: reasoning,
-                    choices: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map { (id: $0, title: $0.capitalized) },
+                    choices: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map {
+                        #if LAA_BUILD
+                        (id: $0, title: LAAModelDisplay.reasoning($0))
+                        #else
+                        (id: $0, title: $0.capitalized)
+                        #endif
+                    },
                     onSelect: { reasoning = $0 }
                 ) {
                     Text("Default reasoning").foregroundStyle(.secondary)
@@ -2678,7 +2737,11 @@ private struct DelegationPauseSettings: View {
                 }
                 .buttonStyle(.settings)
             } else {
+                #if LAA_BUILD
+                LAASkeletonRows()
+                #else
                 ProgressView().controlSize(.small)
+                #endif
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
@@ -2730,7 +2793,11 @@ private struct FallbackModelsSettings: View {
                 // A list that didn't load is never edited: saving it would
                 // replace the real one.
                 if error == nil {
-                    ProgressView("Loading available models…")
+                    #if LAA_BUILD
+            LAASkeletonRows()
+            #else
+            ProgressView("Loading available models…")
+            #endif
                 } else {
                     Button(AppLocalization.string("Try Again")) { Task { await reload() } }
                         .buttonStyle(.settings)
@@ -2982,7 +3049,11 @@ struct ProfileConfigSettingsPage: View {
                 Text(subtitle).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 16)
             }
             if loading {
-                ProgressView("Loading profile settings…").frame(maxWidth: .infinity, minHeight: 180)
+                #if LAA_BUILD
+            LAASkeletonRows()
+            #else
+            ProgressView("Loading profile settings…").frame(maxWidth: .infinity, minHeight: 180)
+            #endif
             } else {
                 ForEach(cards) { card in
                     fieldsCard(card)
@@ -3129,7 +3200,12 @@ struct ProfileConfigSettingsPage: View {
     @ViewBuilder
     private func saveStatus(_ field: ProfileSettingField) -> some View {
         if savingKey == field.key {
-            HStack { ProgressView().controlSize(.small); Text("Saving…").font(.caption).foregroundStyle(.secondary) }
+            HStack {
+                #if !LAA_BUILD
+                ProgressView().controlSize(.small)
+                #endif
+                Text("Saving…").font(.caption).foregroundStyle(.secondary)
+            }
         } else if let message = fieldErrors[field.key] {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)
@@ -4621,12 +4697,26 @@ private struct AboutSettingsDetail: View {
 struct SettingsDetailContainer<Content: View>: View {
     var compact = false
     @ViewBuilder let content: Content
+    private var sidePadding: CGFloat {
+        #if LAA_BUILD
+        return LAASpacing.horizontal
+        #else
+        return 16
+        #endif
+    }
+    private var sectionSpacing: CGFloat {
+        #if LAA_BUILD
+        return 32
+        #else
+        return compact ? 18 : 24
+        #endif
+    }
     var body: some View {
         ZStack {
             SettingsBackdrop()
             ScrollView {
-                VStack(alignment: .leading, spacing: compact ? 18 : 24) { content }
-                    .padding(.horizontal, 16)
+                VStack(alignment: .leading, spacing: sectionSpacing) { content }
+                    .padding(.horizontal, sidePadding)
                     .padding(.top, 8)
                     .padding(.bottom, 24)
             }
@@ -4710,6 +4800,9 @@ struct SettingsSectionHeader: View {
     let tint: Color
 
     var body: some View {
+        #if LAA_BUILD
+        LAASectionHeader(title)
+        #else
         HStack(spacing: 6) {
             Image(systemName: symbol)
                 .font(.caption.weight(.semibold))
@@ -4723,6 +4816,7 @@ struct SettingsSectionHeader: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+        #endif
     }
 }
 
@@ -4732,10 +4826,6 @@ extension View {
     func settingsCard(cornerRadius: CGFloat = 20) -> some View {
         #if LAA_BUILD
         background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous)
-                    .strokeBorder(LAAColor.separator, lineWidth: 0.5)
-            }
         #else
         background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
@@ -4754,7 +4844,11 @@ struct SettingsButtonStyle: ButtonStyle {
     var isPrimary = false
 
     func makeBody(configuration: Configuration) -> some View {
+        #if LAA_BUILD
+        LAAActionButtonStyle(kind: isPrimary ? .primary : .secondary).makeBody(configuration: configuration)
+        #else
         SettingsButtonLabel(configuration: configuration, isPrimary: isPrimary)
+        #endif
     }
 }
 

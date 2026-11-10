@@ -4,11 +4,11 @@ import SwiftUI
 extension LAACopy {
     // The phone's own words for the same thing: a pairing code, not a
     // dashboard address.
-    static let macScanTitle = "Pairing Code"
+    static let macScanTitle = "接続コード"
     static let macScanReason = "QR codes can't be read on this Mac. Paste the pairing code or address."
-    static let macScanField = "Code or address"
-    static let macScanContinue = "Continue"
-    static let macScanCancel = "Cancel"
+    static let macScanField = "コードまたはアドレス"
+    static let macScanContinue = "続ける"
+    static let macScanCancel = "キャンセル"
     static let macScanInvalid = "That code isn't a pairing code."
 }
 

@@ -69,25 +69,23 @@ final class LAAChromeUITests: XCTestCase {
                 settings.tap()
                 XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10), tab)
                 if tab == "Chat" { capture("chrome-settings-\(appearance)") }
-                app.buttons["Close Settings"].tap()
+                app.buttons["laa.settings.done"].tap()
             }
-            // Usage is a Settings page now, not a tab.
             let settingsButton = app.buttons["laa.settings.open"]
             XCTAssertTrue(settingsButton.waitForExistence(timeout: 10)); settingsButton.tap()
-            let usageRow = app.buttons["settings.ai-usage"]
-            XCTAssertTrue(usageRow.waitForExistence(timeout: 10)); usageRow.tap()
-            let pairing = app.buttons["laa.bridge.openPairing"]
+            XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
+            let pairing = app.buttons["laa.settings.mac.repair"]
             XCTAssertTrue(pairing.waitForExistence(timeout: 10))
             pairing.tap()
-            XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.navigationBars["Macに接続"].waitForExistence(timeout: 10))
             XCTAssertTrue(app.textFields["laa.bridge.address"].exists)
             let code = app.secureTextFields["laa.bridge.code"]
             XCTAssertTrue(code.exists)
-            XCTAssertTrue(app.staticTexts["Address"].exists)
-            XCTAssertTrue(app.staticTexts["Pairing code"].exists)
+            XCTAssertTrue(app.staticTexts["アドレス"].exists)
+            XCTAssertTrue(app.staticTexts["接続コード"].exists)
             // The bar title may be read once; the body must not repeat it.
             XCTAssertLessThanOrEqual(
-                app.staticTexts.matching(NSPredicate(format: "label == %@", "Connect to Mac")).count, 1)
+                app.staticTexts.matching(NSPredicate(format: "label == %@", "Macに接続")).count, 1)
             let connect = app.buttons["laa.bridge.pair"]
             XCTAssertFalse(connect.isEnabled)
             try assertBackground(capture("chrome-pairing-\(appearance)"), appearance: appearance)
@@ -96,7 +94,7 @@ final class LAAChromeUITests: XCTestCase {
                 code.typeText("123456")
                 XCTAssertTrue(connect.isEnabled)
             }
-            app.buttons["Close"].tap()
+            app.buttons["閉じる"].tap()
             app.terminate()
         }
     }
@@ -120,17 +118,17 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertTrue(settings.waitForExistence(timeout: 30))
             settings.tap()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["Monet"].exists)
+            XCTAssertTrue(app.staticTexts["AI社員"].exists)
             XCTAssertFalse(app.staticTexts["Hermes"].exists)
             capture("remnants-settings-\(appearance)")
 
             let scroll = app.scrollViews.firstMatch
             XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "About & privacy")).firstMatch.exists)
-            let data = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Data & licenses")).firstMatch
+            let data = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "データとライセンス")).firstMatch
             for _ in 0..<6 where !data.isHittable { scroll.swipeUp() }
             XCTAssertTrue(data.isHittable)
             data.tap()
-            XCTAssertTrue(app.navigationBars["Data & licenses"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.navigationBars["データとライセンス"].waitForExistence(timeout: 10))
             XCTAssertTrue(app.staticTexts["LAAは設定したMacに接続します。会話と添付ファイルはその接続先で処理されます。"].exists)
             XCTAssertFalse(app.staticTexts["Active profile"].exists)
             XCTAssertFalse(app.staticTexts["Hermes"].exists)
@@ -139,7 +137,7 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertFalse(app.links["GitHub"].exists)
             capture("remnants-data-licenses-\(appearance)")
 
-            let licenses = app.buttons["Open-source licenses"]
+            let licenses = app.buttons["オープンソースライセンス"]
             for _ in 0..<6 where !licenses.isHittable { app.scrollViews.firstMatch.swipeUp() }
             XCTAssertTrue(licenses.isHittable)
             licenses.tap()
@@ -154,7 +152,7 @@ final class LAAChromeUITests: XCTestCase {
 
     func testMacSettingsRemainReachableWhenUnpairedOrKeychainFails() {
         for (arguments, status) in [([String](), "未接続"),
-                                    (["-LAA_UI_TEST_KEYCHAIN_ERROR"], "Keychain error"),
+                                    (["-LAA_UI_TEST_KEYCHAIN_ERROR"], "認証情報を読み取れません"),
                                     (["-LAA_UI_TEST_BRIDGE_OFFLINE"], "未接続")] {
             let app = launch("light", extra: arguments)
             let settings = app.buttons["laa.settings.open"]
@@ -171,7 +169,7 @@ final class LAAChromeUITests: XCTestCase {
             let repair = app.buttons["laa.settings.mac.repair"]
             XCTAssertTrue(repair.isHittable)
             repair.tap()
-            XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.navigationBars["Macに接続"].waitForExistence(timeout: 10))
             app.terminate()
         }
     }
@@ -186,7 +184,7 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertTrue(repair.waitForExistence(timeout: 10))
             capture("remnants-mac-\(appearance)")
             repair.tap()
-            XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.navigationBars["Macに接続"].waitForExistence(timeout: 10))
             capture("remnants-mac-pairing-\(appearance)")
             app.terminate()
         }

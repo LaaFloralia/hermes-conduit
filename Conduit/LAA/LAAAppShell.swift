@@ -16,6 +16,7 @@ struct LAAAppShell: View {
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var showUsage = false
+    @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var chatsPath: [V2Route] = []
     #if DEBUG
     @State private var seededDailyFixture = false
@@ -205,7 +206,7 @@ struct LAAAppShell: View {
     @ViewBuilder
     private var normalBar: some View {
         if #available(iOS 26.0, *) {
-            tabs.tabBarMinimizeBehavior(.onScrollDown)
+            tabs.tabBarMinimizeBehavior(.never)
         } else if reduceTransparency {
             tabs.toolbarBackground(LAAColor.surface, for: .tabBar)
                 .toolbarBackground(.visible, for: .tabBar)
@@ -222,33 +223,17 @@ struct LAAAppShell: View {
                 .tabItem { Label(LAATab.chats.title, systemImage: LAATab.chats.symbol) }
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
-                Group {
-                    if tab == .brain {
-                        LAABrainView(onRequestSettings: onRequestSettings)
-                    } else {
-                        NavigationStack {
-                            if tab == .today {
-                                LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings,
-                                             initialEventID: workLinkRequest.calendarEvent?.id, initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
-                                    .id(workLinkRequest.generation)
-                            } else if tab == .studio {
-                                // Studio and Drive are the tab's two pages: one
-                                // switch at the top instead of a link to a second screen.
-                                // A Drive link that arrives first opens it on Drive.
-                                LAAAssetsView(onRequestSettings: onRequestSettings,
-                                              initialStudioSelected: workLinkRequest.url?.host != "assets")
-                            } else if tab == .usage {
-                                LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
-                            } else if tab == .work {
-                                LAAWorkHub(onRequestSettings: onRequestSettings)
-                            } else {
-                                LAAAssetsView(onRequestSettings: onRequestSettings)
-                            }
-                        }
-                    }
-                }
+                LAANonChatTab(tab: tab, isActive: selectedTab == tab,
+                              generation: workLinkRequest.generation,
+                              eventID: workLinkRequest.calendarEvent?.id,
+                              calendarID: workLinkRequest.calendarEvent?.calendarID,
+                              initialStudioSelected: workLinkRequest.url?.host != "assets",
+                              usageState: usageState, selectedTab: $selectedTab,
+                              onRequestSettings: onRequestSettings)
+                    .equatable()
                 .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                .badge(tab == .work ? decisionCount : 0)
                 .tag(tab)
             }
         }
@@ -286,6 +271,52 @@ struct LAAAppShell: View {
 
     private func closeConversation() {
         if chatsPath.last == .conversation { chatsPath.removeLast() }
+    }
+}
+
+/// AppState publishes while a conversation streams. Compare only destination
+/// inputs here so those updates do not rebuild the four other tab roots. Their
+/// own observable data and environment still update normally; navigation and
+/// scroll state stay in the existing tab identity.
+private struct LAANonChatTab: View, Equatable {
+    let tab: LAATab
+    let isActive: Bool
+    let generation: UInt64
+    let eventID: String?
+    let calendarID: String?
+    let initialStudioSelected: Bool
+    let usageState: LAAUsageState
+    @Binding var selectedTab: LAATab
+    let onRequestSettings: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.tab == rhs.tab && lhs.isActive == rhs.isActive && lhs.generation == rhs.generation
+            && lhs.eventID == rhs.eventID && lhs.calendarID == rhs.calendarID
+            && lhs.initialStudioSelected == rhs.initialStudioSelected && lhs.usageState === rhs.usageState
+        // The Binding location and settings action belong to the shell's
+        // lifetime, so they do not change when AppState publishes.
+    }
+
+    var body: some View {
+        if tab == .brain {
+            LAABrainView(onRequestSettings: onRequestSettings)
+        } else {
+            NavigationStack {
+                if tab == .today {
+                    LAATodayView(openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings,
+                                 initialEventID: eventID, initialCalendarID: calendarID)
+                        .id(generation)
+                } else if tab == .studio {
+                    LAAAssetsView(onRequestSettings: onRequestSettings, initialStudioSelected: initialStudioSelected)
+                } else if tab == .usage {
+                    LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+                } else if tab == .work {
+                    LAAWorkHub(onRequestSettings: onRequestSettings)
+                } else {
+                    LAAAssetsView(onRequestSettings: onRequestSettings)
+                }
+            }
+        }
     }
 }
 

@@ -23,11 +23,7 @@ struct LAATodayDesktopView: View {
         let count = calendarValue.dateComponents([.day], from: range.start, to: range.end).day ?? 1
         let all = (0..<max(1, count)).compactMap { calendarValue.date(byAdding: .day, value: $0, to: range.start) }
         guard calendar.mode == .list else { return all }
-        let populated = all.filter { day in
-            let end = calendarValue.date(byAdding: .day, value: 1, to: day) ?? day
-            return calendar.events.contains { $0.overlaps(start: day, end: end) }
-        }
-        return populated.isEmpty ? [calendarValue.startOfDay(for: calendar.selectedDate)] : populated
+        return LAACalendarMode.agendaDays(events: calendar.events, now: calendar.selectedDate)
     }
 
     var body: some View {
@@ -36,18 +32,11 @@ struct LAATodayDesktopView: View {
                 controls
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if calendar.isLoading && !calendar.loaded { ProgressView().padding(LAASpacing.x4) }
+                    LazyVStack(alignment: .leading, spacing: LAASpacing.section) {
+                        if calendar.isLoading && !calendar.loaded { LAASkeletonRows() }
                         ForEach(days, id: \.timeIntervalSince1970) { day in daySection(day) }
-                        if calendar.loaded && calendar.events.isEmpty && calendar.errorMessage == nil {
-                            Text(verbatim: LAACopy.macNoEvents)
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                                .padding(LAASpacing.x4)
-                        }
-                        Button(action: openBrain) { Text(verbatim: "Docを開く") }
-                            .laaGlassButton()
-                            .padding(LAASpacing.x4)
-                    }
+
+                    }.padding(LAASpacing.horizontal)
                 }
             }
             .background(LAAColor.background)
@@ -62,7 +51,7 @@ struct LAATodayDesktopView: View {
             // for the menu's per-section new item, and ⌘R reloads from the
             // menu like every other section.
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "New Event",
+                newTitle: "予定を追加",
                 newShortcut: "n",
                 newModifiers: [.command, .shift],
                 canCreate: calendar.calendars.contains(where: \.writable),
@@ -82,11 +71,9 @@ struct LAATodayDesktopView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Text(verbatim: "Today").font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("laa.today.title")
+            LAAScreenHeader(title: "Today", identifier: "laa.today.title")
             Picker(selection: $calendar.mode) {
-                ForEach(LAACalendarMode.allCases, id: \.self) { mode in
+                ForEach(LAACalendarMode.visibleModes, id: \.self) { mode in
                     Text(verbatim: mode.title).tag(mode)
                 }
             } label: { Text(verbatim: "表示") }
@@ -94,11 +81,12 @@ struct LAATodayDesktopView: View {
             .labelsHidden()
             .accessibilityIdentifier("laa.calendar.mode")
 
+            if calendar.mode != .list {
             HStack(spacing: LAASpacing.x2) {
                 Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
-                    .frame(width: 36, height: 36)
-                    .accessibilityLabel(Text(verbatim: "Previous"))
-                    .macTooltip("Previous")
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel(Text(verbatim: "前へ"))
+                    .macTooltip("前へ")
                 DatePicker(selection: $calendar.selectedDate, displayedComponents: .date) {
                     Text(verbatim: "日付")
                 }
@@ -106,19 +94,15 @@ struct LAATodayDesktopView: View {
                 .frame(maxWidth: 190)
                 Button { calendar.selectedDate = Date(); selectedEventID = nil } label: { Text(verbatim: "今日") }
                 Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
-                    .frame(width: 36, height: 36)
-                    .accessibilityLabel(Text(verbatim: "Next"))
-                    .macTooltip("Next")
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel(Text(verbatim: "次へ"))
+                    .macTooltip("次へ")
                 Spacer(minLength: 0)
-                Button { showNewEvent = true } label: { Image(systemName: "plus") }
-                    .frame(width: 36, height: 36)
-                    .accessibilityLabel(Text(verbatim: "予定を作成"))
-                    .macTooltip("New event (⇧⌘N)")
-                    .disabled(!calendar.calendars.contains(where: \.writable))
+            }
             }
 
-            HStack(spacing: LAASpacing.x2) {
-                Menu {
+            if !calendar.calendars.isEmpty {
+                LAASectionHeader("カレンダー") {
                     ForEach(calendar.calendars) { item in
                         Button {
                             if calendar.selectedCalendarIDs.contains(item.id) { calendar.selectedCalendarIDs.remove(item.id) }
@@ -128,43 +112,37 @@ struct LAATodayDesktopView: View {
                             icon: { Image(systemName: calendar.selectedCalendarIDs.contains(item.id) ? "checkmark.circle.fill" : "circle") }
                         }
                     }
-                } label: { Label { Text(verbatim: "Calendars") } icon: { Image(systemName: "calendar") } }
-                    .macTooltip("Choose visible calendars")
-                Spacer(minLength: 0)
+                }
             }
 
             if let message = calendar.errorMessage {
-                Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                HStack {
-                    Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "再読み込み") }
-                    if bridge.status != .paired {
-                        Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "Macに接続") }
-                    }
-                }
+                LAAInlineFailure(reason: message) { Task { await calendar.refresh(bridge: bridge) } }
             }
             if calendar.skippedCount > 0 {
                 Text(verbatim: "読み取れない予定を\(calendar.skippedCount)件除外しました。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
         }
-        .padding(LAASpacing.x3)
+        .padding(LAASpacing.horizontal)
     }
 
     private func daySection(_ day: Date) -> some View {
         let end = Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
         let events = calendar.events.filter { $0.overlaps(start: day, end: end) }
-        return VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Text(verbatim: Calendar.current.isDateInToday(day)
-                 ? "TODAY · " + day.formatted(.dateTime.month().day())
+        return VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            LAASectionHeader(Calendar.current.isDateInToday(day)
+                 ? "今日 · " + day.formatted(.dateTime.month().day())
                  : day.formatted(.dateTime.weekday(.wide).month().day()))
-                .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                .padding(.horizontal, LAASpacing.x4).padding(.top, LAASpacing.x3)
             if events.isEmpty {
-                Text(verbatim: "予定はありません。").laaTextStyle(.secondary)
-                    .foregroundStyle(LAAColor.secondaryText)
-                    .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
+                LAAEmptyState(message: "予定はありません")
+            } else {
+                LAAListSurface {
+                    ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
+                        if index > 0 { LAAListDivider() }
+                        eventRow(event)
+                    }
+                }
             }
-            ForEach(events) { event in eventRow(event) }
         }
     }
 
@@ -173,9 +151,9 @@ struct LAATodayDesktopView: View {
             HStack(alignment: .top, spacing: LAASpacing.x3) {
                 RoundedRectangle(cornerRadius: 2).fill(color(for: event)).frame(width: 4)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: event.allDay ? "All day" : event.start.formatted(date: .omitted, time: .shortened) + "–" + event.end.formatted(date: .omitted, time: .shortened))
+                    Text(verbatim: event.allDay ? "終日" : event.start.formatted(date: .omitted, time: .shortened) + "–" + event.end.formatted(date: .omitted, time: .shortened))
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    Text(verbatim: event.title).laaTextStyle(.body).fontWeight(.medium)
+                    Text(verbatim: event.title).laaTextStyle(.rowTitle)
                         .foregroundStyle(LAAColor.text).lineLimit(2)
                     if let location = event.location, !location.isEmpty {
                         Text(verbatim: location).laaTextStyle(.secondary)
@@ -186,7 +164,8 @@ struct LAATodayDesktopView: View {
             }
             .padding(.horizontal, LAASpacing.x4)
             .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(rowBackground(event.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .padding(.vertical, 8)
+            .background(rowBackground(event.id))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -207,7 +186,7 @@ struct LAATodayDesktopView: View {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.system(size: 36, weight: .light)).foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: message).multilineTextAlignment(.center).foregroundStyle(LAAColor.text)
-                Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "再読み込み") }
+                Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "再試行") }
                     .laaGlassButton(prominent: true)
             }
             .padding(LAASpacing.x8).frame(maxWidth: 560)
@@ -256,7 +235,7 @@ struct LAATodayDesktopView: View {
                     .font(.system(size: 15, weight: selected ? .semibold : .regular))
                     .foregroundStyle(inMonth ? LAAColor.text : LAAColor.secondaryText.opacity(0.55))
                 if count > 0 {
-                    Text(verbatim: "\(count) event\(count == 1 ? "" : "s")")
+                    Text(verbatim: "\(count)件")
                         .font(.system(size: 10)).foregroundStyle(LAAColor.link).lineLimit(1)
                 }
                 Spacer(minLength: 0)

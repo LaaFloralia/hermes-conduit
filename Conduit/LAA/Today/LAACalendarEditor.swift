@@ -58,10 +58,8 @@ struct LAACalendarEditor: View {
                             Button { recurrence = "RRULE:FREQ=WEEKLY" } label: { Text(verbatim: "毎週") }
                             Button { recurrence = "RRULE:FREQ=MONTHLY" } label: { Text(verbatim: "毎月") }
                             Button { recurrence = "RRULE:FREQ=YEARLY" } label: { Text(verbatim: "毎年") }
-                        } label: { Text(verbatim: "繰り返しを選択") }
-                        TextField(text: $recurrence, axis: .vertical) { Text(verbatim: "繰り返しルール（RRULE）") }
-                            .textInputAutocapitalization(.characters).autocorrectionDisabled()
-                    } header: { Text(verbatim: "繰り返し") } footer: { Text(verbatim: "必要ならCOUNTやUNTILで終了条件を指定できます。") }
+                        } label: { Text(verbatim: recurrenceTitle) }
+                    } header: { Text(verbatim: "繰り返し") }
                 }
                 Picker(selection: $reminder) {
                     Text(verbatim: "Googleの既定").tag(-1)
@@ -71,8 +69,11 @@ struct LAACalendarEditor: View {
                     Text(verbatim: "1日前").tag(1440)
                 } label: { Text(verbatim: "通知") }
                 if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
-                if busy { ProgressView() }
             }
+            .laaTextStyle(.body)
+            .scrollContentBackground(.hidden)
+            .background(LAAColor.background)
+            .navigationBarTitleDisplayMode(.inline)
             .navigationTitle(Text(verbatim: event == nil ? "予定を作成" : "予定を編集"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.cancel) }.disabled(busy) }
@@ -93,6 +94,10 @@ struct LAACalendarEditor: View {
             .onChange(of: start) { _, value in
                 if allDay && !(value < end) { end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: value))! }
             }
+    }
+    private var recurrenceTitle: String {
+        ["": "繰り返さない", "RRULE:FREQ=DAILY": "毎日", "RRULE:FREQ=WEEKLY": "毎週",
+         "RRULE:FREQ=MONTHLY": "毎月", "RRULE:FREQ=YEARLY": "毎年"][recurrence] ?? "カスタム"
     }
     private func save() async {
         busy = true; defer { busy = false }

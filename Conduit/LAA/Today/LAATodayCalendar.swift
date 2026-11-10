@@ -81,8 +81,18 @@ struct LAACalendarResponse: Codable {
     @Published var mode: LAACalendarMode = .list
     private var cacheKey: String?
     private var generation = 0
+    private var currentDay = Calendar.current.startOfDay(for: Date())
     // LAA personal copy is rendered with Text(verbatim:).
-    private static let connectMessage = "予定を表示するには、Macに接続してください。"
+    private static let connectMessage = "Macに未接続"
+
+    /// Preserve deliberately browsed weeks/months; the agenda always follows today.
+    @discardableResult func updateToday(now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        let day = calendar.startOfDay(for: now)
+        guard day != currentDay else { return false }
+        if mode == .list || calendar.isDate(selectedDate, inSameDayAs: currentDay) { selectedDate = day }
+        currentDay = day
+        return true
+    }
 
     static func requestPath(now: Date = Date(), calendar: Calendar = .current) -> String {
         let start = calendar.startOfDay(for: now)
@@ -152,10 +162,11 @@ struct LAACalendarResponse: Codable {
     func refresh(isPaired: Bool, now: Date = Date(), load: () async throws -> LAACalendarResponse) async {
         generation += 1
         let current = generation
-        events = []; skippedCount = 0; loaded = false; errorMessage = nil
-        LAACalendarSnapshot.save(nil)
-        WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
+        errorMessage = nil
         guard isPaired else {
+            events = []; skippedCount = 0; loaded = false
+            LAACalendarSnapshot.save(nil)
+            WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
             isLoading = false
             errorMessage = Self.connectMessage
             return
@@ -178,24 +189,24 @@ struct LAACalendarResponse: Codable {
     static func message(for error: Error) -> String {
         if let error = error as? LAABridgeHTTPError {
             switch error.code {
-            case "calendar_not_configured": return "Googleカレンダーは未連携です。Mac側の連携設定が必要です。"
-            case "calendar_auth_required": return "Googleカレンダーの認証が切れています。Mac側で再連携してください。"
-            case "calendar_access_denied": return "Googleカレンダーの読取権限を確認してください。"
-            case "calendar_unavailable": return "Googleカレンダーに接続できませんでした。しばらく待って再読み込みしてください。"
-            case "calendar_not_found": return "予定またはカレンダーが見つかりません。再読み込みしてください。"
-            case "calendar_conflict": return "別の場所で変更されています。再読み込みしてください。"
-            case "calendar_too_many_events": return "予定が多いため取得できませんでした。連携先を確認してください。"
-            case "calendar_invalid_response": return "Googleカレンダーの応答を読み取れませんでした。再読み込みしてください。"
+            case "calendar_not_configured": return "Googleカレンダーは未連携です"
+            case "calendar_auth_required": return "Googleカレンダーの再認証が必要です"
+            case "calendar_access_denied": return "カレンダーの読み取り権限がありません"
+            case "calendar_unavailable": return "Googleカレンダーに接続できません"
+            case "calendar_not_found": return "予定が見つかりません"
+            case "calendar_conflict": return "予定が別の場所で変更されました"
+            case "calendar_too_many_events": return "予定が多すぎるため取得できません"
+            case "calendar_invalid_response": return "カレンダーの応答を読み取れません"
             default:
-                if error.status == 401 { return "Macとの接続が切れています。再接続してください。" }
-                if error.status == 403 { return "この端末にはカレンダーの読取権限がありません。Mac側の設定が必要です。" }
-                if error.status == 404 { return "Mac側のカレンダー連携を更新してください。" }
+                if error.status == 401 { return "Macへの再接続が必要です" }
+                if error.status == 403 { return "この端末にはカレンダーの権限がありません" }
+                if error.status == 404 { return "Macのカレンダー連携の更新が必要です" }
             }
         }
         if let error = error as? LAABridgeError, error == .unauthorized || error == .revoked {
-            return "Macとの接続が切れています。再接続してください。"
+            return "Macへの再接続が必要です"
         }
-        return "予定を取得できませんでした。Macとネットワークの接続を確認し、再読み込みしてください。"
+        return "予定を取得できません"
     }
 
     #if DEBUG
