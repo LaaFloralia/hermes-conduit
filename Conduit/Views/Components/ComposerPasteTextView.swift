@@ -45,7 +45,11 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// The bounds for a text view's own traits, the same source its
     /// `adjustsFontForContentSizeCategory` font scales from.
     static func minimumHeight(for traits: UITraitCollection?, size: ChatTextSize = .larger) -> CGFloat {
+#if LAA_BUILD
+        max(44, ceil(bodyLineHeight(for: traits, size: size)) + 16)
+#else
         ceil(bodyLineHeight(for: traits, size: size) * 3) + 16
+#endif
     }
 
     static func maximumHeight(for traits: UITraitCollection?, size: ChatTextSize = .larger) -> CGFloat {

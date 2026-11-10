@@ -512,6 +512,11 @@ private struct V2ConnectionLine: View {
 private struct V2ConversationMenu: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+#if LAA_BUILD
+    @Environment(\.laaDismissConversationInfo) private var dismissInfo
+    @State private var confirmsDisband = false
+    @State private var pictureRequest: GroupRoomPictureRequest?
+#endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
@@ -530,6 +535,38 @@ private struct V2ConversationMenu: View {
     }
 
     var body: some View {
+#if LAA_BUILD
+        Form {
+            Section {
+                LAAConversationMenuItems()
+                NavigationLink("会話内を検索") { LAAConversationSearchView() }
+            }
+            if appState.activeRoomSurface != nil {
+                Section { GroupRoomActionItems(onDisband: { confirmsDisband = true }, onChoosePicture: { pictureRequest = $0 }) }
+            } else {
+                Section {
+                    Button("新しい会話") { dismissInfo(); appState.startNewChat() }.disabled(!appState.canTapNewChat)
+                    NavigationLink("これまでの会話") { LAAConversationHistoryView() }
+                    NavigationLink("モデル") { ModelPickerView() }
+                    Button("会話を更新") { Task { await appState.refreshActiveSession() } }.disabled(!appState.isConnected)
+                }
+            }
+            Section("接続") {
+                Text(appState.isConnected ? "接続済み" : "Macに接続できません")
+                NavigationLink("接続の状態") { GatewayDiagnosticsSheet() }
+            }
+        }
+        .modifier(GroupRoomPicturePicker(request: $pictureRequest))
+        .confirmationDialog("このグループを解散しますか？", isPresented: $confirmsDisband, titleVisibility: .visible) {
+            Button("解散", role: .destructive) {
+                dismissInfo()
+                Task { await appState.disbandActiveRoom() }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("グループと会話の履歴が削除されます。この操作は取り消せません。")
+        }
+#else
         Menu {
             #if LAA_BUILD
             LAAConversationMenuItems()
@@ -597,6 +634,7 @@ private struct V2ConversationMenu: View {
         .accessibilityLabel(AppLocalization.string("Conversation options"))
         .accessibilityValue(statusWord)
         .accessibilityIdentifier("conversation.menu")
+#endif
     }
 }
 

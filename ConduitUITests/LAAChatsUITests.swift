@@ -31,7 +31,7 @@ final class LAAChatsUITests: XCTestCase {
         app.buttons["laa.chats.group.team"].tap()
         closeSelection(app, expected: "group:team")
         app.buttons["laa.chats.new"].tap()
-        closeSelection(app, expected: "new-chat")
+        XCTAssertTrue(app.textFields["groups.create.name"].waitForExistence(timeout: 10))
     }
 
     func testListScreenshots() {
@@ -62,7 +62,7 @@ final class LAAChatsUITests: XCTestCase {
 
     func testGroupCreationUsesExistingForm() {
         let app = launch()
-        app.buttons["laa.chats.group.new"].tap()
+        app.buttons["laa.chats.new"].tap()
         let name = app.textFields["groups.create.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         name.tap(); name.typeText("Planning")
@@ -82,8 +82,8 @@ final class LAAChatsUITests: XCTestCase {
                               ("offline", "Macに接続できません。"),
                               ("unsupported", "この接続先はグループに対応していません。")] {
             let app = launch(mode)
-            XCTAssertTrue(app.staticTexts[label].firstMatch.waitForExistence(timeout: 10), mode)
-            XCTAssertFalse(app.buttons["laa.chats.group.new"].isEnabled, mode)
+            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch.waitForExistence(timeout: 10), mode)
+            XCTAssertFalse(app.buttons["laa.chats.new"].isEnabled, mode)
             app.terminate()
         }
     }

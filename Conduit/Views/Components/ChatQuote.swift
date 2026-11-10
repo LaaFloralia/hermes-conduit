@@ -248,6 +248,9 @@ struct ReplyReferenceQuoteCard: View {
     }
 
     var body: some View {
+#if LAA_BUILD
+        LAAReplyReferenceCard(excerpt: excerpt, author: authorName, onAccent: onAccentSurface)
+#else
         HStack(alignment: .top, spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(primaryColor.opacity(0.7))
@@ -272,6 +275,7 @@ struct ReplyReferenceQuoteCard: View {
         .padding(.vertical, 7)
         .background(primaryColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
+#endif
     }
 
     private var primaryColor: Color {

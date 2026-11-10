@@ -24,7 +24,7 @@ struct LAASenderName: View {
     let text: String
     var body: some View {
         Text(verbatim: text)
-            .font(.caption.weight(.semibold))
+            .font(.custom("Georgia", size: 15, relativeTo: .caption))
             .foregroundStyle(LAAColor.secondaryText)
             .lineLimit(1)
             .laaPhotoSupportingText()
@@ -33,21 +33,7 @@ struct LAASenderName: View {
 
 /// "Administration", beside the owner's name only.
 struct LAAAdministrationBadge: View {
-    var body: some View {
-        Text(verbatim: LAAOwnerIdentity.role)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(LAAColor.link)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            // Opaque, so it stays readable on a photo background as well.
-            .background(LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: LAASender.badgeCornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: LAASender.badgeCornerRadius, style: .continuous)
-                    .strokeBorder(LAAColor.link.opacity(0.35), lineWidth: 0.5)
-            }
-    }
+    var body: some View { LAARoleBadge(role: LAAOwnerIdentity.role) }
 }
 
 /// The owner's name and role, read by VoiceOver as "LAA、Administration".
@@ -69,45 +55,44 @@ struct LAAOwnerHeader: View {
 /// keeps the bubble's edge where the first one's was.
 struct LAAOwnerMessageRow<Content: View>: View {
     var continues = false
+    var timestamp: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
-        HStack(alignment: .top, spacing: LAASender.avatarSpacing) {
-            VStack(alignment: .trailing, spacing: LAASender.headerSpacing) {
-                if !continues { LAAOwnerHeader() }
-                content
+        VStack(alignment: .trailing, spacing: 4) {
+            if !continues {
+                HStack(spacing: 8) {
+                    LAAMessageTime(timestamp: timestamp)
+                    LAAAdministrationBadge()
+                    LAASenderName(text: LAAOwnerIdentity.name)
+                    LAAOwnerAvatarView().frame(width: 30, height: 30)
+                }.accessibilityIdentifier("chat.sender.owner")
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            Group {
-                if continues { Color.clear } else { LAAOwnerAvatarView() }
-            }
-            .frame(width: LAASender.avatarSize, height: LAASender.avatarSize)
-        }
+            content.padding(.trailing, 40)
+        }.frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
-/// An AI speaker's message: the picture leading, the name above the bubble.
 struct LAAAgentMessageRow<Avatar: View, Content: View>: View {
     let name: String
     var continues = false
+    var role: String? = nil
+    var timestamp: String? = nil
     @ViewBuilder let avatar: Avatar
     @ViewBuilder let content: Content
 
     var body: some View {
-        HStack(alignment: .top, spacing: LAASender.avatarSpacing) {
-            Group {
-                if continues { Color.clear } else { avatar.accessibilityHidden(true) }
-            }
-            .frame(width: LAASender.avatarSize, height: LAASender.avatarSize)
-            VStack(alignment: .leading, spacing: LAASender.headerSpacing) {
-                if !continues {
+        VStack(alignment: .leading, spacing: 4) {
+            if !continues {
+                HStack(spacing: 8) {
+                    avatar.frame(width: 30, height: 30).accessibilityHidden(true)
                     LAASenderName(text: name)
-                        .accessibilityIdentifier("chat.sender.agent")
-                }
-                content
+                    if let role { LAARoleBadge(role: role) }
+                    LAAMessageTime(timestamp: timestamp)
+                }.accessibilityIdentifier("chat.sender.agent")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+            content.padding(.leading, 40)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

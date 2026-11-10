@@ -153,7 +153,11 @@ struct ComposerBar: View, Equatable {
     }
 
     static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
+#if LAA_BUILD
+        measuredHeight >= ComposerPasteTextView.minimumHeight * 2
+#else
         true
+#endif
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String, dashboardID: UUID? = nil) -> ComposerDraftKey {
@@ -484,7 +488,7 @@ struct ComposerBar: View, Equatable {
         }
         // Resting, the voice button keeps its spot on the trailing side.
 #if LAA_BUILD
-        .padding(.horizontal, LAASpacing.horizontal)
+        .padding(.horizontal, 20)
         .padding(.top, LAASpacing.x2)
         .padding(.bottom, LAASpacing.x2)
 #else
@@ -643,16 +647,16 @@ struct ComposerBar: View, Equatable {
             dictation.cancel()
         }
         .confirmationDialog(
-            AppLocalization.string("Resolve delivery"),
+            LAAChatLabels.text("Resolve delivery"),
             isPresented: Binding(get: { reviewedSubmission != nil }, set: { if !$0 { reviewedSubmission = nil } }),
             titleVisibility: .visible,
             presenting: reviewedSubmission
         ) { submission in
-            Button(AppLocalization.string("Restore to draft")) { resolveUnknownSubmission(submission, restoring: true) }
-            Button(AppLocalization.string("Confirmed sent")) { resolveUnknownSubmission(submission, restoring: false) }
-            Button(AppLocalization.string("Cancel"), role: .cancel) { reviewedSubmission = nil }
+            Button(LAAChatLabels.text("Restore to draft")) { resolveUnknownSubmission(submission, restoring: true) }
+            Button(LAAChatLabels.text("Confirmed sent")) { resolveUnknownSubmission(submission, restoring: false) }
+            Button(LAAChatLabels.text("Cancel"), role: .cancel) { reviewedSubmission = nil }
         } message: { submission in
-            Text(AppLocalization.string("Check the conversation to see whether this message was sent. Restore it only if it was not sent."))
+            Text(LAAChatLabels.text("Check the conversation to see whether this message was sent. Restore it only if it was not sent."))
             + Text(verbatim: "\n\n" + submission.draft.text)
         }
         .onDisappear {
@@ -712,18 +716,18 @@ struct ComposerBar: View, Equatable {
             }
 
             if draftStore.persistenceFailed {
-                pasteErrorNotice(AppLocalization.string("Could not save your draft. Keep the app open and try again."))
+                pasteErrorNotice(LAAChatLabels.text("Could not save your draft. Keep the app open and try again."))
             }
             if let submission = unknownSubmission {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(AppLocalization.string("Delivery is unknown. Check this chat before sending again."))
+                    Text(LAAChatLabels.text("Delivery is unknown. Check this chat before sending again."))
                         .font(.footnote)
                     Text(submission.draft.text).font(.footnote).lineLimit(3)
                     if !submission.draft.attachments.isEmpty {
                         Text(submission.draft.attachments.map(\.name).joined(separator: ", "))
                             .font(.footnote).lineLimit(2)
                     }
-                    Button(AppLocalization.string("Review message")) { reviewedSubmission = submission }
+                    Button(LAAChatLabels.text("Review message")) { reviewedSubmission = submission }
                         .font(.footnote.weight(.semibold))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -813,9 +817,8 @@ struct ComposerBar: View, Equatable {
                 HStack(alignment: .bottom, spacing: LAASpacing.x2) {
                     attachmentButton
                     composerField
-                    if rests && stopOnly {
-                        trailingSlot(size: ComposerShared.controlSize)
-                            .transition(.opacity)
+                    if hasText || !attachments.isEmpty || stopOnly {
+                        trailingSlot(size: 44).transition(.opacity)
                     }
                 }
 #else
@@ -858,11 +861,7 @@ struct ComposerBar: View, Equatable {
 #endif
             }
 #if LAA_BUILD
-            // The row, with Send at its end, stays under a voice message too.
-            if !rests || showsVoiceMessage {
-                controlsRow.laaComposerPhotoInk(bare: true)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            if showsVoiceMessage { controlsRow.laaComposerPhotoInk(bare: true) }
 #endif
         }
 #if !LAA_BUILD
@@ -887,7 +886,11 @@ struct ComposerBar: View, Equatable {
         ZStack(alignment: .topLeading) {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
+#if LAA_BUILD
+                Text("メッセージ")
+#else
                 Text(appState.composerPlaceholder)
+#endif
 #if LAA_BUILD
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -971,7 +974,11 @@ struct ComposerBar: View, Equatable {
                 }
                 .buttonStyle(.plain)
                 .disabled(!appState.composerTakesText)
+                #if LAA_BUILD
+                .accessibilityLabel(Text(verbatim: LAACopy.chatExpandEditor))
+#else
                 .accessibilityLabel(Text("Expand editor"))
+#endif
                 .accessibilityIdentifier("composer.expand-editor")
                 .transition(.opacity)
             }
@@ -992,7 +999,7 @@ struct ComposerBar: View, Equatable {
         }) {
             ComposerFullEditor(
                 text: $text,
-                placeholder: appState.composerPlaceholder,
+                placeholder: fullEditorPlaceholder,
                 programmaticRevision: composerRevision,
                 enabled: appState.composerTakesText,
                 onUserEdit: { edited in
@@ -1041,6 +1048,14 @@ struct ComposerBar: View, Equatable {
             )
             .preferredColorScheme(appState.themePreference.colorScheme)
         }
+    }
+
+    private var fullEditorPlaceholder: String {
+#if LAA_BUILD
+        "メッセージ"
+#else
+        appState.composerPlaceholder
+#endif
     }
 
     private var showsFullEditorButton: Bool {
@@ -1217,8 +1232,8 @@ struct ComposerBar: View, Equatable {
                         .foregroundStyle(.orange)
                 }
                 Text(appState.turnState == .unsupportedGateway
-                     ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.")
-                     : AppLocalization.string("Synchronizing with Hermes before enabling chat controls"))
+                     ? LAAChatLabels.text("Update this Hermes gateway to recover active turns safely.")
+                     : LAAChatLabels.text("Synchronizing with Hermes before enabling chat controls"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
@@ -1291,8 +1306,8 @@ struct ComposerBar: View, Equatable {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(takeover.phase == .waiting
-                    ? AppLocalization.string("Stop waiting")
-                    : AppLocalization.string("Dismiss"))
+                    ? LAAChatLabels.text("Stop waiting")
+                    : LAAChatLabels.text("Dismiss"))
             }
 
             switch takeover.phase {
@@ -1326,7 +1341,7 @@ struct ComposerBar: View, Equatable {
         case .waiting:
             return takeover.takingOverMessage
         case .ready:
-            return AppLocalization.string("This chat is yours now. Send your message again.")
+            return LAAChatLabels.text("This chat is yours now. Send your message again.")
         case .failed(let message), .unavailable(let message):
             return message
         case .heldHere:
@@ -1361,7 +1376,7 @@ struct ComposerBar: View, Equatable {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text(AppLocalization.string("Compressing…"))
+            Text(LAAChatLabels.text("Compressing…"))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -1378,7 +1393,7 @@ struct ComposerBar: View, Equatable {
             ProgressView()
                 .controlSize(.small)
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("Sending…"))
+            Text(LAAChatLabels.text("Sending…"))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -1627,7 +1642,7 @@ struct ComposerBar: View, Equatable {
 #if LAA_BUILD
             .accessibilityIdentifier("composer.action")
 #endif
-            .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send"))
+            .accessibilityHint(LAAChatLabels.text("Touch and hold for other ways to send"))
             .accessibilityAction(named: Text(accessibilityLabel)) {
                 performComposerAction()
             }
@@ -1701,7 +1716,7 @@ struct ComposerBar: View, Equatable {
                 openModelPicker()
             } label: {
                 HStack(spacing: 5) {
-                    Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+                    Text(appState.runtime.model.isEmpty ? LAAChatLabels.text("Model") : appState.runtime.model)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if appState.runtime.yolo {
@@ -1716,7 +1731,7 @@ struct ComposerBar: View, Equatable {
             .buttonStyle(.plain)
             // The controls row is capped; touch and hold shows the model large.
             .accessibilityShowsLargeContentViewer {
-                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+                Text(appState.runtime.model.isEmpty ? LAAChatLabels.text("Model") : appState.runtime.model)
             }
             .accessibilityLabel(modelAccessibilityLabel)
 
@@ -2051,10 +2066,10 @@ struct ComposerBar: View, Equatable {
         .disabled(appState.isPreparingVoiceResume || appState.voiceWaitsForRunningTurn)
         .conduitGlassControl(cornerRadius: ComposerShared.rowControlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
         .accessibilityShowsLargeContentViewer {
-            Label(AppLocalization.string("Resume call"), systemImage: "phone.arrow.up.right")
+            Label(LAAChatLabels.text("Resume call"), systemImage: "phone.arrow.up.right")
         }
-        .accessibilityLabel(AppLocalization.string("Resume call"))
-        .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
+        .accessibilityLabel(LAAChatLabels.text("Resume call"))
+        .accessibilityHint(LAAChatLabels.text("Starts a new live call that continues this one"))
     }
 
     /// Opens Voice. A waveform, so it reads as "talk live", apart from the
@@ -2086,7 +2101,7 @@ struct ComposerBar: View, Equatable {
         .accessibilityIdentifier("composer.voice")
         #endif
         .accessibilityHint(composerVoiceUnavailableReason
-            ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
+            ?? LAAChatLabels.text("Starts a voice call; in a chat with messages, the call works in that chat"))
     }
 
     /// Tap to dictate into the draft, tap again to stop; the words are
@@ -2139,10 +2154,10 @@ struct ComposerBar: View, Equatable {
         .accessibilityLabel(dictateTitle(isCapturing: isCapturing))
         .accessibilityIdentifier("composer.dictate")
         .accessibilityHint(isCapturing
-            ? AppLocalization.string("Stops dictating; the words stay in the message")
+            ? LAAChatLabels.text("Stops dictating; the words stay in the message")
             : (dictation.isStarting || dictation.isTranscribing ? "" : (appState.isVoiceInUse
-                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
-                : AppLocalization.string("Types what you say into the message"))))
+                ? LAAChatLabels.text("Dictation is unavailable while a voice conversation has the microphone")
+                : LAAChatLabels.text("Types what you say into the message"))))
     }
 
     private func dictateTitle(isCapturing: Bool) -> Text {
@@ -2265,7 +2280,7 @@ struct ComposerBar: View, Equatable {
     /// when it was tapped, even if another chat opened meanwhile.
     private func retryDictationClip(_ clip: DictationClip) {
         guard let gateway = appState.makeVoiceGateway(), let dashboardID = appState.activeDashboardID else {
-            composerErrorMessage = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
+            composerErrorMessage = LAAChatLabels.text("Dictation with Hermes needs a connection to Hermes.")
             return
         }
         let key = appState.durableComposerDraftKeyOnScreen
@@ -2274,14 +2289,14 @@ struct ComposerBar: View, Equatable {
             do {
                 let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
                 guard !words.isEmpty else {
-                    composerErrorMessage = AppLocalization.string("No speech was captured.")
+                    composerErrorMessage = LAAChatLabels.text("No speech was captured.")
                     return
                 }
                 appState.restoreRetriedDictation(words, clipID: clip.id, dashboardID: dashboardID, key: key)
             } catch is CancellationError {
                 return
             } catch is DictationClipUnreadable {
-                composerErrorMessage = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
+                composerErrorMessage = LAAChatLabels.text("The recording couldn't be read. Try again in a moment.")
             } catch {
                 composerErrorMessage = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
             }
@@ -2470,7 +2485,7 @@ struct ComposerBar: View, Equatable {
             dictation.yieldToTyping()
             replaceComposerText(ChatQuote.inserting(quote, into: text), cursorAtEnd: true)
             isShowingSlashSuggestions = false
-            announcement = AppLocalization.string("Quoted in your message")
+            announcement = LAAChatLabels.text("Quoted in your message")
         case .reply(let reference):
             withAnimation(reduceMotion ? nil : ConduitMotion.response) {
                 replyReference = reference
@@ -2491,6 +2506,12 @@ struct ComposerBar: View, Equatable {
     }
 
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
+#if LAA_BUILD
+        LAAComposerReplyReference(reference: reference) {
+            Haptics.selection()
+            withAnimation(reduceMotion ? nil : ConduitMotion.response) { replyReference = nil }
+        }
+#else
         HStack(spacing: 8) {
             Image(systemName: "quote.bubble")
                 .font(.footnote.weight(.semibold))
@@ -2507,7 +2528,7 @@ struct ComposerBar: View, Equatable {
                     .lineLimit(1)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityHint(AppLocalization.string("Sent with your next message"))
+            .accessibilityHint(LAAChatLabels.text("Sent with your next message"))
             Spacer(minLength: 0)
             Button {
                 Haptics.selection()
@@ -2522,12 +2543,13 @@ struct ComposerBar: View, Equatable {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(AppLocalization.string("Remove quoted reply"))
+            .accessibilityLabel(LAAChatLabels.text("Remove quoted reply"))
             .accessibilityIdentifier("composer.reply-reference.remove")
         }
         .padding(.leading, 12)
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    #endif
     }
 
     /// Sending, steering, and stopping all move attention back to the live
@@ -2569,7 +2591,7 @@ struct ComposerBar: View, Equatable {
     }
 
     static var cameraAccessMessage: String {
-        AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.")
+        LAAChatLabels.text("Taking a photo needs camera access. You can allow it in Settings.")
     }
 
     /// Asks for camera access first when it hasn't been decided, so a "Don't
@@ -3028,21 +3050,21 @@ struct ComposerBar: View, Equatable {
         }
 #else
         switch action {
-        case .stop: return AppLocalization.string("Stop response")
-        case .steer: return AppLocalization.string("Steer with message")
-        case .interrupt: return AppLocalization.string("Interrupt and correct response")
-        case .queue: return AppLocalization.string("Queue message")
-        case .send: return AppLocalization.string("Send message")
-        case .unavailable: return AppLocalization.string("Composer unavailable")
+        case .stop: return LAAChatLabels.text("Stop response")
+        case .steer: return LAAChatLabels.text("Steer with message")
+        case .interrupt: return LAAChatLabels.text("Interrupt and correct response")
+        case .queue: return LAAChatLabels.text("Queue message")
+        case .send: return LAAChatLabels.text("Send message")
+        case .unavailable: return LAAChatLabels.text("Composer unavailable")
         }
 #endif
     }
 
     private var modelAccessibilityLabel: String {
-        let model = appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model
+        let model = appState.runtime.model.isEmpty ? LAAChatLabels.text("Model") : appState.runtime.model
         // Reasoning has its own control beside the model name.
-        let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled") : ""
-        let activity = appState.turnState == .running ? AppLocalization.string(", agent working") : ""
+        let approvals = appState.runtime.yolo ? LAAChatLabels.text(", auto-approve enabled") : ""
+        let activity = appState.turnState == .running ? LAAChatLabels.text(", agent working") : ""
         return "\(model)\(approvals)\(activity)"
     }
 }

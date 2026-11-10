@@ -4,7 +4,7 @@ import UIKit
 final class LAABackgroundAndGroupUITests: XCTestCase {
     #if LAA_BUILD
     private func openBackground(_ app: XCUIApplication) {
-        let menu = app.buttons["conversation.menu"]
+        let menu = app.buttons["laa.employee.header"]
         XCTAssertTrue(menu.waitForExistence(timeout: 20))
         menu.tap()
         let choice = app.buttons["conversation.background"]
@@ -21,7 +21,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         for kind in ["paper", "tealNight", "ink"] {
             let choice = app.buttons["background.choice.\(kind)"]
             choice.tap()
-            XCTAssertEqual(choice.value as? String, "Selected")
+            XCTAssertEqual(choice.value as? String, "選択中")
         }
         app.buttons["background.fixture.photo"].tap()
         let dim = app.sliders["background.photo.dim"]
@@ -33,7 +33,8 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         let blurValue = blur.value as? String
         XCTAssertNotNil(dimValue)
         XCTAssertNotNil(blurValue)
-        app.buttons["Done"].tap()
+        app.buttons["完了"].tap()
+        app.buttons["完了"].tap()
         app.terminate()
         app.launch()
         openBackground(app)
@@ -47,7 +48,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         for (mode, expected) in [
             ("empty", "グループはまだありません。"),
             ("error", "グループを読み込めませんでした"),
-            ("offline", "グループを開くにはMacに接続してください。")
+            ("offline", "Macに接続できません。")
         ] {
             let app = XCUIApplication()
             app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_GROUPS_STATE", mode]
@@ -55,7 +56,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
             let list = app.buttons["fixture.groups.list"]
             XCTAssertTrue(list.waitForExistence(timeout: 20))
             list.tap()
-            let label = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", expected)).firstMatch
+            let label = app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", expected)).firstMatch
             XCTAssertTrue(label.waitForExistence(timeout: 15), mode)
             app.terminate()
         }
@@ -80,7 +81,8 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         // The expanded photo canvas must not intercept controls above it.
         openBackground(app)
         app.buttons["background.fixture.photo"].tap()
-        app.buttons["Done"].tap()
+        app.buttons["完了"].tap()
+        app.buttons["完了"].tap()
         let create = app.buttons["fixture.create"]
         XCTAssertTrue(create.waitForExistence(timeout: 20))
         create.tap()
@@ -110,7 +112,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertTrue(created.waitForExistence(timeout: 5))
         XCTAssertTrue(created.label.contains("2"))
         app.buttons["fixture.groups.list"].tap()
-        let openCreate = app.buttons["groups.create.open"]
+        let openCreate = app.buttons["laa.chats.new"]
         XCTAssertTrue(openCreate.waitForExistence(timeout: 15))
         openCreate.tap()
         XCTAssertTrue(app.textFields["groups.create.name"].waitForExistence(timeout: 5))
@@ -130,7 +132,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
                                "-LAA_CAPTURE_KIND", "photo", "-LAA_CAPTURE_WHITE"]
         app.launch()
         defer { app.terminate() }
-        XCTAssertTrue(app.buttons["conversation.menu"].waitForExistence(timeout: 20), file: file, line: line)
+        XCTAssertTrue(app.buttons[surface == "chat" ? "laa.employee.header" : "room.header"].waitForExistence(timeout: 20), file: file, line: line)
         let deadline = Date().addingTimeInterval(15)
         var sample: Double = -1
         repeat {
@@ -151,7 +153,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
             header.tap()
-            XCTAssertTrue(app.staticTexts["社長秘書・総合アドバイザー"].waitForExistence(timeout: 5), file: file, line: line)
+            XCTAssertTrue(app.navigationBars["会話の情報"].waitForExistence(timeout: 5), file: file, line: line)
         }
     }
 

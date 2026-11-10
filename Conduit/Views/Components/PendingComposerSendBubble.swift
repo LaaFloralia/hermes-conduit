@@ -27,6 +27,21 @@ struct PendingComposerSendBubble: View {
     }
 
     var body: some View {
+#if LAA_BUILD
+        LAAOwnerMessageRow(timestamp: message.timestamp) {
+            VStack(alignment: .trailing, spacing: 4) {
+                UserMessageContent(message: message, gatewayResolver: nil,
+                    sizeCategory: sizeCategory, chatTextSize: chatTextSize)
+                HStack(spacing: 12) {
+                    Text("送信待ち").font(.caption)
+                    Button("編集") { Haptics.selection(); appState.editPendingComposerSend() }
+                        .font(.caption.weight(.semibold)).frame(minHeight: 44)
+                }.foregroundStyle(LAAColor.secondaryText)
+            }
+        }.laaChatColumn(.trailing)
+            .id(Self.scrollID).accessibilityIdentifier("pending-composer-send")
+#else
+
         HStack {
             Spacer(minLength: 40)
             VStack(alignment: .trailing, spacing: 4) {
@@ -60,5 +75,6 @@ struct PendingComposerSendBubble: View {
         }
         .id(Self.scrollID)
         .accessibilityIdentifier("pending-composer-send")
+#endif
     }
 }

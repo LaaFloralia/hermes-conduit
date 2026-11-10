@@ -24,6 +24,9 @@ struct GroupRoomComposer: View {
     @State private var draft = ""
     @State private var draftRevision: UInt64 = 0
     /// A whole room message quoted with the next one (its Quote button).
+#if LAA_BUILD
+    @State private var measuredFieldLines = 1
+#endif
     @State private var replyReference: ComposerReplyReference?
     /// The bots picked in the "To" row, by tag, in the order picked. The
     /// next message is addressed to them; none picked, it goes to every bot.
@@ -149,10 +152,7 @@ struct GroupRoomComposer: View {
                     field
                         .laaComposerPhotoInk()
                         .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
-                }
-                if !rests {
-                    controlsRow.laaComposerPhotoInk(bare: true)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    if hasText || !attachments.isEmpty || dictationHoldsSendSlot { sendSlot(size: 44) }
                 }
             }
             .laaComposerGlassGroup()
@@ -190,7 +190,7 @@ struct GroupRoomComposer: View {
         // Send and the mic give way to dictation's Stop, and come back.
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: dictationHoldsSendSlot)
 #if LAA_BUILD
-        .padding(.horizontal, LAASpacing.horizontal)
+        .padding(.horizontal, 20)
         .padding(.top, LAASpacing.x2)
         .padding(.bottom, LAASpacing.x2)
 #else
@@ -285,7 +285,7 @@ struct GroupRoomComposer: View {
         .sheet(isPresented: $isShowingFullEditor) {
             ComposerFullEditor(
                 text: $draft,
-                placeholder: AppLocalization.string("Message the room"),
+                placeholder: messagePlaceholder,
                 programmaticRevision: draftRevision,
                 fieldIdentifier: "room.composer.fullEditor.field",
                 enabled: true,
@@ -332,7 +332,7 @@ struct GroupRoomComposer: View {
     @ViewBuilder
     private var notices: some View {
         if appState.composerDraftStore.persistenceFailed {
-            notice(AppLocalization.string("Could not save your draft. Keep the app open and try again."), color: .red)
+            notice(LAAChatLabels.text("Could not save your draft. Keep the app open and try again."), color: .red)
         }
         if let unavailableRecipientNotice {
             notice(unavailableRecipientNotice, color: .red)
@@ -340,17 +340,16 @@ struct GroupRoomComposer: View {
         if appState.activeRoomSendInFlight, appState.pendingRoomMessage == nil {
             // A poll can show the message delivered before the send's own
             // answer returns; Send stays off until it does.
-            notice(AppLocalization.string("Sending…"), color: .secondary)
+            notice(LAAChatLabels.text("Sending…"), color: .secondary)
         }
         if isUploading {
-            notice(AppLocalization.string("Uploading files…"), color: .secondary)
+            notice(LAAChatLabels.text("Uploading files…"), color: .secondary)
         }
         if appState.pendingRoomMessage != nil, !appState.activeRoomSendInFlight {
             // The pending row owns the composer; say why Send is off
             // instead of leaving a silently disabled button.
-            notice(AppLocalization.string(
-                "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
-            ), color: .secondary)
+            notice(LAAChatLabels.text(
+                "Your previous message is still pending. Retry it from the room, or wait for it to deliver."), color: .secondary)
         }
         UndeliveredDictationNotice(
             inbox: dictationClips,
@@ -367,7 +366,7 @@ struct GroupRoomComposer: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 if error == ComposerBar.cameraAccessMessage {
-                    Button(AppLocalization.string("Open Settings")) {
+                    Button(LAAChatLabels.text("Open Settings")) {
                         composerError = nil
                         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                         UIApplication.shared.open(url)
@@ -383,7 +382,25 @@ struct GroupRoomComposer: View {
     }
 
     private var showsExpand: Bool {
+#if LAA_BUILD
+        measuredFieldLines >= 3
+#else
         true
+#endif
+    }
+    private var minimumFieldLines: Int {
+#if LAA_BUILD
+        1
+#else
+        3
+#endif
+    }
+    private var messagePlaceholder: String {
+#if LAA_BUILD
+        "メッセージ"
+#else
+        AppLocalization.string("Message the room")
+#endif
     }
 
     private var maximumFieldLines: Int {
@@ -404,22 +421,30 @@ struct GroupRoomComposer: View {
             .padding(.top, 10)
     }
 
-    private var field: some View {
-        ReturnKeyTextEditor(
+    private var roomTextEditor: ReturnKeyTextEditor {
+        var editor = ReturnKeyTextEditor(
             text: $draft,
             isFocused: $isFocused,
-            accessibilityLabel: AppLocalization.string("Message the room"),
+            accessibilityLabel: messagePlaceholder,
             accessibilityIdentifier: "room.composer.field",
             maxLines: maximumFieldLines,
-            minLines: 3,
+            minLines: minimumFieldLines,
             inputTextSize: ChatTypography.inputSize(rawValue: inputTextSizeRaw),
             programmaticRevision: draftRevision,
             canSubmitFromReturn: canSubmitFromReturn,
             onSubmitFromReturn: { submitFromReturnKey() }
         )
+#if LAA_BUILD
+        editor.onMeasuredLines = { measuredFieldLines = $0 }
+#endif
+        return editor
+    }
+
+    private var field: some View {
+        roomTextEditor
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
-                    Text(AppLocalization.string("Message the room"))
+                    Text(messagePlaceholder)
 #if LAA_BUILD
                         .foregroundStyle(.primary)
 #else
@@ -451,7 +476,7 @@ struct GroupRoomComposer: View {
                     #if LAA_BUILD
                     .accessibilityLabel(Text(verbatim: LAACopy.chatExpandEditor))
                     #else
-                    .accessibilityLabel(Text(AppLocalization.string("Expand editor")))
+                    .accessibilityLabel(Text(LAAChatLabels.text("Expand editor")))
                     #endif
                     .transition(.opacity)
                 }
@@ -506,27 +531,27 @@ struct GroupRoomComposer: View {
                     Button {
                         openCamera()
                     } label: {
-                        Label(AppLocalization.string("Camera"), systemImage: "camera")
+                        Label(LAAChatLabels.text("Camera"), systemImage: "camera")
                     }
                 }
                 Button {
                     Haptics.selection()
                     showPhotoPicker = true
                 } label: {
-                    Label(AppLocalization.string("Photo Library"), systemImage: "photo")
+                    Label(LAAChatLabels.text("Photo Library"), systemImage: "photo")
                 }
                 Button {
                     Haptics.selection()
                     showDocumentPicker = true
                 } label: {
-                    Label(AppLocalization.string("Document"), systemImage: "doc")
+                    Label(LAAChatLabels.text("Document"), systemImage: "doc")
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
 #if LAA_BUILD
                 Text(verbatim: LAACopy.groupFilesUnavailable)
 #else
-                Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+                Text(LAAChatLabels.text("Update the Conduit plugin on your Hermes host to send files to group chats."))
 #endif
             }
         } label: {
@@ -544,7 +569,7 @@ struct GroupRoomComposer: View {
         #if LAA_BUILD
         .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
         #else
-        .accessibilityLabel(Text(AppLocalization.string("Attach")))
+        .accessibilityLabel(Text(LAAChatLabels.text("Attach")))
         #endif
         .disabled(isUploading)
 #if LAA_BUILD
@@ -554,7 +579,7 @@ struct GroupRoomComposer: View {
 #endif
         // The controls row is capped; touch and hold shows each control large.
         .accessibilityShowsLargeContentViewer {
-            Label(AppLocalization.string("Attach"), systemImage: "plus")
+            Label(LAAChatLabels.text("Attach"), systemImage: "plus")
         }
     }
 
@@ -603,10 +628,10 @@ struct GroupRoomComposer: View {
     }
 
     private func dictateTitle(isCapturing: Bool) -> Text {
-        if isCapturing { return Text(AppLocalization.string("Stop dictation")) }
-        if dictation.isStarting { return Text(AppLocalization.string("Cancel dictation")) }
-        if dictation.isTranscribing { return Text(AppLocalization.string("Transcribing")) }
-        return Text(AppLocalization.string("Dictate"))
+        if isCapturing { return Text(LAAChatLabels.text("Stop dictation")) }
+        if dictation.isStarting { return Text(LAAChatLabels.text("Cancel dictation")) }
+        if dictation.isTranscribing { return Text(LAAChatLabels.text("Transcribing")) }
+        return Text(LAAChatLabels.text("Dictate"))
     }
 
     @ViewBuilder
@@ -661,12 +686,12 @@ struct GroupRoomComposer: View {
         )
 #endif
         .accessibilityShowsLargeContentViewer {
-            Label(AppLocalization.string("Send"), systemImage: "arrow.up")
+            Label(LAAChatLabels.text("Send"), systemImage: "arrow.up")
         }
 #if LAA_BUILD
         .accessibilityLabel(Text(verbatim: LAACopy.chatSend))
 #else
-        .accessibilityLabel(Text(AppLocalization.string("Send")))
+        .accessibilityLabel(Text(LAAChatLabels.text("Send")))
 #endif
         .accessibilityIdentifier("room.composer.send")
     }
@@ -782,14 +807,14 @@ struct GroupRoomComposer: View {
 
     private var unavailableRecipientNotice: String? {
         guard !unavailableRecipients.isEmpty else { return nil }
-        return AppLocalization.string("Unavailable") + ": " + unavailableRecipients.map { "@" + $0 }.joined(separator: ", ")
+        return LAAChatLabels.text("Unavailable") + ": " + unavailableRecipients.map { "@" + $0 }.joined(separator: ", ")
     }
 
     /// "To" and a chip per bot: tap to address the next message to it.
     private var recipientRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                Text(AppLocalization.string("To"))
+                Text(LAAChatLabels.text("To"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -811,14 +836,14 @@ struct GroupRoomComposer: View {
                             .frame(minHeight: 44)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(AppLocalization.string("Remove") + " @" + handle)
+                    .accessibilityLabel(LAAChatLabels.text("Remove") + " @" + handle)
                 }
             }
             .padding(.horizontal, 12)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(AppLocalization.string("To"))
-        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer."))
+        .accessibilityLabel(LAAChatLabels.text("To"))
+        .accessibilityHint(LAAChatLabels.text("Only the bots you pick answer. With none picked, every bot can answer."))
     }
 
     private func recipientChip(_ member: GroupMember) -> some View {
@@ -896,7 +921,7 @@ struct GroupRoomComposer: View {
         case .text(let quote):
             dictation.yieldToTyping()
             replaceDraft(ChatQuote.inserting(quote, into: draft))
-            announcement = AppLocalization.string("Quoted in your message")
+            announcement = LAAChatLabels.text("Quoted in your message")
         case .reply(let reference):
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
                 replyReference = reference
@@ -915,6 +940,12 @@ struct GroupRoomComposer: View {
     }
 
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
+#if LAA_BUILD
+        LAAComposerReplyReference(reference: reference) {
+            Haptics.selection()
+            withAnimation(reduceMotion ? nil : ConduitMotion.response) { replyReference = nil }
+        }
+#else
         HStack(spacing: 8) {
             Image(systemName: "quote.bubble")
                 .font(.footnote.weight(.semibold))
@@ -931,7 +962,7 @@ struct GroupRoomComposer: View {
                     .lineLimit(1)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityHint(AppLocalization.string("Sent with your next message"))
+            .accessibilityHint(LAAChatLabels.text("Sent with your next message"))
             Spacer(minLength: 0)
             Button {
                 Haptics.selection()
@@ -946,12 +977,13 @@ struct GroupRoomComposer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(AppLocalization.string("Remove quoted reply"))
+            .accessibilityLabel(LAAChatLabels.text("Remove quoted reply"))
             .accessibilityIdentifier("room.composer.reply-reference.remove")
         }
         .padding(.leading, 12)
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    #endif
     }
 
     // MARK: - Dictation
@@ -1005,7 +1037,7 @@ struct GroupRoomComposer: View {
     /// another room or chat opened meanwhile.
     private func retryDictationClip(_ clip: DictationClip) {
         guard let gateway = appState.makeVoiceGateway(), let surface = appState.activeRoomSurface else {
-            composerError = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
+            composerError = LAAChatLabels.text("Dictation with Hermes needs a connection to Hermes.")
             return
         }
         let dashboardID = surface.dashboardID
@@ -1015,7 +1047,7 @@ struct GroupRoomComposer: View {
             do {
                 let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
                 guard !words.isEmpty else {
-                    composerError = AppLocalization.string("No speech was captured.")
+                    composerError = LAAChatLabels.text("No speech was captured.")
                     return
                 }
                 // Through the room's kept draft: this composer may be gone,
@@ -1026,7 +1058,7 @@ struct GroupRoomComposer: View {
             } catch is CancellationError {
                 return
             } catch is DictationClipUnreadable {
-                composerError = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
+                composerError = LAAChatLabels.text("The recording couldn't be read. Try again in a moment.")
             } catch {
                 composerError = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
             }
@@ -1104,7 +1136,7 @@ struct GroupRoomComposer: View {
 #if LAA_BUILD
             composerError = LAACopy.groupFilesUnavailable
 #else
-            composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+            composerError = LAAChatLabels.text("Update the Conduit plugin on your Hermes host to send files to group chats.")
 #endif
             Haptics.error()
             return

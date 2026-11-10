@@ -87,18 +87,17 @@ struct GroupChatView: View {
         // V2's screen hosts this view and owns the room menu and picker.
         .modifier(GroupRoomPicturePicker(request: $choosingPicture, isEnabled: !isV2))
         .confirmationDialog(
-            AppLocalization.string("Disband this group chat?"),
+            LAAChatLabels.text("Disband this group chat?"),
             isPresented: $showingDisbandConfirmation,
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Disband"), role: .destructive) {
+            Button(LAAChatLabels.text("Disband"), role: .destructive) {
                 Task { await appState.disbandActiveRoom() }
             }
-            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            Button(LAAChatLabels.text("Cancel"), role: .cancel) {}
         } message: {
-            Text(AppLocalization.string(
-                "The room, its history, and every member's session end permanently. This cannot be undone."
-            ))
+            Text(LAAChatLabels.text(
+                "The room, its history, and every member's session end permanently. This cannot be undone."))
         }
     }
 
@@ -127,7 +126,7 @@ struct GroupChatView: View {
                 .frame(width: 44, height: 44)
         }
         .conduitGlassControl(cornerRadius: 22, tint: Color.conduitAccent.opacity(0.14))
-        .accessibilityLabel(AppLocalization.string("Scroll to latest message"))
+        .accessibilityLabel(LAAChatLabels.text("Scroll to latest message"))
         .padding(.trailing, 18)
     }
 
@@ -174,7 +173,7 @@ struct GroupChatView: View {
                     if let pending = appState.pendingRoomMessage {
                         GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
                             if appState.activeRoomSendInFlight {
-                                Text(AppLocalization.string("Sending…"))
+                                Text(LAAChatLabels.text("Sending…"))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             } else {
@@ -190,8 +189,8 @@ struct GroupChatView: View {
                                     Task { await appState.sendGroupRoomMessage(pending.text) }
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(AppLocalization.string("Delivery is unknown. Check this chat before sending again."))
-                                        Label(AppLocalization.string("Retry"), systemImage: "arrow.clockwise")
+                                        Text(LAAChatLabels.text("Delivery is unknown. Check this chat before sending again."))
+                                        Label(LAAChatLabels.text("Retry"), systemImage: "arrow.clockwise")
                                     }
                                     .font(.caption.weight(.semibold))
                                 }
@@ -214,7 +213,7 @@ struct GroupChatView: View {
                 .coordinateSpace(.named(GroupRoomFollow.coordinateSpaceName))
                 .background { GroupRoomScrollLocator(flag: followFlag, isFollowing: $isFollowingLatest) }
 #if LAA_BUILD
-                .padding(.horizontal, LAASpacing.horizontal)
+                .padding(.horizontal, 20)
 #else
                 .padding(.horizontal, 16)
 #endif
@@ -307,10 +306,12 @@ struct GroupChatView: View {
                 members: members,
                 size: 56
             )
+#if !LAA_BUILD
             Text(AppLocalization.string("No messages yet. Say something to the room."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+#endif
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 48)
@@ -362,7 +363,6 @@ struct GroupChatView: View {
         ToolbarItem(placement: .principal) {
             roomTitle.frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
         }
-        LAAConversationControlItems(call: roomCallButton, menu: menu)
 #else
         ToolbarItem(placement: .principal) { roomTitle }
 #endif
@@ -377,7 +377,7 @@ struct GroupChatView: View {
                     Image(systemName: "xmark")
                         .font(.subheadline.weight(.semibold))
                 }
-                .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
+                .accessibilityLabel(Text(LAAChatLabels.text("Leave this group chat")))
             }
         }
         if !isV2 {
@@ -392,18 +392,19 @@ struct GroupChatView: View {
                     Image(systemName: "ellipsis.circle")
                         .font(.callout.weight(.semibold))
                 }
-                .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
+                .accessibilityLabel(Text(LAAChatLabels.text("Group chat actions")))
             }
         }
     }
 
     private var roomTitle: some View {
-        GroupRoomTitle(
-            name: surface?.room.name ?? "",
-            subtitle: memberSummary,
-            members: members,
-            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }
-        )
+#if LAA_BUILD
+        GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
+            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu)
+#else
+        GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
+            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) })
+#endif
     }
 
 #if LAA_BUILD
@@ -459,13 +460,13 @@ struct GroupChatView: View {
             return GroupRoomTurns.displayName(of: member)
         }
         let key = memberID.trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty ? AppLocalization.string("A member") : key
+        return key.isEmpty ? LAAChatLabels.text("A member") : key
     }
 
     private var memberSummary: String {
         let count = surface?.room.members.count ?? 0
         if !appState.activeRoomPendingApprovals.isEmpty {
-            return AppLocalization.string("Approval needed")
+            return LAAChatLabels.text("Approval needed")
         }
         if let responder = respondingMember {
             return AppLocalization.string("\(GroupRoomTurns.displayName(of: responder)) is responding…")
@@ -489,20 +490,20 @@ struct GroupRoomActionItems: View {
             Button {
                 onChoosePicture(.choose)
             } label: {
-                Label(AppLocalization.string("Choose Group Picture"), systemImage: "photo")
+                Label(LAAChatLabels.groupAction("Choose Group Picture"), systemImage: "photo")
             }
             if appState.canGeneratePictures {
                 Button {
                     onChoosePicture(.generate)
                 } label: {
-                    Label(AppLocalization.string("Generate Group Picture"), systemImage: "sparkles")
+                    Label(LAAChatLabels.groupAction("Generate Group Picture"), systemImage: "sparkles")
                 }
             }
             if appState.hasCustomGroupRoomPicture(roomID: roomID) {
                 Button {
                     Task { await appState.setGroupRoomPicture(nil, roomID: roomID) }
                 } label: {
-                    Label(AppLocalization.string("Remove Group Picture"), systemImage: "photo.badge.minus")
+                    Label(LAAChatLabels.groupAction("Remove Group Picture"), systemImage: "photo.badge.minus")
                 }
             }
         }
@@ -512,13 +513,13 @@ struct GroupRoomActionItems: View {
             Button {
                 Task { await appState.stopActiveRoomWork() }
             } label: {
-                Label(AppLocalization.string("Stop"), systemImage: "stop.fill")
+                Label(LAAChatLabels.groupAction("Stop"), systemImage: "stop.fill")
             }
         }
         Button(role: .destructive) {
             onDisband()
         } label: {
-            Label(AppLocalization.string("Disband Group"), systemImage: "trash")
+            Label(LAAChatLabels.groupAction("Disband Group"), systemImage: "trash")
         }
     }
 }
@@ -531,7 +532,33 @@ struct GroupRoomTitle: View {
     let members: [GroupMember]
     var picture: UIImage? = nil
 
+#if LAA_BUILD
+    var information: AnyView? = nil
+    @State private var showingInformation = false
+#endif
     var body: some View {
+#if LAA_BUILD
+        Button { showingInformation = true } label: {
+            VStack(spacing: 0) {
+                LAAGroupFaces(members: members, size: 64)
+                VStack(spacing: 3) {
+                    Text(verbatim: name).font(.custom("Georgia", size: 17, relativeTo: .headline)).lineLimit(1)
+                    Text("\(members.count)人").font(.caption2).foregroundStyle(LAAColor.secondaryText)
+                }.padding(.horizontal, 12).padding(.vertical, 5)
+                    .conduitGlassControl(cornerRadius: 20, tint: LAAColor.link.opacity(0.06), interactive: false)
+            }
+        }.buttonStyle(.plain).frame(height: 44, alignment: .top)
+            .accessibilityLabel("\(name)、会話の情報")
+            .accessibilityIdentifier("room.header")
+            .sheet(isPresented: $showingInformation) {
+                NavigationStack {
+                    if let information {
+                        information.environment(\.laaDismissConversationInfo, { showingInformation = false }).navigationTitle("会話の情報").navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了") { showingInformation = false } } }
+                    }
+                }.laaSheetSize(.page)
+            }
+#else
         HStack(spacing: 8) {
             GroupRoomIcon(picture: picture, members: members, size: 28)
             VStack(alignment: .leading, spacing: 0) {
@@ -557,6 +584,7 @@ struct GroupRoomTitle: View {
         .accessibilityLabel(Text(name))
         .accessibilityValue(Text(subtitle))
         .accessibilityShowsLargeContentViewer { Text(name) }
+#endif
     }
 }
 
@@ -589,8 +617,8 @@ struct GroupApprovalCard: View {
                 // command and buttons that follow keep their context.
                 VStack(alignment: .leading, spacing: 2) {
                     Text(submitting
-                        ? AppLocalization.string("SENDING DECISION")
-                        : (failure == nil ? AppLocalization.string("APPROVAL NEEDED") : AppLocalization.string("TRY AGAIN")))
+                        ? LAAChatLabels.text("SENDING DECISION")
+                        : (failure == nil ? LAAChatLabels.text("APPROVAL NEEDED") : LAAChatLabels.text("TRY AGAIN")))
                         .font(.caption2.weight(.bold))
                         .tracking(0.5)
                         .foregroundStyle(failure == nil ? Color.orange : Color.red)
@@ -607,7 +635,7 @@ struct GroupApprovalCard: View {
                 if submitting {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel(Text(AppLocalization.string("SENDING DECISION")))
+                        .accessibilityLabel(Text(LAAChatLabels.text("SENDING DECISION")))
                 }
             }
             if !approval.command.isEmpty {
@@ -651,14 +679,14 @@ struct GroupApprovalCard: View {
         Button {
             respond("once")
         } label: {
-            Label(AppLocalization.string("Run"), systemImage: "play.fill")
+            Label(LAAChatLabels.text("Run"), systemImage: "play.fill")
         }
         .buttonStyle(.borderedProminent)
         .disabled(!approval.allows("once") || submitting)
     }
 
     private var rejectButton: some View {
-        Button(AppLocalization.string("Reject"), role: .destructive) {
+        Button(LAAChatLabels.text("Reject"), role: .destructive) {
             respond("deny")
         }
         .buttonStyle(.bordered)
@@ -683,7 +711,7 @@ struct GroupEventRow: View {
 #if LAA_BUILD
             GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt,
                             continuesRun: continuesRun) {
-                EmptyView()
+                LAAGroupDelivery(eventID: event.id)
             }
 #else
             GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
@@ -707,7 +735,7 @@ struct GroupEventRow: View {
 
     private var speakerLabel: String {
         let label = event.actor.displayLabel(members: members)
-        return label.isEmpty ? AppLocalization.string("Member") : label
+        return label.isEmpty ? LAAChatLabels.text("Member") : label
     }
 
     /// Two rows in a row from one member (or both from the user).
@@ -782,6 +810,9 @@ private struct GroupMessageFiles: View {
 /// The user's message: the chat's accent bubble on the trailing side, its
 /// time and a Copy button under it. `footer` carries a pending send's state.
 struct GroupUserBubble<Footer: View>: View {
+#if LAA_BUILD
+    @EnvironmentObject private var appState: AppState
+#endif
     let text: String
     let members: [GroupMember]
     let timestamp: Double?
@@ -794,7 +825,10 @@ struct GroupUserBubble<Footer: View>: View {
     var body: some View {
 #if LAA_BUILD
         // The owner's picture, name and role, as in chats and Work.
-        LAAOwnerMessageRow(continues: continuesRun) { stack }
+        LAAOwnerMessageRow(continues: continuesRun, timestamp: timestamp.map { ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0)) }) {
+            stack.laaMessageMenu(text: GroupRoomReplyQuote.parse(text)?.message ?? text,
+                reply: { appState.replyInRoomComposer(text: text, authorName: "LAA", isOwnMessage: true) })
+        }
             .laaChatColumn(.trailing)
             .frame(maxWidth: .infinity, alignment: .trailing)
 #else
@@ -817,7 +851,7 @@ struct GroupUserBubble<Footer: View>: View {
                     GroupMessageFiles(files: parts.files, onAccent: true)
                     if let reply {
                         ReplyReferenceQuoteCard(quote: reply.quote,
-                                                authorName: reply.isOwnMessage ? AppLocalization.string("You") : reply.author)
+                                                authorName: reply.isOwnMessage ? LAAChatLabels.text("You") : reply.author)
                     }
                     if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HugsIdealWidth {
@@ -849,6 +883,9 @@ struct GroupUserBubble<Footer: View>: View {
                 }
                 .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
 #endif
+#if LAA_BUILD
+                footer
+#else
                 HStack(spacing: 2) {
                     footer
                     if let timestamp {
@@ -861,11 +898,12 @@ struct GroupUserBubble<Footer: View>: View {
                     if !ownText.isEmpty {
 #if LAA_BUILD
                         GroupMessageQuoteButton(text: GroupRoomMentions.refanged(ownText),
-                                                authorName: AppLocalization.string("You"), isOwnMessage: true)
+                                                authorName: LAAChatLabels.text("You"), isOwnMessage: true)
 #endif
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(ownText), label: .message)
                     }
                 }
+#endif
             }
     }
 }
@@ -897,6 +935,10 @@ struct GroupMemberBubble: View {
     }
 
     var body: some View {
+#if LAA_BUILD
+        LAAGroupMemberMessage(member: member, name: name, text: text, members: members,
+            timestamp: timestamp, continues: continuesRun, eventID: roomEventID)
+#else
         let parts = GroupMessageParts(text)
         HStack(alignment: .top, spacing: 9) {
             Group {
@@ -966,6 +1008,7 @@ struct GroupMemberBubble: View {
         .laaChatColumn(.leading)
 #endif
         .frame(maxWidth: .infinity, alignment: .leading)
+#endif
     }
 }
 
@@ -988,33 +1031,33 @@ struct GroupSystemEventCaption: View {
     private var caption: String {
         let name = GroupRoomTurns.member(for: event, members: members).map { GroupRoomTurns.displayName(of: $0) } ?? ""
         switch event.kind {
-        case "room.renamed": return AppLocalization.string("The room was renamed.")
-        case "room.members_changed": return AppLocalization.string("The room's members changed.")
-        case "room.disbanded": return AppLocalization.string("This room was disbanded.")
-        case "room.stop_requested": return AppLocalization.string("Stop requested.")
+        case "room.renamed": return LAAChatLabels.text("The room was renamed.")
+        case "room.members_changed": return LAAChatLabels.text("The room's members changed.")
+        case "room.disbanded": return LAAChatLabels.text("This room was disbanded.")
+        case "room.stop_requested": return LAAChatLabels.text("Stop requested.")
         case "room.activity":
             switch GroupRoomTurns.roomActivityOutcome(event) {
-            case .settled: return AppLocalization.string("The room settled.")
-            case .bounded: return AppLocalization.string("The conversation reached its turn limit.")
-            case .other: return AppLocalization.string("Room updated.")
+            case .settled: return LAAChatLabels.text("The room settled.")
+            case .bounded: return LAAChatLabels.text("The conversation reached its turn limit.")
+            case .other: return LAAChatLabels.text("Room updated.")
             }
         case "turn.settled":
             return name.isEmpty
-                ? AppLocalization.string("A member passed.")
+                ? LAAChatLabels.text("A member passed.")
                 : AppLocalization.string("\(name) passed.")
         case "turn.failed":
             return name.isEmpty
-                ? AppLocalization.string("A member's turn failed.")
+                ? LAAChatLabels.text("A member's turn failed.")
                 : AppLocalization.string("\(name)'s turn failed.")
         case "turn.cancelled":
             return name.isEmpty
-                ? AppLocalization.string("Work was stopped.")
+                ? LAAChatLabels.text("Work was stopped.")
                 : AppLocalization.string("\(name)'s turn was stopped.")
         case "member.unavailable":
             return name.isEmpty
-                ? AppLocalization.string("A member is unavailable.")
+                ? LAAChatLabels.text("A member is unavailable.")
                 : AppLocalization.string("\(name) is unavailable.")
-        default: return AppLocalization.string("Room updated.")
+        default: return LAAChatLabels.text("Room updated.")
         }
     }
 }
@@ -1027,6 +1070,13 @@ struct GroupRespondingRow: View {
     @Environment(\.groupMemberTints) private var tints
 
     var body: some View {
+#if LAA_BUILD
+        HStack(spacing: 10) {
+            GroupMemberAvatar(member: member, name: GroupRoomTurns.displayName(of: member), size: 30)
+            LAATypingDots()
+            Spacer(minLength: 0)
+        }.laaChatColumn(.leading)
+#else
         let name = GroupRoomTurns.displayName(of: member)
         let tint = tints[member.identityKey]
         HStack(alignment: .top, spacing: 9) {
@@ -1054,6 +1104,7 @@ struct GroupRespondingRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AppLocalization.string("\(name) is responding…")))
         .accessibilityAddTraits(.updatesFrequently)
+#endif
     }
 }
 
@@ -1069,6 +1120,17 @@ struct GroupMemberAvatar: View {
     private var bot: BotProfile? { appState.groupMemberBot(member, name: name) }
 
     var body: some View {
+#if LAA_BUILD
+        if let staff = LAAChatPerson.staff(member: member, name: name) {
+            StaffAvatarView(profile: "laa-\(staff.rawValue)", name: staff.name, size: size * 1.3, scrolling: true)
+                .frame(width: size, height: size).accessibilityHidden(true)
+        } else { legacy }
+#else
+        legacy
+#endif
+    }
+
+    private var legacy: some View {
         if let bot {
             BotAvatarView(
                 name: bot.name,
@@ -1230,11 +1292,11 @@ struct GroupMessageCopyButton: View {
     @State private var resetTask: Task<Void, Never>?
 
     private var copiedTitle: String {
-        label == .response ? AppLocalization.string("Response copied") : AppLocalization.string("Message copied")
+        label == .response ? LAAChatLabels.text("Response copied") : LAAChatLabels.text("Message copied")
     }
 
     private var title: String {
-        label == .response ? AppLocalization.string("Copy response") : AppLocalization.string("Copy message")
+        label == .response ? LAAChatLabels.text("Copy response") : LAAChatLabels.text("Copy message")
     }
 
     var body: some View {
@@ -1308,7 +1370,7 @@ struct GroupMessageQuoteButton: View {
         .disabled(!appState.canQuoteIntoRoom())
         .accessibilityLabel(
             authorHandle == nil
-                ? AppLocalization.string("Quote this response")
+                ? LAAChatLabels.text("Quote this response")
                 : AppLocalization.string("Reply to \(authorName)")
         )
     }
@@ -1424,9 +1486,9 @@ private struct GroupReadAloudControl: View {
         .disabled(unavailable && !isActive)
         .opacity(unavailable && !isActive ? 0.45 : 1)
         .accessibilityLabel(
-            isPaused ? AppLocalization.string("Resume reading response")
-                : isActive ? AppLocalization.string("Stop reading response")
-                : AppLocalization.string("Read response aloud")
+            isPaused ? LAAChatLabels.text("Resume reading response")
+                : isActive ? LAAChatLabels.text("Stop reading response")
+                : LAAChatLabels.text("Read response aloud")
         )
     }
 }
@@ -1567,8 +1629,8 @@ struct GroupCreateSheet: View {
                         .foregroundStyle(.red)
                         .listRowBackground(Color.clear)
                 }
-                Section(AppLocalization.string("Name")) {
-                    TextField(AppLocalization.string("Group name"), text: $name)
+                Section(LAAChatLabels.text("Name")) {
+                    TextField(LAAChatLabels.text("Group name"), text: $name)
                         .submitLabel(.done)
                 }
                 Section {
@@ -1576,21 +1638,21 @@ struct GroupCreateSheet: View {
                         memberToggleRow(bot)
                     }
                 } header: {
-                    Text(AppLocalization.string("Members (2–6)"))
+                    Text(LAAChatLabels.text("Members (2–6)"))
                 } footer: {
                     Text(AppLocalization.string(
                         "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room."
                     ))
                 }
             }
-            .navigationTitle(AppLocalization.string("New Group Chat"))
+            .navigationTitle(LAAChatLabels.text("New Group Chat"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLocalization.string("Cancel")) { dismiss() }
+                    Button(LAAChatLabels.text("Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(AppLocalization.string("Create")) {
+                    Button(LAAChatLabels.text("Create")) {
                         // Double-tap protection: two taps mint two ids and
                         // the gateway would host two real rooms.
                         guard !isCreating else { return }
@@ -1729,7 +1791,7 @@ struct DesktopGroupChatView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 4)
                         if group.omitted > 0 {
-                            Text(AppLocalization.string("Earlier messages are only in Hermes Desktop."))
+                            Text(LAAChatLabels.text("Earlier messages are only in Hermes Desktop."))
                                 .font(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                                 .frame(maxWidth: .infinity)
@@ -1765,7 +1827,7 @@ struct DesktopGroupChatView: View {
                     )
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLocalization.string("Done")) { dismiss() }
+                    Button(LAAChatLabels.text("Done")) { dismiss() }
                 }
             }
         }
@@ -1778,7 +1840,7 @@ struct DesktopGroupChatView: View {
             if message.isMember {
                 GroupMemberBubble(
                     member: nil,
-                    name: speaker.isEmpty ? AppLocalization.string("Member") : speaker,
+                    name: speaker.isEmpty ? LAAChatLabels.text("Member") : speaker,
                     text: message.text,
                     members: mentionMembers,
                     timestamp: message.timestamp
@@ -1789,7 +1851,7 @@ struct DesktopGroupChatView: View {
                 }
             }
             if message.truncated {
-                Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
+                Text(LAAChatLabels.text("Shortened — the full message is in Hermes Desktop."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, message.isMember ? GroupMemberBubble.avatarSize + 9 : 0)
@@ -1798,3 +1860,9 @@ struct DesktopGroupChatView: View {
         .frame(maxWidth: .infinity, alignment: message.isMember ? .leading : .trailing)
     }
 }
+#if LAA_BUILD
+struct GroupMessageFilesForLAA: View {
+    let text: String
+    var body: some View { GroupMessageFiles(files: GroupMessageParts(text).files) }
+}
+#endif

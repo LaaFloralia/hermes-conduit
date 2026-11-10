@@ -416,6 +416,25 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertNil(coordinator.pendingText)
     }
 
+#if LAA_BUILD
+    func testOpeningCompositionHandoffRunsAfterCommittedTextIsStored() {
+        var stored = ""
+        var changes: [(Bool, String)] = []
+        var editor = ReturnKeyTextEditor(text: Binding(get: { stored }, set: { stored = $0 }),
+            isFocused: .constant(true), accessibilityLabel: "メッセージ",
+            canSubmitFromReturn: false, onSubmitFromReturn: { false })
+        editor.onCompositionChanged = { changes.append(($0, stored)) }
+        let coordinator = editor.makeCoordinator()
+        let field = ReturnKeyTextView()
+        field.text = "にほん"
+        coordinator.textDidChange(in: field, hasMarkedText: true)
+        field.text = "日本語"
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertEqual(changes.map { $0.0 }, [true, false])
+        XCTAssertEqual(changes.last?.1, "日本語")
+    }
+#endif
+
     func testTextViewDefaultsPreserveLegacyReturnBehavior() {
         // Fresh text views (and every existing construction site that does
         // not know about the shortcut) must behave exactly as before.

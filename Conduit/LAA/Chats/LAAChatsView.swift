@@ -26,9 +26,14 @@ struct LAAChatsView: View {
             let found = appState.profiles.first { AppState.profilesMatch($0, expected) }
             guard staff == .monet || found != nil else { return nil }
             let profile = found ?? expected
-            let name = appState.profileHermesNames[profile] ?? staff.name
+            let name = staff.name
+            let localMessage = appState.activeRoomSurface == nil && appState.conversationIdentityProfile == profile
+                ? appState.messages.last(where: { $0.role == .assistant || $0.role == .user }) : nil
+            let rosterPreview = appState.botRoster.first(where: { AppState.profilesMatch($0.name, profile) })?.lastPreview
             return LAAChatsPerson(profile: profile, name: name, role: staff.role,
-                                  available: found == expected && appState.isConnected)
+                                  available: found == expected,
+                                  lastMessage: (localMessage?.content ?? rosterPreview).map { ChatQuote.excerpt(of: $0) },
+                                  lastMessageAt: localMessage.flatMap { MessageTimestampFormatter.date(from: $0.timestamp) })
         }
         let groupsState: LAAChatsLoadState
         if !appState.isConnected {
@@ -44,24 +49,13 @@ struct LAAChatsView: View {
         }
         let unread = appState.unreadChatCounts(profiles: Set(people.map(\.profile)))
             .filter { $0.value > 0 }
-        // Cron runs live in their own list (`sessions` excludes `.cron`), and
-        // `listedCronSessions` is the profile-scoped rows the Chats list shows.
-        let runs = appState.listedCronSessions
-            .filter { !$0.isArchived }
-            .sorted { ($0.lastActivityAt ?? 0) > ($1.lastActivityAt ?? 0) }
         return LAAChatsSnapshot(
             people: people,
             rooms: groupReadDashboard == appState.activeDashboardID ? loadedRooms : [],
             groupsState: groupsState,
             canCreateChat: appState.canTapNewChat,
             canCreateGroup: appState.isConnected && appState.groupChatPhase == .available,
-            unreadByProfile: unread,
-            cronJobs: appState.activeProfileCronJobs,
-            cronRuns: Array(runs.prefix(5)),
-            cronZoneLabel: ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting),
-            cronState: LAAChatsCron.loadState(appState.activeProfileCronJobsPhase, connected: appState.isConnected),
-            cronSkipped: appState.activeProfileCronJobsSkipped,
-            cronProfile: appState.activeProfile
+            unreadByProfile: unread
         )
     }
 
@@ -82,10 +76,13 @@ struct LAAChatsView: View {
     private var liveContent: some View {
         LAAChatsContent(snapshot: snapshot, settingsAvailable: settings != nil,
                         selection: selection,
-                        openPerson: openPerson, openRoom: { room in
+                        openPerson: openPerson, callPerson: { person in
+            guard let dashboard = appState.activeDashboardID,
+                  let link = WidgetLaunchLink(action: .talk,
+                    workspace: WidgetWorkspaceID(dashboardID: dashboard, profile: person.profile), reference: nil) else { return }
+            _ = appState.routeWidgetLaunchURL(link.url)
+        }, openRoom: { room in
             Task { await appState.openGroupRoom(room) }
-        }, openRun: { run in
-            _ = appState.openChatFromLiveCall(run.id)
         }, newChat: {
             appState.startNewChat()
         }, newGroup: {
@@ -114,7 +111,7 @@ struct LAAChatsView: View {
         }
         .task(id: "\(appState.activeDashboardID?.uuidString ?? "-")|\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)|\(shown)") {
             guard shown else { return }
-            // The catalog, the roster and the routines are independent reads:
+            // The catalog and roster are independent reads:
             // start them together instead of waiting for each round trip in
             // turn. The group capability and the room list are one read (the
             // list is only read when the gateway advertises groups), and that
@@ -125,9 +122,8 @@ struct LAAChatsView: View {
                 return
             }
             async let roster: Void = appState.refreshBotRoster()
-            async let routines: Void = appState.loadCronJobsIfNeeded()
             await readRooms()
-            _ = await (catalog, roster, routines)
+            _ = await (catalog, roster)
         }
         .task(id: "\(appState.activeProfile)|\(shown)") {
             guard shown else { return }
@@ -147,7 +143,6 @@ struct LAAChatsView: View {
         guard appState.isConnected else { return }
         await appState.loadSessions(forceRefresh: true)
         await appState.refreshBotRoster()
-        await appState.loadCronJobs()
         await readRooms()
         if appState.isAllProfilesChatsOn { appState.refreshAllProfilesCatalog() }
     }

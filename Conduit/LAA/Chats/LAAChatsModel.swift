@@ -6,6 +6,8 @@ struct LAAChatsPerson: Identifiable, Equatable {
     let name: String
     let role: String
     let available: Bool
+    var lastMessage: String? = nil
+    var lastMessageAt: Date? = nil
     var id: String { profile }
 }
 

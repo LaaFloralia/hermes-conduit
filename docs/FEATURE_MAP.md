@@ -4112,6 +4112,8 @@ and rollback instructions · the upstream App Store build
 
 ## LAA v2 chat presentation
 
+- 2026-11-11 stage 2: `LAAChatPresentation.swift` supplies sender role tags, native message menus and the six reaction palette, typing dots with work records, Japanese date/read states and information-sheet search. The Dots-style 64pt floating mascot/name pill replaces the persistent ellipsis; the one-row composer grows from one to eight lines. `LAAEmployeeChatOpening.swift` displays the profile-isolated PERF cache during connection and defers its editor handoff until Japanese composition commits.
+
 **Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · the upstream App Store build
 
 **Code**
