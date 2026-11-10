@@ -4834,18 +4834,20 @@ struct ChatLiveTurnRows: View {
         }
 
         if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
+            Group {
 #if LAA_BUILD
-            LAAChatTypingRow(startedAt: turnStartedAt, projection: projection)
+                LAAChatTypingRow(startedAt: turnStartedAt, projection: projection)
 #else
-            ChatWorkingLine(
-                currentToolName: currentToolName,
-                currentToolInput: currentToolInput,
-                currentToolTitle: currentToolTitle,
-                isThinking: projection.reasoningSegment != nil,
-                startedAt: turnStartedAt,
-                repliesElsewhere: repliesElsewhere
-            )
+                ChatWorkingLine(
+                    currentToolName: currentToolName,
+                    currentToolInput: currentToolInput,
+                    currentToolTitle: currentToolTitle,
+                    isThinking: projection.reasoningSegment != nil,
+                    startedAt: turnStartedAt,
+                    repliesElsewhere: repliesElsewhere
+                )
 #endif
+            }
             .id("typing")
             .reportsLiveRowFrame(id: "typing")
         }

@@ -71,7 +71,9 @@ struct LAAStudioHomeView: View {
             }
         }
         .tint(LAAColor.link)
-        .onChange(of: requestGeneration) { _, _ in creating = true }
+        .onChange(of: requestGeneration, initial: true) { _, generation in
+            if generation > 0 { creating = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .laaStudioChanged)) { notice in
             if notice.object is LAAStudioRecord { submitted = true }
             Task { await load(refreshReviews: true) }

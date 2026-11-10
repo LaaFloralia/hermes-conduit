@@ -17,7 +17,6 @@ struct LAAAssetsView: View {
     @State private var driveRevision = 0
     @State private var studioSelected = false
     @State private var requestGeneration = 0
-    @State private var pendingCreateRequest = false
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     private let initialStudioSection: Int
     @State private var showPairing = false
@@ -48,7 +47,6 @@ struct LAAAssetsView: View {
                 if !studioSelected {
                     Button {
                         requestGeneration &+= 1
-                        pendingCreateRequest = true
                         studioSelected = true
                     } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .accessibilityLabel("制作を依頼").accessibilityIdentifier("laa.assets.new-request")
@@ -74,6 +72,9 @@ struct LAAAssetsView: View {
             confirmFolder = false
             LAADriveDecodedThumbnails.removeAll()
             Task { await thumbnailCache.removeAll() }
+        }
+        .onChange(of: studioSelected) { _, selected in
+            if !selected { requestGeneration = 0 }
         }
         .onDisappear { folderTask?.cancel() }
         // A Drive link (laa://assets) opens the Studio tab on its Drive page.
@@ -102,13 +103,7 @@ struct LAAAssetsView: View {
                     heading
                     segments
                     if studioSelected {
-                        LAAStudioHomeView(initialSection: initialStudioSection)
-                            .onAppear {
-                                if pendingCreateRequest {
-                                    pendingCreateRequest = false
-                                    NotificationCenter.default.post(name: Notification.Name("LAAStudioCreateRequest"), object: nil)
-                                }
-                            }
+                        LAAStudioHomeView(initialSection: initialStudioSection, requestGeneration: requestGeneration)
                     } else if LAADriveData.available(bridge) {
                         driveBrowser
                         if let folderMessage {

@@ -1130,6 +1130,7 @@ struct GroupMemberAvatar: View {
 #endif
     }
 
+    @ViewBuilder
     private var legacy: some View {
         if let bot {
             BotAvatarView(

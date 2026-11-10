@@ -378,7 +378,7 @@ build (keeps its own chat and call controls)
 
 **Code**
 - Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `Conduit/LAA/Staff/StaffMascotView.swift`, `project-laa.yml`, `project-personal.yml`
-- Monet (Dots), the text-chat staff profile whose phone hands off to ChatGPT: `Conduit/LAA/Staff/StaffAssets.swift` (`supportsCalls`, `dotCallURL`), `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `scripts/laa/brand-bundle.py` (`LAADotsCallURL`), `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/Watch/LAAWatchAskService.swift`, `Shared/Widgets/WidgetLaunchLink.swift`
+- Monet (Dots), a text-only staff profile: `Conduit/LAA/Staff/StaffAssets.swift` (`supportsCalls`, `dotCallURL`), `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `scripts/laa/brand-bundle.py` (`LAADotsCallURL`), `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/Watch/LAAWatchAskService.swift`, `Shared/Widgets/WidgetLaunchLink.swift`
 - Chat header, composer controls, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
 - Call state, existing voice adapter, controls, route labels, return bar and voice settings: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/VoiceSettingsView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
@@ -390,7 +390,7 @@ build (keeps its own chat and call controls)
 **Rulings**
 - Use the adopted staff assets, falling back to the existing avatar or initials when a staff asset is missing. The default profile uses the LAA mark.
 - The staff are the eight adopted mascots, drawn with no disc or ring around them. Each has a muted alpha loop in the chat header and on the call. On the call and in the employee details a drag turns the mascot through 360 degrees of pre-rendered frames; a flick carries on, and left alone it comes back to face the viewer and the loop resumes. It turns left and right only. An employee's picture everywhere in the app is the bundled mascot, not the Hermes profile picture. The loop runs at 1.4x while the employee answers in chat or speaks on a call. The classic voice engine has no speaking state, so its call stays at normal speed and reacts through the microphone level. The mascot squashes with the same level as the ring.
-- Monet (Dots) joins the employee chats when the Hermes host has the `laa-monet-dots` profile and uses Monet's adopted assets. Its chat is text only, and its phone hands the call to the owner's own ChatGPT dot (owner, 2026-11-09): iPhone runs the owner's `Monetに電話` shortcut (ChatGPT's Open your dot, Call) as `shortcuts://x-callback-url/run-shortcut` with the dot's page in `x-error`, so a missing or failing shortcut opens that page in ChatGPT instead of stopping; without a page in Info the plain `run-shortcut` stays. Mac opens the dot's page in the default browser, since the ChatGPT app there would take the Local Work connection; without the page it says the call target is not set. That page's link stays out of this public source: the Mac and TestFlight releases write `LAA_DOTS_CALL_URL` from their environment into Info as `LAADotsCallURL`. Only a call already in LAA holds the phone back. GPT-Live, the Watch, the widget's employee choice and group rooms leave it out. Each turn sends Dot only the latest user message, and Dot keeps one shared context, so its history is not kept apart per LAA conversation. The relay's SQLite store keeps message text for 30 days.
+- Monet (Dots) joins the employee chats when the Hermes host has the `laa-monet-dots` profile and uses Monet's adopted assets. The list phone calls the main Monet profile, and the Dots conversation has no phone control. GPT-Live, the Watch, the widget's employee choice and group rooms leave Dots out. Each turn sends Dot only the latest user message, and Dot keeps one shared context, so its history is not kept apart per LAA conversation. The relay's SQLite store keeps message text for 30 days.
 - The muted loop runs only while visible and active, after disconnecting from system audio. Reduce Motion, Low Power Mode, scrolling and platforms unable to disconnect use the still, so opening a chat does not take over another app's audio.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
 - The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui). On Mac the call button and menu are two items, since its bar turns an item holding a menu into that menu and the call button opened it (2026-11-09, laa/dots-phone-mac). At 375 points and accessibility text sizes, the employee name takes priority over the decorative avatar and status; the full status stays in its accessible label and detail sheet. Back keeps its native control and interactive pop gesture.
@@ -457,7 +457,6 @@ and offline chats · LAA Settings ·
 notifications and in-app links · the four Bridge-backed tabs · the upstream
 App Store build · the Bridge API, Brain and Usage data contracts
 
-> 2026-11-11 Usage contract update: the standalone AI / Storage screen retains historical numbers and shows elapsed time; only never-observed values say 未取得. Scope changes and access denial clear history. The screen refreshes every two minutes while active, independent of its presenting shell. See `docs/laa/USAGE.md`.
 
 **Code**
 - Shell and settings: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/Settings/LAAMacSettingsCard.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`, `Conduit/Views/AuxiliaryViews.swift`
@@ -513,31 +512,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
-- Usage first shows Mac mini and MacBook memory/SSD and the Google account's
-  shared Drive/Gmail/Photos quota, then reads the Bridge usage-proxy projection
-  in one fixed order: Codex
-  Weekly, OpenCode Weekly, Claude Weekly, Venice, GPT API, Claude API, Liquid AI, then the
-  remaining providers. A 7-day window is called Weekly (ウィークリー), never D1.
-  Jev, Google Cloud and Google Flow are retired: the proxy and the Bridge no longer
-  read them, and a cached row is dropped before drawing. Quota windows, reset
-  times, balances, credits and Liquid AI's recorded cost, input/output tokens and
-  request counts stay in their own units; model names and Hermes token usage
-  are not part of this screen. Capacity readings come from the Mac mini Bridge;
-  missing, failed or stale readings show no current number. SSD free space below
-  80 GiB warns and below 40 GiB is critical. MacBook uses the existing Tailscale
-  password-SSH path with runtime-only credentials; iCloud has no reader and is
-  disclosed as unconnected. Google quota includes shared services, retains actual
-  use above the limit, and warns at 90% / 98%. The generated settings title is
-  Usage in every locale while upstream localization keys stay intact.
-  The refresh button only re-reads the feed and
-  never opens an external URL. Opening the tab refreshes after a 60-second quiet
-  interval; the shared foreground timer also refreshes while Usage is visible.
-  The screen reevaluates freshness while open. Failed refreshes clear screen
-  numbers and mark retained widget observations stale immediately; stale, reset,
-  failed and manually recorded readings show no number. Code-owned service links
-  remain available for checking unavailable readings. Duplicate refreshes are
-  suppressed, and missing, zero, stale, expired and unavailable data stay distinct. Hermes'
-  existing Settings report remains available.
+- The standalone Usage screen opens from Work and lists AI before Storage. It reads the Bridge usage-proxy projection; quota windows, reset times, balances, credits and cost stay in their own units. Storage shows Mac mini and MacBook memory/SSD and the shared Google account quota. SSD free space below 80 GiB warns and below 40 GiB is critical; Google quota warns at 90% / 98%. Tapping the last observation time refreshes the feed. The screen also refreshes while visible, at two-minute intervals, and on foreground activation. Failed reads keep historical values with their elapsed time; only never-observed values show 未取得. An explicit disconnect, a change of connection scope or denied access clears the observations. See `docs/laa/USAGE.md`.
 - GPT API and Claude API show a balance row first and their spend after it. The
   spend rows read 使用額 (amount used, today and this month, UTC) and never stand in
   for the amount left: neither provider publishes an automatic balance, so the
@@ -545,13 +520,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   billing link (`platform.openai.com` / `platform.claude.com`). A cached
   `cost-month` from an older widget snapshot is neither drawn nor reused, and a
   manually entered balance is not shown as current.
-- Every Usage meter is one `LAAUsageMeter`: an 8-point capsule track in the
-  link colour, or the attention colour past a warning. Window, balance, monthly
-  and capacity bars share that one thickness (the owner, 2026-11-09: the meters'
-  thickness varied). The warning tick on capacity meters is drawn as an overlay
-  (2×14pt) so a row with a mark is exactly as tall as one without; the component
-  is 14pt for every row. The Settings button is the hosting screen's: Usage
-  inside Work does not add a second gear beside Work's own (`showsSettingsButton`).
+- Proportional readings use the same thin Usage meter. A capacity warning tick overlays the track at the threshold. Storage and AI use the same meter and preserve their own warning levels.
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
   area access by naming that audience. A denied device sees a localized Mac
@@ -2019,8 +1988,8 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 ## Composer editor and text size
 
-The LAA composer starts at three lines and can open a full-height editor even
-for a short draft. Settings > Chat offers separate input and response text
+The LAA composer starts at one line, grows to eight and shows the
+full-height editor control from three lines. Settings > Chat offers separate input and response text
 sizes, each applied on top of the system's text size.
 
 **Siblings:** chat composer · group room composer · both full editors ·
@@ -2035,15 +2004,14 @@ Settings > Chat · chat and group responses · Japanese input methods
 **Rulings**
 - An unchanged binding revision never replaces the text or selection while an
   input method is composing. An intentional replacement or font change waits
-  until marked text commits. LAA asks for three lines and independent input
-  and response sizes (2026-10-29, Task 08).
+  until marked text commits. Input and response sizes are independent.
 
 **Open gaps**
 - Simeji must be checked on a physical iPhone; the simulator cannot install it.
   The marked-text tests exercise the UIKit bridge but cannot reproduce every
   third-party keyboard behavior. Device steps: `docs/laa/COMPOSER-DEVICE-CHECKS.md`.
 
-**Checked:** 2026-10-29, d7e98a56 (LAA Task 08).
+**Checked:** 2026-11-11, laa/s2-integ (LAA stage 2); 2026-10-29, d7e98a56 (LAA Task 08).
 
 ## Composer drafts
 
@@ -4062,7 +4030,6 @@ and rollback instructions · the upstream App Store build
 
 **Code**
 - Usage reads and storage: `Shared/Widgets/LAAUsageReading.swift`, `Shared/Widgets/LAAWidgetUsageBuilder.swift`, `Shared/Widgets/LAAWidgetUsageRefresh.swift`, `Shared/Widgets/WidgetSnapshotStore.swift`, `ConduitTests/LAAWidgetUsageRefreshTests.swift`
-> 2026-11-11 widget contract update: the medium widget shows at most five rows, fine percentage meters, and historical values with elapsed time / リセット済み. Each OS-granted reload makes a bounded authenticated Bridge read using the App Group Keychain; future timeline entries age the labels and request the next fetch after 15 minutes. These rules supersede older freshness wording below.
 
 - Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
 - Opening screen: `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/Services/AppState.swift` (`laaOpeningEmployeeChat`), `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Mac/LAAMacChatsSection.swift`
@@ -4071,11 +4038,11 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The LAA build offers eight employees, with Monet as default. The square widget shows the employee's static mascot hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows the LAA company icon and Monet's name above Monet's bare call and chat icons (no plate or glow behind them, no observation time), beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. The two API rows read a balance only; neither provider publishes one, so they stay as 未取得 rows, and a `cost-month` meter left in an older snapshot is dropped instead of drawn. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen reevaluates freshness and participates in automatic refresh. Failed fetches retain observations only as stale, without displayed numbers. WidgetKit controls subsequent timeline delivery.
+- The square widget shows the selected employee's mascot and separate Call and Chat links. The rectangular and circular Lock Screen widgets remain available. The medium widget shows the selected employee and at most five Usage rows. Percentages have thin meters. Older values stay visible with elapsed time and リセット済み when applicable; never-observed values show 未取得. Each WidgetKit-granted reload makes a bounded authenticated Bridge read using the shared Keychain. Future entries age the labels and request the next reload after 15 minutes. A phone changes push also refreshes the Usage snapshot. WidgetKit controls delivery.
 - Monet and Monet（無検閲） replace the former two swans and the former marketing employee identity; the uncensored employee is text-only. Retired profile IDs are not mapped to new identities. When authoritative discovery reports the saved active profile absent, the app falls back to default; a stale widget link reports an unavailable workspace. The system handling of a previously saved widget selection still needs iPhone acceptance.
 - iPhone acceptance: check Monet and Monet（無検閲） names and mascots in Chats and staff details, turn animation, call and text-only behavior, Watch and shortcuts, and reconfigure any existing employee widget whose selection no longer resolves.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
-- A Chat link shows that employee's opening screen (mascot, name, role and チャットを開いています…) the moment it is taken, on the phone's chat route and in the Mac's detail column, until the profile switch and the chat's read land. Leaving it (the chat route going from shown to gone) drops the launch, so a late switch doesn't bring the chat back; a cold launch from a widget, whose chat isn't on screen yet, keeps it. A failed launch returns to the list with its notice. Call and New chat links don't show it (the owner, 2026-11-09: a tap didn't open the chat at once).
+- A Chat link opens the selected employee immediately. It shows the profile-scoped saved transcript if available, or the employee's mascot and name, while the live read finishes. Leaving the chat cancels the opening. A connection failure retains the selected chat and cached messages and exposes a retry.
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
@@ -4128,7 +4095,7 @@ and rollback instructions · the upstream App Store build
 
 ## LAA v2 chat presentation
 
-- 2026-11-11 stage 2: `LAAChatPresentation.swift` supplies sender role tags, native message menus and the six reaction palette, typing dots with work records, Japanese date/read states and information-sheet search. The Dots-style 64pt floating mascot/name pill replaces the persistent ellipsis; the one-row composer grows from one to eight lines. `LAAEmployeeChatOpening.swift` displays the profile-isolated PERF cache during connection and defers its editor handoff until Japanese composition commits.
+- 2026-11-11 stage 2: `Conduit/LAA/Chat/LAAChatPresentation.swift` supplies sender role tags, native message menus and the six reaction palette, typing dots with work records, Japanese date/read states and information-sheet search. The Dots-style 64pt floating mascot/name pill replaces the persistent ellipsis; the one-row composer grows from one to eight lines. `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift` displays the profile-isolated PERF cache during connection and defers its editor handoff until Japanese composition commits.
 
 **Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · the upstream App Store build
 
@@ -4142,8 +4109,8 @@ and rollback instructions · the upstream App Store build
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
 - Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture.
-- The LAA transcript reserves the entire growing composer height, including Model and context controls, so an eight-line draft cannot expose message text behind that row. Group placeholders use primary ink on photo glass.
-- The chat composer is + and the field on one row; the row under it holds the model and effort, context and, at its end, Send in Work's 36-point glass, with the row's other controls at the same size. It has no mic or voice button: calls start from the header's phone (owner, 2026-11-09). Resting, that row hides, and a running turn's Stop sits beside the field. The group room's composer takes the same form: + and the field, and under them Send at the row's end in the same glass, with no mic (owner, 2026-11-09).
+- The LAA transcript reserves the entire growing composer height, so an eight-line draft cannot expose message text behind the controls. Group placeholders use primary ink on photo glass.
+- The employee and group composers keep +, the field and the Send control on one row. Send appears for a sendable draft; the expand control appears from three lines. The long-press menu contains copy, selection, reply and read-aloud. Employee chats also offer reactions. Only the latest owner message shows its delivery state.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
 
@@ -4344,16 +4311,36 @@ through the host's GPT-Live bridge. This is enabled only in LAA builds.
 
 - LAA employee call continuity (2026-11-11): persona reminders, recent same-chat context, Japanese delegation fallback, reconnect result buffering, Japanese call controls. See `docs/laa/EMPLOYEE-CALLS.md` and `ConduitTests/LAAEmployeeCallContinuityTests.swift`.
 
-### LAA Work v3 integration (2026-11-11)
+## LAA Work v3 integration (2026-11-11)
 
 Work presents Sessions, Tasks and Routines. Decisions appear above them (at most three, then show all); existing answer sheets handle replies. Projects are grouped within Sessions and retain their management screen, rename, instructions, archive and restore. Skills live in Settings, Usage opens from the Work gauge. Session tools are collapsed into one work record disclosure; cached transcripts remain visible during refresh. iPhone and Mac retain their list/detail routes and existing task/session mutations.
 
-**Code:** `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAAWorkDecisionSummary.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`.
-**Checked:** 2026-11-11, WORK v3; targeted unit/UI and rendered evidence in the stage2 WORK report.
+**Siblings:** Work on iPhone and Mac · Settings Skills · Usage · decision sheets · session tools
+
+**Code**
+- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAAWorkDecisionSummary.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
+
+**Rulings**
+- Show at most three decisions before the sections. Keep session tools collapsed until requested.
+
+**Open gaps**
+- Physical-device acceptance is pending.
+
+**Checked:** 2026-11-11, 2b5760d5 (Work v3 contracts).
 
 
 ## LAA Drive stage 2 browsing and playback
 
-**Code:** `Conduit/LAA/Drive/`, `Conduit/LAA/Assets/`, `bridge/src/drive/google.mjs`, `bridge/src/routes/drive.mjs`.
-**Behavior:** Studio/Drive standard segment; clickable folder path; server-side video/image/document filters; folder/document rows and three-column media; per-folder layout/order; direct media preview with cached poster; long-press share/copy/open/save; four bounded Range reads in flight, permission/version validation, one read-only OAuth retry, six thumbnail transfers, protected bounded thumbnail disk cache, previous listing retained during refresh.
-**Validation:** `npm --prefix bridge test`; `bridge/bench/drive-{browse-models,thumbnails,native-playback}-test.mjs`; `drive-integration-typecheck.mjs`; `LAAAssetsTests`, `LAADriveRangeTests`, `LAAAssetsUITests`. Device Wi-Fi latency, long-play stalls, PiP, AirPlay and background audio require physical acceptance; macOS/synthetic measurements do not certify those targets. See `docs/laa/DRIVE-PLAYER-API.md`.
+**Siblings:** Studio tab · Drive browsing, thumbnails and playback · Bridge Drive API
+
+**Code**
+- `Conduit/LAA/Drive/`, `Conduit/LAA/Assets/`, `bridge/src/drive/google.mjs`, `bridge/src/routes/drive.mjs`
+- `bridge/bench/drive-browse-models-test.mjs`, `bridge/bench/drive-thumbnails-test.mjs`, `bridge/bench/drive-native-playback-test.mjs`, `bridge/bench/drive-integration-typecheck.mjs`
+
+**Rulings**
+- Drive keeps the previous listing during refresh and stores layout and order per folder. Media opens with the cached poster. Playback uses bounded ranges with permission and version validation; reads can retry once after OAuth refresh. Thumbnail transfers have bounded concurrency and a protected disk cache.
+
+**Open gaps**
+- Physical-device acceptance covers Wi-Fi latency, full playback, Picture in Picture, AirPlay and background audio. See `docs/laa/DRIVE-PLAYER-API.md`.
+
+**Checked:** 2026-11-11, 13b2feac (Drive stage 2 contracts).

@@ -10,7 +10,6 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
 
     private var profile: String { appState.conversationIdentityProfile }
@@ -41,11 +40,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 
     private var callButton: some View {
-        let dotCall = LAAStaff(profile: profile)?.dotCallURL
-        return LAAEmployeeCallButton(reason: reason, hint: dotCall.map(LAAEmployeeCallAvailability.dotCallHint)) {
-            if let dotCall {
-                openURL(dotCall)
-            } else if LAAStaff(profile: profile) != nil {
+        LAAEmployeeCallButton(reason: reason) {
+            if LAAStaff(profile: profile) != nil {
                 _ = calls.startEmployeeConversation(appState)
             } else if sameCall {
                 calls.showCall()
@@ -63,7 +59,9 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                 .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                 .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
         }
-        LAAConversationControlItems(call: callButton)
+        if LAAStaff(profile: profile)?.supportsCalls != false {
+            LAAConversationControlItems(call: callButton)
+        }
     }
 
     private func voiceSetting(for profile: String) -> Binding<String>? {
@@ -128,11 +126,7 @@ enum LAAEmployeeCallAvailability {
     static func reason(appState: AppState, bridge: LAABridgeSession.Status, calls: LAAEmployeeCallCoordinator) -> String? {
         let profile = appState.conversationIdentityProfile
         if let staff = LAAStaff(profile: profile), !staff.supportsCalls {
-            guard staff == .monetDots else { return "この会話はテキスト専用です" }
-            // The call itself runs in ChatGPT: only a call here holds it back.
-            guard staff.dotCallURL != nil else { return "通話先が設定されていません" }
-            let callHere = calls.snapshot != nil || appState.isVoiceCallInProgress || appState.laaEmployeeGPTLivePlan != nil
-            return callHere ? LAACopy.otherCallInProgress : nil
+            return "この会話はテキスト専用です"
         }
         if let snapshot = calls.snapshot {
             return snapshot.context.profile == profile && snapshot.context.conversationID == appState.activeSessionId

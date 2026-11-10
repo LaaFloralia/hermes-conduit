@@ -119,11 +119,19 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             return
         }
         Task { @MainActor in
+            #if LAA_BUILD
+            async let usageRefresh = LAAUsageBackground.refreshFromPush()
+            #endif
             let outcome = await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(userInfo)
+            #if LAA_BUILD
+            let usageFetched = await usageRefresh
+            #else
+            let usageFetched = false
+            #endif
             switch outcome {
             case .synced?: completionHandler(.newData)
-            case .failed?: completionHandler(.failed)
-            default: completionHandler(.noData)
+            case .failed?: completionHandler(usageFetched ? .newData : .failed)
+            default: completionHandler(usageFetched ? .newData : .noData)
             }
         }
     }

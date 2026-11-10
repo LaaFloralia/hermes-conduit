@@ -887,14 +887,13 @@ struct ComposerBar: View, Equatable {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
 #if LAA_BUILD
-                Text("メッセージ")
-#else
-                Text(appState.composerPlaceholder)
-#endif
-#if LAA_BUILD
+                let placeholder = Text(verbatim: "メッセージ")
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+#else
+                let placeholder = Text(appState.composerPlaceholder)
 #endif
+                placeholder
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
 #if LAA_BUILD
