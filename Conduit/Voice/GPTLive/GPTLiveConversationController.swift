@@ -27,6 +27,9 @@ import Foundation
 protocol GPTLiveSessionControlling: AnyObject {
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)? { get set }
     var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)? { get set }
+    #if LAA_BUILD
+    var onTransportInterrupted: (@MainActor (Bool) -> Void)? { get set }
+    #endif
     /// The call's audio paused for another sound (`true`) or came back.
     var onAudioPaused: (@MainActor (Bool) -> Void)? { get set }
     var isReady: Bool { get }
@@ -50,6 +53,12 @@ protocol GPTLiveSessionControlling: AnyObject {
 }
 
 extension GPTLiveSessionControlling {
+    #if LAA_BUILD
+    var onTransportInterrupted: (@MainActor (Bool) -> Void)? {
+        get { nil }
+        set {}
+    }
+    #endif
     var greetingApplied: Bool { false }
     var billing: GPTLiveBilling { .subscription }
     func start(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) { start() }
@@ -260,6 +269,10 @@ final class GPTLiveConversationController: ObservableObject {
     @Published private(set) var billing: GPTLiveBilling?
     /// Set when an API-key call reached its time limit and is ending.
     @Published private(set) var limitNote: String?
+    #if LAA_BUILD
+    @Published private(set) var isReconnecting = false
+    @Published private(set) var callActivity: LAAEmployeeCallActivity = .ready
+    #endif
     /// How long an API-key call may run before it ends itself; nil for no
     /// limit. Read when the call connects.
     var apiCallLimit: (@MainActor () -> Duration?)?
@@ -526,6 +539,21 @@ final class GPTLiveConversationController: ObservableObject {
         let session = makeSession()
         session.onEvent = { [weak self] in self?.handle($0) }
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
+        #if LAA_BUILD
+        isReconnecting = false
+        callActivity = .ready
+        session.onTransportInterrupted = { [weak self] interrupted in
+            guard let self else { return }
+            self.isReconnecting = interrupted
+            if !interrupted {
+                if let identity = self.callIdentity() {
+                    self.session?.appendContext(identity, channel: .commentary, delegationID: nil)
+                }
+                self.deliverPendingJobUpdates()
+                self.flushPendingContextIfIdle()
+            }
+        }
+        #endif
         session.onAudioPaused = { [weak self] in self?.audioPauseChanged($0) }
         audioPaused = false
         self.session = session
@@ -828,11 +856,17 @@ final class GPTLiveConversationController: ObservableObject {
     private func handle(_ event: GPTLiveProtocol.ServerEvent) {
         switch event {
         case .inputTranscript(let text):
+            #if LAA_BUILD
+            callActivity = .listening
+            #endif
             lastUserSpeechAt = now()
             // Someone is talking: the opening is under way or not wanted.
             clearOpeningHold()
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
+            #if LAA_BUILD
+            callActivity = .ready
+            #endif
             // Kept while paused: GPT-Live can't be told to hold its turn, so
             // what it said into the pause stays readable.
             modelTurnActive = true
@@ -853,10 +887,16 @@ final class GPTLiveConversationController: ObservableObject {
                 openUserEntry = nil
                 userTurnEntries = []
                 if let finished {
+                    #if LAA_BUILD
+                    callActivity = .thinking
+                    #endif
                     finishedTurn = FinishedTurn(speaker: .user, text: finished)
                     userFinished(finished)
                 }
             case "assistant":
+                #if LAA_BUILD
+                callActivity = .ready
+                #endif
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
                 clearOpeningHold()
@@ -1057,14 +1097,14 @@ final class GPTLiveConversationController: ObservableObject {
     /// a past "確認しました" or a turn with figures (an answer) isn't one.
     static func claimsWorkInJapanese(_ text: String) -> Bool {
         let turn = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !turn.isEmpty, turn.count <= 45,
+        guard !turn.isEmpty, turn.count <= 120,
               turn.range(of: "\\p{Han}|\\p{Hiragana}|\\p{Katakana}", options: .regularExpression) != nil,
               turn.range(of: "[?？0-9０-９]|か[。、]?$", options: .regularExpression) == nil,
               turn.range(of: japaneseHedge, options: .regularExpression) == nil else { return false }
         return turn.range(of: japaneseWorkUnderway, options: .regularExpression) != nil
     }
 
-    private static let japaneseWorkUnderway = "(確認|調査|チェック|対応|手配|連絡|検索)(を)?(し|いた)(ます|てみます|てきます|てお伝えします)|調べ(ます|てみます|てきます)|見て(みます|きます)|探し(ます|てみます)|(送|渡)ります|(送|渡)します|伝えます|進めます|取りかかります|(少々|少し)お待ち|お待ち(ください|下さい)"
+    private static let japaneseWorkUnderway = "(確認|調査|チェック|対応|手配|連絡|検索|登録|保存|作成)(を)?(し|いた)ます|(確認|調査|チェック|対応|手配|連絡|検索|登録|保存|作成)して[^。！？?]{0,30}(ます|ください)|やっておきます|(確認|調査|チェック|対応|手配|連絡|検索)(を)?(し|いた)(ます|てみます|てきます|てお伝えします)|調べ(ます|てみます|てきます)|見て(みます|きます)|探し(ます|てみます)|(送|渡)ります|(送|渡)します|伝えます|進めます|取りかかります|(少々|少し)お待ち|お待ち(ください|下さい)"
     private static let japaneseHedge = "ましょうか|ますか|でしょうか|ません|ないです|できれば|なら|たら|れば|(確認|調査|チェック|対応|手配|連絡|検索)(を)?(し|いた)しました|(確認|調査|チェック|対応|手配|連絡|検索)(を)?しました|調べました|見ました|探しました|送りました|渡しました|伝えました"
     #endif
 
@@ -1106,7 +1146,11 @@ final class GPTLiveConversationController: ObservableObject {
         switch VoiceBackgroundJobCommands.parse(text) {
         case .status?:
             settleLatestUserTurn()
+            #if LAA_BUILD
+            appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
+            #else
             session?.appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
+            #endif
         case .cancelAll?:
             settleLatestUserTurn()
             let call = session
@@ -1116,7 +1160,11 @@ final class GPTLiveConversationController: ObservableObject {
                 // Only the call it was asked in: hung up and called again
                 // meanwhile, the new call never hears it.
                 guard self.session === call, self.isActive, self.endRequestedAt == nil else { return }
+                #if LAA_BUILD
+                self.appendContext(GPTLiveDelegationBridge.relay(reply), channel: .speakable, delegationID: nil)
+                #else
                 self.session?.appendContext(GPTLiveDelegationBridge.relay(reply), channel: .speakable, delegationID: nil)
+                #endif
                 self.dispatch(self.bridge.pendingUpdates())
             }
         default:
@@ -1220,7 +1268,11 @@ final class GPTLiveConversationController: ObservableObject {
 
     private func sendJobStatus() {
         guard session?.isReady == true, endRequestedAt == nil else { return }
+        #if LAA_BUILD
+        appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
+        #else
         session?.appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
+        #endif
     }
 
     // MARK: Outgoing
@@ -1248,7 +1300,11 @@ final class GPTLiveConversationController: ObservableObject {
                 if whenIdle {
                     pendingContext.append(PendingSend(text: text, channel: channel, jobID: jobID, delegationID: nil))
                 } else {
+                    #if LAA_BUILD
+                    appendContext(text, channel: channel, delegationID: nil)
+                    #else
                     session?.appendContext(text, channel: channel, delegationID: nil)
+                    #endif
                 }
             }
         }
@@ -1261,6 +1317,12 @@ final class GPTLiveConversationController: ObservableObject {
     @discardableResult
     private func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?, to target: GPTLiveSessionControlling? = nil) -> Bool {
         guard let target = target ?? session else { return false }
+        #if LAA_BUILD
+        guard !isReconnecting else { return false }
+        if let identity = callIdentity(), !identity.isEmpty {
+            guard target.appendContext(identity, channel: .commentary, delegationID: nil) else { return false }
+        }
+        #endif
         let onDelegation = delegationID.flatMap { $0.hasPrefix(Self.conduitDelegationPrefix) ? nil : $0 }
         return target.appendContext(text, channel: channel, delegationID: onDelegation)
     }
@@ -1268,6 +1330,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether Conduit may add a turn of its own now: connected, the model
     /// silent, and the user quiet (their turn finished, not just paused).
     var isConversationIdle: Bool {
+        #if LAA_BUILD
+        guard !isReconnecting else { return false }
+        #endif
         // Paused or silenced: an update the user can't hear waits for the audio.
         guard session?.isReady == true, !audioPaused, !isSpeakerMuted, !modelTurnActive else { return false }
         let current = now()
@@ -1394,6 +1459,10 @@ final class GPTLiveConversationController: ObservableObject {
         callLimitTask?.cancel()
         callLimitTask = nil
         clearOpeningHold()
+        #if LAA_BUILD
+        isReconnecting = false
+        callActivity = .ready
+        #endif
         guard let old = session else { return }
         session = nil
         voiceNote = nil
@@ -1401,6 +1470,9 @@ final class GPTLiveConversationController: ObservableObject {
         limitNote = nil
         old.onEvent = nil
         old.onStateChange = nil
+        #if LAA_BUILD
+        old.onTransportInterrupted = nil
+        #endif
         old.onAudioPaused = nil
         audioPaused = false
         old.stop()

@@ -17,14 +17,18 @@ struct LAAEmployeeCallContext: Equatable {
 }
 
 enum LAAEmployeeCallPhase: Equatable {
-    case connecting, connected, ending, ended, failed(String)
+    case connecting, reconnecting, connected, ending, ended, failed(String)
 
     var isOngoing: Bool {
         switch self {
-        case .connecting, .connected, .ending: return true
+        case .connecting, .reconnecting, .connected, .ending: return true
         case .ended, .failed: return false
         }
     }
+}
+
+enum LAAEmployeeCallActivity: Equatable {
+    case ready, listening, thinking
 }
 
 struct LAAEmployeeCallSnapshot: Equatable {
@@ -39,6 +43,7 @@ struct LAAEmployeeCallSnapshot: Equatable {
     var audioLevel: Float? = nil
     /// The employee is talking now; only the live engines report this.
     var speaking = false
+    var activity: LAAEmployeeCallActivity = .ready
     /// A server may not apply the requested voice; do not hide that fact.
     var voiceNote: String? = nil
 }
@@ -183,13 +188,13 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         if case .ending = current.phase {
             switch update.phase {
             case .ending, .ended, .failed: break
-            case .connecting, .connected: return
+            case .connecting, .reconnecting, .connected: return
             }
         }
         if case .failed = current.phase {
             switch update.phase {
             case .ended, .failed: break
-            case .connecting, .connected, .ending: return
+            case .connecting, .reconnecting, .connected, .ending: return
             }
         }
         if case .ended = update.phase {

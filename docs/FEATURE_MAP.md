@@ -4326,3 +4326,5 @@ through the host's GPT-Live bridge. This is enabled only in LAA builds.
 - iPhone and Watch physical-device acceptance remains pending. The uncensored employee uses Talk; its existing phone call plan refuses GPT-Live.
 
 **Checked:** 2026-11-08, LAA laa/apple-watch, baseline b01a62d9.
+
+- LAA employee call continuity (2026-11-11): persona reminders, recent same-chat context, Japanese delegation fallback, reconnect result buffering, Japanese call controls. See `docs/laa/EMPLOYEE-CALLS.md` and `ConduitTests/LAAEmployeeCallContinuityTests.swift`.

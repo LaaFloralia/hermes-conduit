@@ -10,6 +10,7 @@ struct LAAEmployeeVoiceStatus: Equatable {
     var nativeRoute = false
     var level: Float?
     var speaking = false
+    var activity: LAAEmployeeCallActivity = .ready
     var voiceNote: String? = nil
 }
 
@@ -144,7 +145,7 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
         let next = LAAEmployeeCallSnapshot(context: context, phase: phase, connectedAt: connectedAt,
                                            muted: status.muted, speaker: status.speaker,
                                            usesSystemRoutePicker: status.nativeRoute, audioLevel: status.level,
-                                           speaking: status.speaking, voiceNote: status.voiceNote)
+                                           speaking: status.speaking, activity: status.activity, voiceNote: status.voiceNote)
         guard next != lastSnapshot else { return }
         lastSnapshot = next
         onUpdate?(next)
@@ -284,7 +285,8 @@ private extension LAAEmployeeVoiceHost {
             phase = livePhase(app.localLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
             speaking = app.localLiveController.phase == .speaking
         } else if app.showGPTLiveSheet {
-            phase = gptPhase(app.gptLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
+            phase = app.gptLiveController.isReconnecting ? .reconnecting
+                : gptPhase(app.gptLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
             speaking = app.gptLiveController.phase == .speaking
         } else {
             phase = .ended
@@ -292,13 +294,15 @@ private extension LAAEmployeeVoiceHost {
         return LAAEmployeeVoiceStatus(phase: phase, muted: app.nativeCallVoiceMuted ?? false,
                                       speaker: audio.conversationSpeakerChosen,
                                       nativeRoute: audio.isInNativeCall, level: level, speaking: speaking,
+                                      activity: app.showGPTLiveSheet ? app.gptLiveController.callActivity : .ready,
                                       voiceNote: app.showGPTLiveSheet ? app.gptLiveController.voiceNote : nil)
     }
 
     static func livePhase(_ phase: GeminiLiveConversationController.Phase, scheduled: Bool) -> LAAEmployeeCallPhase {
         switch phase {
         case .idle: return scheduled ? .connecting : .failed("音声に接続できませんでした")
-        case .connecting, .reconnecting: return .connecting
+        case .connecting: return .connecting
+        case .reconnecting: return .reconnecting
         case .listening, .speaking, .paused: return .connected
         case .ending: return .ending
         case .failed: return .failed("音声に接続できませんでした")
@@ -311,7 +315,9 @@ private extension LAAEmployeeVoiceHost {
         case .connecting: return .connecting
         case .listening, .speaking, .paused: return .connected
         case .ending: return .ending
-        case .failed(let reason): return .failed(reason)
+        case .failed(let reason):
+            return .failed(reason == VoiceAudioError.microphonePermissionDenied.localizedDescription
+                ? "設定でマイクの使用を許可してください" : "音声に接続できません")
         }
     }
 }
