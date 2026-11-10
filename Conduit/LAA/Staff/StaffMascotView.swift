@@ -55,17 +55,49 @@ final class StaffMascotTurner: ObservableObject {
 
     private var spin = StaffTurnSpin()
     private var source: CGImageSource?
+    private var sourceURL: URL?
+    private var sourceCount = 1
+    private var sourceGeneration = 0
+    private var loading = false
+    private let loadSource: @Sendable (URL) -> CGImageSource?
     private var link: CADisplayLink?
     private var last = CACurrentMediaTime()
     private var wanted = 0
     private var decoding = false
     private let decoder = DispatchQueue(label: "com.laa.staff.turn", qos: .userInteractive)
 
+    init(loadSource: @escaping @Sendable (URL) -> CGImageSource? = {
+        CGImageSourceCreateWithURL($0 as CFURL, nil)
+    }) {
+        self.loadSource = loadSource
+    }
+
     func drag(by dx: Double, url: URL) {
-        if source == nil { source = CGImageSourceCreateWithURL(url as CFURL, nil) }
-        guard source != nil else { return }
         turning = true
         spin.drag(dx: dx)
+        if sourceURL != url || (source == nil && !loading) {
+            sourceGeneration &+= 1
+            let generation = sourceGeneration
+            sourceURL = url
+            source = nil
+            frame = nil
+            loading = true
+            decoding = false
+            let loadSource = loadSource
+            // Creating a HEIC source reads its container and frame metadata.
+            // Keep the first drag as light as subsequent decoded frames.
+            decoder.async { [weak self] in
+                let source = loadSource(url)
+                let count = source.map { max(CGImageSourceGetCount($0), 1) } ?? 1
+                DispatchQueue.main.async {
+                    guard let self, self.sourceGeneration == generation else { return }
+                    self.loading = false
+                    self.source = source
+                    self.sourceCount = count
+                    if self.turning { self.show() }
+                }
+            }
+        }
         show()
     }
 
@@ -97,16 +129,17 @@ final class StaffMascotTurner: ObservableObject {
 
     private func show() {
         guard let source else { return }
-        wanted = spin.frame(of: max(CGImageSourceGetCount(source), 1))
+        wanted = spin.frame(of: sourceCount)
         guard !decoding else { return }
         decoding = true
         let index = wanted
+        let generation = sourceGeneration
         decoder.async { [weak self] in
             let image = CGImageSourceCreateImageAtIndex(source, index, [
                 kCGImageSourceShouldCacheImmediately: true,
             ] as CFDictionary)
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.sourceGeneration == generation else { return }
                 self.decoding = false
                 self.frame = image
                 if self.wanted != index { self.show() }
