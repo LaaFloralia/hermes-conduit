@@ -16,6 +16,11 @@ elif [ "$#" -ne 0 ]; then
     printf 'usage: %s [--archive-only]\n' "$0" >&2
     exit 2
 fi
+# Generation and archiving share Conduit.xcodeproj with the iPhone release.
+if [ "${LAA_MAC_RELEASE_IN_SLOT:-}" != 1 ]; then
+    exec /bin/bash /Users/laa/hq/harness/build-slot.sh \
+        /usr/bin/env LAA_MAC_RELEASE_IN_SLOT=1 /bin/bash "$repo/scripts/laa/mac-release.sh" "$@"
+fi
 if [ "$archive_only" -eq 0 ] && [ "${LAA_MAC_KEYCHAIN_ACTIVE:-}" != 1 ]; then
     exec /usr/bin/python3 "$repo/scripts/laa/mac-signing-keychain.py" "$repo/scripts/laa/mac-release.sh" "$@"
 fi
@@ -43,10 +48,13 @@ case "$build_number" in ''|*[!0-9]*) fail 'CURRENT_PROJECT_VERSION must contain 
 work="$repo/build/laa/mac/$build_number"
 mkdir -p "$repo/build/laa/mac"
 lock="$repo/build/laa/mac/.lock"
+storage=/Users/laa/hq/harness/build_storage.py
+slot=/Users/laa/hq/harness/build-slot.sh
 key_path=""
 key_root=""
 local_spec=""
-archive="$work/LAA.xcarchive"
+external_run=""
+archive=""
 dmg="$work/LAA-$build_number.dmg"
 sha_file="$work/LAA-$build_number.sha256"
 archive_complete=0
@@ -73,9 +81,11 @@ cleanup() {
             fi
         fi
         printf 'signing-identity-redacted=%s\n' "$identity_redacted" >> "$work/build-info.log" || cleanup_failed=1
-        rm -rf "$work/DerivedData" "$work/WebRTC-local" "$work/dmg-root" "$work/export" "$work/app-certs" || cleanup_failed=1
+        [ -z "$external_run" ] || rm -rf "$external_run/DerivedData" || cleanup_failed=1
+        rm -rf "$work/WebRTC-local" "$work/dmg-root" "$work/export" "$work/app-certs" || cleanup_failed=1
         rm -f "$work/LAA.zip" "$work/profiles.json" "$work/ExportOptions.plist" "$work/notary-stderr.tmp" || cleanup_failed=1
-        [ "$archive_complete" -eq 1 ] || rm -rf "$archive" || cleanup_failed=1
+        [ -z "$archive" ] || [ "$archive_complete" -eq 1 ] || rm -rf "$archive" || cleanup_failed=1
+        [ -z "$external_run" ] || rmdir "$external_run" 2>/dev/null || true
         [ "$dmg_complete" -eq 1 ] || rm -f "$dmg" || cleanup_failed=1
         [ "$sha_complete" -eq 1 ] || rm -f "$sha_file" || cleanup_failed=1
         rmdir "$work" 2>/dev/null || true
@@ -157,11 +167,14 @@ if [ -n "$local_spec" ]; then
     rm -f "$local_spec"
     local_spec=""
 fi
+external_run="$(/usr/bin/python3 "$storage" create laa-mac)"
+archive="$external_run/LAA.xcarchive"
+printf 'External archive: %s\n' "$archive"
 signing=()
 [ "$archive_only" -eq 1 ] && signing=(CODE_SIGNING_ALLOWED=NO)
 printf 'Archiving universal Mac Catalyst build %s...\n' "$build_number"
-if ! xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -scheme Conduit -configuration Release \
-    -destination 'generic/platform=macOS,variant=Mac Catalyst' -archivePath "$archive" -derivedDataPath "$work/DerivedData" \
+if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -scheme Conduit -configuration Release \
+    -destination 'generic/platform=macOS,variant=Mac Catalyst' -archivePath "$archive" -derivedDataPath "$external_run/DerivedData" \
     -jobs 4 -packageAuthorizationProvider netrc ${auth[@]+"${auth[@]}"} DEVELOPMENT_TEAM="$team" \
     CURRENT_PROJECT_VERSION="$build_number" 'ARCHS=arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
     ${signing[@]+"${signing[@]}"} 2>&1 | redact_signing_names > "$work/archive.log"; then
@@ -222,7 +235,7 @@ plistlib.dump({
 }, open(sys.argv[2], "wb"))
 PY
 printf 'Exporting Developer ID application...\n'
-if ! xcodebuild -exportArchive -jobs 4 -archivePath "$archive" -exportPath "$work/export" \
+if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild -exportArchive -jobs 4 -archivePath "$archive" -exportPath "$work/export" \
     -exportOptionsPlist "$work/ExportOptions.plist" 2>&1 | redact_signing_names > "$work/export.log"; then
     fail "export failed; see $work/export.log"
 fi

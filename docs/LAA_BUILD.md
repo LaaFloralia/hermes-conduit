@@ -15,16 +15,16 @@ There is one path:
 It generates `Conduit.xcodeproj` from `project-laa.yml`, archives Release for
 generic iOS with automatic signing, exports with `method app-store-connect` and
 `destination upload`, then waits on the App Store Connect API until the build
-is VALID and the LAA Internal group can install it. Every build number is the
-UTC time it started (`CURRENT_PROJECT_VERSION`, `YYMMDDHHMM`), so two uploads
-never collide; `MARKETING_VERSION` comes from `project.yml`.
+is VALID and the LAA Internal group can install it. By default the build number
+starts with the UTC time (`YYMMDDHHMM`) and advances past the last number reserved
+on this Mac. Confirm the latest App Store Connect number and master before
+releasing; `MARKETING_VERSION` comes from `project.yml`.
 
-The build is verified up to the export; the first upload waits on the
-sign-in described under [Before the first upload](#before-the-first-upload-one-thing-only-the-owner-can-do).
+The script prints the external run directory and retains the archive there.
+It releases the shared build slot after upload, before waiting for Apple.
 
-`LAA_EXPORT_DESTINATION=export` stops after writing the `.ipa` to
-`build/laa/export` and uploads nothing — the way to check signing without
-spending a build number.
+`LAA_EXPORT_DESTINATION=export` writes the `.ipa` to the printed run directory's
+`export/` folder and uploads nothing. The local build number is still reserved.
 
 ## What the build is
 
@@ -107,10 +107,11 @@ App Groups > `group.com.laa-inc.laa.notifications` and
 `group.com.laa-inc.laa.launcher` > Configure > tick all four App IDs, and
 HealthKit on `com.laa-inc.laa`.
 
-After the first upload, confirm the entitlements travelled:
+To inspect the archive's signed app, use the run directory printed by the
+script and inspect each extension as well:
 
 ```sh
-codesign -d --entitlements :- build/laa/export/Conduit.ipa
+codesign -d --entitlements :- "$RUN/LAA.xcarchive/Products/Applications/Conduit.app"
 ```
 
 must list `aps-environment` = `production` and both `group.com.laa-inc.laa.*`

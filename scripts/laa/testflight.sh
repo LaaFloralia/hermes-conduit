@@ -24,14 +24,35 @@
 #   LAA_APP_ID               App Store Connect app; default 6828276003 (LAA)
 #   LAA_BETA_GROUP_ID        default 90513640-2a93-493f-952b-cf431090174f (LAA Internal)
 #   LAA_EXPORT_DESTINATION   upload (default) or export, which writes the .ipa
-#                            under build/laa/export and uploads nothing
+#                            under the external build run and uploads nothing
 #   ASC_WAIT_SECONDS         how long to wait for the build to be VALID (2700)
 set -euo pipefail
 set +x
 
 cd "$(dirname "$0")/../.."
 repo="$PWD"
-work="$repo/build/laa"
+storage=/Users/laa/hq/harness/build_storage.py
+slot=/Users/laa/hq/harness/build-slot.sh
+# Serialize this app's upload, but release both locks while Apple processes it.
+# The next build number is chosen only after the preceding upload has finished.
+if [ "${LAA_TF_BUILD_PHASE:-}" != 1 ]; then
+  lock_dir="$HOME/.local/state/laa-release-locks"
+  mkdir -p "$lock_dir"
+  result_file="$(mktemp "$lock_dir/laa-ios-result.XXXXXX")"
+  trap 'rm -f "$result_file"' EXIT
+  /usr/bin/python3 /Users/laa/hq/harness/lock_run.py "$lock_dir/laa-ios.lock" 5400 \
+    /bin/bash "$slot" /usr/bin/python3 "$storage" guard \
+    /usr/bin/env LAA_TF_BUILD_PHASE=1 LAA_TF_RESULT_FILE="$result_file" /bin/bash "$repo/scripts/laa/testflight.sh" "$@"
+  build_number="$(cat "$result_file")"
+  case "$build_number" in ''|*[!0-9]*) echo 'error: build number was not returned' >&2; exit 1;; esac
+  if [ "${LAA_EXPORT_DESTINATION:-upload}" = upload ]; then
+    echo "Waiting for App Store Connect to finish processing build $build_number..."
+    node scripts/laa/asc.mjs wait-build "${LAA_APP_ID:-6828276003}" "$build_number" "${LAA_BETA_GROUP_ID:-90513640-2a93-493f-952b-cf431090174f}"
+    echo "LAA build $build_number is in TestFlight for the LAA Internal group."
+  fi
+  exit 0
+fi
+work=""
 team="${LAA_TEAM_ID:-PAW258GB42}"
 app_id="${LAA_APP_ID:-6828276003}"
 group_id="${LAA_BETA_GROUP_ID:-90513640-2a93-493f-952b-cf431090174f}"
@@ -48,7 +69,7 @@ key_root=""
 local_spec=""
 package=""
 options=""
-archive="$work/LAA.xcarchive"
+archive=""
 derived_touched=0
 archive_started=0
 archive_complete=0
@@ -116,11 +137,25 @@ export GIT_ASKPASS=/usr/bin/false
 export SSH_ASKPASS=/usr/bin/false
 export GIT_CONFIG_GLOBAL=/dev/null
 
-mkdir -p "$work"
+work="$(/usr/bin/python3 "$storage" create laa-ios)"
+archive="$work/LAA.xcarchive"
+echo "External build run: $work"
+last_number_file="$HOME/.local/state/laa-release-locks/laa-ios-last-number"
 build_number="${CURRENT_PROJECT_VERSION:-$(date -u +%y%m%d%H%M)}"
 case "$build_number" in
   ''|*[!0-9]*) fail "CURRENT_PROJECT_VERSION must be digits, not '$build_number'" ;;
 esac
+if [ -f "$last_number_file" ]; then
+  previous="$(cat "$last_number_file")"
+  case "$previous" in ''|*[!0-9]*) fail 'last build number is invalid';; esac
+  if [ "$previous" -ge "$build_number" ]; then
+    [ -z "${CURRENT_PROJECT_VERSION:-}" ] || fail 'build number must exceed the last number reserved on this Mac'
+    build_number=$((10#$previous + 1))
+  fi
+fi
+printf '%s\n' "$build_number" > "$last_number_file"
+[ -n "${LAA_TF_RESULT_FILE:-}" ] || fail 'release result file is missing'
+printf '%s\n' "$build_number" > "$LAA_TF_RESULT_FILE"
 
 # 2. Which session signs this build.
 #
@@ -331,10 +366,4 @@ if [ "$destination" != upload ]; then
   exit 0
 fi
 
-# 6. The upload is asynchronous: wait until App Store Connect has processed
-#    the build and the group can install it.
-echo "Waiting for App Store Connect to finish processing build $build_number..."
-node scripts/laa/asc.mjs wait-build "$app_id" "$build_number" "$group_id"
-echo
-echo "LAA build $build_number is in TestFlight for the LAA Internal group."
-echo "Install it on the iPhone from the TestFlight app."
+# The parent releases the shared build slot before waiting for Apple processing.
