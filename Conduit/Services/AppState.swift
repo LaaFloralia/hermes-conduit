@@ -843,6 +843,9 @@ final class AppState: ObservableObject {
             },
             ended: { [weak self] link, outcome in
                 self?.sharedDraftLaunchEnded(link, outcome: outcome)
+#if LAA_BUILD
+                self?.laaEmployeeChatLaunchEnded(link, outcome: outcome)
+#endif
             }
         )
     }()
@@ -6140,8 +6143,14 @@ final class AppState: ObservableObject {
     /// its way shows its call screen.
     func widgetLaunchPendingLinkChanged(_ link: WidgetLaunchLink?) {
         #if LAA_BUILD
-        let opening = link?.action == .employeeChat && !isVoiceCallInProgress ? link?.workspace?.profile : nil
-        if opening != laaOpeningEmployeeChat { laaOpeningEmployeeChat = opening }
+        if let link, link.action == .employeeChat, !isVoiceCallInProgress,
+           let workspace = link.workspace {
+            laaOpeningEmployeeChat = workspace.profile
+            laaEmployeeChatPreview.begin(workspace: workspace, directory: offlineChatCache.laaPreviewDirectory,
+                preferredSessionID: chatResumeWidgetReference(for: workspace.profile)?.sessionID)
+        }
+        // Ended receives the result after pendingLink becomes nil. Keep the
+        // selected employee and their copy until that result is known.
         #endif
         if link?.action == .talk {
             presentWaitingCallIfNeeded()
@@ -24571,6 +24580,28 @@ final class AppState: ObservableObject {
     /// The chat screen shows at once with this employee while the profile
     /// switch and the catalog read finish (LAAEmployeeChatOpening).
     @Published private(set) var laaOpeningEmployeeChat: String?
+    let laaEmployeeChatPreview = LAAEmployeeChatPreview()
+
+    func laaEmployeeChatLaunchEnded(_ link: WidgetLaunchLink, outcome: WidgetLaunchOutcome?) {
+        guard link.action == .employeeChat else { return }
+        laaEmployeeChatPreview.finish(outcome)
+        if case .failed = outcome { return }
+        laaOpeningEmployeeChat = nil
+    }
+
+    func laaRetryEmployeeChat() {
+        guard let workspace = laaEmployeeChatPreview.workspace,
+              let link = WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil) else { return }
+        _ = routeWidgetLaunchURL(link.url)
+    }
+
+    func laaDismissEmployeeChatPreview() {
+        if widgetLaunchCoordinator.pendingLink?.action == .employeeChat {
+            widgetLaunchCoordinator.supersede()
+        }
+        laaEmployeeChatPreview.clear()
+        laaOpeningEmployeeChat = nil
+    }
     #endif
 
     var showsPendingNewChat: Bool { pendingNewChat != nil }

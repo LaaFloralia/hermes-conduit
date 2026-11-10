@@ -19,6 +19,19 @@ import Foundation
 ///   /* trigger operation */
 ///   XCTAssertEqual(TranscriptPerf.settledMarkdownTextBodyEvaluations, 0)
 enum TranscriptPerf {
+    #if DEBUG
+    @TaskLocal private static var recordingDisabled = false
+    #endif
+
+    /// Background preview row preparation has no shared instrumentation
+    /// writes. Live transcript counters keep their existing main-thread scope.
+    static func withoutRecording<T>(_ operation: () -> T) -> T {
+        #if DEBUG
+        return $recordingDisabled.withValue(true, operation: operation)
+        #else
+        return operation()
+        #endif
+    }
     // MARK: - Event recording
 
     /// Record a performance event. In release builds the body is empty
@@ -26,6 +39,7 @@ enum TranscriptPerf {
     @inline(__always)
     static func note(_ event: Event) {
         #if DEBUG
+        guard !recordingDisabled else { return }
         switch event {
         case .settledBubbleBody: storage.settledBubbleBody += 1
         case .settledMarkdownBody: storage.settledMarkdownBody += 1
@@ -599,6 +613,7 @@ enum TranscriptPerf {
 
     private static func read(_ keyPath: KeyPath<Storage, Int>) -> Int {
         #if DEBUG
+        guard !recordingDisabled else { return 0 }
         return storage[keyPath: keyPath]
         #else
         _ = keyPath
@@ -608,6 +623,7 @@ enum TranscriptPerf {
 
     private static func write(_ keyPath: WritableKeyPath<Storage, Int>, _ value: Int) {
         #if DEBUG
+        guard !recordingDisabled else { return }
         storage[keyPath: keyPath] = value
         #else
         _ = keyPath

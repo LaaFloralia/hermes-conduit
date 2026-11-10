@@ -407,6 +407,10 @@ final class OfflineChatCacheStore {
     static let writeOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
 
     private let directory: URL
+#if LAA_BUILD
+    /// A separate read-only cache reader can run off the main actor.
+    var laaPreviewDirectory: URL { directory }
+#endif
     private let fileManager: FileManager
     /// The copies last read or written, by file, so a chat opened again
     /// shows its copy without reading and decoding it on the tap (#1352).

@@ -171,12 +171,17 @@ final class WidgetLaunchCoordinator {
         if let request, request.link == link, request.inFlight { return }
         supersede()
         generation &+= 1
-        let next = Request(link: link, generation: generation, deadline: now() + Self.launchTimeout)
+#if LAA_BUILD
+        let timeout = link.action == .employeeChat ? LAAEmployeeChatPreview.timeout : Self.launchTimeout
+#else
+        let timeout = Self.launchTimeout
+#endif
+        let next = Request(link: link, generation: generation, deadline: now() + timeout)
         request = next
         activeLease = makeLease(generation: next.generation, deadline: next.deadline)
         let requestGeneration = next.generation
         next.expiryTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: Self.launchTimeout) } catch { return }
+            do { try await Task.sleep(for: timeout) } catch { return }
             guard let self, self.generation == requestGeneration else { return }
             if let request = self.request, request.generation == requestGeneration {
                 self.expire(request)
@@ -312,6 +317,12 @@ final class WidgetLaunchCoordinator {
 
     private func expire(_ request: Request) {
         guard isCurrent(request) else { return }
+#if LAA_BUILD
+        if request.link.action == .employeeChat {
+            terminate(request, outcome: .failed(LAAEmployeeChatPreview.unavailable))
+            return
+        }
+#endif
         terminate(request, outcome: .failed(AppLocalization.string("WidgetLaunch.Expired")))
     }
 

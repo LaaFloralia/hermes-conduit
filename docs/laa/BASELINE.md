@@ -109,3 +109,71 @@ Tailscale Serveの実体：8443 → `/`=8081、`/auday`=8082、`/overview`=4318�
 - 20–22（タスク移行）：KanbanはLAAで未使用のため、移行対象はLinearのまま。Kanban書込（21）は上流バックエンドの稼働確認が前提。
 - 24–27（Brain）：writerが3系統ある現状を前提に、CASだけで安全と主張しない。iPhone側writerの実体確認が先。
 - 28–31（Drive・写真・保管・画面配信）：既存の認可・保存先の実測が未了。30のsnapshotは、稼働中SQLiteをDrive同期しない原則を維持。
+
+
+## 13. 操作性能の計測（BUS-392、2026-11-11）
+
+Release・専用「LAA 16 Pro Max」で5回ずつ採り、中央値と全サンプルを保存する。
+再計測はrepoルートの絶対パスを指定して次の1コマンド。実Bridgeは読取専用の一時端末をペアリングし、終了時にその端末だけ失効、ペーストボードを空にしてシミュレーターを停止する。既存端末やTestFlightは変更しない。
+
+```sh
+LAA_PERF_PROXY_URL=https://YOUR_PROXY python3 /absolute/path/to/repo/scripts/laa/perf/run.py --output /absolute/local/work/perf-after
+```
+
+計測専用のUUIDでBridgeのKeychain領域を分け、最後の試験でその領域だけ消去する。通常の接続情報は変更しない。
+
+同じ外部ビルド領域を使う場合は `--build-root /absolute/build/run`。再ビルド不要の同じ成果物の計測には `--skip-build`。共有ビルド枠を必ず使い、Releaseのテスト用importには `ENABLE_TESTABILITY=YES` を指定する。UIの経過時間にはXCTestの操作・待機コストが含まれ、フレーム時間ではない。各タブは選択/マウント、Workの詳細は現時点ではタイトル表示（shell）まで。本文readyと長文スクロールはWORKのmarker追加後に別指標として採る。端末再起動・アプリ再インストールを伴うOSキャッシュ消去はせず、ここでのcoldはプロセス終了後の再起動。
+
+同じコマンドで9119直結と指定したproxy経由のstatusを前後5回ずつ読む。URLと応答本文は保存しない。
+
+出力は `build.log`、`test.log`、`results.xcresult`、`summary.json`。取得不能・権限外の項目は `unavailable` とし、0msや成功に換算しない。初回/空キャッシュと保存済みの状態、OS・Revision・Release最適化、試行数を照合して比較する。長い会話は合成120メッセージのキャッシュ読込みも5回測る。実会話の送信→表示は未承認の送信を行わず未計測とする。
+
+サーバー側の読取専用計測（URL/応答本文は出力しない）:
+
+```sh
+python3 /absolute/path/to/repo/scripts/laa/perf/probe.py --endpoint dashboard=http://127.0.0.1:9119/api/status --endpoint proxy=https://YOUR_PROXY/api/status --output /absolute/local/work/network.json
+```
+
+CPU・Hangs・SwiftUI・signpostはUI試験中に `profile.py --output /absolute/local/work/navigation.trace`（既定30秒、最大60秒）。`EmployeeConversationOpen` がタップ後の接続待ち全体、`EmployeeCachedTranscript` が保存済み会話の読込み/行生成。trace/xcresultには画面の私的な内容が入り得るためrepoへ置かず、必要な数値を抽出後に削除する。
+
+### 前後の実測
+
+親の02:32指示で変更前の再ビルドを省略。既存実機証拠は `shots/device-before/`、TestFlight 2611092249。02:16の社員チャットは40秒超「開いています」のまま、同時刻9119 statusは8秒超（親による実測、5回の中央値ではない）。修正後の表は検証後に追記する。02:34前後の9119/8444再読込・合成11試験の切断/5xxはサービス側イベントとして分け、アプリの回帰に数えない。
+
+### 遅延原因と候補10件
+
+| 順位 | 場所 | 原因・根拠 | 対処/見込み効果 | 所有 |
+|---|---|---|---|---|
+| 1 | AppState+WidgetLaunch / employeeChat | profile接続・catalog完了まで保存済み本文を出さない。実機40秒超 | 別読込モデルで即表示、8秒期限。表示接続はCHATへ | PERF+CHAT |
+| 2 | OfflineChatCache | 同期Data読込・JSON decode・表示行生成が接続状態に従属 | 専用の読取インスタンスをdetached taskへ。メインのI/O待ちを除く | PERF |
+| 3 | LAAWorkSessionCache.save | 同一poll応答でも全draft storeを同期JSON保存 | sorted encodingで同一内容は保存しない。周期I/Oと通知を除く | PERF |
+| 4 | StaffMascotTurner.drag | 初回HEICコンテナとフレーム数をmainで読む | decoder queueへ移す。最初の指追従のI/Oを除く | PERF |
+| 5 | StaffAvatarView.still/assets | body評価で画像file読込と4種fileExists | async縮小decode＋上限付き画像cache。静的確認、効果未実測 | CHAT |
+| 6 | LAAWorkSessionDetail.refreshSnapshot | 同一session/historyでも代入し、全rows再評価 | 変更時だけ代入。静的確認、効果未実測 | WORK |
+| 7 | LAAWorkSessionDetailのrows加工 | filter・speaker計算・enumerated配列をbody更新ごとに再生成 | messages変化時の派生値へ。静的確認、長文のO(n)を減らす | WORK |
+| 8 | LAAAppShellのAppState監視 | 多数のpublished値を持つ親をタブの外枠が購読 | 子へ狭い値を渡し非表示タブのbody数を測る。候補、未実測 | SYS |
+| 9 | 9119 status._bounded_health_probe | future.result(timeout=1)後もExecutorのwith終了が未完了workerを待つ | 絶対期限を持つ共有pool/probeへ。02:16との因果は未確定 | ①B |
+| 10 | 9119 get_status | topology/cache lock・DB・health等のthreadpool待ちを直列合算 | 各phaseの待ち/実行を別計測し期限内の旧値を返す。候補 | ①B |
+
+
+### 03:08の検証中断と再開
+
+外部SSDのHIKSEMI/LAA-Buildがともに未接続になり、`diskutil list external physical` にも現れなかった。正規の `build_storage.py mount-if-present` 実行後も未マウント。内蔵空きは95GiBだが、保存先の保護条件は変えず、Release試験とUI/Instruments採取を中断した。試験端末のペアリングには未到達。
+
+| 指標 | 修正前の根拠 | 修正後中央値（件数） | 状態 |
+|---|---|---|---|
+| コールド起動→最初の操作可能 | 既存実機撮影のみ、時間未計測 | 未計測（0） | SSD復帰後に5回 |
+| 5タブ切替 | 未計測 | 未計測（各0） | 同上 |
+| 社員Chat一覧→会話 | 実機40秒超、単発の観測 | 未計測（0） | キャッシュモデル/期限8秒は実装、CHATの表示接続後に実測 |
+| Work一覧→詳細shell | 未計測 | 未計測（0） | 専用UI試験を用意 |
+| Workの長い本文ready | 未計測 | 未計測（0） | WORKのready marker追加後に採る |
+| 合成120行キャッシュ読込み | 未計測 | 未計測（0） | 背景読込の5回試験を用意 |
+| Doc一覧→文書 | 未計測 | 未計測（0） | 専用UI試験を用意 |
+| Driveのスクロール操作 | 未計測 | 未計測（0） | フレーム時間とは区別する |
+| 送信→表示 | 未計測 | 未計測（0） | 実送信の許可範囲外 |
+| Mac→9119 status | 77ms（5、02:20頃） | 34.98ms（5、02:34） | サーバー再読込を挟むためアプリ効果とはしない |
+| Mac→8444→9119 status | 88ms（5、02:20頃） | 47.37ms（5、02:34） | 同上。iPhone上の通信計測ではない |
+
+03:03–03:04の追加監視10回はすべて200、中央値81.4ms、範囲61–104ms。1秒を超えた時のstack採取を準備したが発動しなかった。02:16の9119が何に塞がれたかは、当時のphase別記録がなく未確定。
+
+検証済みは、集計/生成プロジェクト絞込みのPython試験4件、変更したSwiftのLAA_BUILD構文解析、DEBUG描画カウンターの背景抑止（実ファイルのコンパイル/実行）。Release本体は途中試行でコンパイルできたが、全テストtarget中のDebug専用API参照が失敗したため、最終ソース全体とUIは未検証。関係クラスだけのコンパイルに切り替えた再試行はSSD確認で停止した。

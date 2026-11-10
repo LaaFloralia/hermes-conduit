@@ -13,8 +13,14 @@ import Combine
         return try? JSONDecoder().decode(type, from: data)
     }
     static func save<T: Encodable>(_ value: T, store: ComposerDraftStore, device: String?, target: String) {
-        guard let device, let data = try? JSONEncoder().encode(value), let text = String(data: data, encoding: .utf8) else { return }
-        _ = store.save(ComposerDraft(text: text, attachments: []), for: key(device: device, target: target))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let device, let data = try? encoder.encode(value), let text = String(data: data, encoding: .utf8) else { return }
+        let key = key(device: device, target: target)
+        // Long polls often return the same history. Do not rewrite the entire
+        // protected draft store (or publish its changes) every two seconds.
+        guard store.draft(for: key).text != text || store.persistenceFailed else { return }
+        _ = store.save(ComposerDraft(text: text, attachments: []), for: key)
     }
 }
 

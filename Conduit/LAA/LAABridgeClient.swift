@@ -289,7 +289,19 @@ struct LAABridgeClient {
 }
 
 struct LAABridgeKeychain {
+#if LAA_BUILD
+    private static var performanceNamespace: String? {
+        guard let value = ProcessInfo.processInfo.environment["LAA_PERF_KEYCHAIN_NAMESPACE"],
+              UUID(uuidString: value) != nil else { return nil }
+        return value
+    }
+#endif
     private let service: String = {
+        #if LAA_BUILD
+        if let namespace = LAABridgeKeychain.performanceNamespace {
+            return "com.laa.conduit.bridge.perf." + namespace
+        }
+        #endif
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE") {
             return "com.laa.conduit.bridge.ui-test." + UUID().uuidString
@@ -304,6 +316,17 @@ struct LAABridgeKeychain {
     }
 
     func read() throws -> LAABridgeCredentials? {
+        #if LAA_BUILD
+        // Explicit local measurement only. Never clear the normal service,
+        // even when a cleanup flag is accidentally present without a namespace.
+        if let namespace = Self.performanceNamespace,
+           service == "com.laa.conduit.bridge.perf." + namespace,
+           ProcessInfo.processInfo.environment["LAA_PERF_CLEAR_KEYCHAIN"] == "1" {
+            let status = SecItemDelete(query as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else { throw LAABridgeError.keychain }
+            return nil
+        }
+        #endif
         var search = query
         search[kSecReturnData as String] = true
         search[kSecMatchLimit as String] = kSecMatchLimitOne
