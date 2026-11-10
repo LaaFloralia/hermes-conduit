@@ -25,7 +25,7 @@ export class StateError extends Error {
 }
 
 function emptyState() {
-  return { schema: STATE_SCHEMA, devices: {}, pairings: {}, idempotency: {} };
+  return { schema: STATE_SCHEMA, devices: {}, pairings: {}, idempotency: {}, studioQueue: {} };
 }
 
 export function createStore({ dir, idempotencyRetentionMs, now = () => Date.now() }) {
@@ -66,6 +66,7 @@ export function createStore({ dir, idempotencyRetentionMs, now = () => Date.now(
       devices: parsed.devices ?? {},
       pairings: parsed.pairings ?? {},
       idempotency: parsed.idempotency ?? {},
+      studioQueue: parsed.studioQueue ?? {},
       // Once personal task writes have been enabled, a missing task ledger
       // must not be mistaken for a new, empty installation.
       ...(parsed.taskOperationsInitialized === true ? { taskOperationsInitialized: true } : {}),

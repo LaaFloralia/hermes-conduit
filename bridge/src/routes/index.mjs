@@ -173,7 +173,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       sessionOptions: sessionChoices,
     }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
-    ...studioRoutes(options.studio ?? {}),
+    ...studioRoutes({ store, now, registerCleanup: sessionOptions.registerCleanup, ...options.studio }),
     ...routineRoutes({ ...(options.routines ?? {}), refs }),
     ...calendarRoutes({ ...calendarOptions, service: calendarService }),
     // Disabled in production pending independent review; explicit injection is for tests.

@@ -211,7 +211,7 @@ describe('Studio Bridge routes', () => {
 });
 
 describe('Studio mock contract', () => {
-  it('releases only a confirmed no-write busy result, allowing the same key and body to create once', async () => {
+  it('queues confirmed busy requests and delivers them once using the original UUID', async () => {
     const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
     const originalCreate = backend.createRequest;
     let calls = 0; const inputs = [];
@@ -222,7 +222,7 @@ describe('Studio mock contract', () => {
       if (calls === 1) { entered(); await gate; throw new BridgeError(409, 'studio_work_busy', 'busy'); }
       return originalCreate(input);
     };
-    const bridge = await startBridge({ studio: { backend } });
+    const bridge = await startBridge({ studio: { backend, queueIntervalMs: 50 } });
     try {
       const token = await bridge.token(['studio:read', 'studio:request']);
       const attempt = { method: 'POST', token, key: 'busy-same-key', body: draft };
@@ -233,15 +233,42 @@ describe('Studio mock contract', () => {
       assert.equal(calls, 1);
       unblock();
       const busy = await first;
-      assert.equal(busy.status, 409); assert.equal(busy.body.error.code, 'studio_work_busy');
-      assert.equal(busy.body.error.retryable, true);
-      assert.equal(Object.values(bridge.store.read().idempotency).filter((row) => row.key === attempt.key).length, 0);
+      assert.equal(busy.status, 202);
+      assert.equal(busy.body.data.status, 'bridge_waiting');
       const retry = await bridge.request('/v1/studio/requests', attempt);
-      assert.equal(retry.status, 202); assert.deepEqual(inputs, [draft, draft]);
-      const replay = await bridge.request('/v1/studio/requests', attempt);
-      assert.equal(replay.status, 202); assert.equal(replay.headers.get('idempotency-replayed'), 'true');
-      assert.equal(calls, 2);
+      assert.equal(retry.status, 202);
+      assert.equal(retry.headers.get('idempotency-replayed'), 'true');
+      assert.equal(retry.body.data.request.id, id);
+      const deadline = Date.now() + 3000;
+      let state;
+      do {
+        state = await bridge.request(`/v1/studio/requests/${id}`, { token });
+        if (state.body.data?.status === 'queued') break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      } while (Date.now() < deadline);
+      assert.equal(state.body.data?.status, 'queued');
+      assert.deepEqual(inputs, [draft, draft]);
     } finally { unblock(); await bridge.close(); }
+  });
+
+  it('keeps a queued request private to its device and stops it idempotently', async () => {
+    const backend = mockStudioBackend();
+    backend.createRequest = async () => { throw new BridgeError(409, 'studio_work_busy', 'busy'); };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      const other = await bridge.token(['studio:read', 'studio:request']);
+      const attempt = { method: 'POST', token, key: 'stop-queued-create', body: draft };
+      const queued = await bridge.request('/v1/studio/requests', attempt);
+      assert.equal(queued.body.data.status, 'bridge_waiting');
+      const snapshot = (credential) => bridge.request('/v1/studio/snapshot', { token: credential });
+      assert.equal((await snapshot(token)).body.data.requests[0].status, 'bridge_waiting');
+      assert.deepEqual((await snapshot(other)).body.data.requests, []);
+      const stop = { method: 'POST', token, key: 'stop-queued', body: { id, action: 'stop' } };
+      assert.equal((await bridge.request('/v1/studio/action', stop)).body.data.status, 'stopped');
+      assert.equal((await bridge.request('/v1/studio/action', stop)).body.data.status, 'stopped');
+      assert.equal((await bridge.request('/v1/studio/requests', attempt)).body.data.status, 'stopped');
+    } finally { await bridge.close(); }
   });
 
   it('does not release an uncertain creation error or a busy action', async () => {
@@ -260,7 +287,7 @@ describe('Studio mock contract', () => {
     } finally { await bridge.close(); }
   });
 
-  it('does not promise a safe busy retry if the ledger reservation cannot be released', async () => {
+  it('reports a queue storage failure without acknowledging the request', async () => {
     const backend = fakeBackend();
     const bridge = await startBridge({ studio: { backend } });
     const mutate = bridge.store.mutate;
@@ -272,7 +299,7 @@ describe('Studio mock contract', () => {
       const token = await bridge.token(['studio:request']);
       const attempt = { method: 'POST', token, key: 'busy-release-failed', body: draft };
       const first = await bridge.request('/v1/studio/requests', attempt);
-      assert.equal(first.status, 503); assert.equal(first.body.error.code, 'idempotency_release_failed');
+      assert.equal(first.status, 503); assert.equal(first.body.error.code, 'studio_queue_unavailable');
       assert.equal(first.body.error.retryable, false);
       bridge.store.mutate = mutate;
       assert.equal((await bridge.request('/v1/studio/requests', attempt)).body.error.code, 'idempotency_key_in_flight');
@@ -424,7 +451,7 @@ describe('Studio mock contract', () => {
       assert.equal(first.status, 202);
       assert.equal((await post('/v1/studio/requests', draft)).body.data.request.id, id);
       assert.equal((await post('/v1/studio/requests', { ...draft, prompt: 'different' })).body.error.code, 'studio_request_id_conflict');
-      assert.equal((await post('/v1/studio/requests', { ...draft, id: randomUUID() })).body.error.code, 'studio_work_busy');
+      assert.equal((await post('/v1/studio/requests', { ...draft, id: randomUUID() })).body.data.status, 'bridge_waiting');
       assert.equal((await bridge.request(`/v1/studio/requests/${randomUUID()}`, { token })).body.error.code, 'studio_request_missing');
       clock += 44_999;
       assert.equal((await bridge.request(`/v1/studio/requests/${id}`, { token })).body.data.status, 'queued');

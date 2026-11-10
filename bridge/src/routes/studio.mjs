@@ -4,6 +4,7 @@ import { Transform } from 'node:stream';
 import { createLastGood, createReadCache } from '../cache.mjs';
 import { BridgeError } from '../errors.mjs';
 import { createStudioBackend } from '../studio/backend.mjs';
+import { createStudioQueue } from '../studio/queue.mjs';
 import { parseBody, validateAction, validateRequest, validateReview } from '../studio/validation.mjs';
 
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
@@ -39,21 +40,30 @@ function validateAnswer(action, record) {
   }
 }
 
-export function studioRoutes({ backend = createStudioBackend(), now = () => Date.now() } = {}) {
+export function studioRoutes({ store, backend = createStudioBackend(), now = () => Date.now(),
+  queueIntervalMs = 30_000, registerCleanup } = {}) {
+  const queue = createStudioQueue({ store, backend, now, intervalMs: queueIntervalMs, registerCleanup });
   // Reads must not wait on a slow or absent Studio: the last good answer is
   // served with `fetchedAt`, and one refresh runs behind it.
   const snapshots = createReadCache({ read: () => backend.snapshot(), waitMs: 1500, cooldownMs: 5000, now });
   const catalogs = createLastGood({ now });
   const iso = (ms) => new Date(ms).toISOString();
-  async function snapshot() {
+  async function snapshot({ device }) {
     const { value, fetchedAt, stale, error } = await snapshots.get();
     // The first answer decides the shape; a cached one is marked, never reshaped.
+    const pending = queue.all(device.id);
+    if (fetchedAt === null && pending.length) {
+      return { status: 200, data: { online: false, accepting: false, projects: [], principles: [], requests: pending } };
+    }
     if (fetchedAt === null) throw new BridgeError(503, 'studio_not_connected', 'Studio is not connected on the Mac', { retryable: true });
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       throw new BridgeError(502, 'studio_response_invalid', 'Studio returned an invalid snapshot');
     }
+    const remote = Array.isArray(value.requests) ? value.requests : [];
+    const ids = new Set(pending.map((entry) => entry.request.id));
+    const requests = [...pending, ...remote.filter((entry) => !ids.has(entry?.request?.id))];
     const offline = stale && error?.code === 'studio_not_connected';
-    return { status: 200, data: { ...value, ...(offline ? { online: false, accepting: false } : {}),
+    return { status: 200, data: { ...value, requests, ...(offline ? { online: false, accepting: false } : {}),
       fetchedAt: iso(fetchedAt), ...(stale ? { stale: true } : {}) } };
   }
   async function catalog({ req, res, requestId }) {
@@ -89,20 +99,29 @@ export function studioRoutes({ backend = createStudioBackend(), now = () => Date
     }
     return result;
   }
-  async function getRequest({ params }) { return { status: 200, data: await backend.getRequest(params[0]) }; }
-  async function createRequest({ rawBody }) {
+  async function getRequest({ params, device }) {
+    return { status: 200, data: queue.get(params[0], device.id) ?? await backend.getRequest(params[0]) };
+  }
+  async function createRequest({ rawBody, device }) {
     const body = validateRequest(parseBody(rawBody));
+    const queued = queue.replay(body, device.id);
+    if (queued) return { status: 202, data: queued };
     try { return { status: 202, data: await backend.createRequest(body) }; }
     catch (error) {
       if (error instanceof BridgeError && error.status === 409 && error.code === 'studio_work_busy') {
-        throw new BridgeError(409, error.code, error.message, { retryable: true });
+        try { return { status: 202, data: queue.enqueue(body, device.id) }; }
+        catch (queueError) {
+          if (queueError instanceof BridgeError) throw queueError;
+          throw new BridgeError(503, 'studio_queue_unavailable', 'Bridge could not save the request queue');
+        }
       }
       throw error;
     }
   }
-  async function replayRequest({ rawBody }) {
+  async function replayRequest({ rawBody, device }) {
     // A replay confirms the original mutation but must report current state.
-    try { return await backend.getRequest(validateRequest(parseBody(rawBody)).id); }
+    const body = validateRequest(parseBody(rawBody));
+    try { return queue.replay(body, device.id) ?? await backend.getRequest(body.id); }
     catch (error) {
       if (error instanceof BridgeError && error.code === 'studio_not_connected') {
         throw new BridgeError(503, error.code, 'The request was accepted earlier, but its current status is unavailable; check it with GET when Studio reconnects', { retryable: true });
@@ -110,13 +129,18 @@ export function studioRoutes({ backend = createStudioBackend(), now = () => Date
       throw error;
     }
   }
-  async function action({ rawBody }) {
+  async function action({ rawBody, device }) {
     const body = validateAction(parseBody(rawBody));
+    if (body.action === 'stop') {
+      const stopped = queue.stop(body.id, device.id);
+      if (stopped) return { status: 200, data: stopped };
+    }
     if (body.action === 'answer') validateAnswer(body, await backend.getRequest(body.id));
     return { status: 200, data: await backend.action(body) };
   }
-  async function replayAction({ rawBody }) {
-    try { return await backend.getRequest(validateAction(parseBody(rawBody)).id); }
+  async function replayAction({ rawBody, device }) {
+    const { id } = validateAction(parseBody(rawBody));
+    try { return queue.get(id, device.id) ?? await backend.getRequest(id); }
     catch (error) {
       if (error instanceof BridgeError && error.code === 'studio_not_connected') {
         throw new BridgeError(503, error.code, 'The action was accepted earlier, but its current status is unavailable; check it with GET when Studio reconnects', { retryable: true });
@@ -189,8 +213,9 @@ export function studioRoutes({ backend = createStudioBackend(), now = () => Date
     { method: 'GET', path: '/v1/studio/request-id', auth: true, scope: 'studio:request', handler: () => ({ status: 200, data: { id: randomUUID() } }) },
     { method: 'GET', pattern: requestPattern, auth: true, scope: 'studio:read', handler: getRequest },
     { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest, replay: replayRequest,
-      releaseOnError: (error) => error.status === 409 && error.code === 'studio_work_busy' },
-    { method: 'POST', path: '/v1/studio/action', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: action, replay: replayAction },
+      releaseOnError: (error) => error.code === 'studio_queue_full' },
+    { method: 'POST', path: '/v1/studio/action', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: action, replay: replayAction,
+      releaseOnError: (error) => error.code === 'studio_queue_dispatching' },
     { method: 'GET', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
     { method: 'HEAD', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
   ];
