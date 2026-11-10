@@ -104,7 +104,7 @@ struct LAAMacChatsSection: View {
     @ViewBuilder
     private var detail: some View {
         if let opening = appState.laaOpeningEmployeeChat {
-            LAAEmployeeChatOpeningView(profile: opening)
+            LAAEmployeeChatOpeningView(profile: opening, preview: appState.laaEmployeeChatPreview)
                 .modifier(LAAMacFlatTopEdge())
         } else {
             conversationDetail

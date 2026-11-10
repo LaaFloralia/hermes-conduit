@@ -163,6 +163,15 @@ export function resolveWorkspaceRoots(env = process.env) {
   return values.map((value) => resolve(value));
 }
 
+// The SDK and workspace CLI must select the same local engine instance.
+export function resolveWorkHome(env = process.env) {
+  return resolve(env.LAA_BRIDGE_WORK_HOME || join(homedir(), '.paseo'));
+}
+
+export function resolveWorkClient(env = process.env) {
+  return resolve(env.LAA_BRIDGE_WORK_CLIENT || '/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js');
+}
+
 // The Paseo CLI lives outside launchd's minimal PATH, and its shebang runs
 // `node` through env. Resolve the binary once and prepend the running Node's
 // bin directory when the adapter spawns it (see workspaces.mjs).

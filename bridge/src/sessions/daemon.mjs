@@ -2,14 +2,14 @@
 // outside the Bridge. No configuration, credentials or conversation bodies are
 // needed to enumerate it. Mutations are reached only from authenticated routes.
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { resolveWorkClient, resolveWorkHome } from '../config.mjs';
 import { BridgeError, badRequest, conflict } from '../errors.mjs';
 import { fastTarget, fastValue } from './features.mjs';
 
 export async function connectDaemon() {
-  const { connectToDaemon } = await import('/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js');
-  return connectToDaemon({ target: { kind: 'instance', home: join(homedir(), '.paseo') }, timeout: 15_000 });
+  const { connectToDaemon } = await import(pathToFileURL(resolveWorkClient()).href);
+  return connectToDaemon({ target: { kind: 'instance', home: resolveWorkHome() }, timeout: 15_000 });
 }
 export const pendingHash = (pending) => createHash('sha256').update(JSON.stringify(pending)).digest('hex');
 export const daemonSessionID = (id) => `ses_${createHash('sha256').update(`paseo|${id}`).digest('hex').slice(0, 16)}`;

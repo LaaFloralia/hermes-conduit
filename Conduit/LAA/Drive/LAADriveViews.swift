@@ -263,14 +263,23 @@ struct LAADrivePreviewView: View {
     var body: some View {
         Group {
             if item.isMedia {
-                LAADrivePlayerView(item: currentMedia, bridge: bridge, autoPlay: true, poster: currentMedia.id == item.id ? poster : nil, showsDetails: true)
-                    .id(currentMedia.id)
-                    .simultaneousGesture(DragGesture(minimumDistance: 100).onEnded { value in
-                        guard value.startLocation.y < 96, abs(value.translation.width) > abs(value.translation.height) * 2,
-                              let index = media.firstIndex(where: { $0.id == currentMedia.id }) else { return }
-                        let next = index + (value.translation.width < 0 ? 1 : -1)
-                        if media.indices.contains(next) { currentMediaID = media[next].id }
-                    })
+                ScrollView {
+                    VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                        LAADrivePlayerView(item: currentMedia, bridge: bridge, autoPlay: true,
+                            poster: currentMedia.id == item.id ? poster : nil, showsDetails: true)
+                            .id(currentMedia.id)
+                        let siblings = media.filter { $0.id != currentMedia.id }
+                        if !siblings.isEmpty {
+                            Text(verbatim: "同じフォルダ").laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                            ForEach(siblings) { file in
+                                Button { currentMediaID = file.id } label: {
+                                    Label { Text(verbatim: file.name) } icon: { Image(systemName: file.symbol) }
+                                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                }.buttonStyle(LAAListRowStyle())
+                            }
+                        }
+                    }.padding(.horizontal, LAASpacing.horizontal)
+                }
             } else if item.isImage, images.count > 1 {
                 LAADriveImagePager(items: images, initialID: item.id)
             } else if let data {
@@ -283,11 +292,10 @@ struct LAADrivePreviewView: View {
                     Text(verbatim: error).foregroundStyle(LAAColor.attention)
                     Button(LAACopy.Drive.retry) { retry += 1 }
                 }.padding(LAASpacing.horizontal)
-            } else if loading { ProgressView() }
+            } else if loading { LAALoadingDots() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background((item.isMedia ? LAAColorValues.color(LAAColorValues.backgroundDark) : LAAColor.background).ignoresSafeArea())
-        .preferredColorScheme(item.isMedia ? .dark : nil)
+        .background(LAAColor.background.ignoresSafeArea())
         .tint(LAAColor.link)
         .navigationTitle(Text(verbatim: item.isMedia ? "" : item.name)).navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)

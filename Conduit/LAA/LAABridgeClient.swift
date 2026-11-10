@@ -56,6 +56,7 @@ enum LAABridgeError: Error, Equatable {
         case 409: return .conflict
         case 410: return .expired
         case 429: return .rateLimited
+        case 503 where code == "paseo_unavailable": return .other(status: status, code: code)
         case 503: return .unavailable
         default: return .other(status: status, code: code)
         }
@@ -75,6 +76,7 @@ enum LAABridgeError: Error, Equatable {
         case .expired: return "取得位置の期限が切れました。もう一度読み込んでください。"
         case .rateLimited: return "試行が多すぎます。時間をおいてからお試しください。"
         case .unavailable: return "Mac側のサービスを利用できません。"
+        case .other(503, "paseo_unavailable"): return "MacのWorkに接続できません。"
         case .other: return "Macからデータを取得できませんでした。"
         }
     }

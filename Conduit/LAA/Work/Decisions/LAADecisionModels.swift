@@ -199,7 +199,7 @@ enum LAADecisionCopy {
         switch code {
         case "agent_archived": return "依頼元の会話はアーカイブされています。"
         case "pending_decision_requires_reply": return "依頼元の会話が別の確認を待っています。その確認に答えてから届け直してください。"
-        case "paseo_unavailable": return "Macの作業エンジンに届きませんでした。"
+        case "paseo_unavailable": return LAABridgeError.response(status: 503, code: "paseo_unavailable").japaneseText
         case "delivery_unconfirmed": return "送りましたが、会話が再開したことを確認できませんでした。"
         case "not_found": return "依頼元の会話が見つかりません。"
         default: return "依頼元の会話へ届けられませんでした。"

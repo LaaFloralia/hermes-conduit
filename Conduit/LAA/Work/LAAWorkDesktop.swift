@@ -84,7 +84,7 @@ struct LAAWorkDesktopSessionsView: View {
                                    identifier: "work.sessions.desktop.search", focus: $searchFocused)
                         .accessibilityIdentifier("work.sessions.search")
                     if let failure {
-                        Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                        LAAWorkFailure(text: failure) { Task { await load() } }
                     }
                     if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
                 }

@@ -121,14 +121,9 @@ struct LAAUsageView: View {
             sectionTitle("AI")
             VStack(spacing: 0) {
                 if state.usage.value == nil && state.isRefreshing {
-                    ForEach(0..<3) { index in
-                        if index > 0 { Divider().overlay(LAAColor.separator) }
-                        readingRow(name: "サービス", result: "42%", age: nil, fraction: 0.42, note: nil)
-                            .redacted(reason: .placeholder).accessibilityHidden(true)
-                    }
+                    LAALoadingDots()
                 } else {
-                    ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                        if index > 0 { Divider().overlay(LAAColor.separator) }
+                    ForEach(groups) { group in
                         VStack(spacing: 0) {
                             if group.items.isEmpty {
                                 readingRow(name: group.label, result: "未取得", age: nil, fraction: nil, note: nil)
@@ -140,8 +135,7 @@ struct LAAUsageView: View {
                     }
                 }
             }
-            .padding(.horizontal, LAASpacing.x4)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+
         }
     }
 
@@ -175,8 +169,7 @@ struct LAAUsageView: View {
                 if items.isEmpty {
                     readingRow(name: "容量", result: "未取得", age: nil, fraction: nil, note: nil)
                 }
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    if index > 0 { Divider().overlay(LAAColor.separator) }
+                ForEach(items) { item in
                     let reading = LAACapacity.reading(item, at: evaluatedAt, allowHistorical: true)
                     let result = reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? "未取得"
                     let note = reason(item) ?? reading.map {
@@ -188,8 +181,7 @@ struct LAAUsageView: View {
                         .accessibilityIdentifier("laa.capacity.\(item.id)")
                 }
             }
-            .padding(.horizontal, LAASpacing.x4)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+
         }
         .accessibilityIdentifier("laa.capacity")
     }

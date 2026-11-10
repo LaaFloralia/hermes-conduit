@@ -67,6 +67,7 @@ struct LAADriveBrowserView: View {
     @State private var droppedFile: DroppedFile?
 
     @State private var fileType: LAADriveFileFilter = .all
+    @State private var availableKinds: Set<LAADriveFileFilter> = []
     @State private var sort: LAADriveBrowseOrder = .name
     private enum Layout: String { case grid, list }
     private var preferenceKey: String { "drive.presentation." + (bridge.deviceID ?? "none") + "." + section.rawValue + "." + (folders.last?.id ?? "root") }
@@ -103,10 +104,15 @@ struct LAADriveBrowserView: View {
     }
 
     var body: some View {
+        browser
+            .modifier(LAADriveSearchPlacement(desktop: desktop, query: $search))
+    }
+
+    private var browser: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             desktopBreadcrumb
-            searchField
-            filters
+            if desktop { searchField }
+            if availableKinds.count > 1 { filters }
             header
             results
         }
@@ -136,8 +142,24 @@ struct LAADriveBrowserView: View {
             folders = []
             search = ""
             section = .my
+            fileType = .all
+            availableKinds = []
         }
-        .onChange(of: key) { _, _ in cancelResolution() }
+        .onChange(of: key) { previous, current in
+            cancelResolution()
+            if previous.folderID != current.folderID || previous.section != current.section {
+                fileType = .all
+                availableKinds = []
+            }
+        }
+        .onChange(of: controller.items) { _, items in
+            guard fileType == .all, search.isEmpty else { return }
+            availableKinds = Set(items.lazy.filter { !$0.item.isFolder }.map {
+                if $0.item.mimeType.hasPrefix("video/") { return .video }
+                if $0.item.isImage { return .image }
+                return .document
+            })
+        }
         .onDisappear { cancelResolution() }
         // ⌘F and ⌘R act on this column: the search field above the list and
         // the header's reload, the same two controls the Mac shows. Upload
@@ -183,7 +205,7 @@ struct LAADriveBrowserView: View {
     }
 
     @ViewBuilder private var filterButtons: some View {
-        ForEach(LAADriveFileFilter.allCases, id: \.self) { option in
+        ForEach(LAADriveFileFilter.allCases.filter { $0 == .all || availableKinds.contains($0) }, id: \.self) { option in
             Button { fileType = option; searchFocused = false } label: {
                 Text(verbatim: option.title).laaTextStyle(.secondary)
                     .foregroundStyle(option == fileType ? LAAColor.link : LAAColor.secondaryText)
@@ -228,12 +250,6 @@ struct LAADriveBrowserView: View {
                 Picker("並び順", selection: $sort) {
                     ForEach(LAADriveBrowseOrder.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
-                if !desktop {
-                    Picker("表示", selection: $layout) {
-                        Label("サムネイル", systemImage: "square.grid.3x3").tag(Layout.grid)
-                        Label("リスト", systemImage: "list.bullet").tag(Layout.list)
-                    }
-                }
                 Button("アップロード", systemImage: "plus") { upload(folders.last?.id) }
                 if let folder = folders.last {
                     Button("この端末に保存", systemImage: "arrow.down.circle") { saveFolder(folder) }
@@ -247,16 +263,7 @@ struct LAADriveBrowserView: View {
 
     @ViewBuilder private var results: some View {
         if (waiting || displayedKey != key || controller.loading) && controller.items.isEmpty {
-            VStack(spacing: LAASpacing.x2) {
-                ForEach(0..<3) { _ in
-                    HStack(spacing: LAASpacing.x3) {
-                        RoundedRectangle(cornerRadius: LAARadius.selectionChip).fill(LAAColor.subtleSurface).frame(width: 24, height: 24)
-                        RoundedRectangle(cornerRadius: LAARadius.selectionChip).fill(LAAColor.subtleSurface).frame(width: 140, height: 12)
-                        Spacer()
-                    }.padding(.horizontal, LAASpacing.x4).frame(height: LAASpacing.minimumRowHeight)
-                }
-            }
-                .accessibilityLabel("ファイルを読み込み中")
+            LAALoadingDots()
         } else {
             if let navigationError { Text(verbatim: navigationError).foregroundStyle(LAAColor.attention) }
             if let error = controller.error {
@@ -310,7 +317,7 @@ struct LAADriveBrowserView: View {
                                     .padding(4).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip)).padding(4)
                             }
                         }
-                    Text(verbatim: entry.item.name).font(.footnote).foregroundStyle(LAAColor.text)
+                    Text(verbatim: entry.item.name).font(.system(size: 14, weight: .medium)).foregroundStyle(LAAColor.text)
                         .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
@@ -480,6 +487,20 @@ struct LAADriveBrowserView: View {
         } catch is CancellationError {
             if key == requested { waiting = false }
         } catch { waiting = false }
+    }
+}
+
+private struct LAADriveSearchPlacement: ViewModifier {
+    let desktop: Bool
+    @Binding var query: String
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if desktop {
+            content
+        } else {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic),
+                               prompt: Text(verbatim: "検索"))
+        }
     }
 }
 

@@ -1,5 +1,4 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { connectDaemon } from './daemon.mjs';
 import { BridgeError } from '../errors.mjs';
 import { splitLocalImages } from './local-images.mjs';
 
@@ -15,7 +14,7 @@ export function ownerText(text) {
 
 // Conversation plus tool name/status summaries. Raw tool input/output and
 // model reasoning never leave the daemon through this endpoint.
-export async function readConversation(agentId, connect = defaultConnect) {
+export async function readConversation(agentId, connect = connectDaemon) {
   let client;
   try {
     client = await connect();
@@ -44,9 +43,4 @@ export async function readConversation(agentId, connect = defaultConnect) {
   } finally {
     if (client) await client.close().catch(() => {});
   }
-}
-
-async function defaultConnect() {
-  const { connectToDaemon } = await import('/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js');
-  return connectToDaemon({ target: { kind: 'instance', home: join(homedir(), '.paseo') }, timeout: 15_000 });
 }
