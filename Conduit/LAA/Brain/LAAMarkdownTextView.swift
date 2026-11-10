@@ -573,7 +573,7 @@ final class LAAMarkdownUITextView: UITextView {
                 ink.setFill()
                 UIBezierPath(ovalIn: dot).fill()
             case .checkbox(let checked):
-                let box = CGRect(x: x + 1, y: line.midY - 11, width: 22, height: 22)
+                let box = checkboxRect(in: line)
                 let path = UIBezierPath(ovalIn: box)
                 path.lineWidth = 1.4
                 if checked {
@@ -624,13 +624,18 @@ final class LAAMarkdownUITextView: UITextView {
         var nearest: (location: Int, distance: CGFloat)?
         for glyph in glyphs {
             guard case .checkbox = glyph.kind, let line = lineRect(for: glyph.lineLocation) else { continue }
-            let x = max(line.minX - LAAMarkdownStyler.gutter + 2, 0)
-            let target = CGRect(x: x + 9 - 22, y: line.midY - 22, width: 44, height: 44)
+            let target = checkboxRect(in: line).insetBy(dx: -11, dy: -11)
             guard target.contains(point) else { continue }
             let distance = abs(point.y - line.midY)
             if distance < (nearest?.distance ?? .greatestFiniteMagnitude) { nearest = (glyph.lineLocation, distance) }
         }
         return nearest?.location
+    }
+
+    private func checkboxRect(in line: CGRect) -> CGRect {
+        let size: CGFloat = 22
+        let gap: CGFloat = 8
+        return CGRect(x: max(line.minX - size - gap, 0), y: line.midY - size / 2, width: size, height: size)
     }
 }
 

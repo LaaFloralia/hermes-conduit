@@ -527,7 +527,9 @@ struct LAABrainView: View {
                                 Text(verbatim: LAADateText.string(.now, .day)).font(.body)
                                 Spacer()
                                 Image(systemName: "square.and.pencil").foregroundStyle(LAAColor.secondaryText)
-                            }.frame(minHeight: LAASpacing.minimumRowHeight)
+                            }
+                            .frame(minHeight: LAASpacing.minimumRowHeight)
+                            .contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.daily")
                     }
                 }
