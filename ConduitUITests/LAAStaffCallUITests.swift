@@ -13,7 +13,12 @@ final class LAAStaffCallUITests: XCTestCase {
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["laa.call.name"].exists)
-        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
+        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "音声通話")
+        XCTAssertEqual(app.buttons["laa.call.mute"].label, "消音")
+        XCTAssertEqual(app.buttons["laa.call.chat"].label, "チャット")
+        XCTAssertEqual(app.buttons["laa.call.end"].label, "終了")
+        app.buttons["laa.call.mute"].tap()
+        XCTAssertEqual(app.buttons["laa.call.mute"].label, "消音を解除")
         app.buttons["laa.call.back"].tap()
         XCTAssertTrue(app.buttons["laa.call.return"].waitForExistence(timeout: 5))
         app.buttons["laa.call.return"].tap()
@@ -74,7 +79,7 @@ final class LAAStaffCallUITests: XCTestCase {
         let name = app.staticTexts["laa.call.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         XCTAssertEqual(name.label, "Morgan")
-        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
+        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "音声通話")
         app.buttons["laa.call.chat"].tap()
         let context = app.staticTexts["laa.fixture.call-context"]
         XCTAssertTrue(context.waitForExistence(timeout: 5))
@@ -216,7 +221,7 @@ final class LAAStaffCallUITests: XCTestCase {
         call.tap()
         let picker = app.descendants(matching: .any)["laa.call.audio-route"]
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        XCTAssertEqual(picker.label, "Audio output")
+        XCTAssertEqual(picker.label, "スピーカー、音声の出力先")
         attachScreenshot(name: "staff-call-system-route")
     }
 

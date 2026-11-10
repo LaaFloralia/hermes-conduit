@@ -93,6 +93,9 @@ final class FakeGPTLivePeer: GPTLivePeer {
 final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)?
+    #if LAA_BUILD
+    var onTransportInterrupted: (@MainActor (Bool) -> Void)?
+    #endif
     var onAudioPaused: (@MainActor (Bool) -> Void)?
     var isReady = false
     var voiceNote: String?
@@ -345,6 +348,10 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testGPTLiveKeepsTheCallThroughABriefNetworkDropButNotALongOne() async throws {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient(), reconnectGrace: .milliseconds(80))
+        #if LAA_BUILD
+        var interruptionEvents: [Bool] = []
+        session.onTransportInterrupted = { interruptionEvents.append($0) }
+        #endif
         session.start()
         await settle()
         peer.deliver(["type": "session.started"])
@@ -357,6 +364,9 @@ extension HermesVoiceGatewayTimeoutTests {
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(session.state, .ready, "Recovered in time: the call goes on")
         XCTAssertFalse(peer.closed)
+        #if LAA_BUILD
+        XCTAssertEqual(interruptionEvents, [true, false])
+        #endif
 
         // One that doesn't come back ends the call.
         peer.onConnectionInterrupted?(true)

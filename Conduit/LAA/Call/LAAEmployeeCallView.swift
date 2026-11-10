@@ -29,13 +29,13 @@ struct LAAEmployeeCallView: View {
                                     .foregroundStyle(LAAColor.secondaryText)
                                     .accessibilityIdentifier("laa.call.status")
                                 if LAAStaff(profile: snapshot.context.profile) != nil {
-                                    Text(verbatim: "GPT-Live")
+                                    Text(verbatim: "音声通話")
                                         .laaTextStyle(.secondary)
                                         .foregroundStyle(LAAColor.link)
                                         .accessibilityIdentifier("laa.call.engine")
                                 }
-                                if let note = snapshot.voiceNote {
-                                    Text(verbatim: note)
+                                if snapshot.voiceNote != nil {
+                                    Text(verbatim: "音声の設定を反映できませんでした")
                                         .laaTextStyle(.secondary)
                                         .foregroundStyle(LAAColor.secondaryText)
                                         .multilineTextAlignment(.center)
@@ -67,14 +67,14 @@ struct LAAEmployeeCallView: View {
 
     private func header(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
         ZStack {
-            Text(verbatim: LAACopy.call)
+            Text(verbatim: "通話")
                 .laaTextStyle(.section)
                 .fontWeight(.semibold)
                 .foregroundStyle(LAAColor.secondaryText)
             HStack {
                 Button(action: calls.showChat) {
                     Label {
-                        Text(verbatim: LAACopy.callChat)
+                        Text(verbatim: "チャット")
                     } icon: {
                         Image(systemName: "chevron.left")
                     }
@@ -100,20 +100,33 @@ struct LAAEmployeeCallView: View {
     }
 
     @ViewBuilder private func status(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
-        switch snapshot.phase {
-        case .connecting: Text(verbatim: "接続中")
-        case .connected:
-            if let started = snapshot.connectedAt {
-                TimelineView(.periodic(from: started, by: 1)) { timeline in
-                    Text(verbatim: "通話中 \(Self.elapsed(since: started, now: timeline.date))")
-                        .monospacedDigit()
-                }
-            } else { Text(verbatim: "通話中") }
-        case .ending: Text(verbatim: "終了中")
-        case .ended: Text(verbatim: "通話終了")
-        case .failed(let message): Text(verbatim: message)
+        VStack(spacing: 4) {
+            Text(verbatim: Self.statusText(snapshot))
+            if case .failed(let message) = snapshot.phase {
+                Text(verbatim: message)
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+            }
         }
     }
+
+    static func statusText(_ snapshot: LAAEmployeeCallSnapshot) -> String {
+        switch snapshot.phase {
+        case .connecting: return "接続中…"
+        case .reconnecting: return "再接続中…"
+        case .connected:
+            switch snapshot.activity {
+            case .ready: return "話せます"
+            case .listening: return "聞いています"
+            case .thinking: return "考えています"
+            }
+        case .ending: return "終了中…"
+        case .ended, .failed: return "切れました"
+        }
+    }
+
+    // DESIGN-V3 §9 keeps these four visible labels stable when toggled.
+    static let controlTitles = ["消音", "スピーカー", "チャット", "終了"]
 
     static func elapsed(since start: Date, now: Date) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(start)))
@@ -124,9 +137,9 @@ struct LAAEmployeeCallView: View {
         // One compositing pass for the row of glass controls.
         ConduitGlassGroup(spacing: 12) {
             HStack(alignment: .top, spacing: 16) {
-                CallGlassButton(title: snapshot.muted ? LAACopy.callUnmute : LAACopy.callMute,
+                CallGlassButton(title: Self.controlTitles[0],
                                 symbol: snapshot.muted ? "mic.slash.fill" : "mic.fill",
-                                identifier: "laa.call.mute", selected: snapshot.muted,
+                                identifier: "laa.call.mute", accessibilityTitle: snapshot.muted ? "消音を解除" : "消音", selected: snapshot.muted,
                                 action: calls.toggleMute)
                     .disabled(!snapshot.phase.isOngoing)
                 if snapshot.usesSystemRoutePicker {
@@ -134,22 +147,22 @@ struct LAAEmployeeCallView: View {
                         LAAAudioRoutePicker()
                             .frame(width: 60, height: 60)
                             .modifier(CallGlassCircle(selected: false, destructive: false))
-                        Text(verbatim: routeLabel).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: Self.controlTitles[1]).font(.caption).foregroundStyle(LAAColor.secondaryText)
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .frame(maxWidth: .infinity)
                     .disabled(!snapshot.phase.isOngoing)
                 } else {
-                    CallGlassButton(title: routeLabel,
+                    CallGlassButton(title: Self.controlTitles[1],
                                     symbol: snapshot.speaker ? "speaker.wave.2.fill" : "speaker.fill",
-                                    identifier: "laa.call.speaker", accessibilityTitle: LAACopy.callSpeaker,
+                                    identifier: "laa.call.speaker", accessibilityTitle: "スピーカー、\(routeLabel)",
                                     selected: snapshot.speaker, action: calls.toggleSpeaker)
                         .disabled(!snapshot.phase.isOngoing)
                 }
-                CallGlassButton(title: LAACopy.callChat, symbol: "bubble.left.fill",
+                CallGlassButton(title: Self.controlTitles[2], symbol: "bubble.left.fill",
                                 identifier: "laa.call.chat", action: calls.showChat)
                     .disabled(!snapshot.phase.isOngoing)
-                CallGlassButton(title: LAACopy.callEnd, symbol: "phone.down.fill", identifier: "laa.call.end",
+                CallGlassButton(title: Self.controlTitles[3], symbol: "phone.down.fill", identifier: "laa.call.end",
                                 destructive: true, action: calls.end)
             }
             .frame(maxWidth: .infinity)
@@ -213,7 +226,7 @@ private struct LAAAudioRoutePicker: UIViewRepresentable {
         picker.tintColor = UIColor(LAAColor.link)
         picker.activeTintColor = UIColor(LAAColor.link)
         picker.prioritizesVideoDevices = false
-        picker.accessibilityLabel = LAACopy.callAudioRoute
+        picker.accessibilityLabel = "スピーカー、音声の出力先"
         picker.accessibilityIdentifier = "laa.call.audio-route"
         return picker
     }

@@ -54,6 +54,9 @@ final class GPTLiveSession {
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
+    #if LAA_BUILD
+    var onTransportInterrupted: (@MainActor (Bool) -> Void)?
+    #endif
     /// The call's audio paused for another sound or came back.
     var onAudioPaused: (@MainActor (Bool) -> Void)?
 
@@ -309,6 +312,10 @@ final class GPTLiveSession {
     private func connectionInterrupted(_ interrupted: Bool, peer: GPTLivePeer) {
         reconnectWatchdog?.cancel()
         reconnectWatchdog = nil
+        #if LAA_BUILD
+        guard state == .ready || state == .connecting else { return }
+        onTransportInterrupted?(interrupted)
+        #endif
         guard interrupted, state == .ready || state == .connecting else { return }
         let grace = reconnectGrace
         reconnectWatchdog = Task { [weak self, weak peer] in
