@@ -12,6 +12,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
     let autoFocus: Bool
     let isEnabled: Bool
     var identifier: String = ""
+    var onOpenLink: ((String) -> Void)? = nil
     let onTextChange: (String) -> Void
     let onSelectionChange: (NSRange) -> Void
 
@@ -20,9 +21,12 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         view.delegate = context.coordinator
         view.onCheckboxTap = { [weak view] location in
             guard let view else { return }
+            let caret = view.selectedRange
             let edit = LAAMarkdownFormat.toggleCheckbox(text: view.text, selection: NSRange(location: location, length: 0))
-            view.apply(edit)
+            view.apply(LAAMarkdownEdit(text: edit.text, selection: caret))
         }
+        context.coordinator.autoFocus = autoFocus
+        view.requestInitialFocus(autoFocus && isEnabled)
         context.coordinator.attach(view)
         return view
     }
@@ -30,7 +34,9 @@ struct LAAMarkdownTextView: UIViewRepresentable {
     func updateUIView(_ view: LAAMarkdownUITextView, context: Context) {
         context.coordinator.parent = self
         view.session = session
+        view.onOpenLink = onOpenLink
         view.isEditable = isEnabled
+        view.requestInitialFocus(autoFocus && isEnabled)
         if !identifier.isEmpty { view.accessibilityIdentifier = identifier }
         context.coordinator.autoFocus = autoFocus
         if view.text != text, view.markedTextRange == nil {
@@ -52,6 +58,12 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         }
     }
 
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: LAAMarkdownUITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width > 0, width.isFinite else { return nil }
+        return CGSize(width: width, height: max(LAASpacing.minimumTouchTarget,
+                      ceil(uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)))
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     @MainActor
@@ -62,7 +74,6 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         private var lastSelection: NSRange?
         private var styling = false
         var autoFocus = false
-        private var didAutoFocus = false
         private var adoptGeneration = 0
         private var pendingHeight: CGFloat?
 
@@ -89,13 +100,17 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                 guard let self, let view else { return }
                 self.reportSelection(view)
             }
-            if autoFocus, !didAutoFocus {
-                didAutoFocus = true
-                Task { @MainActor [weak view] in view?.becomeFirstResponder() }
-            }
+            view.requestInitialFocus(autoFocus)
         }
 
         // MARK: UITextViewDelegate
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            // An already-selected (0, 0) caret still changes the active run.
+            // Tables and attachments may have several text views around them.
+            lastSelection = nil
+            reportSelection(textView)
+        }
 
         func textViewDidChange(_ textView: UITextView) {
             guard !styling, !isApplyingEdit(textView) else { return }
@@ -120,10 +135,25 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                let markdown = textView as? LAAMarkdownUITextView {
                 markdown.needsFullRestyleAfterEdit = true
             }
+            if text == "\t", let markdown = textView as? LAAMarkdownUITextView,
+               markdown.acceptsLiveStyling,
+               let edit = LAAMarkdownFormat.indentChange(text: textView.text, selection: range, outdent: false) {
+                markdown.apply(edit)
+                return false
+            }
             guard text == "\n" else { return true }
             guard let markdownView = textView as? LAAMarkdownUITextView, markdownView.acceptsLiveStyling else { return true }
-            guard let edit = LAAMarkdownFormat.returnInsertion(text: textView.text, caret: range.location) else { return true }
+            let source = (textView.text as NSString).replacingCharacters(in: range, with: "")
+            guard let edit = LAAMarkdownFormat.returnInsertion(text: source, caret: range.location) else { return true }
             markdownView.apply(edit)
+            return false
+        }
+
+        func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange,
+                      interaction: UITextItemInteraction) -> Bool {
+            guard URL.scheme == "laabrain-source",
+                  let target = URLComponents(url: URL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "target" })?.value else { return true }
+            parent.onOpenLink?(target)
             return false
         }
 
@@ -252,7 +282,20 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                     storage.addAttributes(run.attributes, range: clipped)
                 }
             }
+            if parent.onOpenLink != nil {
+                for link in LAAMarkdownSourceLinks.links(in: text) where NSIntersectionRange(link.range, target).length > 0 {
+                    var url = URLComponents(); url.scheme = "laabrain-source"; url.host = "open"
+                    url.queryItems = [URLQueryItem(name: "target", value: link.target)]
+                    if let value = url.url { storage.addAttribute(.link, value: value, range: link.range) }
+                }
+            }
             storage.endEditing()
+            // Hidden Markdown markers must never become the next character's
+            // font. In particular an empty checklist item still has a body-size caret.
+            if textView.selectedRange.length == 0, textView.markedTextRange == nil,
+               let base = output.runs.last(where: { $0.reset && $0.range.location <= textView.selectedRange.location }) {
+                textView.typingAttributes = base.attributes
+            }
             styling = false
             (textView as? LAAMarkdownUITextView)?.glyphs = output.glyphs
         }
@@ -288,7 +331,12 @@ final class LAAMarkdownEditingSession: ObservableObject {
         case checkbox
         case inline(String)
         case table
+        case indent(outdent: Bool)
+        case undo, redo, dismissKeyboard
     }
+
+    @Published private(set) var isEditing = false
+    func editingChanged(_ editing: Bool) { if isEditing != editing { isEditing = editing } }
 
     @Published private(set) var block: LAAMarkdownFormat.Block = .body
 
@@ -326,6 +374,10 @@ final class LAAMarkdownEditingSession: ObservableObject {
     }
 
     func apply(_ action: Action) {
+        if action == .dismissKeyboard {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            return
+        }
         guard action != .table else { onInsertTable?(); return }
         guard let view = textView, view.markedTextRange == nil else { return }
         // The bar may be tapped after the keyboard closed: restore the caret
@@ -333,6 +385,12 @@ final class LAAMarkdownEditingSession: ObservableObject {
         let selection = view.selectedRange.length > 0 || view.isFirstResponder ? view.selectedRange : lastSelection
         let edit: LAAMarkdownEdit
         switch action {
+        case .dismissKeyboard: view.resignFirstResponder(); return
+        case .undo: view.undoManager?.undo(); return
+        case .redo: view.undoManager?.redo(); return
+        case .indent(let outdent):
+            guard let change = LAAMarkdownFormat.indentChange(text: view.text, selection: selection, outdent: outdent) else { return }
+            edit = change
         case .block(let target):
             edit = LAAMarkdownFormat.setBlock(target, text: view.text, selection: selection)
         case .checkbox:
@@ -353,6 +411,7 @@ final class LAAMarkdownUITextView: UITextView {
     var glyphs: [LAAMarkdownStyler.Glyph] = [] {
         didSet { if glyphs != oldValue { setNeedsDisplay() } }
     }
+    var onOpenLink: ((String) -> Void)?
     var onCheckboxTap: ((Int) -> Void)?
     var onTextSettled: (() -> Void)?
     var onSelectionSettled: (() -> Void)?
@@ -362,6 +421,30 @@ final class LAAMarkdownUITextView: UITextView {
     /// which drops every attribute it had: the next pass must style all of it,
     /// not only the caret's paragraph.
     var needsFullRestyleAfterEdit = false
+    private var wantsInitialFocus = false
+    private var didInitialFocus = false
+    private var initialFocusScheduled = false
+
+    func requestInitialFocus(_ requested: Bool) {
+        wantsInitialFocus = wantsInitialFocus || requested
+        fulfillInitialFocus()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        fulfillInitialFocus()
+    }
+
+    private func fulfillInitialFocus() {
+        guard wantsInitialFocus, !didInitialFocus, !initialFocusScheduled, window != nil, isEditable else { return }
+        initialFocusScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.initialFocusScheduled = false
+            guard self.window != nil, self.isEditable, !self.didInitialFocus else { return }
+            self.didInitialFocus = self.becomeFirstResponder()
+        }
+    }
 
     /// False while an IME composes: restyling or replacing characters then
     /// would abandon the conversion the person is in the middle of.
@@ -383,10 +466,16 @@ final class LAAMarkdownUITextView: UITextView {
         backgroundColor = .clear
         textContainerInset = UIEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
         textContainer.lineFragmentPadding = 0
+        textContainer.widthTracksTextView = true
+        textContainer.heightTracksTextView = false
+        alwaysBounceHorizontal = false
+        showsHorizontalScrollIndicator = false
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        adjustsFontForContentSizeCategory = true
         showsVerticalScrollIndicator = false
         font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: LAAType.bodySize))
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-        tap.cancelsTouchesInView = false
+        tap.cancelsTouchesInView = true
         tap.delegate = self
         addGestureRecognizer(tap)
     }
@@ -396,9 +485,24 @@ final class LAAMarkdownUITextView: UITextView {
     /// Whole-document edit from a toolbar command. Goes through the text
     /// input system so one undo step puts the previous text back.
     func apply(_ edit: LAAMarkdownEdit) {
-        guard let full = textRange(from: beginningOfDocument, to: endOfDocument) else { return }
+        guard markedTextRange == nil else { return }
+        // Apply only the changed characters. Selecting and replacing the entire
+        // note made UIKit reveal its end before returning to the list caret.
+        let old = text ?? ""
+        var oldStart = old.startIndex, newStart = edit.text.startIndex
+        while oldStart < old.endIndex, newStart < edit.text.endIndex, old[oldStart] == edit.text[newStart] {
+            old.formIndex(after: &oldStart); edit.text.formIndex(after: &newStart)
+        }
+        var oldEnd = old.endIndex, newEnd = edit.text.endIndex
+        while oldEnd > oldStart, newEnd > newStart,
+              old[old.index(before: oldEnd)] == edit.text[edit.text.index(before: newEnd)] {
+            old.formIndex(before: &oldEnd); edit.text.formIndex(before: &newEnd)
+        }
+        let changed = NSRange(oldStart..<oldEnd, in: old)
+        guard let from = position(from: beginningOfDocument, offset: changed.location),
+              let to = position(from: from, offset: changed.length), let range = textRange(from: from, to: to) else { return }
         applying = true
-        replace(full, withText: edit.text)
+        replace(range, withText: String(edit.text[newStart..<newEnd]))
         let length = (edit.text as NSString).length
         selectedRange = NSRange(location: min(edit.selection.location, length),
                                 length: min(edit.selection.length, max(0, length - min(edit.selection.location, length))))
@@ -415,13 +519,43 @@ final class LAAMarkdownUITextView: UITextView {
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
-        if accepted { session?.attach(self) }
+        if accepted { session?.attach(self); session?.editingChanged(true) }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let accepted = super.resignFirstResponder()
+        if accepted { session?.editingChanged(false) }
         return accepted
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // This view is a paragraph inside the document's vertical scroll view.
+        // UITextView can still change its internal offset to reveal a caret.
+        if contentOffset != .zero { contentOffset = .zero }
+        if isFirstResponder, markedTextRange == nil { revealCaretInDocument() }
         setNeedsDisplay()
+    }
+
+    private var lastRevealedCaret: CGRect = .null
+    private var lastViewportSize: CGSize = .zero
+    private var lastViewportInsets = UIEdgeInsets.zero
+
+    private func revealCaretInDocument() {
+        guard let selectedTextRange else { return }
+        let caret = caretRect(for: selectedTextRange.end)
+        var ancestor = superview
+        while let container = ancestor {
+            if let scroll = container as? UIScrollView, scroll.isScrollEnabled {
+                guard caret != lastRevealedCaret || scroll.bounds.size != lastViewportSize || scroll.adjustedContentInset != lastViewportInsets else { return }
+                lastRevealedCaret = caret; lastViewportSize = scroll.bounds.size; lastViewportInsets = scroll.adjustedContentInset
+                let target = convert(caret.insetBy(dx: 0, dy: -16), to: scroll)
+                scroll.scrollRectToVisible(target, animated: false)
+                break
+            }
+            ancestor = container.superview
+        }
     }
 
     override func draw(_ rect: CGRect) {
@@ -470,18 +604,30 @@ final class LAAMarkdownUITextView: UITextView {
 
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         let point = gesture.location(in: self)
-        guard let location = checkboxLocation(at: point) else { return }
-        onCheckboxTap?(location)
+        if let location = checkboxLocation(at: point) { onCheckboxTap?(location) }
+        else if let target = linkTarget(at: point) { onOpenLink?(target) }
     }
 
-    private func checkboxLocation(at point: CGPoint) -> Int? {
+    private func linkTarget(at point: CGPoint) -> String? {
+        guard !isFirstResponder, onOpenLink != nil, let position = closestPosition(to: point) else { return nil }
+        let location = offset(from: beginningOfDocument, to: position)
+        for link in LAAMarkdownSourceLinks.links(in: text) {
+            if NSLocationInRange(location, link.range) { return link.target }
+        }
+        return nil
+    }
+
+    func checkboxLocation(at point: CGPoint) -> Int? {
+        var nearest: (location: Int, distance: CGFloat)?
         for glyph in glyphs {
             guard case .checkbox = glyph.kind, let line = lineRect(for: glyph.lineLocation) else { continue }
             let x = max(line.minX - LAAMarkdownStyler.gutter + 2, 0)
-            let box = CGRect(x: x, y: line.midY - 12, width: 22, height: 24)
-            if box.contains(point) { return glyph.lineLocation }
+            let target = CGRect(x: x + 9 - 22, y: line.midY - 22, width: 44, height: 44)
+            guard target.contains(point) else { continue }
+            let distance = abs(point.y - line.midY)
+            if distance < (nearest?.distance ?? .greatestFiniteMagnitude) { nearest = (glyph.lineLocation, distance) }
         }
-        return nil
+        return nearest?.location
     }
 }
 
@@ -490,7 +636,7 @@ extension LAAMarkdownUITextView: UIGestureRecognizerDelegate {
     /// keeps the system's selection and caret behaviour.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard gestureRecognizer is UITapGestureRecognizer else { return true }
-        if checkboxLocation(at: touch.location(in: self)) != nil { return true }
+        if checkboxLocation(at: touch.location(in: self)) != nil || linkTarget(at: touch.location(in: self)) != nil { return true }
         return false
     }
 }

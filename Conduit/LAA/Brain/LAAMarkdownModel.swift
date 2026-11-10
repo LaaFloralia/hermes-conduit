@@ -705,8 +705,7 @@ enum LAAMarkdownFormat {
         var end = 0
         var contentsEnd = 0
         source.getLineStart(&start, end: &end, contentsEnd: &contentsEnd, for: NSRange(location: location, length: 0))
-        let lineText = source.substring(with: NSRange(location: start, length: contentsEnd - start))
-        guard let parsed = LAAMarkdownParser.lines(in: lineText).first else { return nil }
+        guard let parsed = LAAMarkdownParser.lines(in: text).first(where: { $0.range.location == start }) else { return nil }
         var kind = parsed.kind
         if case .ordered(let number) = kind { kind = .ordered(number: number) }
         switch kind {
@@ -714,7 +713,7 @@ enum LAAMarkdownFormat {
         default: return nil
         }
         if parsed.isEmptyContent, parsed.markerRange.length > 0 {
-            let range = NSRange(location: start, length: parsed.markerRange.length)
+            let range = NSRange(location: start, length: NSMaxRange(parsed.markerRange))
             return LAAMarkdownEdit(text: source.replacingCharacters(in: range, with: ""),
                                    selection: NSRange(location: start, length: 0))
         }
@@ -725,7 +724,8 @@ enum LAAMarkdownFormat {
         case .quote: marker = Self.marker(for: .quote, indent: parsed.indent)
         default: marker = Self.marker(for: .bullet, indent: parsed.indent)
         }
-        let insertion = "\n" + marker
+        let newline = text.contains("\r\n") ? "\r\n" : "\n"
+        let insertion = newline + marker
         return LAAMarkdownEdit(text: source.replacingCharacters(in: NSRange(location: location, length: 0), with: insertion),
                                selection: NSRange(location: location + (insertion as NSString).length, length: 0))
     }
@@ -1035,6 +1035,28 @@ enum LAAMarkdownInline {
     private static func find(_ needle: String, in source: NSString, from: Int) -> Int? {
         let range = source.range(of: needle, options: [], range: NSRange(location: from, length: source.length - from))
         return range.location == NSNotFound ? nil : range.location
+    }
+}
+/// Source ranges are retained so links work without rewriting Markdown.
+enum LAAMarkdownSourceLinks {
+    struct Link { let range: NSRange; let target: String }
+    static func links(in source: String) -> [Link] {
+        var result: [Link] = []
+        for line in LAAMarkdownParser.lines(in: source) {
+            switch line.kind { case .code, .fence, .frontmatter: continue; default: break }
+            let text = line.text as NSString
+            for pattern in [#"(?<!!)\[\[([^\]]+)\]\]"#, #"(?<!!)\[[^\]]+\]\(([^)]+)\)"#] {
+                guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+                for match in regex.matches(in: line.text, range: NSRange(location: 0, length: text.length)) {
+                    let inCode = LAAMarkdownInline.spans(in: line.text, contentRange: line.contentRange).contains {
+                        $0.style == .code && NSIntersectionRange($0.range, match.range).length > 0
+                    }
+                    guard !inCode else { continue }
+                    result.append(Link(range: NSRange(location: line.range.location + match.range.location, length: match.range.length), target: text.substring(with: match.range(at: 1))))
+                }
+            }
+        }
+        return result
     }
 }
 #endif

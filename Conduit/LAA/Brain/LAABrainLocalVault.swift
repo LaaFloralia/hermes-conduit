@@ -89,6 +89,11 @@ import Darwin
                 try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other#Details|次のメモ]]\n\n![[Assets/fixture.png]]\n\n![[Other]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-document-fixture") {
+                    let lines = (1...45).map { "段落\($0)：長いノートを読み進めても、リンクから戻った位置を保持します。" }
+                    let text = "---\r\ncustom: [keep, exact]\r\nunknown: |\r\n  untouched\r\n---\r\n" + lines.joined(separator: "\n\n") + "\n\n[[Other#Details|次のメモ]]\n\n:::custom unsupported\n\n![[Other]]\n"
+                    try Data(text.utf8).write(to: root.appendingPathComponent("Company/Start.md"))
+                }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-daily-existing-fixture") {
                     let daily = root.appendingPathComponent(try LAABrainDailyNote.path(root: root))
                     try FileManager.default.createDirectory(at: daily.deletingLastPathComponent(), withIntermediateDirectories: true)

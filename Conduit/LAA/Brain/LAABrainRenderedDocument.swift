@@ -20,19 +20,6 @@ struct LAABrainRenderedDocument: View {
         let document = LAABrainDocument(note.text)
         let shared = lookup ?? (note.text.contains("[[") ? LAABrainPathLookup(files: files) : nil)
         let parts = document.parts(currentPath: note.path, lookup: shared)
-        if let frontmatter = document.frontmatter {
-            DisclosureGroup {
-                ForEach(Array(document.properties.enumerated()), id: \.offset) { _, property in
-                    HStack(alignment: .top) {
-                        Text(verbatim: property.name).fontWeight(.semibold)
-                        Spacer(minLength: LAASpacing.x3)
-                        Text(verbatim: property.value).textSelection(.enabled)
-                    }.laaTextStyle(.secondary)
-                }
-                Text(verbatim: frontmatter).laaTextStyle(.secondary).monospaced()
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-            } label: { Text(verbatim: LAACopy.Brain.frontmatter) }
-        }
         ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
             switch part {
             case .markdown(let source):
@@ -66,7 +53,7 @@ struct LAABrainRenderedDocument: View {
             return ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"].contains(ext) ? source : nil
         }
         if isLocal && depth == 0 && !gallery.isEmpty {
-            DisclosureGroup("Gallery") {
+            DisclosureGroup("ギャラリー") {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: LAASpacing.x2) {
                     ForEach(Array(gallery.enumerated()), id: \.offset) { _, source in
                         LAABrainEmbedView(source: source, currentPath: note.path, files: files, local: local,
@@ -183,7 +170,7 @@ private struct LAABrainHighlight: View {
     }
 }
 
-private struct LAABrainEmbedView: View {
+struct LAABrainEmbedView: View {
     private struct LoadKey: Equatable { let source: String; let path: String; let revision: Int; let isLocal: Bool }
     @EnvironmentObject private var bridge: LAABridgeSession
     let source: String
@@ -216,8 +203,8 @@ private struct LAABrainEmbedView: View {
             case .note(let note, let file, let anchor):
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     Button { open(LAABrainReference(file: file, includeInbox: true, anchor: anchor)) } label: {
-                        Label { Text(verbatim: file.path) } icon: { Image(systemName: "doc.text") }
-                    }
+                        Label { Text(verbatim: file.title) } icon: { Image(systemName: "doc.text") }
+                    }.accessibilityIdentifier("laa.brain.embed.note")
                     LAABrainRenderedDocument(note: note, files: files, local: local, isLocal: isLocal,
                                              visited: visited.union([file.path]), depth: depth + 1, open: open,
                                              lookup: lookup)

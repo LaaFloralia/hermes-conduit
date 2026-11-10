@@ -51,7 +51,7 @@ struct LAABrainLocalCreateView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(LAACopy.cancel) {
+                    Button(LAACopy.Brain.cancel) {
                         if bodyText.isEmpty { dismiss() } else { confirmDiscard = true }
                     }.disabled(busy)
                 }

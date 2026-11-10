@@ -2,6 +2,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct BrainAutosaveKey: Equatable { let text: String; let saving: Bool; let busy: Bool }
+
 private struct BrainSaveConflict {
     let other: String?
     let draft: String
@@ -15,13 +17,29 @@ struct LAABrainSaveEditor: View {
     let path: String
     let autoFocus: Bool
     let didSave: () -> Void
+    var inline = false
+    var showsBackButton = true
+    var isPinned = false
+    var togglePin: () -> Void = {}
+    var leave: (() -> Void)? = nil
+    var manage: (() -> Void)? = nil
+    var readingPositions: LAABrainReadingPositions? = nil
+    var onOpenLink: ((String) -> Void)? = nil
+    var attachments: ((String) -> AnyView)? = nil
+    @State private var showRaw = false
+    @State private var showInfo = false
+    @State private var showFind = false
+    @State private var findText = ""
     private let coordinator = LAABrainSaveCoordinator()
     private let drafts = LAABrainDraftStore()
     @State private var snapshot: LAABrainSaveCoordinator.Snapshot?
     @State private var draft = ""
+    @State private var metadataPrefix = ""
     @State private var conflict: BrainSaveConflict?
     @State private var pending: [LAABrainSaveJournal.Pending] = []
     @State private var versions: [LAABrainSaveJournal.VersionSummary] = []
+    @State private var saving = false
+    @State private var autoSaveBlocked = false
     @State private var busy = true
     @State private var recoveryUnavailable = false
     @State private var historyCorrupt = false
@@ -43,24 +61,31 @@ struct LAABrainSaveEditor: View {
     @State private var injectFixtureMissingStage = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-missing-stage-fixture")
     #endif
 
-    init(root: URL, path: String, autoFocus: Bool = false, didSave: @escaping () -> Void) {
+    init(root: URL, path: String, autoFocus: Bool = false, inline: Bool = false,
+         showsBackButton: Bool = true, isPinned: Bool = false, togglePin: @escaping () -> Void = {},
+         leave: (() -> Void)? = nil, manage: (() -> Void)? = nil,
+         readingPositions: LAABrainReadingPositions? = nil, onOpenLink: ((String) -> Void)? = nil,
+         attachments: ((String) -> AnyView)? = nil,
+         didSave: @escaping () -> Void) {
         self.root = root
         self.path = path
         self.autoFocus = autoFocus
         self.didSave = didSave
+        self.inline = inline; self.showsBackButton = showsBackButton
+        self.isPinned = isPinned; self.togglePin = togglePin; self.leave = leave; self.manage = manage
+        self.readingPositions = readingPositions; self.onOpenLink = onOpenLink; self.attachments = attachments
     }
 
-    var body: some View {
-        NavigationStack {
+    private var page: some View {
             Group {
                 if busy && snapshot == nil && pending.isEmpty {
-                    ProgressView()
+                    VStack(spacing: LAASpacing.x3) { ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface).frame(height: 20) } }.padding(LAASpacing.horizontal)
                 } else if !pending.isEmpty {
                     interruptedView
                 } else if let conflict {
                     conflictView(conflict)
                 } else if snapshot != nil {
-                    VStack {
+                    VStack(spacing: 0) {
                         if historyCorrupt {
                             Text(verbatim: "履歴が壊れています。該当する記録は退避しました。")
                                 .foregroundStyle(LAAColor.attention)
@@ -70,8 +95,15 @@ struct LAABrainSaveEditor: View {
                             Text(verbatim: "このアプリでは読めない形式の履歴があります。記録は残っています。")
                                 .foregroundStyle(LAAColor.attention)
                         }
-                        LAAMarkdownEditor(text: draft, autoFocus: autoFocus, isEnabled: !busy) { changed in
-                            draft = changed
+                        LAAMarkdownEditor(text: visibleBody, autoFocus: autoFocus || visibleBody.isEmpty, isEnabled: !busy,
+                                          title: inline ? noteTitle : nil, status: saveStatus,
+                                          readingPositions: readingPositions, positionKey: root.absoluteString + path,
+                                          attachments: attachments,
+                                          onOpenLink: { target in
+                                              Task { await save(automatically: true); onOpenLink?(target) }
+                                          }) { changed in
+                            // Closed metadata stays byte-for-byte outside the editable body.
+                            draft = metadataPrefix + changed
                         }
                         if canExportDraft {
                             Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
@@ -104,34 +136,104 @@ struct LAABrainSaveEditor: View {
                         .padding()
                 }
             }
-            .navigationTitle(Text(verbatim: path.split(separator: "/").last.map(String.init) ?? path))
+            .navigationTitle(Text(verbatim: inline ? "" : noteTitle))
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(LAACopy.close) { Task { await close() } }.disabled(busy)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("履歴") { showHistory = true }
-                        .disabled(busy)
-                        .accessibilityIdentifier("laa.brain.history")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(LAACopy.save) { Task { await save() } }
-                        .disabled(busy || recoveryUnavailable || snapshot == nil || conflict != nil || !pending.isEmpty)
-                        .accessibilityIdentifier("laa.brain.edit.save")
+                if inline {
+                    if showsBackButton {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { Task { await close() } } label: { Image(systemName: "chevron.left") }
+                                .accessibilityLabel("戻る").accessibilityIdentifier("laa.brain.back")
+                                .disabled(saving || busy)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button("文書内検索", systemImage: "magnifyingglass") { showFind = true }
+                            Button(isPinned ? "ピン留めを外す" : "ピン留めする", systemImage: "pin", action: togglePin)
+                                .accessibilityIdentifier("laa.brain.pin")
+                            Button("履歴", systemImage: "clock.arrow.circlepath") { showHistory = true }
+                                .accessibilityIdentifier("laa.brain.history")
+                            Button("Markdownを表示", systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
+                                .accessibilityIdentifier("laa.brain.rawToggle")
+                            Button("情報", systemImage: "info.circle") { showInfo = true }
+                            if let manage { Button("名前・保存先を変更", systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
+                            if autoSaveBlocked { Button("保存を再試行") { autoSaveBlocked = false; Task { await save(automatically: true) } } }
+                        } label: { Image(systemName: "ellipsis") }
+                            .accessibilityLabel("ノートのメニュー").accessibilityIdentifier("laa.brain.menu")
+                    }
+                } else {
+                    ToolbarItem(placement: .cancellationAction) { Button("閉じる") { Task { await close() } }.disabled(busy || saving) }
+                    ToolbarItem(placement: .topBarTrailing) { Button("履歴") { showHistory = true }.accessibilityIdentifier("laa.brain.history") }
                 }
             }
+    }
+
+    private var noteTitle: String { URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent }
+    private var visibleBody: String { draft.hasPrefix(metadataPrefix) ? String(draft.dropFirst(metadataPrefix.count)) : draft }
+    private var saveStatus: String {
+        if saving { return "保存中…" }
+        if autoSaveBlocked || recoveryUnavailable { return "保存できません" }
+        return snapshot?.base == Data(draft.utf8) ? "保存済み" : "編集中"
+    }
+
+    var body: some View {
+        Group {
+            if inline { page } else { NavigationStack { page } }
         }
         .interactiveDismissDisabled()
         .task {
             await open()
         }
-        .task(id: draft) {
-            guard !busy, snapshot != nil else { return }
-            do { try await Task.sleep(for: .milliseconds(400)); try Task.checkCancellation(); if !busy { preserveDraft() } }
-            catch { }
+        .task(id: BrainAutosaveKey(text: draft, saving: saving, busy: busy)) {
+            guard !busy, !saving, !autoSaveBlocked, conflict == nil, !recoveryUnavailable,
+                  pending.isEmpty, let snapshot, snapshot.base != Data(draft.utf8) else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(400))
+                try Task.checkCancellation()
+                preserveDraft()
+                try await Task.sleep(for: .milliseconds(600))
+                try Task.checkCancellation()
+                await save(automatically: true)
+            } catch { }
         }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { preserveDraft() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { preserveDraft(); Task { await save(automatically: true) } }
+        }
+        .onDisappear { preserveDraft() }
+        .sheet(isPresented: $showRaw) {
+            NavigationStack {
+                ScrollView { Text(verbatim: draft).font(.body.monospaced()).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(LAASpacing.horizontal).accessibilityIdentifier("laa.brain.raw") }
+                    .navigationTitle("Markdown")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showRaw = false } } }
+            }
+        }
+        .sheet(isPresented: $showInfo) {
+            NavigationStack {
+                List {
+                    LabeledContent("場所", value: path)
+                    ForEach(Array(LAABrainDocument(draft).properties.enumerated()), id: \.offset) { _, property in
+                        LabeledContent(property.name, value: property.value)
+                    }
+                    if let metadata = LAABrainDocument(draft).frontmatter {
+                        Text(verbatim: metadata).font(.footnote.monospaced()).textSelection(.enabled)
+                    }
+                }.navigationTitle("情報")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
+            }
+        }
+        .sheet(isPresented: $showFind) {
+            NavigationStack {
+                List {
+                    ForEach(Array(visibleBody.components(separatedBy: "\n").enumerated()).filter {
+                        !findText.isEmpty && $0.element.localizedStandardContains(findText)
+                    }, id: \.offset) { _, line in Text(verbatim: line).textSelection(.enabled) }
+                }.searchable(text: $findText, prompt: "文書内を検索").navigationTitle("文書内検索")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showFind = false } } }
+            }
+        }
         .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .data,
                       defaultFilename: exportName) { result in
             switch result {
@@ -155,7 +257,7 @@ struct LAABrainSaveEditor: View {
             }
         }
         .alert("履歴が壊れています", isPresented: $showHistoryWarning) {
-            Button("OK") { didSave(); dismiss() }
+            Button("OK") { didSave(); finish() }
         } message: {
             Text(verbatim: "該当する記録は退避しました。ほかの履歴は残っています。")
         }
@@ -163,7 +265,7 @@ struct LAABrainSaveEditor: View {
             Button("記録を消す", role: .destructive) {
                 if let item = pendingToClear { Task { await clearMissing(item) } }
             }.accessibilityIdentifier("laa.brain.recovery.confirmClearMissing")
-            Button(LAACopy.cancel, role: .cancel) { pendingToClear = nil }
+            Button(LAACopy.Brain.cancel, role: .cancel) { pendingToClear = nil }
         } message: {
             Text("中断したファイルが見つかりません。記録を消す前に履歴を確認してください。")
         }
@@ -246,6 +348,7 @@ struct LAABrainSaveEditor: View {
                 case let .note(entry, bytes, conflicted):
                     snapshot = entry
                     draft = String(decoding: bytes, as: UTF8.self)
+                    metadataPrefix = LAABrainEditableSource(draft).prefix
                     if conflicted {
                         conflict = BrainSaveConflict(other: String(data: entry.base, encoding: .utf8), draft: draft, afterExchange: false)
                     }
@@ -275,9 +378,15 @@ struct LAABrainSaveEditor: View {
         busy = false
     }
 
-    @MainActor private func save() async {
-        guard let snapshot else { return }
-        busy = true; message = nil
+    @MainActor private func save(automatically: Bool = false) async {
+        guard let snapshot, !saving, !busy, !recoveryUnavailable, conflict == nil, pending.isEmpty else { return }
+        if Data(draft.utf8) == snapshot.base {
+            if !automatically { didSave(); finish() }
+            return
+        }
+        saving = true; message = nil
+        if !automatically { busy = true }
+        defer { saving = false; if !automatically { busy = false } }
         let data = Data(draft.utf8)
         #if DEBUG
         let inject = injectFixtureRace
@@ -317,16 +426,23 @@ struct LAABrainSaveEditor: View {
             historyCorrupt = foundCorruption
             switch outcome {
             case .saved(.exchange):
-                try drafts.clear(vault: snapshot.vault, path: path)
-                if newlyCorruptHistory { showHistoryWarning = true } else { didSave(); dismiss() }
-            case let .conflict(current, mine):
+                self.snapshot = .init(vault: snapshot.vault, path: path, base: data)
+                if Data(draft.utf8) == data { try drafts.clear(vault: snapshot.vault, path: path) }
+                else { preserveDraft() }
+                if !automatically {
+                    if newlyCorruptHistory { showHistoryWarning = true } else { didSave(); finish() }
+                }
+            case let .conflict(current, _):
+                preserveDraft()
                 conflict = BrainSaveConflict(other: String(data: current, encoding: .utf8),
-                                             draft: String(decoding: mine, as: UTF8.self), afterExchange: false)
-            case let .intervening(displaced, mine):
+                                             draft: draft, afterExchange: false)
+            case let .intervening(displaced, _):
+                preserveDraft()
                 conflict = BrainSaveConflict(other: String(data: displaced, encoding: .utf8),
-                                             draft: String(decoding: mine, as: UTF8.self), afterExchange: true)
+                                             draft: draft, afterExchange: true)
             }
         } catch {
+            autoSaveBlocked = true
             let saveError = error
             do {
                 let (stored, unfinished) = try await Task.detached(priority: .userInitiated) {
@@ -401,7 +517,7 @@ struct LAABrainSaveEditor: View {
             let entry = try await Task.detached(priority: .userInitiated) {
                 try coordinator.begin(root: root, path: path)
             }.value
-            snapshot = entry; draft = text; conflict = nil
+            snapshot = entry; draft = text; metadataPrefix = LAABrainEditableSource(text).prefix; conflict = nil; autoSaveBlocked = false
             versions = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.summaries(vault: entry.vault, path: path)
             }.value
@@ -437,6 +553,11 @@ struct LAABrainSaveEditor: View {
     }
 
     @MainActor private func close() async {
+        guard !saving else { return }
+        if !autoSaveBlocked, conflict == nil, pending.isEmpty, let snapshot, Data(draft.utf8) != snapshot.base {
+            await save()
+            return
+        }
         preserveDraft()
         if let snapshot, Data(draft.utf8) != snapshot.base {
             busy = true
@@ -451,8 +572,11 @@ struct LAABrainSaveEditor: View {
                 return
             }
         }
-        dismiss()
+        didSave()
+        finish()
     }
+
+    private func finish() { if let leave { leave() } else { dismiss() } }
 }
 
 private struct BrainHistoryView: View {
@@ -483,7 +607,7 @@ private struct BrainHistoryView: View {
             }
             .navigationTitle("履歴")
             .toolbar { ToolbarItem(placement: .cancellationAction) {
-                Button(LAACopy.close) { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
+                Button(LAACopy.Brain.close) { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
             } }
         }
     }
@@ -636,7 +760,7 @@ struct LAABrainRecoveryCatalogueView: View {
                 } else { ProgressView() }
             }
             .navigationTitle("復元履歴")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.Brain.close) { dismiss() } } }
             .task { await refresh() }
             .refreshable { await refresh() }
         }
@@ -707,7 +831,7 @@ private struct BrainRecoveryPathView: View {
             Button("記録を消す", role: .destructive) {
                 if let item = pendingToClear { Task { await clearMissing(item) } }
             }
-            Button(LAACopy.cancel, role: .cancel) { pendingToClear = nil }
+            Button(LAACopy.Brain.cancel, role: .cancel) { pendingToClear = nil }
         } message: {
             Text("中断したファイルが見つかりません。記録を消す前に履歴を確認してください。")
         }

@@ -81,9 +81,9 @@ struct LAAMarkdownTableEditor: View {
         .confirmationDialog(Text(verbatim: "この表を削除しますか？"), isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button(role: .destructive) { model.removeTable(segmentID) } label: { Text(verbatim: "表を削除") }
                 .accessibilityIdentifier("laa.markdown.table.removeConfirm")
-            Button(LAACopy.cancel, role: .cancel) { }
+            Button(LAACopy.Brain.cancel, role: .cancel) { }
         } message: {
-            Text(verbatim: "保存するまでノートは変わりません。")
+            Text(verbatim: "削除すると自動保存されます。")
         }
     }
 

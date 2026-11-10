@@ -467,6 +467,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Assets and Drive: `Conduit/LAA/Assets/`, `Conduit/LAA/Drive/`, `bridge/src/routes/drive.mjs`, `bridge/src/drive/`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`, `bridge/bench/README.md`, `docs/laa/DRIVE-PLAYER-API.md`
 - Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-v2.test.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainManageNoteView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`, `Conduit/LAA/Brain/LAAMarkdownModel.swift`, `Conduit/LAA/Brain/LAAMarkdownStyler.swift`, `Conduit/LAA/Brain/LAAMarkdownTextView.swift`, `Conduit/LAA/Brain/LAAMarkdownFormatBar.swift`, `Conduit/LAA/Brain/LAAMarkdownTableEditor.swift`, `Conduit/LAA/Brain/LAAMarkdownDocumentModel.swift`, `Conduit/LAA/Brain/LAAMarkdownEditor.swift`, `ConduitTests/LAAMarkdownEditorTests.swift`
+- Doc editing regressions and reading position: `ConduitTests/LAAMarkdownInteractionTests.swift`, `Conduit/LAA/Brain/LAABrainReadingPosition.swift`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 - LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `scripts/laa/mac-profiles.py`, `scripts/laa/test-mac-release.py`, `ConduitTests/LAAMacCatalystTests.swift`
 
@@ -565,6 +566,14 @@ App Store build · the Bridge API, Brain and Usage data contracts
   The Mac Bridge remains a secondary source, with its opt-in `brain:create`
   scope and conflict-safe server naming. An uncertain Bridge create retains its
   exact request and key in ThisDeviceOnly Keychain for reconciliation.
+- Doc opens local notes directly on editable paper and automatically saves settled
+  changes after one second through the existing recovery journal and comparison.
+  The title omits the extension; path and exact frontmatter stay in Information.
+  A viewport-width text container wraps unbroken text; only tables scroll sideways.
+  The keyboard format bar is one row and appears with the keyboard. Return continues
+  lists or clears an empty item; checked text uses secondary ink. Session reading
+  positions are scoped by vault and note. Home shows today's note, five recent
+  notes, pins and folders; source and display choices live in the folder menu.
 - Existing local notes can be edited with a pre-write recovery journal and
   digest comparison; a detected concurrent change keeps both versions for
   review. After exchange and fsync, the note is reopened and hashed before

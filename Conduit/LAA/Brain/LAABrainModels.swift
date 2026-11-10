@@ -166,6 +166,17 @@ enum LAABrainPaths {
     }
 }
 
+/// Keeps metadata outside the editable paper without parsing and serialising it.
+struct LAABrainEditableSource {
+    let prefix: String
+    let body: String
+    init(_ source: String) {
+        body = LAABrainDocument(source).body
+        prefix = String(source.dropLast(body.count))
+    }
+    func replacingBody(_ text: String) -> String { prefix + text }
+}
+
 struct LAABrainDocument {
     enum Part: Equatable {
         case markdown(String), raw(String), image(String), highlight(String)
