@@ -17,8 +17,6 @@ struct LAAStudioCreateView: View {
     @State private var canRetry = false
     @State private var error: String?
     @State private var created: LAAStudioRecord?
-    @State private var catalog: LAAStudioCatalog?
-    @State private var catalogNote: String?
     private var device: String { bridge.deviceID ?? "fixture" }
     private var selection: Binding<String> {
         Binding(get: { draft.projectID ?? "" }, set: { value in
@@ -27,96 +25,83 @@ struct LAAStudioCreateView: View {
             draft.resetSubmission()
         })
     }
-    private var principleSelection: Binding<String> {
-        Binding(get: { draft.principle?.id ?? "" }, set: { value in
-            let found = snapshot.principles.first(where: { $0.id == value })
-            draft.principle = found.map { .init(id: $0.id, version: $0.version, revision: $0.revision) }
-            draft.resetSubmission()
-        })
-    }
+    @Environment(\.dismiss) private var dismiss
+    @State private var referencePicker = false
+    @State private var upload = false
+    @State private var selectUploadedReference = false
+    @FocusState private var promptFocused: Bool
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                Text(verbatim: LAACopy.Studio.newRequest).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                if let created {
-                    Text(verbatim: "依頼を受け付けました。").foregroundStyle(LAAColor.text)
-                    NavigationLink {
-                        LAAStudioRequestView(initial: created, initialProject: snapshot.projects.first { $0.id == created.request.projectId })
-                    } label: {
-                        Text(verbatim: LAACopy.Studio.check)
+                TextField("何を作りますか", text: $draft.prompt, axis: .vertical)
+                    .font(.title3).lineLimit(6...14).focused($promptFocused)
+                    .disabled(draft.pending || sending || storageBlocked)
+                    .accessibilityIdentifier("laa.studio.composer.field")
+                HStack(spacing: LAASpacing.x2) {
+                    ForEach(["画像", "動画", "資料", "その他"], id: \.self) { kind in
+                        Button { draft.kind = draft.kind == kind ? nil : kind } label: {
+                            Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
+                        }.buttonStyle(.plain).disabled(draft.pending || sending || storageBlocked)
+                            .accessibilityIdentifier("laa.studio.kind.\(kind)")
                     }
-                        .laaGlassButton(prominent: true)
-                    if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
-                } else {
-                    Text(verbatim: draft.pending ? (draft.workBusy == true ? LAACopy.Studio.workBusy : LAACopy.Studio.uncertain) : LAACopy.Studio.draft)
-                        .laaTextStyle(.secondary).foregroundStyle(draft.pending ? LAAColor.attention : LAAColor.secondaryText)
-                    LabeledContent(LAACopy.Studio.work) {
-                        Picker(LAACopy.Studio.work, selection: selection) {
-                            Text(verbatim: LAACopy.Studio.newWork).tag("")
-                            ForEach(snapshot.projects) { project in Text(verbatim: project.title).tag(project.id) }
-                        }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget)
-                            .disabled(draft.pending || sending || storageBlocked).accessibilityIdentifier("laa.studio.project")
-                    }
-                    if draft.isNew {
-                        TextField(LAACopy.Studio.title, text: $draft.title)
-                            .studioInputField().disabled(draft.pending || sending || storageBlocked)
-                            .accessibilityIdentifier("laa.studio.title")
-                    }
-                    LabeledContent(LAACopy.Studio.principle) {
-                        Picker(LAACopy.Studio.principle, selection: principleSelection) {
-                            Text(verbatim: LAACopy.Studio.none).tag("")
-                            if let selected = draft.principle, !snapshot.principles.contains(where: { $0.id == selected.id }) {
-                                Text(verbatim: "\(selected.id) · v\(selected.version)").tag(selected.id)
-                            }
-                            ForEach(snapshot.principles) { item in Text(verbatim: "\(item.name) · \(item.status)").tag(item.id) }
-                        }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget).disabled(draft.pending || sending || storageBlocked)
-                    }
-                    LAAWorkComposer(text: $draft.prompt, revision: $revision, placeholder: LAACopy.Studio.prompt,
-                                    enabled: !draft.pending && !sending && !storageBlocked,
-                                    canSend: draft.prompt.utf16.count <= 10000 && (!draft.isNew || !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
-                                    onChange: { _ in }, onSubmit: { Task { await submit() } },
-                                    submitLabel: LAACopy.Studio.send, accessibilityPrefix: "laa.studio.composer", showsTextSize: false)
-                    Text(verbatim: "\(draft.prompt.utf16.count) / 10,000").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    if let catalog {
-                        DisclosureGroup("依頼の型と書き方") {
-                            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                                ForEach(catalog.capabilities) { capability in
-                                    Button { appendTemplate(capability.prompt) } label: {
-                                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                                            Text(verbatim: "＋ \(capability.title)").fontWeight(.semibold)
-                                            Text(verbatim: capability.description).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                                        }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
-                                    }.disabled(draft.pending || sending || storageBlocked)
-                                }
-                                ForEach(Array(catalog.brief.enumerated()), id: \.offset) { _, item in
-                                    Button { appendTemplate(item) } label: {
-                                        Text(verbatim: "＋ \(item)").frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
-                                    }.disabled(draft.pending || sending || storageBlocked)
-                                }
-                            }
-                        }
-                    }
-                    if let catalogNote { Text(verbatim: catalogNote).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                    if draft.pending {
-                        Button { Task { await check() } } label: {
-                            Text(verbatim: LAACopy.Studio.check).frame(minHeight: LAASpacing.minimumTouchTarget)
-                        }.disabled(sending || storageBlocked)
-                            .accessibilityIdentifier("laa.studio.check")
-                        if canRetry {
-                            Button { Task { await submit() } } label: {
-                                Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget)
-                            }.disabled(sending || storageBlocked)
-                                .accessibilityIdentifier("laa.studio.retry")
-                        }
-                    }
-                    if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
-                    if sending { ProgressView() }
                 }
+                Menu {
+                    Button("写真から選ぶ", systemImage: "photo") { upload = true }
+                    Button("Driveから選ぶ", systemImage: "folder") { referencePicker = true }
+                } label: { Label("参考を添付", systemImage: "paperclip").frame(minHeight: 44) }
+                    .disabled(draft.pending || sending || storageBlocked)
+                if let references = draft.references, !references.isEmpty {
+                    ForEach(references, id: \.self) { reference in
+                        HStack {
+                            Text(verbatim: reference.components(separatedBy: "\n").first ?? "参考").lineLimit(1)
+                            Spacer()
+                            Button { draft.references?.removeAll { $0 == reference } } label: { Image(systemName: "xmark") .frame(width: 44, height: 44) }.accessibilityLabel("参考を外す")
+                                .disabled(draft.pending || sending || storageBlocked)
+                        }.laaTextStyle(.secondary)
+                    }
+                }
+                LabeledContent("作品") {
+                    Picker("作品", selection: selection) {
+                        Text("新規").tag("")
+                        ForEach(snapshot.projects) { project in Text(verbatim: project.title).tag(project.id) }
+                    }.labelsHidden().frame(minHeight: 44).disabled(draft.pending || sending || storageBlocked)
+                        .accessibilityIdentifier("laa.studio.project")
+                }
+                if draft.prompt.utf16.count > 9000 {
+                    Text(verbatim: "\(draft.prompt.utf16.count) / 10,000").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }
+                if draft.pending {
+                    Text(verbatim: draft.workBusy == true ? LAACopy.Studio.workBusy : LAACopy.Studio.uncertain)
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    Button("状態を確認") { Task { await check() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
+                        .accessibilityIdentifier("laa.studio.check")
+                    if canRetry {
+                        Button("再試行") { Task { await submit() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
+                            .accessibilityIdentifier("laa.studio.retry")
+                    }
+                } else {
+                    Button(sending ? "送信中" : "依頼する") { promptFocused = false; Task { await submit() } }
+                        .laaGlassButton(prominent: true)
+                        .disabled(sending || storageBlocked || draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.prompt.utf16.count > 10000)
+                        .accessibilityIdentifier("laa.studio.composer.send")
+                }
+                if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             }.padding(LAASpacing.horizontal).laaPageWidth()
         }
-        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Assets.studio))
-        .tint(LAAColor.link)
-        .navigationBarTitleDisplayMode(.inline)
+        .background(LAAColor.background.ignoresSafeArea()).navigationTitle("制作を依頼")
+        .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
+        .sheet(isPresented: $referencePicker) {
+            LAAStudioReferencePicker { reference in
+                if draft.references == nil { draft.references = [] }
+                if draft.references?.contains(reference) != true { draft.references?.append(reference) }
+            }.environmentObject(bridge)
+        }
+        .sheet(isPresented: $upload, onDismiss: {
+            if selectUploadedReference { selectUploadedReference = false; referencePicker = true }
+        }) {
+            LAADriveUpload(folderId: nil) { selectUploadedReference = true }.environmentObject(bridge)
+        }
         .onAppear {
             guard !initialized else { return }
             let saved: LAAStudioDraft?
@@ -146,28 +131,6 @@ struct LAAStudioCreateView: View {
             guard initialized && !done && !storageBlocked else { return }
             if !LAAStudioDraftStore.save(value, deviceID: device, draftID: draftID) { storageBlocked = true; error = LAACopy.Studio.saveFailed }
         }
-        .task(id: bridge.revision) {
-            catalog = nil; catalogNote = nil
-            guard snapshot.supportsV2 else { return }
-            let catalogRevision = bridge.revision
-            do {
-                let result = try await LAAStudioData.catalog(bridge)
-                guard bridge.revision == catalogRevision, !Task.isCancelled else { return }
-                catalog = result.catalog
-                catalogNote = result.stale ? "依頼の型は端末に保存した内容です。" : nil
-            } catch is CancellationError { }
-            catch {
-                guard bridge.revision == catalogRevision, !Task.isCancelled else { return }
-                if LAAStudioData.isAuthorizationFailure(error) { catalog = nil }
-                catalogNote = "依頼の型を読み込めません。本文はそのまま入力できます。"
-            }
-        }
-    }
-    private func appendTemplate(_ text: String) {
-        guard !draft.pending, !sending, !storageBlocked else { return }
-        let next = draft.prompt.isEmpty ? text : draft.prompt + "\n" + text
-        guard next.utf16.count <= 10000 else { error = LAACopy.Studio.tooLong; return }
-        draft.prompt = next; revision += 1
     }
     @MainActor private func submit() async {
         guard !sending && !storageBlocked && (!draft.pending || canRetry) else { return }
@@ -175,6 +138,9 @@ struct LAAStudioCreateView: View {
         defer { sending = false }
         do {
             if draft.requestID == nil { draft.requestID = try await LAAStudioData.requestID(bridge) }
+            if draft.isNew && draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.title = String(draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+            }
             let rotateKey = draft.pending && draft.workBusy != true
             guard let submission = try draft.submission(rotateKey: rotateKey) else { error = LAACopy.Studio.invalid; return }
             let previousDraft = draft
@@ -189,6 +155,8 @@ struct LAAStudioCreateView: View {
             done = true
             if !LAAStudioDraftStore.clear(deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
             created = record
+            NotificationCenter.default.post(name: .laaStudioChanged, object: record)
+            dismiss()
         } catch let failure as LAABridgeHTTPError {
             if failure.status == 409 && failure.code == "studio_work_busy" && failure.retryable == true {
                 draft.workBusy = true; canRetry = true
@@ -209,6 +177,8 @@ struct LAAStudioCreateView: View {
             done = true
             if !LAAStudioDraftStore.clear(deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
             created = record
+            NotificationCenter.default.post(name: .laaStudioChanged, object: record)
+            dismiss()
         } catch let failure as LAABridgeHTTPError {
             canRetry = draft.workBusy == true || failure.code == "studio_request_missing"
             error = LAAStudioData.message(failure)

@@ -6,6 +6,56 @@ import XCTest
 final class LAAStudioTests: XCTestCase {
     private let requestID = "0f6b1c2e-6f1a-4c55-9d43-0d5f6f3b8a11"
 
+    func testCachedSnapshotSurvivesRelaunchAndSeparatesPairings() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-cache-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = try LAAStudioData.sample("normal")
+        LAAStudioCache.saveSnapshot(original, scope: "mac-a/device-a", directory: directory)
+        let restored = try XCTUnwrap(LAAStudioCache.loadSnapshot(scope: "mac-a/device-a", directory: directory))
+        XCTAssertEqual(restored.projects.map(\.id), original.projects.map(\.id))
+        XCTAssertEqual(restored.requests.map(\.id), original.requests.map(\.id))
+        XCTAssertNil(LAAStudioCache.loadSnapshot(scope: "mac-b/device-a", directory: directory))
+        XCTAssertNil(LAAStudioCache.loadSnapshot(scope: "mac-a/device-b", directory: directory))
+        let file = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        try Data("invalid".utf8).write(to: file)
+        XCTAssertNil(LAAStudioCache.loadSnapshot(scope: "mac-a/device-a", directory: directory))
+    }
+
+    func testKindAndReferencesTravelInTheExactRetryPayload() throws {
+        var draft = LAAStudioDraft()
+        draft.requestID = requestID; draft.title = "試験"; draft.prompt = "1枚作る"
+        draft.kind = "画像"; draft.references = ["参考.png\nhttps://drive.google.com/file/d/example/view"]
+        let first = try XCTUnwrap(draft.submission())
+        XCTAssertTrue(first.request.prompt.contains("制作の種類: 画像"))
+        XCTAssertTrue(first.request.prompt.contains("https://drive.google.com/file/d/example/view"))
+        var restored = try JSONDecoder().decode(LAAStudioDraft.self, from: JSONEncoder().encode(draft))
+        restored.pending = true; restored.workBusy = true
+        let retry = try XCTUnwrap(restored.submission())
+        XCTAssertEqual(first.body, retry.body); XCTAssertEqual(first.key, retry.key)
+        var oversized = LAAStudioDraft(); oversized.requestID = requestID
+        oversized.title = "試験"; oversized.prompt = String(repeating: "a", count: 9999); oversized.kind = "画像"
+        XCTAssertNil(oversized.request())
+    }
+
+    func testConfirmationQueueUsesTheLatestRequestForEachWork() throws {
+        let fixture = try LAAStudioData.sample("normal")
+        let project = try XCTUnwrap(fixture.projects.first)
+        let request = try XCTUnwrap(fixture.requests.first).request
+        let completed = LAAStudioRecord(request: request, status: "completed", bootId: nil,
+            updatedAt: "2026-11-11T01:00:00Z", report: nil)
+        let revision = LAAStudioRecord(request: request, status: "queued", bootId: nil,
+            updatedAt: "2026-11-11T02:00:00Z", report: nil)
+        let snapshot = LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil,
+            projects: [project], principles: [], requests: [completed])
+        XCTAssertEqual(LAAStudioPresentation.awaitingReview(snapshot).map(\.id), [project.id])
+        let pending = LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil,
+            projects: [project], principles: [], requests: [revision, completed])
+        XCTAssertTrue(LAAStudioPresentation.awaitingReview(pending).isEmpty)
+        let now = ISO8601DateFormatter().date(from: "2026-11-11T03:00:00Z")!
+        XCTAssertEqual(LAAStudioPresentation.relativeDate("2026-11-11T02:58:00Z", now: now), "2分前")
+        XCTAssertEqual(LAAStudioPresentation.relativeDate("invalid", now: now), "")
+    }
+
     func testDraftRoundTripKeepsAnUncertainRequestAndNewWorkIdentity() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

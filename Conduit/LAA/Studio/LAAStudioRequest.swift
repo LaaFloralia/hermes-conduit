@@ -108,7 +108,7 @@ struct LAAStudioRequestView: View {
                         Text(verbatim: LAAStudioPresentation.status(record.status))
                             .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.link)
                     }
-                    Text(verbatim: LAAWorkPresentation.date(record.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: LAAStudioPresentation.relativeDate(record.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if record.status == "unreceived" { Text(verbatim: LAACopy.Studio.unreceived).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 }
                 Text(verbatim: record.request.prompt).laaTextStyle(.body).foregroundStyle(LAAColor.text).textSelection(.enabled)
@@ -136,7 +136,7 @@ struct LAAStudioRequestView: View {
                     }
                 }
                 if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
-                if busy { ProgressView() }
+
                 if let project, LAAStudioPresentation.hasDeliverables(project) {
                     NavigationLink { LAAStudioWorkView(project: project) } label: {
                         Text(verbatim: LAACopy.Studio.deliverables).frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -294,7 +294,7 @@ private struct LAAStudioRerequestView: View {
                 LAAStudioCreateView(snapshot: snapshot, initialProject: project, initialPrompt: previous.request.prompt, draftID: previous.id)
             } else if let error {
                 Text(verbatim: error).foregroundStyle(LAAColor.attention).padding(LAASpacing.horizontal)
-            } else { ProgressView() }
+            } else { LAAStudioSkeleton() }
         }.task {
             do {
                 let current = try await LAAStudioData.snapshot(bridge)

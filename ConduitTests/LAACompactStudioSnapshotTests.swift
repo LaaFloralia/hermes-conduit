@@ -17,11 +17,10 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
         let record = try XCTUnwrap(normal.requests.first)
         for style in [UIUserInterfaceStyle.light, .dark] {
             LAAStudioData.snapshotFixture = "normal"
-            try capture("works", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
-            try capture("requests", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true, initialStudioSection: 1)) }
-            try capture("work", style, bridge) { AnyView(LAAStudioWorkView(project: project)) }
-            try capture("create", style, bridge) { AnyView(LAAStudioCreateView(snapshot: normal)) }
-            try capture("request-approval", style, bridge) { AnyView(LAAStudioRequestView(initial: record, initialProject: project)) }
+            try capture("list-after", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
+                        try capture("detail-after", style, bridge) { AnyView(LAAStudioWorkView(project: project)) }
+            try capture("request-sheet-after", style, bridge) { AnyView(LAAStudioCreateView(snapshot: normal)) }
+            try capture("progress-after", style, bridge) { AnyView(LAAStudioRequestView(initial: record, initialProject: project)) }
             try capture("image", style, bridge) { AnyView(LAAStudioImageView(name: "Cover", path: nil)) }
             let path = "/v1/studio/media/\(project.id)/\(String(repeating: "a", count: 64)).mp4"
             let asset = LAAStudioAsset(id: "video1", name: "Film", kind: "video", url: nil, poster: nil, unavailable: nil, previewOnly: nil)
@@ -46,6 +45,9 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
         let snapshot = try LAAStudioData.sample("v2")
         let project = try XCTUnwrap(snapshot.projects.first)
         for style in [UIUserInterfaceStyle.light, .dark] {
+            LAAStudioData.snapshotFixture = "v2-completed"
+            try capture("review-list-after", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
+            LAAStudioData.snapshotFixture = "v2"
             try capture("v2-works", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
             try capture("v2-library", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true, initialStudioSection: 2)) }
             try capture("v2-work", style, bridge) { AnyView(LAAStudioWorkView(project: project, snapshot: snapshot)) }

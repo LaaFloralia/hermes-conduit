@@ -106,7 +106,7 @@ struct LAAStudioReviewView: View {
                 if storageError { Text(verbatim: "下書きを読み書きできません。保存済みの内容を保持するため送信を止めています。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                if sending { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+
                 Divider()
                 Text(verbatim: "履歴").laaTextStyle(.section).fontWeight(.semibold)
                 Text(verbatim: "作品の講評は新しいものから最大200件を表示します。")

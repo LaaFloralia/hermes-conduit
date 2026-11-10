@@ -5,300 +5,249 @@ import ImageIO
 
 struct LAAStudioHomeView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var section = 0
+    @Environment(\.laaDesktop) private var desktop
     @State private var snapshot: LAAStudioSnapshot?
     @State private var loading = false
     @State private var error: String?
     @State private var pairing = false
+    @State private var creating = false
+    @State private var submitted = false
+    @State private var library = false
+    @State private var searching = false
     @State private var search = ""
-    @Environment(\.laaDesktop) private var laaDesktop
-    @State private var desktopSelection: LAAStudioDesktopSelection?
-    @FocusState private var searchFocused: Bool
-    init(initialSection: Int = 0) { _section = State(initialValue: initialSection) }
-    private var columns: [GridItem] {
-        if laaDesktop {
-            return [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x6)]
-        }
-        return dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
-            [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
+    @State private var scope = ""
+    @State private var reviewed: [String: Int] = [:]
+    @State private var reviewChecks: [String: Date] = [:]
+    var requestGeneration: Int = 0
+    init(initialSection: Int = 0, requestGeneration: Int = 0) {
+        self.requestGeneration = requestGeneration
+        _library = State(initialValue: initialSection == 2)
     }
     var body: some View {
-        Group {
-            if laaDesktop { desktopContent } else { phoneContent }
-        }
-        .tint(LAAColor.link)
-        // ⌘F and ⌘R act on the list column: the Mac keeps its reload in that
-        // column's header, so the toolbar's is the phone's only. The Mac has no
-        // create sheet here, so the File menu's new item stays off by name.
-        .laaMacSectionCommands(LAAMacSectionCommands(
-            newTitle: LAACopy.Studio.newRequest,
-            canCreate: false,
-            canSearch: laaDesktop && section == 0 && LAAStudioData.available(bridge),
-            focusSearch: { searchFocused = true },
-            canReload: LAAStudioData.available(bridge),
-            reload: { Task { await load() } }
-        ))
-        .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge).tint(LAAColor.link) }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarLeading) {
-                if let snapshot {
-                    NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text(verbatim: LAACopy.Studio.newRequest)).accessibilityIdentifier("laa.studio.new")
-                }
-                if LAAStudioData.available(bridge) && !laaDesktop {
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
-                        .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh)).accessibilityIdentifier("laa.studio.refresh")
-                }
-            }
-        }
-        .task(id: bridge.revision) { await load() }
-    }
-
-    private var phoneContent: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            Picker(selection: $section) {
-                Text(verbatim: LAACopy.Studio.works).tag(0)
-                Text(verbatim: LAACopy.Studio.requests).tag(1)
-                if snapshot?.supportsV2 == true { Text(verbatim: "Library").tag(2) }
-            } label: {
-                Text(verbatim: "Studio")
-            }.pickerStyle(.segmented).frame(minHeight: LAASpacing.minimumTouchTarget)
-                .accessibilityIdentifier("laa.studio.section")
+        VStack(alignment: .leading, spacing: LAASpacing.section) {
             if !LAAStudioData.available(bridge) {
-                Text(verbatim: bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText : LAACopy.bridgeNotPairedBody)
-                    .laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                if bridge.status != .keychainError {
-                    Button { pairing = true } label: {
-                        Text(verbatim: LAACopy.Brain.connect)
-                    }.laaGlassButton(prominent: true)
-                        .accessibilityIdentifier("laa.studio.pair")
-                }
+                Text("Macに接続してください").foregroundStyle(LAAColor.secondaryText)
+                Button("接続する") { pairing = true }.laaGlassButton()
+                    .accessibilityIdentifier("laa.studio.pair")
             } else {
                 if let error {
-                    Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-                    Button { Task { await load() } } label: {
-                        Text(verbatim: LAACopy.Studio.retry)
-                    }.laaGlassButton()
+                    LAAStudioConnectionLine(message: error) { Task { await load() } }
+                } else if let snapshot, !snapshot.online {
+                    LAAStudioConnectionLine(message: "Studioに接続できません") { Task { await load() } }
+                } else if let snapshot, !snapshot.accepting {
+                    LAAStudioConnectionLine(message: "Studioに接続できません") { Task { await load() } }
                 }
-                if loading && snapshot == nil { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+                Button { submitted = false; creating = true } label: {
+                    HStack {
+                        Text("何を作りますか").font(.body)
+                        Spacer()
+                        Image(systemName: "plus")
+                    }.foregroundStyle(LAAColor.link).padding(LAASpacing.x4)
+                        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight)
+                        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.create")
+                if submitted { Text("依頼しました").foregroundStyle(LAAColor.secondaryText) }
                 if let snapshot {
-                    if !snapshot.online { Text(verbatim: LAACopy.Studio.disconnected).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                    else if !snapshot.accepting { Text(verbatim: LAACopy.Studio.notAccepting).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                    if !snapshot.supportsV2 {
-                        Text(verbatim: "版・講評・原則の詳細は、このStudioでは利用できません。")
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    }
-                    if section == 0 { works(snapshot) }
-                    else if section == 1 { requests(snapshot) }
-                    else if snapshot.supportsV2 { LAAStudioCatalogView(snapshot: snapshot) }
-                }
-            }
-        }
-    }
-    // MARK: Desktop (Mac) list, gallery and detail
-
-    private var desktopContent: some View {
-        LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
-            desktopList
-        } detail: {
-            desktopDetail
-        }
-        .background(LAAColor.background.ignoresSafeArea())
-    }
-
-    private var desktopList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                LAAStudioDesktopHeader(canRefresh: LAAStudioData.available(bridge), isRefreshing: loading) {
-                    Task { await load() }
-                }
-                Picker(selection: $section) {
-                    Text(verbatim: LAACopy.Studio.works).tag(0)
-                    Text(verbatim: LAACopy.Studio.requests).tag(1)
-                    if snapshot?.supportsV2 == true { Text(verbatim: "Library").tag(2) }
-                } label: {
-                    Text(verbatim: LAACopy.tabTitle(.studio))
-                }
-                .pickerStyle(.segmented)
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                .accessibilityIdentifier("laa.studio.section")
-                if !LAAStudioData.available(bridge) {
-                    Text(verbatim: bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText : LAACopy.bridgeNotPairedBody)
-                        .laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                    if bridge.status != .keychainError {
-                        Button { pairing = true } label: { Text(verbatim: LAACopy.Brain.connect) }
-                            .laaGlassButton(prominent: true)
-                            .accessibilityIdentifier("laa.studio.pair")
-                    }
-                } else {
-                    if let error {
-                        Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-                        Button { Task { await load() } } label: { Text(verbatim: LAACopy.Studio.retry) }
-                    }
-                    if loading && snapshot == nil { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
-                    if let snapshot {
-                        if !snapshot.online {
-                            Text(verbatim: LAACopy.Studio.disconnected).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    LAAStudioProgressSection(snapshot: snapshot)
+                    LAAStudioReviewQueue(snapshot: snapshot, reviewed: reviewed)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        HStack {
+                            Text("作品").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                            Spacer()
+                            Menu {
+                                Button("検索", systemImage: "magnifyingglass") { searching.toggle() }
+                                if snapshot.supportsV2 { Button("ライブラリ", systemImage: "books.vertical") { library = true } }
+                            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                            .accessibilityLabel("作品のメニュー").accessibilityIdentifier("laa.studio.menu")
                         }
-                        if section == 0 { desktopWorkRows(snapshot) }
-                        else if section == 1 { desktopRequestRows(snapshot) }
-                        else { Text(verbatim: "Library は右側の広い列に表示します。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                    }
-                }
-            }
-            .padding(.horizontal, LAASpacing.x4)
-            .padding(.vertical, LAASpacing.x4)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    @ViewBuilder private func desktopWorkRows(_ snapshot: LAAStudioSnapshot) -> some View {
-        let projects = desktopProjects(snapshot)
-        LAASearchField(placeholder: "作品を検索", text: $search,
-                       identifier: "laa.studio.work.search", focus: $searchFocused)
-        if projects.isEmpty {
-            Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。")
-                .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
-        } else {
-            LAAMacKeyboardList(count: projects.count,
-                              selectedIndex: projects.firstIndex { desktopSelection == .work($0.id) },
-                              move: { index in
-                                  guard projects.indices.contains(index) else { return }
-                                  desktopSelection = .work(projects[index].id)
-                              },
-                              open: {}) {
-                VStack(spacing: 0) {
-                    ForEach(projects) { project in
-                        LAAStudioDesktopRow(title: project.title,
-                                            detail: "\(project.kind) · \(LAAWorkPresentation.date(project.syncedAt))",
-                                            thumbnail: project.pages.first?.preview,
-                                            isSelected: desktopSelection == .work(project.id)) {
-                            desktopSelection = .work(project.id)
+                        if searching {
+                            LAASearchField(placeholder: "検索", text: $search, identifier: "laa.studio.work.search")
                         }
+                        LAAStudioWorksGrid(projects: snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }, snapshot: snapshot, desktop: desktop)
                     }
+                } else if loading {
+                    LAAStudioSkeleton()
                 }
             }
         }
-    }
-
-    @ViewBuilder private func desktopRequestRows(_ snapshot: LAAStudioSnapshot) -> some View {
-        if snapshot.requests.isEmpty {
-            Text(verbatim: LAACopy.Studio.emptyRequests).laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
-        } else {
-            desktopRequestGroup(LAACopy.Studio.active, records: snapshot.requests.filter(\.active), snapshot: snapshot)
-            desktopRequestGroup(LAACopy.Studio.finished, records: snapshot.requests.filter { !$0.active }, snapshot: snapshot)
+        .tint(LAAColor.link)
+        .onChange(of: requestGeneration) { _, _ in creating = true }
+        .onReceive(NotificationCenter.default.publisher(for: .laaStudioChanged)) { notice in
+            if notice.object is LAAStudioRecord { submitted = true }
+            Task { await load(refreshReviews: true) }
         }
-    }
-
-    @ViewBuilder private func desktopRequestGroup(_ title: String, records: [LAAStudioRecord], snapshot: LAAStudioSnapshot) -> some View {
-        if !records.isEmpty {
-            Text(verbatim: title.uppercased()).laaTextStyle(.section).fontWeight(.semibold)
-                .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
-            ForEach(records) { record in
-                LAAStudioDesktopRow(title: snapshot.projects.first { $0.id == record.request.projectId }?.title
-                                        ?? record.request.create?.title ?? record.request.prompt,
-                                    detail: LAAWorkPresentation.date(record.updatedAt),
-                                    status: record.status == "approval" ? LAACopy.Studio.needsApproval : LAAStudioPresentation.status(record.status),
-                                    attention: record.status == "approval",
-                                    symbol: "bubble.left.and.text.bubble.right",
-                                    isSelected: desktopSelection == .request(record.id)) {
-                    desktopSelection = .request(record.id)
+        .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge) }
+        .sheet(isPresented: $creating, onDismiss: { Task { await load() } }) {
+            NavigationStack { LAAStudioCreateView(snapshot: snapshot ?? LAAStudioSnapshot(online: false, accepting: false, lastSeen: nil, projects: [], principles: [], requests: [])) }
+                .environmentObject(bridge)
+        }
+        .sheet(isPresented: $library) {
+            NavigationStack {
+                if let snapshot { ScrollView { LAAStudioCatalogView(snapshot: snapshot).padding(LAASpacing.horizontal) }
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { library = false } } }
                 }
-                .accessibilityIdentifier("laa.studio.request.\(record.id)")
+            }.environmentObject(bridge)
+        }
+        .refreshable { await load(refreshReviews: true) }
+        .task(id: bridge.revision) {
+            let next = LAAStudioCache.scope(bridge)
+            if next != scope {
+                snapshot = nil; scope = next; reviewChecks = [:]
+                reviewed = LAAStudioCache.load([String: Int].self, scope: next, item: "reviewed") ?? [:]
+            }
+            if snapshot == nil { snapshot = LAAStudioCache.loadSnapshot(scope: scope) }
+            await load()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(8)) } catch { break }
+                await load()
             }
         }
     }
-
-    @ViewBuilder private var desktopDetail: some View {
-        if section == 2, let snapshot, snapshot.supportsV2 {
-            LAAStudioCatalogView(snapshot: snapshot)
-        } else if let selection = desktopSelection, case .work(let id) = selection,
-                  let project = snapshot?.projects.first(where: { $0.id == id }) {
-            LAAStudioWorkBody(project: project, snapshot: snapshot)
-        } else if let selection = desktopSelection, case .request(let id) = selection,
-                  let record = snapshot?.requests.first(where: { $0.id == id }) {
-            LAAStudioRequestView(initial: record,
-                                 initialProject: snapshot?.projects.first { $0.id == record.request.projectId })
-                .laaReadableWidth(LAADesktopMetrics.documentWidth)
-        } else {
-            LAAMacEmptyDetail(symbol: "square.stack.3d.up", title: "作品を選ぶ",
-                              message: "左の一覧から作品を選ぶと、ここに詳細とプレビューを表示します。")
-        }
-    }
-
-    private func desktopProjects(_ snapshot: LAAStudioSnapshot) -> [LAAStudioProject] {
-        snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
-    }
-
-    private func works(_ snapshot: LAAStudioSnapshot) -> some View {
-        let projects = snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
-        return VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Text(verbatim: "\(LAACopy.Studio.works.uppercased()) · \(projects.count)").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-            LAASearchField(placeholder: "作品を検索", text: $search, identifier: "laa.studio.work.search")
-            if projects.isEmpty { Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。").foregroundStyle(LAAColor.secondaryText) }
-            else {
-                LazyVGrid(columns: columns, spacing: LAASpacing.x2) {
-                    ForEach(projects) { project in
-                        NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
-                            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                                LAAStudioThumbnail(path: project.pages.first?.preview, symbol: "doc.richtext")
-                                    .aspectRatio(1, contentMode: .fit)
-                                Text(verbatim: project.title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                                Text(verbatim: "\(project.kind) · \(LAAWorkPresentation.date(project.syncedAt))")
-                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                            }.padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                        }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.work.\(project.id)")
-                    }
-                }
-            }
-        }
-    }
-    private func requests(_ snapshot: LAAStudioSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            if snapshot.requests.isEmpty { Text(verbatim: LAACopy.Studio.emptyRequests).foregroundStyle(LAAColor.secondaryText) }
-            requestGroup(LAACopy.Studio.active, records: snapshot.requests.filter(\.active), snapshot: snapshot)
-            requestGroup(LAACopy.Studio.finished, records: snapshot.requests.filter { !$0.active }, snapshot: snapshot)
-        }
-    }
-    private func requestGroup(_ title: String, records: [LAAStudioRecord], snapshot: LAAStudioSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            if !records.isEmpty {
-                Text(verbatim: title.uppercased()).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                ForEach(records) { record in
-                    NavigationLink {
-                        LAAStudioRequestView(initial: record, initialProject: snapshot.projects.first { $0.id == record.request.projectId })
-                    } label: {
-                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                            Text(verbatim: snapshot.projects.first(where: { $0.id == record.request.projectId })?.title ?? record.request.create?.title ?? record.request.prompt)
-                                .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text).lineLimit(2)
-                            HStack(spacing: LAASpacing.x1) {
-                                if record.status == "approval" {
-                                    Label(LAACopy.Studio.needsApproval, systemImage: "exclamationmark.circle.fill")
-                                        .foregroundStyle(LAAColor.attention)
-                                } else {
-                                    Text(verbatim: LAAStudioPresentation.status(record.status)).foregroundStyle(LAAColor.secondaryText)
-                                }
-                                Text(verbatim: "· \(LAAWorkPresentation.date(record.updatedAt))").foregroundStyle(LAAColor.secondaryText)
-                            }.laaTextStyle(.secondary)
-                        }.padding(LAASpacing.x4).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                    }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.request.\(record.id)")
-                }
-            }
-        }
-    }
-    @MainActor private func load() async {
-        guard LAAStudioData.available(bridge) else { snapshot = nil; return }
-        loading = true; error = nil
+    @MainActor private func load(refreshReviews: Bool = false) async {
+        guard !loading, LAAStudioData.available(bridge) else { return }
+        loading = true; defer { loading = false }
+        let revision = bridge.revision
         do {
-            snapshot = try await LAAStudioData.snapshot(bridge)
-            if snapshot?.supportsV2 != true && section == 2 { section = 0 }
+            let result = try await LAAStudioData.snapshot(bridge)
+            guard revision == bridge.revision, !Task.isCancelled else { return }
+            snapshot = result; error = nil
+            LAAStudioCache.saveSnapshot(result, scope: LAAStudioCache.scope(bridge))
+            if result.supportsV2 {
+                for project in LAAStudioPresentation.awaitingReview(result) {
+                    let key = project.id + "-" + String(project.revision)
+                    if !refreshReviews, let checked = reviewChecks[key], Date().timeIntervalSince(checked) < 60 { continue }
+                    guard revision == bridge.revision, !Task.isCancelled else { return }
+                    if let detail = try? await LAAStudioData.project(project.id, bridge: bridge) {
+                        guard revision == bridge.revision else { return }
+                        reviewChecks[key] = Date()
+                        if detail.reviews.contains(where: { $0.target == .project && $0.revision == project.revision && $0.verdict != nil }) {
+                            reviewed[project.id] = project.revision
+                        } else { reviewed.removeValue(forKey: project.id) }
+                    }
+                }
+                LAAStudioCache.save(reviewed, scope: scope, item: "reviewed")
+            }
+        } catch is CancellationError { }
+        catch {
+            guard revision == bridge.revision else { return }
+            if LAAStudioData.isAuthorizationFailure(error) { snapshot = nil }
+            self.error = LAAStudioData.isAuthorizationFailure(error) ? LAAStudioData.message(error) : "Studioに接続できません"
         }
-        catch is CancellationError { }
-        catch { self.error = LAAStudioData.message(error) }
-        loading = false
+    }
+}
+
+struct LAAStudioConnectionLine: View {
+    let message: String
+    let retry: () -> Void
+    var body: some View {
+        HStack(spacing: LAASpacing.x2) {
+            Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            Spacer(minLength: 0)
+            Button("再試行", action: retry).frame(minHeight: 44)
+        }
+    }
+}
+
+private struct LAAStudioProgressSection: View {
+    let snapshot: LAAStudioSnapshot
+    private var records: [LAAStudioRecord] { snapshot.requests.filter(\.active) }
+    var body: some View {
+        if !records.isEmpty {
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                Text("進行中").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                VStack(spacing: 0) {
+                    ForEach(records) { record in
+                        NavigationLink {
+                            LAAStudioRequestView(initial: record, initialProject: snapshot.projects.first { $0.id == record.request.projectId })
+                        } label: {
+                            LAAStudioProgressRow(record: record, title: LAAStudioPresentation.title(for: record, project: snapshot.projects.first { $0.id == record.request.projectId }))
+                        }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.request.\(record.id)")
+                        if record.id != records.last?.id { Divider().padding(.horizontal, LAASpacing.x4) }
+                    }
+                }.background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            }
+        }
+    }
+}
+
+private struct LAAStudioProgressRow: View {
+    let record: LAAStudioRecord
+    let title: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: title).font(.body.weight(.semibold)).foregroundStyle(LAAColor.text).lineLimit(2)
+            HStack {
+                Text(verbatim: LAAStudioPresentation.status(record.status))
+                    .foregroundStyle(record.status == "approval" ? LAAColor.attention : LAAColor.link)
+                    .padding(.horizontal, LAASpacing.x1).padding(.vertical, 2)
+                    .background(LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: 4))
+                Spacer()
+                Text(verbatim: LAAStudioPresentation.relativeDate(record.updatedAt)).foregroundStyle(LAAColor.secondaryText)
+            }.laaTextStyle(.secondary)
+            if record.status == "running" {
+                // No percentage is provided by intake; a steady line identifies active production.
+                Capsule().fill(LAAColor.link).frame(height: 2).accessibilityHidden(true)
+            }
+        }.padding(LAASpacing.x4).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+    }
+}
+
+private struct LAAStudioReviewQueue: View {
+    let snapshot: LAAStudioSnapshot
+    let reviewed: [String: Int]
+    private var projects: [LAAStudioProject] { LAAStudioPresentation.awaitingReview(snapshot).filter { reviewed[$0.id] != $0.revision } }
+    var body: some View {
+        if !projects.isEmpty {
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                Text("確認待ち").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                ForEach(projects) { project in
+                    NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
+                        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                            LAAStudioThumbnail(path: project.pages.first?.preview ?? project.assets?.first?.poster, symbol: LAAStudioPresentation.symbol(project))
+                                .frame(height: 190)
+                            HStack { Text(verbatim: project.title).foregroundStyle(LAAColor.text); Spacer(); Text("見る").foregroundStyle(LAAColor.link) }
+                        }.padding(LAASpacing.x3).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                    }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.review-work.\(project.id)")
+                }
+            }
+        }
+    }
+}
+
+private struct LAAStudioWorksGrid: View {
+    let projects: [LAAStudioProject]
+    let snapshot: LAAStudioSnapshot
+    let desktop: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var columns: [GridItem] {
+        desktop ? [GridItem(.adaptive(minimum: LAADesktopMetrics.gridItemMinWidth), spacing: LAASpacing.x4)] :
+            Array(repeating: GridItem(.flexible(), spacing: LAASpacing.x2), count: typeSize.isAccessibilitySize ? 1 : 2)
+    }
+    var body: some View {
+        if projects.isEmpty {
+            Text("作品はまだありません").foregroundStyle(LAAColor.secondaryText).frame(maxWidth: .infinity, minHeight: 100)
+        } else {
+            LazyVGrid(columns: columns, spacing: LAASpacing.x4) {
+                ForEach(projects) { project in
+                    NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
+                        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                            LAAStudioThumbnail(path: project.pages.first?.preview ?? project.assets?.first?.poster, symbol: LAAStudioPresentation.symbol(project))
+                                .aspectRatio(1, contentMode: .fit)
+                            Text(verbatim: project.title).font(.body).foregroundStyle(LAAColor.text).lineLimit(2)
+                            Text(verbatim: LAAStudioPresentation.relativeDate(project.syncedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.work.\(project.id)")
+                }
+            }
+        }
+    }
+}
+
+struct LAAStudioSkeleton: View {
+    var body: some View {
+        VStack(spacing: LAASpacing.x2) {
+            ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface).frame(height: LAASpacing.minimumRowHeight) }
+        }.accessibilityLabel("作品を読み込み中")
     }
 }
 
@@ -314,7 +263,7 @@ struct LAAStudioThumbnail: View {
             else { Image(systemName: symbol).foregroundStyle(LAAColor.link) }
         }.task(id: path) { await load() }
     }
-    @MainActor private func load() async {
+    @MainActor private func load(refreshReviews: Bool = false) async {
         image = nil
         guard let path = LAAStudioMedia.bridgePath(path, allowed: ["jpg", "png", "webp"]),
               let suffix = path.split(separator: ".").last,

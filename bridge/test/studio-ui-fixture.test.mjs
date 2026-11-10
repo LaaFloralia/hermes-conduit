@@ -130,6 +130,9 @@ test('UI fixture reserves and replays request creation keys', async (t) => {
   assert.equal(first.status, 202);
   assert.deepEqual(replay.body.data, first.body.data);
   assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+  const snapshot = (await (await f.get('/v1/studio/snapshot')).json()).data;
+  assert.equal(snapshot.requests.filter(x => x.id === draft.id || x.request.id === draft.id).length, 1);
+  assert.equal(await f.control('create-count'), '1');
   assert.equal((await f.post('/v1/studio/requests', 'create-key', { ...draft, prompt: 'Different' })).body.error.code, 'idempotency_key_conflict');
 });
 
