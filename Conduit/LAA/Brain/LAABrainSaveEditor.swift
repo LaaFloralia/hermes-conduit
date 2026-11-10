@@ -28,6 +28,7 @@ struct LAABrainSaveEditor: View {
     var readingPositions: LAABrainReadingPositions? = nil
     var onOpenLink: ((String) -> Void)? = nil
     var attachments: ((String) -> AnyView)? = nil
+    var relatedNotes: ((@escaping (String) -> Void) -> AnyView)? = nil
     @State private var showRaw = false
     @State private var showInfo = false
     @State private var showFind = false
@@ -68,6 +69,7 @@ struct LAABrainSaveEditor: View {
          leave: (() -> Void)? = nil, manage: (() -> Void)? = nil,
          readingPositions: LAABrainReadingPositions? = nil, onOpenLink: ((String) -> Void)? = nil,
          attachments: ((String) -> AnyView)? = nil,
+         relatedNotes: ((@escaping (String) -> Void) -> AnyView)? = nil,
          didSave: @escaping () -> Void) {
         self.root = root
         self.path = path
@@ -77,6 +79,7 @@ struct LAABrainSaveEditor: View {
         self.inline = inline; self.showsBackButton = showsBackButton
         self.isPinned = isPinned; self.togglePin = togglePin; self.leave = leave; self.manage = manage
         self.readingPositions = readingPositions; self.onOpenLink = onOpenLink; self.attachments = attachments
+        self.relatedNotes = relatedNotes
     }
 
     private var page: some View {
@@ -103,10 +106,8 @@ struct LAABrainSaveEditor: View {
                                           breadcrumb: path.split(separator: "/").dropLast().joined(separator: " › "),
                                           status: saveStatus,
                                           readingPositions: readingPositions, positionKey: root.absoluteString + path,
-                                          attachments: attachments,
-                                          onOpenLink: { target in
-                                              Task { await save(automatically: true); onOpenLink?(target) }
-                                          }) { changed in
+                                          attachments: attachments, footer: relatedNotes?(saveAndOpenLink),
+                                          onOpenLink: saveAndOpenLink) { changed in
                             // Closed metadata stays byte-for-byte outside the editable body.
                             draft = metadataPrefix + changed
                         }
@@ -332,6 +333,10 @@ struct LAABrainSaveEditor: View {
             Text(verbatim: text).font(.body.monospaced()).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }.padding().background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+    }
+
+    private func saveAndOpenLink(_ target: String) {
+        Task { await save(automatically: true); onOpenLink?(target) }
     }
 
     @MainActor private func open() async {

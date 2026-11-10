@@ -49,7 +49,10 @@ struct LAABrainNoteView: View {
                         manage: { managedNote = note; editorIsOpen = true; showManage = true },
                         readingPositions: readingPositions,
                         onOpenLink: { target in openLink(target) },
-                        attachments: { source in AnyView(attachmentPreviews(source)) }) { Task { await load() } }
+                        attachments: { source in AnyView(attachmentPreviews(source)) },
+                        relatedNotes: { open in
+                            AnyView(relatedNotes(path: reference.path, open: open))
+                        }) { Task { await load() } }
                         .id(root.absoluteString + reference.path)
                 } else {
             ZStack {
@@ -101,10 +104,7 @@ struct LAABrainNoteView: View {
                                 LAABrainRenderedDocument(note: note, files: files, local: local, isLocal: isLocal,
                                                          visited: [note.path], depth: 0, open: { path.append(.note($0)) },
                                                          lookup: LAABrainPathLookup(files: files))
-                                if isLocal, let index {
-                                    relatedLinks(LAACopy.Brain.links, files: index.outgoing(from: note.path, files: files))
-                                    relatedLinks(LAACopy.Brain.backlinks, files: index.backlinks(to: note.path, files: files))
-                                }
+                                if isLocal { relatedNotes(path: note.path, open: openLink) }
                             }
                         }
                     }
@@ -225,11 +225,18 @@ struct LAABrainNoteView: View {
         }
     }
 
-    @ViewBuilder private func relatedLinks(_ title: String, files: [LAABrainFile]) -> some View {
+    @ViewBuilder private func relatedNotes(path: String, open: @escaping (String) -> Void) -> some View {
+        if let index {
+            relatedLinks(LAACopy.Brain.links, files: index.outgoing(from: path, files: files), open: open)
+            relatedLinks(LAACopy.Brain.backlinks, files: index.backlinks(to: path, files: files), open: open)
+        }
+    }
+
+    @ViewBuilder private func relatedLinks(_ title: String, files: [LAABrainFile], open: @escaping (String) -> Void) -> some View {
         if !files.isEmpty {
             LAASectionHeader(title).padding(.top, LAASpacing.x4)
             ForEach(files) { file in
-                LAAListRow(action: { path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox))) }) {
+                LAAListRow(action: { open(file.path) }) {
                     Label { Text(verbatim: LAADateText.noteTitle(file.title)) } icon: { Image(systemName: "doc.text") }
                 }
             }

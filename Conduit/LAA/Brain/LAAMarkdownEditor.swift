@@ -20,6 +20,7 @@ struct LAAMarkdownEditor: View {
     var readingPositions: LAABrainReadingPositions? = nil
     var positionKey = ""
     var attachments: ((String) -> AnyView)? = nil
+    var footer: AnyView?
     var onOpenLink: ((String) -> Void)? = nil
     /// The draft as the save sheet holds it; a change that the editor did not
     /// make (a restored version, the other side of a conflict) reloads the
@@ -29,7 +30,7 @@ struct LAAMarkdownEditor: View {
     init(text: String, autoFocus: Bool = false, isEnabled: Bool = true,
          title: String? = nil, breadcrumb: String? = nil, status: String? = nil,
          readingPositions: LAABrainReadingPositions? = nil, positionKey: String = "",
-         attachments: ((String) -> AnyView)? = nil,
+         attachments: ((String) -> AnyView)? = nil, footer: AnyView? = nil,
          onOpenLink: ((String) -> Void)? = nil,
          onChange: @escaping (String) -> Void) {
         _model = StateObject(wrappedValue: LAAMarkdownDocumentModel(text: text, onChange: onChange))
@@ -38,7 +39,7 @@ struct LAAMarkdownEditor: View {
         self.isEnabled = isEnabled
         self.title = title; self.breadcrumb = breadcrumb; self.status = status
         self.readingPositions = readingPositions; self.positionKey = positionKey
-        self.onOpenLink = onOpenLink; self.attachments = attachments
+        self.onOpenLink = onOpenLink; self.attachments = attachments; self.footer = footer
     }
 
     var body: some View {
@@ -62,6 +63,7 @@ struct LAAMarkdownEditor: View {
                     ForEach(model.segments) { segment in
                         segmentView(segment)
                     }
+                    if !session.isEditing, let footer { footer }
                 }
                 .frame(width: max(0, geometry.size.width - LAASpacing.horizontal * 2), alignment: .leading)
                 .padding(.horizontal, LAASpacing.horizontal)

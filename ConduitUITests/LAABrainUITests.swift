@@ -788,6 +788,7 @@ final class LAABrainUITests: XCTestCase {
         dateNote.tap()
         XCTAssertEqual(app.staticTexts["laa.brain.note.title"].label, "11月11日（水）")
         XCTAssertTrue(app.staticTexts["11月10日 更新"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["リンク"].waitForExistence(timeout: 10))
         let read = XCTAttachment(screenshot: app.screenshot()); read.name = "doc-reading-" + style; read.lifetime = .keepAlways; add(read)
     }
 
