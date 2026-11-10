@@ -16,8 +16,6 @@ struct LAAUsageSnapshot<Value> {
             fetchedAt = date
             error = nil
         case .failure(let error):
-            self.value = nil
-            self.fetchedAt = nil
             self.error = LAAUsageProblem(error)
         }
     }
@@ -33,15 +31,17 @@ enum LAAUsageProblem: Error, Equatable {
         else { self = .failed }
     }
 
-    var message: String {
+    var japaneseText: String {
         switch self {
+        case .bridge(.networkUnreachable), .bridge(.unavailable): return "Macに接続できません"
+        case .bridge(.forbidden): return "利用枠を表示する権限がありません"
         case .bridge(let error): return error.japaneseText
-        case .failed: return AppLocalization.string("Couldn't load usage. Pull down to try again.")
+        case .failed: return "利用枠を取得できません"
         }
     }
 }
 
-/// Owns one refresh at a time; a failed refresh clears its previous values.
+/// Owns one refresh at a time; failed reads retain the last observation.
 @MainActor
 final class LAAUsageState: ObservableObject {
     @Published private(set) var usage = LAAUsageSnapshot<[LAAUsageItem]>()
@@ -63,6 +63,11 @@ final class LAAUsageState: ObservableObject {
         self.widgetStore = widgetStore
         self.reloadWidgets = reloadWidgets
         self.loadUsage = loader ?? { try await Self.loadPages(bridge: $0) }
+        if LAAWidgetUsageConnection.read() != nil, let saved = widgetStore?.readUsageItems() {
+            usage.value = saved
+            usage.fetchedAt = saved.compactMap { LAAUsageItem.date($0.observedAt) }.max()
+            updatedAt = usage.fetchedAt
+        }
     }
 
     /// The shell owns this state so widgets update even if Usage is never opened.
@@ -84,6 +89,26 @@ final class LAAUsageState: ObservableObject {
     /// Refresh the shared feed even while Usage is visible.
     func refreshAutomatically(bridge: LAABridgeSession) async {
         await refreshAndPublish(bridge: bridge)
+    }
+
+    /// Work and a pushed Usage screen can own a separate state from the shell.
+    /// That screen must fetch, not merely repaint its old observation's age.
+    func refreshWhileVisible(bridge: LAABridgeSession,
+                             sleep: @MainActor () async throws -> Void = {
+                                 #if DEBUG
+                                 if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_USAGE_FAST_REFRESH") {
+                                     try await Task.sleep(for: .seconds(2)); return
+                                 }
+                                 #endif
+                                 try await Task.sleep(for: .seconds(120))
+                             }) async {
+        await refreshOnTabOpen(bridge: bridge)
+        guard bridge.status == .paired else { return }
+        while !Task.isCancelled {
+            do { try await sleep() } catch { return }
+            guard !Task.isCancelled else { return }
+            await refreshAutomatically(bridge: bridge)
+        }
     }
 
     /// Opening Usage refreshes after a quiet interval; explicit refresh bypasses it.
@@ -109,14 +134,36 @@ final class LAAUsageState: ObservableObject {
         guard !isRefreshing else { return }
         lastRefreshAttempt = attemptedAt ?? Date()
         let revision = bridge.revision
+        // Sharing the existing app credential uses the already entitled App
+        // Group's Keychain, never a file or a second pairing.
+        if widgetStore != nil {
+            try? await bridge.withAuthenticatedClient { _, credentials in
+                let connection = LAAWidgetUsageConnection(baseURL: credentials.baseURL,
+                                                           deviceID: credentials.deviceID, token: credentials.token)
+                if let shared = LAAWidgetUsageConnection.read(), shared != connection {
+                    self.usage = .init()
+                    self.updatedAt = nil
+                    self.publish(nil)
+                }
+                try LAAWidgetUsageConnection.save(connection)
+            }
+        }
         await refreshUsage { try await self.loadUsage(bridge) }
-        guard bridge.status == .paired else { publish(nil); return }
+        guard bridge.status == .paired else { usage = .init(); updatedAt = nil; publish(nil); return }
         guard !Task.isCancelled, bridge.revision == revision else { return }
-        if let items = usage.value {
-            publish(LAAWidgetUsageBuilder.make(items: items, receivedAt: usage.fetchedAt ?? Date(),
-                                              previous: widgetStore?.read()?.usage))
-        } else if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
+        if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
+            usage = .init(error: error)
+            updatedAt = nil
             publish(nil)
+        } else if let items = usage.value {
+            if let store = widgetStore {
+                do {
+                    if try store.updateUsage({ LAAWidgetUsageBuilder.make(items: items,
+                                                    receivedAt: usage.fetchedAt ?? Date(), previous: $0) }) {
+                        reloadWidgets()
+                    }
+                } catch { /* Keep the previous observation. */ }
+            }
         } else if let previous = widgetStore?.read()?.usage {
             // Preserve the observation for recovery, but immediately mark it
             // stale so a failed fetch can never leave a fresh-looking number.
@@ -127,6 +174,10 @@ final class LAAUsageState: ObservableObject {
 
     private func publish(_ snapshot: WidgetUsageSnapshot?) {
         guard let store = widgetStore else { return }
+        if snapshot == nil {
+            try? LAAWidgetUsageConnection.save(nil)
+            try? store.writeUsageItems(nil)
+        }
         do { if try store.writeUsage(snapshot) { reloadWidgets() } }
         catch { /* Keep the last valid widget snapshot. */ }
     }
@@ -189,14 +240,25 @@ final class LAAUsageState: ObservableObject {
             for item in usage.value ?? [] { previous[item.id] = item }
             for index in items.indices {
                 let prior = previous[items[index].id]
+                if items[index].availability != "available", var retained = prior, retained.availableValue != nil {
+                    retained.retainedReason = items[index].nullReason
+                    items[index] = retained
+                }
                 items[index].freshnessAnchor = LAAUsageItem.date(prior?.observedAt) == LAAUsageItem.date(items[index].observedAt)
                     ? (prior?.freshnessAnchor ?? finished) : finished
             }
+            // Missing rows keep their last known reading; retired providers
+            // are still filtered by the code-owned display slots.
+            let ids = Set(items.map(\.id))
+            items += (usage.value ?? []).filter { !ids.contains($0.id) && $0.availableValue != nil }.map {
+                var retained = $0; retained.retainedReason = "fetch_failed"; return retained
+            }
             usage.apply(.success(items), at: finished)
+            try? widgetStore?.writeUsageItems(items)
         case .failure(let error):
             usage.apply(.failure(error), at: finished)
         }
-        if case .success = result { updatedAt = finished } else { updatedAt = nil }
+        if case .success = result { updatedAt = finished }
         completedGeneration = mine
     }
 
@@ -289,161 +351,6 @@ struct LAAUsageGroup: Identifiable {
     }
 }
 
-enum LAAWidgetUsageBuilder {
-    /// One ordered list for the app's AI Usage screen and the widget. The
-    /// widget leaves out Liquid AI, so the list fits the largest widget without
-    /// dropping a row silently.
-    struct Slot {
-        enum Reading { case weeklyQuota, balance, credits, recordedUsage }
-        let provider: String
-        let name: String
-        let reading: Reading
-        /// Whether the home-screen widget lists this provider.
-        let showsInWidget: Bool
-
-        /// Only the reading this slot shows may fill it, so a snapshot written
-        /// when the API rows were spend never fills a balance slot.
-        func owns(_ meterID: String) -> Bool {
-            let prefix = "provider.\(provider)."
-            switch reading {
-            case .weeklyQuota: return meterID.hasPrefix(prefix + "quota")
-            case .balance: return meterID == prefix + "balance"
-            case .credits: return meterID.hasPrefix(prefix + "credits")
-            case .recordedUsage: return meterID.hasPrefix(prefix + "usage")
-            }
-        }
-    }
-
-    static let slots: [Slot] = [
-        Slot(provider: "codex", name: "Codex", reading: .weeklyQuota, showsInWidget: true),
-        Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, showsInWidget: true),
-        Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
-        Slot(provider: "nanogpt", name: "nanoGPT", reading: .weeklyQuota, showsInWidget: true),
-        Slot(provider: "magnific", name: "Magnific", reading: .credits, showsInWidget: true),
-        Slot(provider: "openai-api", name: "GPT API", reading: .balance, showsInWidget: true),
-        Slot(provider: "claude-api", name: "Claude API", reading: .balance, showsInWidget: true),
-        Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage, showsInWidget: false),
-        Slot(provider: "venice", name: "Venice", reading: .balance, showsInWidget: true),
-    ]
-
-    /// The rows the widget draws, in the owner's priority order.
-    static var widgetSlots: [Slot] { slots.filter(\.showsInWidget) }
-
-    static func make(items: [LAAUsageItem], receivedAt: Date = Date(), previous: WidgetUsageSnapshot? = nil) -> WidgetUsageSnapshot {
-        let feed = items.filter { $0.source == "codexbar-usage-proxy" }
-        let meters = widgetSlots.compactMap { slot -> WidgetUsageMeter? in
-            let current = meter(for: slot, feed: feed, receivedAt: receivedAt)
-            if current?.hasRecordedValue(at: receivedAt) == true { return current }
-            if let prior = previous?.displayableMeters.first(where: {
-                slot.owns($0.id) && $0.hasRecordedValue(at: receivedAt)
-            }) { return prior.lastKnown(label: slot.name) }
-            return current
-        }
-        // The feed can be cached even when the app has just contacted Bridge.
-        // Only show a confirmation time if all displayed readings have one.
-        let observations = meters.filter(\.available).compactMap(\.observedAt)
-        let checkedAt = observations.isEmpty ? nil : observations.min()
-        return WidgetUsageSnapshot(meters: meters, checkedAt: checkedAt)
-    }
-
-    private static func meter(for slot: Slot, feed: [LAAUsageItem], receivedAt: Date) -> WidgetUsageMeter? {
-        let prefix = "provider.\(slot.provider)."
-        let available = { (item: LAAUsageItem) in
-            item.availability == "available" && !LAAUsageFreshness.isPast(item, at: receivedAt)
-        }
-        switch slot.reading {
-        case .weeklyQuota:
-            guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "quota" }) else { return nil }
-            let window = weeklyWindow(item.detail?.windows ?? [])
-            guard available(item), let window,
-                  let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) else {
-                return .missing(id: "\(item.id).weekly", label: slot.name)
-            }
-            return meter(id: "\(item.id).weekly", label: slot.name, unit: .percent, amount: remaining,
-                         item: item, freshUntil: item.detail?.freshUntil,
-                         resetsAt: LAAUsageItem.date(window.resetsAt), receivedAt: receivedAt)
-        case .balance:
-            // A balance the feed does not carry is left out rather than drawn
-            // with no number: a spend figure never appears in its place.
-            // A billing-page reading can be negative (an unpaid balance).
-            guard let item = feed.first(where: { $0.id == "\(prefix)balance" }) else {
-                // The API rows stay listed even when the feed has no reading.
-                return LAAUsageGroup.isAPI(prefix) ? .missing(id: "\(prefix)balance", label: slot.name) : nil
-            }
-            guard available(item), item.unit == "usd", let amount = item.value, amount.isFinite else {
-                return .missing(id: item.id, label: slot.name)
-            }
-            return meter(id: item.id, label: slot.name, unit: .usd, amount: amount,
-                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
-        case .credits:
-            guard let item = feed.first(where: { $0.id == "\(prefix)credits" }) else { return nil }
-            guard available(item), item.unit == "credits", let amount = item.value, amount.isFinite, amount >= 0 else {
-                return .missing(id: item.id, label: slot.name)
-            }
-            return meter(id: item.id, label: slot.name, unit: .credits, amount: amount,
-                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
-        case .recordedUsage:
-            guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "usage" }) else { return nil }
-            guard available(item), let amount = item.detail?.recordedCostUsd, amount.isFinite else {
-                return .missing(id: item.id, label: slot.name)
-            }
-            return meter(id: item.id, label: slot.name, unit: .usd, amount: amount,
-                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
-        }
-    }
-
-    /// The window the owner means by "Weekly": the 7-day quota when the feed
-    /// names its duration, otherwise the window the feed itself calls Weekly.
-    private static func weeklyWindow(_ windows: [LAAUsageItem.Window]) -> LAAUsageItem.Window? {
-        windows.first { window in
-            if let minutes = window.windowMinutes { return minutes == 10_080 }
-            return LAAUsageLabel.isWeekly(window.label)
-        }
-    }
-
-    private static func meter(id: String, label: String, unit: WidgetUsageMeter.Unit, amount: Double,
-                              item: LAAUsageItem, freshUntil: String?, resetsAt: Date?,
-                              receivedAt: Date) -> WidgetUsageMeter {
-        let observed = LAAUsageItem.date(item.observedAt)
-        let verified = item.detail?.sourceKind == "verified"
-        let upstreamDeadline = LAAUsageItem.date(freshUntil)
-        let limit = observed.map { min($0, item.freshnessAnchor ?? receivedAt, receivedAt).addingTimeInterval(10 * 60) }
-        let deadline: Date?
-        if freshUntil == nil {
-            deadline = verified ? nil : limit
-        } else {
-            deadline = upstreamDeadline.flatMap { upstream in limit.map { min($0, upstream) } }
-        }
-        return WidgetUsageMeter(id: id, label: label, unit: unit, amount: amount,
-                                observedAt: observed, freshUntil: deadline, resetsAt: resetsAt,
-                                stale: item.stale || (freshUntil != nil && deadline == nil),
-                                retained: false, verified: verified,
-                                legacyFreshness: freshUntil == nil && !verified)
-    }
-}
-
-/// One naming rule for the quota windows, shared by the app list and the widget.
-enum LAAUsageLabel {
-    static func isWeekly(_ label: String) -> Bool {
-        ["weekly", "週間", "週次", "週刊", "ウィークリー"].contains(label.lowercased()) || label.hasPrefix("週次")
-    }
-
-    /// Display name for one window. A duration the feed reports wins, so a 7-day
-    /// pool reads 週間 whatever the proxy calls it.
-    static func window(_ window: LAAUsageItem.Window) -> String {
-        if let minutes = window.windowMinutes {
-            if minutes == 10_080 { return "週間" }
-            if minutes == 43_200 { return "月間" }
-        }
-        if isWeekly(window.label) { return "週間" }
-        if ["monthly", "月間", "マンスリー"].contains(window.label.lowercased()) {
-            return "月間"
-        }
-        return window.label
-    }
-}
-
-
 /// The OS decides when a background refresh runs; the widget timeline still
 /// labels the last observation when a refresh is delayed.
 @MainActor
@@ -456,11 +363,26 @@ enum LAAUsageBackground {
                 schedule()
                 let bridge = LAABridgeSession()
                 let state = LAAUsageState()
-                await state.refreshAndPublish(bridge: bridge)
-                task.setTaskCompleted(success: !Task.isCancelled && bridge.status == .paired && state.usage.error == nil)
+                let success: Bool
+                if bridge.status == .keychainError {
+                    success = await refreshFromPush()
+                } else {
+                    await state.refreshAndPublish(bridge: bridge)
+                    success = bridge.status == .paired && state.usage.error == nil
+                }
+                task.setTaskCompleted(success: !Task.isCancelled && success)
             }
             task.expirationHandler = { work.cancel() }
         }
+    }
+
+    /// The existing silent-push receiver can call this after its settings sync.
+    /// A locked primary Keychain does not prevent a read with the shared credential.
+    static func refreshFromPush() async -> Bool {
+        var fetched = false
+        _ = await LAAWidgetUsageRefresh.refresh(onSuccessfulFetch: { fetched = true })
+        if fetched { WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.employee) }
+        return fetched
     }
 
     static func schedule() {

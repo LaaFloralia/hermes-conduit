@@ -29,6 +29,7 @@ protocol WidgetBundle { associatedtype Body: Widget; @WidgetBuilder var body: Bo
 struct NativeLauncherWidget: Widget { let kinds = ["native"] }
 struct CharacterLauncherWidget: Widget { let kinds = ["character"] }
 struct LAAEmployeeWidget: Widget { let kinds = ["employee"] }
+struct LAANextEventWidget: Widget { let kinds = ["nextEvent"] }
 struct HermesTurnLiveActivity: Widget { let kinds = ["liveActivity"] }
 '''
 runner = r'''
@@ -36,7 +37,7 @@ runner = r'''
     static func main() {
         let kinds = ConduitWidgets().body.kinds
         #if LAA_BUILD
-        precondition(kinds == ["employee", "liveActivity"], "Unexpected LAA registrations: \(kinds)")
+        precondition(kinds == ["employee", "nextEvent", "liveActivity"], "Unexpected LAA registrations: \(kinds)")
         #else
         precondition(kinds == ["native", "character", "liveActivity"], "Unexpected upstream registrations: \(kinds)")
         #endif

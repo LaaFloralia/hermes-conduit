@@ -80,6 +80,8 @@ enum LAAType {
     static let employeeName = Font.custom("Georgia", size: 16, relativeTo: .body)
     static let usageValue = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
 
+    static let usageRowValue = Font.custom("Georgia", size: 22, relativeTo: .title3).monospacedDigit()
+
     enum TextRole { case body, secondary, section }
 }
 

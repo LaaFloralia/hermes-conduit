@@ -1,6 +1,6 @@
 # Usage・Mac状態のデータ契約
 
-2026-11-08更新。UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
+2026-11-11更新。UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
 
 ## 1. 指標と取得元
 
@@ -42,16 +42,20 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 
 `GET /v1/usage` はscope `usage:read` を要求し、`{data:{items,nextCursor,fetchedAt},requestId}` を返す。`fetchedAt` は表示中のfeedを受け取った時刻（未取得はnull）で、要求はその読み取りを待たない。個々のitemは `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。欠測・期限超過・失敗・手動確認のみの項目は `availability:unavailable`、`value:null`、理由を返し、数値を含むdetailを返さない。0は正常に取得した値が0の場合だけ。
 
-- 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt`、feedの `fetchedAt`、受信時刻の最も早い時刻から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどから値を消す。時計差のため未来120秒まで許容し、期限の起点は受信時刻を超えない。時刻の欠落・120秒超の未来・不正は取得失敗とする。
+- 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt`、feedの `fetchedAt`、受信時刻の最も早い時刻から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどからBridge応答の数値はnullにする。端末の前回値は後述の表示契約に従う。時計差のため未来120秒まで許容し、期限の起点は受信時刻を超えない。時刻の欠落・120秒超の未来・不正は取得失敗とする。
 - `verified` や手動確認だけの値は自動取得なしとし、数値を返さない。quotaのいずれかのresetが経過した場合も値を消す。付帯クレジットの取得時刻は別に評価する。手動reset passは返さない。
 - API費用のIDは `provider.openai-api.cost-today` / `cost-month`、`provider.claude-api.cost-today` / `cost-month`。`detail.periodTimezone` は `UTC`、`detail.sourceLag` はAnthropic `typical-5m`、OpenAI `undisclosed`。反映済み時刻を推測して作らない。応答に今日（UTC）のバケットが無い場合、費用取得処理は `todayAmount` を返さず、Bridgeは `cost-today` だけ `freshness_unknown`（数値なし）、`cost-month` は返ったバケットの合計を出す。この4件は「使用額」であり、残高ではない。
 - API残高のIDは `provider.openai-api.balance` / `provider.claude-api.balance`。同じprovider行の `amount`（`currency` は `USD`、無指定もUSD）が10分以内に自動取得できた時だけ `available` と数値を返す。上流行に `amount` が無い時は `not_auto`、`amount` はあるが数値でない時は `fetch_failed`、`verified` など手入力だけの値は `not_auto` とし、いずれも `value:null`・数値を含むdetailなしで返す。Costの金額をこのIDへ写さない。両社のCost APIは残高を返さないため、2026-11-03時点で残高は常に未取得になる。
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、nanoGPT、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットはこの順で入る分を並べ、最後に取得できた値と「HH:mm時点」を表示する。行ごとの取得時刻が異なる場合は最古の時刻、別日は日付も示す。残高の行は保存値がなくても残して未取得にする。
-- GPT API・Claude APIは残高の行を先に、取得できた時だけ数値を出す。残高が未取得でも行は残し、理由と公式の請求画面へのリンクを出す。今日・今月の金額は必ず「使用額」と書き、残高として読ませない。ウィジェットのこの2枠も残高だけで、App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
-- アプリは開いた時と明示更新で取得する。表示中はshellの自動取得を抑止し、鮮度・期限の判定も最終取得時点に固定する。ウィジェットはApp Groupのlauncher-v1.jsonを読み、Bridgeへ直接通信しない。アプリが/v1/usageを取得して保存する。期限超過・通信失敗・一部行の欠測では、保存済みの値と元の取得時刻を保持する。接続解除・接続先変更・アクセス拒否では消去する。Magnificの単位はAI creditsで、USDに換算しない。
+- 表示順はCodex、OpenCode、Claude、nanoGPT、Magnific、GPT API、Claude API、Liquid AI、Venice。複数の枠がある時は期間を「週間」「月間」と添える。アプリはAIを先、Storageを後に、節ごとに1枚の面で表示する。題の横は最後に取得できた時刻の相対表記で、押すと更新する。行は名前・値・比率のメーター・補助1行に絞る。ウィジェットはLiquid AIを除いた上位5行までを表示し、比率だけ細いメーターを付ける。
+- GPT API・Claude APIは残高だけを表示する。残高が未取得でも行を残す。今日・今月の費用を残高に代用しない。App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
+- アプリは起動・復帰・Usageを開いた時（60秒の重複抑止）・明示更新で取得し、前面では120秒ごとにも取得する。Usage自身も表示中の取得を持ち、別の状態を持つWorkから開いても止まらない。画面を離れるかアプリが非アクティブになると画面側の取得を止める。値を取得した時刻と、更新を試みた時刻を分ける。表示の鮮度は毎分判定する。
+- **表示の期限は数値の削除期限ではない。** アプリとウィジェットは、最後に正常取得した数値と元の観測時刻を保持する。10分超・取得失敗・一部欠測でも「更新待ち」に置き換えない。古い値の横には「12分前」のように経過を出す。未取得は0で埋めず「未取得」。既知の取得失敗・認証不足は理由を1行だけ添える。Bridgeが返すunavailable/nullは新たな観測値ではなく、クライアントに保存した前回値を消す指示にはしない。
+- 枠のresetを過ぎた場合も前回の数値を残し、「リセット済み」と明示する。この数値はリセット前の取得値で、現在の残量ではない。100%への回復や新たなreset時刻を推測しない。次の正常な観測で数値と時刻を置き換える。
+- アプリとウィジェットはApp Groupのlauncher-v1.jsonで要約を共有する。アプリの表示用項目は同Groupのusage-items-v1.jsonに保存し、再起動時も前回値を読める。これらのJSONには認証情報を入れない。ウィジェットはタイムラインの再読込時に、認証付きのGET /v1/usageを直接実行する（要求8秒、全体10秒、リダイレクトなし、ディスクキャッシュなし）。接続情報は既存App GroupのKeychainに端末限定・初回ロック解除後で共有する。端末の既存トークンとusage:readの権限判定を使い、Tailscaleを認証の代わりにはしない。
+- 接続解除・接続先変更・401・403では、表示用キャッシュと共有接続情報を消す。飛行中のウィジェット取得は接続情報を読戻してから保存し、接続が変わっていたら破棄する。アプリとウィジェットの共有JSONの書込はプロセス間ロックで直列化する。Magnificの単位はAI creditsで、USDに換算しない。
 - Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。
 
 `GET /v1/mac/status` は従来どおり `host.cpu`・`host.memory`・`host.disk` を返す。usageと別のホスト状態であり、diskの26時間判定を変更しない。
@@ -69,7 +73,7 @@ Tailscaleは輸送であり認証の代替ではない。
 
 ## 6. 統合時の確認事項
 
-各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット（`results` が空で返るか、バケット自体が無いか）、最終ページの `has_more: false` と `next_page`（値または欠落）、UTC日付と金額を照合する。OpenAIは§1の期間で確認済み。Anthropic従来Cost APIの空バケットは未確認で、鍵の保存後に同じ観測を行う。WidgetKitのタイムラインは期限を過ぎた値を過去の取得値として表示し、数値と取得時刻を残す。iOSの背景更新は実行時刻を保証しないため、現在値への更新にはアプリでの再取得が必要になる場合がある。アプリ配信・実機での切替は別途確認する。
+各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット（`results` が空で返るか、バケット自体が無いか）、最終ページの `has_more: false` と `next_page`（値または欠落）、UTC日付と金額を照合する。OpenAIは§1の期間で確認済み。Anthropic従来Cost APIの空バケットは未確認で、鍵の保存後に同じ観測を行う。WidgetKitのタイムラインは期限を過ぎた値を過去の取得値として表示し、数値と取得時刻を残す。iOSの背景更新は実行時刻を保証しない。ウィジェットはアプリを開かずに再取得できるが、OSによる遅延中は最後の値と経過を示す。アプリ配信・実機での切替は別途確認する。
 
 SwiftBarは毎分feedの期限を判定するが、MacのスリープやSwiftBar停止中は最後の描画が残りうる。ウィジェットは、更新前に置いた上流Workspaceの2種が更新後も古い表示のままタップしても開かず、旧ウィジェットの削除とLAA Employeeへの置き換えが必要。systemSmallはChatとCall、systemMediumはUsageを開く経路を確認し、ロック画面用の円形・長方形は通知センターの画面からLAAを開いて未接続案内まで確認した。実際にロックされた状態での遷移は未確認。
 
@@ -99,3 +103,18 @@ Google Driveは既存のGoogle認証接続で `about.storageQuota` とアカウ�
 MacBookは既存SSH認証ラッパーで固定の読み取り専用コマンドを一度実行し、`vm_stat` と `hw.memsize` からMac miniと同じ式でメモリを、`df -k /System/Volumes/Data` からSSDの合計・利用可能量を得る。片方でも取得・解析できなければ両方を破棄する。
 
 `/v1/usage` への要求時に、Mac miniは10秒、MacBookとGoogleは5分を更新間隔として独立にバックグラウンド取得する。重複する取得は1回にまとめる。容量の取得元には常駐タイマーを設けない。最新の取得失敗時は値を破棄する。応答は外部取得を待たず、取得時刻から10分以上経った値はstale、未来の観測時刻は拒否する。AI feedの `fetchedAt` は容量の取得時刻ではなく、各容量の `observedAt` / `freshUntil` を参照する。
+
+## 更新の組合せ（2026-11-11）
+
+| 経路 | 採用と動作 | 制約 |
+|---|---|---|
+| タイムライン | 次回取得を15分後に要求。最初の1時間は5分ごと、以降24時間まで1時間ごとの表示エントリと期限・reset境界を渡す | 取得機会と描画時刻はWidgetKitが決める。数値を予測するエントリは作らない |
+| ウィジェットの通信 | OSがタイムラインを要求するたびBridgeを直接読む | オフライン・タイムアウトは最後の値を保持 |
+| アプリの前面取得 | 既存の起動・復帰・120秒タイマー・手動更新で保存し、差分があればreloadTimelines | 前面の定期取得はアプリ稼働中だけ |
+| BGAppRefreshTask | 15分以降でOSに要求。保存後にreloadTimelines。通常のKeychainがロック中ならウィジェット用経路で取得 | 実行の保証なし。省電力・利用状況に依存 |
+| 通常のプッシュ | 既存のphone.changes経路は端末設定同期用。Usage取得は現時点では呼ばない | 対応にはConduitApp.swiftの受信処理への追加が必要 |
+| iOS 26のWidgetKit push | 今回は未接続。通常タイムラインと同じ取得処理を起動できる | WidgetPushHandler、拡張のAPNs entitlement、専用トークンの登録・送信経路が必要。既存の会話通知トークンと混用しない |
+
+[Appleの更新予算](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date)は利用状況に応じて決まり、日常的に見るウィジェットでも1日40〜70回が目安で、15分後の指定は保証ではない。[拡張からの通信](https://developer.apple.com/documentation/widgetkit/making-network-requests-in-a-widget-extension)はタイムライン提供時に行える。[WidgetKit push](https://developer.apple.com/documentation/widgetkit/updating-widgets-with-widgetkit-push-notifications)も更新予算の管理を受けるため、プッシュだけに依存しない。Context7ではAppleのライブラリが削除済みだったため、Appleの現行一次文書を直接確認した。
+
+Mac側はCodexBarの取得を120秒、proxyの再取得を60秒、Bridgeのfeed再取得を60秒とする。各タイマーは独立しており、取得にかかった時間と位相差が加わる。provider固有のキャッシュ（Magnificの300秒等）は別に残る。proxyとBridgeは上流を待たず保存済みの表示データを返す。上流feedの期限・手動値・不正値の棄却は維持し、古い数値の保持はクライアントの履歴として扱う。
