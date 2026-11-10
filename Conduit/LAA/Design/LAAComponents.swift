@@ -311,6 +311,7 @@ struct LAALoadingDots: View {
         Color.clear
             .frame(maxWidth: .infinity, minHeight: 88)
             .overlay { if visible { LAAActivityDots() } }
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: "読み込み中"))
             .accessibilityHidden(!visible)
             .task {

@@ -71,7 +71,7 @@ final class LAAChatsUITests: XCTestCase {
     }
 
     func testEmptyLoadingErrorAndOffline() {
-        for (mode, label) in [("empty", "グループはまだありません。"), ("loading", "読み込み中…"),
+        for (mode, label) in [("empty", "グループはまだありません。"), ("loading", "読み込み中"),
                               ("error", "Macから読み込めませんでした。"),
                               ("offline", "Macに接続できません。"),
                               ("unsupported", "この接続先はグループに対応していません。")] {
