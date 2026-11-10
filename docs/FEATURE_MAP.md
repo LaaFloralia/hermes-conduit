@@ -457,6 +457,8 @@ and offline chats · LAA Settings ·
 notifications and in-app links · the four Bridge-backed tabs · the upstream
 App Store build · the Bridge API, Brain and Usage data contracts
 
+> 2026-11-11 Usage contract update: the standalone AI / Storage screen retains historical numbers and shows elapsed time; only never-observed values say 未取得. Scope changes and access denial clear history. The screen refreshes every two minutes while active, independent of its presenting shell. See `docs/laa/USAGE.md`.
+
 **Code**
 - Shell and settings: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/Settings/LAAMacSettingsCard.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`, `Conduit/Views/AuxiliaryViews.swift`
 - Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `Conduit/LAA/Design/LAAGlass.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
@@ -4059,6 +4061,9 @@ and rollback instructions · the upstream App Store build
 **Siblings:** LAA Home Screen small widget · Lock Screen rectangular and circular widgets · the existing widget URL router and voice start · LAA shell's error notice · the upstream launcher widgets (unchanged)
 
 **Code**
+- Usage reads and storage: `Shared/Widgets/LAAUsageReading.swift`, `Shared/Widgets/LAAWidgetUsageBuilder.swift`, `Shared/Widgets/LAAWidgetUsageRefresh.swift`, `Shared/Widgets/WidgetSnapshotStore.swift`, `ConduitTests/LAAWidgetUsageRefreshTests.swift`
+> 2026-11-11 widget contract update: the medium widget shows at most five rows, fine percentage meters, and historical values with elapsed time / リセット済み. Each OS-granted reload makes a bounded authenticated Bridge read using the App Group Keychain; future timeline entries age the labels and request the next fetch after 15 minutes. These rules supersede older freshness wording below.
+
 - Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
 - Opening screen: `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/Services/AppState.swift` (`laaOpeningEmployeeChat`), `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Mac/LAAMacChatsSection.swift`
 - Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/Resources/LAAStaff.xcassets/LAAWidgetCompanyIcon.imageset/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`

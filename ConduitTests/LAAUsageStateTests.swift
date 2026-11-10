@@ -26,8 +26,8 @@ final class LAAUsageStateTests: XCTestCase {
         """)
     }
 
-    func testRefreshFailureClearsValuesAndUnavailableSuccessDoesNotRestoreThem() async throws {
-        let state = LAAUsageState()
+    func testRefreshFailureAndMissingRowsRetainValuesAndObservationTimes() async throws {
+        let state = LAAUsageState(widgetStore: nil)
         let first = try quota()
         let firstTime = Date(timeIntervalSince1970: 100)
         let later = Date(timeIntervalSince1970: 200)
@@ -35,22 +35,42 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(state.usage.value?.first?.value, 62)
         XCTAssertEqual(state.updatedAt, firstTime)
         await state.refreshUsage({ throw LAABridgeError.networkUnreachable }, now: { later })
-        XCTAssertNil(state.usage.value)
-        XCTAssertNil(state.usage.fetchedAt)
-        XCTAssertNil(state.updatedAt)
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+        XCTAssertEqual(state.usage.fetchedAt, firstTime)
+        XCTAssertEqual(state.updatedAt, firstTime)
         XCTAssertEqual(state.usage.error, .bridge(.networkUnreachable))
         await state.refreshUsage({ [try self.unavailable()] }, now: { later })
-        XCTAssertNil(state.usage.value?.first?.value)
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+        XCTAssertEqual(state.usage.value?.first?.observedAt, first.observedAt)
+        XCTAssertEqual(state.usage.value?.first?.retainedReason, "fetch_failed")
         XCTAssertEqual(state.usage.fetchedAt, later)
         XCTAssertEqual(state.updatedAt, later)
         await state.refreshUsage({ [] }, now: { later })
-        XCTAssertEqual(state.usage.value?.count, 0)
+        XCTAssertEqual(state.usage.value?.count, 1)
         XCTAssertNil(state.usage.error)
         XCTAssertEqual(state.updatedAt, later)
     }
 
+    func testStandaloneVisibleScreenFetchesAgainWithoutShellOrManualRefresh() async throws {
+        enum Finished: Error { case done }
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        var calls = 0
+        var ticks = 0
+        let state = LAAUsageState(widgetStore: nil, loader: { _ in
+            calls += 1
+            return [try self.quota(calls == 1 ? 62 : 41)]
+        })
+        state.setPresented(true)
+        await state.refreshWhileVisible(bridge: bridge, sleep: {
+            ticks += 1
+            if ticks > 1 { throw Finished.done }
+        })
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(state.usage.value?.first?.value, 41)
+    }
+
     func testRefreshUsageDeduplicatesAndOldScopeCannotPublish() async throws {
-        let state = LAAUsageState()
+        let state = LAAUsageState(widgetStore: nil)
         let started = expectation(description: "first refresh started")
         var calls = 0
         let first = try quota()
@@ -156,10 +176,10 @@ final class LAAUsageStateTests: XCTestCase {
         let original = store.read()?.usage
         fail = true
         await state.refreshAndPublish(bridge: bridge)
-        XCTAssertNil(state.usage.value)
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
         XCTAssertEqual(store.read()?.usage?.meters.first?.observedAt, original?.meters.first?.observedAt)
-        XCTAssertTrue(try XCTUnwrap(store.read()?.usage?.meters.first).isPast(at: Date()))
-        XCTAssertEqual(reloads, 2)
+        XCTAssertFalse(try XCTUnwrap(store.read()?.usage?.meters.first).isPast(at: Date()))
+        XCTAssertEqual(reloads, 1)
         let unavailableState = LAAUsageState(widgetStore: store, loader: { _ in [try self.unavailable()] })
         await unavailableState.refreshAndPublish(bridge: bridge)
         XCTAssertEqual(store.read()?.usage?.meters.first?.amount, 62)

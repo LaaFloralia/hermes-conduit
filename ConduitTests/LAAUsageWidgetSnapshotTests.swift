@@ -19,7 +19,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
     }
 
-    func testLateRenderingMarksHistoricalNumberUnavailable() {
+    func testLateRenderingKeepsHistoricalNumberAndElapsedTime() {
         let observed = Date(timeIntervalSince1970: 1_000)
         let meter = WidgetUsageMeter(id: "late", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
@@ -28,13 +28,26 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
         XCTAssertTrue(meter.hasRecordedValue(at: observed.addingTimeInterval(86400)))
         XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)), "42%")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)), "更新待ち")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter.lastKnown(label: meter.label), entryDate: observed, renderedAt: observed), "更新待ち")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)), "42% · 10分前")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter.lastKnown(label: meter.label), entryDate: observed, renderedAt: observed), "42% · 1分未満前")
         XCTAssertTrue(LAAEmployeeWidgetView.timeText(observed, at: observed.addingTimeInterval(86400)).contains("時点"))
         let future = WidgetUsageMeter(id: "future", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(future, entryDate: observed, renderedAt: observed.addingTimeInterval(2)))
         XCTAssertFalse(future.hasRecordedValue(at: observed))
+    }
+
+    func testThirtyMinuteOutageKeepsNumbersAndResetHistory() throws {
+        let observed = Date(timeIntervalSince1970: 1000)
+        let stale = WidgetUsageMeter(id: "provider.claude.quota.weekly", label: "Claude", unit: .percent, amount: 42,
+            observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: observed.addingTimeInterval(2000), stale: false, retained: false)
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(stale, entryDate: observed, renderedAt: observed.addingTimeInterval(1800)), "42% · 30分前")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(stale, entryDate: observed, renderedAt: observed.addingTimeInterval(2000)), "42% · 33分前・リセット済み")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(.missing(id: "missing", label: "Missing"), entryDate: observed, renderedAt: observed), "未取得")
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            try capture(style: style, mode: .fullColor, name: "medium-outage-30m-\(style == .dark ? "dark" : "light")",
+                        now: observed, renderedAtOffset: 1800)
+        }
     }
 
     func testLateEntryRendersLikeExpiredTimelineEntry() throws {
@@ -183,21 +196,21 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
             }
             widget.background(style == .dark ? Color.black.opacity(0.88) : Color.white.opacity(0.88))
                 .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
-        }.frame(width: wallpaper ? 440 : 360, height: wallpaper ? 300 : 169)
+        }.frame(width: wallpaper ? 440 : 360, height: wallpaper ? 956 : 169)
             .ignoresSafeArea()
         let host = UIHostingController(rootView: screen)
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
         let scene = try XCTUnwrap(previous?.windowScene ?? scenes.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: wallpaper ? 440 : 360, height: wallpaper ? 300 : 169)
+        window.frame = CGRect(x: 0, y: 0, width: wallpaper ? 440 : 360, height: wallpaper ? 956 : 169)
         window.traitOverrides.userInterfaceStyle = style
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        let format = UIGraphicsImageRendererFormat(); format.scale = 3
+        let format = UIGraphicsImageRendererFormat(); format.scale = wallpaper ? 1 : 3
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
         }

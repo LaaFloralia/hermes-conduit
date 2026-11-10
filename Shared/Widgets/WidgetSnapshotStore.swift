@@ -1,9 +1,12 @@
 import Foundation
+#if LAA_BUILD
+import Darwin
+#endif
 
 struct WidgetSnapshotStore {
     #if LAA_BUILD
-    // Both app publishers perform read/merge/write on this file. The widget
-    // only reads it, so a process-wide lock prevents their updates being lost.
+    // App publishers and the widget serialize read/merge/write across
+    // processes with flock, and across app threads with NSLock.
     private static let writeLock = NSLock()
     #endif
     /// The App Group this build shares with the app and the widgets: the one
@@ -51,21 +54,69 @@ struct WidgetSnapshotStore {
     @discardableResult
     func write(_ snapshot: WidgetSnapshot) throws -> Bool {
         #if LAA_BUILD
-        Self.writeLock.lock()
-        defer { Self.writeLock.unlock() }
-        // Chat catalogue publications predate usage and must not erase it.
-        let snapshot = snapshot.usage == nil ? snapshot.withUsage(read()?.usage) : snapshot
-        #endif
+        return try withWriteLock {
+            // Chat catalogue publications predate usage and must not erase it.
+            let snapshot = snapshot.usage == nil ? snapshot.withUsage(read()?.usage) : snapshot
+            return try writeRaw(snapshot)
+        }
+        #else
         return try writeRaw(snapshot)
+        #endif
     }
 
     #if LAA_BUILD
     @discardableResult
     func writeUsage(_ usage: WidgetUsageSnapshot?) throws -> Bool {
+        try updateUsage { _ in usage }
+    }
+
+    @discardableResult
+    func updateUsage(_ transform: (WidgetUsageSnapshot?) -> WidgetUsageSnapshot?) throws -> Bool {
+        try withWriteLock {
+            let snapshot = read() ?? WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
+            return try writeRaw(snapshot.withUsage(transform(snapshot.usage)))
+        }
+    }
+
+    private struct CachedUsageItem: Codable {
+        let item: LAAUsageItem
+        let anchor: Date?
+        let retainedReason: String?
+    }
+
+    func readUsageItems() -> [LAAUsageItem]? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("usage-items-v1.json")),
+              let cached = try? JSONDecoder().decode([CachedUsageItem].self, from: data) else { return nil }
+        return cached.map { record in
+            var item = record.item
+            item.freshnessAnchor = record.anchor
+            item.retainedReason = record.retainedReason
+            return item
+        }
+    }
+
+    func writeUsageItems(_ items: [LAAUsageItem]?) throws {
+        try withWriteLock {
+            let url = directory.appendingPathComponent("usage-items-v1.json")
+            if let items {
+                let cached = items.map { CachedUsageItem(item: $0, anchor: $0.freshnessAnchor, retainedReason: $0.retainedReason) }
+                try JSONEncoder().encode(cached).write(to: url, options: .atomic)
+            } else if fileManager.fileExists(atPath: url.path) {
+                try fileManager.removeItem(at: url)
+            }
+        }
+    }
+
+    private func withWriteLock<T>(_ body: () throws -> T) throws -> T {
         Self.writeLock.lock()
         defer { Self.writeLock.unlock() }
-        let snapshot = read() ?? WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
-        return try writeRaw(snapshot.withUsage(usage))
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let descriptor = open(directory.appendingPathComponent("launcher.lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
+        defer { close(descriptor) }
+        guard flock(descriptor, LOCK_EX) == 0 else { throw CocoaError(.fileWriteUnknown) }
+        defer { flock(descriptor, LOCK_UN) }
+        return try body()
     }
     #endif
 

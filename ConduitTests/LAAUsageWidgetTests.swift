@@ -87,7 +87,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertEqual(meter.amount, -0.19)
         XCTAssertEqual(meter.verified, true)
         XCTAssertTrue(meter.hasRecordedValue(at: now))
-        XCTAssertFalse(meter.isPast(at: now))
+        XCTAssertTrue(meter.isPast(at: now))
     }
 
     func testAYenBalanceNeverFillsADollarRow() throws {
@@ -114,7 +114,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertEqual(meter.amount, 80)
     }
 
-    func testSlotsWithoutAReadingKeepTheirPlaceAndDropTheNumber() throws {
+    func testSlotsWithoutAReadingKeepTheirPlaceAndOldReadingsKeepNumbers() throws {
         let items = try [
             item("codex", windows: [weekly(44)]),
             unavailable("opencode-go"),
@@ -127,9 +127,9 @@ final class LAAUsageWidgetTests: XCTestCase {
                        ["Codex", "OpenCode", "Claude", "GPT API", "Claude API"])
         XCTAssertEqual(result.meters.map(\.id), ["provider.codex.quota.weekly", "provider.opencode-go.quota.weekly",
             "provider.claude.quota.weekly", "provider.openai-api.balance", "provider.claude-api.balance"])
-        XCTAssertEqual(result.meters.map(\.available), [true, false, false, true, false])
+        XCTAssertEqual(result.meters.map(\.available), [true, false, true, true, false])
         XCTAssertEqual(result.meters.first?.amount, 44)
-        XCTAssertEqual(result.checkedAt, now)
+        XCTAssertEqual(result.checkedAt, LAAUsageItem.date("2026-10-30T20:00:00Z"))
     }
 
     func testRetiredProvidersNeverProduceARow() throws {

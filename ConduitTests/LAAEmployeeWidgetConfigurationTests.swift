@@ -21,8 +21,8 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
             configuration.employee = employee
             let timeline = LAAEmployeeTimelineProvider.makeTimeline(configuration: configuration, snapshot: snapshot)
             let entry = try XCTUnwrap(timeline.entries.first)
-            XCTAssertEqual(timeline.entries.count, 1)
-            XCTAssertEqual(timeline.policy, .never)
+            XCTAssertGreaterThan(timeline.entries.count, 1)
+            XCTAssertEqual(timeline.policy, .after(entry.date.addingTimeInterval(900)))
             XCTAssertEqual(entry.employee, employee)
             XCTAssertEqual(entry.employee.heroImage, "LAAEmployee-\(employee.rawValue)-hero")
             XCTAssertEqual(entry.defaultLink(for: .systemSmall).url, entry.chat.url)
@@ -49,10 +49,12 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
             .withUsage(WidgetUsageSnapshot(meters: [meter], checkedAt: now))
         let timeline = LAAEmployeeTimelineProvider.makeTimeline(configuration: LAAEmployeeWidgetIntent(), snapshot: snapshot)
-        XCTAssertEqual(timeline.entries.count, 4)
-        XCTAssertEqual(timeline.entries.dropFirst().map(\.date), [first, second, now.addingTimeInterval(1200)])
+        let dates = timeline.entries.map(\.date)
+        XCTAssertTrue([first, second, now.addingTimeInterval(1200)].allSatisfy(dates.contains))
+        XCTAssertTrue(dates.contains { abs($0.timeIntervalSince(timeline.entries[0].date) - 1800) < 0.01 })
+        XCTAssertEqual(timeline.policy, .after(timeline.entries[0].date.addingTimeInterval(900)))
         XCTAssertFalse(timeline.entries[0].usage!.meters[0].isPast(at: timeline.entries[0].date))
-        XCTAssertTrue(timeline.entries[1].usage!.meters[0].isPast(at: timeline.entries[1].date))
+        XCTAssertTrue(timeline.entries[0].usage!.meters[0].isPast(at: first))
     }
 
     func testDefaultTimelineWithoutSnapshotKeepsMonetAndUnresolvedDashboard() throws {

@@ -55,18 +55,22 @@ struct LAAEmployeeTimelineProvider: AppIntentTimelineProvider {
         .make(employee: configuration.employee, snapshot: WidgetSnapshotStore.production?.read())
     }
     func timeline(for configuration: LAAEmployeeWidgetIntent, in context: Context) async -> Timeline<LAAEmployeeWidgetEntry> {
-        Self.makeTimeline(configuration: configuration, snapshot: WidgetSnapshotStore.production?.read())
+        Self.makeTimeline(configuration: configuration, snapshot: await LAAWidgetUsageRefresh.refresh())
     }
 
     static func makeTimeline(configuration: LAAEmployeeWidgetIntent, snapshot: WidgetSnapshot?) -> Timeline<LAAEmployeeWidgetEntry> {
         let entry = LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot)
-        let futureDates = Set((entry.usage?.meters ?? []).flatMap { meter in
+        // Future entries update elapsed labels even if iOS delays the next
+        // network reload. Refresh policy is independent of the last entry.
+        let ageDates = stride(from: 300, through: 3600, by: 300).map { entry.date.addingTimeInterval(Double($0)) }
+            + stride(from: 7200, through: 86400, by: 3600).map { entry.date.addingTimeInterval(Double($0)) }
+        let futureDates = Set(ageDates + (entry.usage?.meters ?? []).flatMap { meter in
             [meter.freshUntil, meter.resetsAt,
              meter.observedAt.map { min($0, entry.freshnessAnchor).addingTimeInterval(10 * 60) }].compactMap { $0 }
         }
             .filter { $0 > entry.date }).sorted()
         let future = futureDates.map { LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot, date: $0, freshnessAnchor: entry.freshnessAnchor) }
-        return Timeline(entries: [entry] + future, policy: future.isEmpty ? .never : .atEnd)
+        return Timeline(entries: [entry] + future, policy: .after(entry.date.addingTimeInterval(15 * 60)))
     }
 }
 
@@ -87,8 +91,8 @@ struct LAAEmployeeWidget: Widget {
 private extension LAACopy {
     static let widgetDisplayName = "LAA Employee"
     static let widgetDescription = "Open employee chats and calls, and check AI usage."
-    static let widgetCall = "Call"
-    static let widgetChat = "Chat"
+    static let widgetCall = "電話"
+    static let widgetChat = "会話"
     static let widgetBrand = "LAA"
 }
 
@@ -181,9 +185,6 @@ struct LAAEmployeeWidgetView: View {
         // The rows are already in the owner's priority order: show as many as
         // fit, from the top.
         ViewThatFits(in: .vertical) {
-            usageList(meters: meters, limit: 8)
-            usageList(meters: meters, limit: 7)
-            usageList(meters: meters, limit: 6)
             usageList(meters: meters, limit: 5)
             usageList(meters: meters, limit: 4)
             usageList(meters: meters, limit: 3)
@@ -210,16 +211,35 @@ struct LAAEmployeeWidgetView: View {
     }
 
     private func usageRow(_ meter: WidgetUsageMeter) -> some View {
-        let past = Self.isPast(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor)
-        let hasValue = meter.hasRecordedValue(at: renderedAt) && !past
-        return HStack(spacing: LAASpacing.x1) {
+        let hasValue = meter.hasRecordedValue(at: renderedAt)
+        return VStack(alignment: .leading, spacing: LAASpacing.x1 / 2) {
+            HStack(spacing: LAASpacing.x1) {
             Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: LAASpacing.x1)
-            Text(verbatim: Self.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))
-                .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1 / 2) {
+                Text(verbatim: hasValue ? Self.valueText(meter) : "未取得")
+                    .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
+                if let note = Self.freshnessText(meter, at: renderedAt, anchor: entry.freshnessAnchor) {
+                    Text(verbatim: note).font(.caption2).foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
+            }.layoutPriority(1)
+            }
+            if hasValue, meter.unit == .percent {
+                let amount = meter.amount
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(LAAColor.separator)
+                        Capsule().fill(LAAColor.link)
+                            .frame(width: geometry.size.width * min(max(amount / 100, 0), 1))
+                    }
+                }
+                .frame(height: 2)
+                .accessibilityHidden(true)
+            }
         }
         .laaTextStyle(.section)
-        .foregroundStyle(!hasValue ? LAAColor.attention : (past ? LAAColor.secondaryText : LAAColor.text))
+        .foregroundStyle(hasValue ? LAAColor.text : LAAColor.secondaryText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(meter.label), \(Self.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))")
     }
@@ -236,8 +256,17 @@ struct LAAEmployeeWidgetView: View {
 
     static func displayValue(_ meter: WidgetUsageMeter, entryDate: Date, renderedAt: Date, anchor: Date? = nil) -> String {
         guard meter.hasRecordedValue(at: renderedAt) else { return "未取得" }
-        guard !isPast(meter, entryDate: entryDate, renderedAt: renderedAt, anchor: anchor) else { return "更新待ち" }
-        return valueText(meter)
+        let note = freshnessText(meter, at: max(entryDate, renderedAt), anchor: anchor ?? entryDate)
+        return valueText(meter) + (note.map { " · " + $0 } ?? "")
+    }
+
+    static func freshnessText(_ meter: WidgetUsageMeter, at now: Date, anchor: Date? = nil) -> String? {
+        guard meter.hasRecordedValue(at: now) else { return nil }
+        if meter.resetsAt.map({ !(now < $0) }) == true, let observed = meter.observedAt {
+            return LAAUsageAge.text(observed, at: now) + "・リセット済み"
+        }
+        guard meter.isPast(at: now, anchor: anchor), let observed = meter.observedAt else { return nil }
+        return LAAUsageAge.text(observed, at: now)
     }
 
     static func valueText(_ meter: WidgetUsageMeter) -> String {

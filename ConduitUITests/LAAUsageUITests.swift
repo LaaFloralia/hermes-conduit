@@ -3,31 +3,29 @@ import UIKit
 import XCTest
 
 final class LAAUsageUITests: XCTestCase {
-    func testCapacityUsesSharedFeedAndHidesStaleNumbers() throws {
+    func testCapacityUsesSharedFeedAndRetainsStaleNumbersWithAge() throws {
         guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
         continueAfterFailure = false
         _ = try helper("mode/normal")
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
-                               "https://conduit-ui-test.invalid", "-laa-tab", "work"]
+                               "https://conduit-ui-test.invalid", "-laa-tab", "work",
+                               "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
+                               "-CONDUIT_UI_TEST_WIDGET_DELIVERY", "cold"]
         app.launch()
         defer { app.terminate() }
-        let settings = app.buttons["laa.settings.open"].firstMatch
-        XCTAssertTrue(settings.waitForExistence(timeout: 30))
-        settings.tap()
-        let usage = app.buttons["settings.ai-usage"]
-        XCTAssertTrue(usage.waitForExistence(timeout: 15))
-        XCTAssertEqual(usage.label, "Usage")
-        usage.tap()
+        openUsage(app)
         app.buttons["laa.bridge.openPairing"].tap()
         try pair(app, port: 19492, codeRoute: "fixture-code")
         XCTAssertTrue(app.staticTexts["空き 100 GiB"].waitForExistence(timeout: 30))
         screenshot("usage-capacity-live-fixture")
         _ = try helper("mode/stale")
         app.buttons["laa.usage.refresh"].tap()
-        XCTAssertTrue(app.staticTexts["更新待ち"].firstMatch.waitForExistence(timeout: 15))
-        XCTAssertFalse(app.staticTexts["空き 100 GiB"].exists)
+        XCTAssertTrue(app.staticTexts["30分前"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["空き 100 GiB"].exists)
+        XCTAssertFalse(app.staticTexts["更新待ち"].exists)
+        screenshot("usage-capacity-outage-30m")
     }
 
     func testWidgetUsageLinkSelectsUsageOnColdAndWarmLaunch() {
@@ -48,13 +46,8 @@ final class LAAUsageUITests: XCTestCase {
         }
     }
 
-    private func openUsageFromSettings(_ app: XCUIApplication) {
-        let settings = app.buttons["laa.settings.open"].firstMatch
-        XCTAssertTrue(settings.waitForExistence(timeout: 30))
-        settings.tap()
-        let usage = app.buttons["settings.ai-usage"]
-        XCTAssertTrue(usage.waitForExistence(timeout: 15))
-        usage.tap()
+    private func openUsage(_ app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 30))
     }
 
     private func helper(_ route: String) throws -> String {
@@ -105,7 +98,7 @@ final class LAAUsageUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
-    func testVisibleUsageRemainsStableUntilManualRefresh() throws {
+    func testVisibleUsageFetchesAgainWithoutManualRefresh() throws {
         guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
         continueAfterFailure = false
         _ = try helper("mode/normal")
@@ -113,26 +106,26 @@ final class LAAUsageUITests: XCTestCase {
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_USAGE_FAST_REFRESH",
                                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
-                               "-laa-tab", "work"]
+                               "-laa-tab", "work",
+                               "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
+                               "-CONDUIT_UI_TEST_WIDGET_DELIVERY", "cold"]
         app.launch()
         defer { app.terminate() }
-        openUsageFromSettings(app)
+        openUsage(app)
         let connect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["Claude"].firstMatch.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["Claude"].exists)
+        XCTAssertTrue(text(containing: "Claude", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "Claude", app: app).exists)
         XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
 
         let before = try XCTUnwrap(Int(helper("counts")))
         _ = try helper("mode/stale")
-        RunLoop.current.run(until: Date().addingTimeInterval(6))
-        XCTAssertEqual(Int(try helper("counts")), before)
-        XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
-        app.buttons["laa.usage.refresh"].tap()
-        XCTAssertTrue(text(containing: "更新待ち・取得できません", app: app).waitForExistence(timeout: 30))
-        XCTAssertEqual(Int(try helper("counts")), before + 1)
+        XCTAssertTrue(text(containing: "30分前", app: app).waitForExistence(timeout: 15))
+        XCTAssertGreaterThan(Int(try helper("counts")) ?? 0, before)
+        XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["更新待ち"].exists)
     }
 
     func testUsageRefreshAndFailureStates() throws {
@@ -143,31 +136,27 @@ final class LAAUsageUITests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
                                "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", "light", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
-                               "https://conduit-ui-test.invalid", "-laa-tab", "work"]
+                               "https://conduit-ui-test.invalid", "-laa-tab", "work",
+                               "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
+                               "-CONDUIT_UI_TEST_WIDGET_DELIVERY", "cold"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
-        openUsageFromSettings(app)
+        openUsage(app)
         let connect = app.buttons["laa.bridge.openPairing"]
-        if connect.waitForExistence(timeout: 15) {
-            screenshot("usage-ui-unpaired")
-            connect.tap()
-        } else {
-            XCTAssertTrue(app.buttons["laa.usage.menu"].waitForExistence(timeout: 15))
-            app.buttons["laa.usage.menu"].tap()
-            app.buttons["Connection"].tap()
-        }
+        XCTAssertTrue(connect.waitForExistence(timeout: 15))
+        screenshot("usage-ui-unpaired")
+        connect.tap()
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["Claude"].firstMatch.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["Claude"].exists)
+        XCTAssertTrue(text(containing: "Claude", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "Claude", app: app).exists)
         let refresh = app.buttons["laa.usage.refresh"]
         XCTAssertTrue(enabled(refresh))
-        XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
-        XCTAssertFalse(app.staticTexts["Mac mini"].exists)
+        XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
         screenshot("usage-ui-normal")
 
         _ = try helper("mode/stale")
         refresh.tap()
-        XCTAssertTrue(text(containing: "更新待ち・取得できません", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "30分前", app: app).waitForExistence(timeout: 30))
         screenshot("usage-ui-stale")
         XCTAssertTrue(enabled(refresh))
 
@@ -176,21 +165,21 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(enabled(refresh))
         _ = try helper("mode/degraded")
         refresh.tap()
-        XCTAssertTrue(text(containing: "未取得・取得失敗", app: app).waitForExistence(timeout: 30))
-        XCTAssertFalse(app.staticTexts["62%"].firstMatch.exists)
+        XCTAssertTrue(text(containing: "取得できません", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/error")
         refresh.tap()
-        XCTAssertTrue(text(containing: "Mac側のサービスを利用できません。", app: app).waitForExistence(timeout: 30))
-        XCTAssertFalse(app.staticTexts["62%"].firstMatch.exists)
+        XCTAssertTrue(text(containing: "Macに接続できません", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
         screenshot("usage-ui-error")
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/offline")
         refresh.tap()
-        XCTAssertTrue(text(containing: "Macに届きません。", app: app).waitForExistence(timeout: 30))
-        XCTAssertFalse(app.staticTexts["62%"].firstMatch.exists)
+        XCTAssertTrue(text(containing: "Macに接続できません", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
         screenshot("usage-ui-offline")
         XCTAssertTrue(enabled(refresh))
 
@@ -199,12 +188,12 @@ final class LAAUsageUITests: XCTestCase {
         app.terminate()
         app.launch()
         // The isolated test Keychain deliberately uses a new service per launch.
-        openUsageFromSettings(app)
+        openUsage(app)
         let reconnect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 15))
         reconnect.tap()
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["未取得・取得失敗"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["取得できません"].firstMatch.waitForExistence(timeout: 30))
         screenshot("usage-ui-empty")
 
         _ = try helper("mode/slow")
@@ -214,7 +203,7 @@ final class LAAUsageUITests: XCTestCase {
         again.tap()
         XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: again)], timeout: 5) == .completed)
         XCTAssertTrue(enabled(again))
-        XCTAssertEqual(Int(try helper("counts")), before + 1)
+        XCTAssertGreaterThanOrEqual(Int(try helper("counts")) ?? 0, before + 1)
 
         _ = try helper("mode/revoked")
         again.tap()

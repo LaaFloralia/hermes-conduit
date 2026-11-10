@@ -24,7 +24,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.openai-api.balance")?.host, "platform.openai.com")
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.claude-api.balance")?.host, "platform.claude.com")
         XCTAssertNil(LAAUsageGroup.billingURL(for: "provider.venice.balance"))
-        let state = LAAUsageState()
+        let state = LAAUsageState(widgetStore: nil)
         await state.refreshUsage { items }
         try capture(state: state, paired: true, style: .light, name: "usage-unavailable-reasons-light")
         try capture(state: state, paired: true, style: .dark, name: "usage-unavailable-reasons-dark")
@@ -33,7 +33,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
     func testUsageStatesLightAndDark() async throws {
         for name in ["normal", "empty", "error", "offline", "unpaired", "stale", "balance", "extras", "cost"] {
             for style in [UIUserInterfaceStyle.light, .dark] {
-                let state = LAAUsageState()
+                let state = LAAUsageState(widgetStore: nil)
                 if name != "unpaired" {
                     let items = name == "empty" ? try unavailableFixture() : try fixture(stale: name == "stale", balanceOnly: name == "balance", extrasOnly: name == "extras", costOnly: name == "cost")
                     await state.refreshUsage { items }
@@ -60,13 +60,13 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
                            "tick \(String(describing: tick)) changed the meter's height")
         }
         XCTAssertEqual(LAAUsageMeter.totalHeight, LAAUsageMeter.height + 2 * 3,
-                       "the 8pt track keeps 3pt above and below for the 14pt tick")
+                       "the 4pt track keeps 3pt above and below for the 10pt tick")
     }
 
     func testCapacityStatesLightAndDark() async throws {
         for name in ["normal", "warning", "critical", "stale", "unavailable"] {
             for style in [UIUserInterfaceStyle.light, .dark] {
-                let state = LAAUsageState()
+                let state = LAAUsageState(widgetStore: nil)
                 let items = try fixture(stale: false) + capacityFixture(name)
                 await state.refreshUsage { items }
                 try capture(state: state, paired: true, style: style,

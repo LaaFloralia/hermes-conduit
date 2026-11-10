@@ -246,7 +246,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         guard available, !stale, let observedAt,
               !(min(anchor ?? date, date).addingTimeInterval(120) < observedAt) else { return true }
         if resetsAt.map({ !(date < $0) }) == true { return true }
-        if verified == true { return unit != .usd }
+        if verified == true, unit != .usd { return true }
         let limit = min(observedAt, anchor ?? date, date).addingTimeInterval(10 * 60)
         return !(date < min(freshUntil ?? limit, limit))
     }

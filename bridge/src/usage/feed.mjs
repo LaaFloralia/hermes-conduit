@@ -7,7 +7,7 @@ export function createUsageFeedSource({
   url,
   fetcher,
   refreshTimeoutMs = 30000,
-  refreshIntervalMs = 120000,
+  refreshIntervalMs = 60000,
   now = () => Date.now(),
 } = {}) {
   // A persisted last-good sample cannot establish whether the last attempt

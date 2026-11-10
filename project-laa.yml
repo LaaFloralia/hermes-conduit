@@ -253,6 +253,7 @@ targets:
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind widgets --source "$SRCROOT"
   ConduitShareExtension:
     sources:
+      - path: Shared/Widgets/LAAUsageReading.swift
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAAColorValues.swift
