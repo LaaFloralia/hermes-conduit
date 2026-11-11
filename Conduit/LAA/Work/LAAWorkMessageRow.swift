@@ -26,6 +26,10 @@ struct LAAWorkMessageRow: View {
     let agentName: String
     let continues: Bool
     let responseSize: Int
+    /// The model the AI turns are drawn with (its face beside the name).
+    var model: LAAWorkModel? = nil
+    /// Puts this message into the follow-up field as a quote.
+    var onQuote: ((String) -> Void)? = nil
 
     private var isOwner: Bool { message.role == "user" }
 
@@ -33,18 +37,24 @@ struct LAAWorkMessageRow: View {
         Group {
             if isOwner {
                 LAAOwnerMessageRow(continues: continues) {
-                    VStack(alignment: .trailing, spacing: LAASpacing.x1) {
+                    VStack(alignment: .trailing, spacing: 0) {
                         bubble
-                        LAAMessageTime(timestamp: message.timestamp)
+                        HStack(spacing: 2) {
+                            LAAMessageTime(timestamp: message.timestamp)
+                            actions
+                        }
                     }
                 }
             } else {
                 LAAAgentMessageRow(name: agentName, continues: continues) {
-                    LAAAgentPlaceholderAvatar()
+                    LAAModelMark(model: model?.model, provider: model?.provider)
                 } content: {
-                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                    VStack(alignment: .leading, spacing: 0) {
                         bubble
-                        LAAMessageTime(timestamp: message.timestamp)
+                        HStack(spacing: 2) {
+                            actions.padding(.leading, -8)
+                            LAAMessageTime(timestamp: message.timestamp)
+                        }
                     }
                 }
             }
@@ -52,6 +62,11 @@ struct LAAWorkMessageRow: View {
         // The sender row leaves the other side's gap itself; a second,
         // narrower column here pushed both sides toward the middle.
         .frame(maxWidth: .infinity, alignment: isOwner ? .trailing : .leading)
+    }
+
+    private var actions: some View {
+        LAAWorkMessageActions(text: message.text, sessionID: sessionID, messageID: message.id,
+                              isOwner: isOwner, onQuote: onQuote)
     }
 
     private var bubble: some View {
@@ -75,6 +90,9 @@ struct LAAWorkMessageRow: View {
         .foregroundStyle(isOwner ? LAAColor.ownBubbleText : LAAColor.text)
         .background(isOwner ? LAAColor.ownBubble : LAAColor.surface,
                     in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+        .modifier(LAAWorkMessageMenu(text: message.text, sessionID: sessionID, messageID: message.id,
+                                     isOwner: isOwner, onQuote: onQuote))
     }
 }
 #endif

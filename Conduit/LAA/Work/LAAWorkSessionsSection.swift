@@ -468,6 +468,14 @@ enum LAAWorkSessionStyle {
     }
 
     static func model(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
+        // A model or effort the owner changed after the start is the row's
+        // model now; the starting profile would name the old one.
+        if let profile = options?.profiles.first(where: { $0.id == session.profile }),
+           let observed = session.observed, let model = observed.model,
+           model != profile.model || (observed.effort.map { $0 != profile.effort } ?? false),
+           let applied = appliedModel(session, options: options) {
+            return applied.replacingOccurrences(of: " · ", with: " ")
+        }
         if let profile = options?.profiles.first(where: { $0.id == session.profile }) {
             return profileLabel(profile, fast: session.fast == true)
         }
@@ -506,6 +514,21 @@ enum LAAWorkSessionStyle {
             .map(\.effort))
         let rank = ["low", "medium", "high", "xhigh", "max"]
         return values.sorted { (rank.firstIndex(of: $0) ?? 9) < (rank.firstIndex(of: $1) ?? 9) }
+    }
+
+    struct ModelChoice: Hashable {
+        let model: String
+        let label: String
+    }
+
+    /// The models the session's provider can switch to, from the same model
+    /// table as the new-session picker, in its order. Paseo changes a model only
+    /// within its provider, so another provider's models are never offered.
+    static func modelChoices(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> [ModelChoice] {
+        guard let options, let provider = session.observed?.provider ?? session.requested?.provider else { return [] }
+        var seen = Set<String>()
+        return options.profiles.filter { $0.provider == provider && seen.insert($0.model).inserted }
+            .map { ModelChoice(model: $0.model, label: displayModel(shortLabel($0.label))) }
     }
 
     /// The list mark's colour, so the detail heading names a phase in the

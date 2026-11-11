@@ -28,6 +28,11 @@ function fixture(options = {}) {
       if (options.effortRejected) throw new Error('provider refused');
       if (!options.effortNoop) rows.find((a) => a.id === id).effectiveThinkingOptionId = effort;
     },
+    ...(options.noModelUpdate ? {} : { setAgentModel: async (id, model) => {
+      calls.push(['model', id, model]);
+      if (options.modelRejected) throw new Error('provider refused');
+      if (!options.modelNoop) rows.find((a) => a.id === id).model = model;
+    } }),
     setAgentFeature: async (id, featureId, value) => {
       calls.push(['feature', id, featureId, value]);
       if (options.featureRejected) throw new Error('provider refused');
@@ -608,6 +613,49 @@ test('effort changes use the daemon, are verified by read-back, and are refused 
   } });
   await assert.rejects(adapterOnly.service.updateSession({ id: adapterOnly.id, body: { effort: 'low' } }), { code: 'effort_unsupported' });
   await assert.rejects(ok.service.updateSession({ id: ok.id, body: { effort: '../etc/passwd' } }), { status: 400 });
+});
+
+test('model changes use the daemon, are verified by read-back, and are kept beside the request', async (t) => {
+  const make = async (options = {}, withDaemon = true) => {
+    const dir = mkdtempSync(join(tmpdir(), 'paseo-model-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const f = fixture(options);
+    const store = createSessionStore({ file: join(dir, 'sessions.json') });
+    const service = createSessionService({
+      sessionStore: store, daemon: withDaemon ? f.daemon : null, adapter: {},
+      findWorkspace: async () => null, notify: async () => {},
+    });
+    await service.listSessions();
+    return { f, store, service, id: daemonSessionID('parent') };
+  };
+
+  const ok = await make();
+  assert.equal(ok.service.view((await ok.service.getSession(ok.id)).session).capabilities.model, true);
+  const updated = await ok.service.updateSession({ id: ok.id, body: { model: 'gpt-6.1-terra' } });
+  const view = ok.service.view(updated.session);
+  assert.equal(view.observed.model, 'gpt-6.1-terra');
+  assert.deepEqual(view.ownerChanged, { model: 'gpt-6.1-terra' });
+  const effortToo = await ok.service.updateSession({ id: ok.id, body: { effort: 'low' } });
+  assert.deepEqual(ok.service.view(effortToo.session).ownerChanged, { model: 'gpt-6.1-terra', effort: 'low' });
+  assert.deepEqual(ok.f.calls.find((call) => call[0] === 'model'), ['model', 'parent', 'gpt-6.1-terra']);
+
+  const noop = await make({ modelNoop: true });
+  await assert.rejects(noop.service.updateSession({ id: noop.id, body: { model: 'gpt-6.1-terra' } }), { code: 'model_not_applied' });
+  const refused = await make({ modelRejected: true });
+  await assert.rejects(refused.service.updateSession({ id: refused.id, body: { model: 'gpt-6.1-terra' } }), { code: 'model_rejected' });
+  const unsupported = await make({ noModelUpdate: true });
+  assert.equal(unsupported.service.view((await unsupported.service.getSession(unsupported.id)).session).capabilities.model, false);
+  await assert.rejects(unsupported.service.updateSession({ id: unsupported.id, body: { model: 'gpt-6.1-terra' } }), { code: 'model_unsupported' });
+  const adapterOnly = await make({}, false);
+  adapterOnly.store.create({ record: {
+    id: adapterOnly.id, requestId: 'paseo-parent', name: '親', nameSource: 'agent', parentId: null,
+    projectId: null, workspaceId: 'home', cwd: '/Users/laa', profile: 'codex',
+    requested: { provider: 'codex', model: 'gpt', effort: 'high' }, observed: null,
+    phase: 'created', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
+    delegate: { sessionId: 'parent' },
+  } });
+  await assert.rejects(adapterOnly.service.updateSession({ id: adapterOnly.id, body: { model: 'gpt-6.1-terra' } }), { code: 'model_unsupported' });
+  await assert.rejects(ok.service.updateSession({ id: ok.id, body: { model: 'bad model\n' } }), { status: 400 });
+  await assert.rejects(ok.service.updateSession({ id: ok.id, body: { model: 7 } }), { status: 400 });
 });
 
 test("only a session's own checked Paseo attachment is served as its image", async (t) => {

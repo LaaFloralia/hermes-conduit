@@ -14,6 +14,25 @@ extension LAACopy {
     }
 }
 
+/// The refresh glyph, turning while a read is in flight (still with Reduce
+/// Motion, where it stays put and only the label changes).
+struct LAARefreshGlyph: View {
+    let spinning: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var angle: Double = 0
+
+    var body: some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: 13, weight: .bold))
+            .rotationEffect(.degrees(angle))
+            .onChange(of: spinning, initial: true) { _, now in
+                guard now, !reduceMotion else { withAnimation(.easeOut(duration: 0.2)) { angle = 0 }; return }
+                angle = 0
+                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { angle = 360 }
+            }
+    }
+}
+
 /// A standalone screen: refreshing never replaces an observation with a loader.
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -81,23 +100,46 @@ struct LAAUsageView: View {
         .accessibilityIdentifier(laaDesktop ? "laa.usage.desktop" : "laa.usage")
     }
 
+    /// The title, the age of the last reading, and the refresh as a button
+    /// that looks like one (owner, 2026-11-11: "今すぐ更新" had disappeared into
+    /// the age text, which nobody reads as pressable).
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
+        HStack(alignment: .center, spacing: LAASpacing.x3) {
             Text(verbatim: "Usage").font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 .accessibilityAddTraits(.isHeader)
-            Button { Task { await refresh() } } label: {
-                Text(verbatim: state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(state.isRefreshing || bridge.status != .paired)
-            .accessibilityLabel(Text(verbatim: "更新"))
-            .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
-            .accessibilityIdentifier("laa.usage.refresh")
+            Text(verbatim: state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                .monospacedDigit()
+                .accessibilityLabel(Text(verbatim: "最終取得"))
+                .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "未取得")
+                .accessibilityIdentifier("laa.usage.updated")
             Spacer(minLength: 0)
+            refreshButton
         }
+    }
+
+    private var refreshButton: some View {
+        Button { Task { await refresh() } } label: {
+            HStack(spacing: 6) {
+                LAARefreshGlyph(spinning: state.isRefreshing)
+                Text(verbatim: state.isRefreshing ? "更新中" : "今すぐ更新")
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(state.isRefreshing ? LAAColor.secondaryText : LAAColor.link)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 36)
+            .conduitGlassControl(cornerRadius: 18, tint: LAAColor.link.opacity(state.isRefreshing ? 0 : 0.08),
+                                 interactive: !state.isRefreshing)
+            .contentShape(Capsule())
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+        }
+        .buttonStyle(.plain)
+        .disabled(state.isRefreshing || bridge.status != .paired)
+        .opacity(bridge.status == .paired ? 1 : 0.45)
+        .accessibilityLabel(Text(verbatim: "今すぐ更新"))
+        .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
+        .accessibilityIdentifier("laa.usage.refresh")
     }
 
     private var connection: some View {

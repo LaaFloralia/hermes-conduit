@@ -1417,9 +1417,15 @@ struct UserBubble: View {
     var body: some View {
         // The owner's picture, name and role, as in groups and Work.
         LAAOwnerMessageRow(continues: continuesRun, timestamp: message.timestamp) {
-            stack.accessibilityIdentifier("chat.message.user").laaMessageMenu(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content, isMine: true,
+            let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+            stack.accessibilityIdentifier("chat.message.user").laaMessageMenu(text: text, isMine: true,
                 reply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
-            LAAChatDelivery(message: message)
+            HStack(spacing: 2) {
+                LAAChatDelivery(message: message)
+                LAAMessageActionBar(text: text,
+                                    onQuote: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
+                    .padding(.trailing, -8)
+            }
         }.laaChatColumn(.trailing)
     }
 #else
@@ -2765,10 +2771,24 @@ struct AssistantBubble: View {
                            timestamp: message.timestamp) {
             StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name, size: 30, scrolling: true)
         } content: {
-            reply.accessibilityIdentifier("chat.message.assistant").laaMessageMenu(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
-                reply: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
-                react: rowState.canReact(to: message) ? { emoji in Task { await appState.react(to: message.id, with: emoji) } } : nil,
-                read: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
+            let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+            VStack(alignment: .leading, spacing: 0) {
+                reply.accessibilityIdentifier("chat.message.assistant").laaMessageMenu(text: text,
+                    reply: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
+                    react: rowState.canReact(to: message) ? { emoji in Task { await appState.react(to: message.id, with: emoji) } } : nil,
+                    read: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
+                // Copy, quote and good in sight, not only in the long press
+                // (owner, 2026-11-11). Good is the 👍 reaction Hermes keeps.
+                if message.role == .assistant {
+                    LAAMessageActionBar(
+                        text: text,
+                        onQuote: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
+                        liked: rowState.canReact(to: message)
+                            ? message.reactions.contains { $0.isFromUser && $0.emoji == "👍" } : nil,
+                        onLike: { Task { await appState.react(to: message.id, with: "👍") } })
+                    .padding(.leading, -8)
+                }
+            }
         }
         .laaChatColumn(.leading)
 #else

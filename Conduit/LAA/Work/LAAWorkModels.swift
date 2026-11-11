@@ -237,6 +237,10 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
         /// The daemon accepts `PATCH /v1/sessions/:id {"fast": …}` for this
         /// session. An older Bridge omits it, so the Fast pill only reads.
         let fast: Bool?
+        /// The daemon accepts `PATCH /v1/sessions/:id {"model": …}` within the
+        /// session's provider. An older Bridge omits it: the menu lists the
+        /// models without letting one be chosen.
+        var model: Bool? = nil
     }
     let id: String
     let name: String
@@ -272,6 +276,9 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     /// the Bridge requested at start, so it is not shown as the current state.
     let observedFast: Bool?
     let capabilities: Capabilities?
+    /// What the owner changed after the start (model, effort); the request
+    /// itself is never rewritten. Absent from an older Bridge.
+    var ownerChanged: LAAWorkModel? = nil
     /// The short number the owner says ("S4"). Absent from an older Bridge.
     let ref: String?
 
@@ -284,8 +291,11 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
 
     var modelMismatch: Bool {
         guard let requested, let observed else { return false }
-        return [(requested.provider, observed.provider), (requested.model, observed.model),
-                (requested.effort, observed.effort)].contains { pair in
+        // The owner's own later choice is what the observation should match.
+        let model = ownerChanged?.model ?? requested.model
+        let effort = ownerChanged?.effort ?? requested.effort
+        return [(requested.provider, observed.provider), (model, observed.model),
+                (effort, observed.effort)].contains { pair in
             guard let requested = pair.0, let actual = pair.1, !requested.isEmpty, !actual.isEmpty else { return false }
             return requested != actual
         }

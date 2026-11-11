@@ -16,7 +16,10 @@ struct LAAWorkMessageForm: View {
     let settingsRow: AnyView?
     let interrupt: AnyView?
     let actionNotice: String?
+    /// A message to quote into the field, from the transcript's 引用.
+    let quote: LAAWorkQuoteRequest?
     let onSuccess: (LAAWorkSession) -> Void
+    @State private var focusRequest = 0
     @State private var text = ""
     @State private var attachments: [Attachment] = []
     @State private var photo: PhotosPickerItem?
@@ -27,6 +30,7 @@ struct LAAWorkMessageForm: View {
 
     init(sessionID: String, mode: Mode, drafts: ComposerDraftStore, canStart: Bool,
          settingsRow: AnyView? = nil, interrupt: AnyView? = nil, actionNotice: String? = nil,
+         quote: LAAWorkQuoteRequest? = nil,
          onSuccess: @escaping (LAAWorkSession) -> Void) {
         self.sessionID = sessionID
         self.mode = mode
@@ -35,6 +39,7 @@ struct LAAWorkMessageForm: View {
         self.settingsRow = settingsRow
         self.interrupt = interrupt
         self.actionNotice = actionNotice
+        self.quote = quote
         self.onSuccess = onSuccess
     }
 
@@ -149,7 +154,7 @@ struct LAAWorkMessageForm: View {
                             onChange: saveDraft, onSubmit: submit,
                             accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer",
                             onImage: mode == .followUp ? addImage : nil,
-                            compact: mode == .followUp)
+                            compact: mode == .followUp, focusRequest: focusRequest)
             if mode == .followUp { actionRow }
             if let actionNotice {
                 Text(verbatim: actionNotice).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -165,6 +170,13 @@ struct LAAWorkMessageForm: View {
             revision &+= 1
             text = drafts.draft(for: key).text
             attachments = drafts.draft(for: key).attachments
+        }
+        .onChange(of: quote) { _, request in
+            guard let request, mode == .followUp, pending == nil, !sending else { return }
+            text = LAAWorkQuoteRequest.inserting(LAAWorkQuoteRequest.markdown(request.text), into: text)
+            revision &+= 1
+            saveDraft(text)
+            focusRequest &+= 1
         }
         .onChange(of: photo) { _, selected in
             Task { @MainActor in

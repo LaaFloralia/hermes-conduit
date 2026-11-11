@@ -19,18 +19,26 @@ struct LAAWorkComposer: View {
     /// The follow-up field under a conversation: one line, no heading and no
     /// send row, because the conversation's own row carries them.
     var compact = false
+    /// Bumped to put the cursor in the field (after a quote is inserted).
+    var focusRequest = 0
 
     @State private var focus = false
+    /// The height the owner dragged the compact field to; nil follows the text.
+    @State private var manualHeight: CGFloat?
+    @State private var dragBase: CGFloat?
     @State private var height = ComposerPasteTextView.minimumHeight
     @State private var editorIdentity = UUID()
     @State private var fullEditor = false
     @State private var warning: String?
     @AppStorage(ChatTypography.inputPreferenceKey) private var inputSize = ChatTypography.defaultInputSize.rawValue
 
-    private var showsCompactExpansion: Bool {
-        let size = ChatTypography.inputSize(rawValue: inputSize)
-        let font = ChatTypography.inputFont(for: nil, size: size)
-        return height >= ceil(font.lineHeight * 2) + 17
+    /// How tall the owner may drag the compact field: roomy for a long
+    /// instruction, short enough that the conversation keeps a few turns.
+    static let manualHeightLimit: CGFloat = 360
+
+    private var fieldHeight: CGFloat {
+        guard compact, let manualHeight else { return height }
+        return min(Self.manualHeightLimit, max(height, manualHeight))
     }
 
     private var canSubmit: Bool { enabled && canSend && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -100,7 +108,7 @@ struct LAAWorkComposer: View {
                 inputTextSize: ChatTypography.inputSize(rawValue: inputSize),
                 programmaticRevision: revision
             )
-            .frame(height: height)
+            .frame(height: fieldHeight)
             // The compact field carries the expand control in its top-right
             // corner, so the text stops short of it instead of running under it.
             .padding(.trailing, compact ? LAASpacing.minimumTouchTarget : 0)
@@ -108,9 +116,54 @@ struct LAAWorkComposer: View {
         }
         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
+        // The follow-up field always offers both ways to get more room
+        // (owner, 2026-11-11: it could not be enlarged): drag its top edge to
+        // make it taller in place, or open the full editor.
         .overlay(alignment: .topTrailing) {
-            if compact && showsCompactExpansion { expandButton }
+            if compact { expandButton }
         }
+        .overlay(alignment: .top) {
+            if compact { resizeHandle }
+        }
+        .onChange(of: focusRequest) { _, _ in focus = true }
+    }
+
+    /// A short grabber on the field's top edge. Up makes the field taller, down
+    /// shorter; a double tap returns it to following the text.
+    private var resizeHandle: some View {
+        Capsule()
+            .fill(LAAColor.secondaryText.opacity(manualHeight == nil ? 0.35 : 0.6))
+            .frame(width: 36, height: 4)
+            .frame(width: 88, height: 22)
+            .contentShape(Rectangle())
+            .offset(y: -12)
+            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { value in
+                    let base = dragBase ?? fieldHeight
+                    if dragBase == nil { dragBase = base }
+                    manualHeight = min(Self.manualHeightLimit,
+                                       max(ComposerPasteTextView.minimumHeight, base - value.translation.height))
+                }
+                .onEnded { _ in
+                    dragBase = nil
+                    if let manualHeight, manualHeight <= height + 1 { self.manualHeight = nil }
+                })
+            .onTapGesture(count: 2) { withAnimation(.snappy) { manualHeight = nil } }
+            .accessibilityElement()
+            .accessibilityLabel(Text(verbatim: "入力欄の高さ"))
+            .accessibilityValue(Text(verbatim: manualHeight == nil ? "自動" : "\(Int(fieldHeight))ポイント"))
+            .accessibilityAdjustableAction { direction in
+                let step: CGFloat = 60
+                switch direction {
+                case .increment: manualHeight = min(Self.manualHeightLimit, fieldHeight + step)
+                case .decrement:
+                    let next = fieldHeight - step
+                    manualHeight = next <= height ? nil : next
+                @unknown default: break
+                }
+            }
+            .accessibilityIdentifier("\(accessibilityPrefix).resize")
+            .help(Text(verbatim: "ドラッグで入力欄の高さを変更"))
     }
 
     private var sendRow: some View {

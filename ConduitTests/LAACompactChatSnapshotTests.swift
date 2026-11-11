@@ -127,10 +127,11 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual(image.cgImage?.height, 2868)
         XCTAssertTrue(hasVisibleContent(image), "The rendered snapshot must not be blank")
         let bubbleTrailing = try XCTUnwrap(bubbleTrailingEdge(image, style: style), "Own bubble must be visible")
-        // The owner's picture holds the trailing margin; the bubble ends beside it.
+        // The bubble ends at the chat's trailing margin, under the owner's
+        // picture (026817ac moved it from beside the picture to the edge).
         XCTAssertEqual(canvas.width - bubbleTrailing,
-                       20 + 40, accuracy: 2,
-                       "The own bubble must end beside the owner's picture at the chat's trailing margin")
+                       20, accuracy: 2,
+                       "The own bubble must end at the chat's trailing margin, under the owner's picture")
         // The bar sits under the status bar (about 59pt), not in the top 60.
         let headerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 56..<106), "The header controls must be visible")
         // The capsule is a system bar item: it keeps the bar's own margin,

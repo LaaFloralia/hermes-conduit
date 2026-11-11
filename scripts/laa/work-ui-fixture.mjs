@@ -57,7 +57,7 @@ const fixtureSession = (id, name, phase, pending = null) => ({
   createdAt: '2026-11-06T00:00:00Z', updatedAt: '2026-11-06T00:00:00Z', observedAt: '2026-11-06T00:00:00Z',
   events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' },
   observation: { available: true, code: null }, favorite: false, archivedAt: null,
-  mode: 'bypass', fast: false, worktree: false, observedFast: true, capabilities: { effort: true, fast: true },
+  mode: 'bypass', fast: false, worktree: false, observedFast: true, capabilities: { effort: true, fast: true, model: true },
 });
 // The row's own session: running (so it carries the stop control) and on a
 // model the options table does not know, so its name is the long raw one.
@@ -386,6 +386,8 @@ const api = http.createServer(async (req, res) => {
     profiles: [
       { id: 'opus-high', label: 'Claude Opus 5.5', provider: 'claude', model: 'claude-opus-5-5', effort: 'high', fast: true },
       { id: 'opus-xhigh', label: 'Claude Opus 5.5', provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh', fast: true },
+      // A second Claude model, so a running session's menu has a model to switch to.
+      { id: 'sonnet-high', label: 'Claude Sonnet 5.5', provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high', fast: false },
     ],
     defaultProfile: 'opus-high', defaultMode: 'bypass',
   });
@@ -437,6 +439,10 @@ const api = http.createServer(async (req, res) => {
     if (raw) {
       const body = JSON.parse(raw);
       if (body.effort) session.observed = { ...session.observed, effort: body.effort };
+      if (body.model) {
+        session.observed = { ...session.observed, model: body.model };
+        session.ownerChanged = { ...(session.ownerChanged ?? {}), model: body.model };
+      }
       if (typeof body.fast === 'boolean') session.observedFast = body.fast;
     }
     return send(res, 200, session);

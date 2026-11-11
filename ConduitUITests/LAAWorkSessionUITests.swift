@@ -159,7 +159,8 @@ final class LAAWorkSessionUITests: XCTestCase {
     func testFailedObservationMarksValuesAsLastConfirmed() throws {
         let app = try launchFixture()
         open(staleID, app)
-        let model = app.descendants(matching: .any)["work.session.model"].firstMatch
+        // The pill is always the menu now; its value still says "最終確認".
+        let model = app.descendants(matching: .any)["work.session.effort"].firstMatch
         XCTAssertTrue(model.waitForExistence(timeout: 20))
         XCTAssertTrue((model.value as? String ?? "").contains("最終確認"))
         let fast = app.descendants(matching: .any)["work.session.fast"].firstMatch

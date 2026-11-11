@@ -46,13 +46,19 @@ struct LAAWorkSessionControls: View {
 
     private var applied: String? { LAAWorkSessionStyle.appliedModel(session, options: options) }
     private var currentEffort: String? { session.observed?.effort }
+    private var currentModel: String? { session.observed?.model }
     private var choices: [String] { LAAWorkSessionStyle.effortChoices(session, options: options) }
+    private var models: [LAAWorkSessionStyle.ModelChoice] { LAAWorkSessionStyle.modelChoices(session, options: options) }
     /// False when the last read could not reach Paseo. The value we hold is then
     /// the last confirmed one, not the current setting.
     private var observing: Bool { session.observation?.available != false }
     private var modelText: String? { applied.map { observing ? $0 : "最終確認 " + $0 } }
+    private var stopped: Bool { ["stopped", "stop_unconfirmed"].contains(session.phase) }
     private var canChangeEffort: Bool {
-        observing && session.capabilities?.effort == true && !changing && choices.count > 1
+        observing && !stopped && session.capabilities?.effort == true && !changing && choices.count > 1
+    }
+    private var canChangeModel: Bool {
+        observing && !stopped && session.capabilities?.model == true && !changing && models.count > 1
     }
     private var fast: LAAWorkFastControl.Display? {
         LAAWorkFastControl.display(observing: observing, observed: session.observedFast,
@@ -68,51 +74,104 @@ struct LAAWorkSessionControls: View {
         .accessibilityIdentifier("work.session.settings")
     }
 
-    @ViewBuilder private func modelPill(_ modelText: String) -> some View {
-        if canChangeEffort {
-            Menu {
-                ForEach(choices, id: \.self) { effort in
-                    Button { change(effort) } label: {
-                        if effort == currentEffort {
-                            Label { Text(verbatim: LAAWorkSessionStyle.effort(effort) ?? effort) }
-                                icon: { Image(systemName: "checkmark") }
-                        } else {
-                            Text(verbatim: LAAWorkSessionStyle.effort(effort) ?? effort)
-                        }
-                    }
-                }
-            } label: {
-                pill(modelText, interactive: true)
+    /// Why nothing in the menu can be chosen, in one line, so a tap always
+    /// answers instead of doing nothing (owner, 2026-11-11).
+    private var lockedReason: String? {
+        if !observing { return "最後に確認した値です。現在値は未確認です。" }
+        if stopped { return "停止したセッションは変更できません。" }
+        if changing { return "変更中です。" }
+        if !canChangeModel && !canChangeEffort { return "このセッションでは変更できません。" }
+        return nil
+    }
+
+    /// The pill always opens its menu (owner, 2026-11-11: a tap on a running
+    /// session's model did nothing): the models of the session's provider, then
+    /// the efforts of the current model. What cannot be changed stays listed
+    /// and disabled, with the reason at the top.
+    private func modelPill(_ modelText: String) -> some View {
+        Menu {
+            if let lockedReason {
+                Section { Button {} label: { Text(verbatim: lockedReason) }.disabled(true) }
             }
-            .accessibilityLabel(Text(verbatim: "モデルと推論"))
-            .accessibilityValue(Text(verbatim: modelText))
-            .accessibilityHint(Text(verbatim: "推論の強さを変更"))
-            .accessibilityIdentifier("work.session.effort")
-        } else {
-            pill(modelText, interactive: false)
-                .accessibilityLabel(Text(verbatim: "モデルと推論"))
-                .accessibilityValue(Text(verbatim: modelText))
-                .accessibilityHint(Text(verbatim: observing ? "開始後は変更できません"
-                                                            : "最後に確認した値です。現在値は未確認です。"))
-                .accessibilityIdentifier("work.session.model")
+            if !models.isEmpty {
+                Section {
+                    ForEach(models, id: \.self) { choice in
+                        Button { changeModel(choice.model) } label: {
+                            if choice.model == currentModel {
+                                Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
+                            } else {
+                                Text(verbatim: choice.label)
+                            }
+                        }
+                        .disabled(!canChangeModel || choice.model == currentModel)
+                        .accessibilityIdentifier("work.session.model.\(choice.model)")
+                    }
+                } header: { Text(verbatim: "モデル") }
+            }
+            if !choices.isEmpty {
+                Section {
+                    ForEach(choices, id: \.self) { effort in
+                        Button { change(effort) } label: {
+                            if effort == currentEffort {
+                                Label { Text(verbatim: LAAWorkSessionStyle.effort(effort) ?? effort) }
+                                    icon: { Image(systemName: "checkmark") }
+                            } else {
+                                Text(verbatim: LAAWorkSessionStyle.effort(effort) ?? effort)
+                            }
+                        }
+                        .disabled(!canChangeEffort || effort == currentEffort)
+                    }
+                } header: { Text(verbatim: "推論") }
+            }
+        } label: {
+            pill(modelText, interactive: canChangeModel || canChangeEffort)
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "モデルと推論"))
+        .accessibilityValue(Text(verbatim: modelText))
+        .accessibilityHint(Text(verbatim: lockedReason ?? "モデルと推論の強さを変更"))
+        .accessibilityIdentifier("work.session.effort")
     }
 
     private func pill(_ modelText: String, interactive: Bool) -> some View {
-        HStack(spacing: LAASpacing.x1) {
+        HStack(spacing: 6) {
+            LAAModelMark(model: currentModel, provider: session.observed?.provider, size: 22)
             if changing { Text(verbatim: "変更中").font(.caption) }
             // The row keeps every control on one line: only the model name
             // gives way when the screen is narrow.
             Text(verbatim: modelText)
                 .fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
-            if interactive {
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
-            }
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(interactive ? LAAColor.text : LAAColor.secondaryText)
         }
         .laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
-        .padding(.horizontal, LAASpacing.x3).frame(minHeight: 36)
-        .conduitGlassControl(cornerRadius: 18, interactive: interactive)
+        .padding(.leading, 7).padding(.trailing, LAASpacing.x3).frame(minHeight: 36)
+        .contentShape(Capsule())
+        .conduitGlassControl(cornerRadius: 18, interactive: true)
         .layoutPriority(-1)
+    }
+
+    private func changeModel(_ model: String) {
+        guard !changing, model != currentModel else { return }
+        changing = true
+        notice = nil
+        Task { @MainActor in
+            defer { changing = false }
+            struct Change: Encodable { let model: String }
+            do {
+                let _: LAAWorkSession = try await LAAWorkHTTP.write(
+                    bridge, path: "/v1/sessions/\(session.id)",
+                    body: JSONEncoder().encode(Change(model: model)),
+                    key: LAABridgeIdempotencyKey(), method: "PATCH")
+                await refresh()
+            } catch let error as LAABridgeHTTPError {
+                notice = LAAWorkHTTP.message(error)
+                await refresh()
+            } catch {
+                notice = "モデルを変更できませんでした。"
+            }
+        }
     }
 
     /// The word is always "Fast"; the value and its freshness live in the

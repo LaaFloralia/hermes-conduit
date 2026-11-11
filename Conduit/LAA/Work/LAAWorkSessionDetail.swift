@@ -119,6 +119,8 @@ struct LAAWorkSessionDetail: View {
     @State private var changingEffort = false
     @State private var changingFast = false
     @State private var effortNotice: String?
+    /// The last message the owner asked to quote into the follow-up field.
+    @State private var quote: LAAWorkQuoteRequest?
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
 
     init(id: String, projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore) {
@@ -229,7 +231,11 @@ struct LAAWorkSessionDetail: View {
                         LAAWorkMessageRow(message: message, sessionID: id,
                                           agentName: LAAWorkSpeaker.agentName(session, options: options),
                                           continues: LAASenderRun.continues(speakers, at: index),
-                                          responseSize: responseSize)
+                                          responseSize: responseSize,
+                                          model: session.observed ?? session.requested,
+                                          onQuote: { text in
+                                              quote = LAAWorkQuoteRequest(text: text, token: (quote?.token ?? 0) &+ 1)
+                                          })
                     }
                     if !workRecords.isEmpty { LAAWorkRecordDisclosure(records: workRecords) }
                     if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
@@ -270,7 +276,8 @@ struct LAAWorkSessionDetail: View {
                     _ = await refreshSnapshot()
                 }),
             interrupt: canStop(session) ? AnyView(stopButton) : nil,
-            actionNotice: effortNotice
+            actionNotice: effortNotice,
+            quote: quote
         ) { _ in
             Task { await refreshSnapshot() }
         }
@@ -359,13 +366,17 @@ struct LAAWorkSessionDetail: View {
         canInterrupt(session) && ["running", "awaiting_decision"].contains(session.phase)
     }
 
+    /// The same 36 pt glass circle as Send beside it (owner, 2026-11-11: the
+    /// stop's ring was larger than Send's); only the square and its colour
+    /// say which one ends the turn.
     private var stopButton: some View {
         Button { beginStop() } label: {
             Image(systemName: "stop.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(LAAColor.end)
-                .frame(width: 44, height: 44)
-                .laaGlass(in: Circle())
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(stopping ? LAAColor.secondaryText : LAAColor.end)
+                .frame(width: 36, height: 36)
+                .conduitGlassControl(cornerRadius: 18, tint: LAAColor.end.opacity(0.10), interactive: !stopping)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(stopping)
@@ -547,17 +558,22 @@ struct LAAWorkSessionHeaderPill: View {
     @Environment(\.laaClearGlassControls) private var clearGlass
 
     var body: some View {
-        VStack(alignment: .center, spacing: 2) {
-            Text(verbatim: session.name)
-                .font(.custom("Georgia", size: 16, relativeTo: .headline))
-                .lineLimit(1).minimumScaleFactor(0.8).truncationMode(.tail)
-                .accessibilityIdentifier("work.session.detail.title")
-            HStack(spacing: 0) {
-                Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase))
-                    .foregroundStyle(LAAWorkSessionStyle.statusColor(session.phase))
-                Text(verbatim: " " + LAAWorkPresentation.phase(session.phase)).foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            // Who the owner is talking to, as in the transcript below.
+            LAAModelMark(model: (session.observed ?? session.requested)?.model,
+                         provider: (session.observed ?? session.requested)?.provider, size: 26)
+            VStack(alignment: .center, spacing: 2) {
+                Text(verbatim: session.name)
+                    .font(.custom("Georgia", size: 16, relativeTo: .headline))
+                    .lineLimit(1).minimumScaleFactor(0.8).truncationMode(.tail)
+                    .accessibilityIdentifier("work.session.detail.title")
+                HStack(spacing: 0) {
+                    Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase))
+                        .foregroundStyle(LAAWorkSessionStyle.statusColor(session.phase))
+                    Text(verbatim: " " + LAAWorkPresentation.phase(session.phase)).foregroundStyle(.secondary)
+                }
+                .font(.caption2).lineLimit(1)
             }
-            .font(.caption2).lineLimit(1)
         }
         .modifier(LAAWorkSessionHeaderGlass(clear: clearGlass))
         .accessibilityElement(children: .combine)

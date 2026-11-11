@@ -24,6 +24,8 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
   // What the running daemon advertises. A hard-coded capability would offer an
   // operation this daemon cannot perform.
   let serverFeatures = {};
+  // Whether the connected client can change a running agent's model.
+  let modelUpdate = false;
   // Paseo titles the workspace, not the agent; the detail read needs the same
   // title its list row uses (see syncDaemon and applyObservation).
   let workspaceCache = { at: -Infinity, titles: new Map() };
@@ -72,6 +74,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       try {
         const features = client.getLastServerInfoMessage?.()?.features;
         if (features && typeof features === 'object') serverFeatures = features;
+        modelUpdate = typeof client.setAgentModel === 'function';
       } catch {}
       return await fn(client);
     }
@@ -130,7 +133,9 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
   return {
     /// The daemon's own feature flags, so the Bridge can tell "not supported"
     /// from "failed" instead of offering an operation that cannot work.
-    capabilities: () => ({ effortUpdate: serverFeatures.agentThinkingUpdate === true }),
+    // Paseo has changed a running agent's model since before thinking updates,
+    // so any connected daemon can; a client without the call cannot.
+    capabilities: () => ({ effortUpdate: serverFeatures.agentThinkingUpdate === true, modelUpdate: modelUpdate === true }),
     list: () => call(directory),
     /// Whether Paseo still holds this agent. Only Paseo's own 404 is "gone";
     /// every other failure is "unknown" and must leave the record alone.
@@ -246,6 +251,24 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       const after = await agent(c, id);
       const applied = after.effectiveThinkingOptionId ?? after.thinkingOptionId ?? null;
       if (applied !== effort) throw new BridgeError(409, 'effort_not_applied', 'Paseo did not apply the effort');
+      return statusOf(c, after);
+    }),
+    /// Change the model of a running session, within its provider. The read-back
+    /// of the runtime model is the only proof it applied.
+    setModel: (id, model) => call(async (c) => {
+      if (typeof c.setAgentModel !== 'function') {
+        throw new BridgeError(409, 'model_unsupported', 'this Paseo client cannot change the model');
+      }
+      await agent(c, id);
+      try {
+        await c.setAgentModel(id, model);
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        throw new BridgeError(409, 'model_rejected', 'Paseo rejected the model change');
+      }
+      const after = await agent(c, id);
+      const applied = after.runtimeInfo?.model ?? after.model ?? null;
+      if (applied !== model) throw new BridgeError(409, 'model_not_applied', 'Paseo did not apply the model');
       return statusOf(c, after);
     }),
     /// Change Fast on a running session. Claude has a boolean toggle and Codex a

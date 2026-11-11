@@ -780,8 +780,29 @@ export function createSessionService({
     const name = body.name === undefined ? undefined : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
     const effort = body.effort === undefined ? undefined : parseEffort(body.effort);
     const fast = body.fast === undefined ? undefined : parseBoolean(body.fast, 'fast');
-    if (favorite === undefined && archived === undefined && name === undefined && effort === undefined && fast === undefined) {
-      throw badRequest('payload_invalid', 'favorite, archived, name, effort or fast is required');
+    const model = body.model === undefined ? undefined : parseModel(body.model);
+    if (favorite === undefined && archived === undefined && name === undefined && effort === undefined && fast === undefined
+      && model === undefined) {
+      throw badRequest('payload_invalid', 'favorite, archived, name, model, effort or fast is required');
+    }
+    // The model goes first: an effort sent with it is the new model's option.
+    if (model !== undefined) {
+      if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
+        throw new BridgeError(409, 'model_unsupported', 'the model can only be changed for a Paseo session');
+      }
+      if (existing.stopRequestedAt || ['stopped', 'stop_unconfirmed'].includes(existing.phase)) {
+        throw conflict('session_stopped', 'the session is stopped; change the model after it is running again');
+      }
+      // The provider's read-back inside setModel is the proof it applied.
+      const status = await daemon.setModel(existing.delegate.sessionId, model);
+      applyObservation(id, status);
+      // The request stays as it was made (README: the requested model is never
+      // rewritten); the owner's later choice is kept beside it, so the detail
+      // compares the observation with what the owner last asked for.
+      sessionStore.update(id, (row) => {
+        row.ownerChanged = { ...(row.ownerChanged ?? {}), model };
+        return [];
+      });
     }
     if (effort !== undefined) {
       if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
@@ -794,6 +815,10 @@ export function createSessionService({
       // a half-applied PATCH. The read-back inside setThinking is the proof.
       const status = await daemon.setThinking(existing.delegate.sessionId, effort);
       applyObservation(id, status);
+      sessionStore.update(id, (row) => {
+        row.ownerChanged = { ...(row.ownerChanged ?? {}), effort };
+        return [];
+      });
     }
     if (fast !== undefined) {
       if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
@@ -1184,6 +1209,9 @@ export function createSessionService({
       instructionsApplied: record.instructionsApplied === true,
       requested: record.requested,
       observed: record.observed ?? null,
+      // What the owner changed after the start ({model?, effort?}); null when
+      // nothing was. `requested` keeps the original request.
+      ownerChanged: record.ownerChanged ?? null,
       modelCheck: record.modelCheck ?? null,
       runtimeVerified: record.runtimeVerified === true,
       // Only the provider's own toggle value is exposed; the Bridge's request
@@ -1197,6 +1225,10 @@ export function createSessionService({
         // The provider must have said it has a Fast setting; a session without
         // one is offered no switch rather than a 409 on tap.
         fast: daemon !== null && typeof record.delegate?.sessionId === 'string' && record.fastAvailable === true,
+        // Paseo changes a running agent's model within its provider; the app
+        // offers only the same provider's models from /v1/session-options.
+        model: daemon !== null && typeof record.delegate?.sessionId === 'string'
+          && daemon.capabilities?.().modelUpdate === true,
       },
       phase: record.phase,
       daemonStatus: record.daemonStatus ?? null,
@@ -1384,6 +1416,15 @@ function parseBoolean(raw, field) {
 function parseEffort(raw) {
   if (typeof raw !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(raw)) {
     throw badRequest('payload_invalid', 'effort must be a thinking option id');
+  }
+  return raw;
+}
+
+// A provider model id, as the model table writes it ("claude-opus-5-5",
+// "gpt-6.1-sol", or a route such as '["opencode-go","deepseek-v4.1-flash"]').
+function parseModel(raw) {
+  if (typeof raw !== 'string' || raw.length < 1 || raw.length > 200 || !/^[\x21-\x7e]+$/.test(raw)) {
+    throw badRequest('payload_invalid', 'model must be a provider model id');
   }
   return raw;
 }
