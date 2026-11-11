@@ -9,10 +9,11 @@ struct LAALinearTasksView: View {
     @ObservedObject var drafts: ComposerDraftStore
     /// The Work hub's search on the phone; the Mac column keeps its own field.
     var query = ""
-    var archivedOnly = false
     var createID = 0
     var onCreateConsumed: () -> Void = {}
-    @State private var showingArchive = false
+    /// The list's pulldown can show the archive in place of the open tasks;
+    /// it is not kept, so the tab always opens on the open tasks.
+    @State private var archivedOnly = false
     @State private var items: [LAALinearTask] = []
     @State private var loading = false
     @State private var busy = false
@@ -20,6 +21,7 @@ struct LAALinearTasksView: View {
     @State private var loaded = false
     @State private var loadID = UUID()
     @State private var loadedDevice: String?
+    @State private var loadedArchive = false
     @State private var editor: Editor?
     @State private var detail: LAALinearTask?
     @State private var deleting: LAALinearTask?
@@ -37,8 +39,6 @@ struct LAALinearTasksView: View {
         var task: LAALinearTask?
     }
     private enum DesktopSelection: Equatable {
-        case inbox
-        case browse
         case task(String)
     }
     private var journalKey: ComposerDraftKey {
@@ -65,8 +65,7 @@ struct LAALinearTasksView: View {
     private var rows: [LAALinearTask] {
         items.filter { archivedOnly ? $0.isArchived : $0.isOpen }
             .filter { archivedOnly || filter.matches($0) }
-            .filter { archivedOnly || LAAWorkRef.matches(query, ref: $0.ref,
-                                                         text: [$0.title, $0.description ?? "", $0.identifier]) }
+            .filter { LAAWorkRef.matches(query, ref: $0.ref, text: [$0.title, $0.description ?? "", $0.identifier]) }
             .sorted {
                 let a = $0.priority == 0 ? 5 : $0.priority
                 let b = $1.priority == 0 ? 5 : $1.priority
@@ -78,32 +77,18 @@ struct LAALinearTasksView: View {
 
     var body: some View {
         Group {
-            if laaDesktop && !archivedOnly { desktopBody } else { phoneBody }
+            if laaDesktop { desktopBody } else { phoneBody }
         }
         .tint(LAAColor.link)
         .refreshable { await load() }
         .onChange(of: createID, initial: true) { _, value in
-            guard value > 0, !archivedOnly, !busy, pending == nil else { return }
+            guard value > 0, !busy, pending == nil else { return }
+            // A new task belongs to the open list, so creating leaves the archive.
+            archivedOnly = false
             editor = Editor(id: UUID().uuidString.lowercased(), task: nil)
             onCreateConsumed()
         }
-        .navigationDestination(isPresented: Binding(get: { !laaDesktop && desktopSelection == .inbox }, set: { if !$0 { desktopSelection = nil } })) {
-            LAAPersonalInboxEntry(drafts: drafts)
-        }
-        .navigationDestination(isPresented: Binding(get: { !laaDesktop && desktopSelection == .browse }, set: { if !$0 { desktopSelection = nil } })) {
-            ScrollView { LAAPersonalTaskList(drafts: drafts, refreshID: 0).padding(20) }.navigationTitle(String("すべての課題"))
-        }
-        .sheet(isPresented: $showingArchive, onDismiss: { Task { await load() } }) {
-            NavigationStack {
-                LAALinearTasksView(drafts: drafts, archivedOnly: true)
-                    .navigationTitle(Text(verbatim: "アーカイブ"))
-                    .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { showingArchive = false } label: { Text(verbatim: LAACopy.close) }
-                    } }
-            }
-            .environmentObject(bridge)
-        }
-        .task(id: "\(bridge.revision)-\(reloadID)-\(scenePhase == .active)") {
+        .task(id: "\(bridge.revision)-\(reloadID)-\(scenePhase == .active)-\(archivedOnly)") {
             await load()
             // Only a task a staff member is still working on changes quickly;
             // leave the list quiet otherwise. The task ends with the view, so
@@ -187,16 +172,20 @@ struct LAALinearTasksView: View {
             if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
             Section {
                 ForEach(rows) { task in
-                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        Button { editor = Editor(id: task.id, task: task) } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                                Text(verbatim: task.title).font(.system(size: 17)).foregroundStyle(LAAColor.text)
+                    // The number leads the row in its own column, so the
+                    // owner reads "T12" first and the titles line up.
+                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
+                        LAATaskNumberLabel(task: task)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Button { editor = Editor(id: task.id, task: task) } label: {
+                                Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
+                                    .foregroundStyle(LAAColor.text)
                                     .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                                LAAWorkRefLabel(ref: task.ref)
-                            }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
-                        }.buttonStyle(.borderless).disabled(archivedOnly)
-                        taskMeta(task)
+                            }.buttonStyle(.borderless).disabled(archivedOnly)
+                            taskMeta(task)
+                        }
                     }
+                    .padding(.vertical, LAASpacing.x1)
                     .contextMenu {
                         if archivedOnly {
                             // The Mac list has no swipe, so the row's menu is
@@ -212,8 +201,8 @@ struct LAALinearTasksView: View {
                         }
                     }
                     .disabled(busy || pending != nil)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                    .listRowBackground(LAAColor.surface)
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if archivedOnly {
                             Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
@@ -235,15 +224,10 @@ struct LAALinearTasksView: View {
                     }
                 }
             } header: {
-                if archivedOnly {
-                    Text(verbatim: "アーカイブ")
-                } else {
-                    filterMenu
-                }
+                filterMenu
             } footer: {
                 Text(verbatim: archivedFooter)
             }
-            .listSectionSeparator(.hidden)
             if loaded && rows.isEmpty && !loading && failure == nil {
                 ContentUnavailableView {
                     Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : searching ? "一致するタスクはありません" : "タスクはありません") }
@@ -257,33 +241,28 @@ struct LAALinearTasksView: View {
         .scrollContentBackground(.hidden)
     }
 
-    /// The list's filter: a menu on its own heading, so the current range is
-    /// what the rows below are called. The choice stays on the device.
+    /// The list's one pulldown, labelled with the range the rows below are in.
+    /// Every choice changes this list in place: the three ranges (kept on the
+    /// device) and the archive (not kept). The earlier 受信箱 and すべての課題
+    /// pushed other screens from here and read as unrelated to the list
+    /// (owner, 2026-11-11).
     private var filterMenu: some View {
-        Menu {
-            Button(String("受信箱")) { desktopSelection = .inbox }
-            Button(String("すべての課題")) { desktopSelection = .browse }
-            Button(String("アーカイブを表示")) { showingArchive = true }.accessibilityIdentifier("work.linear.archive")
-            Divider()
+        LAAWorkListPicker(title: archivedOnly ? LAACopy.WorkTab.archived : filter.title,
+                          identifier: "work.tasks.filter") {
             ForEach(LAALinearTaskFilter.allCases) { option in
-                Button { filterRaw = option.rawValue } label: {
-                    if option == filter {
-                        Label { Text(verbatim: option.title) } icon: { Image(systemName: "checkmark") }
-                    } else {
-                        Text(verbatim: option.title)
-                    }
+                LAAWorkPickerItem(title: option.title, selected: !archivedOnly && option == filter,
+                                  identifier: "work.tasks.filter.\(option.rawValue)") {
+                    filterRaw = option.rawValue
+                    archivedOnly = false
                 }
             }
-        } label: {
-            HStack(spacing: LAASpacing.x1) {
-                Text(verbatim: "Tasks").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Image(systemName: "ellipsis").frame(width: 44, height: 44)
+            Divider()
+            LAAWorkPickerItem(title: LAACopy.WorkTab.archived, selected: archivedOnly,
+                              identifier: "work.linear.archive") {
+                archivedOnly = true
+                if laaDesktop { desktopSelection = nil }
             }
-            .foregroundStyle(LAAColor.text)
         }
-        .accessibilityLabel(Text(verbatim: "絞り込み、\(filter.title)"))
-        .accessibilityIdentifier("work.tasks.filter")
     }
 
     /// 担当 · status · priority · due, one quiet line under the title. The
@@ -411,31 +390,17 @@ struct LAALinearTasksView: View {
         .accessibilityIdentifier("work.desktop.tasks")
     }
 
-    private func desktopNavRow(_ title: String, icon: String, selection: DesktopSelection, identifier: String) -> some View {
-        Button { desktopSelection = selection } label: {
-            Label { Text(verbatim: title) } icon: { Image(systemName: icon) }
-                .laaTextStyle(.body)
-                .foregroundStyle(LAAColor.text)
-                .padding(.horizontal, LAASpacing.x4)
-                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                .background(desktopSelection == selection ? LAAColor.selectionFill : .clear,
-                            in: RoundedRectangle(cornerRadius: LAARadius.card))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-    }
-
     private func desktopTaskRow(_ task: LAALinearTask) -> some View {
         HStack(alignment: .center, spacing: LAASpacing.x2) {
             Button { desktopSelection = .task(task.id) } label: {
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                        Text(verbatim: task.title).font(.system(size: 17))
+                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
+                    LAATaskNumberLabel(task: task)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
                             .foregroundStyle(LAAColor.text).lineLimit(2)
                             .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                        LAAWorkRefLabel(ref: task.ref)
+                        taskMeta(task, showsRunStatus: false)
                     }
-                    taskMeta(task, showsRunStatus: false)
                 }
                 .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
                 .contentShape(Rectangle())
@@ -452,10 +417,18 @@ struct LAALinearTasksView: View {
         .onHover { hoveredID = $0 ? task.id : (hoveredID == task.id ? nil : hoveredID) }
         .contextMenu {
             Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "開く") }
-            Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "編集") }
-            Button { completing = task } label: { Text(verbatim: "完了") }
-                .disabled(busy || pending != nil || !task.isOpen || task.completionBlockedReason != nil)
-            Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
+            if task.isArchived {
+                // The archive is shown in this column now, so its rows come
+                // back from the same menu.
+                Button {
+                    submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
+                } label: { Text(verbatim: "戻す") }
+            } else {
+                Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "編集") }
+                Button { completing = task } label: { Text(verbatim: "完了") }
+                    .disabled(busy || pending != nil || !task.isOpen || task.completionBlockedReason != nil)
+                Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
+            }
         }
         .disabled(busy || pending != nil)
     }
@@ -469,17 +442,6 @@ struct LAALinearTasksView: View {
                     Task { await load(quiet: true) }
                 })
                     .id(selectedTask.id)
-            }
-        } else if desktopSelection == .inbox {
-            NavigationStack { LAAPersonalInboxEntry(drafts: drafts) }
-        } else if desktopSelection == .browse {
-            NavigationStack {
-                ScrollView {
-                    LAAPersonalTaskList(drafts: drafts, refreshID: 0)
-                        .padding(LAASpacing.horizontal)
-                }
-                .background(LAAColor.background)
-                .navigationTitle(Text(verbatim: "課題を探す"))
             }
         } else {
             LAAMacEmptyDetail(symbol: "checklist", title: "タスクを選んでください。",
@@ -614,8 +576,11 @@ struct LAALinearTasksView: View {
 
     private func load(quiet: Bool = false) async {
         let device = bridge.deviceID
-        if loadedDevice != device {
-            items = []; loaded = false; loadedDevice = device; editor = nil
+        if loadedDevice != device || loadedArchive != archivedOnly {
+            // The pulldown switched between the open tasks and the archive:
+            // each has its own snapshot, so one never shows as the other.
+            if loadedDevice != device { editor = nil }
+            items = []; loaded = false; loadedDevice = device; loadedArchive = archivedOnly
             if let device, let snapshot: LAALinearTaskCache.OwnerSnapshot = LAALinearTaskCache.read(device: device, scope: archivedOnly ? "archive" : "owner") {
                 items = snapshot.items; loaded = true
             }
@@ -626,7 +591,7 @@ struct LAALinearTasksView: View {
         defer { if !quiet, loadID == epoch { loading = false } }
         do {
             let page: LAAWorkPage<LAALinearTask> = try await bridge.read(archivedOnly ? "/v1/linear-owner-tasks?archived=only" : "/v1/linear-owner-tasks")
-            guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
+            guard loadID == epoch, device == bridge.deviceID, loadedArchive == archivedOnly, !Task.isCancelled else { return }
             guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
             items = page.items; loaded = true; failure = nil
             if laaDesktop, !archivedOnly, desktopSelection == nil, let first = desktopRows.first { desktopSelection = .task(first.id) }
@@ -644,6 +609,29 @@ struct LAALinearTasksView: View {
         catch {
             guard loadID == epoch, device == bridge.deviceID, !quiet else { return }
             failure = loaded ? "最新のタスクを取得できません。前回の内容を表示しています。" : "Linearのタスクを取得できません。接続を確認して読み直してください。"
+        }
+    }
+}
+
+/// A task's number at the head of its row: the short number the owner says
+/// (`T12`), or Linear's own identifier from a Bridge that sends none, so every
+/// row carries a unique number. Muted, monospaced, in a column of its own.
+struct LAATaskNumberLabel: View {
+    let task: LAALinearTask
+    @ScaledMetric(relativeTo: .footnote) private var width: CGFloat = 34
+
+    static func number(_ task: LAALinearTask) -> String? {
+        LAAWorkRef.display(task.ref) ?? LAAWorkRef.display(task.identifier)
+    }
+
+    var body: some View {
+        if let value = Self.number(task) {
+            Text(verbatim: value)
+                .laaTextStyle(.secondary).fontWeight(.medium).monospacedDigit()
+                .foregroundStyle(LAAColor.secondaryText)
+                .lineLimit(1).fixedSize()
+                .frame(minWidth: width, alignment: .leading)
+                .accessibilityIdentifier("work.ref.\(value)")
         }
     }
 }

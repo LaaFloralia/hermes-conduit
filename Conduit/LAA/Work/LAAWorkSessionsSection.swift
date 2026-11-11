@@ -12,7 +12,6 @@ struct LAAWorkSessionsSection: View {
     var query: String? = nil
     var createID = 0
     var onCreateConsumed: () -> Void = {}
-    var onRequestDecisions: () -> Void = {}
     @State private var projectOrder = false
     @State private var editingProject: LAAWorkProject?
     @State private var projectHome: LAAWorkProject?
@@ -34,22 +33,32 @@ struct LAAWorkSessionsSection: View {
     @State private var expanded = Set<String>()
 
     private var searchText: String { query ?? search }
+    private var viewTitle: String {
+        showArchived ? LAACopy.WorkTab.archived : projectOrder ? String("プロジェクト別") : String("新しい順")
+    }
     private var searching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            HStack {
-                Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
-                Spacer()
-                Menu {
-                    Button(String("新しい順")) { projectOrder = false }
-                    Button(String("プロジェクト別")) { projectOrder = true }.accessibilityIdentifier("work.sessions.byProject")
-                    Button(showArchived ? String("最近のセッションに戻る") : String("アーカイブを表示")) { showArchived.toggle(); Task { await load() } }
-                        .accessibilityIdentifier("work.sessions.archiveToggle")
-                    Button(String("判断の一覧"), action: onRequestDecisions).accessibilityIdentifier("work.decisions.open")
-                    Button(String("プロジェクトを管理")) { showingProjects = true }.accessibilityIdentifier("work.projects.manage")
-                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
+            // The list's view is one pulldown labelled with the current
+            // choice, the same control the Tasks list starts with.
+            LAAWorkListPicker(title: viewTitle, identifier: "work.sessions.menu") {
+                LAAWorkPickerItem(title: "新しい順", selected: !projectOrder && !showArchived) {
+                    projectOrder = false
+                    if showArchived { showArchived = false; Task { await load() } }
+                }
+                LAAWorkPickerItem(title: "プロジェクト別", selected: projectOrder && !showArchived,
+                                  identifier: "work.sessions.byProject") {
+                    projectOrder = true
+                    if showArchived { showArchived = false; Task { await load() } }
+                }
+                Divider()
+                LAAWorkPickerItem(title: LAACopy.WorkTab.archived, selected: showArchived,
+                                  identifier: "work.sessions.archiveToggle") {
+                    showArchived.toggle(); Task { await load() }
+                }
+                Divider()
+                Button(String("プロジェクトを管理")) { showingProjects = true }.accessibilityIdentifier("work.projects.manage")
             }
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
@@ -69,15 +78,15 @@ struct LAAWorkSessionsSection: View {
             if projectOrder {
                 ForEach(projects.filter { !$0.isArchived }) { project in
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(verbatim: project.name).font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(LAAColor.secondaryText).frame(minHeight: 44)
+                        Text(verbatim: project.name).laaTextStyle(.section)
+                            .foregroundStyle(LAAColor.text).frame(minHeight: 32, alignment: .bottom)
                             .contextMenu {
                                 Button(String("開く")) { projectHome = project }
                                 Button(String("名前と指示を変更")) { editingProject = project }
                                 Button(String("アーカイブ")) { Task { await archiveProject(project) } }
                             }
                         let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
-                        if rows.isEmpty { Text(verbatim: "セッションはありません").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText) }
+                        if rows.isEmpty { Text(verbatim: "セッションはありません").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                         else { group("", rows, children) }
                     }
                 }
@@ -303,21 +312,21 @@ struct LAAWorkSessionRow: View {
     var childNeedsDecision = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: LAASpacing.x3) {
             LAAWorkStatusMark(phase: session.needsDecision || childNeedsDecision ? "awaiting_decision" : session.phase)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Text(verbatim: session.name).font(.system(size: 17, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: LAASpacing.x1) {
+                    Text(verbatim: session.name).laaTextStyle(.body).fontWeight(.medium)
                         .foregroundStyle(LAAColor.text).lineLimit(2).multilineTextAlignment(.leading)
                         .accessibilityIdentifier("work.session.\(session.id)")
-                    if session.isFavorite { Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(LAAColor.secondaryText) }
+                    if session.isFavorite { Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(LAAColor.secondaryText) }
                 }
-                Text(verbatim: detail).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
             LAAWorkRefLabel(ref: session.ref)
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading).contentShape(Rectangle())
+        .padding(.horizontal, LAASpacing.x4).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading).contentShape(Rectangle())
     }
 
     private var detail: String {
@@ -499,12 +508,10 @@ enum LAAWorkSessionStyle {
         return values.sorted { (rank.firstIndex(of: $0) ?? 9) < (rank.firstIndex(of: $1) ?? 9) }
     }
 
+    /// The list mark's colour, so the detail heading names a phase in the
+    /// same colour the row did (an error is red in both).
     static func statusColor(_ phase: String) -> Color {
-        switch phase {
-        case "awaiting_decision", "stop_unconfirmed", "error": return LAAColor.attention
-        case "running", "created": return LAAColor.link
-        default: return LAAColor.separator
-        }
+        LAAWorkStatus.session(phase).color
     }
 
     static func relative(_ text: String) -> String? {

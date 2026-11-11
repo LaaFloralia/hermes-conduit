@@ -316,7 +316,12 @@ const api = http.createServer(async (req, res) => {
     const { requestId: _, ...result } = decision;
     return send(res, 200, { decision: result });
   }
-  if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', ref: 'R1', name: '朝の確認', schedule: '毎日 07:30', destination: 'Monetの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }, { id: 'service', ref: 'R2', name: '常駐の確認用', triggerKind: 'service', schedule: '常駐', state: 'running' }], nextCursor: null });
+  if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', ref: 'R1', name: '朝の確認', schedule: '毎日 07:30', destination: 'Monetの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }, { id: 'service', ref: 'R2', name: '常駐の確認用', triggerKind: 'service', schedule: '常駐', state: 'running' },
+    // The day tree: one routine in each part of the day, an error and a run in progress.
+    { id: 'market', ref: 'R3', name: '昼の市況メモ', schedule: '平日 12:00', destination: 'Argusのチャット', triggerKind: 'scheduled', state: 'error', lastRunAt: '2026-11-11T03:00:00Z', nextRunAt: '2026-11-12T12:00:00+09:00', businessStatus: 'failed', notificationStatus: 'failed', result: 'error' },
+    { id: 'digest', ref: 'R4', name: '夕方のまとめ', schedule: '毎日 18:30', destination: 'Monetの定期実行チャット', triggerKind: 'scheduled', state: 'running', lastRunAt: '2026-11-10T09:30:00Z', nextRunAt: '2026-11-11T18:30:00+09:00', businessStatus: 'completed' },
+    { id: 'backup', ref: 'R5', name: 'Brainの控え', schedule: '毎日 02:00', destination: null, triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-10T17:00:00Z', nextRunAt: '2026-11-12T02:00:00+09:00', businessStatus: 'completed', notificationStatus: 'suppressed' },
+    { id: 'weekly', ref: 'R6', name: '週報の下書き', schedule: '毎週月曜 09:00', destination: 'Monetの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', nextRunAt: '2026-11-16T09:00:00+09:00' }], nextCursor: null });
   if (path === '/v1/skills') return send(res, 200, { items: [{ id: 'test:weekly', ref: 'K1', name: 'weekly-report', description: '指定した内容から週報を作成します。', category: '日常業務', summary: 'カオナビの週報を作成する', detail: '社長の指定内容に沿って現職の週報を入力します。', source: 'Claude' }], nextCursor: null });
   if (path.startsWith('/v1/personal-tasks/') && path.split('/').length === 4) {
     const requested = decodeURIComponent(path.split('/').at(-1));

@@ -558,8 +558,69 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNil(try session(#""capabilities":null"#).capabilities)
     }
 
-    func testWorkHasOnlyThreeSectionsInTheReadingOrder() {
-        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue), ["sessions", "tasks", "routines"])
+    /// The board is a section beside Sessions, not a card above them; Sessions
+    /// stays first, so the hub still opens on it (owner, 2026-11-11).
+    func testWorkSectionsInTheReadingOrder() {
+        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue), ["sessions", "decisions", "tasks", "routines"])
+        XCTAssertEqual(LAAWorkHub.Section.allCases.first, .sessions)
+        XCTAssertFalse(LAAWorkHub.Section.decisions.searchable)
+    }
+
+    func testRoutinesFormADayTreeByTheClock() throws {
+        func routine(_ id: String, next: String? = nil, schedule: String? = nil) throws -> LAAWorkRoutine {
+            var fields = #""id":"\#(id)","name":"\#(id)""#
+            if let next { fields += #","nextRunAt":"\#(next)""# }
+            if let schedule { fields += #","schedule":"\#(schedule)""# }
+            return try JSONDecoder().decode(LAAWorkRoutine.self, from: Data("{\(fields)}".utf8))
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let rows = [
+            try routine("night", next: "2026-11-12T21:00:00+09:00"),
+            try routine("noon", next: "2026-11-12T12:00:00+09:00"),
+            try routine("morning", schedule: "毎日 07:30"),
+            try routine("late", next: "2026-11-13T02:15:00+09:00"),
+            try routine("early", next: "2026-11-12T06:05:00+09:00"),
+            try routine("unknown", schedule: "常駐")
+        ]
+        let shape = LAAWorkRoutineTree.entries(rows, calendar: calendar).map { entry -> String in
+            switch entry {
+            case .band(let band): return "[\(band.title)]"
+            case .routine(let routine, let clock): return "\(clock ?? "-") \(routine.id)"
+            }
+        }
+        XCTAssertEqual(shape, ["[朝]", "06:05 early", "07:30 morning", "[昼]", "12:00 noon", "[夜]", "21:00 night",
+                               "[深夜]", "02:15 late", "[時刻未確認]", "- unknown"])
+    }
+
+    func testStatusMarksSeparateDoneFromError() throws {
+        XCTAssertEqual(LAAWorkStatus.session("awaiting_review"), .done)
+        XCTAssertEqual(LAAWorkStatus.session("closed"), .done)
+        XCTAssertEqual(LAAWorkStatus.session("error"), .error)
+        XCTAssertEqual(LAAWorkStatus.session("stop_unconfirmed"), .error)
+        XCTAssertEqual(LAAWorkStatus.session("awaiting_decision"), .decision)
+        XCTAssertEqual(LAAWorkStatus.session("running"), .running)
+        func routine(_ json: String) throws -> LAAWorkRoutine {
+            try JSONDecoder().decode(LAAWorkRoutine.self, from: Data(#"{"id":"r","name":"r",\#(json)}"#.utf8))
+        }
+        XCTAssertEqual(LAAWorkStatus.routine(try routine(#""businessStatus":"completed","state":"scheduled""#)), .done)
+        XCTAssertEqual(LAAWorkStatus.routine(try routine(#""businessStatus":"failed","state":"scheduled""#)), .error)
+        XCTAssertEqual(LAAWorkStatus.routine(try routine(#""state":"error""#)), .error)
+        XCTAssertEqual(LAAWorkStatus.routine(try routine(#""reasonCode":"schedule_overdue""#)), .error)
+        XCTAssertEqual(LAAWorkStatus.routine(try routine(#""state":"running""#)), .running)
+        XCTAssertEqual(LAAWorkStatus.routine(try routine(#""state":"scheduled""#)), .pending)
+        XCTAssertEqual(LAAWorkStatus.done.color, LAAColor.link)
+        XCTAssertEqual(LAAWorkStatus.error.color, LAAColor.end)
+    }
+
+    /// Every task row carries a unique number: the short one when the Bridge
+    /// sends it, Linear's identifier otherwise.
+    func testTaskNumberFallsBackToTheLinearIdentifier() {
+        let base = LAALinearTask(id: "1", identifier: "BUS-7", title: "t", priority: 0, status: "todo",
+                                 stateName: "Todo", updatedAt: "2026-11-11T00:00:00Z")
+        var numbered = base; numbered.ref = "T12"
+        XCTAssertEqual(LAATaskNumberLabel.number(numbered), "T12")
+        XCTAssertEqual(LAATaskNumberLabel.number(base), "BUS-7")
     }
 
     func testActiveChildPromotesItsWholeTreeAheadOfPinnedCompletedWork() throws {

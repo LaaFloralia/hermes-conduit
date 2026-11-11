@@ -48,8 +48,11 @@ struct LAASegmentedControl<Value: Hashable>: View {
             ForEach(values, id: \.self) { value in
                 let selected = selection == value
                 Button { selection = value } label: {
+                    // The secondary size (13 pt, scaled): the switcher names
+                    // the lists below it and should not outweigh their rows.
                     Text(verbatim: title(value))
-                        .font(.system(size: 15, weight: selected ? .semibold : .medium))
+                        .laaTextStyle(.secondary).fontWeight(selected ? .semibold : .medium)
+                        .monospacedDigit()
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)

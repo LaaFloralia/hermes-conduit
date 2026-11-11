@@ -45,8 +45,9 @@ final class LAADecisionUITests: XCTestCase {
         XCTAssertTrue(app.buttons["work.section.sessions"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["work.sessions.menu"].waitForExistence(timeout: 20))
         if !root {
-            app.buttons["work.sessions.menu"].tap()
-            app.buttons["work.decisions.open"].tap()
+            // The board is Work's second section; the hub still opens on Sessions.
+            XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+            app.buttons["work.section.decisions"].tap()
         }
         return app
     }
@@ -132,10 +133,11 @@ final class LAADecisionUITests: XCTestCase {
         screenshot("ui-decisions-detail-dark", app)
     }
 
-    /// An empty board keeps the hub's usual first section and reads calmly.
+    /// An empty board reads calmly in its own section, and its segment carries
+    /// no count.
     func testEmptyBoard() throws {
         let app = try launch(board: "empty")
-        XCTAssertFalse(app.buttons["work.section.decisions"].exists)
+        XCTAssertEqual(app.buttons["work.section.decisions"].label, "Decisions")
         XCTAssertTrue(app.staticTexts["判断待ちはありません"].waitForExistence(timeout: 10))
         screenshot("ui-decisions-empty-light", app)
     }
@@ -149,8 +151,13 @@ final class LAADecisionUITests: XCTestCase {
         for dark in [false, true] {
             let app = try launch(board: "normal", dark: dark, root: true)
             let style = dark ? "dark" : "light"
-            XCTAssertTrue(app.buttons["work.decisions.all"].waitForExistence(timeout: 15))
-            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'work.decision.dec_'")).count, 3)
+            // Sessions opens first, with no decision card above it; the
+            // board's segment says how many wait.
+            XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+            XCTAssertFalse(app.descendants(matching: .any)["work.decisions.summary"].exists)
+            let board = app.buttons["work.section.decisions"]
+            XCTAssertTrue(board.waitForExistence(timeout: 15))
+            XCTAssertTrue(NSPredicate(format: "label BEGINSWITH 'Decisions '").evaluate(with: board), board.label)
             XCTAssertFalse(app.buttons["work.section.projects"].exists)
             XCTAssertFalse(app.buttons["work.section.skills"].exists)
             XCTAssertTrue(app.buttons["work.usage"].exists)
@@ -158,6 +165,10 @@ final class LAADecisionUITests: XCTestCase {
             app.buttons["work.sessions.menu"].tap()
             app.buttons["work.sessions.byProject"].tap()
             screenshot("work-projects-after-\(style)", app)
+            board.tap()
+            XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'work.decision.dec_'")).firstMatch
+                .waitForExistence(timeout: 15))
+            screenshot("work-decisions-after-\(style)", app)
             app.buttons["work.section.tasks"].tap()
             XCTAssertTrue(app.buttons["work.tasks.filter"].waitForExistence(timeout: 15))
             screenshot("work-tasks-after-\(style)", app)
@@ -170,7 +181,8 @@ final class LAADecisionUITests: XCTestCase {
             screenshot("work-usage-entry-after-\(style)", app)
             app.terminate()
             let empty = try launch(board: "empty", dark: dark, root: true)
-            XCTAssertTrue(empty.descendants(matching: .any)["work.decisions.summary"].firstMatch.waitForNonExistence(timeout: 15))
+            empty.buttons["work.section.decisions"].tap()
+            XCTAssertTrue(empty.staticTexts["判断待ちはありません"].waitForExistence(timeout: 15))
             screenshot("work-no-decisions-after-\(style)", empty)
             empty.terminate()
         }

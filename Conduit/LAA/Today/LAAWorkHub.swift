@@ -13,7 +13,6 @@ struct LAAWorkHub: View {
     @State private var section: Section = .sessions
     @State private var showPairing = false
     @State private var showUsage = false
-    @State private var showDecisions = false
     @State private var showNewProject = false
     @State private var createID = 0
     @State private var refreshID = 0
@@ -21,34 +20,40 @@ struct LAAWorkHub: View {
     @State private var search = ""
     @State private var decisionDevice: String?
 
+    /// Sessions opens first; the board is the section beside it, so what waits
+    /// for the owner is one tap away without pushing the lists down (owner,
+    /// 2026-11-11).
     enum Section: String, CaseIterable, Identifiable {
-        case sessions, tasks, routines
+        case sessions, decisions, tasks, routines
         var id: String { rawValue }
         var title: String {
             switch self {
             case .sessions: String("Sessions")
+            case .decisions: String("Decisions")
             case .tasks: String("Tasks")
             case .routines: String("Routines")
             }
         }
+        /// The board keeps its own list and pull to refresh; nothing to search.
+        var searchable: Bool { self != .decisions }
+    }
+
+    private func segmentTitle(_ value: Section) -> String {
+        value == .decisions && decisions.count > 0 ? "\(value.title) \(decisions.count)" : value.title
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            Text(verbatim: "Work")
-                .font(.custom("Georgia", size: 34, relativeTo: .largeTitle))
-                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("laa.work.title")
-                .padding(.horizontal, 20)
-            LAAWorkDecisionSummary(board: decisions, drafts: drafts, showAll: $showDecisions)
-                .padding(.horizontal, 20)
-            LAASegmentedControl(values: Section.allCases, selection: $section, title: \.title,
+            LAAScreenHeader(title: "Work", identifier: "laa.work.title")
+                .padding(.horizontal, LAASpacing.horizontal)
+            LAASegmentedControl(values: Section.allCases, selection: $section, title: segmentTitle,
                                 identifier: { "work.section.\($0.rawValue)" })
-            .padding(.horizontal, 20)
+            .padding(.horizontal, LAASpacing.horizontal)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("work.segment")
             if bridge.status != .paired { connectionState }
             else {
-                if !laaDesktop {
+                if !laaDesktop && section.searchable {
                     LAASearchField(placeholder: "検索", text: $search, identifier: "laa.work.search")
                         .padding(.horizontal, 20)
                 }
@@ -70,7 +75,7 @@ struct LAAWorkHub: View {
                     } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .accessibilityLabel("作成").accessibilityIdentifier("work.create")
                     .disabled(bridge.status != .paired)
-                } else {
+                } else if section != .decisions {
                     Button { if section == .routines { section = .tasks }; createID += 1 } label: {
                         Image(systemName: "plus").frame(width: 44, height: 44)
                     }
@@ -84,8 +89,13 @@ struct LAAWorkHub: View {
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: section) { _, _ in search = "" }
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
-            if linkRequest.url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
-            if linkRequest.decisionsLink { decisions.linkedID = linkRequest.decisionTarget; showDecisions = true }
+            guard linkRequest.url?.host == "work" else { return }
+            if linkRequest.decisionsLink {
+                decisions.linkedID = linkRequest.decisionTarget
+                section = .decisions
+            } else {
+                section = linkRequest.sessionTarget == nil ? .tasks : .sessions
+            }
         }
         .task(id: "\(bridge.revision)-\(scenePhase == .active)") {
             if decisionDevice != bridge.deviceID { decisions.reset(); decisionDevice = bridge.deviceID }
@@ -110,9 +120,6 @@ struct LAAWorkHub: View {
         .navigationDestination(isPresented: $showUsage) {
             LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
         }
-        .navigationDestination(isPresented: $showDecisions) {
-            LAADecisionBoardView(board: decisions, drafts: drafts).navigationTitle("Decisions")
-        }
     }
 
     @ViewBuilder private var sectionContent: some View {
@@ -121,10 +128,11 @@ struct LAAWorkHub: View {
             if laaDesktop { LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0, createID: createID, onCreateConsumed: { createID = 0 }) }
             else {
                 ScrollView {
-                    LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID, query: search, createID: createID, onCreateConsumed: { createID = 0 }, onRequestDecisions: { showDecisions = true })
-                        .padding(.horizontal, 20).padding(.bottom, 32)
+                    LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID, query: search, createID: createID, onCreateConsumed: { createID = 0 })
+                        .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1; await decisions.load(bridge) }
             }
+        case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
         case .routines:
             if laaDesktop { LAAWorkDesktopCatalogView(kind: .routines) }

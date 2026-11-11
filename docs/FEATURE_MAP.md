@@ -702,6 +702,8 @@ store · the session and project API · the owner-task API · Console job observ
 **Code**
 - Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAATaskRun.swift` (execution record, status labels, filters, create body, completion), `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkRef.swift` (short numbers, label and the one search rule),
+  `Conduit/LAA/Work/LAAWorkListPicker.swift` (the list pulldown Sessions and Tasks start with),
+  `Conduit/LAA/Work/LAAWorkStatusMark.swift` (done, error, waiting and running marks for sessions and routines),
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`,
   `Conduit/LAA/Work/LAAWorkCopy.swift`
@@ -768,10 +770,16 @@ store · the session and project API · the owner-task API · Console job observ
   use the attention colour, 完了 the link colour, and a status with a session
   opens `laa://work/sessions/<id>`. A missing `run` (an older Bridge, or a task
   an agent registered) reads as 担当 社長 with no badge, as before.
-- The list filters on its own heading: 自分に関係 (default), 自分が作成
-  (`run != nil`) or 自分が担当 (`run == null` or the owner's own run). The choice
-  is kept on the device (`laa.work.taskFilter`) and the Mac column uses the same
-  menu. While a staff member's task is still queued, running or waiting for a
+- The list starts with one pulldown labelled with its current range:
+  自分に関係 (default), 自分が作成 (`run != nil`), 自分が担当 (`run == null` or
+  the owner's own run) and, under a divider, アーカイブ. Every choice changes the
+  list in place; the range is kept on the device (`laa.work.taskFilter`), the
+  archive is not, and creating a task leaves it. The archive's rows come back
+  by swipe on the phone and the row menu on the Mac, whose column uses the same
+  pulldown. 受信箱 and すべての課題 are no longer in it: they pushed other
+  screens and read as unrelated to the list (owner, 2026-11-11). Sessions'
+  pulldown has the same form: 新しい順, プロジェクト別, アーカイブ, then
+  プロジェクトを管理. While a staff member's task is still queued, running or waiting for a
   decision, the visible list re-reads every 15 seconds; another section or the
   background stops it, and an all-owner list is not polled.
 - Creation offers 担当 (社長, or Monet [default], Argus, Morgan, Sherlock,
@@ -790,15 +798,28 @@ store · the session and project API · the owner-task API · Console job observ
   「実施中のため完了できません」, and a success removes the row at once.
 - Routines expose schedule, destination and current state separately from the
   last run, business result and notification result. Missing observations stay
-  unknown. Structured triggerKind separates scheduled jobs from folded services,
+  unknown. On the phone the scheduled routines form one day tree: a rail down
+  the left, a tan point for each part of the day (朝 5–11時, 昼 11–17時, 夜
+  17–24時, 深夜 0–5時, then 時刻未確認) and one node per routine, ordered by
+  its clock (the next run, else the first HH:MM in its schedule). The node is
+  the last result's mark, an error also says エラー in red, and a tap opens the
+  details on the rail. The Mac column groups and orders its rows the same way
+  with the same marks. Neither says 「最新ではない可能性があります」 for an old
+  `fetchedAt` any more (owner, 2026-11-11); a read that fails still says so.
+- Session and routine marks: a filled teal check is 完了, a filled red mark is
+  エラー (also 停止未確認), a filled plum mark is 判断待ち, a pulsing teal dot
+  is running, and hollow rings are no result, stopped or paused. The session
+  detail's phase uses the same colours. Structured triggerKind separates scheduled jobs from folded services,
   manual jobs and unknown triggers (legacy launchd observations stay folded).
   Skills are grouped with Japanese summary/detail metadata; unregistered names
   keep their original description under Other. SKILL.md bodies are never sent.
   Skills do not execute from this list.
 - A short number is shown, when the Bridge sends one, as a small muted
-  monospaced-digit label before the row title and in the detail header (tasks:
-  `T12 · BUS-123`, Linear's identifier kept). A row without a ref shows nothing,
-  so an older Bridge degrades to today's rows. On the phone the hub carries one
+  monospaced-digit label beside the row title and in the detail header (tasks:
+  `T12 · BUS-123`, Linear's identifier kept). A task row always leads with a
+  number in its own column: the ref, or Linear's identifier when the Bridge
+  sends none, so every task has a unique number (owner, 2026-11-11). Other rows
+  without a ref show nothing, so an older Bridge degrades to today's rows. On the phone the hub carries one
   native `.searchable` that filters the current section: a number matches that
   exact ref (`t12`, `Ｔ１２` and `T-12` are `T12`) and any query also matches the
   row's existing text. The Mac keeps its own per-column fields and the same
@@ -818,9 +839,10 @@ store · the session and project API · the owner-task API · Console job observ
   unchanged. Empty, loading, error, offline and unpaired states stay inside the
   same split without collapsing the list.
 
-- Tasks also opens the full searchable client: owner/all/active/backlog, paginated projects,
-  cycles and saved views; description editing, comments/replies, history, children,
-  relations, links and private files. Writes use the protected draft store and a
+- A task's detail (row menu 詳細・コメント, `laa://work/tasks/…`) opens the full client:
+  description editing, comments/replies, history, children, relations, links and private
+  files. Its browsing list (owner/all/active/backlog, projects, cycles, saved views) and the
+  agent inbox below have no entry on the Tasks screen since 2026-11-11; the code is kept. Writes use the protected draft store and a
   viewer/device-bound operation ledger; uncertain outcomes require readback before retry.
 - Agent mode supplies an app-owned inbox for owner-assigned/created/subscribed issues
   and mentions; local read/archive state is separate from Linear. Native personal
@@ -847,7 +869,7 @@ store · the session and project API · the owner-task API · Console job observ
   parent's integrated gate. Live list/detail reads are verified separately;
   simulator CRUD uses synthetic data.
 
-**Checked:** 2026-11-09, laa/tasks-ui (the Bridge's execution record: statuses, the three filters, AI assignee with a model, completion, 15-second refresh, and the 403 refusal on a device without `sessions:write`). Built after merging master 1fd6b9e4: build-for-testing exit 0. Unit: `LAATaskRunTests` 10/10, `LAALinearTaskTests` 8/8, `LAALinearTaskIntegrationTests` 3/3, `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2. On `LAA 16 Pro Max` against `scripts/laa/work-ui-fixture.mjs`: `LAATaskRunUITests` 11/11 (create with Monet + Opus 5.5 XHigh, staff refusal keeping the form and saving as 社長, the running refusal, both completion paths, the status link, the long free answer, and four shot runs), `LAAWorkLinearUITests` create/edit/archive and seven edits 2/2, `LAADecisionUITests` 5/5. 440 × 956 pt light/dark captures compared (task list and states, create form, completion confirmation, decision free answer, session question). The sheet environment check reports 0 (`scripts/tests/test_check_sheet_environment.py` 22/22). The real Bridge's `insufficient_scope` and the real Linear writes remain for the parent's integrated gate.
+**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (Work list redesign: the Tasks pulldown with the archive in place, task numbers with the Linear identifier as fallback, the routines day tree without the staleness note, done/error marks, list text at the detail screens' sizes; see the commit for the checks run). 2026-11-09, laa/tasks-ui (the Bridge's execution record: statuses, the three filters, AI assignee with a model, completion, 15-second refresh, and the 403 refusal on a device without `sessions:write`). Built after merging master 1fd6b9e4: build-for-testing exit 0. Unit: `LAATaskRunTests` 10/10, `LAALinearTaskTests` 8/8, `LAALinearTaskIntegrationTests` 3/3, `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2. On `LAA 16 Pro Max` against `scripts/laa/work-ui-fixture.mjs`: `LAATaskRunUITests` 11/11 (create with Monet + Opus 5.5 XHigh, staff refusal keeping the form and saving as 社長, the running refusal, both completion paths, the status link, the long free answer, and four shot runs), `LAAWorkLinearUITests` create/edit/archive and seven edits 2/2, `LAADecisionUITests` 5/5. 440 × 956 pt light/dark captures compared (task list and states, create form, completion confirmation, decision free answer, session question). The sheet environment check reports 0 (`scripts/tests/test_check_sheet_environment.py` 22/22). The real Bridge's `insufficient_scope` and the real Linear writes remain for the parent's integrated gate.
 2026-11-09, laa/chat-composer-dots-cron (scheduled runs out of the session lists, short numbers and notices); 2026-11-08, e5927541 (short numbers and the Work search).
 Unit tests decode every kind with and without `ref` and cover the matcher; `LAAWorkRefUITests` runs on LAA 16 Pro Max
 in English (US) against `scripts/laa/work-ui-fixture.mjs` for the default Tasks
@@ -880,7 +902,7 @@ gate.
 
 ## LAA decision board
 
-The LAA Work hub's first section, 判断 (`Decisions`), lists what agents are waiting for the owner to decide: records an agent posted with `laa-bridge decide add`, and Paseo conversations whose own question is pending. A row reads as what to decide, with one quiet line for the source, the deadline and the recommended choice. The detail offers large choices with the recommended one first and a free answer that is visible from the start; the answer goes back to the conversation that asked, with a short confirmation when it arrives. An answer that did not arrive stays on the board marked 届いていません with a retry.
+The LAA Work hub's second section, `Decisions` (after Sessions, before Tasks and Routines), lists what agents are waiting for the owner to decide: records an agent posted with `laa-bridge decide add`, and Paseo conversations whose own question is pending. A row reads as what to decide, with one quiet line for the source, the deadline and the recommended choice. The detail offers large choices with the recommended one first and a free answer that is visible from the start; the answer goes back to the conversation that asked, with a short confirmation when it arrives. An answer that did not arrive stays on the board marked 届いていません with a retry.
 
 **Siblings:** the Bridge decision store, delivery and CLI · the session decision
 read and reply (`LAAWorkSessionDecision`) · Work hub pills and links · owner
@@ -889,7 +911,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 **Code**
 - App: `Conduit/LAA/Work/Decisions/LAADecisionModels.swift`, `Conduit/LAA/Work/Decisions/LAADecisionBoard.swift`,
   `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/Decisions/LAADecisionDetailView.swift`,
-  `Conduit/LAA/Work/Decisions/LAADecisionCelebration.swift`; hub section and pill count: `Conduit/LAA/Today/LAAWorkHub.swift`;
+  `Conduit/LAA/Work/Decisions/LAADecisionCelebration.swift`; hub section and segment count: `Conduit/LAA/Today/LAAWorkHub.swift`;
   links `laa://work/decisions[/<id>]`: `Conduit/LAA/Work/LAAWorkSessionCache.swift`; native questions reuse
   `Conduit/LAA/Work/LAAWorkSessionDecision.swift`
 - Bridge: `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/routes/decisions.mjs`,
@@ -907,8 +929,11 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   after a tap and, under a long decision, sat below the fold with the send button still disabled, so the screen
   read as choices-only.
 - `ref` and `sourceRef` may be null until the refs work merges; the row then shows the conversation name alone.
-- The board is chosen as the hub's first section only when it has items on the first read, and never after the
-  owner or a link chose another section. A Bridge without the route (404) shows 「Macのアップデート待ち」.
+- The board is one of Work's sections, not a card above them: Sessions · Decisions · Tasks · Routines. Work always
+  opens on Sessions; the segment reads `Decisions 3` while anything waits, and a decision link selects the section
+  and opens the record (owner, 2026-11-11; replaces the three-row summary above the sections and the board chosen
+  first when it had items). The Sessions menu no longer repeats it. A Bridge without the route (404) shows
+  「Macのアップデート待ち」.
 - The confirmation is one checkmark, a success haptic and one line; Reduce Motion keeps it to a fade. No glow,
   confetti or new colours.
 
@@ -917,10 +942,11 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 **Open gaps**
 - The Mac window shows the board through the same view, without its own desktop list/detail layout.
-- The pill count refreshes when the hub appears or the board is pulled; there is no push-driven refresh yet.
+- The segment count refreshes when the hub appears, every 15 seconds while it is active, or when the board is
+  pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
+**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
 
 ## Voice beside the tabs
 
@@ -3985,13 +4011,13 @@ point at the map and its check
 - App-owned display copy calls the app LAA, the execution engine Work, and profiles AI employees; named employees such as Monet retain their names. Catalog lookup keys, identifiers, protocols and upstream license text stay unchanged. English fallback values cover Localizable and AppShortcuts in every branded bundle.
 - The archive inspector checks visible bundle names, localization values and App Intents metadata for upstream product names in the app and embedded targets before TestFlight export. It does not inspect arbitrary runtime content or prove that Swift source literals never reach the screen.
 - Data & licenses includes the original app and Liquid Orb MIT notices from `assets/laa/LAAOpenSourceNotices.txt`; the archive inspector requires the shipped copy to match. This is not an audit of every dependency's license.
-- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. It is the bar's trailing-most button on every tab: on iOS 26 Work's minimized search sits before it (2026-11-09: placed after it, the search had pushed Settings inward on Work alone). The v3 LAA interface keeps English for structural names and uses Japanese for operations, statuses and settings. All root headings share Georgia 34 without a small brand label; toolbar controls use separate 44 pt glass circles. Settings groups Connection, Profile, AI employees and App, with Skills and Predictive under App and Usage reached from Work. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
+- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. It is the bar's trailing-most button on every tab: on iOS 26 Work's minimized search sits before it (2026-11-09: placed after it, the search had pushed Settings inward on Work alone). The v3 LAA interface keeps English for structural names and uses Japanese for operations, statuses and settings. All root headings share Georgia 34 without a small brand label; toolbar controls use separate 44 pt glass circles. The shared section switcher (`LAASegmentedControl`: Work, Today, Studio) sets its labels at the secondary size (13 pt, scaled with Dynamic Type) so it does not outweigh the rows it switches (owner, 2026-11-11: Work's list text read too large beside its detail screens). Settings groups Connection, Profile, AI employees and App, with Skills and Predictive under App and Usage reached from Work. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
 
 **Open gaps**
 - If `redact_content` is enabled, a push that bypasses the notification extension can still show the upstream redacted approval text. The parent reports that the current Mac configuration has `redact_content=false` for every profile (2026-11-01).
 - Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 (Settings trailing-most on Work, brand test aligned to the LAA plugin wording; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
+**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (the section switcher at the secondary size; Work's title stays at the shared Georgia 34); 2026-11-09, laa/app-polish-1109 (Settings trailing-most on Work, brand test aligned to the LAA plugin wording; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
 
 ## LAA all-profile notification pairing
 
@@ -4147,7 +4173,7 @@ and rollback instructions · the upstream App Store build
 **Siblings:** Work sessions and projects · session detail and model verification · Bridge session options, PATCH and project files · the HQ delegation wrapper (mode and fast) · upstream chats
 
 **Code**
-- Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
+- Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkStatusMark.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
 - Directory, decisions, images and notifications: `bridge/src/sessions/daemon.mjs`, `bridge/src/sessions/images.mjs`, `bridge/src/sessions/local-images.mjs`, `bridge/src/sessions/history.mjs`, `bridge/src/notify/index.mjs`, `bridge/src/notify/deliver.py`, `Conduit/LAA/Work/LAAWorkSessionCache.swift`, `Conduit/LAA/Work/LAAWorkSessionDecision.swift`, `Conduit/LAA/Work/LAAWorkSessionImage.swift`, `bridge/test/paseo-daemon.test.mjs`, `ConduitUITests/LAAPaseoUITests.swift`, `scripts/laa/paseo-ui-fixture.mjs`
 - Bridge: `bridge/src/sessions/service.mjs`, `bridge/src/sessions/options.mjs`, `bridge/src/routes/sessions.mjs`, `bridge/src/routes/projects.mjs`
 - Routines: `bridge/src/routes/routines.mjs`, `bridge/test/routines.test.mjs`
@@ -4157,7 +4183,8 @@ and rollback instructions · the upstream App Store build
 - New sessions always start in /Users/laa; the launcher offers no worktree choice. The normal list is scoped to LAA-root sessions, their children and existing favourites, with children nested under parents (owner, 2026-11-03). The app sends `mode: bypass` by default; the Bridge treats a missing mode as `default`.
 - Model, effort and Fast come from the HQ model table through `/v1/session-options`; saved model favourites live on the device. The model bar is the only Liquid Glass control on the sheet.
 - Rows show name, project, model and relative time; a separate top section contains pinned conversation trees. A left swipe offers pin/unpin; archive remains in the context menu. Paseo workspace pins promote matching rows to favourites without clearing existing local favourites on an absent or failed pin read. LAA pin changes mirror to the same non-home workspace; a failed write restores the row and reports an error. Home and delegation-only sessions keep local favourites.
-- Work includes the existing AI Usage view. Routines group by destination chat and sort by the next scheduled time on iPhone and Mac; an unknown time is labelled, and persistent/manual services are separated from scheduled deliveries.
+- Rows lead with the session's mark (完了 a filled teal check, エラー a filled red mark; see LAA Work tab) and set the name and the model · time line at the detail screens' body and secondary sizes (16/13 pt, scaled), not 17 pt semibold (owner, 2026-11-11).
+- Work includes the existing AI Usage view. Routines form a day tree by part of the day and clock on iPhone, and the Mac groups them the same way (LAA Work tab); an unknown time is labelled, and persistent/manual services are separated from scheduled deliveries.
 - The device displays protected cached lists/history before refreshing. Interruption cancels the active turn while retaining the conversation. Running instructions use stable daemon message IDs and steering; question/tool replies bind the pending hash and a five-minute server ticket. Images are bounded to four and 4 MiB. IME-safe editing, the full editor and existing dictation service are reused.
 - Turn completion, questions, approvals and errors use the installed Hermes encrypted notification plugin. Durable dedupe and an outbox survive Bridge restart; tapping a verified notification routes its complete LAA URL.
 - The session name follows the agent's own Paseo rename unless the owner renamed it.
@@ -4167,7 +4194,7 @@ and rollback instructions · the upstream App Store build
 - Archiving remains Bridge-side. A pin removed directly in Paseo does not clear an existing local favourite; use LAA to remove that favourite. Previously attached Paseo images are absent from the daemon projected timeline; only images sent from LAA are currently displayed. Native conversation branch/rewind, terminal and execution configuration are outside this replacement.
 - End-to-end push delivery, physical-device dictation/IME and the one-second presentation target still require the parent’s device check.
 
-**Checked:** 2026-11-03, LAA scope, left-swipe pins, Usage and destination groups; Bridge 556/556 passed and the live daemon returned 18 workspaces including six pins; installed-device acceptance pending.  2026-11-02, based on integrate-1102 6344beda plus the Paseo replacement changes. Bridge 425/425 passed; the parent owns the consolidated iOS build, related unit/UI tests and physical iPhone verification.
+**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (row marks and sizes, the Sessions pulldown, routines by part of the day); 2026-11-03, LAA scope, left-swipe pins, Usage and destination groups; Bridge 556/556 passed and the live daemon returned 18 workspaces including six pins; installed-device acceptance pending.  2026-11-02, based on integrate-1102 6344beda plus the Paseo replacement changes. Bridge 425/425 passed; the parent owns the consolidated iOS build, related unit/UI tests and physical iPhone verification.
 ## LAA Today and calendar widget
 
 **Siblings:** Google Calendar in Today · small next-event widget · calendar notifications and deep links · Drive's shared Google connection · Brain entry point.
@@ -4313,20 +4340,21 @@ through the host's GPT-Live bridge. This is enabled only in LAA builds.
 
 ## LAA Work v3 integration (2026-11-11)
 
-Work presents Sessions, Tasks and Routines. Decisions appear above them (at most three, then show all); existing answer sheets handle replies. Projects are grouped within Sessions and retain their management screen, rename, instructions, archive and restore. Skills live in Settings, Usage opens from the Work gauge. Session tools are collapsed into one work record disclosure; cached transcripts remain visible during refresh. iPhone and Mac retain their list/detail routes and existing task/session mutations.
+Work presents Sessions, Decisions, Tasks and Routines and opens on Sessions; Decisions is the board's own section with its count on the segment, and existing answer sheets handle replies. Projects are grouped within Sessions and retain their management screen, rename, instructions, archive and restore. Skills live in Settings, Usage opens from the Work gauge. Session tools are collapsed into one work record disclosure; cached transcripts remain visible during refresh. iPhone and Mac retain their list/detail routes and existing task/session mutations.
 
 **Siblings:** Work on iPhone and Mac · Settings Skills · Usage · decision sheets · session tools
 
 **Code**
-- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAAWorkDecisionSummary.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
+- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
 
 **Rulings**
-- Show at most three decisions before the sections. Keep session tools collapsed until requested.
+- Nothing sits between the title and the section switcher: the three-decision summary above the sections is gone,
+  and the board is the second section (owner, 2026-11-11). Keep session tools collapsed until requested.
 
 **Open gaps**
 - Physical-device acceptance is pending.
 
-**Checked:** 2026-11-11, 2b5760d5 (Work v3 contracts).
+**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (the board as a section, the summary removed); 2026-11-11, 2b5760d5 (Work v3 contracts).
 
 
 ## LAA Drive stage 2 browsing and playback

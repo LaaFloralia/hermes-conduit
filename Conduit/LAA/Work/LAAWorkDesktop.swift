@@ -468,7 +468,6 @@ struct LAAWorkDesktopCatalogView: View {
     @State private var reloadID = 0
     /// As on the phone: a partial or old read is said, not shown as complete.
     @State private var skipped = 0
-    @State private var fetchedAt: Date?
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
@@ -479,18 +478,25 @@ struct LAAWorkDesktopCatalogView: View {
         let group: String
         let ref: String?
         var service = false
+        var status: LAAWorkStatus? = nil
     }
 
     private var rows: [CatalogRow] {
         if kind == .routines {
             let scheduled = routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
                 .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
-            var result = scheduled.sorted {
-                (LAAWorkRoutineTime.date($0.nextRunAt) ?? .distantFuture) < (LAAWorkRoutineTime.date($1.nextRunAt) ?? .distantFuture)
-            }.map { routine in
-                CatalogRow(id: routine.id, title: routine.name,
-                           subtitle: [routine.destination, "次回 " + LAAWorkRoutineTime.next(routine.nextRunAt)].compactMap { $0 }.joined(separator: " · "),
-                           group: "", ref: routine.ref)
+            // The phone's day order: grouped by part of the day, by the clock
+            // inside each part, with the last result's mark on every row.
+            var band = ""
+            var result: [CatalogRow] = []
+            for entry in LAAWorkRoutineTree.entries(scheduled) {
+                switch entry {
+                case .band(let value): band = value.title
+                case .routine(let routine, let clock):
+                    result.append(CatalogRow(id: routine.id, title: [clock, routine.name].compactMap { $0 }.joined(separator: "  "),
+                                             subtitle: [routine.destination, "次回 " + LAAWorkRoutineTime.next(routine.nextRunAt)].compactMap { $0 }.joined(separator: " · "),
+                                             group: band, ref: routine.ref, status: LAAWorkStatus.routine(routine)))
+                }
             }
             // Always-on and manual services have no schedule to place them by;
             // the phone lists them under their own note, so the Mac does too.
@@ -500,7 +506,7 @@ struct LAAWorkDesktopCatalogView: View {
                 result += services.map { routine in
                     CatalogRow(id: routine.id, title: routine.name,
                                subtitle: "次回 \(LAAWorkRoutineTime.next(routine.nextRunAt))",
-                               group: title, ref: routine.ref, service: true)
+                               group: title, ref: routine.ref, service: true, status: LAAWorkStatus.routine(routine))
                 }
             }
             return result
@@ -538,11 +544,6 @@ struct LAAWorkDesktopCatalogView: View {
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                             .accessibilityIdentifier("work.routines.partial")
                     }
-                    if kind == .routines, LAAWorkFreshness.isStale(fetchedAt) {
-                        Text(verbatim: "最終取得 \(clock(fetchedAt))。最新ではない可能性があります。")
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                            .accessibilityIdentifier("work.routines.fetchedAt")
-                    }
                     if loading && !loaded { LAALoadingDots() }
                 }
                 .padding(LAASpacing.x3)
@@ -559,15 +560,19 @@ struct LAAWorkDesktopCatalogView: View {
                                     .accessibilityIdentifier(row.service ? "work.routines.services" : "work.desktop.routines.group")
                             }
                             Button { selectedID = row.id } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                                        LAAWorkRefLabel(ref: row.ref)
-                                        Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.semibold)
-                                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                                HStack(alignment: .top, spacing: LAASpacing.x3) {
+                                    if let status = row.status { LAAWorkStatusMark(status: status) }
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                                            LAAWorkRefLabel(ref: row.ref)
+                                            Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.medium)
+                                                .foregroundStyle(LAAColor.text).lineLimit(1)
+                                        }
+                                        Text(verbatim: row.subtitle).laaTextStyle(.secondary)
+                                            .foregroundStyle(LAAColor.secondaryText).lineLimit(2)
                                     }
-                                    Text(verbatim: row.subtitle).laaTextStyle(.secondary)
-                                        .foregroundStyle(LAAColor.secondaryText).lineLimit(2)
                                 }
+                                .padding(.vertical, LAASpacing.x2)
                                 .padding(.horizontal, LAASpacing.x4)
                                 .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
                                 .background(rowBackground(row.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
@@ -671,12 +676,6 @@ struct LAAWorkDesktopCatalogView: View {
         }
     }
 
-    private func clock(_ date: Date?) -> String {
-        guard let date else { return "時刻不明" }
-        let parts = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
-        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-    }
-
     private func rowBackground(_ id: String) -> Color {
         if selectedID == id { return LAAColor.selectionFill }
         if hoveredID == id { return LAAColor.subtleSurface }
@@ -706,7 +705,6 @@ struct LAAWorkDesktopCatalogView: View {
                 routines = page.items
                 LAAWorkSessionCache.save(routines, store: cache, device: cacheDevice, target: "routines")
                 skipped = max(0, page.skipped ?? 0)
-                fetchedAt = LAAWorkFreshness.date(page.fetchedAt)
             } else {
                 let page: LAAWorkPage<LAAWorkSkill> = try await bridge.read("/v1/skills")
                 guard !Task.isCancelled else { return }

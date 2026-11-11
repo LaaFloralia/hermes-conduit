@@ -227,7 +227,9 @@ final class LAATaskRunUITests: XCTestCase {
     /// null with the note.
     func testFreeAnswerOnALongDecision() throws {
         let app = try launch(board: "long")
-        XCTAssertTrue(app.descendants(matching: .any)["work.decisions.summary"].firstMatch.waitForExistence(timeout: 20))
+        let board = app.buttons["work.section.decisions"]
+        XCTAssertTrue(board.waitForExistence(timeout: 20))
+        board.tap()
         let card = app.buttons["work.decision.\(longDecisionID)"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 20))
         card.tap()

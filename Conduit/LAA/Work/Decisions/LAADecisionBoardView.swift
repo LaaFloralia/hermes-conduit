@@ -495,20 +495,4 @@ private struct LAADecisionRow: View {
         return hovering && desktop ? LAAColor.subtleSurface.opacity(0.7) : .clear
     }
 }
-/// The Work hub pill's label: the section name and, when something waits,
-/// its count.
-struct LAADecisionPillTitle: View {
-    let title: String
-    let count: Int
-    var body: some View {
-        HStack(spacing: LAASpacing.x1) {
-            Text(verbatim: title)
-            if count > 0 {
-                Text(verbatim: "\(count)").monospacedDigit()
-                    .accessibilityLabel(Text(verbatim: "\(count)件"))
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
 #endif

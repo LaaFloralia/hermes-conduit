@@ -8,6 +8,9 @@ final class LAAWorkShotsUITests: XCTestCase {
     private let emptyID = "ses_1111111111111111"
     private let longID = "ses_3333333333333333"
     private let runningID = "ses_5555555555555555"
+    /// The fixture's API port; control is the next one. `TEST_RUNNER_LAA_WORK_FIXTURE_PORT`
+    /// moves both when another run holds the usual pair.
+    private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
 
     func testShotsLight() throws { try shots("light") }
     func testShotsDark() throws { try shots("dark") }
@@ -19,7 +22,7 @@ final class LAAWorkShotsUITests: XCTestCase {
     private func fixture(_ path: String) -> [String: Any]? {
         let done = expectation(description: "fixture \(path)")
         var payload: [String: Any]?
-        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19585\(path)")!) { data, _, _ in
+        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:\(port + 1)\(path)")!) { data, _, _ in
             if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
             done.fulfill()
         }.resume()
@@ -27,15 +30,52 @@ final class LAAWorkShotsUITests: XCTestCase {
         return payload
     }
 
-    private func launch(_ theme: String) throws -> XCUIApplication {
+    /// Work's four lists as the owner opens them: Sessions first, then the
+    /// board, Tasks with its pulldown open, and the routines' day tree.
+    func testListShotsLight() throws { try listShots("light") }
+    func testListShotsDark() throws { try listShots("dark") }
+
+    private func listShots(_ theme: String) throws {
+        let app = try launch(theme, board: "normal")
+        XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+        settle()
+        capture(app, "list-sessions-\(theme)")
+
+        app.buttons["work.section.decisions"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'work.decision.'")).firstMatch
+            .waitForExistence(timeout: 20))
+        settle(1)
+        capture(app, "list-decisions-\(theme)")
+
+        app.buttons["work.section.tasks"].tap()
+        XCTAssertTrue(app.staticTexts["work.ref.T12"].waitForExistence(timeout: 20))
+        settle(1)
+        capture(app, "list-tasks-\(theme)")
+        app.buttons["work.tasks.filter"].tap()
+        XCTAssertTrue(app.buttons["work.linear.archive"].waitForExistence(timeout: 5))
+        settle(1)
+        capture(app, "list-tasks-menu-\(theme)")
+        app.buttons["work.tasks.filter.related"].tap()
+
+        app.buttons["work.section.routines"].tap()
+        XCTAssertTrue(app.staticTexts["昼の市況メモ"].waitForExistence(timeout: 20))
+        settle(1)
+        capture(app, "list-routines-\(theme)")
+        app.buttons.containing(.staticText, identifier: "昼の市況メモ").firstMatch.tap()
+        settle(1)
+        capture(app, "list-routines-open-\(theme)")
+    }
+
+    private func launch(_ theme: String, board: String? = nil) throws -> XCUIApplication {
         guard fixture("/reset") != nil else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
+        if let board { fixture("/decisions/\(board)") }
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-LAA_UI_TEST_CLEAR_WORK_STORE",
                                "-conduit.themePreference", theme,
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19584"
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
         app.launch()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()

@@ -80,13 +80,16 @@ final class LAAWorkLinearUITests: XCTestCase {
         app.buttons["削除"].firstMatch.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForNonExistence(timeout: 10))
+        // The archive is a choice in the list's own pulldown, shown in place.
+        app.buttons["work.tasks.filter"].tap()
         app.buttons["work.linear.archive"].tap()
         let archived = app.buttons[updatedTitle]
         XCTAssertTrue(archived.waitForExistence(timeout: 10))
         archived.swipeLeft()
         app.buttons["戻す"].tap()
         XCTAssertTrue(archived.waitForNonExistence(timeout: 10))
-        app.buttons["Close"].tap()
+        app.buttons["work.tasks.filter"].tap()
+        app.buttons["work.tasks.filter.related"].tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
 
     }
@@ -149,10 +152,12 @@ final class LAAWorkLinearUITests: XCTestCase {
                 attach("work-delete-confirm-\(appearance)")
                 app.sheets.buttons["削除"].tap()
                 XCTAssertTrue(row.waitForNonExistence(timeout: 10))
+                app.buttons["work.tasks.filter"].tap()
                 app.buttons["work.linear.archive"].tap()
                 XCTAssertTrue(row.waitForExistence(timeout: 10))
                 attach("work-archive-\(appearance)")
-                app.buttons["Close"].tap()
+                app.buttons["work.tasks.filter"].tap()
+                app.buttons["work.tasks.filter.related"].tap()
             } else if section == "skills" {
                 app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.tap()
                 XCTAssertTrue(app.staticTexts["社長の指定内容に沿って現職の週報を入力します。"].waitForExistence(timeout: 5))
