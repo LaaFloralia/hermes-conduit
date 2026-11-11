@@ -4222,7 +4222,7 @@ and rollback instructions · the upstream App Store build
   mode uses the wide detail column for a 42-day grid, while the left agenda
   shows the selected day. Selecting an event does not push; Close/Esc returns
   to the empty or month detail. The phone layout and its sheets are unchanged.
-- The agenda shows today first and then only populated days. Calendar-day changes refresh today without changing a deliberately browsed week or month. The visible segmented control has Agenda, Week and Month. Initial loading uses three skeleton rows; failures retain saved content with an inline reason and retry.
+- The agenda shows today first and then only populated days. Calendar-day changes refresh today without changing a deliberately browsed week or month. The visible segmented control has Agenda, Week and Month, and Today opens on Month on iPhone and Mac (the owner, 2026-11-11; it opened on Agenda before): the 42-day grid with the selected day's events below it, and on the Mac the grid in the detail column. The switcher stays, and choosing Agenda still returns to today. Initial loading uses three skeleton rows; failures retain saved content with an inline reason and retry.
 - Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; the previous 24 hours of undelivered popup reminders are caught up after
   startup/recovery using persisted delivery dedupe. Google email reminders remain
   with Google. Links use `laa://today/events/<eventID>?calendar=<calendarID>`.
@@ -4230,7 +4230,7 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - Parent must complete additional Google consent, device write grants and notification setup. Real Google reads/writes, notification delivery/tap, WidgetKit timing, PiP/AirPlay and one-second launch on the physical iPhone remain unverified. Raw Google recurrence rules support custom cases; the editor's presets cover daily/weekly/monthly/yearly. The direct daily-note destination remains pending.
 
-**Checked:** 2026-11-11, laa/s2-sys (agenda/week/month, midnight rollover and saved events on refresh failure; Swift syntax passes, simulator execution pending the external build SSD); 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
+**Checked:** 2026-11-11, worktree-agent-a582bebf107764004 (opens on Month; the month grid fetches the 42-day range that contains today, so the next-event widget snapshot still publishes; LAATodayCalendarTests and the 440 × 956 Today snapshots on LAA 16 Pro Max); 2026-11-11, laa/s2-sys (agenda/week/month, midnight rollover and saved events on refresh failure; Swift syntax passes, simulator execution pending the external build SSD); 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
 Debug build exited 0 before review fixes, updated build pending. Owner-size visual verification is pending. Real-device acceptance remains pending.
 Mac desktop Today checked 2026-11-03 on laa/mac-work with the merged
 laa/mac-shell: the agenda/list selection opened the event detail beside it,

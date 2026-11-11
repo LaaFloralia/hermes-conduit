@@ -78,7 +78,9 @@ struct LAACalendarResponse: Codable {
     @Published private(set) var calendars: [LAAGoogleCalendar] = []
     @Published var selectedCalendarIDs: Set<String> = []
     @Published var selectedDate = Date()
-    @Published var mode: LAACalendarMode = .list
+    /// Today opens on the month (the owner, 2026-11-11); Agenda and Week stay
+    /// one tap away in the switcher.
+    @Published var mode: LAACalendarMode = .month
     private var cacheKey: String?
     private var generation = 0
     private var currentDay = Calendar.current.startOfDay(for: Date())
