@@ -281,7 +281,6 @@ struct LAAUsageGroup: Identifiable {
             "provider.codex": "https://chatgpt.com/codex/cloud/settings/usage",
             "provider.opencode-go": "https://opencode.ai/console",
             "provider.claude": "https://claude.ai/settings/usage",
-            "provider.nanogpt": "https://nano-gpt.com/settings",
             "provider.venice": "https://venice.ai/settings/api",
             "provider.magnific": "https://www.magnific.com/user/my-subscriptions",
             "provider.openai-api": "https://platform.openai.com/usage",
@@ -323,8 +322,9 @@ struct LAAUsageGroup: Identifiable {
 
     /// The owner's display order (2026-11-05), taken from the one slot list the
     /// widget also reads, so a provider is added in one place: Codex, OpenCode,
-    /// Claude, nanoGPT, Magnific, GPT API, Claude API, Liquid AI, Venice.
-    /// Retired providers (Jev, Google Cloud, Google Flow) are never listed.
+    /// Claude, Magnific, GPT API, Claude API, Liquid AI, Venice. Retired
+    /// providers (Jev, Google Cloud, Google Flow, and nanoGPT since the owner
+    /// cancelled it on 2026-11-11) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
             let prefix = "provider.\(slot.provider)."

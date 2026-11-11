@@ -34,7 +34,8 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 // The owner's priority (2026-11-05): the quotas, then the API balances and
 // costs, the recorded Liquid usage, and Venice last. Jev, Google Cloud and Google Flow
 // are retired: the proxy no longer reads them, and a cached row never brings
-// them back.
+// them back. nanoGPT left on 2026-11-11 (the owner cancelled the plan): a row
+// the proxy still sends is skipped like any other unknown provider.
 //
 // The two API providers carry a balance item beside their cost items. Neither
 // publishes a balance, so the item is the billing-page reading the proxy passes
@@ -43,7 +44,6 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'codex', label: 'Codex', kind: 'quota' },
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
-  { id: 'nanogpt', label: 'nanoGPT', kind: 'quota' },
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
   { id: 'openai-api', label: 'GPT API', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },

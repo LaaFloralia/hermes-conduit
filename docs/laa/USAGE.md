@@ -8,8 +8,8 @@
 |---|---|---|
 | 各サービスの利用枠 | CodexBar → ローカルproxy `/widget`、残り% | 数値なし |
 | 自動取得可能な残高 | 同proxy、USD・クレジット | 数値なし |
-| GPT API・Claude APIの残高 | 同上流feedの `amount`（USD）だけ。両社のCost APIは残高を返さない | `not_auto`・数値なし。使用額で代用しない |
-| nanoGPT | 公式のサブスク利用枠 `/api/subscription/v1/usage`、残り%（デイリー・ウィークリー） | 数値なし。未設定の枠は出さない |
+| GPT API・Claude APIの残高 | 請求画面で確かめた残高（HQ `catalog.verifiedMoney`、確認日時付き）。usage-metersが `balance` として渡す。両社とも残高のAPIを公開していない（2026-11-11確認：AnthropicのAdmin API・OpenAIのCosts APIは使用額だけ、ダッシュボードの請求経路はブラウザのセッション専用） | `not_auto`・数値なし。使用額で代用しない |
+| nanoGPT | 表示しない（2026-11-11に社長が解約）。proxyが行を送ってもBridgeは読まない | — |
 | Venice | 自動取得したUSD残高と補助残高 | 数値なし |
 | Liquid AIの記録済み使用 | ローカル台帳に記録された呼出しのトークン・費用 | 数値なし。全利用分とは限らない |
 | Claude API使用額 | Anthropic従来Cost API、今日・今月のUSD | Admin key未設定・認証失敗・取得失敗を区別 |
@@ -45,12 +45,13 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt`、feedの `fetchedAt`、受信時刻の最も早い時刻から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどからBridge応答の数値はnullにする。端末の前回値は後述の表示契約に従う。時計差のため未来120秒まで許容し、期限の起点は受信時刻を超えない。時刻の欠落・120秒超の未来・不正は取得失敗とする。
 - `verified` や手動確認だけの値は自動取得なしとし、数値を返さない。quotaのいずれかのresetが経過した場合も値を消す。付帯クレジットの取得時刻は別に評価する。手動reset passは返さない。
 - API費用のIDは `provider.openai-api.cost-today` / `cost-month`、`provider.claude-api.cost-today` / `cost-month`。`detail.periodTimezone` は `UTC`、`detail.sourceLag` はAnthropic `typical-5m`、OpenAI `undisclosed`。反映済み時刻を推測して作らない。応答に今日（UTC）のバケットが無い場合、費用取得処理は `todayAmount` を返さず、Bridgeは `cost-today` だけ `freshness_unknown`（数値なし）、`cost-month` は返ったバケットの合計を出す。この4件は「使用額」であり、残高ではない。
-- API残高のIDは `provider.openai-api.balance` / `provider.claude-api.balance`。同じprovider行の `amount`（`currency` は `USD`、無指定もUSD）が10分以内に自動取得できた時だけ `available` と数値を返す。上流行に `amount` が無い時は `not_auto`、`amount` はあるが数値でない時は `fetch_failed`、`verified` など手入力だけの値は `not_auto` とし、いずれも `value:null`・数値を含むdetailなしで返す。Costの金額をこのIDへ写さない。両社のCost APIは残高を返さないため、2026-11-03時点で残高は常に未取得になる。
+- API残高のIDは `provider.openai-api.balance` / `provider.claude-api.balance`。同じprovider行の `amount`（`currency` は `USD`、無指定もUSD）が10分以内に自動取得できた時だけ `available` と数値を返す。上流行に `amount` が無い時は `not_auto`、`amount` はあるが数値でない時は `fetch_failed` とし、いずれも `value:null`・数値を含むdetailなしで返す。上流行に請求画面の確認値 `balance: {amount, confirmedAt}` がある時は、その金額（負も可）を `available`・`observedAt: confirmedAt`・`detail.sourceKind: verified` で返す。これは確認時点の値で、10分の期限の対象外だが現在値ではない。アプリは経過時間・「請求画面の確認値」と確認日時を添え、0以下は「残高なし」と示す。Costの金額をこのIDへ写さない。両社とも残高のAPIを公開していないため、自動取得の残高は無く、更新は請求画面の確認（定期確認を含む）による。
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- 表示順はCodex、OpenCode、Claude、nanoGPT、Magnific、GPT API、Claude API、Liquid AI、Venice。複数の枠がある時は期間を「週間」「月間」と添える。アプリはAIを先、Storageを後に、節ごとに1枚の面で表示する。題の横は最後に取得できた時刻の相対表記で、押すと更新する。行は名前・値・比率のメーター・補助1行に絞る。ウィジェットはLiquid AIを除いた上位5行までを表示し、比率だけ細いメーターを付ける。
-- GPT API・Claude APIは残高だけを表示する。残高が未取得でも行を残す。今日・今月の費用を残高に代用しない。App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
+- 表示順はCodex、OpenCode、Claude、Magnific、GPT API、Claude API、Liquid AI、Venice（nanoGPTは2026-11-11に外した）。複数の枠がある時は期間を「週間」「月間」と添える。アプリはAIを先、Storageを後に、節ごとに1枚の面で表示する。題の横は最後に取得できた時刻の相対表記で、押すと更新する。行は名前・値・比率のメーター・補助1行に絞る。ウィジェットはLiquid AIを除いた上位5行までを表示し、比率だけ細いメーターを付ける。
+- メーターは値に連動する。行が現れると値まで伸び、更新のたびに新しい値へ滑らかに移る（視差効果を減らす設定では即時）。利用枠とクレジットは残りを表し、残り2割未満で要確認の色にする。容量は使用量を表し、9割以上か警告水準で要確認の色にする。Magnificは付与量（`grantedAmount`、なければ `monthlyGrantedAmount`）に対する残りを描き、補助行に付与量と残りの割合を出す。分母の無い残高はメーターを描かない。WorkのUsageボタンの計器も、一覧の週間枠で最も残りが少ない値を指す。
+- GPT API・Claude APIは残高だけを表示する。残高が未取得でも行を残し、「未取得」と「自動取得できる残高がありません」を出す。補助行は請求画面へのリンクを兼ねる。今日・今月の費用を残高に代用しない。App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
 - アプリは起動・復帰・Usageを開いた時（60秒の重複抑止）・明示更新で取得し、前面では120秒ごとにも取得する。Usage自身も表示中の取得を持ち、別の状態を持つWorkから開いても止まらない。画面を離れるかアプリが非アクティブになると画面側の取得を止める。値を取得した時刻と、更新を試みた時刻を分ける。表示の鮮度は毎分判定する。
 - **表示の期限は数値の削除期限ではない。** アプリとウィジェットは、最後に正常取得した数値と元の観測時刻を保持する。10分超・取得失敗・一部欠測でも「更新待ち」に置き換えない。古い値の横には「12分前」のように経過を出す。未取得は0で埋めず「未取得」。既知の取得失敗・認証不足は理由を1行だけ添える。Bridgeが返すunavailable/nullは新たな観測値ではなく、クライアントに保存した前回値を消す指示にはしない。
 - 枠のresetを過ぎた場合も前回の数値を残し、「リセット済み」と明示する。この数値はリセット前の取得値で、現在の残量ではない。100%への回復や新たなreset時刻を推測しない。次の正常な観測で数値と時刻を置き換える。

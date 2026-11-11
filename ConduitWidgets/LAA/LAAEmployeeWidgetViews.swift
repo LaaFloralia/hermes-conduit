@@ -226,13 +226,15 @@ struct LAAEmployeeWidgetView: View {
                 }
             }.layoutPriority(1)
             }
-            if hasValue, meter.unit == .percent {
-                let amount = meter.amount
+            // Quotas and a named credit grant draw their share left; the bar
+            // turns to the attention colour below a fifth, as in the app.
+            if hasValue, let fraction = meter.remainingFraction {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         Capsule().fill(LAAColor.separator)
-                        Capsule().fill(LAAColor.link)
-                            .frame(width: geometry.size.width * min(max(amount / 100, 0), 1))
+                        Capsule().fill(LAAUsageMeterRule.needsAttention(fraction, countsDown: true)
+                                       ? LAAColor.attention : LAAColor.link)
+                            .frame(width: max(geometry.size.width * fraction, fraction > 0 ? 2 : 0))
                     }
                 }
                 .frame(height: 2)

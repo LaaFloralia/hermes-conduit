@@ -30,7 +30,6 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "codex", name: "Codex", reading: .weeklyQuota, showsInWidget: true),
         Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, showsInWidget: true),
         Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
-        Slot(provider: "nanogpt", name: "nanoGPT", reading: .weeklyQuota, showsInWidget: true),
         Slot(provider: "magnific", name: "Magnific", reading: .credits, showsInWidget: true),
         Slot(provider: "openai-api", name: "GPT API", reading: .balance, showsInWidget: true),
         Slot(provider: "claude-api", name: "Claude API", reading: .balance, showsInWidget: true),
@@ -100,7 +99,8 @@ enum LAAWidgetUsageBuilder {
                 return .missing(id: item.id, label: slot.name)
             }
             return meter(id: item.id, label: slot.name, unit: .credits, amount: amount,
-                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt,
+                         granted: item.detail?.grantedAmount ?? item.detail?.monthlyGrantedAmount)
         case .recordedUsage:
             guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "usage" }) else { return nil }
             guard available(item), let amount = item.detail?.recordedCostUsd, amount.isFinite else {
@@ -122,7 +122,7 @@ enum LAAWidgetUsageBuilder {
 
     private static func meter(id: String, label: String, unit: WidgetUsageMeter.Unit, amount: Double,
                               item: LAAUsageItem, freshUntil: String?, resetsAt: Date?,
-                              receivedAt: Date) -> WidgetUsageMeter {
+                              receivedAt: Date, granted: Double? = nil) -> WidgetUsageMeter {
         let observed = LAAUsageItem.date(item.observedAt)
         let verified = item.detail?.sourceKind == "verified"
         let upstreamDeadline = LAAUsageItem.date(freshUntil)
@@ -137,7 +137,7 @@ enum LAAWidgetUsageBuilder {
                                 observedAt: observed, freshUntil: deadline, resetsAt: resetsAt,
                                 stale: item.stale || item.retainedReason != nil || (freshUntil != nil && deadline == nil),
                                 retained: false, verified: verified,
-                                legacyFreshness: freshUntil == nil && !verified)
+                                legacyFreshness: freshUntil == nil && !verified, granted: granted)
     }
 }
 

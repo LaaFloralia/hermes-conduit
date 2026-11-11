@@ -66,8 +66,18 @@ struct LAAWorkHub: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { showUsage = true } label: { Image(systemName: "gauge.with.dots.needle.33percent").frame(width: 44, height: 44) }
+                let lowest = LAAUsageGauge.lowestWeeklyRemaining(usageState.usage.value ?? [])
+                Button { showUsage = true } label: {
+                    Image(systemName: LAAUsageGauge.symbol(lowest))
+                        .foregroundStyle(lowest.map { LAAUsageMeterRule.needsAttention($0 / 100, countsDown: true) } == true
+                                         ? LAAColor.attention : LAAColor.link)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 44, height: 44)
+                }
                     .accessibilityLabel(Text(verbatim: "Usage")).accessibilityIdentifier("work.usage")
+                    .accessibilityValue(Text(verbatim: lowest.map {
+                        LAACopy.Usage.lowestWeekly + " " + $0.formatted(.number.precision(.fractionLength(0))) + "%"
+                    } ?? LAACopy.notFetched))
                 if section == .sessions {
                     Menu {
                         Button(String("新しいセッション")) { createID += 1 }.accessibilityIdentifier("work.sessions.new")
@@ -109,6 +119,9 @@ struct LAAWorkHub: View {
                 await decisions.refreshIfStale(bridge)
             }
         }
+        // The gauge reads Usage's last readings; opening Work refreshes them at
+        // most once a minute (the same quiet interval as opening Usage).
+        .task(id: bridge.revision) { await usageState.refreshOnTabOpen(bridge: bridge) }
         .onChange(of: decisions.items) { _, items in
             LAAWorkSessionCache.save(items, store: drafts, device: bridge.deviceID, target: "decisions")
         }
