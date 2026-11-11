@@ -310,6 +310,9 @@ struct LAAWorkSessionRow: View {
     let projectName: String?
     let options: LAAWorkSessionOptions?
     var childNeedsDecision = false
+    /// On the Mac with more than one pane, the number of the pane that shows
+    /// this session, beside its short number. Nil on the phone.
+    var pane: LAAWorkPaneBadge.Value? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: LAASpacing.x3) {
@@ -323,6 +326,7 @@ struct LAAWorkSessionRow: View {
                 }
                 Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
+            if let pane { LAAWorkPaneBadge(value: pane) }
             LAAWorkRefLabel(ref: session.ref)
         }
         .padding(.horizontal, LAASpacing.x4).padding(.vertical, 10)
@@ -332,6 +336,26 @@ struct LAAWorkSessionRow: View {
     private var detail: String {
         [LAAWorkSessionStyle.model(session, options: options), LAAWorkSessionStyle.relative(session.updatedAt)]
             .compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// A Mac pane's number: on its heading and on the list row it shows. The
+/// focused pane's is filled, the others' sit on the subtle surface.
+struct LAAWorkPaneBadge: View {
+    struct Value: Equatable {
+        let number: Int
+        let focused: Bool
+    }
+
+    let value: Value
+
+    var body: some View {
+        Text(verbatim: "\(value.number)")
+            .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+            .foregroundStyle(value.focused ? LAAColor.filledButtonText : LAAColor.secondaryText)
+            .frame(minWidth: 20, minHeight: 20)
+            .background(value.focused ? LAAColor.filledButton : LAAColor.subtleSurface, in: Circle())
+            .accessibilityLabel(Text(verbatim: "ペイン\(value.number)"))
     }
 }
 

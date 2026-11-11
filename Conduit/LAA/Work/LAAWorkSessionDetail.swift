@@ -123,8 +123,14 @@ struct LAAWorkSessionDetail: View {
     @State private var quote: LAAWorkQuoteRequest?
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
 
-    init(id: String, projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore) {
+    /// Told each time the session's own record changes, so a Mac pane's
+    /// heading shows the live phase and model rather than the list's copy.
+    var onSession: ((LAAWorkSession) -> Void)?
+
+    init(id: String, projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore,
+         onSession: ((LAAWorkSession) -> Void)? = nil) {
         self.id = id; self.projects = projects; self.workspaces = workspaces; self.drafts = drafts
+        self.onSession = onSession
     }
 
     private var stopKey: ComposerDraftKey? {
@@ -188,6 +194,9 @@ struct LAAWorkSessionDetail: View {
             guard didInitialScroll, !userDragged else { return }
             parkedOnDecision = true
             scrollRequest.move(to: .decision)
+        }
+        .onChange(of: lastDetailData, initial: true) { _, _ in
+            if let session { onSession?(session) }
         }
         .onChange(of: openingReady) { _, ready in
             if ready { place(measuredContent, measuredViewport) }

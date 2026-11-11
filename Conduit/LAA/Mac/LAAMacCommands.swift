@@ -19,6 +19,8 @@ struct LAAMacCommands: Commands {
             Button(LAACopy.macToggleSidebar) { model.toggleSidebar += 1 }
                 .keyboardShortcut("s", modifiers: [.command, .control])
         }
+        // Work › Sessions' split panes; greyed in every other section.
+        LAAWorkPaneMenu()
         // Where a Mac app keeps them, so no menu is named after one section:
         // Search in Edit, Reload and closing the conversation in View.
         CommandGroup(after: .textEditing) {

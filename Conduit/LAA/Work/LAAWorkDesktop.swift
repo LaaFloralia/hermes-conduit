@@ -28,7 +28,19 @@ struct LAAWorkDesktopSessionsView: View {
     @State private var options: LAAWorkSessionOptions?
     @State private var search = ""
     @State private var showArchived = false
+    #if targetEnvironment(macCatalyst)
+    /// The panes beside the list, saved per window so a relaunch returns to
+    /// the same arrangement. The highlighted row is the focused pane's.
+    @SceneStorage("laa.work.sessionPanes") private var storedPanes = ""
+    @State private var panes = LAAWorkPaneLayout()
+    @State private var panesRestored = false
+    /// Every session a successful read has listed, active or archived: a pane
+    /// keeps what it shows while that session still exists somewhere.
+    @State private var knownIDs = Set<String>()
+    private var selectedID: String? { panes.focused?.sessionID }
+    #else
     @State private var selectedID: String?
+    #endif
     @State private var hoveredID: String?
     @State private var failure: String?
     @State private var loading = false
@@ -64,6 +76,16 @@ struct LAAWorkDesktopSessionsView: View {
     }
 
     private var selected: LAAWorkSession? { sessions.first { $0.id == selectedID } }
+
+    /// Opens a session where the list's selection goes: the focused pane on
+    /// the Mac, the one detail column otherwise. Nil empties it.
+    private func select(_ id: String?) {
+        #if targetEnvironment(macCatalyst)
+        if let id { panes.open(id) } else { panes.clear() }
+        #else
+        selectedID = id
+        #endif
+    }
 
     var body: some View {
         LAAMacListDetail {
@@ -124,8 +146,8 @@ struct LAAWorkDesktopSessionsView: View {
             .onAppear { listFocused = true }
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
-            .onKeyPress(.return) { if selectedID == nil { selectedID = ordered.first?.id }; return .handled }
-            .onKeyPress(.escape) { selectedID = nil; return .handled }
+            .onKeyPress(.return) { if selectedID == nil { select(ordered.first?.id) }; return .handled }
+            .onKeyPress(.escape) { select(nil); return .handled }
             .laaMacSectionCommands(LAAMacSectionCommands(
                 newTitle: "新しいセッション",
                 canCreate: bridge.status == .paired,
@@ -136,6 +158,10 @@ struct LAAWorkDesktopSessionsView: View {
                 reload: { reloadID += 1 }
             ))
         } detail: {
+            #if targetEnvironment(macCatalyst)
+            LAAWorkPaneArea(layout: $panes, sessions: sessions, projects: projects, options: options, drafts: drafts,
+                            canCreate: bridge.status == .paired, onNewSession: { showLauncher = true })
+            #else
             if let selected {
                 NavigationStack {
                     LAAWorkSessionDetail(id: selected.id, projects: projects, workspaces: [], drafts: drafts)
@@ -144,8 +170,23 @@ struct LAAWorkDesktopSessionsView: View {
             } else {
                 LAAMacEmptyDetail(symbol: "rectangle.stack", title: LAACopy.macNoSessionTitle)
             }
+            #endif
         }
         .accessibilityIdentifier("work.desktop.sessions")
+        #if targetEnvironment(macCatalyst)
+        .onAppear {
+            guard !panesRestored else { return }
+            panesRestored = true
+            panes = LAAWorkPaneLayout.decoded(storedPanes)
+            #if DEBUG
+            // `-laa-work-panes S2,S3:v,S5` opens those sessions side by side
+            // (`:v` stacks a pane under the previous one), for the window
+            // shots without driving the mouse.
+            if let preset = LAAWorkPanePreset.launched { panes = preset }
+            #endif
+        }
+        .onChange(of: panes) { _, value in storedPanes = value.encoded }
+        #endif
         .sheet(item: $editingProject, onDismiss: { reloadID += 1 }) { project in
             LAAWorkProjectEditor(project: project, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
@@ -155,7 +196,7 @@ struct LAAWorkDesktopSessionsView: View {
         }
         .sheet(isPresented: $showLauncher, onDismiss: { reloadID += 1 }) {
             LAAWorkSessionLauncher(projects: projects, options: options, drafts: drafts) { created in
-                showLauncher = false; selectedID = created.id; reloadID += 1
+                showLauncher = false; select(created.id); reloadID += 1
             }
             .environmentObject(bridge)
             .laaSheetSize(.form)
@@ -183,16 +224,36 @@ struct LAAWorkDesktopSessionsView: View {
 
     private func sessionButton(_ session: LAAWorkSession, open: Bool, children: [LAAWorkSession], in rows: [LAAWorkSession]) -> some View {
         Button {
-            selectedID = session.id
+            select(session.id)
         } label: {
             LAAWorkSessionRow(session: session, projectName: projects.first { $0.id == session.projectId }?.name, options: options,
-                              childNeedsDecision: !open && children.contains(where: \.needsDecision))
+                              childNeedsDecision: !open && children.contains(where: \.needsDecision),
+                              pane: paneBadge(session.id))
                 .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: rows)) * 16)
                 .background(rowBackground(session.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
         }
         .buttonStyle(.plain)
         .onHover { hoveredID = $0 ? session.id : (hoveredID == session.id ? nil : hoveredID) }
+        #if targetEnvironment(macCatalyst)
+        // A row dragged onto a pane opens there; onto a pane's edge, beside it.
+        .onDrag { LAAWorkPaneDrag.provider(.session(session.id)) } preview: {
+            LAAWorkPaneDragPreview(title: session.name, model: session.observed ?? session.requested)
+        }
+        #endif
         .contextMenu {
+            #if targetEnvironment(macCatalyst)
+            if panes.pane(showing: session.id) == nil {
+                Button { _ = panes.split(edge: .trailing, sessionID: session.id) } label: {
+                    Label { Text(verbatim: LAACopy.paneOpenRight) } icon: { Image(systemName: "rectangle.split.2x1") }
+                }
+                .disabled(!panes.canSplit)
+                Button { _ = panes.split(edge: .bottom, sessionID: session.id) } label: {
+                    Label { Text(verbatim: LAACopy.paneOpenBelow) } icon: { Image(systemName: "rectangle.split.1x2") }
+                }
+                .disabled(!panes.canSplit)
+                Divider()
+            }
+            #endif
             Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
                 Label { Text(verbatim: session.isFavorite ? "ピンを外す" : "ピン留め") } icon: { Image(systemName: "pin") }
             }
@@ -210,10 +271,21 @@ struct LAAWorkDesktopSessionsView: View {
         return .clear
     }
 
+    /// With more than one pane, a row that is on screen carries its pane's
+    /// number, the same number the pane's heading shows.
+    private func paneBadge(_ id: String) -> LAAWorkPaneBadge.Value? {
+        #if targetEnvironment(macCatalyst)
+        guard panes.panes.count > 1, let pane = panes.pane(showing: id), let number = panes.number(of: pane.id) else { return nil }
+        return .init(number: number, focused: pane.id == panes.focusedID)
+        #else
+        return nil
+        #endif
+    }
+
     private func move(_ delta: Int) {
         let ids = ordered.map(\.id)
         let index = selectedID.flatMap { ids.firstIndex(of: $0) }
-        if let next = LAAWorkDesktopList.next(current: index, count: ids.count, delta: delta) { selectedID = ids[next] }
+        if let next = LAAWorkDesktopList.next(current: index, count: ids.count, delta: delta) { select(ids[next]) }
     }
 
     @MainActor private func load() async {
@@ -230,7 +302,18 @@ struct LAAWorkDesktopSessionsView: View {
             LAAWorkSessionCache.save(sessions, store: drafts, device: bridge.deviceID, target: showArchived ? "archived" : "list")
             projects = loadedProjects
             failure = nil
+            #if targetEnvironment(macCatalyst)
+            knownIDs.formUnion(sessions.map(\.id))
+            // A saved pane from another Bridge, or a session that is gone,
+            // empties rather than showing a failure. Archived sessions the
+            // owner opened stay: they were listed.
+            if !showArchived { panes.forget(sessionsNotIn: knownIDs) }
+            // As the one detail column did: an area with nothing open shows
+            // the first session rather than an empty page.
+            if panes.panes.allSatisfy({ $0.sessionID == nil }), let first = sessions.first?.id { panes.open(first) }
+            #else
             if selectedID == nil || !sessions.contains(where: { $0.id == selectedID }) { selectedID = sessions.first?.id }
+            #endif
         } catch is CancellationError {
             return
         } catch let error as LAABridgeError {
