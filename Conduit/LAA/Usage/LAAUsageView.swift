@@ -58,6 +58,7 @@ struct LAAUsageView: View {
             LAAPairingView().environmentObject(bridge).laaSheetSize(.form)
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { evaluatedAt = $0 }
+        .onChange(of: state.updatedAt) { _, _ in evaluatedAt = Date() }
         .onAppear { if automaticallyRefresh { state.setPresented(true) } }
         .onDisappear { if automaticallyRefresh { state.setPresented(false) } }
         .task(id: "\(bridge.revision)|\(scenePhase == .active)") {

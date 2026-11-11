@@ -177,6 +177,7 @@ private struct LAAStudioProgressRow: View {
                 Capsule().fill(LAAColor.link).frame(height: 2).accessibilityHidden(true)
             }
         }.padding(LAASpacing.x4).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+            .contentShape(Rectangle())
     }
 }
 

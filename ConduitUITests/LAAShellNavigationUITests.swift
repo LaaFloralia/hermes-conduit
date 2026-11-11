@@ -39,7 +39,7 @@ final class LAAShellNavigationUITests: XCTestCase {
         XCTAssertTrue(drive.waitForExistence(timeout: 10)); drive.tap()
         XCTAssertTrue(drive.isSelected)
         XCTAssertFalse(studio.isSelected)
-        let settings = app.buttons["Settings"]
+        let settings = app.buttons["laa.settings.open"]
         XCTAssertTrue(settings.waitForExistence(timeout: 10)); settings.tap()
         XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
     }
