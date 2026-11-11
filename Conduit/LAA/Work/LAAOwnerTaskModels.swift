@@ -261,7 +261,7 @@ struct LAAOwnerTaskConflict {
         case .title: return current.title
         case .memo: return current.memo
         case .status: return current.status.label
-        case .dueDate: return current.dueDate?.value ?? ""
+        case .dueDate: return LAADateText.dueDay(current.dueDate?.value)?.label ?? ""
         case .links: return current.links.joined(separator: "\n")
         }
     }
@@ -271,7 +271,7 @@ struct LAAOwnerTaskConflict {
         case .title: return draft.title
         case .memo: return draft.memo
         case .status: return draft.status.label
-        case .dueDate: return draft.dueDateText
+        case .dueDate: return LAADateText.dueDay(draft.dueDateText)?.label ?? draft.dueDateText
         case .links: return draft.links.joined(separator: "\n")
         }
     }

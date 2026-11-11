@@ -104,7 +104,7 @@ struct LAAWorkRoutine: Codable, Identifiable {
         }
         var results = [outcome]
         if let notification = notificationSummary { results.append(notification) }
-        guard let lastRunAt else { return results == ["未確認"] ? "未確認" : "時刻未確認・" + results.joined(separator: "・") }
+        guard let lastRunAt else { return results == ["未確認"] ? "未確認" : (["時刻未確認"] + results).joined(separator: " · ") }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()
@@ -112,7 +112,7 @@ struct LAAWorkRoutine: Codable, Identifiable {
         if let date = fractional.date(from: lastRunAt) ?? plain.date(from: lastRunAt) {
             time = LAADateText.string(date, .monthDayTime, timeZone: timeZone)
         } else { time = "時刻未確認" }
-        return ([time] + results).joined(separator: "・")
+        return ([time] + results).joined(separator: " · ")
     }
 }
 

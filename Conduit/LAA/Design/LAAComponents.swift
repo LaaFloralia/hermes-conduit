@@ -117,30 +117,48 @@ enum LAADateText {
     }
 
     private static let formatters = Dictionary(uniqueKeysWithValues: Format.allCases.map { format in
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = .autoupdatingCurrent
-        formatter.dateFormat = format.rawValue
-        return (format, formatter)
+        (format, makeFormatter(format, timeZone: .autoupdatingCurrent))
     })
 
-    static func string(_ date: Date, _ format: Format, timeZone: TimeZone = .autoupdatingCurrent) -> String {
-        if timeZone == .autoupdatingCurrent, let formatter = formatters[format] {
-            return formatter.string(from: date)
-        }
+    private static func makeFormatter(_ format: Format, timeZone: TimeZone) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = timeZone
         formatter.dateFormat = format.rawValue
-        return formatter.string(from: date)
+        return formatter
+    }
+
+    private static func formatter(_ format: Format, timeZone: TimeZone) -> DateFormatter {
+        if timeZone == .autoupdatingCurrent, let shared = formatters[format] { return shared }
+        return makeFormatter(format, timeZone: timeZone)
+    }
+
+    static func string(_ date: Date, _ format: Format, timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        formatter(format, timeZone: timeZone).string(from: date)
+    }
+
+    static func calendarDate(_ value: String, timeZone: TimeZone = .autoupdatingCurrent) -> Date? {
+        guard value.count == 10 else { return nil }
+        let formatter = formatter(.dateFile, timeZone: timeZone)
+        guard let date = formatter.date(from: value), formatter.string(from: date) == value else { return nil }
+        return date
     }
 
     static func noteTitle(_ name: String) -> String {
-        guard name.count == 10, let formatter = formatters[.dateFile],
-              let date = formatter.date(from: name), formatter.string(from: date) == name else { return name }
+        guard let date = calendarDate(name) else { return name }
         return string(date, .day)
+    }
+
+    static func dueDay(
+        _ value: String?, now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent
+    ) -> (label: String, urgent: Bool)? {
+        guard let value, let date = calendarDate(value, timeZone: timeZone) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        // A date-only task is due through the end of that local day.
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: date) else { return nil }
+        return (string(date, .day, timeZone: timeZone), endOfDay.timeIntervalSince(now) <= 24 * 60 * 60)
     }
 
     static func relative(_ date: Date, now: Date = .now) -> String {

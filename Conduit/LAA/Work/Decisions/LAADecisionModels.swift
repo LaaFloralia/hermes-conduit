@@ -113,7 +113,9 @@ struct LAADecision: Codable, Identifiable, Equatable {
     /// Bridge, so a null ref must read naturally.
     var sourceLine: String? {
         // A session item's own name is its title; only its ref is extra.
-        let name = kind == .session ? nil : source?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = kind == .session ? nil : source?.name?
+            .replacingOccurrences(of: #"\s*｜\s*"#, with: " · ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = [kind == .session ? ref : sourceRef, name].compactMap { $0?.isEmpty == false ? $0 : nil }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

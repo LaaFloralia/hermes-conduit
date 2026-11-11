@@ -212,7 +212,8 @@ struct LAALinearTasksView: View {
                         }
                     }
                     .disabled(busy || pending != nil)
-                    .listRowBackground(LAAColor.surface)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if archivedOnly {
                             Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
@@ -242,6 +243,7 @@ struct LAALinearTasksView: View {
             } footer: {
                 Text(verbatim: archivedFooter)
             }
+            .listSectionSeparator(.hidden)
             if loaded && rows.isEmpty && !loading && failure == nil {
                 ContentUnavailableView {
                     Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : searching ? "一致するタスクはありません" : "タスクはありません") }
@@ -287,23 +289,33 @@ struct LAALinearTasksView: View {
     /// 担当 · status · priority · due, one quiet line under the title. The
     /// status is the Bridge's own wording; only a task with a session links to
     /// it, and a missing run (an older Bridge) reads as 担当 社長 with no badge.
-    private func taskMeta(_ task: LAALinearTask) -> some View {
-        HStack(spacing: LAASpacing.x2) {
+    private func taskMeta(_ task: LAALinearTask, showsRunStatus: Bool = true) -> some View {
+        HStack(spacing: LAASpacing.x1) {
             Text(verbatim: task.assigneeDisplay).lineLimit(1)
                 .foregroundStyle(LAAColor.secondaryText)
-            if let status = task.runStatus { statusLabel(status, task: task) }
-            if task.priority != 0 {
-                Text(verbatim: LAALinearTask.priorityLabel(task.priority)).lineLimit(1)
-                    .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
+            if showsRunStatus, let status = task.runStatus {
+                taskMetaSeparator
+                statusLabel(status, task: task)
             }
-            if let due = task.dueDate {
-                Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }.lineLimit(1)
-                    .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
+            if task.priority != 0 {
+                taskMetaSeparator
+                Text(verbatim: LAALinearTask.priorityLabel(task.priority)).lineLimit(1)
+                    .foregroundStyle(LAAColor.secondaryText)
+            }
+            if let due = LAADateText.dueDay(task.dueDate) {
+                taskMetaSeparator
+                Text(verbatim: due.label).lineLimit(1)
+                    .fontWeight(due.urgent ? .semibold : .regular)
+                    .foregroundStyle(due.urgent ? LAAColor.attention : LAAColor.secondaryText)
             }
             Spacer(minLength: 0)
         }
         .laaTextStyle(.secondary)
         .accessibilityElement(children: .contain)
+    }
+
+    private var taskMetaSeparator: some View {
+        Text(verbatim: "·").foregroundStyle(LAAColor.secondaryText).accessibilityHidden(true)
     }
 
     @ViewBuilder private func statusLabel(_ status: LAATaskRunStatus, task: LAALinearTask) -> some View {
@@ -423,18 +435,7 @@ struct LAALinearTasksView: View {
                             .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
                         LAAWorkRefLabel(ref: task.ref)
                     }
-                    HStack(spacing: LAASpacing.x2) {
-                        Text(verbatim: task.assigneeDisplay)
-                            .foregroundStyle(LAAColor.secondaryText)
-                        if task.priority != 0 {
-                            Text(verbatim: LAALinearTask.priorityLabel(task.priority))
-                                .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
-                        }
-                        if let due = task.dueDate {
-                            Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }
-                                .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
-                        }
-                    }.laaTextStyle(.secondary)
+                    taskMeta(task, showsRunStatus: false)
                 }
                 .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
                 .contentShape(Rectangle())

@@ -98,9 +98,10 @@ struct LAAOwnerTaskListContent: View {
             Button { openTask(task) } label: {
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     Text(verbatim: task.title).foregroundStyle(LAAColor.text)
-                    if let dueDate = task.dueDate {
-                        Text(verbatim: "期限 \(dueDate.value)")
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if let dueDate = LAADateText.dueDay(task.dueDate?.value) {
+                        Text(verbatim: "期限 \(dueDate.label)")
+                            .laaTextStyle(.secondary)
+                            .foregroundStyle(dueDate.urgent ? LAAColor.attention : LAAColor.secondaryText)
                     }
                     if task.status == .doing {
                         Text(verbatim: "進行中").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)

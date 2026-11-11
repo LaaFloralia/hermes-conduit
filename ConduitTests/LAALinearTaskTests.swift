@@ -20,6 +20,18 @@ final class LAALinearTaskTests: XCTestCase {
         XCTAssertEqual(LAALinearTask.today(at, timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))), "2026-11-02")
         XCTAssertEqual(LAALinearTask.today(at, timeZone: try XCTUnwrap(TimeZone(secondsFromGMT: 0))), "2026-11-01")
     }
+
+    func testDueDayUsesJapaneseCalendarAndLocalEndOfDay() throws {
+        let tokyo = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-01T15:00:00Z"))
+        let due = try XCTUnwrap(LAADateText.dueDay("2026-11-02", now: start, timeZone: tokyo))
+        XCTAssertEqual(due.label, "11月2日（月）")
+        XCTAssertTrue(due.urgent)
+        XCTAssertEqual(LAADateText.dueDay("2026-11-02", now: start.addingTimeInterval(-1), timeZone: tokyo)?.urgent, false)
+        XCTAssertNil(LAADateText.dueDay("2026-02-31", now: start, timeZone: tokyo))
+        let wednesday = try XCTUnwrap(LAADateText.calendarDate("2026-11-11", timeZone: tokyo))
+        XCTAssertEqual(LAADateText.string(wednesday, .day, timeZone: tokyo), "11月11日（水）")
+    }
     func testMutationArchivePreservesExactBodyAndVersion() throws {
         let id = UUID().uuidString.lowercased()
         let body = Data(#"{"title":"入力","dueDate":null}"#.utf8)
@@ -101,13 +113,13 @@ final class LAALinearTaskTests: XCTestCase {
         let data = Data(#"{"id":"daily","name":"朝","lastRunAt":"2026-11-01T22:30:00.000Z","businessStatus":"completed","notificationStatus":"sent"}"#.utf8)
         var row = try JSONDecoder().decode(LAAWorkRoutine.self, from: data)
         let japan = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
-        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・完了")
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30 · 完了")
         row.notificationStatus = "failed"
-        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・完了・配信失敗")
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30 · 完了 · 配信失敗")
         row.businessStatus = "error"
-        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・業務エラー・配信失敗")
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30 · 業務エラー · 配信失敗")
         row.notificationStatus = "pending"; row.businessStatus = "success"
-        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30・完了")
+        XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30 · 完了")
         let missing = try JSONDecoder().decode(LAAWorkRoutine.self, from: Data(#"{"id":"missing","name":"未確認"}"#.utf8))
         XCTAssertEqual(missing.previousRunSummary(timeZone: japan), "未確認")
     }

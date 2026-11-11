@@ -147,7 +147,7 @@ struct LAAOwnerTasksView: View {
                                 if let current = inspected[request.taskID] {
                                     Text(verbatim: "現在の題名: \(current.title)")
                                     Text(verbatim: "現在のメモ: \(current.memo)")
-                                    Text(verbatim: "現在の期限: \(current.dueDate?.value ?? "なし")")
+                                    Text(verbatim: "現在の期限: \(LAADateText.dueDay(current.dueDate?.value)?.label ?? "なし")")
                                     Text(verbatim: "現在の状態: \(current.status.label)")
                                     if let conflict = LAAOwnerTaskConflict(draft: request.draft, current: current) {
                                         ForEach(conflict.changedFields) { field in

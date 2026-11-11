@@ -17,7 +17,6 @@ struct LAAEmployeeCallView: View {
                 GeometryReader { geometry in
                     ScrollView {
                         VStack(spacing: 0) {
-                            header(snapshot)
                             avatar(snapshot)
                                 .padding(.top, LAASpacing.x8 + LAASpacing.x6)
                             VStack(spacing: LAASpacing.x2) {
@@ -42,14 +41,23 @@ struct LAAEmployeeCallView: View {
                                 .padding(.bottom, LAASpacing.x8 + LAASpacing.x4)
                         }
                         .frame(maxWidth: 540)
-                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                        .frame(maxWidth: .infinity, minHeight: max(0, geometry.size.height - LAASpacing.minimumTouchTarget))
                         .padding(.horizontal, LAASpacing.horizontal)
                     }
                     .scrollBounceBehavior(.basedOnSize)
+                    .safeAreaInset(edge: .top, alignment: .leading, spacing: 0) {
+                        LAAToolbarIconButton(systemName: "chevron.left", label: "チャットに戻る",
+                                             identifier: "laa.call.back", tint: LAAColor.text, action: calls.showChat)
+                            .disabled(!snapshot.phase.isOngoing)
+                            .padding(.horizontal, LAASpacing.horizontal)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(LAAColor.background)
+                    }
                 }
             }
         }
         .foregroundStyle(LAAColor.text)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.call.screen")
         .interactiveDismissDisabled()
         .onAppear { routeLabel = LAAAudioRouteLabel.current() }
@@ -57,25 +65,6 @@ struct LAAEmployeeCallView: View {
             .receive(on: RunLoop.main)) { _ in
                 routeLabel = LAAAudioRouteLabel.current()
             }
-    }
-
-    private func header(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
-        ZStack {
-            HStack {
-                Button(action: calls.showChat) {
-                    Label {
-                        Text(verbatim: "チャット")
-                    } icon: {
-                        Image(systemName: "chevron.left")
-                    }
-                }
-                .foregroundStyle(LAAColor.link)
-                .disabled(!snapshot.phase.isOngoing)
-                .accessibilityIdentifier("laa.call.back")
-                Spacer()
-            }
-        }
-        .frame(height: 44)
     }
 
     private func avatar(_ snapshot: LAAEmployeeCallSnapshot) -> some View {

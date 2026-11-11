@@ -58,7 +58,9 @@ struct LAAPersonalTaskDetailView: View {
                             Text(verbatim: "Cycle: \(task.cycle?.name ?? task.cycle?.number.map(String.init) ?? "未設定")")
                             Text(verbatim: "優先度: \(task.priority.map(String.init) ?? "未確認")")
                             Text(verbatim: "見積り: \(task.estimate.map { String($0) } ?? "未設定")")
-                            Text(verbatim: "期限: \(task.dueDate ?? "未設定")")
+                            let due = LAADateText.dueDay(task.dueDate)
+                            Text(verbatim: "期限: \(due?.label ?? "未設定")")
+                                .foregroundStyle(due?.urgent == true ? LAAColor.attention : LAAColor.text)
                             if let parent = task.parent { Text(verbatim: "親: \(parent.identifier ?? parent.title ?? parent.id)") }
                             Text(verbatim: "ラベル: \((task.labels ?? []).map(\.name).joined(separator: ", "))")
                             if task.labelsComplete != true { Text(verbatim: "ラベルは一部のみ表示しています。") }

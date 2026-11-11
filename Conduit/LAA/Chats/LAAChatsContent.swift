@@ -187,7 +187,10 @@ struct LAAChatsContent: View {
     }
 
     private var monetVariants: [LAAChatsPerson] {
-        snapshot.people.filter { LAAStaff(profile: $0.profile).map { [.monetDots, .monetUncensored].contains($0) } == true && LAAChatsSearch.person($0, matches: query) }
+        let order: [LAAStaff] = [.monetDots, .monetUncensored]
+        return order.flatMap { variant in
+            snapshot.people.filter { LAAStaff(profile: $0.profile) == variant && LAAChatsSearch.person($0, matches: query) }
+        }
     }
 
     private func monetSection(_ monet: LAAChatsPerson) -> some View {
