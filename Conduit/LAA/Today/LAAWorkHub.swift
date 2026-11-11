@@ -122,6 +122,9 @@ struct LAAWorkHub: View {
         // The gauge reads Usage's last readings; opening Work refreshes them at
         // most once a minute (the same quiet interval as opening Usage).
         .task(id: bridge.revision) { await usageState.refreshOnTabOpen(bridge: bridge) }
+        #if DEBUG
+        .task { await debugLaunch() }
+        #endif
         .onChange(of: decisions.items) { _, items in
             LAAWorkSessionCache.save(items, store: drafts, device: bridge.deviceID, target: "decisions")
         }
@@ -152,6 +155,25 @@ struct LAAWorkHub: View {
             else { LAAWorkCatalogView(kind: .routines, query: search) }
         }
     }
+
+    #if DEBUG
+    /// Window shots without typing (scripts/laa/mac-screens.sh):
+    /// `-laa-work-section tasks` opens that section, and
+    /// `-LAA_UI_TEST_PAIR_CODE <code>` pairs with the local fixture. Pairing
+    /// only runs with `-LAA_UI_TEST_ISOLATED_BRIDGE`, whose Keychain entry is
+    /// a fresh one per launch, so it never touches a real pairing.
+    @MainActor private func debugLaunch() async {
+        let arguments = ProcessInfo.processInfo.arguments
+        func value(_ flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+            return arguments[index + 1]
+        }
+        if let raw = value("-laa-work-section"), let wanted = Section(rawValue: raw) { section = wanted }
+        guard arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE"), let code = value("-LAA_UI_TEST_PAIR_CODE"),
+              bridge.status != .paired else { return }
+        try? await bridge.pair(address: LAABridgeEndpoint.defaultAddress, code: code, name: "UI test")
+    }
+    #endif
 
     private var connectionState: some View {
         VStack(spacing: LAASpacing.x4) {

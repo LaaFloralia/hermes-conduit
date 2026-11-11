@@ -154,7 +154,8 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertEqual(reason.label, "実施中のため、終わってから完了できます")
         XCTAssertFalse(app.buttons["work.task.detail.complete"].isEnabled)
         XCTAssertEqual(completedIDs(), [])
-        app.buttons["Close"].tap()
+        // The run is in Japanese, so the sheet's close reads 閉じる.
+        app.buttons["閉じる"].firstMatch.tap()
 
         let target = row(app, "次の打ち合わせを確認する")
         XCTAssertTrue(target.waitForExistence(timeout: 10))

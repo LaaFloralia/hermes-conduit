@@ -66,9 +66,66 @@ final class LAAWorkShotsUITests: XCTestCase {
         capture(app, "list-routines-open-\(theme)")
     }
 
-    private func launch(_ theme: String, board: String? = nil) throws -> XCUIApplication {
+    /// The task list at the owner's size (about thirty tasks in eight
+    /// genres): genre sections, a folded section, the grouping menu, the due
+    /// grouping, a quick filter, a ticked circle and the detail.
+    func testTaskBoardShotsLight() throws { try taskBoardShots("light") }
+    func testTaskBoardShotsDark() throws { try taskBoardShots("dark") }
+
+    private func taskBoardShots(_ theme: String) throws {
+        let app = try launch(theme, board: "normal", tasks: "many")
+        app.buttons["work.section.tasks"].tap()
+        // The first genre's first row; T12 (その他) sits further down.
+        XCTAssertTrue(app.staticTexts["work.ref.T30"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["work.tasks.section.genre:app"].waitForExistence(timeout: 10))
+        settle(1)
+        capture(app, "tasks-genre-\(theme)")
+        app.swipeUp(); settle(1)
+        capture(app, "tasks-genre-scrolled-\(theme)")
+        app.swipeDown(); app.swipeDown(); settle(1)
+
+        // Fold the first section and see the next one move up.
+        app.buttons["work.tasks.section.genre:app"].tap(); settle(1)
+        capture(app, "tasks-genre-folded-\(theme)")
+        app.buttons["work.tasks.section.genre:app"].tap(); settle(1)
+
+        app.buttons["work.tasks.grouping"].tap()
+        XCTAssertTrue(app.buttons["work.tasks.grouping.due"].waitForExistence(timeout: 5))
+        settle(1)
+        capture(app, "tasks-grouping-menu-\(theme)")
+        app.buttons["work.tasks.grouping.due"].tap(); settle(1)
+        capture(app, "tasks-due-\(theme)")
+        app.buttons["work.tasks.grouping"].tap()
+        app.buttons["work.tasks.grouping.assignee"].tap(); settle(1)
+        capture(app, "tasks-assignee-\(theme)")
+        app.buttons["work.tasks.grouping"].tap()
+        app.buttons["work.tasks.grouping.genre"].tap(); settle(1)
+
+        app.buttons["work.tasks.quick.attention"].tap(); settle(1)
+        capture(app, "tasks-quick-attention-\(theme)")
+        app.buttons["work.tasks.quick.all"].tap(); settle(1)
+
+        // A ticked circle, caught inside its moment, then taken back.
+        // T31, the second row of the first section.
+        let check = app.buttons["work.task.check.7a1c3d5e-2222-4a2b-9c3d-000000000101"]
+        if check.waitForExistence(timeout: 5), check.isHittable {
+            check.tap()
+            capture(app, "tasks-checked-\(theme)")
+            check.tap(); settle(1)
+        }
+
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "タスク一覧をジャンル別に整える")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["work.task.detail.title"].firstMatch.waitForExistence(timeout: 15))
+        settle(1)
+        capture(app, "tasks-detail-\(theme)")
+    }
+
+    private func launch(_ theme: String, board: String? = nil, tasks: String? = nil) throws -> XCUIApplication {
         guard fixture("/reset") != nil else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
         if let board { fixture("/decisions/\(board)") }
+        if let tasks { fixture("/tasks/\(tasks)") }
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",

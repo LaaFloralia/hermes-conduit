@@ -31,7 +31,49 @@ const reset = () => {
     { id: '7a1c3d5e-1111-4a2b-9c3d-000000000018', identifier: 'BUS-TEST8', ref: 'T18', title: 'HPの文言', description: '', dueDate: null, priority: 0, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-07T00:00:00Z', url: null,
       run: fixtureRun('argus', 'Argus', 'done', 'ses_3333333333333333', 'S3', { report: { summary: '3案を比較して2案に絞りました。', at: '2026-11-07T00:00:00Z' } }) },
   ];
+  if (manyTasks) tasks.push(...manyTaskSeed());
 };
+// A list the size of the owner's (about thirty open tasks in eight genres),
+// for the grouped-list shots: /tasks/many, or WORK_FIXTURE_TASKS=many at
+// start. Synthetic titles only. Dates are relative to today so the due
+// sections (期限切れ・今日・明日・7日以内) always have rows.
+let manyTasks = process.env.WORK_FIXTURE_TASKS === 'many';
+const fixtureDay = (offset) => {
+  const date = new Date(); date.setDate(date.getDate() + offset);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+const manyTaskSeed = () => [
+  ['LAAアプリ：タスク一覧をジャンル別に整える', 2, 0, { project: { id: 'project-app', name: 'LAAアプリ' } }],
+  ['Chat：社員の切替を速くする', 3, null],
+  ['Work：判断ボードの通知を実機で確かめる', 0, 1],
+  ['iPhoneのアプリ更新確認の対象を照合する', 0, null],
+  ['AI社員の指示書を最新の分担に合わせる', 2, null],
+  ['モデル分担の変化に追従する仕組みを作る', 0, null],
+  ['Brainの草案を整理して採用内容を確定する', 4, null],
+  ['2要素認証の予備手段を確認する', 1, -1],
+  ['古いAPIキーを棚卸しして失効させる', 2, 3],
+  ['FileVaultの復旧方法を確認する', 0, null],
+  ['Mac miniの空き容量を増やす', 3, null],
+  ['Time Machine用の外付けSSDを選ぶ', 0, 12],
+  ['XAUUSDの反転手法を検証する', 2, null, { labels: [{ id: 'label-trade', name: 'トレード', color: '#86661C' }] }],
+  ['損切りの価格帯の仮説を整理する', 0, null],
+  ['【法人化】会社形態と設立日を決める', 1, 5],
+  ['【法人化】名刺の記載内容を確認する', 0, 2],
+  ['PR動画の最新版を作る', 3, 9],
+  ['プレイリストとBGMの基準を決める', 4, null],
+  ['有給休暇の残りを取得する', 0, 33],
+  ['来期のキャリア目標を見直す', 0, null],
+  ['日々の記録の置き場を決める', 0, null],
+].map(([title, priority, due, extra = {}], index) => ({
+  id: `7a1c3d5e-2222-4a2b-9c3d-${String(100 + index).padStart(12, '0')}`,
+  identifier: `BUS-MANY${index + 1}`, ref: `T${30 + index}`, title, description: '',
+  dueDate: due === null ? null : fixtureDay(due), priority, status: 'todo', stateName: 'Todo',
+  updatedAt: `2026-11-${String(10 - (index % 9)).padStart(2, '0')}T00:00:00Z`, url: null,
+  run: index === 4 ? fixtureRun('monet', 'Monet', 'running', 'ses_5555555555555555', 'S5')
+    : index === 8 ? fixtureRun('cso', 'Talos', 'awaiting_decision', 'ses_8888888888888888', 'S8')
+    : index === 16 ? fixtureRun('argus', 'Argus', 'queued') : null,
+  ...extra,
+}));
 reset();
 const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
 
@@ -331,8 +373,10 @@ const api = http.createServer(async (req, res) => {
       title: found.title, description: found.description,
       owner: { id: 'viewer', name: '社長', kind: 'user' },
       status: { id: 'todo', name: 'Todo', type: 'unstarted' },
-      team: { id: 'BUS', name: 'LAA', key: 'BUS' }, project: null, milestone: null, cycle: null, parent: null,
-      priority: found.priority, estimate: null, dueDate: found.dueDate, labels: [], labelsComplete: true, url: null,
+      team: { id: 'BUS', name: 'LAA', key: 'BUS' },
+      project: found.project ? { id: found.project.id, name: found.project.name } : null, milestone: null, cycle: null, parent: null,
+      priority: found.priority, estimate: null, dueDate: found.dueDate,
+      labels: (found.labels ?? []).map(({ id, name, color }) => ({ id: id ?? name, name, color })), labelsComplete: true, url: null,
       updatedAt: found.updatedAt } });
   }
   if (path.startsWith('/v1/personal-tasks/') && path.split('/').length > 4) {
@@ -448,6 +492,8 @@ const control = http.createServer((req, res) => {
   if (req.url === '/reset') {
     resetGeneration += 1;
     releaseImages();
+    // A full reset also returns the task list to the size the run started with.
+    manyTasks = process.env.WORK_FIXTURE_TASKS === 'many';
     reset();
     sessions.forEach((session, index) => {
       Object.keys(session).forEach((key) => { delete session[key] });
@@ -465,6 +511,7 @@ const control = http.createServer((req, res) => {
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/tasks/refuse-staff') refuseStaffCreate = true;
   if (req.url === '/tasks/allow-staff') refuseStaffCreate = false;
+  if (req.url === '/tasks/many' || req.url === '/tasks/few') { manyTasks = req.url === '/tasks/many'; reset(); }
   if (req.url === '/hold-image') holdImages();
   if (req.url === '/slow-conversation/on') conversationDelay = 2000;
   if (req.url === '/slow-conversation/off') conversationDelay = 0;

@@ -39,33 +39,24 @@ struct LAAPersonalTaskDetailView: View {
                         Button(LAACopy.WorkTab.retry) { Task { await load() } }
                     }
                     if let task {
-                        Text(verbatim: task.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                            .accessibilityIdentifier("work.task.detail.title")
-                        // The short number the owner says, then Linear's own
-                        // identifier.
-                        Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
-                            .compactMap { $0 }.joined(separator: " · "))
-                            .laaTextStyle(.secondary).monospacedDigit()
-                            .foregroundStyle(LAAColor.secondaryText)
-                            .accessibilityIdentifier("work.task.detail.ref")
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            Text(verbatim: "状態: \(task.status?.name ?? "未確認")")
-                            Text(verbatim: "担当: \(task.owner?.name ?? "未設定")")
-                            if let delegate = task.executor?.name { Text(verbatim: "委任先: \(delegate)") }
-                            Text(verbatim: "チーム: \(task.team?.name ?? "未確認")")
-                            Text(verbatim: "Project: \(task.project?.name ?? "未設定")")
-                            Text(verbatim: "Milestone: \(task.milestone?.name ?? "未設定")")
-                            Text(verbatim: "Cycle: \(task.cycle?.name ?? task.cycle?.number.map(String.init) ?? "未設定")")
-                            Text(verbatim: "優先度: \(task.priority.map(String.init) ?? "未確認")")
-                            Text(verbatim: "見積り: \(task.estimate.map { String($0) } ?? "未設定")")
-                            let due = LAADateText.dueDay(task.dueDate)
-                            Text(verbatim: "期限: \(due?.label ?? "未設定")")
-                                .foregroundStyle(due?.urgent == true ? LAAColor.attention : LAAColor.text)
-                            if let parent = task.parent { Text(verbatim: "親: \(parent.identifier ?? parent.title ?? parent.id)") }
-                            Text(verbatim: "ラベル: \((task.labels ?? []).map(\.name).joined(separator: ", "))")
-                            if task.labelsComplete != true { Text(verbatim: "ラベルは一部のみ表示しています。") }
-                            Text(verbatim: "更新: \(LAAWorkPresentation.date(task.updatedAt))")
-                        }.workCard()
+                            HStack(spacing: LAASpacing.x2) {
+                                // The short number the owner says, then Linear's
+                                // own identifier.
+                                Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
+                                    .compactMap { $0 }.joined(separator: " · "))
+                                    .laaTextStyle(.secondary).monospacedDigit()
+                                    .foregroundStyle(LAAColor.secondaryText)
+                                    .accessibilityIdentifier("work.task.detail.ref")
+                                if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
+                            }
+                            Text(verbatim: task.title)
+                                .font(LAAType.title(task.title, size: laaDesktop ? 30 : 26, relativeTo: .title))
+                                .foregroundStyle(LAAColor.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("work.task.detail.title")
+                        }
+                        properties(task)
                         if let ownerTask { runCard(ownerTask) }
                         if let description = task.description, !description.isEmpty {
                             MarkdownText(source: description, foregroundStyle: LAAColor.text).workCard()
@@ -164,6 +155,96 @@ struct LAAPersonalTaskDetailView: View {
                 }
             }
         }.workCard()
+    }
+
+    /// Linear's properties as Linear shows them: an icon, a quiet label and the
+    /// value, and only the ones that are set. The team is always LAA and is
+    /// not repeated.
+    private func properties(_ task: LAAPersonalTask) -> some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: LAASpacing.x3, verticalSpacing: LAASpacing.x3) {
+            property("circle.dashed", "状態") { Text(verbatim: task.status?.name ?? "未確認") }
+            property("person", "担当") { Text(verbatim: task.owner?.name ?? "未設定") }
+            if let delegate = task.executor?.name {
+                property("arrow.turn.down.right", "委任先") { Text(verbatim: delegate) }
+            }
+            if let priority = task.priority, priority != 0 {
+                property("chart.bar", "優先度") {
+                    HStack(spacing: LAASpacing.x1) {
+                        LAATaskPriorityMark(value: priority)
+                        Text(verbatim: LAALinearTask.priorityLabel(priority))
+                    }
+                }
+            }
+            if let due = LAADateText.dueDay(task.dueDate) {
+                property("calendar", "期限") {
+                    Text(verbatim: due.label)
+                        .fontWeight(due.urgent ? .semibold : .regular)
+                        .foregroundStyle(due.urgent ? LAAColor.attention : LAAColor.text)
+                }
+            }
+            if let project = task.project?.name { property("folder", "プロジェクト") { Text(verbatim: project) } }
+            if let milestone = task.milestone?.name { property("flag", "マイルストーン") { Text(verbatim: milestone) } }
+            if let cycle = task.cycle?.name ?? task.cycle?.number.map(String.init) {
+                property("arrow.triangle.2.circlepath", "サイクル") { Text(verbatim: cycle) }
+            }
+            if let estimate = task.estimate { property("gauge.with.dots.needle.33percent", "見積り") { Text(verbatim: estimate.formatted(.number)) } }
+            if let parent = task.parent {
+                property("arrow.up.left", "親") { Text(verbatim: parent.identifier ?? parent.title ?? parent.id) }
+            }
+            if let labels = task.labels, !labels.isEmpty {
+                property("tag", "ラベル") {
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                        LAATaskMetaFlow(spacing: 6, lineSpacing: 6) {
+                            ForEach(labels) { label in
+                                HStack(spacing: 4) {
+                                    Circle().fill(label.color.flatMap(LAATaskGenre.color(hex:)) ?? LAAColor.secondaryText)
+                                        .frame(width: 7, height: 7)
+                                    Text(verbatim: label.name)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(LAAColor.subtleSurface, in: Capsule())
+                            }
+                        }
+                        if task.labelsComplete != true {
+                            Text(verbatim: "ラベルは一部のみ表示しています。")
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        }
+                    }
+                }
+            }
+            property("clock", "更新") { Text(verbatim: LAAWorkPresentation.date(task.updatedAt)) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .workCard()
+        .accessibilityIdentifier("work.task.detail.properties")
+    }
+
+    private func property<Value: View>(_ symbol: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
+        GridRow {
+            Label { Text(verbatim: label) } icon: {
+                Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: 18)
+            }
+            .laaTextStyle(.secondary)
+            .foregroundStyle(LAAColor.secondaryText)
+            .gridColumnAlignment(.leading)
+            value()
+                .laaTextStyle(.body)
+                .foregroundStyle(LAAColor.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func genreChip(_ genre: LAATaskGenre) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: genre.symbol).font(.system(size: 10, weight: .semibold))
+            Text(verbatim: genre.title)
+        }
+        .laaTextStyle(.secondary).fontWeight(.medium)
+        .foregroundStyle(genre.tint)
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(genre.tint.opacity(0.12), in: Capsule())
+        .accessibilityLabel(Text(verbatim: "ジャンル \(genre.title)"))
     }
 
     private func runRow(_ label: String, _ value: String) -> some View {

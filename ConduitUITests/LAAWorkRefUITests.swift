@@ -28,7 +28,8 @@ final class LAAWorkRefUITests: XCTestCase {
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
-        XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 20))
+        // The title is the row's open button, found by its label.
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch.waitForExistence(timeout: 20))
         return app
     }
 
@@ -65,7 +66,7 @@ final class LAAWorkRefUITests: XCTestCase {
     func testEveryListAndDetailShowsItsShortNumber() throws {
         let app = try launch()
         // Task row, then its detail: the short number and Linear's identifier.
-        let task = app.buttons.containing(.staticText, identifier: "次の打ち合わせを確認する").firstMatch
+        let task = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
         XCTAssertTrue(task.waitForExistence(timeout: 10))
         task.press(forDuration: 1.5)
         let open = app.buttons["詳細・コメント"]
@@ -73,7 +74,7 @@ final class LAAWorkRefUITests: XCTestCase {
         let meta = app.staticTexts["work.task.detail.ref"]
         XCTAssertTrue(meta.waitForExistence(timeout: 10))
         XCTAssertEqual(meta.label, "T12 · BUS-TEST1")
-        app.buttons["Close"].firstMatch.tap()
+        app.buttons["閉じる"].firstMatch.tap()
 
         // Sessions: every row and the session's own header.
         section(app, "sessions")
@@ -122,7 +123,7 @@ final class LAAWorkRefUITests: XCTestCase {
         field.tap(); field.typeText("t12")
         XCTAssertTrue(app.staticTexts["work.ref.T12"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["work.ref.T13"].waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["今週の振り返りをまとめる"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "今週の振り返りをまとめる")).firstMatch.waitForNonExistence(timeout: 5))
 
         // Moving to another section clears the search and shows its rows.
         section(app, "sessions")

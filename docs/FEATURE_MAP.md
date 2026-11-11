@@ -729,7 +729,7 @@ A parent session's children stay folded under it until opened; a folded child wa
 store · the session and project API · the owner-task API · Console job observations
 
 **Code**
-- Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAATaskRun.swift` (execution record, status labels, filters, create body, completion), `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
+- Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAATaskRun.swift` (execution record, status labels, filters, create body, completion), `Conduit/LAA/Work/LAATaskBoard.swift` (genres, groupings, quick filters, due words, the section value), `Conduit/LAA/Work/LAATaskRows.swift` (circle, row, section header, controls), `Conduit/LAA/Staff/StaffAvatarView.swift` (`LAAStaffStill`), `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkRef.swift` (short numbers, label and the one search rule),
   `Conduit/LAA/Work/LAAWorkListPicker.swift` (the list pulldown Sessions and Tasks start with),
   `Conduit/LAA/Work/LAAWorkStatusMark.swift` (done, error, waiting and running marks for sessions and routines),
@@ -752,7 +752,7 @@ store · the session and project API · the owner-task API · Console job observ
 - Short numbers (refs): `bridge/src/refs/registry.mjs`, `bridge/src/refs/service.mjs`, `bridge/src/refs/items.mjs`, `bridge/src/refs/routes.mjs`, `bridge/src/refs/cli.mjs`, `bridge/src/refs/present.mjs`, `bridge/test/refs.test.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md` §9
   List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
   `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
-- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAATaskRunTests.swift` (statuses, filters, create body, completion over a loopback Bridge), `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+- Tests: `ConduitTests/LAATaskBoardTests.swift` (genres, groupings, chips, due words), `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAATaskRunTests.swift` (statuses, filters, create body, completion over a loopback Bridge), `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAWorkRefTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `ConduitUITests/LAATaskRunUITests.swift`,
   `ConduitUITests/LAAWorkRefUITests.swift`, `ConduitUITests/LAAWorkShotsUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
@@ -825,6 +825,41 @@ store · the session and project API · the owner-task API · Console job observ
   existing protected draft/idempotency path; a running task is disabled with
   「実施中のため、終わってから完了できます」, 409 `session_running` reads
   「実施中のため完了できません」, and a success removes the row at once.
+- The task list is cut into folding sections (owner, 2026-11-11: 「タスクが
+  めちゃくちゃ見にくい」「ジャンル別に分けて表示」). The default is ジャンル:
+  Linear's project, then its first label, then the title's 【…】 or 「X：」
+  prefix, then the earliest word in the title (security, company and trading
+  words win wherever they stand) give LAAアプリ・AI・道具・セキュリティ・
+  Mac・環境・トレード・会社・法人化・制作・発信・学び・暮らし, その他 last; an
+  unknown project or label becomes its own section. A row in its genre's
+  section drops a prefix that only repeats the genre (「LAAアプリ：」,
+  「【法人化】」). The まとめ方 menu also offers 期限 (期限切れ・今日・明日・
+  7日以内・それ以降・期限なし), 担当 (社長 first, then staff in `LAAStaff` order
+  with the mascot) and 優先度, plus すべて畳む／開く; the grouping and the folded
+  sections are kept on the device (`laa.work.taskGrouping`,
+  `laa.work.taskFolded`). Glass chips under it narrow the list to 期限が近い
+  (due within three days or overdue), 要対応 (判断待・停止・取得できません or
+  overdue) and AIが担当; a chip with nothing in it is not drawn and the choice
+  is not kept. Inside a section rows keep the list order (priority, due,
+  updated).
+- A row is a circle, the number, the title and one quiet meta line with only
+  what is set: the genre dot (when not grouped by genre), the staff mascot
+  and name, the status capsule (a link to its session), the due word (今日・
+  明日・weekday・date, plum when overdue or today) and Linear's priority bars.
+  The owner's own task with nothing set is one line. Tapping the circle ticks
+  it; after 1.4 s the same protected completion is sent, and a second tap in
+  that time takes it back. A task with a session still asks first (its session
+  is archived), a running one refuses with 「実施中のため、終わってから完了
+  できます」 as a self-clearing note, and leaving the list sends a ticked circle
+  at once. A tap on the row opens the detail (phone sheet, Mac column);
+  editing is the row menu, the leading swipe and the detail's 編集. The detail
+  shows Linear's properties as icon, label and value, only those that are set,
+  under the number, the genre chip and the title.
+- Performance: the sections are a value (`LAATaskBoard`) rebuilt only when the
+  tasks, range, chip, search, grouping or day change; rows are equatable views
+  carrying precomputed text, the Mac's hover lives in the row, a refresh that
+  returns the same tasks assigns nothing, and the snapshot is encoded and
+  written off the main thread only when the tasks changed.
 - Routines expose schedule, destination and current state separately from the
   last run, business result and notification result. Missing observations stay
   unknown. On the phone the scheduled routines form one day tree: a rail down
@@ -898,7 +933,7 @@ store · the session and project API · the owner-task API · Console job observ
   parent's integrated gate. Live list/detail reads are verified separately;
   simulator CRUD uses synthetic data.
 
-**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (Work list redesign: the Tasks pulldown with the archive in place, task numbers with the Linear identifier as fallback, the routines day tree without the staleness note, done/error marks, list text at the detail screens' sizes; see the commit for the checks run). 2026-11-09, laa/tasks-ui (the Bridge's execution record: statuses, the three filters, AI assignee with a model, completion, 15-second refresh, and the 403 refusal on a device without `sessions:write`). Built after merging master 1fd6b9e4: build-for-testing exit 0. Unit: `LAATaskRunTests` 10/10, `LAALinearTaskTests` 8/8, `LAALinearTaskIntegrationTests` 3/3, `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2. On `LAA 16 Pro Max` against `scripts/laa/work-ui-fixture.mjs`: `LAATaskRunUITests` 11/11 (create with Monet + Opus 5.5 XHigh, staff refusal keeping the form and saving as 社長, the running refusal, both completion paths, the status link, the long free answer, and four shot runs), `LAAWorkLinearUITests` create/edit/archive and seven edits 2/2, `LAADecisionUITests` 5/5. 440 × 956 pt light/dark captures compared (task list and states, create form, completion confirmation, decision free answer, session question). The sheet environment check reports 0 (`scripts/tests/test_check_sheet_environment.py` 22/22). The real Bridge's `insufficient_scope` and the real Linear writes remain for the parent's integrated gate.
+**Checked:** 2026-11-11, worktree-agent-aadd9fe6ec6d74fcf (task list redesign: genre sections with folding, the four groupings, quick chips, the circle with a 1.4 s hold, Linear's project and labels from the Bridge, the property list in the detail, the section value and equatable rows; `LAATaskBoardTests` 14/14, bridge `linear-owner-tasks` tests, and the Work task UI tests on `LAA 16 Pro Max` and the Mac Catalyst window against `scripts/laa/work-ui-fixture.mjs`; see the commit for the counts). 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (Work list redesign: the Tasks pulldown with the archive in place, task numbers with the Linear identifier as fallback, the routines day tree without the staleness note, done/error marks, list text at the detail screens' sizes; see the commit for the checks run). 2026-11-09, laa/tasks-ui (the Bridge's execution record: statuses, the three filters, AI assignee with a model, completion, 15-second refresh, and the 403 refusal on a device without `sessions:write`). Built after merging master 1fd6b9e4: build-for-testing exit 0. Unit: `LAATaskRunTests` 10/10, `LAALinearTaskTests` 8/8, `LAALinearTaskIntegrationTests` 3/3, `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2. On `LAA 16 Pro Max` against `scripts/laa/work-ui-fixture.mjs`: `LAATaskRunUITests` 11/11 (create with Monet + Opus 5.5 XHigh, staff refusal keeping the form and saving as 社長, the running refusal, both completion paths, the status link, the long free answer, and four shot runs), `LAAWorkLinearUITests` create/edit/archive and seven edits 2/2, `LAADecisionUITests` 5/5. 440 × 956 pt light/dark captures compared (task list and states, create form, completion confirmation, decision free answer, session question). The sheet environment check reports 0 (`scripts/tests/test_check_sheet_environment.py` 22/22). The real Bridge's `insufficient_scope` and the real Linear writes remain for the parent's integrated gate.
 2026-11-09, laa/chat-composer-dots-cron (scheduled runs out of the session lists, short numbers and notices); 2026-11-08, e5927541 (short numbers and the Work search).
 Unit tests decode every kind with and without `ref` and cover the matcher; `LAAWorkRefUITests` runs on LAA 16 Pro Max
 in English (US) against `scripts/laa/work-ui-fixture.mjs` for the default Tasks

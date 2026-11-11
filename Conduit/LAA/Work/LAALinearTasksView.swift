@@ -1,10 +1,17 @@
 #if LAA_BUILD
 import SwiftUI
 
+/// Work's task list (owner, 2026-11-11: 「タスクがめちゃくちゃ見にくい」).
+/// Sections by genre (or due date, assignee, priority) that fold, a circle
+/// that completes a task in one tap, quick filters as glass chips, and rows
+/// that show only what is set. The sections are worked out once per change
+/// of their inputs (`LAATaskBoard`), not on every redraw, and a refresh that
+/// brings the same tasks changes nothing on screen.
 struct LAALinearTasksView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var taskRoute = LAALinearTaskRoute.shared
     @ObservedObject var drafts: ComposerDraftStore
     /// The Work hub's search on the phone; the Mac column keeps its own field.
@@ -15,9 +22,13 @@ struct LAALinearTasksView: View {
     /// it is not kept, so the tab always opens on the open tasks.
     @State private var archivedOnly = false
     @State private var items: [LAALinearTask] = []
+    @State private var board = LAATaskBoard()
+    @State private var quick: LAATaskQuickFilter = .all
     @State private var loading = false
     @State private var busy = false
     @State private var failure: String?
+    /// A short note that clears itself (a running task's refused circle).
+    @State private var notice: String?
     @State private var loaded = false
     @State private var loadID = UUID()
     @State private var loadedDevice: String?
@@ -29,9 +40,14 @@ struct LAALinearTasksView: View {
     @State private var acknowledge = false
     @State private var desktopSelection: DesktopSelection?
     @State private var desktopSearch = ""
-    @State private var hoveredID: String?
     @State private var reloadID = 0
+    /// The row whose circle was just ticked. It completes after a moment, so
+    /// a second tap takes it back, as in Things.
+    @State private var checkedID: String?
+    @State private var hold: Task<Void, Never>?
     @AppStorage(LAALinearTaskFilter.storageKey) private var filterRaw = LAALinearTaskFilter.related.rawValue
+    @AppStorage(LAATaskGrouping.storageKey) private var groupingRaw = LAATaskGrouping.genre.rawValue
+    @AppStorage(LAATaskFolding.storageKey) private var foldedRaw = ""
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
     private struct Editor: Identifiable {
@@ -41,12 +57,36 @@ struct LAALinearTasksView: View {
     private enum DesktopSelection: Equatable {
         case task(String)
     }
+    /// How long a ticked circle waits before the completion is sent.
+    static let completionHold: Duration = .milliseconds(1400)
+
     private var journalKey: ComposerDraftKey {
         LAAWorkDrafts.key(deviceID: bridge.deviceID ?? "unpaired", target: "linear-owner-operation")
     }
     private var pending: ComposerDraftStore.Submission? { LAAWorkDrafts.pending(drafts, key: journalKey) }
-    private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var activeQuery: String { laaDesktop ? desktopSearch : query }
+    private var searching: Bool { !activeQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var filter: LAALinearTaskFilter { LAALinearTaskFilter(rawValue: filterRaw) ?? .related }
+    private var grouping: LAATaskGrouping { LAATaskGrouping(rawValue: groupingRaw) ?? .genre }
+    private var groupingBinding: Binding<LAATaskGrouping> {
+        Binding(get: { grouping }, set: { value in
+            if reduceMotion { groupingRaw = value.rawValue }
+            else { withAnimation(.snappy(duration: 0.25)) { groupingRaw = value.rawValue } }
+        })
+    }
+    private var folded: Set<String> { LAATaskFolding.decode(foldedRaw) }
+    private var locked: Bool { busy || pending != nil }
+
+    private var boardInputs: LAATaskBoard.Inputs {
+        LAATaskBoard.Inputs(items: items, archived: archivedOnly, filter: filter, quick: archivedOnly ? .all : quick,
+                            query: activeQuery, grouping: grouping, day: LAADateText.string(Date(), .dateFile))
+    }
+
+    /// The rows in screen order, without the folded sections: what ↑↓ walk.
+    private var visibleIDs: [String] {
+        let closed = folded
+        return board.sections.filter { !closed.contains($0.id) }.flatMap { $0.rows.map(\.id) }
+    }
 
     /// How a task comes back from the archive: the phone swipes the row, the
     /// Mac uses the row's menu, so the hint names the one that is there.
@@ -59,20 +99,12 @@ struct LAALinearTasksView: View {
         if archivedOnly {
             return laaDesktop ? "行を右クリックすると戻せます。" : "アーカイブしたタスクは、スワイプで戻せます。"
         }
+        if quick != .all { return "「\(quick.title)」に当てはまるタスクはありません。" }
         return searching ? "短い番号（T12）か題名の一部で探せます。" : "＋から追加できます。"
     }
 
-    private var rows: [LAALinearTask] {
-        items.filter { archivedOnly ? $0.isArchived : $0.isOpen }
-            .filter { archivedOnly || filter.matches($0) }
-            .filter { LAAWorkRef.matches(query, ref: $0.ref, text: [$0.title, $0.description ?? "", $0.identifier]) }
-            .sorted {
-                let a = $0.priority == 0 ? 5 : $0.priority
-                let b = $1.priority == 0 ? 5 : $1.priority
-                if a != b { return a < b }
-                if $0.dueDate != $1.dueDate { return ($0.dueDate ?? "9999") < ($1.dueDate ?? "9999") }
-                return $0.updatedAt > $1.updatedAt
-            }
+    private var emptyTitle: String {
+        archivedOnly ? "アーカイブはありません" : searching || quick != .all ? "一致するタスクはありません" : "タスクはありません"
     }
 
     var body: some View {
@@ -81,6 +113,12 @@ struct LAALinearTasksView: View {
         }
         .tint(LAAColor.link)
         .refreshable { await load() }
+        .onChange(of: boardInputs, initial: true) { _, inputs in
+            board = LAATaskBoard(inputs)
+            if laaDesktop, !archivedOnly, desktopSelection == nil, let first = visibleIDs.first {
+                desktopSelection = .task(first)
+            }
+        }
         .onChange(of: createID, initial: true) { _, value in
             guard value > 0, !busy, pending == nil else { return }
             // A new task belongs to the open list, so creating leaves the archive.
@@ -100,6 +138,12 @@ struct LAALinearTasksView: View {
                 await load(quiet: true)
             }
         }
+        .task(id: notice) {
+            guard notice != nil else { return }
+            do { try await Task.sleep(for: .seconds(4)) } catch { return }
+            notice = nil
+        }
+        .sensoryFeedback(.success, trigger: checkedID) { _, new in new != nil }
         .sheet(item: $taskRoute.target) { target in
             NavigationStack {
                 LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
@@ -151,101 +195,22 @@ struct LAALinearTasksView: View {
             Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
             label: { Text(verbatim: "結果を確認して閉じる") }
         } message: { Text(verbatim: "Linearで反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
+        .onDisappear { commitHeldCompletion() }
     }
 
-    private var phoneBody: some View {
-        List {
-            if let failure {
-                Section {
-                    LAAWorkFailure(text: "タスクを取得できません") { Task { await load() } }
-                }
-            }
-            if let pending, !busy {
-                Section {
-                    Text(verbatim: "保存結果を確認できませんでした。")
-                    Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
-                        .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
-                    Button { acknowledge = true } label: { Text(verbatim: "Linearで結果を確認済み") }
-                        .disabled(busy)
-                }
-            }
-            if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
-            Section {
-                ForEach(rows) { task in
-                    // The number leads the row in its own column, so the
-                    // owner reads "T12" first and the titles line up.
-                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
-                        LAATaskNumberLabel(task: task)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Button { editor = Editor(id: task.id, task: task) } label: {
-                                Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
-                                    .foregroundStyle(LAAColor.text)
-                                    .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                            }.buttonStyle(.borderless).disabled(archivedOnly)
-                            taskMeta(task)
-                        }
-                    }
-                    .padding(.vertical, LAASpacing.x1)
-                    .contextMenu {
-                        if archivedOnly {
-                            // The Mac list has no swipe, so the row's menu is
-                            // where a task comes back from the archive.
-                            Button {
-                                submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
-                            } label: { Text(verbatim: "戻す") }
-                                .disabled(busy || pending != nil)
-                        } else {
-                            Button { detail = task } label: { Text(verbatim: "詳細・コメント") }
-                            if task.isOpen { Button { completing = task } label: { Text(verbatim: "完了") }
-                                .disabled(busy || pending != nil || task.completionBlockedReason != nil) }
-                        }
-                    }
-                    .disabled(busy || pending != nil)
-                    .listRowBackground(LAAColor.surface)
-                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        if archivedOnly {
-                            Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
-                                Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") }
-                            }.tint(LAAColor.link).disabled(busy || pending != nil)
-                        } else {
-                            // First on the trailing edge, so a swipe ends on 完了.
-                            Button {
-                                guard task.completionBlockedReason == nil else { return }
-                                completing = task
-                            } label: {
-                                Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark") }
-                            }.tint(LAAColor.link)
-                                .disabled(busy || pending != nil || task.completionBlockedReason != nil)
-                            Button(role: .destructive) { deleting = task } label: {
-                                Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
-                            }.disabled(busy || pending != nil)
-                        }
-                    }
-                }
-            } header: {
-                filterMenu
-            } footer: {
-                Text(verbatim: archivedFooter)
-            }
-            if loaded && rows.isEmpty && !loading && failure == nil {
-                ContentUnavailableView {
-                    Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : searching ? "一致するタスクはありません" : "タスクはありません") }
-                    icon: { Image(systemName: "checkmark.circle") }
-                } description: {
-                    Text(verbatim: archivedDescription)
-                }.listRowBackground(Color.clear)
-            }
+    // MARK: Shared pieces
+
+    private var controls: some View {
+        LAATaskControls(grouping: groupingBinding, quick: $quick, counts: board.counts, showsQuick: !archivedOnly,
+                        allFolded: !board.sections.isEmpty && board.sections.allSatisfy { folded.contains($0.id) },
+                        foldAll: { fold in setFolded(fold ? Set(board.sections.map(\.id)) : []) }) {
+            filterMenu
         }
-        .listStyle(.insetGrouped).textCase(nil)
-        .scrollContentBackground(.hidden)
     }
 
     /// The list's one pulldown, labelled with the range the rows below are in.
     /// Every choice changes this list in place: the three ranges (kept on the
-    /// device) and the archive (not kept). The earlier 受信箱 and すべての課題
-    /// pushed other screens from here and read as unrelated to the list
-    /// (owner, 2026-11-11).
+    /// device) and the archive (not kept).
     private var filterMenu: some View {
         LAAWorkListPicker(title: archivedOnly ? LAACopy.WorkTab.archived : filter.title,
                           identifier: "work.tasks.filter") {
@@ -265,116 +230,248 @@ struct LAALinearTasksView: View {
         }
     }
 
-    /// 担当 · status · priority · due, one quiet line under the title. The
-    /// status is the Bridge's own wording; only a task with a session links to
-    /// it, and a missing run (an older Bridge) reads as 担当 社長 with no badge.
-    private func taskMeta(_ task: LAALinearTask, showsRunStatus: Bool = true) -> some View {
-        HStack(spacing: LAASpacing.x1) {
-            Text(verbatim: task.assigneeDisplay).lineLimit(1)
-                .foregroundStyle(LAAColor.secondaryText)
-            if showsRunStatus, let status = task.runStatus {
-                taskMetaSeparator
-                statusLabel(status, task: task)
+    private func header(_ section: LAATaskSection) -> some View {
+        LAATaskSectionHeader(section: section, folded: folded.contains(section.id)) { toggleFold(section.id) }
+    }
+
+    private func toggleFold(_ id: String) {
+        var value = folded
+        if value.contains(id) { value.remove(id) } else { value.insert(id) }
+        setFolded(value, keeping: board.sections.map(\.id))
+    }
+
+    /// Other groupings' folds are kept; only this grouping's are replaced.
+    private func setFolded(_ value: Set<String>, keeping current: [String]? = nil) {
+        let mine = Set(current ?? board.sections.map(\.id))
+        let others = folded.subtracting(mine)
+        let next = LAATaskFolding.encode(others.union(value))
+        if reduceMotion { foldedRaw = next } else { withAnimation(.snappy(duration: 0.25)) { foldedRaw = next } }
+    }
+
+    private func rowView(_ row: LAATaskRowModel, selected: Bool = false) -> some View {
+        LAATaskRow(row: row, showsGenre: grouping != .genre, checked: checkedID == row.id, selected: selected,
+                   desktop: laaDesktop, toggle: { toggleCheck(row) }, open: { open(row) })
+            .equatable()
+    }
+
+    private func open(_ row: LAATaskRowModel) {
+        if laaDesktop { desktopSelection = .task(row.id); listFocused = true }
+        else if !row.task.isArchived { detail = row.task }
+    }
+
+    @ViewBuilder private var messages: some View {
+        if let failure {
+            HStack(alignment: .top, spacing: LAASpacing.x2) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
+                Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: LAASpacing.x2)
+                Button { reloadID += 1 } label: {
+                    Text(verbatim: LAACopy.WorkTab.retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                }.buttonStyle(.borderless).frame(minHeight: 44)
             }
-            if task.priority != 0 {
-                taskMetaSeparator
-                Text(verbatim: LAALinearTask.priorityLabel(task.priority)).lineLimit(1)
-                    .foregroundStyle(LAAColor.secondaryText)
-            }
-            if let due = LAADateText.dueDay(task.dueDate) {
-                taskMetaSeparator
-                Text(verbatim: due.label).lineLimit(1)
-                    .fontWeight(due.urgent ? .semibold : .regular)
-                    .foregroundStyle(due.urgent ? LAAColor.attention : LAAColor.secondaryText)
-            }
-            Spacer(minLength: 0)
+            .accessibilityIdentifier("work.tasks.failure")
         }
-        .laaTextStyle(.secondary)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var taskMetaSeparator: some View {
-        Text(verbatim: "·").foregroundStyle(LAAColor.secondaryText).accessibilityHidden(true)
-    }
-
-    @ViewBuilder private func statusLabel(_ status: LAATaskRunStatus, task: LAALinearTask) -> some View {
-        let label = Text(verbatim: status.label).lineLimit(1)
-            .fontWeight(status.tone == .quiet ? .regular : .semibold)
-            .foregroundStyle(status.color)
-            .padding(.horizontal, status.tone == .quiet ? 0 : LAASpacing.x2)
-            .padding(.vertical, status.tone == .quiet ? 0 : 1)
-            .background(status.tone == .quiet ? Color.clear : status.color.opacity(0.12), in: Capsule())
-        if let session = status.sessionID {
-            // The same handler the deep link uses. A Link would send the URL
-            // through the system and back, which the hub has already missed.
-            Button {
-                guard let url = URL(string: "laa://work/sessions/\(session)") else { return }
-                LAAWorkLinkRequest.shared.open(url)
-            } label: { label }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(.isLink)
-                .accessibilityLabel(Text(verbatim: "状態 \(status.label)。会話を開く"))
-                .accessibilityIdentifier("work.task.status.\(task.id)")
-        } else {
-            label.accessibilityIdentifier("work.task.status.\(task.id)")
+        if let notice {
+            Label { Text(verbatim: notice) } icon: { Image(systemName: "info.circle") }
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                .accessibilityIdentifier("work.tasks.notice")
         }
     }
 
-    private var desktopRows: [LAALinearTask] {
-        rows.filter { LAAWorkRef.matches(desktopSearch, ref: $0.ref, text: [$0.title, $0.description ?? "", $0.identifier]) }
+    @ViewBuilder private var pendingNotice: some View {
+        if let pending, !busy {
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                Text(verbatim: "保存結果を確認できませんでした。").foregroundStyle(LAAColor.attention)
+                HStack(spacing: LAASpacing.x4) {
+                    Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
+                        .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
+                    Button { acknowledge = true } label: { Text(verbatim: "Linearで結果を確認済み") }
+                        .disabled(busy)
+                }
+                .buttonStyle(.borderless)
+            }
+            .laaTextStyle(.secondary)
+        }
     }
+
+    // MARK: Phone
+
+    private var phoneBody: some View {
+        List {
+            Section {
+                controls
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: LAASpacing.x1, trailing: 4))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            if failure != nil || notice != nil || (pending != nil && !busy) {
+                Section {
+                    messages
+                    pendingNotice
+                }
+                .listRowBackground(LAAColor.surface)
+            }
+            if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
+            ForEach(board.sections) { section in
+                Section {
+                    if !folded.contains(section.id) {
+                        ForEach(section.rows) { row in phoneRow(row) }
+                    }
+                } header: {
+                    header(section)
+                }
+            }
+            if loaded && board.sections.isEmpty && !loading && failure == nil {
+                ContentUnavailableView {
+                    Label { Text(verbatim: emptyTitle) } icon: { Image(systemName: "checkmark.circle") }
+                } description: {
+                    Text(verbatim: archivedDescription)
+                }.listRowBackground(Color.clear)
+            }
+            Section {} footer: {
+                Text(verbatim: archivedFooter).frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .listStyle(.insetGrouped).textCase(nil)
+        .listSectionSpacing(.compact)
+        // The controls sit right under the hub's search, not a section gap below.
+        .contentMargins(.top, LAASpacing.x1, for: .scrollContent)
+        .environment(\.defaultMinListRowHeight, 44)
+        .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("work.tasks.list")
+    }
+
+    private func phoneRow(_ row: LAATaskRowModel) -> some View {
+        let task = row.task
+        return rowView(row)
+            .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.x4, bottom: 0, trailing: LAASpacing.x4))
+            .listRowBackground(LAAColor.surface)
+            // The separator starts under the number, not under the circle.
+            .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] + 34 }
+            .contextMenu {
+                if archivedOnly {
+                    Button {
+                        submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
+                    } label: { Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") } }
+                        .disabled(locked)
+                } else {
+                    Button { detail = task } label: { Label { Text(verbatim: "詳細・コメント") } icon: { Image(systemName: "doc.text") } }
+                    Button { editor = Editor(id: task.id, task: task) } label: {
+                        Label { Text(verbatim: "編集") } icon: { Image(systemName: "pencil") }
+                    }.disabled(locked)
+                    if task.isOpen {
+                        Button { completing = task } label: {
+                            Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark.circle") }
+                        }.disabled(locked || task.completionBlockedReason != nil)
+                    }
+                    Divider()
+                    Button(role: .destructive) { deleting = task } label: {
+                        Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                    }.disabled(locked)
+                }
+            }
+            .disabled(locked && checkedID != row.id)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if archivedOnly {
+                    Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
+                        Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") }
+                    }.tint(LAAColor.link).disabled(locked)
+                } else {
+                    // First on the trailing edge, so a swipe ends on 完了.
+                    Button {
+                        guard task.completionBlockedReason == nil else { return }
+                        completing = task
+                    } label: {
+                        Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark") }
+                    }.tint(LAAColor.link)
+                        .disabled(locked || task.completionBlockedReason != nil)
+                    Button(role: .destructive) { deleting = task } label: {
+                        Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                    }.disabled(locked)
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                if !archivedOnly {
+                    Button { editor = Editor(id: task.id, task: task) } label: {
+                        Label { Text(verbatim: "編集") } icon: { Image(systemName: "pencil") }
+                    }.tint(LAAColor.decorativeTan).disabled(locked)
+                }
+            }
+    }
+
+    // MARK: Mac
+
     private var selectedTask: LAALinearTask? {
         guard case let .task(id) = desktopSelection else { return nil }
         return items.first { $0.id == id }
     }
 
     private var desktopBody: some View {
-        LAAMacListDetail {
+        LAAMacListDetail(listWidth: 460) {
             VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: LAASpacing.x3) {
-                    filterMenu
-                    LAASearchField(placeholder: "検索", text: $desktopSearch,
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    controls
+                    LAASearchField(placeholder: "番号・題名で検索", text: $desktopSearch,
                                    identifier: "work.tasks.desktop.search", focus: $searchFocused)
-                    if let failure {
-                        Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                        Button { reloadID += 1 } label: { Text(verbatim: "読み直す").foregroundStyle(LAAColor.link) }.buttonStyle(.plain)
-                    }
-                    if let pending, !busy {
-                        Text(verbatim: "保存結果を確認できませんでした。")
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                        Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
-                            .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
-                    }
+                    messages
+                    pendingNotice
                     if loading && !loaded { LAALoadingDots() }
                 }
-                .padding(LAASpacing.x3)
+                .padding(.horizontal, LAASpacing.x4)
+                .padding(.top, LAASpacing.x2)
+                .padding(.bottom, LAASpacing.x3)
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(desktopRows) { task in desktopTaskRow(task) }
-                        if loaded && desktopRows.isEmpty && !loading && failure == nil {
-                            Text(verbatim: desktopSearch.isEmpty ? "タスクはありません。" : "一致するタスクはありません。")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            ForEach(board.sections) { section in
+                                Section {
+                                    if !folded.contains(section.id) {
+                                        ForEach(section.rows) { row in desktopRow(row).id(row.id) }
+                                    }
+                                } header: {
+                                    header(section)
+                                        .padding(.horizontal, LAASpacing.x3)
+                                        .padding(.top, LAASpacing.x2)
+                                        .background(LAAColor.background)
+                                }
+                            }
+                            if loaded && board.sections.isEmpty && !loading && failure == nil {
+                                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                    Text(verbatim: emptyTitle).fontWeight(.semibold)
+                                    Text(verbatim: archivedDescription).laaTextStyle(.secondary)
+                                        .foregroundStyle(LAAColor.secondaryText)
+                                }
                                 .padding(LAASpacing.x4)
+                            }
                         }
+                        .padding(.horizontal, LAASpacing.x2)
+                        .padding(.bottom, LAASpacing.x6)
+                    }
+                    .onChange(of: desktopSelection) { _, value in
+                        guard case let .task(id)? = value else { return }
+                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { proxy.scrollTo(id) }
                     }
                 }
             }
             .background(LAAColor.background)
             .accessibilityIdentifier("work.desktop.tasks.list")
             .focusable()
+            .focusEffectDisabled()
             .focused($listFocused)
             .onAppear { listFocused = true }
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { desktopSelection = nil; return .handled }
+            // No key completes a task: the list takes focus with the first row
+            // selected, so a stray space would tick it. Completion is a click.
             .onKeyPress(.return) {
-                if desktopSelection == nil, let first = desktopRows.first { desktopSelection = .task(first.id) }
+                if desktopSelection == nil, let first = visibleIDs.first { desktopSelection = .task(first) }
                 return .handled
             }
             // ⌘N, ⌘F and ⌘R come from the menu bar, which reads the commands
-            // this column publishes: one implementation per key, as in the
-            // window's other sections.
+            // this column publishes.
             .laaMacSectionCommands(LAAMacSectionCommands(
                 newTitle: "新しいタスク",
                 canCreate: !(busy || pending != nil),
@@ -390,47 +487,25 @@ struct LAALinearTasksView: View {
         .accessibilityIdentifier("work.desktop.tasks")
     }
 
-    private func desktopTaskRow(_ task: LAALinearTask) -> some View {
-        HStack(alignment: .center, spacing: LAASpacing.x2) {
-            Button { desktopSelection = .task(task.id) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
-                    LAATaskNumberLabel(task: task)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
-                            .foregroundStyle(LAAColor.text).lineLimit(2)
-                            .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                        taskMeta(task, showsRunStatus: false)
-                    }
+    private func desktopRow(_ row: LAATaskRowModel) -> some View {
+        let task = row.task
+        return rowView(row, selected: selectedTask?.id == row.id)
+            .contextMenu {
+                Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "開く") }
+                if task.isArchived {
+                    Button {
+                        submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
+                    } label: { Text(verbatim: "戻す") }
+                } else {
+                    Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "編集") }
+                    Button { completing = task } label: { Text(verbatim: "完了") }
+                        .disabled(locked || !task.isOpen || task.completionBlockedReason != nil)
+                    Divider()
+                    Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
                 }
-                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(selectedTask?.id == task.id ? .isSelected : [])
-            .accessibilityIdentifier("work.task.\(task.id)")
-            // Outside the row's select button, so a click opens the session
-            // rather than selecting the row.
-            if let status = task.runStatus { statusLabel(status, task: task) }
-        }
-        .padding(.horizontal, LAASpacing.x4)
-        .background(rowBackground(task.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
-        .onHover { hoveredID = $0 ? task.id : (hoveredID == task.id ? nil : hoveredID) }
-        .contextMenu {
-            Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "開く") }
-            if task.isArchived {
-                // The archive is shown in this column now, so its rows come
-                // back from the same menu.
-                Button {
-                    submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
-                } label: { Text(verbatim: "戻す") }
-            } else {
-                Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "編集") }
-                Button { completing = task } label: { Text(verbatim: "完了") }
-                    .disabled(busy || pending != nil || !task.isOpen || task.completionBlockedReason != nil)
-                Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
-            }
-        }
-        .disabled(busy || pending != nil)
+            .disabled(locked && checkedID != row.id)
+            .help(Text(verbatim: task.title))
     }
 
     @ViewBuilder private var desktopDetail: some View {
@@ -449,18 +524,41 @@ struct LAALinearTasksView: View {
         }
     }
 
-    private func rowBackground(_ id: String) -> Color {
-        if selectedTask?.id == id { return LAAColor.selectionFill }
-        if hoveredID == id { return LAAColor.subtleSurface }
-        return .clear
-    }
-
     private func move(_ delta: Int) {
-        let ids = desktopRows.map(\.id)
+        let ids = visibleIDs
         let current = selectedTask.flatMap { ids.firstIndex(of: $0.id) }
         if let next = LAAWorkDesktopList.next(current: current, count: ids.count, delta: delta) {
             desktopSelection = .task(ids[next])
         }
+    }
+
+    // MARK: Completion from the circle
+
+    /// One tap ticks the circle; the completion leaves after a moment, and a
+    /// second tap in that moment takes it back. A task whose session would be
+    /// archived still asks first, and a running one says why it cannot.
+    private func toggleCheck(_ row: LAATaskRowModel) {
+        if checkedID == row.id, hold != nil {
+            hold?.cancel(); hold = nil; checkedID = nil
+            return
+        }
+        guard bridge.status == .paired, !locked, checkedID == nil, !row.task.isArchived else { return }
+        if let reason = row.task.completionBlockedReason { notice = reason; return }
+        if row.completionAsks { completing = row.task; return }
+        checkedID = row.id
+        let task = row.task
+        hold = Task { @MainActor in
+            do { try await Task.sleep(for: Self.completionHold) } catch { return }
+            hold = nil
+            complete(task)
+        }
+    }
+
+    /// Leaving the list does not lose a ticked circle: it is sent at once.
+    private func commitHeldCompletion() {
+        guard let hold, let id = checkedID, let task = items.first(where: { $0.id == id }) else { return }
+        hold.cancel(); self.hold = nil
+        complete(task)
     }
 
     private func submit(method: String, id: String, body: Data?, version: String?, action: String? = nil) {
@@ -555,11 +653,11 @@ struct LAALinearTasksView: View {
     /// Completing from a row or the detail: one confirmation, then the same
     /// protected request path as every other task write.
     private func complete(_ task: LAALinearTask) {
-        guard bridge.status == .paired, !busy, pending == nil else { return }
-        if let reason = task.completionBlockedReason { failure = reason; return }
+        guard bridge.status == .paired, !busy, pending == nil else { if checkedID == task.id { checkedID = nil }; return }
+        if let reason = task.completionBlockedReason { notice = reason; if checkedID == task.id { checkedID = nil }; return }
         busy = true
         Task {
-            defer { busy = false }
+            defer { busy = false; if checkedID == task.id { checkedID = nil } }
             switch await LAALinearTaskCompletion.complete(task, bridge: bridge, drafts: drafts, key: journalKey) {
             case .completed:
                 items.removeAll { $0.id == task.id }
@@ -593,9 +691,18 @@ struct LAALinearTasksView: View {
             let page: LAAWorkPage<LAALinearTask> = try await bridge.read(archivedOnly ? "/v1/linear-owner-tasks?archived=only" : "/v1/linear-owner-tasks")
             guard loadID == epoch, device == bridge.deviceID, loadedArchive == archivedOnly, !Task.isCancelled else { return }
             guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
-            items = page.items; loaded = true; failure = nil
-            if laaDesktop, !archivedOnly, desktopSelection == nil, let first = desktopRows.first { desktopSelection = .task(first.id) }
-            if let device { LAALinearTaskCache.save(LAALinearTaskCache.OwnerSnapshot(items: items), device: device, scope: archivedOnly ? "archive" : "owner") }
+            // The same tasks again (the 15-second refresh, a pull) change
+            // nothing: no new sections, no redraw, no snapshot write.
+            let changed = page.items != items
+            if changed { items = page.items }
+            if !loaded { loaded = true }
+            if failure != nil { failure = nil }
+            if changed, let device {
+                let snapshot = LAALinearTaskCache.OwnerSnapshot(items: page.items)
+                let scope = archivedOnly ? "archive" : "owner"
+                // Encoding and the file write stay off the main thread.
+                Task.detached(priority: .utility) { LAALinearTaskCache.save(snapshot, device: device, scope: scope) }
+            }
             if !busy, let pending, let (bytes, _) = LAAWorkDrafts.request(pending),
                let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes), mutation.isValid {
                 // A restarted app may have missed a successful reply. Read only;
