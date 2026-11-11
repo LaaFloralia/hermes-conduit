@@ -33,7 +33,7 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertEqual(board.options.map(\.label), ["15日に公開", "延期"])
         XCTAssertEqual(board.recommended?.label, "15日に公開")
         XCTAssertNil(board.ref)
-        XCTAssertEqual(board.sourceLine, "HP｜公開準備")
+        XCTAssertEqual(board.sourceLine, "HP · 公開準備")
         let session = decoded.items[1]
         XCTAssertEqual(session.kind, .session)
         XCTAssertEqual(session.id, "ses_2222222222222222")
@@ -83,23 +83,23 @@ final class LAADecisionTests: XCTestCase {
                                deadline: "2026-11-08T05:00:00Z",
                                source: .init(paseoAgentId: "a", sessionId: nil, name: "HP｜公開準備"))
         let meta = try XCTUnwrap(LAADecisionBoardView.meta(item, now: now))
-        XCTAssertEqual(String(meta.characters), "HP｜公開準備 · あと5時間 · 推奨 15日に公開")
+        XCTAssertEqual(String(meta.characters), "HP · 公開準備 · あと5時間 · 推奨 15日に公開")
         XCTAssertEqual(LAADecisionCopy.accessibilityLabel(item, now: now),
-                       "判断、HPの公開日を決める、推奨 15日に公開、あと5時間、HP｜公開準備")
+                       "判断、HPの公開日を決める、推奨 15日に公開、あと5時間、HP · 公開準備")
         // An answer that did not arrive shows the choice instead of the advice.
         let failed = LAADecision(id: "dec_2", status: "answered", title: "週報の送り先を決める", summary: "",
                                  options: [.init(label: "Driveに保存", recommended: true)],
                                  source: .init(paseoAgentId: "a", sessionId: nil, name: "週報｜作成"),
                                  answer: .init(optionIndex: 0, label: "Driveに保存", note: nil, answeredAt: nil),
                                  delivery: .init(state: "failed", attempts: 1, deliveredAt: nil, error: "agent_archived"))
-        XCTAssertEqual(String(try XCTUnwrap(LAADecisionBoardView.meta(failed, now: now)).characters), "週報｜作成 · 回答 Driveに保存")
-        XCTAssertEqual(LAADecisionCopy.accessibilityLabel(failed, now: now), "判断、週報の送り先を決める、回答 Driveに保存、届いていません、週報｜作成")
+        XCTAssertEqual(String(try XCTUnwrap(LAADecisionBoardView.meta(failed, now: now)).characters), "週報 · 作成 · 回答 Driveに保存")
+        XCTAssertEqual(LAADecisionCopy.accessibilityLabel(failed, now: now), "判断、週報の送り先を決める、回答 Driveに保存、届いていません、週報 · 作成")
         // With numbers: the decision's J leads VoiceOver, the source's S leads the source line.
         let numbered = LAADecision(id: "dec_3", ref: "J3", title: "名刺の紙を選ぶ", summary: "",
                                    options: [.init(label: "マットな白", recommended: true)],
                                    source: .init(paseoAgentId: "a", sessionId: "ses_0000000000000001", name: "Studio｜名刺"), sourceRef: "S5")
-        XCTAssertEqual(String(try XCTUnwrap(LAADecisionBoardView.meta(numbered, now: now)).characters), "S5 · Studio｜名刺 · 推奨 マットな白")
-        XCTAssertEqual(LAADecisionCopy.accessibilityLabel(numbered, now: now), "判断、J3、名刺の紙を選ぶ、推奨 マットな白、S5 · Studio｜名刺")
+        XCTAssertEqual(String(try XCTUnwrap(LAADecisionBoardView.meta(numbered, now: now)).characters), "S5 · Studio · 名刺 · 推奨 マットな白")
+        XCTAssertEqual(LAADecisionCopy.accessibilityLabel(numbered, now: now), "判断、J3、名刺の紙を選ぶ、推奨 マットな白、S5 · Studio · 名刺")
         // A bare record still reads: no empty separators.
         XCTAssertNil(LAADecisionBoardView.meta(LAADecision(id: "x", title: "t", summary: ""), now: now))
     }
