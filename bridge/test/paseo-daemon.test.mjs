@@ -97,16 +97,16 @@ test('directory imports external sessions and parent links; updates metadata and
   assert.equal(store.get(daemonSessionID('parent')).phase, 'stopped');
 });
 
-test('conversation exposes message IDs and only tool name/status, never raw output or reasoning', async () => {
+test('conversation exposes message IDs and never tool calls, raw output or reasoning', async () => {
   const c = { close: async () => {}, fetchAgentTimeline: async () => ({ agentId: 'a', entries: [
     { item: { type: 'user_message', text: 'hello', clientMessageId: 'm1' } },
     { item: { type: 'reasoning', text: 'private reasoning' } },
     { item: { type: 'tool_call', callId: 't1', name: 'Read', status: 'completed', detail: { output: 'private output' } } },
   ] }) };
-  const messages = await readConversation('a', async () => c);
-  assert.equal(messages[0].id, 'm1');
-  assert.equal(messages[1].role, 'tool');
-  assert.doesNotMatch(JSON.stringify(messages), /private/);
+  const { items: messages, compacting } = await readConversation('a', async () => c);
+  assert.deepEqual(messages.map(({ id, role }) => ({ id, role })), [{ id: 'm1', role: 'user' }]);
+  assert.equal(compacting, false);
+  assert.doesNotMatch(JSON.stringify(messages), /private|Read/);
 });
 
 test('owner notification reuses plugin event routing and durable dedupe; failures are not recorded as delivered', async (t) => {
@@ -133,11 +133,11 @@ test('image attachments retain exact bytes and session isolation; malformed and 
   // The fixture's parent is mid-turn; a send only goes out to an idle agent.
   f.rows[0].status = 'idle';
   const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null,
-    history: async () => [{ id: 'm1', role: 'user', text: '画像' }], notify: async () => {} });
+    history: async () => ({ items: [{ id: 'm1', role: 'user', text: '画像' }], compacting: false }), notify: async () => {} });
   await service.syncDaemon();
   const id = daemonSessionID('parent');
   await service.sendMessage({ id, key: 'image-1', body: { message: '画像', messageId: 'm1', images: [{ data: 'YWJj', mimeType: 'image/png' }] } });
-  const messages = await service.conversation(id), imageID = messages[0].images[0];
+  const { items: messages } = await service.conversation(id), imageID = messages[0].images[0];
   assert.equal(service.image(id, imageID).data, 'YWJj');
   assert.throws(() => service.image(daemonSessionID('child'), imageID), { code: 'not_found' });
   await assert.rejects(service.sendMessage({ id, key: 'bad', body: { message: '画像', images: [{ data: 'YWJj', mimeType: 'text/html' }] } }), { status: 400 });
@@ -711,18 +711,19 @@ test("only a session's own checked Paseo attachment is served as its image", asy
   const store = createSessionStore({ file: join(dir, 'sessions.json') });
   const images = sessionImageStore(join(dir, 'images'), { inspect, inspectTtlMs: 0, readLocal: (path) => readLocalImage(path, { tempRoot: root }) });
   const plain = '```swift\nlet a = 1  \n\n\nlet b = 2\n```\n\n\n';
-  const history = async () => [
+  const history = async () => ({ compacting: true, items: [
     { id: 'm1', role: 'assistant', text: `できました。\u0000LAAIMG0\u0000`, localImages: [okPath] },
     { id: 'm2', role: 'user', text: 'ありがとう' },
     { id: 'm3', role: 'assistant', text: plain },
-  ];
+  ] });
   const service = createSessionService({
     sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {},
     images, history,
   });
   await service.syncDaemon();
   const id = daemonSessionID('parent');
-  const messages = await service.conversation(id);
+  const { items: messages, compacting } = await service.conversation(id);
+  assert.equal(compacting, true);
   assert.equal(messages[0].text, 'できました。');
   assert.equal(messages[1].text, 'ありがとう');
   assert.equal(messages[2].text, plain);
@@ -744,13 +745,13 @@ test("only a session's own checked Paseo attachment is served as its image", asy
   // a visible fallback instead of silently dropping the picture.
   writeFileSync(okPath, Buffer.from('replaced'));
   assert.throws(() => service.image(id, messages[0].images[0]), { code: 'not_found' });
-  const fallback = await service.conversation(id);
+  const { items: fallback } = await service.conversation(id);
   assert.equal(fallback[0].images.length, 0);
   assert.equal(fallback[0].text, 'できました。（画像を表示できません）');
 
   // A symlink in the attachment directory is never served.
   rmSync(okPath); symlinkSync(outside, okPath);
-  const linkedPoll = await service.conversation(id);
+  const { items: linkedPoll } = await service.conversation(id);
   assert.equal(linkedPoll[0].images.length, 0);
   assert.match(linkedPoll[0].text, /画像を表示できません/);
 
@@ -760,13 +761,13 @@ test("only a session's own checked Paseo attachment is served as its image", asy
   const other = join(root, 'other-attachments'); mkdirSync(other);
   writeFileSync(join(other, 'ok.png'), png);
   symlinkSync(other, attachments);
-  const swapped = await service.conversation(id);
+  const { items: swapped } = await service.conversation(id);
   assert.equal(swapped[0].images.length, 0);
   assert.match(swapped[0].text, /画像を表示できません/);
 
   // Restored, then grown past the limit: the read checks the descriptor's size.
   rmSync(attachments); mkdirSync(attachments); writeFileSync(okPath, png);
-  const restored = await service.conversation(id);
+  const { items: restored } = await service.conversation(id);
   assert.equal(restored[0].images.length, 1);
   truncateSync(okPath, 8 * 1024 * 1024 + 1);
   assert.throws(() => service.image(id, restored[0].images[0]), { code: 'not_found' });

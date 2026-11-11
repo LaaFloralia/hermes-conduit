@@ -153,7 +153,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null }) {
   }
 
   async function conversation({ params }) {
-    return { status: 200, data: { items: await sessions.conversation(params[0]) } };
+    return { status: 200, data: await sessions.conversation(params[0]) };
   }
 
   return [

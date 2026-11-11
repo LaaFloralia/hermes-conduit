@@ -12,8 +12,9 @@ export function ownerText(text) {
   return body.match(USER_REQUEST)?.[1] ?? body;
 }
 
-// Conversation plus tool name/status summaries. Raw tool input/output and
-// model reasoning never leave the daemon through this endpoint.
+// The messages the owner wrote or received, plus whether the agent is
+// compacting right now. Tool calls and model reasoning never leave the daemon
+// through this endpoint: the app shows that work as one status line.
 export async function readConversation(agentId, connect = connectDaemon) {
   let client;
   try {
@@ -23,9 +24,12 @@ export async function readConversation(agentId, connect = connectDaemon) {
     });
     if (page.agentId !== agentId || page.error || !Array.isArray(page.entries)) throw new Error('invalid timeline');
     const firstUser = page.entries.find((entry) => entry?.item?.type === 'user_message' && typeof entry.item.text === 'string');
-    return page.entries.flatMap((entry, index) => {
+    // A compaction is current only while it is the newest thing the daemon
+    // reported; one left unfinished by an earlier turn is history.
+    const newest = page.entries.at(-1)?.item;
+    const compacting = newest?.type === 'compaction' && newest.status !== 'completed';
+    const items = page.entries.flatMap((entry, index) => {
       const item = entry?.item;
-      if (item?.type === 'tool_call' && typeof item.callId === 'string' && typeof item.name === 'string') return [{ id: `tool:${item.callId}`, role: 'tool', text: item.name, toolName: item.name, toolStatus: item.status, timestamp: entry.timestamp ?? null }];
       if (!['user_message', 'assistant_message'].includes(item?.type) || typeof item.text !== 'string') return [];
       // A local picture is shown as an image, not as its markdown placeholder;
       // the service registers only paths that pass the attachment boundary.
@@ -38,6 +42,7 @@ export async function readConversation(agentId, connect = connectDaemon) {
         ...(paths.length > 0 ? { localImages: paths } : {}),
       }];
     });
+    return { items, compacting };
   } catch {
     throw new BridgeError(503, 'conversation_unavailable', 'conversation history is unavailable', { retryable: true });
   } finally {

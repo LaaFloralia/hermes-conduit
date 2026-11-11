@@ -24,11 +24,26 @@ test('conversation exposes only user and assistant messages and closes the clien
     ] }),
     close: async () => { closed = true; },
   });
-  const messages = await readConversation('agent', connect);
+  const { items: messages, compacting } = await readConversation('agent', connect);
   assert.deepEqual(messages.map(({ role, text }) => ({ role, text })), [
     { role: 'user', text: 'Hello' }, { role: 'assistant', text: 'Hi' },
   ]);
+  assert.equal(compacting, false);
   assert.equal(closed, true);
+});
+
+test('compacting is reported only while an unfinished compaction is the newest entry', async () => {
+  const read = async (...tail) => (await readConversation('agent', async () => ({
+    fetchAgentTimeline: async (id) => ({ agentId: id, entries: [{ item: { type: 'user_message', text: 'Hello' } }, ...tail] }),
+    close: async () => {},
+  })));
+  const loading = { item: { type: 'compaction', status: 'loading', trigger: 'auto' } };
+  const running = await read(loading);
+  assert.equal(running.compacting, true);
+  assert.deepEqual(running.items.map(({ text }) => text), ['Hello']);
+  assert.equal((await read({ item: { type: 'compaction', status: 'completed' } })).compacting, false);
+  assert.equal((await read(loading, { item: { type: 'tool_call', callId: 't', name: 'Bash', status: 'running' } })).compacting, false);
+  assert.equal((await read()).compacting, false);
 });
 
 test('only the first user message loses the delivered context', async () => {
@@ -40,7 +55,7 @@ test('only the first user message loses the delivered context', async () => {
     ] }),
     close: async () => {},
   });
-  const messages = await readConversation('agent', connect);
+  const { items: messages } = await readConversation('agent', connect);
   assert.deepEqual(messages.map(({ text }) => text), ['最初', `${delivered}次`]);
 });
 

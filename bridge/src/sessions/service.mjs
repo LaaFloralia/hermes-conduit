@@ -490,14 +490,14 @@ export function createSessionService({
 
   async function conversation(id) {
     const record = requireSession(id);
-    const messages = await history(record.delegate.sessionId);
+    const { items: messages, compacting } = await history(record.delegate.sessionId);
     const references = images.references(id);
     // One batch for the whole page: a poll naming the same 215 pictures must
     // not open or rewrite the index 215 times.
     const paths = messages.flatMap((message) => (Array.isArray(message.localImages) ? message.localImages : []));
     const resolved = images.registerLocalBatch?.(id, paths) ?? [];
     let cursor = 0;
-    return messages.map((message) => {
+    const items = messages.map((message) => {
       const local = Array.isArray(message.localImages) ? message.localImages : [];
       const localIDs = local.map(() => resolved[cursor++] ?? null);
       const { localImages: _localImages, ...visible } = message;
@@ -505,6 +505,7 @@ export function createSessionService({
       const ids = [...new Set([...localIDs.filter(Boolean), ...(references[message.id] ?? [])])];
       return { ...visible, text, images: ids };
     });
+    return { items, compacting: compacting === true };
   }
 
   // --- follow-up queue ------------------------------------------------------
