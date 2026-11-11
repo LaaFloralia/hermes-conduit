@@ -64,7 +64,7 @@ struct LAAChatsFixtureView: View {
                         newGroup: { showingGroupCreator = true },
                         openSettings: {
                             if let settings { settings() } else { selection = Selection(label: "settings") }
-                        }, retry: {}, searchChanged: {})
+                        }, retry: {}, searchChanged: {}, publishesMacCommands: false)
         .overlay(alignment: .bottom) {
             if let createdGroup {
                 Text(verbatim: "created:\(createdGroup)").accessibilityIdentifier("laa.chats.fixture.created")

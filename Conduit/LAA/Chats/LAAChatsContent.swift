@@ -15,6 +15,7 @@ struct LAAChatsContent: View {
     var openSettings: () -> Void
     var retry: () -> Void
     var searchChanged: () -> Void
+    var publishesMacCommands = true
 
     @Environment(\.laaDesktop) private var laaDesktop
     @State private var query = ""
@@ -83,7 +84,7 @@ struct LAAChatsContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            if settingsAvailable { LAASettingsToolbar(action: openSettings) }
+            if settingsAvailable && !laaDesktop { LAASettingsToolbar(action: openSettings) }
             if !laaDesktop { ToolbarItem(placement: .topBarTrailing) { newChatButton } }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -103,7 +104,7 @@ struct LAAChatsContent: View {
             focusSearch: { showSearch = true; searchFocused = true },
             canReload: true,
             reload: retry
-        ))
+        ), enabled: publishesMacCommands)
         .accessibilityIdentifier("laa.chats.list")
     }
 

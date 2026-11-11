@@ -159,9 +159,13 @@ extension View {
     /// section at a time, but the phone keeps every tab alive, and several
     /// tabs writing the one scene value redrew each other without end.
     @ViewBuilder
-    func laaMacSectionCommands(_ commands: LAAMacSectionCommands) -> some View {
+    func laaMacSectionCommands(_ commands: LAAMacSectionCommands, enabled: Bool = true) -> some View {
         #if targetEnvironment(macCatalyst)
-        focusedSceneValue(\.laaMacSectionCommands, commands)
+        if enabled {
+            focusedSceneValue(\.laaMacSectionCommands, commands)
+        } else {
+            self
+        }
         #else
         self
         #endif
