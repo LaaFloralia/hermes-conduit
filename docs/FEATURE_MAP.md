@@ -4153,12 +4153,12 @@ and rollback instructions · the upstream App Store build
 **Code**
 - Shared sender rows, run rule and role label: `Conduit/LAA/Owner/LAAMessageSender.swift`
 - Owner picture (cache, upload, removal, initial fallback): `Conduit/LAA/Owner/LAAOwnerAvatarStore.swift`, `Conduit/LAA/Settings/LAAOwnerAvatarSettingsCard.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Mac/LAAMacShell.swift`
-- Rows: `Conduit/Views/ChatView.swift` (UserBubble, AssistantBubble), `Conduit/Views/GroupChatView.swift` (GroupUserBubble, GroupMemberBubble), `Conduit/LAA/Work/LAAWorkMessageRow.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`
+- Rows: `Conduit/Views/ChatView.swift` (UserBubble, AssistantBubble), `Conduit/Views/GroupChatView.swift` (GroupUserBubble, GroupMemberBubble), `Conduit/LAA/Work/LAAWorkMessageRow.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/LAA/Chat/LAAChatPresentation.swift` (group member rows)
 - Bridge: `bridge/src/routes/owner-profile.mjs`, `bridge/src/routes/index.mjs`
 - Tests: `bridge/test/owner-profile.test.mjs`, `ConduitTests/LAAOwnerIdentityTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAOwnerIdentityUITests.swift`, `ConduitUITests/LAAOwnerShotsUITests.swift`
 
 **Rulings**
-- Every conversation names its speakers the same way (owner, 2026-11-09): a 30 pt picture beside the bubble and the name above it, once per run of the same speaker's messages. AI speakers lead on the left; the owner trails on the right as "LAA" with a small square "Administration" label, which no other speaker carries. VoiceOver reads the owner's header as "LAA、Administration". Both sides keep the chat's 85% column with the picture inside it.
+- Every conversation names its speakers the same way (owner, 2026-11-09): a 30 pt picture beside the bubble and the name above it, once per run of the same speaker's messages. AI speakers lead on the left; the owner trails on the right as "LAA" with a small square "Administration" label, which no other speaker carries. VoiceOver reads the owner's header as "LAA、Administration". The bubble starts at its own side's edge under the picture, not indented under the name, and leaves 44 points free on the other speaker's side, up to 620 points wide; Work's session drops its own 85% column, so its turns use the same width as Chat's (owner, 2026-11-11: the content sat too far toward the middle).
 - The owner's picture lives on the Mac (`GET/PUT/DELETE /v1/owner/avatar`: sessions scopes, JPEG or PNG up to 512 KB, 0600, atomic replace, ETag and 304). The app uploads a centre-cropped 256 px JPEG, keeps the last fetched copy for when the Mac is out of reach, and falls back to the initial "L" on the own-bubble colour. A 404 means removed everywhere, so the cached copy goes too.
 - In Work the AI is the session's model ("Opus 5.5") with a neutral sparkle face: the Bridge's session names no employee, and the app does not guess one. When sessions carry an employee, the employee's mascot replaces it. Tool calls stay out of the transcript.
 
@@ -4166,7 +4166,7 @@ and rollback instructions · the upstream App Store build
 - The picture is fetched on launch, re-pairing and return to the foreground; a change on another device shows after that, not live.
 - Physical iPhone and Mac checks: choosing and removing a photo, the same face on all three devices, VoiceOver and Dynamic Type on the headers.
 
-**Checked:** 2026-11-09, laa/owner-identity based on 2f72a5f5 (sender rows in Chat, groups and Work; owner icon on the Bridge).
+**Checked:** 2026-11-11, laa/chat-intro-width on 3b6a6892 (bubble width and edge in Chat, groups, the opening chat and Work's session); 2026-11-09, laa/owner-identity based on 2f72a5f5 (sender rows in Chat, groups and Work; owner icon on the Bridge).
 
 ## LAA Work session presentation
 

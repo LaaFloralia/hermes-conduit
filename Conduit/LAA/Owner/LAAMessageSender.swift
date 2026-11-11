@@ -2,9 +2,10 @@
 import SwiftUI
 
 /// Who said a message, the same way in Chat, groups and Work: the speaker's
-/// 30 pt picture beside the bubble and the name above it, once per run of
-/// messages. AI speakers lead on the left; the owner trails on the right,
-/// with the square role label only the owner carries.
+/// 30 pt picture and name above the bubble, once per run of messages, the
+/// bubble starting at the picture's edge. AI speakers lead on the left; the
+/// owner trails on the right, with the square role label only the owner
+/// carries.
 enum LAASender {
     /// The group chat's member picture (`GroupMemberBubble.avatarSize`).
     static let avatarSize: CGFloat = 30
@@ -12,6 +13,14 @@ enum LAASender {
     static let headerSpacing: CGFloat = 3
     /// Small, so the label reads as a square plate rather than a pill.
     static let badgeCornerRadius: CGFloat = 4
+    /// What a bubble leaves free on the other speaker's side, so whose side
+    /// it is stays plain. The bubble starts at its own edge, under the
+    /// picture, not indented under the name: indented on both sides the
+    /// conversation sat in a narrow strip down the middle (owner, 2026-11-11).
+    static let oppositeGap: CGFloat = 44
+    /// The widest a bubble gets, a comfortable line on a Mac or iPad; on the
+    /// iPhone the column less `oppositeGap` is narrower.
+    static let bubbleMaxWidth: CGFloat = 620
 
     /// The employee's name as the chat's header shows it.
     static func agentName(profile: String, identity: ConversationAgentIdentity) -> String {
@@ -68,7 +77,9 @@ struct LAAOwnerMessageRow<Content: View>: View {
                     LAAOwnerAvatarView().frame(width: 30, height: 30)
                 }.accessibilityIdentifier("chat.sender.owner")
             }
-            content.frame(maxWidth: 332, alignment: .trailing).padding(.trailing, 40)
+            content.frame(maxWidth: LAASender.bubbleMaxWidth, alignment: .trailing)
+                .padding(.leading, LAASender.oppositeGap)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }.frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
@@ -91,7 +102,9 @@ struct LAAAgentMessageRow<Avatar: View, Content: View>: View {
                     LAAMessageTime(timestamp: timestamp)
                 }.accessibilityIdentifier("chat.sender.agent")
             }
-            content.frame(maxWidth: 332, alignment: .leading).padding(.leading, 40)
+            content.frame(maxWidth: LAASender.bubbleMaxWidth, alignment: .leading)
+                .padding(.trailing, LAASender.oppositeGap)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -25,8 +25,6 @@ struct LAAWorkMessageRow: View {
     let sessionID: String
     let agentName: String
     let continues: Bool
-    /// The reading column; nil until the screen has been measured.
-    let columnWidth: CGFloat?
     let responseSize: Int
 
     private var isOwner: Bool { message.role == "user" }
@@ -51,7 +49,8 @@ struct LAAWorkMessageRow: View {
                 }
             }
         }
-        .frame(maxWidth: columnWidth ?? .infinity, alignment: isOwner ? .trailing : .leading)
+        // The sender row leaves the other side's gap itself; a second,
+        // narrower column here pushed both sides toward the middle.
         .frame(maxWidth: .infinity, alignment: isOwner ? .trailing : .leading)
     }
 

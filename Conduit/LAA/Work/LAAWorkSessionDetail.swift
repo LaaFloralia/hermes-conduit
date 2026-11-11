@@ -229,7 +229,7 @@ struct LAAWorkSessionDetail: View {
                         LAAWorkMessageRow(message: message, sessionID: id,
                                           agentName: LAAWorkSpeaker.agentName(session, options: options),
                                           continues: LAASenderRun.continues(speakers, at: index),
-                                          columnWidth: columnWidth, responseSize: responseSize)
+                                          responseSize: responseSize)
                     }
                     if !workRecords.isEmpty { LAAWorkRecordDisclosure(records: workRecords) }
                     if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
@@ -341,13 +341,6 @@ struct LAAWorkSessionDetail: View {
         scrollRequest.move(to: .bottom)
     }
 
-
-    /// The chat's 85% reading column, of the screen on a phone and of the
-    /// reading width on a Mac.
-    private var columnWidth: CGFloat? {
-        guard screenWidth > 0 else { return nil }
-        return min(screenWidth, laaDesktop ? LAADesktopMetrics.readingWidth : 720) * 0.85
-    }
 
     /// The heading card is gone; a mismatch between what was asked for and
     /// what the daemon reports still belongs at the top of the conversation.
