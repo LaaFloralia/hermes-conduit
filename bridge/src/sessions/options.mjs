@@ -19,6 +19,15 @@ export function fastSupported(harness, modelId) {
   return (harness === 'claude' && typeof modelId === 'string' && modelId.startsWith('claude-opus')) || harness === 'codex';
 }
 
+// HQ writes a wire id as {{id:<model key>}} and expands it on each read
+// (hq/harness/models.py). The Bridge reads the raw file, so it expands the same
+// way. An unknown key stays as written and matches nothing.
+function expandModelId(table, value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/\{\{id:([^{}]+)\}\}/g, (written, key) =>
+    (typeof table.models?.[key]?.modelId === 'string' ? table.models[key].modelId : written));
+}
+
 // Manual profiles are offered only when HQ also names the exact provider,
 // model and effort as a manual Work entrance. This is a user choice, not an
 // automatic dispatch default.
@@ -26,7 +35,7 @@ function manualEntranceExists(table, profile) {
   const modelId = table.models?.[profile.model]?.modelId;
   return typeof modelId === 'string' && (table.entrances ?? []).some((entry) =>
     entry.kind === 'paseo' && entry.status === 'manual' &&
-    entry.paseo?.provider === profile.harness && entry.paseo?.model === modelId &&
+    entry.paseo?.provider === profile.harness && expandModelId(table, entry.paseo?.model) === modelId &&
     entry.paseo?.thinking === profile.effort);
 }
 

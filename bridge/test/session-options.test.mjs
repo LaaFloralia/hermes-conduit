@@ -52,6 +52,15 @@ test('manual profile requires a matching manual provider, model and effort', () 
   ]) assert.equal(offered(changed), false);
 });
 
+test('a manual entrance written as an HQ id template is offered; an unknown template is not', () => {
+  const fable = table.entrances[0];
+  const offered = (model) => sessionOptionsFrom({ ...table, entrances: [{ ...fable, paseo: { ...fable.paseo, model } }] })
+    .profiles.some((p) => p.id === 'fable-high');
+  assert.equal(offered('{{id:fable}}'), true);
+  assert.equal(offered('{{id:missing}}'), false);
+  assert.equal(offered('{{id:sonnet}}'), false);
+});
+
 test('manual profiles never become the automatic default or the sole fallback', () => {
   const onlyFable = { 'fable-high': table.profiles['fable-high'] };
   const noAutomatic = sessionOptionsFrom({ ...table, profiles: onlyFable });
