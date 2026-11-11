@@ -96,6 +96,13 @@ private extension LAACopy {
     static let widgetBrand = "LAA"
 }
 
+/// How many Usage rows the medium widget drew, so a test can tell a row the
+/// layout dropped from one that was never there.
+struct LAAWidgetUsageRowsKey: PreferenceKey {
+    static let defaultValue: Int? = nil
+    static func reduce(value: inout Int?, nextValue: () -> Int?) { value = nextValue() ?? value }
+}
+
 struct LAAEmployeeWidgetView: View {
     let entry: LAAEmployeeWidgetEntry
     var familyOverride: WidgetFamily? = nil
@@ -123,37 +130,42 @@ struct LAAEmployeeWidgetView: View {
     }
 
     private var medium: some View {
-        HStack(spacing: LAASpacing.x3) {
-            VStack(spacing: LAASpacing.x1) {
-                GeometryReader { geometry in
-                    ZStack(alignment: .topLeading) {
-                        employeeImage(entry.employee.heroImage)
-                            .scaledToFit()
-                            .frame(width: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)),
-                                   height: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                            .accessibilityHidden(true)
-                        HStack(spacing: LAASpacing.x2) {
-                            companyIcon
-                            Text(verbatim: entry.employee.name).font(LAAType.employeeName)
-                                .foregroundStyle(LAAColor.text).lineLimit(1)
-                                .minimumScaleFactor(entry.employee == .monetUncensored ? 0.55 : 1)
+        GeometryReader { frame in
+            // The Usage column takes a little more than half: a name, an age note
+            // and a value share one line in each of its seven rows.
+            let employeeWidth = max(0, (frame.size.width - LAASpacing.x3 * 2 - 1) * 0.48)
+            HStack(spacing: LAASpacing.x3) {
+                VStack(spacing: LAASpacing.x1) {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .topLeading) {
+                            employeeImage(entry.employee.heroImage)
+                                .scaledToFit()
+                                .frame(width: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)),
+                                       height: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                                .accessibilityHidden(true)
+                            HStack(spacing: LAASpacing.x2) {
+                                companyIcon
+                                Text(verbatim: entry.employee.name).font(LAAType.employeeName)
+                                    .foregroundStyle(LAAColor.text).lineLimit(1)
+                                    .minimumScaleFactor(entry.employee == .monetUncensored ? 0.55 : 1)
+                            }
                         }
                     }
-                }
-                // Bare symbols, like the system's own widget controls: a
-                // filled plate reads as a hazy glow on tinted and clear Home
-                // Screens.
-                HStack(spacing: LAASpacing.x2) {
-                    if entry.employee != .monetUncensored {
-                        iconAction(entry.call.url, symbol: "phone.fill", label: LAACopy.widgetCall)
+                    // Bare symbols, like the system's own widget controls: a
+                    // filled plate reads as a hazy glow on tinted and clear Home
+                    // Screens.
+                    HStack(spacing: LAASpacing.x2) {
+                        if entry.employee != .monetUncensored {
+                            iconAction(entry.call.url, symbol: "phone.fill", label: LAACopy.widgetCall)
+                        }
+                        iconAction(entry.chat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat)
                     }
-                    iconAction(entry.chat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat)
                 }
+                .frame(width: employeeWidth)
+                Rectangle().fill(LAAColor.separator).frame(width: 1)
+                usageSummary.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity)
-            Rectangle().fill(LAAColor.separator).frame(width: 1)
-            usageSummary.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(LAASpacing.x3)
         .widgetURL(entry.usageLink.url)
@@ -179,72 +191,10 @@ struct LAAEmployeeWidgetView: View {
         .accessibilityLabel(Text(verbatim: LAACopy.widgetBrand))
     }
 
-    @ViewBuilder
+    /// Its own view, so its text sizes read the medium widget's capped
+    /// Dynamic Type rather than the environment above the cap.
     private var usageSummary: some View {
-        let meters = entry.usage?.meters ?? []
-        // The rows are already in the owner's priority order: show as many as
-        // fit, from the top.
-        ViewThatFits(in: .vertical) {
-            usageList(meters: meters, limit: 5)
-            usageList(meters: meters, limit: 4)
-            usageList(meters: meters, limit: 3)
-            usageList(meters: meters, limit: 2)
-            usageList(meters: meters, limit: 1)
-            usageList(meters: meters, limit: 0)
-        }
-    }
-
-    private func usageList(meters: [WidgetUsageMeter], limit: Int) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1 / 4) {
-            Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
-                .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
-            if meters.isEmpty {
-                Text(verbatim: LAACopy.notFetched)
-                    .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(2).minimumScaleFactor(0.8)
-            } else {
-                ForEach(Array(meters.prefix(limit))) { meter in usageRow(meter) }
-                Spacer(minLength: 0)
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func usageRow(_ meter: WidgetUsageMeter) -> some View {
-        let hasValue = meter.hasRecordedValue(at: renderedAt)
-        return VStack(alignment: .leading, spacing: LAASpacing.x1 / 2) {
-            HStack(spacing: LAASpacing.x1) {
-            Text(verbatim: meter.label.replacingOccurrences(of: " Weekly", with: ""))
-                .font(.system(size: 11, weight: .medium)).lineLimit(1).fixedSize(horizontal: true, vertical: false)
-            Spacer(minLength: LAASpacing.x1)
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1 / 2) {
-                Text(verbatim: hasValue ? Self.valueText(meter) : "未取得")
-                    .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
-                if let note = Self.freshnessText(meter, at: renderedAt, anchor: entry.freshnessAnchor) {
-                    Text(verbatim: note).font(.caption2).foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                }
-            }.layoutPriority(1)
-            }
-            // Quotas and a named credit grant draw their share left; the bar
-            // turns to the attention colour below a fifth, as in the app.
-            if hasValue, let fraction = meter.remainingFraction {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(LAAColor.separator)
-                        Capsule().fill(LAAUsageMeterRule.needsAttention(fraction, countsDown: true)
-                                       ? LAAColor.attention : LAAColor.link)
-                            .frame(width: max(geometry.size.width * fraction, fraction > 0 ? 2 : 0))
-                    }
-                }
-                .frame(height: 2)
-                .accessibilityHidden(true)
-            }
-        }
-        .laaTextStyle(.section)
-        .foregroundStyle(hasValue ? LAAColor.text : LAAColor.secondaryText)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(meter.label), \(Self.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))")
+        LAAWidgetUsageColumn(entry: entry, renderedAt: renderedAt)
     }
 
     static func timeText(_ observation: Date, at date: Date) -> String {
@@ -402,6 +352,121 @@ struct LAAEmployeeWidgetView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(entry.employee.name), \(title)")
+    }
+}
+
+/// The medium widget's Usage column: the owner's rows in priority order.
+private struct LAAWidgetUsageColumn: View {
+    let entry: LAAEmployeeWidgetEntry
+    let renderedAt: Date
+    // The medium Usage column: one size for names and values, so seven rows
+    // fit a Pro Max with the heading; the age note is a step smaller.
+    @ScaledMetric(relativeTo: .footnote) private var usageHeadingSize: CGFloat = 13
+    @ScaledMetric(relativeTo: .caption) private var usageLabelSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var usageNoteSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption) private var usageRowPitch: CGFloat = 20
+
+    var body: some View {
+        let meters = entry.usage?.meters ?? []
+        // The rows are already in the owner's priority order. All seven fit
+        // a Pro Max under the heading; a smaller phone keeps the seven and
+        // lets the heading go. Larger text then drops rows from the bottom,
+        // and the heading says how many are left for the Usage screen.
+        ViewThatFits(in: .vertical) {
+            usageList(meters: meters, limit: meters.count, heading: true)
+            if meters.count > 1 {
+                usageList(meters: meters, limit: meters.count, heading: false)
+            }
+            ForEach((0..<max(meters.count, 1)).reversed(), id: \.self) { limit in
+                usageList(meters: meters, limit: limit, heading: true)
+            }
+        }
+    }
+
+    private func usageList(meters: [WidgetUsageMeter], limit: Int, heading: Bool) -> some View {
+        let shown = min(limit, meters.count)
+        return VStack(alignment: .leading, spacing: 0) {
+            if heading {
+                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
+                    Text(verbatim: "Usage").font(.system(size: usageHeadingSize, weight: .bold))
+                        .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 0)
+                    if shown < meters.count {
+                        // Large text leaves room only for the count.
+                        ViewThatFits(in: .horizontal) {
+                            Text(verbatim: "ほか\(meters.count - shown)件")
+                            Text(verbatim: "+\(meters.count - shown)")
+                        }
+                        .font(.system(size: usageNoteSize, weight: .medium))
+                        .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            if meters.isEmpty {
+                Text(verbatim: LAACopy.notFetched)
+                    .font(.system(size: usageLabelSize, weight: .medium)).foregroundStyle(LAAColor.secondaryText)
+                    .lineLimit(2).minimumScaleFactor(0.8)
+            } else {
+                ForEach(Array(meters.prefix(shown))) { meter in
+                    // Each row may open up a little to fill the column, so
+                    // seven rows and five rows keep the same rhythm.
+                    usageRow(meter).frame(maxHeight: usageRowPitch, alignment: .center)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .preference(key: LAAWidgetUsageRowsKey.self, value: shown)
+    }
+
+    /// One line per provider: the name, then the value right-aligned so the
+    /// numbers form a column, any age note in front of it, and a hairline
+    /// meter under quotas and Magnific's grant. Every row keeps the meter's
+    /// room, so rows with and without one share the same pitch.
+    private func usageRow(_ meter: WidgetUsageMeter) -> some View {
+        let hasValue = meter.hasRecordedValue(at: renderedAt)
+        let fraction = hasValue ? meter.remainingFraction : nil
+        return VStack(alignment: .leading, spacing: LAASpacing.x1 / 2) {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
+                Text(verbatim: meter.label.replacingOccurrences(of: " Weekly", with: ""))
+                    .font(.system(size: usageLabelSize, weight: .medium))
+                    // Ahead of the age note for room; truncates before it
+                    // pushes the value out of the column.
+                    .lineLimit(1).layoutPriority(1)
+                Spacer(minLength: LAASpacing.x1)
+                if let note = LAAEmployeeWidgetView.freshnessText(meter, at: renderedAt, anchor: entry.freshnessAnchor) {
+                    Text(verbatim: note).font(.system(size: usageNoteSize))
+                        .foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
+                Text(verbatim: hasValue ? LAAEmployeeWidgetView.valueText(meter) : LAACopy.notFetched)
+                    .font(.system(size: usageLabelSize, weight: hasValue ? .semibold : .regular))
+                    .monospacedDigit().lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            // A line never gives up height: squeezing it would shrink the
+            // text and let ViewThatFits accept a list that does not fit.
+            .fixedSize(horizontal: false, vertical: true)
+            ZStack(alignment: .leading) {
+                if let fraction {
+                    // The bar turns to the attention colour below a fifth, as in the app.
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(LAAColor.separator)
+                            Capsule().fill(LAAUsageMeterRule.needsAttention(fraction, countsDown: true)
+                                           ? LAAColor.attention : LAAColor.link)
+                                .frame(width: max(geometry.size.width * fraction, fraction > 0 ? 2 : 0))
+                        }
+                    }
+                }
+            }
+            .frame(height: 2)
+            .accessibilityHidden(true)
+        }
+        .foregroundStyle(hasValue ? LAAColor.text : LAAColor.secondaryText)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(meter.label), \(LAAEmployeeWidgetView.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))")
     }
 }
 #endif
