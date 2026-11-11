@@ -7,6 +7,11 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         let menu = app.buttons["laa.employee.header"]
         XCTAssertTrue(menu.waitForExistence(timeout: 20))
         menu.tap()
+        // The mascot opens the employee's introduction; the conversation's
+        // information is its last row.
+        let information = app.buttons["laa.staff.intro.conversation"]
+        XCTAssertTrue(information.waitForExistence(timeout: 5))
+        information.tap()
         let choice = app.buttons["conversation.background"]
         XCTAssertTrue(choice.waitForExistence(timeout: 5))
         choice.tap()
@@ -156,6 +161,9 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
             header.tap()
+            let information = app.buttons["laa.staff.intro.conversation"]
+            XCTAssertTrue(information.waitForExistence(timeout: 5), file: file, line: line)
+            information.tap()
             XCTAssertTrue(app.navigationBars["会話の情報"].waitForExistence(timeout: 5), file: file, line: line)
         }
     }

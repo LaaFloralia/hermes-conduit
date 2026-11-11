@@ -118,6 +118,30 @@ final class LAAChatDesignUITests: XCTestCase {
         }
     }
 
+    /// The mascot opens the employee's introduction, and the conversation's
+    /// information is one row inside it (owner, 2026-11-11).
+    func testMascotOpensTheIntroduction() {
+        for dark in [false, true] {
+            let theme = dark ? "dark" : "light"
+            let app = launch("rich", dark: dark, callable: true)
+            XCTAssertTrue(bubble(app, "assistant").waitForExistence(timeout: 10))
+            capture(app, "conversation-width-after-\(theme)")
+            app.buttons["laa.employee.header"].tap()
+            XCTAssertTrue(app.descendants(matching: .any)["laa.staff.intro.motto"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["社長秘書・総合アドバイザー"].exists)
+            Thread.sleep(forTimeInterval: 1)
+            capture(app, "intro-after-\(theme)")
+            let conversation = app.buttons["laa.staff.intro.conversation"]
+            if !conversation.isHittable { app.swipeUp() }
+            conversation.tap()
+            XCTAssertTrue(app.navigationBars["会話の情報"].waitForExistence(timeout: 5))
+            capture(app, "intro-conversation-after-\(theme)")
+            app.navigationBars["会話の情報"].buttons["完了"].tap()
+            XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 5))
+            app.terminate()
+        }
+    }
+
     func testTypingOnlyRevealsWorkOnRequest() {
         for dark in [false, true] {
             let app = launch("typing", dark: dark)

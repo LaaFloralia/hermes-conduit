@@ -34,7 +34,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
                           status: status, activity: appState.isBusy ? .lively : .resting,
                           isObscured: calls.isShowingCall,
-                          voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected,
+                          voiceSetting: appState.laaEmployeeVoiceBinding(profile: profile), voiceSettingEnabled: appState.isConnected,
                           compact: dynamicTypeSize.isAccessibilitySize, information: menu)
             .laaPhotoGlassScope()
     }
@@ -66,12 +66,6 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                 ToolbarItem(placement: .topBarTrailing) { callButton }
             }
         }
-    }
-
-    private func voiceSetting(for profile: String) -> Binding<String>? {
-        guard let staff = LAAStaff(profile: profile), staff.supportsCalls else { return nil }
-        return Binding(get: { appState.laaEmployeeVoice(profile: profile) ?? staff.defaultGPTLiveVoice },
-                       set: { appState.setLAAEmployeeVoice($0, profile: profile) })
     }
 }
 
@@ -200,19 +194,16 @@ struct LAAEmployeeHeader: View {
                     Color.clear.frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
-                    .accessibilityLabel(Text(verbatim: name + "、会話の情報"))
+                    .accessibilityLabel(Text(verbatim: LAACopy.staffIntroHeaderLabel(name)))
                     .accessibilityIdentifier("laa.employee.header")
             }
+            // The mascot opens the employee's introduction, as it did before
+            // the header took the conversation menu (owner, 2026-11-11); the
+            // conversation's information is a row inside it.
             .sheet(isPresented: $showDetails) {
-                if let information {
-                    NavigationStack {
-                        information.environment(\.laaDismissConversationInfo, { showDetails = false }).navigationTitle(String("会話の情報")).navigationBarTitleDisplayMode(.inline)
-                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { showDetails = false } } }
-                    }.laaSheetSize(.page)
-                } else {
-                    LAAStaffDetailView(profile: profile, name: name, avatarURL: avatarURL, status: status,
-                        voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled)
-                }
+                LAAStaffIntroView(profile: profile, name: name, avatarURL: avatarURL, status: status,
+                                  voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled,
+                                  information: information, onClose: { showDetails = false })
             }
     }
 
@@ -255,51 +246,6 @@ private struct LAAEmployeeHeaderGlass: ViewModifier {
                 .padding(.vertical, 5)
                 .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.06), interactive: false)
         }
-    }
-}
-
-private struct LAAStaffDetailView: View {
-    let profile: String
-    let name: String
-    let avatarURL: URL?
-    let status: String
-    let voiceSetting: Binding<String>?
-    let voiceSettingEnabled: Bool
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                StaffMascotView(profile: profile, name: name, fallbackURL: avatarURL, size: 220)
-                Text(name).font(LAAType.title(name, size: 26, relativeTo: .title))
-                if let role = LAAStaff(profile: profile)?.role { Text(role).font(.subheadline) }
-                Text(status).font(.caption).foregroundStyle(.secondary)
-                if let voiceSetting {
-                    Picker(selection: voiceSetting) {
-                        ForEach(GPTLiveVoice.all) { voice in Text(voice.label).tag(voice.name) }
-                    } label: {
-                        Text(verbatim: "通話の声")
-                    }
-                    .pickerStyle(.menu)
-                    .disabled(!voiceSettingEnabled)
-                    .accessibilityIdentifier("laa.employee.voice-setting")
-                    .padding(.horizontal, LAASpacing.horizontal)
-                    Text(verbatim: "ChatGPT の声を社員ごとに設定します")
-                        .laaTextStyle(.secondary)
-                        .foregroundStyle(LAAColor.secondaryText)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle(Text(verbatim: "社員の詳細"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: { dismiss() }) { Text(verbatim: LAACopy.close) }
-                }
-            }
-        }
-        .laaSheetSize(.form)
-        .presentationDetents([.medium, .large])
     }
 }
 

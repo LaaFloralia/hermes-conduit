@@ -4954,14 +4954,33 @@ private struct PendingNewChatView: View {
 
 struct EmptyChatState: View {
     @EnvironmentObject var appState: AppState
+#if LAA_BUILD
+    @State private var showsIntro = false
+#endif
 
     var body: some View {
 #if LAA_BUILD
-        VStack(spacing: 8) {
-            StaffAvatarView(profile: appState.conversationIdentityProfile,
-                name: appState.conversationAgentIdentity.name, size: 132)
-            Text(verbatim: LAAChatPerson.name(appState.conversationAgentIdentity.name)).font(LAAType.employeeName)
-        }.frame(maxWidth: .infinity).padding(28)
+        let profile = appState.conversationIdentityProfile
+        let name = LAASender.agentName(profile: profile, identity: appState.conversationAgentIdentity)
+        // The mascot opens the employee's introduction, as the header's does.
+        Button { showsIntro = true } label: {
+            VStack(spacing: 8) {
+                StaffAvatarView(profile: profile, name: name, size: 132, scrolling: showsIntro)
+                Text(verbatim: LAAChatPerson.name(name)).font(LAAType.employeeName)
+                    .foregroundStyle(LAAColor.text)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: LAACopy.staffIntroHeaderLabel(LAAChatPerson.name(name))))
+        .accessibilityIdentifier("chat.empty.mascot")
+        .frame(maxWidth: .infinity).padding(28)
+        .sheet(isPresented: $showsIntro) {
+            LAAStaffIntroView(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
+                              voiceSetting: appState.laaEmployeeVoiceBinding(profile: profile),
+                              voiceSettingEnabled: appState.isConnected,
+                              onClose: { showsIntro = false })
+                .environmentObject(appState)
+        }
 #else
         VStack(spacing: 18) {
             ConduitAppIconArtwork(
