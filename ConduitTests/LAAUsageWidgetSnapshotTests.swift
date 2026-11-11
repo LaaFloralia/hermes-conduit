@@ -161,6 +161,158 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: The owner's seven rows at real medium sizes
+
+    /// Bridge's /v1/usage items for the seven widget providers, as the live
+    /// feed produced them on 2026-11-11 (spend items included: they must never
+    /// fill a balance row).
+    static let liveNow = LAAUsageItem.date("2026-11-11T22:45:00Z")!
+    static let liveItemsJSON = """
+    [
+    {"id":"provider.codex.quota","kind":"quota","label":"Codex","value":0,"unit":"percent","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:02Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"windows":[{"label":"Weekly","remainingPercent":0,"resetsAt":"2026-11-12T14:16:02Z","windowMinutes":10080}],"freshUntil":"2026-11-11T22:51:02.000Z"}},
+    {"id":"provider.opencode-go.quota","kind":"quota","label":"OpenCode","value":15,"unit":"percent","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:40:57Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"windows":[{"label":"5時間","remainingPercent":100,"resetsAt":"2026-11-11T23:01:02Z","windowMinutes":300},{"label":"週間","remainingPercent":72,"resetsAt":"2026-11-15T23:59:59Z","windowMinutes":10080},{"label":"月間","remainingPercent":15,"resetsAt":"2026-11-25T08:42:44Z","windowMinutes":43200}],"freshUntil":"2026-11-11T22:50:57.000Z"}},
+    {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":82,"unit":"percent","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:22Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"windows":[{"label":"Session","remainingPercent":84,"resetsAt":"2026-11-12T00:50:00Z","windowMinutes":300},{"label":"Weekly","remainingPercent":82,"resetsAt":"2026-11-18T09:00:00Z","windowMinutes":10080}],"freshUntil":"2026-11-11T22:51:22.000Z"}},
+    {"id":"provider.magnific.credits","kind":"balance","label":"Magnific","value":220523,"unit":"credits","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:39:25Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"creditUnit":"AI credits","grantedAmount":240000,"freshUntil":"2026-11-11T22:49:25.000Z"}},
+    {"id":"provider.openai-api.balance","kind":"balance","label":"GPT API","value":0,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-05T14:24:00Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified","currency":"USD"}},
+    {"id":"provider.openai-api.cost-month","kind":"cost","label":"GPT API","value":1.203968,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:32Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"sourceLag":"undisclosed","periodTimezone":"UTC","freshUntil":"2026-11-11T22:51:32.000Z"}},
+    {"id":"provider.claude-api.balance","kind":"balance","label":"Claude API","value":-0.19,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-05T14:24:00Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified","currency":"USD"}},
+    {"id":"provider.claude-api.cost-month","kind":"cost","label":"Claude API","value":82.7940326,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:32Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"sourceLag":"typical-5m","periodTimezone":"UTC","freshUntil":"2026-11-11T22:51:32.000Z"}},
+    {"id":"provider.liquid.usage","kind":"usage","label":"Liquid AI","value":123,"unit":"tokens","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:32Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"recordedCostUsd":1.31}},
+    {"id":"provider.venice.balance","kind":"balance","label":"Venice","value":10.27082039,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:39Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"currency":"USD","freshUntil":"2026-11-11T22:51:39.000Z"}}
+    ]
+    """
+
+    static func liveItems() throws -> [LAAUsageItem] {
+        try JSONDecoder().decode([LAAUsageItem].self, from: Data(liveItemsJSON.utf8))
+    }
+
+    static let ownerRows = ["Codex", "OpenCode", "Claude", "Magnific", "GPT API", "Claude API", "Venice"]
+    /// iPhone Pro Max and the smallest current iPhone, medium family.
+    static let proMaxMedium = CGSize(width: 364, height: 170)
+    static let compactMedium = CGSize(width: 329, height: 155)
+
+    func testLiveFeedDrawsAllSevenRowsOnAProMax() throws {
+        let usage = LAAWidgetUsageBuilder.make(items: try Self.liveItems(), receivedAt: Self.liveNow)
+        XCTAssertEqual(usage.meters.map(\.label), Self.ownerRows)
+        XCTAssertEqual(usage.meters.map(\.amount), [0, 72, 82, 220523, 0, -0.19, 10.27082039])
+        let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
+            snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
+            date: Self.liveNow)
+        XCTAssertEqual(entry.usage?.meters.map(\.label), Self.ownerRows)
+        let claudeAPI = try XCTUnwrap(entry.usage?.meters.first { $0.label == "Claude API" })
+        XCTAssertEqual(LAAEmployeeWidgetView.valueText(claudeAPI), "-$0.19")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(claudeAPI, entryDate: Self.liveNow, renderedAt: Self.liveNow), "-$0.19 · 6日前")
+        let venice = try XCTUnwrap(entry.usage?.meters.first { $0.label == "Venice" })
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(venice, entryDate: Self.liveNow, renderedAt: Self.liveNow), "$10.27")
+        for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let name = "live-\(tag)-\(style == .dark ? "dark" : "light")"
+                let rows = try render(entry, size: size, style: style, name: name).rows
+                XCTAssertEqual(rows, 7, name)
+            }
+        }
+        try render(entry, size: Self.proMaxMedium, style: .light, mode: .accented, name: "live-364x170-tinted")
+        // Every employee shares the column, whatever their mascot and colour.
+        for employee in [LAAWidgetEmployee.monetUncensored, .argus, .cfo, .cto] {
+            let other = LAAEmployeeWidgetEntry.make(employee: employee,
+                snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
+                date: Self.liveNow)
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let name = "employee-\(employee.rawValue)-364x170-\(style == .dark ? "dark" : "light")"
+                XCTAssertEqual(try render(other, size: Self.proMaxMedium, style: style, name: name).rows, 7, name)
+            }
+            let compact = "employee-\(employee.rawValue)-329x155-light"
+            XCTAssertEqual(try render(other, size: Self.compactMedium, style: .light, name: compact).rows, 7, compact)
+        }
+    }
+
+    /// The rows without a reading keep their names and say so.
+    func testSevenRowsWithoutReadings() throws {
+        let usage = LAAWidgetUsageBuilder.make(items: [], receivedAt: Self.liveNow)
+        // Only the API rows stay listed with no feed at all.
+        XCTAssertEqual(usage.meters.map(\.label), ["GPT API", "Claude API"])
+        let all = LAAWidgetUsageBuilder.widgetSlots.map { slot in
+            WidgetUsageMeter.missing(id: "provider.\(slot.provider).balance", label: slot.name)
+        }
+        let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
+            snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
+                .withUsage(WidgetUsageSnapshot(meters: all, checkedAt: nil)),
+            date: Self.liveNow)
+        XCTAssertEqual(entry.usage?.meters.count, 7)
+        XCTAssertTrue(entry.usage?.meters.allSatisfy {
+            LAAEmployeeWidgetView.displayValue($0, entryDate: Self.liveNow, renderedAt: Self.liveNow) == "未取得"
+        } == true)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let name = "missing-364x170-\(style == .dark ? "dark" : "light")"
+            XCTAssertEqual(try render(entry, size: Self.proMaxMedium, style: style, name: name).rows, 7, name)
+        }
+    }
+
+    /// Larger text drops rows from the bottom, never squeezes them together,
+    /// and still draws at least the heading.
+    func testLargerTextDropsRowsFromTheBottom() throws {
+        let usage = LAAWidgetUsageBuilder.make(items: try Self.liveItems(), receivedAt: Self.liveNow)
+        let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
+            snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
+            date: Self.liveNow)
+        var previous = 7
+        for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
+            previous = 7
+            for type in [DynamicTypeSize.large, .xLarge, .xxLarge, .xxxLarge, .accessibility1, .accessibility3] {
+                let name = "type-\(tag)-\(type)"
+                let rows = try XCTUnwrap(try render(entry, size: size, style: .light, dynamicTypeSize: type, name: name).rows, name)
+                XCTAssertLessThanOrEqual(rows, previous, name)
+                previous = rows
+            }
+        }
+    }
+
+    private final class RowsBox: @unchecked Sendable { var value: Int? }
+
+    @discardableResult
+    private func render(_ entry: LAAEmployeeWidgetEntry, size: CGSize, style: UIUserInterfaceStyle,
+                        mode: WidgetRenderingMode = .fullColor, dynamicTypeSize: DynamicTypeSize = .large,
+                        name: String) throws -> (png: Data, rows: Int?) {
+        let box = RowsBox()
+        let widget = LAAEmployeeWidgetView(entry: entry, familyOverride: .systemMedium, renderingModeOverride: mode,
+                                           renderedAtOverride: entry.date)
+            .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
+            .onPreferenceChange(LAAWidgetUsageRowsKey.self) { box.value = $0 }
+        let screen = widget
+            .background(style == .dark ? Color.black.opacity(0.88) : Color.white.opacity(0.88))
+            .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
+            .preferredColorScheme(style == .dark ? .dark : .light)
+            .frame(width: size.width, height: size.height)
+            .ignoresSafeArea()
+        let host = UIHostingController(rootView: screen)
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+        let scene = try XCTUnwrap(previous?.windowScene ?? scenes.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(origin: .zero, size: size)
+        window.traitOverrides.userInterfaceStyle = style
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let format = UIGraphicsImageRendererFormat(); format.scale = 3
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let png = try XCTUnwrap(image.pngData())
+        if let directory = ProcessInfo.processInfo.environment["LAA_WIDGET_SHOT_DIR"], !directory.isEmpty {
+            try? png.write(to: URL(fileURLWithPath: directory).appendingPathComponent(name + ".png"))
+        }
+        return (png, box.value)
+    }
+
     @discardableResult
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,

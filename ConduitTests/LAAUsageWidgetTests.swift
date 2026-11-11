@@ -90,6 +90,39 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertTrue(meter.isPast(at: now))
     }
 
+    /// The feed as it read on 2026-11-11: both API balances are billing-page
+    /// readings (Claude API below zero) beside the month's spend, and Venice
+    /// is a live balance. All seven rows come through, the balances in place.
+    func testTheLiveFeedFillsAllSevenRowsWithTheBalances() throws {
+        let items = try [
+            item("codex", observedAt: "2026-10-30T23:58:00Z", windows: [weekly(0)]),
+            item("opencode-go", observedAt: "2026-10-30T23:58:00Z", windows: [weekly(72)]),
+            item("claude", observedAt: "2026-10-30T23:58:00Z", windows: [weekly(82)]),
+            item("magnific", kind: "credits", label: "Magnific", value: 220_523, unit: "credits",
+                 observedAt: "2026-10-30T23:58:00Z", detail: ["grantedAmount": 240_000]),
+            item("openai-api", kind: "balance", label: "GPT API", value: 0, unit: "usd",
+                 observedAt: "2026-10-25T14:24:00Z", detail: ["sourceKind": "verified", "currency": "USD"]),
+            item("openai-api", kind: "cost-month", label: "GPT API", value: 1.20, unit: "usd"),
+            item("claude-api", kind: "balance", label: "Claude API", value: -0.19, unit: "usd",
+                 observedAt: "2026-10-25T14:24:00Z", detail: ["sourceKind": "verified", "currency": "USD"]),
+            item("claude-api", kind: "cost-month", label: "Claude API", value: 82.79, unit: "usd"),
+            item("venice", kind: "balance", label: "Venice", value: 10.27, unit: "usd",
+                 observedAt: "2026-10-30T23:58:00Z", detail: ["currency": "USD"]),
+        ]
+        let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
+        XCTAssertEqual(result.meters.map(\.label),
+                       ["Codex", "OpenCode", "Claude", "Magnific", "GPT API", "Claude API", "Venice"])
+        XCTAssertEqual(result.meters.map(\.amount), [0, 72, 82, 220_523, 0, -0.19, 10.27])
+        XCTAssertTrue(result.meters.allSatisfy { $0.hasRecordedValue(at: now) })
+        let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(result)
+        XCTAssertEqual(snapshot.usage?.displayableMeters.count, 7)
+        // A Venice read that failed keeps its row, marked as not fetched.
+        let failed = try unavailable("venice", kind: "balance", label: "Venice")
+        let venice = LAAWidgetUsageBuilder.make(items: [failed], receivedAt: now).meters.last
+        XCTAssertEqual(venice?.label, "Venice")
+        XCTAssertEqual(venice?.available, false)
+    }
+
     func testAYenBalanceNeverFillsADollarRow() throws {
         let yen = try item("claude-api", kind: "balance", label: "Claude API", value: 3000, unit: "jpy",
                            detail: ["currency": "JPY"])
