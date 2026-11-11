@@ -132,7 +132,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(wait(field(app), hittable: true))
         app.scrollViews.firstMatch.swipeDown()
         app.scrollViews.firstMatch.swipeDown()
-        XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
+        XCTAssertTrue(wait(lastTurn(app), hittable: false, timeout: 5))
+        XCTAssertTrue(field(app).isHittable)
         let before = fixture("/state")?["messages"] as? Int ?? 0
         fixture("/advance")
         let expected = fixture("/state")?["messages"] as? Int ?? 0
@@ -148,7 +149,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         }
         XCTAssertEqual(served, expected, "The app did not fetch the conversation after /advance")
         Thread.sleep(forTimeInterval: 1.0)
-        XCTAssertFalse(field(app).isHittable)
+        XCTAssertFalse(lastTurn(app).isHittable)
+        XCTAssertTrue(field(app).isHittable)
         XCTAssertTrue(header(app).exists)
     }
 
@@ -194,10 +196,11 @@ final class LAAWorkSessionUITests: XCTestCase {
         fixture("/hold-image")
         open(longID, app)
         XCTAssertTrue(wait(field(app), hittable: true))
-        // One screen up: the composer is out of view while the image row is
-        // still close enough for the lazy stack to keep it alive.
+        // One screen up: the last turn leaves the viewport while the fixed
+        // composer remains reachable and the image row stays loaded.
         app.scrollViews.firstMatch.swipeDown()
-        XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
+        XCTAssertTrue(wait(lastTurn(app), hittable: false, timeout: 5))
+        XCTAssertTrue(field(app).isHittable)
         XCTAssertEqual(fixture("/state")?["images"] as? Int ?? -1, 0)
         fixture("/release-image")
         XCTAssertTrue(waitForImageDelivery(timeout: 10))
@@ -207,7 +210,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["work.session.image"].waitForExistence(timeout: 10),
                       "The released image was not decoded in the app")
         Thread.sleep(forTimeInterval: 1.0)
-        XCTAssertFalse(field(app).isHittable)
+        XCTAssertFalse(lastTurn(app).isHittable)
+        XCTAssertTrue(field(app).isHittable)
         XCTAssertTrue(header(app).exists)
     }
 
@@ -231,13 +235,15 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertGreaterThan(field(app).frame.minY, 400)
         XCTAssertTrue(header(app).exists)
 
-        // Reading older turns takes the field off screen; a later events poll
-        // must not pull the view back to the bottom.
+        // Reading older turns leaves the fixed composer available; a later
+        // events poll must not bring the last turn back into view.
         app.scrollViews.firstMatch.swipeDown()
         app.scrollViews.firstMatch.swipeDown()
-        XCTAssertTrue(wait(field(app), hittable: false, timeout: 5))
+        XCTAssertTrue(wait(lastTurn(app), hittable: false, timeout: 5))
+        XCTAssertTrue(field(app).isHittable)
         Thread.sleep(forTimeInterval: 3.5)
-        XCTAssertFalse(field(app).isHittable)
+        XCTAssertFalse(lastTurn(app).isHittable)
+        XCTAssertTrue(field(app).isHittable)
         XCTAssertTrue(header(app).exists)
     }
 
@@ -309,7 +315,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertGreaterThan(photo.frame.minX, 4)
         // The values stay whole: only the model text truncates.
         XCTAssertEqual(fast.label, "Fastモード")
-        XCTAssertEqual(send.label, "Send")
+        XCTAssertEqual(send.label, "送信")
         XCTAssertEqual(stop.label, "中断")
         // No dictation control anywhere on this screen.
         XCTAssertFalse(app.buttons["音声入力"].exists)
@@ -358,9 +364,10 @@ final class LAAWorkSessionUITests: XCTestCase {
         let title = header(app)
         XCTAssertTrue(title.waitForExistence(timeout: 15))
         XCTAssertLessThan(title.frame.minY, 120, "the heading must sit in the navigation bar")
-        for part in ["長い履歴", "S3", "確認待ち"] {
+        for part in ["長い履歴", "確認待ち"] {
             XCTAssertTrue(headerContaining(part, app).exists, "the bar must read " + part)
         }
+        XCTAssertFalse(headerContaining("S3", app).exists)
         // The old card's ref label is gone from the page.
         XCTAssertFalse(app.staticTexts["work.ref.S3"].exists)
     }
@@ -388,18 +395,19 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(question.waitForExistence(timeout: 20))
         XCTAssertTrue(wait(question, hittable: true, timeout: 10))
         // At the decision, not at the end of the conversation.
-        XCTAssertFalse(field(app).isHittable)
+        XCTAssertFalse(lastTurn(app).isHittable)
+        XCTAssertTrue(field(app).isHittable)
         // The two pictures land after the placement; the page grows.
         fixture("/release-image")
         XCTAssertTrue(waitForImageDelivery(timeout: 15))
         Thread.sleep(forTimeInterval: 2.0)
         XCTAssertTrue(question.isHittable, "the decision was pushed away by a height change")
-        XCTAssertFalse(field(app).isHittable)
+        XCTAssertFalse(lastTurn(app).isHittable)
+        XCTAssertTrue(field(app).isHittable)
     }
 
-    /// Usage inside Work already has Work's Settings button; its own would be
-    /// a second gear beside it.
-    func testUsageInsideWorkHasOneSettingsButton() throws {
+    /// Usage is a detail screen: one back control, without a root Settings button.
+    func testUsageInsideWorkHasBackWithoutExtraSettingsButton() throws {
         let app = try launchFixture()
         let usage = app.buttons["work.usage"]
         var moves = 0
@@ -413,7 +421,11 @@ final class LAAWorkSessionUITests: XCTestCase {
         usage.tap()
         XCTAssertTrue(app.staticTexts["AI"].waitForExistence(timeout: 20))
         let gears = app.buttons.matching(identifier: "laa.settings.open")
-        XCTAssertEqual(gears.count, 1, "Usage inside Work must not add a second Settings button")
+        XCTAssertEqual(gears.count, 0, "Usage must keep the reviewed detail toolbar")
+        let back = app.buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+        XCTAssertTrue(app.buttons["work.section.sessions"].waitForExistence(timeout: 10))
     }
 }
 #endif

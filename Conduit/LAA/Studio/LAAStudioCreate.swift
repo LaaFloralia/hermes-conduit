@@ -186,6 +186,7 @@ struct LAAStudioCreateView: View {
                         .frame(width: 36, height: 36)
                         .laaComposerGlass(in: Circle(), fill: canSend ? LAAColor.link : nil)
                         .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(!canSend)
                     .accessibilityLabel(Text(verbatim: initialProject == nil ? "依頼する" : "直しを頼む"))
                     .accessibilityIdentifier("laa.studio.composer.send")
