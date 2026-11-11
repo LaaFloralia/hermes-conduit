@@ -39,6 +39,18 @@ enum LAAModelFace: Equatable {
         }
         return .unknown
     }
+
+    /// The provider alone ("Claude"), for a model whose exact name is unknown.
+    var providerName: String? {
+        switch self {
+        case .claude: "Claude"
+        case .gpt: "GPT"
+        case .deepSeek: "DeepSeek"
+        case .gemini: "Gemini"
+        case .grok: "Grok"
+        case .unknown: nil
+        }
+    }
 }
 
 /// The model's round face beside its name, in Work's transcript, the session
@@ -57,7 +69,7 @@ struct LAAModelMark: View {
             switch face {
             case .claude(let rays): claude(rays)
             case .gpt(let body): gpt(body)
-            case .deepSeek: symbol("fish.fill", ink: LAAModelInk.deepSeek, disc: LAAModelInk.deepSeekDisc, scale: 0.5)
+            case .deepSeek: deepSeek
             case .gemini: symbol("sparkle", ink: LAAModelInk.gemini, disc: LAAModelInk.geminiDisc, scale: 0.56)
             case .grok: grok
             case .unknown: LAAAgentPlaceholderAvatar(size: size)
@@ -98,6 +110,20 @@ struct LAAModelMark: View {
         return symbol(glyph.0, ink: glyph.1, disc: LAAModelInk.gptDisc, scale: glyph.2)
     }
 
+    /// DeepSeek: its own whale, the vector from deepseek.com's header as it
+    /// is (owner, 2026-11-12: not a fish), in DeepSeek's blue on a near-white
+    /// disc in both light and dark, as DeepSeek shows it.
+    private var deepSeek: some View {
+        Image("LAADeepSeekMark")
+            .renderingMode(.template)
+            .resizable().scaledToFit()
+            .foregroundStyle(LAAModelInk.deepSeek)
+            .frame(width: size * 0.7, height: size * 0.7)
+            .frame(width: size, height: size)
+            .background(LAAModelInk.deepSeekDisc, in: Circle())
+            .overlay { Circle().strokeBorder(LAAModelInk.deepSeek.opacity(0.16), lineWidth: 0.5) }
+    }
+
     private var grok: some View {
         ZStack {
             Circle().fill(LAAModelInk.grokDisc)
@@ -129,8 +155,9 @@ enum LAAModelInk {
     static let terra = Color(red: 0.36, green: 0.78, blue: 0.62)
     static let luna = Color(red: 0.86, green: 0.88, blue: 0.95)
     static let astra = Color(red: 0.62, green: 0.70, blue: 1.0)
-    static let deepSeek = Color.white
-    static let deepSeekDisc = Color(red: 0.30, green: 0.42, blue: 0.99)
+    /// DeepSeek's blue, #4D6BFE.
+    static let deepSeek = Color(red: 0x4D / 255, green: 0x6B / 255, blue: 0xFE / 255)
+    static let deepSeekDisc = Color(red: 0.97, green: 0.975, blue: 1.0)
     static let gemini = Color(red: 0.36, green: 0.52, blue: 0.97)
     static let geminiDisc = Color(red: 0.92, green: 0.94, blue: 1.0)
     static let grokDisc = Color(red: 0.06, green: 0.06, blue: 0.07)
