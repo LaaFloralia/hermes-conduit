@@ -31,11 +31,13 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
     }
 
     func testUsageStatesLightAndDark() async throws {
-        for name in ["normal", "empty", "error", "offline", "unpaired", "stale", "balance", "extras", "cost"] {
+        for name in ["normal", "empty", "error", "offline", "unpaired", "stale", "balance", "extras", "cost", "billing"] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let state = LAAUsageState(widgetStore: nil)
                 if name != "unpaired" {
-                    let items = name == "empty" ? try unavailableFixture() : try fixture(stale: name == "stale", balanceOnly: name == "balance", extrasOnly: name == "extras", costOnly: name == "cost")
+                    let items = name == "empty" ? try unavailableFixture()
+                        : name == "billing" ? try billingFixture()
+                        : try fixture(stale: name == "stale", balanceOnly: name == "balance", extrasOnly: name == "extras", costOnly: name == "cost")
                     await state.refreshUsage { items }
                     if name == "error" { await state.refreshUsage { throw LAABridgeError.unavailable } }
                     if name == "offline" { await state.refreshUsage { throw LAABridgeError.networkUnreachable } }
@@ -127,7 +129,8 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
             "credits": ["remaining": 7, "updatedAt": observed]]
         let balance: [String: Any] = ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "value": 236025,
             "unit": "credits", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
-            "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "creditUnit": "AI credits"]]
+            "stale": stale, "estimated": false, "expired": false,
+            "detail": ["freshUntil": freshUntil, "creditUnit": "AI credits", "grantedAmount": 240000]]
         let venice: [String: Any] = ["id": "provider.venice.balance", "kind": "balance", "label": "Venice", "value": 14.5,
             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
             "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "currency": "USD"]]
@@ -155,6 +158,37 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         else if extrasOnly { json = [json[0]] }
         else { json = [d1] + json + [venice, balance] + apiBalances + costs }
         return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    /// The API rows as the live feed sends them: Claude API's billing-page
+    /// reading below zero, GPT API with no reading at all; a low Codex week and
+    /// a Magnific grant nearly spent, so both meters turn.
+    private func billingFixture() throws -> [LAAUsageItem] {
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let observed = formatter.string(from: now.addingTimeInterval(-60))
+        let freshUntil = formatter.string(from: now.addingTimeInterval(540))
+        let checked = formatter.string(from: now.addingTimeInterval(-6 * 86_400))
+        let reset = formatter.string(from: now.addingTimeInterval(86_400))
+        let rows: [[String: Any]] = [
+            ["id": "provider.codex.quota", "kind": "quota", "label": "Codex", "value": 8, "unit": "percent",
+             "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
+             "stale": false, "estimated": false, "expired": false,
+             "detail": ["freshUntil": freshUntil,
+                        "windows": [["label": "Weekly", "windowMinutes": 10080, "remainingPercent": 8, "resetsAt": reset]]]],
+            ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "value": 31_200, "unit": "credits",
+             "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
+             "stale": false, "estimated": false, "expired": false,
+             "detail": ["freshUntil": freshUntil, "creditUnit": "AI credits", "grantedAmount": 240000]],
+            ["id": "provider.claude-api.balance", "kind": "balance", "label": "Claude API", "value": -0.19, "unit": "usd",
+             "source": "codexbar-usage-proxy", "observedAt": checked, "availability": "available",
+             "stale": false, "estimated": false, "expired": false,
+             "detail": ["sourceKind": "verified", "currency": "USD"]],
+            ["id": "provider.openai-api.balance", "kind": "balance", "label": "GPT API", "value": NSNull(), "unit": "usd",
+             "source": "codexbar-usage-proxy", "observedAt": NSNull(), "availability": "unavailable", "nullReason": "not_auto",
+             "stale": false, "estimated": false, "expired": false],
+        ]
+        return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
     }
 
     private func unavailableFixture() throws -> [LAAUsageItem] {

@@ -464,14 +464,14 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and settings: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/Settings/LAAMacSettingsCard.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`, `Conduit/Views/AuxiliaryViews.swift`
-- Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `Conduit/LAA/Design/LAAGlass.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
+- Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `Conduit/LAA/Design/LAAGlass.swift`, `Conduit/LAA/Design/LAAComponents.swift` (segment control), `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
-- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `bridge/src/usage/proxy.mjs`, `bridge/test/usage-sources.test.mjs`, `Shared/Widgets/LAAUsageReading.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Capacity collection and checks: `bridge/src/usage/capacity.mjs`, `bridge/test/capacity.test.mjs`, `ConduitTests/LAACapacityModelTests.swift`
 - Assets and Drive: `Conduit/LAA/Assets/`, `Conduit/LAA/Drive/`, `bridge/src/routes/drive.mjs`, `bridge/src/drive/`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`, `bridge/bench/README.md`, `docs/laa/DRIVE-PLAYER-API.md`
 - Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-v2.test.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
-- Studio v3: 「Works｜Drive」。Worksの入力面から種類・写真／Drive参照を添えて制作を依頼できる。外枠の＋は入力面へ移動する。進行中／確認待ち／作品を表示し、Bridgeは制作がふさがっている間も依頼を受付順に保持する。作品の確認では案を横にめくり、動画を場内で再生できる。修正はその場で依頼し、採用の応答が不明なら同じ記録を照合する。端末と接続先で分けた前回一覧・詳細を即表示。
+- Studio v3: 「Works｜Drive」（`Conduit/LAA/Assets/LAAAssetsView.swift` の切替。選択中の面と区切り線で境界を示す）。Worksの入力面から種類・写真／Drive参照を添えて制作を依頼できる。外枠の＋は入力面へ移動する。進行中／確認待ち／作品を表示し、Bridgeは制作がふさがっている間も依頼を受付順に保持する。作品の確認では案を横にめくり、動画を場内で再生できる。修正はその場で依頼し、採用の応答が不明なら同じ記録を照合する。端末と接続先で分けた前回一覧・詳細を即表示。
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainManageNoteView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`, `Conduit/LAA/Brain/LAAMarkdownModel.swift`, `Conduit/LAA/Brain/LAAMarkdownStyler.swift`, `Conduit/LAA/Brain/LAAMarkdownTextView.swift`, `Conduit/LAA/Brain/LAAMarkdownFormatBar.swift`, `Conduit/LAA/Brain/LAAMarkdownTableEditor.swift`, `Conduit/LAA/Brain/LAAMarkdownDocumentModel.swift`, `Conduit/LAA/Brain/LAAMarkdownEditor.swift`, `ConduitTests/LAAMarkdownEditorTests.swift`
 - Doc editing regressions and reading position: `ConduitTests/LAAMarkdownInteractionTests.swift`, `Conduit/LAA/Brain/LAABrainReadingPosition.swift`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
@@ -517,14 +517,39 @@ App Store build · the Bridge API, Brain and Usage data contracts
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
 - The standalone Usage screen opens from Work and lists AI before Storage. It reads the Bridge usage-proxy projection; quota windows, reset times, balances, credits and cost stay in their own units. Storage shows Mac mini and MacBook memory/SSD and the shared Google account quota. SSD free space below 80 GiB warns and below 40 GiB is critical; Google quota warns at 90% / 98%. Tapping the last observation time refreshes the feed. The screen also refreshes while visible, at two-minute intervals, and on foreground activation. Failed reads keep historical values with their elapsed time; only never-observed values show 未取得. An explicit disconnect, a change of connection scope or denied access clears the observations. See `docs/laa/USAGE.md`.
-- GPT API and Claude API show a balance row first and their spend after it. The
-  spend rows read 使用額 (amount used, today and this month, UTC) and never stand in
-  for the amount left: neither provider publishes an automatic balance, so the
-  balance row reads 未取得 with 自動取得できる残高がありません and a code-owned
-  billing link (`platform.openai.com` / `platform.claude.com`). A cached
-  `cost-month` from an older widget snapshot is neither drawn nor reused, and a
-  manually entered balance is not shown as current.
-- Proportional readings use the same thin Usage meter. A capacity warning tick overlays the track at the threshold. Storage and AI use the same meter and preserve their own warning levels.
+- GPT API and Claude API show their credit left, one row each, and never their
+  spend (the owner, 2026-11-05; reaffirmed 2026-11-11 with "show the credit
+  balance, a periodic reading is fine"). Neither provider publishes a balance
+  API (checked 2026-11-11: Anthropic's Admin API and OpenAI's Costs API return
+  spend only, and the dashboard billing routes need a browser session), so the
+  reading is the billing page's balance recorded in HQ `catalog.verifiedMoney`,
+  which usage-meters passes as `balance` and the Bridge as a `verified` item.
+  The row shows that amount with its age, 請求画面の確認値 and the check time,
+  and 残高なし in the attention colour at or below zero; without a reading it
+  reads 未取得 with 自動取得できる残高がありません. Either way the note line
+  opens the code-owned billing page (`platform.openai.com` /
+  `platform.claude.com`). A cached `cost-month` from an older widget snapshot is
+  neither drawn nor reused.
+- nanoGPT is not listed (the owner cancelled it, 2026-11-11): the Bridge skips a
+  `nanogpt` row the proxy still sends, and a saved row never renders.
+- Never-observed values read 未取得 (not a dash) in the secondary weight.
+- Proportional readings use the same thin Usage meter, and the meter follows
+  its value: it grows to the reading when the row appears and slides to each
+  new reading (Reduce Motion draws it in place). Its colour says whether the
+  value needs a look: a quota window or a credit grant counts down and turns to
+  the attention colour below a fifth left; storage counts up and turns past nine
+  tenths used or at its warning level. Before 2026-11-11 every bar turned at
+  90% filled, which painted a nearly full Magnific grant as a problem and an
+  empty Codex week as fine. Magnific's bar is its AI credits left of the grant
+  the feed names (`grantedAmount`, else `monthlyGrantedAmount`), with 付与 and
+  the share left on the note line; a balance with no denominator draws no bar.
+  A capacity warning tick overlays the track at the threshold.
+- The shared segment control (Work, Today, Studio) puts the selected segment on
+  `LAAColor.selectionFill` with a hairline edge and draws a hairline between two
+  unselected neighbours, so where one segment ends and the next begins reads
+  at a glance. The paper-white selected pill had vanished into the glass and
+  Studio's two segments read as one word, "Works Drive" (the owner, 2026-11-11).
+  The pill slides between segments unless Reduce Motion is on.
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
   area access by naming that audience. A denied device sees a localized Mac
@@ -688,7 +713,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
-**Checked:** 2026-11-11, laa/s2-sys (shared v3 controls and Japanese settings; Swift syntax and 46 branding tests pass; simulator/Catalyst execution pending because the external build SSD disappeared); 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter, light labels on prominent buttons; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-11, worktree-agent-a582bebf107764004 (nanoGPT removed from the Bridge list, the app and the widget; API credit rows from the billing-page reading with 未取得 and the billing link; meters that follow their value and colour by direction; the segment control's selection and dividers; checks in the commit message); 2026-11-11, laa/s2-sys (shared v3 controls and Japanese settings; Swift syntax and 46 branding tests pass; simulator/Catalyst execution pending because the external build SSD disappeared); 2026-11-09, laa/app-polish-1109 on fdd24c03 (Studio | Drive pages, one Usage meter, light labels on prominent buttons; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-08, based on c06b0513 (Usage capacity model, shared feed and snapshots; physical iPhone pending); 2026-11-06, laa/doc-editor (Doc tab name and the Markdown-native editor); 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
@@ -4068,7 +4093,7 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The square widget shows the selected employee's mascot and separate Call and Chat links. The rectangular and circular Lock Screen widgets remain available. The medium widget shows the selected employee and at most five Usage rows. Percentages have thin meters. Older values stay visible with elapsed time and リセット済み when applicable; never-observed values show 未取得. Each WidgetKit-granted reload makes a bounded authenticated Bridge read using the shared Keychain. Future entries age the labels and request the next reload after 15 minutes. A phone changes push also refreshes the Usage snapshot. WidgetKit controls delivery.
+- The square widget shows the selected employee's mascot and separate Call and Chat links. The rectangular and circular Lock Screen widgets remain available. The medium widget shows the selected employee and at most five Usage rows (Codex, OpenCode, Claude, Magnific, GPT API, then Claude API and Venice as room allows; nanoGPT left on 2026-11-11 and a saved nanoGPT row never renders). Percentages and a credit row whose feed names its grant (Magnific, carried as the meter's `granted`) have thin meters of the share left, in the attention colour below a fifth, as in the app. Older values stay visible with elapsed time and リセット済み when applicable; never-observed values show 未取得. Each WidgetKit-granted reload makes a bounded authenticated Bridge read using the shared Keychain. Future entries age the labels and request the next reload after 15 minutes. A phone changes push also refreshes the Usage snapshot. WidgetKit controls delivery.
 - Monet and Monet（無検閲） replace the former two swans and the former marketing employee identity; the uncensored employee is text-only. Retired profile IDs are not mapped to new identities. When authoritative discovery reports the saved active profile absent, the app falls back to default; a stale widget link reports an unavailable workspace. The system handling of a previously saved widget selection still needs iPhone acceptance.
 - iPhone acceptance: check Monet and Monet（無検閲） names and mascots in Chats and staff details, turn animation, call and text-only behavior, Watch and shortcuts, and reconfigure any existing employee widget whose selection no longer resolves.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
@@ -4078,7 +4103,7 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
+**Checked:** 2026-11-11, worktree-agent-a582bebf107764004 (nanoGPT dropped from the slots and from saved snapshots; Magnific's grant meter; LAAUsageWidgetTests); 2026-11-09, laa/app-polish-1109 on fdd24c03 (opening screen; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 
@@ -4226,7 +4251,7 @@ and rollback instructions · the upstream App Store build
   mode uses the wide detail column for a 42-day grid, while the left agenda
   shows the selected day. Selecting an event does not push; Close/Esc returns
   to the empty or month detail. The phone layout and its sheets are unchanged.
-- The agenda shows today first and then only populated days. Calendar-day changes refresh today without changing a deliberately browsed week or month. The visible segmented control has Agenda, Week and Month. Initial loading uses three skeleton rows; failures retain saved content with an inline reason and retry.
+- The agenda shows today first and then only populated days. Calendar-day changes refresh today without changing a deliberately browsed week or month. The visible segmented control has Agenda, Week and Month, and Today opens on Month on iPhone and Mac (the owner, 2026-11-11; it opened on Agenda before): the 42-day grid with the selected day's events below it, and on the Mac the grid in the detail column. The switcher stays, and choosing Agenda still returns to today. Initial loading uses three skeleton rows; failures retain saved content with an inline reason and retry.
 - Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; the previous 24 hours of undelivered popup reminders are caught up after
   startup/recovery using persisted delivery dedupe. Google email reminders remain
   with Google. Links use `laa://today/events/<eventID>?calendar=<calendarID>`.
@@ -4234,7 +4259,7 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - Parent must complete additional Google consent, device write grants and notification setup. Real Google reads/writes, notification delivery/tap, WidgetKit timing, PiP/AirPlay and one-second launch on the physical iPhone remain unverified. Raw Google recurrence rules support custom cases; the editor's presets cover daily/weekly/monthly/yearly. The direct daily-note destination remains pending.
 
-**Checked:** 2026-11-11, laa/s2-sys (agenda/week/month, midnight rollover and saved events on refresh failure; Swift syntax passes, simulator execution pending the external build SSD); 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
+**Checked:** 2026-11-11, worktree-agent-a582bebf107764004 (opens on Month; the month grid fetches the 42-day range that contains today, so the next-event widget snapshot still publishes; LAATodayCalendarTests and the 440 × 956 Today snapshots on LAA 16 Pro Max); 2026-11-11, laa/s2-sys (agenda/week/month, midnight rollover and saved events on refresh failure; Swift syntax passes, simulator execution pending the external build SSD); 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
 Debug build exited 0 before review fixes, updated build pending. Owner-size visual verification is pending. Real-device acceptance remains pending.
 Mac desktop Today checked 2026-11-03 on laa/mac-work with the merged
 laa/mac-shell: the agenda/list selection opened the event detail beside it,
@@ -4349,16 +4374,19 @@ Work presents Sessions, Decisions, Tasks and Routines and opens on Sessions; Dec
 **Siblings:** Work on iPhone and Mac · Settings Skills · Usage · decision sheets · session tools
 
 **Code**
-- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
+- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift` (`LAAUsageGauge`), `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
 
 **Rulings**
 - Nothing sits between the title and the section switcher: the three-decision summary above the sections is gone,
   and the board is the second section (owner, 2026-11-11). Keep session tools collapsed until requested.
+- The Usage button's gauge points at the tightest weekly quota on the Usage list (SF Symbols' 0/33/50/67/100%
+  faces, the attention colour below a fifth left, the 33% face before any reading), from the readings Work's own
+  Usage state holds; opening Work refreshes them at most once a minute (2026-11-11; it was a fixed 33% face).
 
 **Open gaps**
 - Physical-device acceptance is pending.
 
-**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (the board as a section, the summary removed); 2026-11-11, 2b5760d5 (Work v3 contracts).
+**Checked:** 2026-11-11, worktree-agent-a582bebf107764004 (the Usage gauge follows the lowest weekly quota; LAAUsageWidgetTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (the board as a section, the summary removed); 2026-11-11, 2b5760d5 (Work v3 contracts).
 
 
 ## LAA Drive stage 2 browsing and playback

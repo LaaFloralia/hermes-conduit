@@ -1,6 +1,37 @@
 #if LAA_BUILD
 import Foundation
 
+/// Work's Usage button is a gauge whose needle follows the tightest weekly
+/// quota on the Usage list, instead of the fixed 33% it once drew.
+enum LAAUsageGauge {
+    /// The smallest weekly share left (0...100) among the listed quotas, from
+    /// the last readings the app holds; nil before any reading.
+    static func lowestWeeklyRemaining(_ items: [LAAUsageItem]) -> Double? {
+        let quotas = LAAWidgetUsageBuilder.slots.filter { $0.reading == .weeklyQuota }.map { "provider.\($0.provider)." }
+        return items.compactMap { item -> Double? in
+            guard item.kind == "quota", item.availableValue != nil,
+                  quotas.contains(where: { item.id.hasPrefix($0) }) else { return nil }
+            let weekly = (item.detail?.windows ?? []).first { window in
+                window.windowMinutes.map { $0 == 10_080 } ?? LAAUsageLabel.isWeekly(window.label)
+            }
+            guard let remaining = weekly?.remainingPercent, remaining.isFinite else { return nil }
+            return min(max(remaining, 0), 100)
+        }.min()
+    }
+
+    /// The SF Symbols gauge nearest the reading; the 33% face before one exists.
+    static func symbol(_ remaining: Double?) -> String {
+        guard let remaining else { return "gauge.with.dots.needle.33percent" }
+        switch remaining {
+        case ..<17: return "gauge.with.dots.needle.0percent"
+        case ..<42: return "gauge.with.dots.needle.33percent"
+        case ..<58: return "gauge.with.dots.needle.50percent"
+        case ..<84: return "gauge.with.dots.needle.67percent"
+        default: return "gauge.with.dots.needle.100percent"
+        }
+    }
+}
+
 /// One capacity reading the screen may draw. Only a fresh item whose used,
 /// free and total bytes agree exactly becomes one; anything else shows no number.
 struct LAACapacityReading: Equatable {

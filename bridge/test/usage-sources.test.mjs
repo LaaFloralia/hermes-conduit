@@ -499,8 +499,10 @@ test('an API balance is the billing-page reading, below zero too, whether or not
   assert.equal(byId(items, 'provider.openai-api.balance').availability, 'unavailable');
 });
 
-test('Venice USD and Magnific credits keep their units and priority, without Antigravity', () => {
+test('Venice USD and Magnific credits keep their units and priority, without Antigravity or nanoGPT', () => {
   const items = projection([
+    { id: 'nanogpt', available: true, source: 'live', updatedAt: '2026-10-29T04:58:00Z',
+      windows: [{ label: 'Weekly', remaining: 80, windowMinutes: 10080 }] },
     { id: 'magnific', kind: 'unitCredits', available: true, source: 'live',
       updatedAt: '2026-10-29T04:58:00Z', remaining: 2100, unit: 'AI credits' },
     { id: 'venice', kind: 'balance', available: true, source: 'live',
@@ -509,9 +511,10 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
     { id: 'antigravity', available: true, updatedAt: '2026-10-29T04:58:00Z',
       windows: [{ label: 'Weekly', remaining: 90 }] },
   ]);
-  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 9),
-    ['codex', 'opencode-go', 'claude', 'nanogpt', 'magnific', 'openai-api', 'claude-api', 'liquid', 'venice']);
+  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 8),
+    ['codex', 'opencode-go', 'claude', 'magnific', 'openai-api', 'claude-api', 'liquid', 'venice']);
   assert.equal(items.some(item => item.id.startsWith('provider.antigravity.')), false);
+  assert.equal(items.some(item => item.id.startsWith('provider.nanogpt.')), false);
   const venice = byId(items, 'provider.venice.balance');
   assert.equal(venice.unit, 'usd');
   assert.equal(venice.value, 14.5);

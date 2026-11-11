@@ -168,14 +168,18 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     // Optional so snapshots written by the previous app remain readable.
     let verified: Bool?
     let legacyFreshness: Bool?
+    /// The grant a credit row counts down from (Magnific's monthly AI credits);
+    /// nil when the feed names none, and for every other unit.
+    let granted: Double?
 
     init(id: String, label: String, unit: Unit, amount: Double, available: Bool = true,
          observedAt: Date?, freshUntil: Date?, resetsAt: Date?, stale: Bool, retained: Bool,
-         verified: Bool = false, legacyFreshness: Bool = false) {
+         verified: Bool = false, legacyFreshness: Bool = false, granted: Double? = nil) {
         self.id = id; self.label = label; self.unit = unit; self.amount = amount; self.available = available
         self.observedAt = observedAt; self.freshUntil = freshUntil; self.resetsAt = resetsAt
         self.stale = stale || retained; self.retained = retained; self.verified = verified
         self.legacyFreshness = legacyFreshness
+        self.granted = unit == .credits ? granted : nil
     }
 
     /// A snapshot row with no reading: the label stays, the number does not.
@@ -186,6 +190,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, label, unit, amount, available, observedAt, freshUntil, resetsAt, stale, retained, verified, legacyFreshness
+        case granted
         case remainingPercent
     }
 
@@ -206,9 +211,21 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         self.retained = retained
         self.verified = try values.decodeIfPresent(Bool.self, forKey: .verified)
         self.legacyFreshness = try values.decodeIfPresent(Bool.self, forKey: .legacyFreshness)
+        self.granted = try values.decodeIfPresent(Double.self, forKey: .granted)
     }
 
     var remainingPercent: Double? { available && unit == .percent ? amount : nil }
+
+    /// How full the row's meter is: a quota's share left, or what is left of
+    /// a named credit grant. Balances have no denominator and draw no meter.
+    var remainingFraction: Double? {
+        guard available else { return nil }
+        switch unit {
+        case .percent: return amount.isFinite ? min(max(amount / 100, 0), 1) : nil
+        case .credits: return LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
+        case .usd: return nil
+        }
+    }
 
     func hasRecordedValue(at date: Date) -> Bool {
         // Only a billing-page balance is a verified reading, and it can be negative.
@@ -221,7 +238,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         Self(id: id, label: label, unit: unit, amount: amount, available: available,
              observedAt: observedAt, freshUntil: freshUntil, resetsAt: resetsAt,
              stale: true, retained: true, verified: verified ?? false,
-             legacyFreshness: legacyFreshness ?? false)
+             legacyFreshness: legacyFreshness ?? false, granted: granted)
     }
 
     /// Written by hand: `remainingPercent` is read-only, only decoded from
@@ -240,6 +257,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         try values.encode(retained, forKey: .retained)
         try values.encodeIfPresent(verified, forKey: .verified)
         try values.encodeIfPresent(legacyFreshness, forKey: .legacyFreshness)
+        try values.encodeIfPresent(granted, forKey: .granted)
     }
 
     func isPast(at date: Date, anchor: Date? = nil) -> Bool {
@@ -255,7 +273,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 struct WidgetUsageSnapshot: Codable, Equatable {
     /// The owner's display order and labels are fixed in the app; the widget
     /// only ever shows these providers.
-    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "nanogpt", "venice", "magnific", "openai-api", "claude-api", "liquid"]
+    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "magnific", "openai-api", "claude-api", "liquid"]
 
     let meters: [WidgetUsageMeter]
     let checkedAt: Date?

@@ -43,11 +43,28 @@ struct LAASegmentedControl<Value: Hashable>: View {
     let title: (Value) -> String
     var identifier: (Value) -> String = { _ in "" }
 
+    @Namespace private var pill
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Where one segment ends and the next begins must read at a glance: the
+    /// selected segment sits on the selection tint (the sidebar's pair, not the
+    /// paper-white surface that vanished into the glass, so "Works" and "Drive"
+    /// read as one word; the owner, 2026-11-11), and a hairline stands between
+    /// two unselected neighbours, as in the system control.
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(values, id: \.self) { value in
+            ForEach(Array(values.enumerated()), id: \.element) { index, value in
                 let selected = selection == value
-                Button { selection = value } label: {
+                if index > 0 {
+                    Rectangle().fill(LAAColor.separator)
+                        .frame(width: 1, height: 14)
+                        .opacity(selected || selection == values[index - 1] ? 0 : 1)
+                        .accessibilityHidden(true)
+                }
+                Button {
+                    if reduceMotion { selection = value }
+                    else { withAnimation(.snappy(duration: 0.28)) { selection = value } }
+                } label: {
                     // The secondary size (13 pt, scaled): the switcher names
                     // the lists below it and should not outweigh their rows.
                     Text(verbatim: title(value))
@@ -57,7 +74,13 @@ struct LAASegmentedControl<Value: Hashable>: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                         .frame(maxWidth: .infinity, minHeight: 30)
-                        .background(selected ? LAAColor.surface : .clear, in: Capsule())
+                        .background {
+                            if selected {
+                                Capsule().fill(LAAColor.selectionFill)
+                                    .overlay(Capsule().strokeBorder(LAAColor.link.opacity(0.18), lineWidth: 0.5))
+                                    .matchedGeometryEffect(id: "selection", in: pill)
+                            }
+                        }
                         .padding(.vertical, 7)
                         .contentShape(Rectangle())
                 }

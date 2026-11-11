@@ -2,6 +2,18 @@
 import SwiftUI
 import Combine
 
+extension LAACopy {
+    enum Usage {
+        static let noAutomaticBalance = "自動取得できる残高がありません"
+        static let billingReading = "請求画面の確認値"
+        static let noBalanceLeft = "残高なし"
+        static let granted = "付与"
+        static let left = "残り"
+        static let meter = "利用枠"
+        static let lowestWeekly = "週間の残りが最も少ない枠"
+    }
+}
+
 /// A standalone screen: refreshing never replaces an observation with a loader.
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -131,8 +143,11 @@ struct LAAUsageView: View {
                 } else {
                     ForEach(groups) { group in
                         VStack(spacing: 0) {
-                            if group.items.isEmpty {
-                                readingRow(name: group.label, result: "—", age: nil, fraction: nil, note: nil)
+                            if LAAUsageGroup.isAPI(group.id + ".") {
+                                apiBalanceRow(group.items.first { $0.id == group.id + ".balance" },
+                                              groupID: group.id, name: group.label)
+                            } else if group.items.isEmpty {
+                                readingRow(name: group.label, result: LAACopy.notFetched, age: nil, fraction: nil, note: nil)
                             } else {
                                 ForEach(group.items) { item in serviceRow(item, name: group.label) }
                             }
@@ -152,18 +167,47 @@ struct LAAUsageView: View {
                 let label = windows.count > 1 ? name + " " + LAAUsageLabel.window(window) : name
                 let reset = LAAUsageFreshness.windowExpired(window, at: evaluatedAt)
                 readingRow(name: label, result: value(window.remainingPercent, unit: "percent"), age: age,
-                           fraction: window.remainingPercent.map { $0 / 100 },
+                           fraction: window.remainingPercent.map { $0 / 100 }, countsDown: true,
                            note: item.retainedReason.map { Self.unavailableReason($0) }
                                ?? (reset ? "リセット済み" : LAAUsageItem.date(window.resetsAt).map { resetTime($0) }))
             }
         } else {
             let amount = item.kind == "usage" ? item.detail?.recordedCostUsd : item.availableValue
             let unit = item.kind == "usage" ? "usd" : item.detail?.creditUnit ?? item.unit
-            let fraction = item.detail?.grantedAmount.flatMap { granted in
-                granted > 0 ? amount.map { $0 / granted } : nil
-            }
-            readingRow(name: name, result: value(amount, unit: unit), age: age, fraction: fraction,
-                       note: reason(item) ?? (item.kind == "usage" ? "記録済み費用" : nil))
+            let granted = item.kind == "usage" ? nil : item.detail?.grantedAmount ?? item.detail?.monthlyGrantedAmount
+            let fraction = LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
+            readingRow(name: name, result: value(amount, unit: unit), age: age, fraction: fraction, countsDown: true,
+                       note: reason(item) ?? (item.kind == "usage" ? "記録済み費用" : grantNote(granted, fraction: fraction)))
+        }
+    }
+
+    /// The grant a credit meter counts down from, so the bar has a scale.
+    private func grantNote(_ granted: Double?, fraction: Double?) -> String? {
+        guard let granted, let fraction else { return nil }
+        let total = granted.formatted(.number.locale(locale).precision(.fractionLength(0...2)))
+        let left = (fraction * 100).formatted(.number.locale(locale).precision(.fractionLength(0)))
+        return LAACopy.Usage.granted + " " + total + " · " + LAACopy.Usage.left + " " + left + "%"
+    }
+
+    /// GPT API and Claude API: the credit left, never the spend. Neither
+    /// provider publishes a balance API, so the reading is the billing page's,
+    /// carried with the moment it was checked; without one the row still
+    /// stands, reads 未取得 and links to that page.
+    @ViewBuilder private func apiBalanceRow(_ item: LAAUsageItem?, groupID: String, name: String) -> some View {
+        let billing = LAAUsageGroup.billingURL(for: groupID + ".balance")
+        if let item, let amount = item.availableValue {
+            let checked = item.detail?.sourceKind == "verified"
+                ? LAAUsageItem.date(item.observedAt).map { LAACopy.Usage.billingReading + " " + LAADateText.string($0, .monthDayTime) }
+                : nil
+            let empty = !(amount > 0)
+            let parts = [item.retainedReason.map { Self.unavailableReason($0) }, empty ? LAACopy.Usage.noBalanceLeft : nil, checked]
+            let note = parts.compactMap { $0 }.joined(separator: " · ")
+            readingRow(name: name, result: value(amount, unit: "usd"), age: age(item), fraction: nil,
+                       note: note.isEmpty ? nil : note, noteLink: billing, alert: empty)
+        } else {
+            let note = item.map { $0.nullReason == "not_auto" || $0.nullReason == nil ? LAACopy.Usage.noAutomaticBalance : Self.unavailable($0) }
+                ?? LAACopy.Usage.noAutomaticBalance
+            readingRow(name: name, result: LAACopy.notFetched, age: nil, fraction: nil, note: note, noteLink: billing)
         }
     }
 
@@ -173,16 +217,16 @@ struct LAAUsageView: View {
             sectionTitle("Storage")
             VStack(spacing: 0) {
                 if items.isEmpty {
-                    readingRow(name: "容量", result: "—", age: nil, fraction: nil, note: nil)
+                    readingRow(name: "容量", result: LAACopy.notFetched, age: nil, fraction: nil, note: nil)
                 }
                 ForEach(items) { item in
                     let reading = LAACapacity.reading(item, at: evaluatedAt, allowHistorical: true)
-                    let result = reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? "—"
+                    let result = reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? LAACopy.notFetched
                     let note = reason(item) ?? reading.map {
                         "使用 " + LAACapacity.bytes($0.usedBytes, locale: locale) + " / " + LAACapacity.bytes($0.totalBytes, locale: locale)
                     }
                     readingRow(name: LAACapacity.name(item.id), result: result, age: age(item),
-                               fraction: reading?.usedFraction, note: note,
+                               fraction: reading?.usedFraction, tick: reading?.warningFraction, note: note,
                                alert: reading.map { $0.level == .warning || $0.level == .critical } ?? false)
                         .accessibilityIdentifier("laa.capacity.\(item.id)")
                 }
@@ -196,7 +240,8 @@ struct LAAUsageView: View {
         LAASectionHeader(text)
     }
 
-    private func readingRow(name: String, result: String, age: String?, fraction: Double?, note: String?, alert: Bool = false) -> some View {
+    private func readingRow(name: String, result: String, age: String?, fraction: Double?, countsDown: Bool = false,
+                            tick: Double? = nil, note: String?, noteLink: URL? = nil, alert: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
@@ -210,13 +255,29 @@ struct LAAUsageView: View {
                 }
             }
             if let fraction, fraction.isFinite {
-                LAAUsageMeter(fraction: fraction, alert: alert)
-                    .accessibilityLabel(name + " 利用枠")
+                LAAUsageMeter(fraction: fraction, countsDown: countsDown, alert: alert, tick: tick)
+                    .accessibilityLabel(name + " " + LAACopy.Usage.meter)
                     .accessibilityValue(result)
             }
             if let note {
-                Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(alert ? LAAColor.attention : LAAColor.secondaryText)
+                let text = Text(verbatim: note).laaTextStyle(.secondary)
+                    .foregroundStyle(alert ? LAAColor.attention : LAAColor.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                if let noteLink {
+                    Link(destination: noteLink) {
+                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
+                            text
+                            Image(systemName: "arrow.up.right").font(.caption2.weight(.semibold))
+                                .foregroundStyle(LAAColor.secondaryText).accessibilityHidden(true)
+                        }
+                        .frame(minHeight: LAASpacing.minimumTouchTarget / 2, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("laa.usage.billing")
+                } else {
+                    text
+                }
             }
         }
         .padding(.vertical, LAASpacing.x3)
@@ -227,9 +288,10 @@ struct LAAUsageView: View {
     private func readingValue(_ result: String, age: String?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
             let parts = result.hasSuffix(" credits") ? result.split(separator: " ", maxSplits: 1) : [result[...]]
+            let missing = result == LAACopy.notFetched || result == LAACopy.never
             Text(verbatim: String(parts[0]))
-                .font(result == "—" ? .system(size: 15) : LAAType.usageRowValue)
-                .foregroundStyle(result == "—" ? LAAColor.secondaryText : LAAColor.text)
+                .font(missing ? .system(size: 15) : LAAType.usageRowValue)
+                .foregroundStyle(missing ? LAAColor.secondaryText : LAAColor.text)
             if parts.count > 1 {
                 Text(verbatim: String(parts[1])).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
@@ -275,7 +337,7 @@ struct LAAUsageView: View {
     }
 
     private func value(_ number: Double?, unit: String) -> String {
-        guard let number, number.isFinite else { return "—" }
+        guard let number, number.isFinite else { return LAACopy.notFetched }
         if unit == "usd" { return LAAUsageMoney.text(number, locale: locale) }
         if unit == "percent", number > 0, number < 0.01 { return "<0.01%" }
         if unit == "percent", number < 100, number > 99.99 { return ">99.99%" }
@@ -296,27 +358,40 @@ struct LAAUsageView: View {
 /// track, height and colors, so every bar on the screen reads the same. The
 /// threshold tick is drawn over the track rather than laid out with it: it was
 /// the extra height of that tick that made the rows with a mark twice as thick.
+///
+/// The bar follows the reading: it grows to its value when the row appears and
+/// slides to each new value a refresh brings, and its colour says whether the
+/// value needs a look. A quota or a credit grant counts down (`countsDown`),
+/// so it turns to the attention colour below a fifth left; storage counts up
+/// and turns past nine tenths used or at its warning level (`alert`).
 struct LAAUsageMeter: View {
     /// 0...1; values outside are clamped.
     let fraction: Double
+    /// True for a share left (quotas, credits); false for a share used.
+    var countsDown = false
     var alert = false
     /// Where a threshold begins, drawn as a short tick across the track.
     var tick: Double? = nil
     /// A nonzero amount keeps a sliver visible even when it rounds to nothing.
     var showsSliver = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
 
     static let height: CGFloat = 4
     /// Tall enough for the tick, which stands 3pt above and below the track.
     static let totalHeight: CGFloat = 10
 
+    private var clamped: Double { fraction.isFinite ? min(max(fraction, 0), 1) : 0 }
+    var needsAttention: Bool { alert || LAAUsageMeterRule.needsAttention(clamped, countsDown: countsDown) }
+
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let clamped = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+            let drawn = appeared || reduceMotion ? clamped : 0
             ZStack(alignment: .leading) {
                 Capsule().fill(LAAColor.subtleSurface).frame(height: Self.height)
-                Capsule().fill(alert || clamped >= 0.9 ? LAAColor.attention : LAAColor.link)
-                    .frame(width: max(width * clamped, showsSliver && clamped > 0 ? Self.height : 0),
+                Capsule().fill(needsAttention ? LAAColor.attention : LAAColor.link)
+                    .frame(width: max(width * drawn, showsSliver && clamped > 0 ? Self.height : 0),
                            height: Self.height)
             }
             .frame(width: width, height: Self.height)
@@ -331,6 +406,14 @@ struct LAAUsageMeter: View {
         }
         .frame(height: Self.totalHeight)
         .accessibilityElement()
+        // Grows to its value once, then slides between readings; Reduce
+        // Motion draws each value in place.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: clamped)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: needsAttention)
+        .onAppear {
+            guard !appeared else { return }
+            if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 0.35)) { appeared = true } }
+        }
     }
 }
 #endif

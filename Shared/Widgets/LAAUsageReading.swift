@@ -152,6 +152,27 @@ enum LAAUsageFreshness {
     }
 }
 
+/// What a meter's length means, for the app list and the widget alike. Quota
+/// windows and granted credits count down, so a short bar is the warning;
+/// storage counts up, so a long one is. Before 2026-11-11 every bar turned to
+/// the attention colour at 90%, which painted a nearly full Magnific grant as
+/// a problem and an empty Codex week as fine.
+enum LAAUsageMeterRule {
+    static let lowRemaining = 0.2
+    static let highUse = 0.9
+
+    static func needsAttention(_ fraction: Double, countsDown: Bool) -> Bool {
+        guard fraction.isFinite else { return false }
+        return countsDown ? fraction < lowRemaining : !(fraction < highUse)
+    }
+
+    /// The share of a grant still left, when the feed names the grant.
+    static func grantFraction(remaining: Double?, granted: Double?) -> Double? {
+        guard let remaining, let granted, remaining.isFinite, granted.isFinite, granted > 0 else { return nil }
+        return min(max(remaining / granted, 0), 1)
+    }
+}
+
 /// A historical observation keeps its timestamp; a fetch attempt never ages it forward.
 enum LAAUsageAge {
     static func text(_ observed: Date, at now: Date) -> String {

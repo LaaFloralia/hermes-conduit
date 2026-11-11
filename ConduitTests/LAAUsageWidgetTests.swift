@@ -137,11 +137,64 @@ final class LAAUsageWidgetTests: XCTestCase {
             item("jev", kind: "balance", label: "Jev", value: 3, unit: "usd"),
             item("google-cloud", kind: "balance", label: "Google Cloud", value: 5, unit: "usd"),
             item("google-flow", kind: "credits", label: "Google Flow", value: 0, unit: "credits"),
+            item("nanogpt", label: "nanoGPT", windows: [weekly(80)]),
             item("claude", windows: [weekly(20)]),
         ]
         // The API rows stay listed when their balance cannot be read.
         XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.map(\.label),
                        ["Claude", "GPT API", "Claude API"])
+        // nanoGPT was cancelled (2026-11-11): neither the feed nor a saved row brings it back.
+        let saved = WidgetUsageSnapshot(meters: [
+            WidgetUsageMeter(id: "provider.nanogpt.quota.weekly", label: "nanoGPT", unit: .percent, amount: 80,
+                             observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil,
+                             stale: false, retained: false),
+        ], checkedAt: now)
+        XCTAssertTrue(saved.displayableMeters.isEmpty)
+        XCTAssertNil(LAAUsageGroup.consoleGroups(items).first { $0.id == "provider.nanogpt" })
+    }
+
+    /// Work's gauge points at the tightest weekly quota, from the listed quotas only.
+    func testTheWorkGaugeFollowsTheLowestWeeklyQuota() throws {
+        let items = try [
+            item("codex", windows: [weekly(12, minutes: 300, label: "Session"), weekly(64)]),
+            item("claude", windows: [weekly(48)]),
+            item("nanogpt", windows: [weekly(3)]),
+            item("magnific", kind: "credits", value: 5, unit: "credits"),
+        ]
+        XCTAssertEqual(LAAUsageGauge.lowestWeeklyRemaining(items), 48)
+        XCTAssertNil(LAAUsageGauge.lowestWeeklyRemaining([]))
+        XCTAssertEqual([nil, 0, 20, 48, 70, 100].map(LAAUsageGauge.symbol), [
+            "gauge.with.dots.needle.33percent", "gauge.with.dots.needle.0percent", "gauge.with.dots.needle.33percent",
+            "gauge.with.dots.needle.50percent", "gauge.with.dots.needle.67percent", "gauge.with.dots.needle.100percent",
+        ])
+    }
+
+    /// A share left warns when short; a share used warns when long.
+    func testMetersWarnByTheirDirection() {
+        XCTAssertFalse(LAAUsageMeterRule.needsAttention(0.92, countsDown: true))
+        XCTAssertTrue(LAAUsageMeterRule.needsAttention(0.1, countsDown: true))
+        XCTAssertTrue(LAAUsageMeterRule.needsAttention(0.92, countsDown: false))
+        XCTAssertFalse(LAAUsageMeterRule.needsAttention(0.1, countsDown: false))
+        XCTAssertEqual(LAAUsageMeterRule.grantFraction(remaining: 220_523, granted: 240_000) ?? 0, 0.9188, accuracy: 0.0001)
+        XCTAssertNil(LAAUsageMeterRule.grantFraction(remaining: 10, granted: 0))
+        XCTAssertNil(LAAUsageMeterRule.grantFraction(remaining: 10, granted: nil))
+    }
+
+    /// Magnific's grant travels to the widget so its row can draw the share left.
+    func testACreditGrantReachesTheWidgetMeter() throws {
+        let credits = try item("magnific", kind: "credits", label: "Magnific", value: 60_000, unit: "credits",
+                               detail: ["grantedAmount": 240_000, "creditUnit": "AI credits"])
+        let meter = try XCTUnwrap(LAAWidgetUsageBuilder.make(items: [credits], receivedAt: now).meters.first)
+        XCTAssertEqual(meter.granted, 240_000)
+        XCTAssertEqual(meter.remainingFraction ?? 0, 0.25, accuracy: 0.0001)
+        let decoded = try JSONDecoder().decode(WidgetUsageMeter.self, from: JSONEncoder().encode(meter))
+        XCTAssertEqual(decoded, meter)
+        XCTAssertEqual(meter.lastKnown(label: "Magnific").granted, 240_000)
+        let balance = WidgetUsageMeter(id: "provider.venice.balance", label: "Venice", unit: .usd, amount: 9,
+                                       observedAt: now, freshUntil: nil, resetsAt: nil, stale: false, retained: false,
+                                       granted: 100)
+        XCTAssertNil(balance.granted)
+        XCTAssertNil(balance.remainingFraction)
     }
 
     func testLastKnownValuesSurviveMissingRowsWithoutChangingTheirTime() throws {
