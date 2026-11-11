@@ -14,8 +14,11 @@ let lastAnswer = null;
 // A Bridge on a device without sessions:write refuses a staff assignee (403
 // insufficient_scope). /tasks/refuse-staff switches it on for one test.
 let refuseStaffCreate = false;
+// Tasks whose completion is refused as changed in Linear (412), so a batch
+// of picked tasks meets one failure: /tasks/refuse-complete/<id>.
+let refuseComplete = new Set();
 const reset = () => {
-  createdBodies = []; completed = []; lastAnswer = null; refuseStaffCreate = false;
+  createdBodies = []; completed = []; lastAnswer = null; refuseStaffCreate = false; refuseComplete = new Set();
   tasks = [
     { id: 'b9d2f664-cda3-4c56-8d39-c4d6df597254', identifier: 'BUS-TEST1', ref: 'T12', title: '次の打ち合わせを確認する', description: '資料と開始時刻を確認', dueDate: '2026-11-02', priority: 2, status: 'todo', stateName: 'Todo', updatedAt: '2026-11-02T00:00:00Z', url: null,
       run: fixtureRun('monet', 'Monet', 'running', 'ses_5555555555555555', 'S5') },
@@ -285,7 +288,7 @@ const api = http.createServer(async (req, res) => {
     const ifMatch = req.headers['if-match'];
     const key = req.headers['idempotency-key'];
     if (!ifMatch) return fail(428, 'precondition_required', 'If-Match is required');
-    if (ifMatch !== task.updatedAt) return fail(412, 'precondition_failed', 'the task changed');
+    if (ifMatch !== task.updatedAt || refuseComplete.has(task.id)) return fail(412, 'precondition_failed', 'the task changed');
     if (!key) return fail(400, 'idempotency_key_required', 'Idempotency-Key is required');
     completed.push({ id: task.id, ifMatch, key, sessionArchived: Boolean(task.run?.sessionId) });
     tasks = tasks.filter(t => t.id !== task.id);
@@ -517,6 +520,8 @@ const control = http.createServer((req, res) => {
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/tasks/refuse-staff') refuseStaffCreate = true;
   if (req.url === '/tasks/allow-staff') refuseStaffCreate = false;
+  const refuseCompleteMatch = req.url.match(/^\/tasks\/refuse-complete\/([0-9a-f-]+)$/);
+  if (refuseCompleteMatch) refuseComplete.add(refuseCompleteMatch[1]);
   if (req.url === '/tasks/many' || req.url === '/tasks/few') { manyTasks = req.url === '/tasks/many'; reset(); }
   if (req.url === '/hold-image') holdImages();
   if (req.url === '/slow-conversation/on') conversationDelay = 2000;

@@ -2,9 +2,10 @@
 import SwiftUI
 
 /// Work's task list (owner, 2026-11-11: 「タスクがめちゃくちゃ見にくい」).
-/// Sections by genre (or due date, assignee, priority) that fold, a circle
-/// that completes a task in one tap, quick filters as glass chips, and rows
-/// that show only what is set. The sections are worked out once per change
+/// Sections by genre (or due date, assignee, priority) that fold, a box that
+/// picks a task and a button under the controls that completes the picked
+/// ones (owner, 2026-11-12), quick filters as glass chips, and rows that show
+/// only what is set. The sections are worked out once per change
 /// of their inputs (`LAATaskBoard`), not on every redraw, and a refresh that
 /// brings the same tasks changes nothing on screen.
 struct LAALinearTasksView: View {
@@ -41,10 +42,12 @@ struct LAALinearTasksView: View {
     @State private var desktopSelection: DesktopSelection?
     @State private var desktopSearch = ""
     @State private var reloadID = 0
-    /// The row whose circle was just ticked. It completes after a moment, so
-    /// a second tap takes it back, as in Things.
-    @State private var checkedID: String?
-    @State private var hold: Task<Void, Never>?
+    /// The rows whose boxes are ticked. Picking writes nothing; the batch
+    /// bar's button completes them.
+    @State private var picks = LAATaskPicks()
+    @State private var batchProgress: LAATaskBatchProgress?
+    /// The picked tasks waiting on the confirmation a session asks for.
+    @State private var confirmingBatch: [LAALinearTask]?
     @AppStorage(LAALinearTaskFilter.storageKey) private var filterRaw = LAALinearTaskFilter.related.rawValue
     @AppStorage(LAATaskGrouping.storageKey) private var groupingRaw = LAATaskGrouping.genre.rawValue
     @AppStorage(LAATaskFolding.storageKey) private var foldedRaw = ""
@@ -57,8 +60,6 @@ struct LAALinearTasksView: View {
     private enum DesktopSelection: Equatable {
         case task(String)
     }
-    /// How long a ticked circle waits before the completion is sent.
-    static let completionHold: Duration = .milliseconds(1400)
 
     private var journalKey: ComposerDraftKey {
         LAAWorkDrafts.key(deviceID: bridge.deviceID ?? "unpaired", target: "linear-owner-operation")
@@ -119,6 +120,12 @@ struct LAALinearTasksView: View {
                 desktopSelection = .task(first)
             }
         }
+        // A filter, a search, a fold or a completion that takes a picked row
+        // off the screen also unpicks it.
+        .onChange(of: visibleIDs) { _, ids in
+            guard batchProgress == nil else { return }
+            picks.keep(only: ids)
+        }
         .onChange(of: createID, initial: true) { _, value in
             guard value > 0, !busy, pending == nil else { return }
             // A new task belongs to the open list, so creating leaves the archive.
@@ -143,7 +150,7 @@ struct LAALinearTasksView: View {
             do { try await Task.sleep(for: .seconds(4)) } catch { return }
             notice = nil
         }
-        .sensoryFeedback(.success, trigger: checkedID) { _, new in new != nil }
+        .sensoryFeedback(.selection, trigger: picks)
         .sheet(item: $taskRoute.target) { target in
             NavigationStack {
                 LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
@@ -195,17 +202,41 @@ struct LAALinearTasksView: View {
             Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
             label: { Text(verbatim: "結果を確認して閉じる") }
         } message: { Text(verbatim: "Linearで反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
-        .onDisappear { commitHeldCompletion() }
     }
 
     // MARK: Shared pieces
 
     private var controls: some View {
-        LAATaskControls(grouping: groupingBinding, quick: $quick, counts: board.counts, showsQuick: !archivedOnly,
-                        allFolded: !board.sections.isEmpty && board.sections.allSatisfy { folded.contains($0.id) },
-                        foldAll: { fold in setFolded(fold ? Set(board.sections.map(\.id)) : []) }) {
-            filterMenu
+        VStack(alignment: .leading, spacing: 0) {
+            LAATaskControls(grouping: groupingBinding, quick: $quick, counts: board.counts, showsQuick: !archivedOnly,
+                            allFolded: !board.sections.isEmpty && board.sections.allSatisfy { folded.contains($0.id) },
+                            foldAll: { fold in setFolded(fold ? Set(board.sections.map(\.id)) : []) }) {
+                filterMenu
+            }
+            // Under the まとめ方 and the chips, only while something is picked.
+            if !archivedOnly, !picks.isEmpty || batchProgress != nil {
+                LAATaskBatchBar(count: batchProgress?.total ?? picks.count, progress: batchProgress,
+                                enabled: bridge.status == .paired && !locked,
+                                clear: { withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { picks.clear() } },
+                                complete: completeSelected)
+                    .padding(.top, LAASpacing.x1)
+                    // On the bar, so the popover points at the button pressed.
+                    .confirmationDialog(Text(verbatim: LAATaskRunCopy.batchTitle(count: confirmingBatch?.count ?? 0)),
+                                        isPresented: Binding(get: { confirmingBatch != nil },
+                                                             set: { if !$0 { confirmingBatch = nil } }),
+                                        titleVisibility: .visible) {
+                        Button {
+                            if let tasks = confirmingBatch { completeAll(tasks) }
+                            confirmingBatch = nil
+                        } label: { Text(verbatim: "完了") }
+                        Button(role: .cancel) { confirmingBatch = nil } label: { Text(verbatim: LAACopy.cancel) }
+                    } message: {
+                        Text(verbatim: LAATaskRunCopy.batchMessage(for: confirmingBatch ?? []))
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: picks.isEmpty)
     }
 
     /// The list's one pulldown, labelled with the range the rows below are in.
@@ -249,8 +280,8 @@ struct LAALinearTasksView: View {
     }
 
     private func rowView(_ row: LAATaskRowModel, selected: Bool = false) -> some View {
-        LAATaskRow(row: row, showsGenre: grouping != .genre, checked: checkedID == row.id, selected: selected,
-                   desktop: laaDesktop, toggle: { toggleCheck(row) }, open: { open(row) })
+        LAATaskRow(row: row, showsGenre: grouping != .genre, picked: picks.contains(row.id), selected: selected,
+                   desktop: laaDesktop, toggle: { togglePick(row) }, open: { open(row) })
             .equatable()
     }
 
@@ -346,8 +377,8 @@ struct LAALinearTasksView: View {
         let task = row.task
         return rowView(row)
             .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.x4, bottom: 0, trailing: LAASpacing.x4))
-            .listRowBackground(LAAColor.surface)
-            // The separator starts under the number, not under the circle.
+            .listRowBackground(picks.contains(row.id) ? LAAColor.selectionFill : LAAColor.surface)
+            // The separator starts under the number, not under the box.
             .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] + 34 }
             .contextMenu {
                 if archivedOnly {
@@ -371,7 +402,7 @@ struct LAALinearTasksView: View {
                     }.disabled(locked)
                 }
             }
-            .disabled(locked && checkedID != row.id)
+            .disabled(locked)
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if archivedOnly {
                     Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
@@ -463,9 +494,13 @@ struct LAALinearTasksView: View {
             .onAppear { listFocused = true }
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
-            .onKeyPress(.escape) { desktopSelection = nil; return .handled }
-            // No key completes a task: the list takes focus with the first row
-            // selected, so a stray space would tick it. Completion is a click.
+            .onKeyPress(.escape) {
+                if !picks.isEmpty, batchProgress == nil { picks.clear() } else { desktopSelection = nil }
+                return .handled
+            }
+            // No key picks or completes a task: the list takes focus with the
+            // first row open, so a stray key must not act on it. Picking is a
+            // click on the box and completing a click on the batch button.
             .onKeyPress(.return) {
                 if desktopSelection == nil, let first = visibleIDs.first { desktopSelection = .task(first) }
                 return .handled
@@ -504,7 +539,7 @@ struct LAALinearTasksView: View {
                     Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
                 }
             }
-            .disabled(locked && checkedID != row.id)
+            .disabled(locked)
             .help(Text(verbatim: task.title))
     }
 
@@ -532,33 +567,64 @@ struct LAALinearTasksView: View {
         }
     }
 
-    // MARK: Completion from the circle
+    // MARK: Picking and the batch button
 
-    /// One tap ticks the circle; the completion leaves after a moment, and a
-    /// second tap in that moment takes it back. A task whose session would be
-    /// archived still asks first, and a running one says why it cannot.
-    private func toggleCheck(_ row: LAATaskRowModel) {
-        if checkedID == row.id, hold != nil {
-            hold?.cancel(); hold = nil; checkedID = nil
-            return
-        }
-        guard bridge.status == .paired, !locked, checkedID == nil, !row.task.isArchived else { return }
-        if let reason = row.task.completionBlockedReason { notice = reason; return }
-        if row.completionAsks { completing = row.task; return }
-        checkedID = row.id
-        let task = row.task
-        hold = Task { @MainActor in
-            do { try await Task.sleep(for: Self.completionHold) } catch { return }
-            hold = nil
-            complete(task)
-        }
+    /// The box only picks: nothing is written until the batch button. A
+    /// running task says why it cannot be picked.
+    private func togglePick(_ row: LAATaskRowModel) {
+        guard batchProgress == nil, !row.task.isArchived, row.task.isOpen else { return }
+        if !picks.contains(row.id), let reason = row.task.completionBlockedReason { notice = reason; return }
+        picks.toggle(row.id)
     }
 
-    /// Leaving the list does not lose a ticked circle: it is sent at once.
-    private func commitHeldCompletion() {
-        guard let hold, let id = checkedID, let task = items.first(where: { $0.id == id }) else { return }
-        hold.cancel(); self.hold = nil
-        complete(task)
+    /// The picked rows that are on screen, in screen order, as the list has
+    /// them now (the latest `updatedAt` for If-Match).
+    private var pickedTasks: [LAALinearTask] {
+        picks.ordered(in: visibleIDs).compactMap { id in items.first { $0.id == id } }
+    }
+
+    /// Completes every picked task. Plain tasks go at once (the button is the
+    /// second step); when one has a session to archive, one confirmation
+    /// names them all first, as a single completion does.
+    private func completeSelected() {
+        let tasks = pickedTasks
+        guard !tasks.isEmpty, bridge.status == .paired, !locked else { return }
+        if let blocked = tasks.first(where: { $0.completionBlockedReason != nil }) {
+            notice = blocked.completionBlockedReason
+            picks.remove(blocked.id)
+            return
+        }
+        if tasks.contains(where: { $0.run?.sessionId?.isEmpty == false }) { confirmingBatch = tasks; return }
+        completeAll(tasks)
+    }
+
+    /// One after another on the protected path. Each confirmed completion
+    /// leaves the list and the picks at once; a refused one stays picked
+    /// with the reason, and an unknown outcome stops there, keeping the rest
+    /// picked and its request on the device for the retry.
+    private func completeAll(_ tasks: [LAALinearTask]) {
+        guard !tasks.isEmpty, bridge.status == .paired, !busy, pending == nil else { return }
+        busy = true
+        failure = nil
+        batchProgress = LAATaskBatchProgress(done: 0, total: tasks.count)
+        Task {
+            let result = await LAALinearTaskCompletion.completeAll(tasks, bridge: bridge, drafts: drafts,
+                                                                   key: journalKey) { task, outcome in
+                batchProgress?.done += 1
+                guard outcome == .completed else { return }
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                    items.removeAll { $0.id == task.id }
+                    picks.remove(task.id)
+                }
+            }
+            batchProgress = nil
+            busy = false
+            await load(quiet: true)
+            picks.keep(only: visibleIDs)
+            let failed = tasks.compactMap { task in result.failed[task.id].map { (task, $0) } }
+            failure = LAATaskRunCopy.batchFailure(completed: result.completed.count, failed: failed,
+                                                  unknown: result.unknown.flatMap { id in tasks.first { $0.id == id } })
+        }
     }
 
     private func submit(method: String, id: String, body: Data?, version: String?, action: String? = nil) {
@@ -593,8 +659,8 @@ struct LAALinearTasksView: View {
                 detail = nil
                 await load(quiet: true)
             case .failed(let message):
-                failure = message
                 await load(quiet: true)
+                failure = message
             case .unknown:
                 failure = "保存結果を確認できません。接続を確認して、もう一度お試しください。"
             }
@@ -650,22 +716,24 @@ struct LAALinearTasksView: View {
         }
     }
 
-    /// Completing from a row or the detail: one confirmation, then the same
+    /// Completing from a row's swipe or menu: one confirmation, then the same
     /// protected request path as every other task write.
     private func complete(_ task: LAALinearTask) {
-        guard bridge.status == .paired, !busy, pending == nil else { if checkedID == task.id { checkedID = nil }; return }
-        if let reason = task.completionBlockedReason { notice = reason; if checkedID == task.id { checkedID = nil }; return }
+        guard bridge.status == .paired, !busy, pending == nil else { return }
+        if let reason = task.completionBlockedReason { notice = reason; return }
         busy = true
+        failure = nil
         Task {
-            defer { busy = false; if checkedID == task.id { checkedID = nil } }
+            defer { busy = false }
             switch await LAALinearTaskCompletion.complete(task, bridge: bridge, drafts: drafts, key: journalKey) {
             case .completed:
                 items.removeAll { $0.id == task.id }
+                picks.remove(task.id)
                 detail = nil
                 await load(quiet: true)
             case .failed(let message):
-                failure = message
                 await load(quiet: true)
+                failure = message
             case .unknown:
                 failure = "保存結果を確認できません。接続を確認して、もう一度お試しください。"
             }
@@ -696,7 +764,10 @@ struct LAALinearTasksView: View {
             let changed = page.items != items
             if changed { items = page.items }
             if !loaded { loaded = true }
-            if failure != nil { failure = nil }
+            // A quiet read (the 15-second refresh, the read after a write)
+            // leaves a write's refusal on screen: only a read the owner asked
+            // for clears it. A failed quiet read never sets one either.
+            if !quiet, failure != nil { failure = nil }
             if changed, let device {
                 let snapshot = LAALinearTaskCache.OwnerSnapshot(items: page.items)
                 let scope = archivedOnly ? "archive" : "owner"

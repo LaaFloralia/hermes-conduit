@@ -240,6 +240,70 @@ final class LAATaskRunTests: XCTestCase {
         }
     }
 
+    /// The batch button's path: one request per task, each with its own key
+    /// and If-Match; a refusal is kept and the rest go on.
+    func testBatchCompletesEachAndKeepsGoingPastARefusal() async throws {
+        let refused = "0b5b9a76-3a0e-4d6f-9c11-4c0d0d2b6a02"
+        let server = try LoopbackHTTPServer.start { request in
+            let id = String(request.path.split(separator: "/")[2])
+            if id == refused {
+                return .json(status: 412, body: #"{"error":{"code":"precondition_failed","message":"no","retryable":false}}"#)
+            }
+            return .json(status: 200, body: #"{"data":{"id":"\#(id)","completed":true,"sessionArchived":false},"requestId":"test"}"#)
+        }
+        defer { server.stop() }
+        let bridge = LAABridgeSession(credentialsForTesting:
+            LAABridgeCredentials(baseURL: URL(string: "http://127.0.0.1:\(server.port)")!, deviceID: "test", token: "test"))
+        let drafts = ComposerDraftStore(capacity: .max, fileURL: temporaryFile())
+        let key = LAAWorkDrafts.key(deviceID: "test", target: "linear-owner-operation")
+        let rows = [task(id: "0b5b9a76-3a0e-4d6f-9c11-4c0d0d2b6a01"), task(id: refused),
+                    task(id: "0b5b9a76-3a0e-4d6f-9c11-4c0d0d2b6a03")]
+        var seen: [String] = []
+        let result = await LAALinearTaskCompletion.completeAll(rows, bridge: bridge, drafts: drafts, key: key) { task, _ in
+            seen.append(task.id)
+        }
+        XCTAssertEqual(seen, rows.map(\.id))
+        XCTAssertEqual(result.completed, [rows[0].id, rows[2].id])
+        XCTAssertEqual(result.failed[refused], "Linearで更新されています。読み直してから完了してください。")
+        XCTAssertNil(result.unknown)
+        XCTAssertNil(LAAWorkDrafts.pending(drafts, key: key))
+        XCTAssertEqual(server.receivedRequests.count, 3)
+        XCTAssertEqual(Set(server.receivedRequests.compactMap { $0.headers["idempotency-key"] }).count, 3,
+                       "Each task has its own key")
+    }
+
+    /// An unknown outcome stops the batch: the rest are not sent, and the
+    /// next completion of another task does not reuse its key.
+    func testBatchStopsAtAnUnknownOutcome() async throws {
+        let server = try LoopbackHTTPServer.start { _ in
+            .json(status: 500, body: #"{"error":{"code":"unavailable","message":"later","retryable":true}}"#)
+        }
+        defer { server.stop() }
+        let bridge = LAABridgeSession(credentialsForTesting:
+            LAABridgeCredentials(baseURL: URL(string: "http://127.0.0.1:\(server.port)")!, deviceID: "test", token: "test"))
+        let drafts = ComposerDraftStore(capacity: .max, fileURL: temporaryFile())
+        let key = LAAWorkDrafts.key(deviceID: "test", target: "linear-owner-operation")
+        let rows = [task(id: "0b5b9a76-3a0e-4d6f-9c11-4c0d0d2b6a01"), task(id: "0b5b9a76-3a0e-4d6f-9c11-4c0d0d2b6a02")]
+        let result = await LAALinearTaskCompletion.completeAll(rows, bridge: bridge, drafts: drafts, key: key)
+        XCTAssertEqual(result.unknown, rows[0].id)
+        XCTAssertEqual(result.skipped, [rows[1].id])
+        XCTAssertEqual(server.receivedRequests.count, 1)
+        XCTAssertNotNil(LAAWorkDrafts.pending(drafts, key: key), "The unknown request stays for its retry")
+        let other = await LAALinearTaskCompletion.complete(rows[1], bridge: bridge, drafts: drafts, key: key)
+        XCTAssertEqual(other, .failed("前の変更の結果を確認してから完了してください。"))
+        XCTAssertEqual(server.receivedRequests.count, 1, "Another task never repeats the first one's key")
+    }
+
+    func testBatchConfirmationNamesTheSessions() {
+        XCTAssertEqual(LAATaskRunCopy.batchTitle(count: 3), "選択した3件を完了にしますか？")
+        XCTAssertEqual(LAATaskRunCopy.batchMessage(for: [task(), task()]), "一覧から消し、記録をHQに保管します。")
+        XCTAssertEqual(LAATaskRunCopy.batchMessage(for: [task(state: "queued", session: "ses_0123456789abcdef", ref: "S5"),
+                                                         task(state: "stopped", session: "ses_0123456789abcde0", ref: "S8"), task()]),
+                       "一覧から消し、記録をHQに保管します。セッション（S5・S8）はアーカイブします。")
+        XCTAssertEqual(LAATaskRunCopy.batchMessage(for: [task(state: "queued", session: "ses_0123456789abcdef")]),
+                       "一覧から消し、記録をHQに保管します。セッション1件はアーカイブします。")
+    }
+
     private func temporaryFile() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("laa-task-run-\(UUID().uuidString).json")
     }
