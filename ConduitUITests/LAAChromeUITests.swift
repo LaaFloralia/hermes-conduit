@@ -169,7 +169,14 @@ final class LAAChromeUITests: XCTestCase {
             let repair = app.buttons["laa.settings.mac.repair"]
             XCTAssertTrue(repair.isHittable)
             repair.tap()
-            XCTAssertTrue(app.navigationBars["Macに接続"].waitForExistence(timeout: 10))
+            if arguments.contains("-LAA_UI_TEST_BRIDGE_OFFLINE") {
+                // The saved pairing survives an unreachable Mac. Retry keeps the settings card open.
+                expectation(for: predicate, evaluatedWith: value)
+                waitForExpectations(timeout: 10)
+                XCTAssertFalse(app.secureTextFields["laa.bridge.code"].exists)
+            } else {
+                XCTAssertTrue(app.navigationBars["Macに接続"].waitForExistence(timeout: 10))
+            }
             app.terminate()
         }
     }

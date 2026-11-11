@@ -66,13 +66,12 @@ final class LAADecisionUITests: XCTestCase {
         (fixture("/state")?["answered"] as? [[String: Any]])?.first { $0["id"] as? String == id }
     }
 
-    /// With something waiting the hub opens on the board; choosing the
-    /// recommended option sends it, shows the short confirmation and the row
-    /// leaves the list.
+    /// The decision board sends the recommended choice, shows confirmation,
+    /// and moves the row to the answered section.
     func testChooseRecommendedDeliversAndLeavesTheBoard() throws {
         let app = try launch(board: "normal")
         XCTAssertTrue(row(hpID, app).waitForExistence(timeout: 20), "The hub did not open on the board")
-        XCTAssertTrue(app.navigationBars["Decisions"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["work.decisions"].firstMatch.exists)
         XCTAssertTrue(row(hpID, app).label.hasPrefix("判断、J1、HPの公開日を決める、推奨 11月15日（土）に公開"))
         XCTAssertTrue(app.buttons["work.decision.retry.\(failedID)"].exists, "A failed delivery shows its retry on the row")
         screenshot("ui-decisions-list-light", app)
@@ -91,7 +90,8 @@ final class LAADecisionUITests: XCTestCase {
 
         XCTAssertTrue(app.descendants(matching: .any)["work.decision.sent"].firstMatch.waitForExistence(timeout: 10))
         screenshot("ui-decisions-sent-light", app)
-        XCTAssertTrue(row(hpID, app).waitForNonExistence(timeout: 10), "The answered row stays on the board")
+        XCTAssertTrue(row(hpID, app).waitForNonExistence(timeout: 10), "The row still awaits an answer")
+        XCTAssertTrue(app.buttons["work.decision.answered.\(hpID)"].firstMatch.exists)
         XCTAssertTrue(row(cardID, app).exists)
         XCTAssertEqual(answered(hpID)?["optionIndex"] as? Int, 0)
         XCTAssertEqual(answered(hpID)?["delivery"] as? String, "delivered")
