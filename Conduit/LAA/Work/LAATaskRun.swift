@@ -99,6 +99,38 @@ enum LAATaskRunCopy {
         }
         return message
     }
+
+    /// The picked tasks' confirmation, asked only when one of them has a
+    /// session to archive: 「選択した3件を完了にしますか？」.
+    static func batchTitle(count: Int) -> String { "選択した\(count)件を完了にしますか？" }
+    /// The batch bar's button, and its words while the batch is sent.
+    static func batchButton(count: Int) -> String { "選択した\(count)件を完了にする" }
+    static func batchProgress(done: Int, total: Int) -> String { "完了にしています（\(done)/\(total)）" }
+
+    static func batchMessage(for tasks: [LAALinearTask]) -> String {
+        var message = "一覧から消し、記録をHQに保管します。"
+        let sessions = tasks.filter { $0.run?.sessionId != nil }
+        guard !sessions.isEmpty else { return message }
+        let refs = sessions.compactMap { $0.run?.sessionRef }.filter { !$0.isEmpty }
+        if refs.count == sessions.count {
+            message += "セッション（\(refs.joined(separator: "・"))）はアーカイブします。"
+        } else {
+            message += "セッション\(sessions.count)件はアーカイブします。"
+        }
+        return message
+    }
+
+    /// What is left on screen after a batch that did not finish every task.
+    static func batchFailure(completed: Int, failed: [(LAALinearTask, String)], unknown: LAALinearTask?) -> String? {
+        if let unknown {
+            let name = LAATaskNumberLabel.number(unknown) ?? unknown.title
+            return "\(completed)件を完了しました。\(name)の結果を確認できないため、残りは止めました。接続を確認して、もう一度お試しください。"
+        }
+        guard let first = failed.first else { return nil }
+        let name = LAATaskNumberLabel.number(first.0) ?? first.0.title
+        let others = failed.count > 1 ? "ほか\(failed.count - 1)件" : ""
+        return "\(completed)件を完了しました。\(name)\(others)は完了できませんでした：\(first.1)"
+    }
 }
 
 extension LAALinearTask {
@@ -225,7 +257,9 @@ enum LAALinearTaskCompletion {
             // an edit or an archive as if it were this completion.
             if let (bytes, _) = LAAWorkDrafts.request(pending),
                let stored = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes),
-               stored.action != "complete" {
+               stored.action != "complete" || stored.id.lowercased() != task.id.lowercased() {
+                // Nor another task's completion: repeating its key would
+                // finish that task, not this one.
                 return .failed("前の変更の結果を確認してから完了してください。")
             }
             item = pending
@@ -239,6 +273,42 @@ enum LAALinearTaskCompletion {
             item = reserved
         }
         return await send(item, bridge: bridge, drafts: drafts, device: device)
+    }
+
+    struct BatchResult: Equatable {
+        var completed: [String] = []
+        /// Refusals the Bridge confirmed: nothing changed for these.
+        var failed: [String: String] = [:]
+        /// The task whose outcome is unknown; the batch stopped there, so its
+        /// request stays on the device and the rest were not sent.
+        var unknown: String?
+        /// Not sent because an earlier outcome was unknown.
+        var skipped: [String] = []
+    }
+
+    /// The picked tasks, one after another on the same protected path. A
+    /// refusal is kept and the next one goes on; an unknown outcome stops the
+    /// batch, because the next request would find this one still on the
+    /// device. `each` reports every outcome as it lands, so a row leaves the
+    /// list the moment its own completion is confirmed.
+    static func completeAll(_ tasks: [LAALinearTask], bridge: LAABridgeSession, drafts: ComposerDraftStore,
+                            key: ComposerDraftKey,
+                            each: (LAALinearTask, Outcome) -> Void = { _, _ in }) async -> BatchResult {
+        var result = BatchResult()
+        for (index, task) in tasks.enumerated() {
+            if Task.isCancelled { result.skipped = tasks[index...].map(\.id); break }
+            let outcome = await complete(task, bridge: bridge, drafts: drafts, key: key)
+            each(task, outcome)
+            switch outcome {
+            case .completed: result.completed.append(task.id)
+            case .failed(let message): result.failed[task.id] = message
+            case .unknown:
+                result.unknown = task.id
+                result.skipped = tasks[(index + 1)...].map(\.id)
+                return result
+            }
+        }
+        return result
     }
 
     /// Repeats the request already on the device with its own key, so the

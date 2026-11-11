@@ -202,6 +202,132 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(completedIDs().contains(awaitingID))
     }
 
+    // MARK: Picking and the batch button (owner, 2026-11-12)
+
+    private let reviewID = "dce58a26-2f89-4d6a-b78e-01d07d485dbd"
+    private let draftID = "7a1c3d5e-1111-4a2b-9c3d-000000000016"
+    private let photoID = "7a1c3d5e-1111-4a2b-9c3d-000000000017"
+
+    private func pick(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        let box = app.buttons["work.task.select.\(id)"]
+        scrollTo(app, box)
+        XCTAssertTrue(box.waitForExistence(timeout: 15), "box \(id)")
+        box.tap()
+        return box
+    }
+
+    /// The batch bar sits under the controls at the top of the list.
+    private func batchButton(_ app: XCUIApplication) -> XCUIElement {
+        let button = app.buttons["work.tasks.completeSelected"]
+        var moves = 0
+        while !(button.exists && button.isHittable) && moves < 6 { app.swipeDown(); moves += 1 }
+        return button
+    }
+
+    /// A tick only picks: nothing reaches the Bridge until the button, which
+    /// then completes every picked task and leaves.
+    func testPickingWritesNothingAndTheButtonCompletesThem() throws {
+        let app = try launch()
+        tasks(app)
+        XCTAssertTrue(row(app, "次の打ち合わせを確認する").waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["work.tasks.completeSelected"].exists, "Nothing picked, no button")
+
+        // A second tap unpicks.
+        let photo = pick(app, photoID)
+        XCTAssertTrue(photo.isSelected)
+        photo.tap()
+        XCTAssertFalse(photo.isSelected)
+        XCTAssertFalse(app.buttons["work.tasks.completeSelected"].waitForExistence(timeout: 2))
+
+        let review = pick(app, reviewID)
+        let draft = pick(app, draftID)
+        XCTAssertTrue(review.isSelected)
+        XCTAssertTrue(draft.isSelected)
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(completedIDs(), [], "Picking writes nothing")
+
+        let button = batchButton(app)
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        XCTAssertTrue(button.label.contains("選択した2件を完了にする"), button.label)
+        XCTAssertEqual(app.staticTexts["work.tasks.selectionCount"].label, "2件を選択中")
+        shot(app, "c-tasks-picked-light")
+        button.tap()
+        XCTAssertTrue(button.waitForNonExistence(timeout: 15))
+        XCTAssertEqual(Set(completedIDs()), [reviewID, draftID])
+        XCTAssertTrue(row(app, "今週の振り返りをまとめる").waitForNonExistence(timeout: 10))
+        XCTAssertFalse(row(app, "週報の下書き").exists)
+        XCTAssertTrue(row(app, "写真の選定").exists, "An unpicked task stays")
+    }
+
+    /// The clear button drops every pick without writing.
+    func testClearDropsThePicks() throws {
+        let app = try launch()
+        tasks(app)
+        _ = pick(app, reviewID)
+        _ = pick(app, photoID)
+        let clear = app.buttons["work.tasks.clearSelection"]
+        var moves = 0
+        while !(clear.exists && clear.isHittable) && moves < 6 { app.swipeDown(); moves += 1 }
+        clear.tap()
+        XCTAssertTrue(app.buttons["work.tasks.completeSelected"].waitForNonExistence(timeout: 5))
+        XCTAssertEqual(completedIDs(), [])
+    }
+
+    /// A picked task with a session asks once for all of them, naming it.
+    func testPickedTaskWithASessionAsksFirst() throws {
+        let app = try launch()
+        tasks(app)
+        _ = pick(app, awaitingID)
+        _ = pick(app, reviewID)
+        batchButton(app).tap()
+        XCTAssertTrue(app.staticTexts["選択した2件を完了にしますか？"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["一覧から消し、記録をHQに保管します。セッション（S8）はアーカイブします。"].exists)
+        XCTAssertEqual(completedIDs(), [], "Nothing is sent before the confirmation")
+        shot(app, "c-tasks-picked-confirm-light")
+        app.sheets.buttons["完了"].firstMatch.tap()
+        XCTAssertTrue(row(app, "名刺の紙を決める").waitForNonExistence(timeout: 15))
+        XCTAssertEqual(Set(completedIDs()), [awaitingID, reviewID])
+    }
+
+    /// One refusal in a batch: the others complete, the refused one stays on
+    /// screen and stays picked, with the reason.
+    func testOneRefusalKeepsTheOthersAndItsPick() throws {
+        let app = try launch()
+        fixture("/tasks/refuse-complete/\(draftID)")
+        tasks(app)
+        _ = pick(app, reviewID)
+        let draft = pick(app, draftID)
+        batchButton(app).tap()
+        XCTAssertTrue(row(app, "今週の振り返りをまとめる").waitForNonExistence(timeout: 15))
+        // The list row may merge the line into one element: match any kind.
+        let failure = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "T16は完了できませんでした")).firstMatch
+        var up = 0
+        while !failure.exists && up < 6 { app.swipeDown(); up += 1 }
+        XCTAssertTrue(failure.waitForExistence(timeout: 10))
+        shot(app, "c-tasks-picked-refusal-light")
+        XCTAssertEqual(completedIDs(), [reviewID])
+        // The list is lazy: bring the refused row on screen before reading it.
+        scrollTo(app, draft)
+        XCTAssertTrue(row(app, "週報の下書き").exists)
+        XCTAssertTrue(draft.isSelected, "The refused task stays picked for a retry")
+        let count = app.staticTexts["work.tasks.selectionCount"]
+        var moves = 0
+        while !count.exists && moves < 6 { app.swipeDown(); moves += 1 }
+        XCTAssertEqual(count.label, "1件を選択中")
+    }
+
+    /// A running task's box refuses the pick and says why.
+    func testRunningTaskCannotBePicked() throws {
+        let app = try launch()
+        tasks(app)
+        let box = pick(app, runningID)
+        XCTAssertFalse(box.isSelected)
+        XCTAssertTrue(app.descendants(matching: .any)["work.tasks.notice"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["work.tasks.completeSelected"].exists)
+        XCTAssertEqual(completedIDs(), [])
+    }
+
     /// The status label is a link to its session, not decoration.
     func testStatusLabelOpensItsSession() throws {
         let app = try launch()

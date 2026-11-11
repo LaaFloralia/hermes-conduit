@@ -431,6 +431,36 @@ enum LAATaskPriorityGlyph {
     }
 }
 
+/// The tasks whose boxes are ticked: a choice on the device only, never a
+/// write. Only rows on screen stay picked (a filter, a search, a fold or a
+/// completion drops the rest), so the button's count is always what the
+/// owner can see.
+struct LAATaskPicks: Equatable {
+    private(set) var ids: Set<String> = []
+
+    var isEmpty: Bool { ids.isEmpty }
+    var count: Int { ids.count }
+    func contains(_ id: String) -> Bool { ids.contains(id) }
+
+    mutating func toggle(_ id: String) {
+        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+    }
+
+    mutating func remove(_ id: String) { ids.remove(id) }
+    mutating func clear() { ids = [] }
+
+    /// Drops what is no longer on screen. Returns whether anything changed.
+    @discardableResult mutating func keep(only visible: [String]) -> Bool {
+        let next = ids.intersection(visible)
+        guard next != ids else { return false }
+        ids = next
+        return true
+    }
+
+    /// The picked rows in screen order, the order they are sent in.
+    func ordered(in visible: [String]) -> [String] { visible.filter(ids.contains) }
+}
+
 /// Which sections the owner folded, per way of grouping, kept on the device.
 enum LAATaskFolding {
     static let storageKey = "laa.work.taskFolded"

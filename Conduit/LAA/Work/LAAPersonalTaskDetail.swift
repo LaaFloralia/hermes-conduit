@@ -49,12 +49,15 @@ struct LAAPersonalTaskDetailView: View {
                                     .foregroundStyle(LAAColor.secondaryText)
                                     .accessibilityIdentifier("work.task.detail.ref")
                                 if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
+                                Spacer(minLength: LAASpacing.x2)
+                                if let ownerTask, ownerTask.isOpen { completeButton(ownerTask) }
                             }
                             Text(verbatim: task.title)
                                 .font(LAAType.title(task.title, size: laaDesktop ? 30 : 26, relativeTo: .title))
                                 .foregroundStyle(LAAColor.text)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("work.task.detail.title")
+                            if let ownerTask { completionNotes(ownerTask) }
                         }
                         properties(task)
                         if let ownerTask { runCard(ownerTask) }
@@ -101,9 +104,59 @@ struct LAAPersonalTaskDetailView: View {
         .task(id: "\(id):\(bridge.revision)") { task = nil; viewerId = nil; await load() }
     }
 
+    /// 完了 beside the number, at the size of the list's glass capsules: a
+    /// quiet control, not a slab under the run card (owner, 2026-11-12:
+    /// 「ダサい・でかい」). It still asks first. While the session is running
+    /// it is disabled, and the run card says why.
+    private func completeButton(_ owner: LAALinearTask) -> some View {
+        let blocked = owner.completionBlockedReason != nil
+        return Button { confirmingComplete = true } label: {
+            HStack(spacing: 5) {
+                if completing {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .semibold))
+                }
+                Text(verbatim: completing ? "保存中" : "完了にする").fontWeight(.medium)
+            }
+            .laaTextStyle(.secondary)
+            .foregroundStyle(blocked ? LAAColor.secondaryText : LAAColor.link)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 30)
+            .laaGlass(in: Capsule())
+            .opacity(blocked ? 0.6 : 1)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .disabled(completing || blocked)
+        .accessibilityLabel(Text(verbatim: "完了にする"))
+        .accessibilityHint(Text(verbatim: owner.completionBlockedReason ?? ""))
+        .accessibilityIdentifier("work.task.detail.complete")
+    }
+
+    /// A completion that did not go through, under the title it belongs to.
+    @ViewBuilder private func completionNotes(_ owner: LAALinearTask) -> some View {
+        if let completionFailure {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                Text(verbatim: completionFailure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("work.task.detail.completeFailure")
+                if completionUnknown, owner.isOpen {
+                    Button { Task { await complete(owner) } } label: {
+                        Text(verbatim: "もう一度確認").laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(completing)
+                }
+            }
+        }
+    }
+
     /// The Bridge's execution record: 担当, the model it started with, the
-    /// status the list shows, the session and the report. The 完了 button is
-    /// disabled while the session is running, with the reason beside it.
+    /// status the list shows, the session and the report. While the session
+    /// is running it says why 完了 is disabled.
     @ViewBuilder private func runCard(_ owner: LAALinearTask) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: "実行").fontWeight(.semibold)
@@ -134,25 +187,6 @@ struct LAAPersonalTaskDetailView: View {
             if let reason = owner.completionBlockedReason {
                 Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .accessibilityIdentifier("work.task.detail.completeReason")
-            }
-            if owner.isOpen {
-                Button { confirmingComplete = true } label: {
-                    Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark") }
-                        .frame(minHeight: LAASpacing.minimumTouchTarget)
-                }
-                .buttonStyle(.bordered)
-                .disabled(completing || owner.completionBlockedReason != nil)
-                .accessibilityIdentifier("work.task.detail.complete")
-            }
-            if completing { Text(verbatim: "保存中").font(.caption) }
-            if let completionFailure {
-                Text(verbatim: completionFailure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("work.task.detail.completeFailure")
-                if completionUnknown, owner.isOpen {
-                    Button { Task { await complete(owner) } } label: { Text(verbatim: "もう一度確認") }
-                        .laaTextStyle(.secondary)
-                }
             }
         }.workCard()
     }

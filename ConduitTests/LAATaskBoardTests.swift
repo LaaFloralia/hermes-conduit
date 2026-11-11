@@ -173,6 +173,23 @@ final class LAATaskBoardTests: XCTestCase {
         XCTAssertEqual(LAATaskFolding.decode(""), [])
     }
 
+    func testPicksToggleKeepOnlyWhatIsOnScreenAndFollowItsOrder() {
+        var picks = LAATaskPicks()
+        XCTAssertTrue(picks.isEmpty)
+        picks.toggle("c"); picks.toggle("a"); picks.toggle("b")
+        picks.toggle("b")
+        XCTAssertEqual(picks.count, 2)
+        XCTAssertEqual(picks.ordered(in: ["a", "b", "c"]), ["a", "c"], "Sent in screen order")
+        // A filter or a fold takes "c" off the screen: it is unpicked.
+        XCTAssertTrue(picks.keep(only: ["a", "b"]))
+        XCTAssertEqual(picks.ordered(in: ["a", "b", "c"]), ["a"])
+        XCTAssertFalse(picks.keep(only: ["a", "b"]), "Nothing changed")
+        picks.remove("a")
+        XCTAssertTrue(picks.isEmpty)
+        picks.toggle("x"); picks.clear()
+        XCTAssertTrue(picks.isEmpty)
+    }
+
     func testOlderBridgeTasksDecodeWithoutProjectOrLabels() throws {
         let json = #"{"id":"00000000-0000-4000-8000-000000000001","identifier":"BUS-1","title":"a","priority":0,"status":"todo","stateName":"Todo","updatedAt":"x"}"#
         let decoded = try JSONDecoder().decode(LAALinearTask.self, from: Data(json.utf8))

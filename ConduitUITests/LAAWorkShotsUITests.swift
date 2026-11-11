@@ -105,13 +105,16 @@ final class LAAWorkShotsUITests: XCTestCase {
         capture(app, "tasks-quick-attention-\(theme)")
         app.buttons["work.tasks.quick.all"].tap(); settle(1)
 
-        // A ticked circle, caught inside its moment, then taken back.
-        // T31, the second row of the first section.
-        let check = app.buttons["work.task.check.7a1c3d5e-2222-4a2b-9c3d-000000000101"]
-        if check.waitForExistence(timeout: 5), check.isHittable {
-            check.tap()
-            capture(app, "tasks-checked-\(theme)")
-            check.tap(); settle(1)
+        // Two picked boxes and the batch button under the controls, then
+        // cleared. T31 and T32, the second and third rows of the first section.
+        let picks = ["7a1c3d5e-2222-4a2b-9c3d-000000000101", "7a1c3d5e-2222-4a2b-9c3d-000000000102"]
+            .map { app.buttons["work.task.select.\($0)"] }
+        if picks.allSatisfy({ $0.waitForExistence(timeout: 5) && $0.isHittable }) {
+            picks.forEach { $0.tap() }
+            XCTAssertTrue(app.buttons["work.tasks.completeSelected"].waitForExistence(timeout: 5))
+            settle(1)
+            capture(app, "tasks-picked-\(theme)")
+            app.buttons["work.tasks.clearSelection"].tap(); settle(1)
         }
 
         let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "タスク一覧をジャンル別に整える")).firstMatch
@@ -120,6 +123,14 @@ final class LAAWorkShotsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["work.task.detail.title"].firstMatch.waitForExistence(timeout: 15))
         settle(1)
         capture(app, "tasks-detail-\(theme)")
+        // The detail's 完了にする still asks first; the shot is the question.
+        let complete = app.buttons["work.task.detail.complete"]
+        if complete.waitForExistence(timeout: 5), complete.isHittable {
+            complete.tap()
+            XCTAssertTrue(app.staticTexts["完了にしますか？"].waitForExistence(timeout: 5))
+            settle(1)
+            capture(app, "tasks-detail-confirm-\(theme)")
+        }
     }
 
     private func launch(_ theme: String, board: String? = nil, tasks: String? = nil) throws -> XCUIApplication {
