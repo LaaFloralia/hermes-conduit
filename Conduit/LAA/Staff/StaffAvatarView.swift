@@ -302,3 +302,26 @@ private enum LAAStaffStillCache {
     }
 }
 #endif
+
+#if LAA_BUILD
+/// A staff member's mascot as a small still for list rows (task assignees):
+/// the shared still cache only, no player, so a long list stays light.
+struct LAAStaffStill: View {
+    let staff: LAAStaff
+    var size: CGFloat = 18
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().interpolation(.high).scaledToFit()
+            } else {
+                Circle().fill(LAAColor.subtleSurface)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+        .task(id: staff) { image = await LAAStaffStillCache.load(profile: "laa-\(staff.rawValue)").image }
+    }
+}
+#endif

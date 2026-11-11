@@ -131,7 +131,7 @@ Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 | `GET|HEAD /v1/studio/media/{projectId}/{mediaKey}.{ext}` | Bearer + `studio:read` | 64桁のキーは不透明な識別子として転送する。Range 206・範囲外416。mp4・mp3は最大256 MiB、他の許可形式は最大128 MiB |
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
-| `GET /v1/linear-owner-tasks` | Bearer + `tasks:read` | 社長本人の未完了Linear課題だけ（team BUS・owner・Todoはアカウントから解決）。`?archived=only` はアーカイブ一覧。`{items,nextCursor}` |
+| `GET /v1/linear-owner-tasks` | Bearer + `tasks:read` | 社長本人の未完了Linear課題だけ（team BUS・owner・Todoはアカウントから解決）。`?archived=only` はアーカイブ一覧。`{items,nextCursor}`。各itemはLinearのプロジェクト `project:{id,name}` とラベル `labels:[{id,name,color}]`（20件まで）を、設定がある時だけ持つ（アプリのジャンル分けに使う） |
 | `POST /v1/linear-owner-tasks` | Bearer + `tasks:write` + `Idempotency-Key`（AI担当は `sessions:write` も） | `{id,title,description?,dueDate?,priority?,assignee?,profile?}` → 201。`id` はクライアント生成のUUID v4。同じUUID・同じ内容の再送は既存課題を返す。AI担当は作成時の本文で指示を固定し、作成後にMonetが取得（後からLinearで本文が変わっても会話へ渡さない） |
 | `GET /v1/linear-owner-tasks/{id}` | Bearer + `tasks:read` | 1件。他人・他team・委譲済み・ゴミ箱は404 |
 | `PATCH /v1/linear-owner-tasks/{id}` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{title?,description?,dueDate?,priority?}`。`If-Match` 欠落428、不一致412。アーカイブ済みは409 |

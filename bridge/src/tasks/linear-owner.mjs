@@ -51,6 +51,8 @@ const ISSUE_FIELDS = `
   assignee { id name }
   delegate { id name }
   team { id key name }
+  project { id name }
+  labels(first: 20) { nodes { id name color } }
 `;
 
 const VIEWER_QUERY = `query BridgeOwnerViewer($key: String!) {
@@ -166,6 +168,19 @@ function toTask(issue) {
   };
   if (typeof issue.dueDate === 'string' && issue.dueDate !== '') task.dueDate = issue.dueDate;
   if (typeof issue.url === 'string' && issue.url !== '') task.url = issue.url;
+  // The app groups the list by genre: Linear's project and labels name it
+  // before the title does. Sent only when set, so an unset task reads as before.
+  if (typeof issue.project?.id === 'string' && typeof issue.project?.name === 'string' && issue.project.name !== '') {
+    task.project = { id: issue.project.id, name: issue.project.name };
+  }
+  const labels = (Array.isArray(issue.labels?.nodes) ? issue.labels.nodes : [])
+    .filter((label) => typeof label?.name === 'string' && label.name !== '')
+    .map((label) => ({
+      id: typeof label.id === 'string' ? label.id : null,
+      name: label.name,
+      color: typeof label.color === 'string' ? label.color : null,
+    }));
+  if (labels.length > 0) task.labels = labels;
   return task;
 }
 

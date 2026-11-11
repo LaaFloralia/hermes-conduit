@@ -23,7 +23,8 @@ final class LAAWorkLinearUITests: XCTestCase {
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
-        XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 15))
+        // The title is the row's open button, so it is found by its label.
+        XCTAssertTrue(taskRow(app, "次の打ち合わせを確認する").waitForExistence(timeout: 15))
         return app
     }
 
@@ -54,8 +55,9 @@ final class LAAWorkLinearUITests: XCTestCase {
         // the Bridge before the save can be sent.
         XCTAssertTrue(app.descendants(matching: .any)["work.linear.model"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["work.linear.save"].tap()
-        XCTAssertTrue(app.buttons["UI確認タスク"].waitForExistence(timeout: 10))
-        app.buttons["UI確認タスク"].tap()
+        XCTAssertTrue(taskRow(app, "UI確認タスク").waitForExistence(timeout: 10))
+        // A row's tap opens its detail; editing is in the row's menu.
+        openEditor(app, taskRow(app, "UI確認タスク"))
         let editing = app.textFields["work.linear.title"].firstMatch
         let field = editing.exists ? editing : app.textViews["work.linear.title"].firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap(); field.typeText("更新")
@@ -63,11 +65,11 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertTrue(updatedTitle.contains("更新"))
         XCTAssertNotEqual(updatedTitle, "UI確認タスク")
         app.buttons["work.linear.save"].tap()
-        XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
+        XCTAssertTrue(taskRow(app, updatedTitle).waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["work.linear.complete.b9d2f664-cda3-4c56-8d39-c4d6df597254"].exists)
         XCTAssertTrue(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].waitForNonExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["保存結果を確認できませんでした。"].waitForNonExistence(timeout: 2))
-        let row = app.buttons[updatedTitle]
+        let row = taskRow(app, updatedTitle)
         row.swipeLeft()
         app.buttons["削除"].firstMatch.tap()
         let confirm = app.sheets.buttons["削除"]
@@ -75,22 +77,22 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["アーカイブに移り、あとで戻せます。"].exists)
         if app.sheets.buttons["Cancel"].exists { app.sheets.buttons["Cancel"].tap() }
         else { app.otherElements["PopoverDismissRegion"].tap() }
-        XCTAssertTrue(app.buttons[updatedTitle].exists)
-        app.buttons[updatedTitle].swipeLeft()
+        XCTAssertTrue(taskRow(app, updatedTitle).exists)
+        taskRow(app, updatedTitle).swipeLeft()
         app.buttons["削除"].firstMatch.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
-        XCTAssertTrue(app.buttons[updatedTitle].waitForNonExistence(timeout: 10))
+        XCTAssertTrue(taskRow(app, updatedTitle).waitForNonExistence(timeout: 10))
         // The archive is a choice in the list's own pulldown, shown in place.
         app.buttons["work.tasks.filter"].tap()
         app.buttons["work.linear.archive"].tap()
-        let archived = app.buttons[updatedTitle]
+        let archived = taskRow(app, updatedTitle)
         XCTAssertTrue(archived.waitForExistence(timeout: 10))
         archived.swipeLeft()
         app.buttons["戻す"].tap()
         XCTAssertTrue(archived.waitForNonExistence(timeout: 10))
         app.buttons["work.tasks.filter"].tap()
         app.buttons["work.tasks.filter.related"].tap()
-        XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
+        XCTAssertTrue(taskRow(app, updatedTitle).waitForExistence(timeout: 10))
 
     }
 
@@ -100,7 +102,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         var title = "次の打ち合わせを確認する"
         for _ in 0..<7 {
             let row = taskRow(app, title)
-            XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
+            XCTAssertTrue(row.waitForExistence(timeout: 10)); openEditor(app, row)
             let text = app.textFields["work.linear.title"].firstMatch
             let field = text.exists ? text : app.textViews["work.linear.title"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -180,6 +182,11 @@ final class LAAWorkLinearUITests: XCTestCase {
     }
     func testWorkScreensLight() throws { try capture("light") }
     func testWorkScreensDark() throws { try capture("dark") }
+    private func openEditor(_ app: XCUIApplication, _ row: XCUIElement) {
+        row.press(forDuration: 1.2)
+        let edit = app.buttons["編集"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
+    }
     private func taskRow(_ app: XCUIApplication, _ title: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
     }

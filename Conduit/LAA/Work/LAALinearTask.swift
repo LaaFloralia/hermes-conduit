@@ -17,6 +17,14 @@ struct LAALinearTask: Codable, Identifiable, Equatable {
     var ref: String? = nil
     /// The Bridge's execution record; absent from an older Bridge.
     var run: LAATaskRun? = nil
+    /// Linear's project and labels, which name the task's genre before its
+    /// title does. Absent from an older Bridge and from most of the owner's
+    /// tasks.
+    var project: Project? = nil
+    var labels: [Label]? = nil
+
+    struct Project: Codable, Equatable { let id: String; let name: String }
+    struct Label: Codable, Equatable { let id: String?; let name: String; let color: String? }
 
     var isArchived: Bool { archivedAt != nil }
     var isOpen: Bool { !isArchived && status != "done" && status != "canceled" }

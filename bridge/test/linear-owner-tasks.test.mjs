@@ -280,6 +280,34 @@ test('the list is only the owner\'s open tasks, across every page', async () => 
   }
 });
 
+test('a task carries its Linear project and labels only when they are set', async () => {
+  const fetchImpl = fakeLinear({
+    issues: [
+      issue({
+        id: uuid(1), identifier: 'BUS-201',
+        project: { id: 'project-app', name: 'LAAアプリ' },
+        labels: { nodes: [{ id: 'label-ui', name: 'UI', color: '#5E6AD2' }, { id: 'label-x', name: '', color: null }] },
+      }),
+      issue({ id: uuid(2), identifier: 'BUS-202', project: null, labels: { nodes: [] } }),
+    ],
+  });
+  const { bridge, token } = await bridgeWith(fetchImpl);
+  try {
+    const response = await bridge.request('/v1/linear-owner-tasks', { token });
+    assert.equal(response.status, 200);
+    const [withGenre, plain] = response.body.data.items;
+    assert.deepEqual(withGenre.project, { id: 'project-app', name: 'LAAアプリ' });
+    assert.deepEqual(withGenre.labels, [{ id: 'label-ui', name: 'UI', color: '#5E6AD2' }]);
+    assert.equal(Object.hasOwn(plain, 'project'), false);
+    assert.equal(Object.hasOwn(plain, 'labels'), false);
+    const list = fetchImpl.calls.find((call) => call.name === 'BridgeOwnerTasks');
+    assert.match(list.query, /project \{ id name \}/);
+    assert.match(list.query, /labels\(first: 20\) \{ nodes \{ id name color \} \}/);
+  } finally {
+    await bridge.close();
+  }
+});
+
 test('a row the filter should not have returned is still excluded', async () => {
   const config = async () => ({
     ok: true,

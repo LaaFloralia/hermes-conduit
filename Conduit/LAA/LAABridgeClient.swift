@@ -30,7 +30,9 @@ struct LAABridgeEndpoint {
             throw LAABridgeError.invalidAddress
         }
         var allowed = scheme == "https" && host.hasSuffix(".ts.net")
-        #if DEBUG && targetEnvironment(simulator)
+        // A Debug build on the simulator or the Mac (the window shots of
+        // scripts/laa/mac-screens.sh) may reach the local fixture.
+        #if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
         if scheme == "http" && ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host) {
             allowed = true
         }
@@ -329,6 +331,9 @@ struct LAABridgeKeychain {
             return nil
         }
         #endif
+        #if DEBUG && targetEnvironment(macCatalyst)
+        if keepsIsolatedMacPairingInMemory { return Self.isolatedMacCredentials }
+        #endif
         var search = query
         search[kSecReturnData as String] = true
         search[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -343,7 +348,19 @@ struct LAABridgeKeychain {
         return credentials
     }
 
+    #if DEBUG && targetEnvironment(macCatalyst)
+    /// The Mac window shots run an ad-hoc signed Debug build, which has no
+    /// Keychain entitlement; its isolated test pairing lives for the run only.
+    nonisolated(unsafe) private static var isolatedMacCredentials: LAABridgeCredentials?
+    private var keepsIsolatedMacPairingInMemory: Bool {
+        ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE")
+    }
+    #endif
+
     func save(_ credentials: LAABridgeCredentials) throws {
+        #if DEBUG && targetEnvironment(macCatalyst)
+        if keepsIsolatedMacPairingInMemory { Self.isolatedMacCredentials = credentials; return }
+        #endif
         let data = try JSONEncoder().encode(credentials)
         let attrs: [String: Any] = [kSecValueData as String: data,
                                     kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
