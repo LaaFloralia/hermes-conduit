@@ -16,8 +16,10 @@ export function apnsSenderFromEnv(env = process.env) {
   const key = env.APNS_KEY, keyId = env.APNS_KEY_ID;
   if (!key || !keyId || key.startsWith('op://')) return null;
   const teamId = env.LAA_PHONE_USE_TEAM_ID || 'PAW258GB42';
-  const topic = `${env.LAA_PHONE_USE_BUNDLE_ID || 'com.laa-inc.laa'}.push-type.liveactivity`;
-  const once = ({ token, environment, payload }) => new Promise((resolve, reject) => {
+  const bundle = env.LAA_PHONE_USE_BUNDLE_ID || 'com.laa-inc.laa';
+  const once = ({ kind, token, environment, payload }) => new Promise((resolve, reject) => {
+    // `wake` is a background push to the app itself; the rest go to Live Activities.
+    const wake = kind === 'wake';
     const client = connect(ORIGINS[environment] ?? ORIGINS.production);
     let done = false;
     const finish = (error, result) => {
@@ -31,7 +33,8 @@ export function apnsSenderFromEnv(env = process.env) {
     const request = client.request({
       ':method': 'POST', ':path': `/3/device/${token}`,
       authorization: `bearer ${apnsJwt({ key, keyId, teamId })}`,
-      'apns-push-type': 'liveactivity', 'apns-topic': topic, 'apns-priority': '10',
+      'apns-push-type': wake ? 'background' : 'liveactivity', 'apns-topic': wake ? bundle : `${bundle}.push-type.liveactivity`,
+      'apns-priority': wake ? '5' : '10',
       'content-type': 'application/json', 'content-length': Buffer.byteLength(body),
     });
     let status = 0, text = '';

@@ -38,10 +38,12 @@ final class LAAPhoneUseUITests: XCTestCase {
     }
 
     /// Pair once with the fixture, then let the app hand over its
-    /// push-to-start token (it retries when it becomes active).
+    /// push-to-start token and its own push token for the wake (it retries
+    /// when it becomes active).
     private func pairedAndRegistered() throws {
         guard control("/registered") != nil else { throw XCTSkip("Start scripts/laa/phone-use-ui-fixture.mjs") }
-        if control("/registered")?["registered"] as? Bool == true { return }
+        let ready = { (r: [String: Any]?) in r?["registered"] as? Bool == true && r?["wake"] as? Bool == true }
+        if ready(control("/registered")) { return }
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
@@ -60,7 +62,7 @@ final class LAAPhoneUseUITests: XCTestCase {
         }
         XCUIDevice.shared.press(.home)
         app.activate()
-        XCTAssertTrue(poll(150) { control("/registered")?["registered"] as? Bool == true }, "push-to-start token never reached the Bridge")
+        XCTAssertTrue(poll(150) { ready(control("/registered")) }, "push-to-start or wake token never reached the Bridge: \(control("/registered") ?? [:])")
     }
 
     /// Ask with the app in the background (the owner is elsewhere on the phone).
@@ -69,6 +71,11 @@ final class LAAPhoneUseUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         let asked = try XCTUnwrap(control("/ask?timeout=\(timeout)"))
         return try XCTUnwrap((asked["request"] as? [String: Any])?["id"] as? String, "ask failed: \(asked)")
+    }
+
+    /// The island's text in any form (expanded text, compact icon label).
+    private func anyLabel(_ label: String) -> XCUIElement {
+        springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
     }
 
     private func status(_ id: String) -> String? { control("/status?id=\(id)")?["status"] as? String }
@@ -104,12 +111,11 @@ final class LAAPhoneUseUITests: XCTestCase {
         shot("2-operating")
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作中"].exists)
         let ended = try XCTUnwrap(control("/end?id=\(id)"))
-        let pushed = ended["endPush"] as? String == "sent"
-        add(XCTAttachment(string: "end push: \(ended["endPush"] ?? "none")"))
-        // Without the activity's update token (iOS gave none) the end push
-        // can't be sent: the app takes the activity down when it next runs.
-        if !pushed { XCUIApplication().activate(); Thread.sleep(forTimeInterval: 3); XCUIDevice.shared.press(.home) }
-        XCTAssertTrue(springboard.staticTexts["iPhoneを操作中"].waitForNonExistence(timeout: 30))
+        add(XCTAttachment(string: "end push: \(ended["endPush"] ?? "none"), wake: \(ended["wake"] ?? "none")"))
+        // Without the activity's update token (iOS may give none) the Mac
+        // wakes the app instead, which reads the request and ends it.
+        XCTAssertTrue(ended["endPush"] as? String == "sent" || ended["wake"] as? String == "sent", "\(ended)")
+        XCTAssertTrue(anyLabel("iPhoneを操作中").waitForNonExistence(timeout: 30))
         shot("3-ended")
     }
 
@@ -127,9 +133,12 @@ final class LAAPhoneUseUITests: XCTestCase {
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForExistence(timeout: 20))
         noteActivityToken(id)
         XCTAssertTrue(poll(40) { status(id) == "expired" })
-        Thread.sleep(forTimeInterval: 6)
+        Thread.sleep(forTimeInterval: 2)
         shot("5-expired")
-        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForNonExistence(timeout: 30))
+        // Gone, not left as a stale question: the end push or the wake took it down.
+        XCTAssertTrue(anyLabel("iPhoneを操作してよいですか").waitForNonExistence(timeout: 30))
+        XCTAssertTrue(anyLabel("時間切れ").waitForNonExistence(timeout: 30))
+        shot("5b-expired-gone")
     }
 
     func testStopWhileOperating() throws {

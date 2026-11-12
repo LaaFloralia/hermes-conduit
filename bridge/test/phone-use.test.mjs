@@ -81,6 +81,27 @@ test('allow: push-to-start payload, owner allows, operating until end, end push 
   assert.equal((await answer(f, id, 'stop')).status, 409);
 });
 
+test('no update token: end wakes the app with a background push, once', async (t) => {
+  const f = await fixture(t);
+  const WAKE = 'ef'.repeat(32);
+  assert.equal((await f.h.request('/v1/phone-use/start-token', { method: 'PUT', token: f.phone, body: { token: START, environment: 'sandbox', wakeToken: WAKE } })).status, 200);
+  assert.equal((await f.h.request('/v1/phone-use/start-token', { method: 'PUT', token: f.phone, body: { token: START, environment: 'sandbox', wakeToken: 'zz' } })).status, 400);
+  await register(f); // a later registration without the wake token keeps it
+  const id = (await f.cli.ask({ who: 'Claude', purpose: '確認' })).request.id;
+  await answer(f, id, 'allow');
+  const ended = await f.cli.end(id);
+  assert.deepEqual([ended.endPush, ended.wake], ['no_activity_token', 'sent']);
+  const wake = f.pushes.at(-1);
+  assert.deepEqual([wake.kind, wake.token, wake.payload.aps['content-available'], wake.payload.laa_phone_use.id], ['wake', WAKE, 1, id]);
+  assert.equal((await f.cli.end(id)).wake, 'not_needed');
+  assert.equal(f.pushes.length, 2);
+
+  const b = (await f.cli.ask({ who: 'Claude', purpose: '確認' })).request.id;
+  await f.h.request(`/v1/phone-use/requests/${b}/activity-token`, { method: 'PUT', token: f.phone, body: { token: ACTIVITY } });
+  await answer(f, b, 'allow');
+  assert.deepEqual(Object.values((({ endPush, wake }) => ({ endPush, wake }))(await f.cli.end(b))), ['sent', 'not_needed'], 'the end push suffices');
+});
+
 test('deny and stop close the request; another device cannot answer', async (t) => {
   const f = await fixture(t);
   await register(f);

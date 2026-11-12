@@ -74,8 +74,11 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
     file: file.file,
     // The first iPhone to register keeps the place while it stays paired;
     // another device takes it only after `laa-bridge phone-use reset` on the Mac.
-    setStartToken({ deviceId, platform, token, environment }) {
+    // `wakeToken`, the app's own push token, lets the Mac wake the app to
+    // take an activity down when it holds no update token for it.
+    setStartToken({ deviceId, platform, token, environment, wakeToken }) {
       const value = hexToken(token, 'token');
+      const wake = wakeToken == null ? null : hexToken(wakeToken, 'wakeToken');
       if (!['sandbox', 'production'].includes(environment)) throw badRequest('phone_use_invalid', 'environment is sandbox or production');
       if (platform !== 'ios') throw new BridgeError(403, 'phone_use_not_iphone', 'only an iPhone registers for phone use');
       return file.mutate((s) => {
@@ -83,7 +86,8 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
         if (held && held.deviceId !== deviceId && active(held.deviceId)) {
           throw new BridgeError(409, 'phone_use_device_pinned', 'another iPhone is registered; reset it on the Mac first');
         }
-        s.startToken = { deviceId, token: value, environment, updatedAt: now() };
+        s.startToken = { deviceId, token: value, environment, updatedAt: now(),
+          wakeToken: wake ?? (held?.deviceId === deviceId ? held.wakeToken ?? null : null) };
         return { registered: true };
       });
     },
@@ -136,7 +140,7 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
         if (open) return { error: 'busy', open: view(open) };
         const id = `pu_${randomBytes(8).toString('hex')}`;
         const r = { id, who: w, purpose: p, status: 'pending', createdAt: now(), answerBy: now() + timeoutMs, limitMs,
-          deviceId: token.deviceId, environment: token.environment };
+          deviceId: token.deviceId, environment: token.environment, wakeToken: token.wakeToken ?? null };
         s.requests[id] = r;
         return { request: r, token };
       });
@@ -185,7 +189,12 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
         ? await send('end', closed.activityToken, closed.environment, endPayload(closed, phase))
         : { sent: false, reason: closed.activityToken ? 'already_ended' : 'no_activity_token' };
       if (sent.sent) file.mutate((s) => { if (s.requests[id]) s.requests[id].pushedEnd = now(); });
-      return { ...view(closed), endPush: sent.sent ? 'sent' : sent.reason };
+      // No end push reached it: wake the app, which reads the request and ends it.
+      const woke = !sent.sent && closed.wakeToken && !closed.pushedEnd && !closed.wokenAt
+        ? await send('wake', closed.wakeToken, closed.environment, { aps: { 'content-available': 1 }, laa_phone_use: { id } })
+        : { sent: false, reason: closed.wakeToken ? 'not_needed' : 'no_wake_token' };
+      if (woke.sent) file.mutate((s) => { if (s.requests[id]) s.requests[id].wokenAt = now(); });
+      return { ...view(closed), endPush: sent.sent ? 'sent' : sent.reason, wake: woke.sent ? 'sent' : woke.reason };
     },
   };
 }

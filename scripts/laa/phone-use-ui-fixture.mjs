@@ -41,7 +41,7 @@ http.createServer(async (req, res) => {
     if (url.pathname === '/registered') {
       let token = null;
       try { token = JSON.parse(readFileSync(phoneUse.file, 'utf8')).startToken; } catch {}
-      return send(res, 200, { registered: Boolean(token), environment: token?.environment ?? null });
+      return send(res, 200, { registered: Boolean(token), wake: Boolean(token?.wakeToken), environment: token?.environment ?? null });
     }
     if (url.pathname === '/ask') {
       const asked = await phoneUse.ask({ who: 'iPhone Use｜UIテスト', purpose: 'LAAアプリの表示を確認',

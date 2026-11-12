@@ -15,7 +15,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
 
     private struct Registered: Decodable { let registered: Bool }
     private struct RequestView: Decodable { let id: String; let status: String }
-    private struct TokenBody: Encodable { let token: String; let environment: String? }
+    private struct TokenBody: Encodable { let token: String; let environment: String?; var wakeToken: String? = nil }
     private struct AnswerBody: Encodable { let answer: String }
 
     private let client = LAABridgeClient()
@@ -24,6 +24,8 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     private var answering: Set<String> = []
     private var registeredTokens: Set<String> = []
     private var pendingStartToken: String?
+    private var startToken: String?
+    private var wakeToken: String?
 
     /// Debug builds talk to the APNs sandbox, TestFlight to production.
     static var environment: String {
@@ -51,6 +53,8 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
             for await activity in Activity<LAAPhoneUseAttributes>.activityUpdates { observe(activity) }
         }
         Task { await refresh() }
+        // The app's push token, for the Mac's wake (no prompt: it only reads the token).
+        UIApplication.shared.registerForRemoteNotifications()
         // Not paired yet, or offline at launch: try again when the app is opened.
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in
@@ -98,11 +102,26 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
 
     private func credentials() -> LAABridgeCredentials? { try? LAABridgeKeychain().read() }
 
+    /// The app's own push token: the Mac wakes the app with it to take down
+    /// an activity whose update token never came (see `refresh`).
+    func setWakeToken(_ data: Data) {
+        let token = Self.hex(data)
+        guard token != wakeToken else { return }
+        wakeToken = token
+        guard let start = pendingStartToken ?? startToken else { return }
+        Task { await registerStart(token: start) }
+    }
+
+    /// A background push from the Mac (`laa_phone_use`): an activity it
+    /// could not end by push. True when the push was this kind.
+    static func handlesWake(_ userInfo: [AnyHashable: Any]) -> Bool { userInfo["laa_phone_use"] != nil }
+
     private func registerStart(token: String) async {
         pendingStartToken = token
+        startToken = token
         guard let credentials = credentials() else { return }
         do {
-            let body = try JSONEncoder().encode(TokenBody(token: token, environment: Self.environment))
+            let body = try JSONEncoder().encode(TokenBody(token: token, environment: Self.environment, wakeToken: wakeToken))
             let _: LAABridgeResponse<Registered> = try await client.request(
                 method: "PUT", path: "/v1/phone-use/start-token", jsonBody: body, credentials: credentials)
             if pendingStartToken == token { pendingStartToken = nil }

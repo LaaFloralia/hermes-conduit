@@ -4485,9 +4485,9 @@ An agent that finds the owner's iPhone open (in use) asks in the Dynamic Island 
 - The Bridge starts the activity by push-to-start; the owner's answer is the only way an open iPhone is operated. Don't Allow, no answer within 90 s, or no way to ask returns `in_use`. While operating, the activity stays with Stop; Stop, `lock` or the idle/limit guard ends it.
 - Answers are accepted only from the device that registered the push-to-start token.
 
-- The end push needs the activity's update token, which iOS may never hand over for an activity a push started (seen on the simulator). The app therefore reads each activity's request (`GET /v1/phone-use/requests/{id}`) whenever it runs and ends one whose request closed; Stop on a closed request ends it too.
+- The end push needs the activity's update token, which iOS may never hand over for an activity a push started (seen on the simulator). Without it, `end` wakes the app with a background push (`laa_phone_use`) to the app's own push token, registered with the start token; the app reads each activity's request (`GET /v1/phone-use/requests/{id}`) whenever it runs and ends one whose request closed. Stop on a closed request ends it too.
 
 **Open gaps**
-- Without the update token, an "operating" activity stays after `lock` until the app next runs, Stop is tapped, or the session limit passes (stale). Whether a real iPhone hands over the token is checked on the device (BUS-325).
+- iOS may hold back a background push (Low Power Mode, an app the owner force-quit): then an ended activity stays until the app next runs, Stop is tapped, or the session limit passes. Checked on the owner's iPhone (BUS-325).
 
 **Checked:** 2026-11-12, laa/phone-use-permission, baseline 0d2fe78a (Bridge phone-use tests, laa-phone tests, simulator UI tests).

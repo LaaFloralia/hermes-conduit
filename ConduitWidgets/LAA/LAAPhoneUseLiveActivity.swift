@@ -25,8 +25,8 @@ struct LAAPhoneUseLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     LAAPhoneUseClock(attributes: attributes, state: state)
-                        .font(.title3.monospacedDigit().weight(.semibold))
-                        .frame(maxWidth: 76, alignment: .trailing)
+                        .font(.headline.monospacedDigit().weight(.semibold))
+                        .frame(minWidth: 52, maxWidth: 76, alignment: .trailing)
                         .padding(.trailing, 2)
                 }
                 DynamicIslandExpandedRegion(.center) {
@@ -158,10 +158,14 @@ private struct LAAPhoneUseClock: View {
         case .ask where attributes.answerDate > .now:
             Text(timerInterval: Date.now...attributes.answerDate, countsDown: true)
                 .multilineTextAlignment(.trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(HermesTurnStyle.attention)
         case .operating:
             Text(timerInterval: Date(timeIntervalSince1970: state.since ?? Date.now.timeIntervalSince1970)...Date.distantFuture, countsDown: false)
                 .multilineTextAlignment(.trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(HermesTurnStyle.gold)
         default:
             EmptyView()

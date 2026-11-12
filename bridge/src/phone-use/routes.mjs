@@ -7,7 +7,7 @@ export function phoneUseRoutes({ service }) {
   return [
     { method: 'PUT', path: '/v1/phone-use/start-token', auth: true, scope: 'sessions:write',
       handler: ({ device, rawBody }) => { const body = parseObjectBody(rawBody);
-        return { status: 200, data: service.setStartToken({ deviceId: device.id, platform: device.platform, token: body.token, environment: body.environment }) }; } },
+        return { status: 200, data: service.setStartToken({ deviceId: device.id, platform: device.platform, token: body.token, environment: body.environment, wakeToken: body.wakeToken }) }; } },
     { method: 'PUT', pattern: new RegExp(`^/v1/phone-use/requests/${ID}/activity-token$`), auth: true, scope: 'sessions:write',
       handler: ({ params, device, rawBody }) => ({ status: 200, data: service.setActivityToken({ id: params[0], deviceId: device.id, token: parseObjectBody(rawBody).token }) }) },
     { method: 'GET', pattern: new RegExp(`^/v1/phone-use/requests/${ID}$`), auth: true, scope: 'sessions:write',
