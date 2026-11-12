@@ -639,5 +639,113 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkSessionStyle.displayModel(#"["private-provider","unknown"]"#), "AI")
     }
 
+    // MARK: - Model and effort display (owner, 2026-11-12)
+
+    private var tableOptions: LAAWorkSessionOptions {
+        get throws {
+            try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data("""
+            {"profiles":[{"id":"fable-high","label":"Claude Fable 5.2","provider":"claude","model":"claude-fable-5-2","effort":"high","fast":false},
+             {"id":"mythos-high","label":"Claude Mythos 5.2","provider":"claude","model":"claude-mythos-5-2","effort":"high","fast":false}]}
+            """.utf8))
+        }
+    }
+
+    /// A reply names the model the Bridge saw writing it, else the provider:
+    /// the session's current model is never lent to it.
+    func testEachReplyNamesItsOwnModelOrTheProvider() throws {
+        let running = try session("s", name: "s", updated: "2026-11-11T07:00:00Z",
+                                  requested: ["provider": "claude", "model": "claude-fable-5-2", "effort": "xhigh"],
+                                  observed: ["provider": "claude", "model": "claude-opus-4-8", "effort": "xhigh"])
+        let options = try tableOptions
+        let fable = LAAWorkConversationMessage(id: "a1", role: "assistant", text: "1", timestamp: nil,
+                                               model: LAAWorkModel(provider: "claude", model: "claude-fable-5-2", effort: nil, sources: nil))
+        let unknown = LAAWorkConversationMessage(id: "a2", role: "assistant", text: "2", timestamp: nil)
+        let opus = LAAWorkConversationMessage(id: "a3", role: "assistant", text: "3", timestamp: nil,
+                                              model: LAAWorkModel(provider: "claude", model: "claude-opus-4-8", effort: nil, sources: nil))
+        XCTAssertEqual(LAAWorkSpeaker.replyName(fable, session: running, options: options), "Fable 5.2")
+        XCTAssertEqual(LAAWorkSpeaker.replyName(unknown, session: running, options: options), "Claude")
+        XCTAssertEqual(LAAWorkSpeaker.replyName(opus, session: running, options: options), "Opus 4.8")
+        XCTAssertNil(LAAWorkSpeaker.replyModel(unknown, session: running).model, "no model face is guessed")
+        XCTAssertEqual(LAAModelFace.face(model: nil, provider: "claude"), .claude(rays: 12))
+        let decoded = try JSONDecoder().decode(LAAWorkConversationPage.self, from: Data(
+            #"{"items":[{"id":"a","role":"assistant","text":"x","timestamp":null,"model":{"provider":"claude","model":"claude-fable-5-2"}}]}"#.utf8))
+        XCTAssertEqual(decoded.items.first?.model?.model, "claude-fable-5-2")
+        XCTAssertNil(decoded.compacting, "an older Bridge omits compacting")
+    }
+
+    /// "依頼 Fable 5.2 → 実行 Opus 4.8", with when the Bridge saw the switch.
+    func testMismatchNamesTheRequestAndWhatRuns() throws {
+        let json = """
+        {"id":"s","name":"s","requestId":"s","workspaceId":"w","profile":"fable-high",
+         "requested":{"provider":"claude","model":"claude-fable-5-2","effort":"xhigh"},
+         "observed":{"provider":"claude","model":"claude-opus-4-8","effort":"xhigh"},
+         "modelChange":{"from":{"provider":"claude","model":"claude-fable-5-2"},"to":{"provider":"claude","model":"claude-opus-4-8"},
+                        "seenAt":"2026-11-11T07:46:00Z","byOwner":false},
+         "phase":"running","createdAt":"x","updatedAt":"x","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}
+        """
+        let switched = try JSONDecoder().decode(LAAWorkSession.self, from: Data(json.utf8))
+        let mismatch = try XCTUnwrap(LAAWorkSessionStyle.mismatch(switched, options: try tableOptions))
+        XCTAssertEqual(mismatch.requested, "Fable 5.2")
+        XCTAssertEqual(mismatch.running, "Opus 4.8")
+        XCTAssertTrue(mismatch.seen?.hasSuffix("に切替を確認") == true)
+        // The owner's own switch is not reported as a provider's.
+        let owned = try JSONDecoder().decode(LAAWorkSession.self, from: Data(
+            json.replacingOccurrences(of: #""byOwner":false"#, with: #""byOwner":true"#).utf8))
+        XCTAssertNil(LAAWorkSessionStyle.mismatch(owned, options: try tableOptions)?.seen)
+        let agreeing = try session("a", name: "a", updated: "x",
+                                   requested: ["provider": "claude", "model": "claude-fable-5-2", "effort": "high"],
+                                   observed: ["provider": "claude", "model": "claude-fable-5-2", "effort": "high"])
+        XCTAssertNil(LAAWorkSessionStyle.mismatch(agreeing, options: try tableOptions))
+    }
+
+    /// The session list names a model as the heading and the chip do; the id
+    /// only when nothing readable is there.
+    func testListNamesTheModelAsTheChipDoes() throws {
+        let mythos = try session("m", name: "m", updated: "x",
+                                 requested: ["provider": "claude", "model": "claude-mythos-5-2", "effort": "high"],
+                                 observed: ["provider": "claude", "model": "claude-mythos-5-2", "effort": "high"])
+        XCTAssertEqual(LAAWorkSessionStyle.model(mythos, options: nil), "Mythos 5.2 · High")
+        let fable = try session("f", name: "f", updated: "x",
+                                requested: ["provider": "claude", "model": "claude-fable-5", "effort": "xhigh"],
+                                observed: ["provider": "claude", "model": "claude-fable-5", "effort": "xhigh"])
+        XCTAssertEqual(LAAWorkSessionStyle.model(fable, options: nil), "Fable 5 · XHigh")
+        XCTAssertEqual(LAAModelEffortChip.displayName(model: "claude-fable-5", provider: "claude"), "Fable 5")
+        let unknown = try session("u", name: "u", updated: "x",
+                                  requested: ["provider": "claude", "model": "kestrel-preview", "effort": "high"],
+                                  observed: ["provider": "claude", "model": "kestrel-preview", "effort": "high"])
+        XCTAssertEqual(LAAWorkSessionStyle.model(unknown, options: nil), "kestrel-preview · High")
+    }
+
+    /// The daemon's effort is listed even when the table does not offer it.
+    func testCurrentEffortIsListedEvenOutsideTheTable() throws {
+        let mythos = try session("m", name: "m", updated: "x",
+                                 requested: ["provider": "claude", "model": "claude-mythos-5-2", "effort": "xhigh"],
+                                 observed: ["provider": "claude", "model": "claude-mythos-5-2", "effort": "xhigh"])
+        XCTAssertEqual(LAAWorkSessionStyle.effortChoices(mythos, options: try tableOptions), ["high", "xhigh"])
+        XCTAssertTrue(LAAEffort.isDeep("xhigh") && LAAEffort.isDeep("max"))
+        XCTAssertFalse(LAAEffort.isDeep("high"))
+        XCTAssertEqual(LAAEffort.name("xhigh"), "XHigh")
+    }
+
+    func testSharedChipReadsNamesAndSaysUnknown() {
+        XCTAssertEqual(LAAModelEffortChip.displayName(model: "claude-opus-4-8", provider: "claude"), "Opus 4.8")
+        XCTAssertEqual(LAAModelEffortChip.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")
+        XCTAssertEqual(LAAModelEffortChip.displayName(model: "Claude Fable 5.2", provider: nil), "Fable 5.2")
+        XCTAssertEqual(LAAModelEffortChip.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
+                       "DeepSeek V4.1 Flash")
+        XCTAssertNil(LAAModelEffortChip.displayName(model: nil, provider: "claude"))
+        XCTAssertEqual(LAAModelEffortChip.unknown, "不明")
+    }
+
+    /// A held follow-up stays in the transcript until the history has it.
+    func testSentEchoLeavesOnceTheHistoryHasTheMessage() {
+        let before = [LAAWorkConversationMessage(id: "u1", role: "user", text: "最初", timestamp: nil)]
+        let echo = LAAWorkSentEcho(text: "この画像も", attachments: [], known: before.count)
+        XCTAssertEqual(LAAWorkSentEcho.pending([echo], in: before).count, 1)
+        let reply = before + [LAAWorkConversationMessage(id: "a1", role: "assistant", text: "回答", timestamp: nil)]
+        XCTAssertEqual(LAAWorkSentEcho.pending([echo], in: reply).count, 1, "an AI reply is not the owner's message")
+        let delivered = reply + [LAAWorkConversationMessage(id: "u2", role: "user", text: " この画像も ", timestamp: nil)]
+        XCTAssertTrue(LAAWorkSentEcho.pending([echo], in: delivered).isEmpty)
+    }
 }
 #endif

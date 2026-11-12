@@ -4245,10 +4245,10 @@ and rollback instructions · the upstream App Store build
 **Siblings:** Work sessions and projects · session detail and model verification · Bridge session options, PATCH and project files · the HQ delegation wrapper (mode and fast) · upstream chats
 
 **Code**
-- Follow-up field, message actions and the model menu: `Conduit/LAA/Work/LAAWorkComposer.swift`, `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkMessageActions.swift`, `Conduit/LAA/Work/LAAWorkMessageRow.swift`, `scripts/laa/work-ui-fixture.mjs`, `ConduitUITests/LAAChatPolishUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`
+- Follow-up field, message actions and the model menu: `Conduit/LAA/Work/LAAWorkComposer.swift`, `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkMessageActions.swift`, `Conduit/LAA/Work/LAAWorkMessageRow.swift`, `Conduit/LAA/Work/LAAWorkSessionParts.swift`, `Conduit/LAA/Design/LAAEffortMark.swift`, `Conduit/LAA/Design/LAAModelMark.swift`, `Conduit/LAA/Design/LAAModelEffortChip.swift`, `Conduit/LAA/Design/LAAGlassActionButton.swift`, `assets/laa/LAAAccent.xcassets/LAADeepSeekMark.imageset/Contents.json`, `Conduit/LAA/Work/LAAWorkPaneViews.swift`, `scripts/laa/work-ui-fixture.mjs`, `ConduitUITests/LAAChatPolishUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAASessionModelDisplayUITests.swift`
 - Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkStatusMark.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
 - Directory, decisions, images and notifications: `bridge/src/sessions/daemon.mjs`, `bridge/src/sessions/images.mjs`, `bridge/src/sessions/local-images.mjs`, `bridge/src/sessions/history.mjs`, `bridge/src/notify/index.mjs`, `bridge/src/notify/deliver.py`, `Conduit/LAA/Work/LAAWorkSessionCache.swift`, `Conduit/LAA/Work/LAAWorkSessionDecision.swift`, `Conduit/LAA/Work/LAAWorkSessionImage.swift`, `bridge/test/paseo-daemon.test.mjs`, `ConduitUITests/LAAPaseoUITests.swift`, `scripts/laa/paseo-ui-fixture.mjs`
-- Bridge: `bridge/src/sessions/service.mjs`, `bridge/src/sessions/options.mjs`, `bridge/src/routes/sessions.mjs`, `bridge/src/routes/projects.mjs`
+- Bridge: `bridge/src/sessions/service.mjs`, `bridge/src/sessions/options.mjs`, `bridge/src/sessions/model-log.mjs`, `bridge/test/model-log.test.mjs`, `bridge/src/routes/sessions.mjs`, `bridge/src/routes/projects.mjs`
 - Routines: `bridge/src/routes/routines.mjs`, `bridge/test/routines.test.mjs`
 - Tests: `ConduitTests/LAAWorkTests.swift`, `bridge/test/sessions.test.mjs`, `bridge/test/session-options.test.mjs`
 
@@ -4265,12 +4265,22 @@ and rollback instructions · the upstream App Store build
 - The follow-up field can always get more room: its top edge drags taller (up to 360 pt; a double tap returns it to following the text) and the full editor is offered at one line too (owner, 2026-11-11: it could not be enlarged).
 - Under each message: コピー and 引用 for both sides, グッド for the AI's. 引用 appends a Markdown quote (up to 400 characters) after the draft and focuses the field. グッド is kept on the device (`laa.work.likes.v1`, newest 500): the Bridge has no feedback route, so it is not sent to the model. The same actions are in the long press and the Mac's right click.
 - Project files are stored on the Mac and passed to sessions as paths; the phone never sees the path.
+- Every AI message names its model with its face, progress notes included (owner, 2026-11-12); a run of replies does not fold the header. Paseo's timeline carries no model per message, so the Bridge keeps spans of consecutive observations (`modelLog`, `bridge/src/sessions/model-log.mjs`) and names a reply only when its timestamp lies inside one. Older replies, gaps and the turn before an unrequested switch (Paseo refreshes Claude's runtime model only at a turn's start) get the provider's name and face ("Claude"), never the session's current model.
+- The effort sits beside the model in the same glass pill and never truncates; the model name gives way. XHigh and Max take the deep-effort gilt (`LAAColor.deepEffort`), a five-tick meter, a light that passes once on appear or change, and Max a slow spark; Reduce Motion keeps them still. The menu's and the launcher's effort rows mark XHigh and Max with a gilt spark and a subtitle. The daemon's current effort is always listed, checked, even when the HQ table does not offer it for the model (Mythos at XHigh); it is shown, not offered.
+- A request that differs from what runs reads "依頼 Fable 5.2 → 実行 Opus 4.8" at the top of the conversation, in the model menu and on the Mac pane heading, with a plum ▲ on the pill; when the Bridge saw the switch itself (`modelChange`, not the owner's), it adds when.
+- While a turn runs, the transcript ends with one fixed-height line: `brain` and "thinking...", or two arrows meeting and "Compacting..." when the conversation page says `compacting` (owner, 2026-11-12; English as the owner chose). Tool rows are no longer listed.
+- The model · effort pill is the shared `LAAModelEffortChip` (model, provider, effort; an unknown one reads 不明), and attach, stop and Send are the shared `LAAGlassActionButton` (36 pt glass, 44 pt touch). Send keeps the colour it had before anything was typed; when it cannot send it is only disabled (owner, 2026-11-12). The list row, the heading and the pill name a model the same way ("Mythos 5.2"); only a model with no readable name shows its id.
+- DeepSeek's face is the official whale (`LAADeepSeekMark`, vector, template-rendered in #4D6BFE) on a near-white disc, the same size and inset as the other faces (owner, 2026-11-12).
+- After the owner sends, the transcript returns to its end, queued and with pictures too; an arriving reply leaves the reading position alone (owner, 2026-11-12).
+- A picture in the transcript, the owner's or the AI's, is a thumbnail 240 pt tall (under the owner's 280 pt cap), its width from its proportions up to 300 pt, a wider one cropped at the sides; the placeholder has the same height, so loading does not move the transcript (owner, 2026-11-12).
+- Attached pictures show as thumbnails above the field; a tap opens them over the whole screen and only the small × removes one. Pictures in the transcript open the same viewer. A follow-up this device sent stays in the transcript, with its pictures and 順番待ち while the Bridge holds it, until Paseo's history has it.
 
 **Open gaps**
+- A reply in the turn where a provider switched models by itself shows the provider only; the exact model of that turn is not recorded by Paseo.
 - Archiving remains Bridge-side. A pin removed directly in Paseo does not clear an existing local favourite; use LAA to remove that favourite. Previously attached Paseo images are absent from the daemon projected timeline; only images sent from LAA are currently displayed. Native conversation branch/rewind, terminal and execution configuration are outside this replacement.
 - End-to-end push delivery, physical-device dictation/IME and the one-second presentation target still require the parent’s device check.
 
-**Checked:** 2026-11-11, worktree-agent-a84bbfed81904bb50 (model menu and Bridge model PATCH, 36 pt stop, resizable follow-up field, copy · 引用 · グッド; Bridge tests pass); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (row marks and sizes, the Sessions pulldown, routines by part of the day); 2026-11-03, LAA scope, left-swipe pins, Usage and destination groups; Bridge 556/556 passed and the live daemon returned 18 workspaces including six pins; installed-device acceptance pending.  2026-11-02, based on integrate-1102 6344beda plus the Paseo replacement changes. Bridge 425/425 passed; the parent owns the consolidated iOS build, related unit/UI tests and physical iPhone verification.
+**Checked:** 2026-11-12, worktree-agent-a4dbc87bb9712dec4 (shared model · effort chip and glass action buttons, DeepSeek whale, return to the end on send, fixed-height picture thumbnails, list model names; per-reply model names from the Bridge's model log, the effort beside the model with the XHigh/Max gilt, the request → running line, thinking.../Compacting..., picture thumbnails and viewer, sent follow-ups shown until delivered; Bridge tests pass); 2026-11-11, worktree-agent-a84bbfed81904bb50 (model menu and Bridge model PATCH, 36 pt stop, resizable follow-up field, copy · 引用 · グッド; Bridge tests pass); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (row marks and sizes, the Sessions pulldown, routines by part of the day); 2026-11-03, LAA scope, left-swipe pins, Usage and destination groups; Bridge 556/556 passed and the live daemon returned 18 workspaces including six pins; installed-device acceptance pending.  2026-11-02, based on integrate-1102 6344beda plus the Paseo replacement changes. Bridge 425/425 passed; the parent owns the consolidated iOS build, related unit/UI tests and physical iPhone verification.
 ## LAA Today and calendar widget
 
 **Siblings:** Google Calendar in Today · small next-event widget · calendar notifications and deep links · Drive's shared Google connection · Brain entry point.
@@ -4416,16 +4426,17 @@ through the host's GPT-Live bridge. This is enabled only in LAA builds.
 
 ## LAA Work v3 integration (2026-11-11)
 
-Work presents Sessions, Decisions, Tasks and Routines and opens on Sessions; Decisions is the board's own section with its count on the segment, and existing answer sheets handle replies. Projects are grouped within Sessions and retain their management screen, rename, instructions, archive and restore. Skills live in Settings, Usage opens from the Work gauge. Session tools are collapsed into one work record disclosure; cached transcripts remain visible during refresh. iPhone and Mac retain their list/detail routes and existing task/session mutations.
+Work presents Sessions, Decisions, Tasks and Routines and opens on Sessions; Decisions is the board's own section with its count on the segment, and existing answer sheets handle replies. Projects are grouped within Sessions and retain their management screen, rename, instructions, archive and restore. Skills live in Settings, Usage opens from the Work gauge. Session tools are not listed; a running session ends with one thinking.../Compacting... line (LAA Work session presentation); cached transcripts remain visible during refresh. iPhone and Mac retain their list/detail routes and existing task/session mutations.
 
 **Siblings:** Work on iPhone and Mac · Settings Skills · Usage · decision sheets · session tools
 
 **Code**
-- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift` (`LAAUsageGauge`), `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/LAAWorkRecordDisclosure.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
+- `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift` (`LAAUsageGauge`), `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/LAAWorkSessionParts.swift`, `Conduit/LAA/Settings/LAASkillsSettingsRow.swift`
 
 **Rulings**
 - Nothing sits between the title and the section switcher: the three-decision summary above the sections is gone,
-  and the board is the second section (owner, 2026-11-11). Keep session tools collapsed until requested.
+  and the board is the second section (owner, 2026-11-11). Session tools are not shown (owner, 2026-11-12: the
+  opened record buried the conversation under hundreds of rows).
 - The Usage button's gauge points at the tightest weekly quota on the Usage list (SF Symbols' 0/33/50/67/100%
   faces, the attention colour below a fifth left, the 33% face before any reading), from the readings Work's own
   Usage state holds; opening Work refreshes them at most once a minute (2026-11-11; it was a fixed 33% face).
@@ -4433,7 +4444,7 @@ Work presents Sessions, Decisions, Tasks and Routines and opens on Sessions; Dec
 **Open gaps**
 - Physical-device acceptance is pending.
 
-**Checked:** 2026-11-11, worktree-agent-a582bebf107764004 (the Usage gauge follows the lowest weekly quota; LAAUsageWidgetTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (the board as a section, the summary removed); 2026-11-11, 2b5760d5 (Work v3 contracts).
+**Checked:** 2026-11-12, worktree-agent-a4dbc87bb9712dec4 (the work record disclosure removed); 2026-11-11, worktree-agent-a582bebf107764004 (the Usage gauge follows the lowest weekly quota; LAAUsageWidgetTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60 (the board as a section, the summary removed); 2026-11-11, 2b5760d5 (Work v3 contracts).
 
 
 ## LAA Drive stage 2 browsing and playback

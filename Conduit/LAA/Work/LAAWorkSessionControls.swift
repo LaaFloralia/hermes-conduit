@@ -47,6 +47,14 @@ struct LAAWorkSessionControls: View {
     private var applied: String? { LAAWorkSessionStyle.appliedModel(session, options: options) }
     private var currentEffort: String? { session.observed?.effort }
     private var currentModel: String? { session.observed?.model }
+    /// The model half of the pill. The effort is its own half beside it, so
+    /// it never truncates away with a long model name.
+    private var modelName: String? {
+        guard applied != nil else { return nil }
+        return LAAWorkSessionStyle.modelName(currentModel, provider: session.observed?.provider, options: options)
+            ?? LAAWorkSessionStyle.providerName(session.observed?.provider, model: currentModel)
+    }
+    private var mismatch: LAAWorkSessionStyle.Mismatch? { LAAWorkSessionStyle.mismatch(session, options: options) }
     private var choices: [String] { LAAWorkSessionStyle.effortChoices(session, options: options) }
     private var models: [LAAWorkSessionStyle.ModelChoice] { LAAWorkSessionStyle.modelChoices(session, options: options) }
     /// False when the last read could not reach Paseo. The value we hold is then
@@ -67,7 +75,7 @@ struct LAAWorkSessionControls: View {
 
     var body: some View {
         HStack(spacing: LAASpacing.x2) {
-            if let modelText { modelPill(modelText) }
+            if let modelText, let modelName, let currentEffort { modelPill(modelText, name: modelName, effort: currentEffort) }
             if let fast { fastPill(fast) }
         }
         .accessibilityElement(children: .contain)
@@ -88,8 +96,17 @@ struct LAAWorkSessionControls: View {
     /// session's model did nothing): the models of the session's provider, then
     /// the efforts of the current model. What cannot be changed stays listed
     /// and disabled, with the reason at the top.
-    private func modelPill(_ modelText: String) -> some View {
+    private func modelPill(_ modelText: String, name: String, effort: String) -> some View {
         Menu {
+            if let mismatch {
+                // Why the face says another model than the one asked for.
+                Section {
+                    Button {} label: {
+                        Text(verbatim: "依頼 \(mismatch.requested) → 実行 \(mismatch.running)")
+                        if let seen = mismatch.seen { Text(verbatim: seen) }
+                    }.disabled(true)
+                }
+            }
             if let lockedReason {
                 Section { Button {} label: { Text(verbatim: lockedReason) }.disabled(true) }
             }
@@ -110,46 +127,37 @@ struct LAAWorkSessionControls: View {
             }
             if !choices.isEmpty {
                 Section {
-                    ForEach(choices, id: \.self) { effort in
-                        Button { change(effort) } label: {
-                            if effort == currentEffort {
-                                Label { Text(verbatim: LAAWorkSessionStyle.effort(effort) ?? effort) }
-                                    icon: { Image(systemName: "checkmark") }
-                            } else {
-                                Text(verbatim: LAAWorkSessionStyle.effort(effort) ?? effort)
-                            }
-                        }
-                        .disabled(!canChangeEffort || effort == currentEffort)
+                    ForEach(choices, id: \.self) { choice in
+                        LAAEffortMenu.Row(effort: choice, selected: choice == currentEffort) { change(choice) }
+                            .disabled(!canChangeEffort || choice == currentEffort || !offered(choice))
                     }
                 } header: { Text(verbatim: "推論") }
             }
         } label: {
-            pill(modelText, interactive: canChangeModel || canChangeEffort)
+            pill(name: name, effort: effort)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: "モデルと推論"))
-        .accessibilityValue(Text(verbatim: modelText))
+        .accessibilityValue(Text(verbatim: mismatch.map { modelText + "、依頼 " + $0.requested } ?? modelText))
         .accessibilityHint(Text(verbatim: lockedReason ?? "モデルと推論の強さを変更"))
         .accessibilityIdentifier("work.session.effort")
     }
 
-    private func pill(_ modelText: String, interactive: Bool) -> some View {
-        HStack(spacing: 6) {
-            LAAModelMark(model: currentModel, provider: session.observed?.provider, size: 22)
-            if changing { Text(verbatim: "変更中").font(.caption) }
-            // The row keeps every control on one line: only the model name
-            // gives way when the screen is narrow.
-            Text(verbatim: modelText)
-                .fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(interactive ? LAAColor.text : LAAColor.secondaryText)
-        }
-        .laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
-        .padding(.leading, 7).padding(.trailing, LAASpacing.x3).frame(minHeight: 36)
-        .contentShape(Capsule())
-        .conduitGlassControl(cornerRadius: 18, interactive: true)
-        .layoutPriority(-1)
+    /// A value the HQ table offers for this model. The daemon's current value
+    /// is listed even when it is not (effortChoices), but never offered.
+    private func offered(_ effort: String) -> Bool {
+        options?.profiles.contains { $0.provider == session.observed?.provider && $0.model == currentModel && $0.effort == effort } == true
+    }
+
+    /// The shared chip (LAAModelEffortChip, also in Chat's composer), with the
+    /// name from the model table. It always opens the menu, so it always
+    /// carries the chevron, even when nothing in it can be chosen.
+    private func pill(name: String, effort: String) -> some View {
+        LAAModelEffortChip(model: currentModel, provider: session.observed?.provider, effort: effort,
+                           name: name, current: observing, interactive: true,
+                           attention: mismatch != nil, changing: changing)
+            .layoutPriority(-1)
     }
 
     private func changeModel(_ model: String) {

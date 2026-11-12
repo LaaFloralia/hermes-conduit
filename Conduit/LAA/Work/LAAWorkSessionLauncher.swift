@@ -136,11 +136,10 @@ struct LAAWorkSessionLauncher: View {
                     ForEach(groups(options), id: \.0) { group in
                         Section(group.0) {
                             ForEach(group.1) { item in
-                                Button { choose(item.id) } label: {
-                                    if item.id == profile {
-                                        Label { Text(verbatim: effortTitle(item)) } icon: { Image(systemName: "checkmark") }
-                                    } else { Text(verbatim: effortTitle(item)) }
-                                }
+                                // XHigh and Max carry the deep-effort mark here
+                                // too, as in a running session's menu.
+                                LAAEffortMenu.Row(effort: item.effort, selected: item.id == profile,
+                                                  identifier: "work.launch.profile.\(item.id)") { choose(item.id) }
                             }
                         }
                     }
@@ -227,10 +226,6 @@ struct LAAWorkSessionLauncher: View {
         return order.map { label in
             (label, (byLabel[label] ?? []).sorted { (rank.firstIndex(of: $0.effort) ?? 9) < (rank.firstIndex(of: $1.effort) ?? 9) })
         }
-    }
-
-    private func effortTitle(_ item: LAAWorkSessionOptions.Profile) -> String {
-        LAAWorkSessionStyle.effort(item.effort) ?? item.effort
     }
 
     private func applyInitialModel() {

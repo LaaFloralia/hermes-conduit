@@ -81,12 +81,13 @@ const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'Con
 // empty, waiting for a decision, and a long transcript with an image.
 const SESSION_IDS = { empty: 'ses_1111111111111111', decision: 'ses_2222222222222222', long: 'ses_3333333333333333',
   stale: 'ses_4444444444444444', running: 'ses_5555555555555555', noFast: 'ses_6666666666666666', readOnlyFast: 'ses_7777777777777777',
-  decisionLong: 'ses_8888888888888888' };
+  decisionLong: 'ses_8888888888888888', switched: 'ses_9999999999999999', mythos: 'ses_aaaaaaaaaaaaaaaa',
+  max: 'ses_bbbbbbbbbbbbbbbb' };
 const SESSION_REFS = {
   ses_1111111111111111: 'S1', ses_2222222222222222: 'S2',
   ses_3333333333333333: 'S3', ses_4444444444444444: 'S4',
   ses_5555555555555555: 'S5', ses_6666666666666666: 'S6', ses_7777777777777777: 'S7',
-  ses_8888888888888888: 'S8',
+  ses_8888888888888888: 'S8', ses_9999999999999999: 'S9', ses_aaaaaaaaaaaaaaaa: 'S10', ses_bbbbbbbbbbbbbbbb: 'S11',
 };
 const IMAGE_ID = 'a'.repeat(64);
 const FIXTURE_IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -122,11 +123,49 @@ const sessions = [
     observedFast: true, capabilities: { effort: true, fast: false } },
   // Waiting for a decision at the top of a long transcript.
   fixtureSession(SESSION_IDS.decisionLong, '判断待ち・長い履歴', 'awaiting_decision', { count: 1, kinds: ['question'] }),
+  // Started on Fable 5.2; the provider moved it to Opus 4.8 by itself
+  // (Claude Code's model_refusal_fallback, 2026-11-11). Running, so the
+  // transcript ends with "thinking...".
+  { ...fixtureSession(SESSION_IDS.switched, 'モデル自動切替', 'running'), profile: 'fable-high',
+    requested: { provider: 'claude', model: 'claude-fable-5-2', effort: 'xhigh' },
+    observed: { provider: 'claude', model: 'claude-opus-4-8', effort: 'xhigh' },
+    modelChange: { from: { provider: 'claude', model: 'claude-fable-5-2' }, to: { provider: 'claude', model: 'claude-opus-4-8' },
+      seenAt: '2026-11-11T07:46:00Z', byOwner: false } },
+  // Mythos at XHigh, which the HQ table offers at High only; compacting now.
+  { ...fixtureSession(SESSION_IDS.mythos, 'Mythos XHigh', 'running'), profile: 'mythos-high',
+    requested: { provider: 'claude', model: 'claude-mythos-5-2', effort: 'xhigh' },
+    observed: { provider: 'claude', model: 'claude-mythos-5-2', effort: 'xhigh' } },
+  // The deepest setting, on a GPT model.
+  { ...fixtureSession(SESSION_IDS.max, 'Max の推論', 'awaiting_review'), profile: 'astra-max',
+    requested: { provider: 'codex', model: 'gpt-6-astra', effort: 'max' },
+    observed: { provider: 'codex', model: 'gpt-6-astra', effort: 'max' }, observedFast: null },
+];
+const fable = { provider: 'claude', model: 'claude-fable-5-2' };
+const opus48 = { provider: 'claude', model: 'claude-opus-4-8' };
+// Each reply carries the model the Bridge saw writing it; the turn before the
+// unrequested switch carries none (bridge/src/sessions/model-log.mjs).
+const switchedMessages = [
+  { id: 'sw-u1', role: 'user', text: '社内向けの説明資料の構成を考えてください。', timestamp: '2026-11-11T07:30:00Z' },
+  { id: 'sw-a1', role: 'assistant', text: '構成案を3つ用意しました。目的・読者・所要時間から選べます。', timestamp: '2026-11-11T07:31:00Z', model: fable },
+  { id: 'sw-u2', role: 'user', text: '2案目で進めて、表紙の画像も確認して。', timestamp: '2026-11-11T07:40:00Z', images: [IMAGE_ID] },
+  { id: 'sw-a2', role: 'assistant', text: '2案目で章立てを作ります。', timestamp: '2026-11-11T07:41:00Z' },
+  { id: 'sw-u3', role: 'user', text: '続けてください。', timestamp: '2026-11-11T07:45:30Z' },
+  { id: 'sw-a3', role: 'assistant', text: '章ごとの要点を確認しています。', timestamp: '2026-11-11T07:47:00Z', model: opus48 },
+  { id: 'sw-a4', role: 'assistant', text: '第2章の図を差し替える案をまとめています。', timestamp: '2026-11-11T07:48:00Z', model: opus48 },
+];
+const mythosMessages = [
+  { id: 'my-u1', role: 'user', text: '防御設定の差分を見てください。', timestamp: '2026-11-12T01:00:00Z' },
+  { id: 'my-a1', role: 'assistant', text: '差分を読み、影響の大きい順に並べています。', timestamp: '2026-11-12T01:01:00Z', model: { provider: 'claude', model: 'claude-mythos-5-2' } },
+];
+const maxMessages = [
+  { id: 'mx-u1', role: 'user', text: '来期の計画の前提を洗い出して。', timestamp: '2026-11-12T02:00:00Z' },
+  { id: 'mx-a1', role: 'assistant', text: '前提を5つに分けて整理しました。', timestamp: '2026-11-12T02:02:00Z', model: { provider: 'codex', model: 'gpt-6-astra' } },
 ];
 const longText = (index) => `## 見出し ${index}\n\n${'本文をここに置きます。'.repeat(12)}\n\n\`\`\`\nlet value = ${index}\n\`\`\`\n\n末尾の行です。  `;
 const shortText = (index) => `短い返答 ${index}。`;
 // Sixty-plus turns, long and short mixed, with two pictures low enough to be
 // on screen when the conversation opens at its bottom.
+const opus55 = { provider: 'claude', model: 'claude-opus-5-5' };
 const longMessages = Array.from({ length: 60 }, (_, index) => ({
   id: `fixture-${index}`, role: index % 2 === 0 ? 'user' : 'assistant',
   text: index === 0 ? '最初の依頼です。' : index % 3 === 0 ? shortText(index) : longText(index),
@@ -134,17 +173,17 @@ const longMessages = Array.from({ length: 60 }, (_, index) => ({
   // One picture near the top, for a page parked on a decision card: it is
   // measured while the owner reads the question.
   images: index === 1 ? [IMAGE_ID] : undefined,
+  // The Bridge saw Opus 5.5 write every reply (model-log.mjs).
+  model: index % 2 === 0 ? undefined : opus55,
 }));
-longMessages.push({ id: 'fixture-image', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID] });
+longMessages.push({ id: 'fixture-image', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID], model: opus55 });
 const LAST_TEXT = '最後のメッセージ S62M';
-longMessages.push({ id: 'fixture-last', role: 'assistant', text: LAST_TEXT, timestamp: '2026-11-06T00:00:00Z' });
-longMessages.push({ id: 'fixture-image-2', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID] });
-// Tool calls are part of the Bridge's conversation but not of what the owner
-// reads: the detail must show the messages and no "実行 N件" row.
-longMessages.splice(30, 0,
-  { id: 'fixture-tool-1', role: 'tool', text: 'ls -la', toolName: 'shell', toolStatus: 'completed', timestamp: '2026-11-06T00:00:00Z' },
-  { id: 'fixture-tool-2', role: 'tool', text: 'grep Work', toolName: 'grep', toolStatus: 'failed', timestamp: '2026-11-06T00:00:00Z' });
-const conversationFor = (id) => [SESSION_IDS.long, SESSION_IDS.decisionLong].includes(id) ? longMessages : [];
+longMessages.push({ id: 'fixture-last', role: 'assistant', text: LAST_TEXT, timestamp: '2026-11-06T00:00:00Z', model: opus55 });
+longMessages.push({ id: 'fixture-image-2', role: 'assistant', text: '', timestamp: '2026-11-06T00:00:00Z', images: [IMAGE_ID], model: opus55 });
+// The Bridge sends only the owner's and the AI's messages; tool calls are not
+// part of the conversation.
+const conversationFor = (id) => ({ [SESSION_IDS.switched]: switchedMessages, [SESSION_IDS.mythos]: mythosMessages,
+  [SESSION_IDS.max]: maxMessages })[id] ?? ([SESSION_IDS.long, SESSION_IDS.decisionLong].includes(id) ? longMessages : []);
 // What the app actually fetched, as opposed to what the fixture holds. The UI
 // test waits for this before asserting the scroll position, so a stopped
 // client cannot pass by accident.
@@ -179,6 +218,8 @@ const releaseImages = () => {
   imageHold = null;
 };
 const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null;
+// Follow-ups the app sent, for the control server's /state.
+const followUps = [];
 
 // The decision board. Off by default (an empty board) so the hub keeps its
 // usual first section for the other Work tests; a test switches it on with
@@ -432,9 +473,26 @@ const api = http.createServer(async (req, res) => {
       { id: 'opus-xhigh', label: 'Claude Opus 5.5', provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh', fast: true },
       // A second Claude model, so a running session's menu has a model to switch to.
       { id: 'sonnet-high', label: 'Claude Sonnet 5.5', provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high', fast: false },
+      { id: 'fable-high', label: 'Claude Fable 5.2', provider: 'claude', model: 'claude-fable-5-2', effort: 'high', fast: false },
+      { id: 'mythos-high', label: 'Claude Mythos 5.2', provider: 'claude', model: 'claude-mythos-5-2', effort: 'high', fast: false },
+      { id: 'astra-xhigh', label: 'GPT-6 Astra', provider: 'codex', model: 'gpt-6-astra', effort: 'xhigh', fast: true },
+      { id: 'astra-max', label: 'GPT-6 Astra', provider: 'codex', model: 'gpt-6-astra', effort: 'max', fast: true },
+      { id: 'dsh-high', label: 'DeepSeek V4.1 Flash', provider: 'dsh', model: 'deepseek-v4.1-flash', effort: 'high', fast: false },
     ],
     defaultProfile: 'opus-high', defaultMode: 'bypass',
   });
+  // A follow-up sent while a turn runs: the Bridge holds it (queue) and the
+  // conversation does not have it yet, so the app shows its own echo.
+  const followUp = path.match(/^\/v1\/sessions\/(ses_[0-9a-f]{16})\/messages$/);
+  if (followUp && req.method === 'POST') {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const session = sessionFor(followUp[1]);
+    if (!session) { res.writeHead(404); return res.end(); }
+    const body = raw ? JSON.parse(raw) : {};
+    followUps.push({ session: session.id, chars: (body.message ?? '').length, images: (body.images ?? []).length });
+    session.queue = { count: (session.queue?.count ?? 0) + 1, items: [] };
+    return send(res, 200, session);
+  }
   const sessionMatch = path.match(/^\/v1\/sessions\/(ses_[0-9a-f]{16})(?:\/(conversation|events|decision|images\/[a-f0-9]{64}))?$/);
   if (sessionMatch) {
     const session = sessionFor(sessionMatch[1]);
@@ -447,7 +505,8 @@ const api = http.createServer(async (req, res) => {
       const generation = resetGeneration;
       if (conversationDelay) await new Promise((resolve) => setTimeout(resolve, conversationDelay));
       const items = conversationFor(session.id);
-      const result = send(res, 200, { items, nextCursor: null, sources: null, total: null, fetchedAt: null });
+      const result = send(res, 200, { items, compacting: session.id === SESSION_IDS.mythos,
+        nextCursor: null, sources: null, total: null, fetchedAt: null });
       if (generation === resetGeneration && session.id === SESSION_IDS.long) lastServed = items.length;
       return result;
     }
@@ -505,7 +564,8 @@ const control = http.createServer((req, res) => {
       Object.keys(session).forEach((key) => { delete session[key] });
       Object.assign(session, JSON.parse(JSON.stringify(sessionSeed[index])));
     });
-    longMessages.length = 65;
+    longMessages.length = 63;
+    followUps.length = 0;
     conversationDelay = 0;
     advanced = 0;
     lastServed = 0;
@@ -525,10 +585,10 @@ const control = http.createServer((req, res) => {
   if (req.url === '/advance') {
     advanced += 1;
     longMessages.push({ id: `fixture-advanced-${advanced}`, role: 'assistant',
-      text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z' });
+      text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z', model: opus55 });
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed,
+  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed, followUps,
     created: createdBodies, completed, lastAnswer,
     answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null,
       note: d.answer?.note ?? null, label: d.answer?.label ?? null, delivery: d.delivery?.state ?? null })) }));

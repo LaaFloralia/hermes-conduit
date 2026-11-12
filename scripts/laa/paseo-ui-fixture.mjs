@@ -43,7 +43,7 @@ export const server = createServer(async (req, res) => {
       if (typeof change.favorite === 'boolean') favorite = change.favorite;
       return send(res, rows()[0]);
     }
-    if (path.endsWith('/conversation')) return send(res, { items: [{ id: 'm1', role: 'user', text: '資料を確認してください。' }, { id: 't1', role: 'tool', text: 'Read', toolName: 'Read', toolStatus: 'completed' }, { id: 'm2', role: 'assistant', text: replied ? 'A案で進めます。' : '構成を確認しました。次の方針を選んでください。' }] });
+    if (path.endsWith('/conversation')) return send(res, { items: [{ id: 'm1', role: 'user', text: '資料を確認してください。' }, { id: 'm2', role: 'assistant', text: replied ? 'A案で進めます。' : '構成を確認しました。次の方針を選んでください。' }] });
     if (path.endsWith('/decision')) return send(res, { requestHash: 'fixture-hash', expiresAt: Date.now() + 300000, requests: replied ? [] : [{ id: 'question-1', kind: 'question', name: 'request_user_input_async', detail: '{}', questions: [{ question: 'どちらの構成で進めますか？', options: ['A案', 'B案'] }] }] });
     if (path.endsWith('/reply')) { req.resume(); replied = true; return send(res, rows().find(x => x.id === id)); }
     if (path.endsWith('/artifacts')) return send(res, { items: [], nextCursor: null });

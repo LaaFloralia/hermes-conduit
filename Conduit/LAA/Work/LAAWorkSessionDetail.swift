@@ -84,9 +84,13 @@ struct LAAWorkSessionDetail: View {
     @State private var session: LAAWorkSession?
     @State private var events: [LAAWorkEvent] = []
     @State private var messages: [LAAWorkConversationMessage] = []
-    @State private var conversationMessages: [LAAWorkConversationMessage] = []
     @State private var historyReady = false
-    @State private var workRecords: [LAAWorkConversationMessage] = []
+    /// The provider is compacting the conversation's context now.
+    @State private var compacting = false
+    /// Messages this device sent that the conversation does not show yet: a
+    /// follow-up the Bridge holds until the running turn ends is not in
+    /// Paseo's history, so without these it looked lost, pictures and all.
+    @State private var sentEchoes: [LAAWorkSentEcho] = []
     @State private var lastDetailData: Data?
     @State private var lastHistoryData: Data?
     @State private var conversationUnavailable = false
@@ -202,6 +206,7 @@ struct LAAWorkSessionDetail: View {
             if ready { place(measuredContent, measuredViewport) }
         }
         .onChange(of: messages.count) { _, _ in followNewArrival() }
+        .onChange(of: sentEchoes.count) { _, _ in followNewArrival() }
         .onChange(of: messages.last?.text) { _, _ in followNewArrival() }
         .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
         .task {
@@ -217,7 +222,7 @@ struct LAAWorkSessionDetail: View {
             LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
                 Color.clear.frame(height: 0).id("top-start")
                 if let session {
-                    if session.modelMismatch { mismatchLabel }
+                    if session.modelMismatch { mismatchLabel(session) }
                     if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention).workCard() }
                     if let failure {
                         VStack(alignment: .leading) {
@@ -232,21 +237,24 @@ struct LAAWorkSessionDetail: View {
                     } else if messages.isEmpty {
                         Text(verbatim: "会話はまだありません。").foregroundStyle(LAAColor.secondaryText)
                     }
-                    // Tool calls are not part of the conversation the owner
-                    // reads; only the messages they wrote or received are.
-                    let shown = conversationMessages
+                    let shown = messages
                     let speakers = shown.map(LAAWorkSpeaker.speaker)
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
                         LAAWorkMessageRow(message: message, sessionID: id,
-                                          agentName: LAAWorkSpeaker.agentName(session, options: options),
+                                          agentName: LAAWorkSpeaker.replyName(message, session: session, options: options),
                                           continues: LAASenderRun.continues(speakers, at: index),
                                           responseSize: responseSize,
-                                          model: session.observed ?? session.requested,
+                                          model: LAAWorkSpeaker.replyModel(message, session: session),
                                           onQuote: { text in
                                               quote = LAAWorkQuoteRequest(text: text, token: (quote?.token ?? 0) &+ 1)
                                           })
                     }
-                    if !workRecords.isEmpty { LAAWorkRecordDisclosure(records: workRecords) }
+                    ForEach(sentEchoes) { echo in
+                        LAAWorkSentEchoRow(echo: echo, queued: (session.queue?.count ?? 0) > 0)
+                    }
+                    // One line while the turn runs, in place of the tool
+                    // traffic the transcript no longer lists (owner, 2026-11-12).
+                    if canStop(session) { LAAWorkProgressLine(compacting: compacting) }
                     if !canInterrupt(session) || session.resumedTo != nil { actions(session) }
                 } else if let failure {
                     Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
@@ -286,7 +294,11 @@ struct LAAWorkSessionDetail: View {
                 }),
             interrupt: canStop(session) ? AnyView(stopButton) : nil,
             actionNotice: effortNotice,
-            quote: quote
+            quote: quote,
+            onSent: { text, attachments in
+                sentEchoes.append(LAAWorkSentEcho(text: text, attachments: attachments, known: messages.count))
+                returnToEnd()
+            }
         ) { _ in
             Task { await refreshSnapshot() }
         }
@@ -350,6 +362,25 @@ struct LAAWorkSessionDetail: View {
         }
     }
 
+    /// Sending is an explicit "back to the end" (owner, 2026-11-12): wherever
+    /// the owner had scrolled, the page moves to the message just sent and the
+    /// progress line under it, and follows again. Placed once now and once
+    /// after the new row has been laid out, as a late row or picture would
+    /// otherwise stop it short. A reply that only arrives still leaves the
+    /// reading position alone (followNewArrival).
+    private func returnToEnd() {
+        userDragged = false
+        parkedOnDecision = false
+        followsConversation = true
+        didInitialScroll = true
+        scrollRequest.move(to: .bottom)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !userDragged else { return }
+            scrollRequest.move(to: .bottom)
+        }
+    }
+
     /// A new turn follows only while the owner is at the bottom and no decision
     /// is waiting for them.
     private func followNewArrival() {
@@ -359,11 +390,18 @@ struct LAAWorkSessionDetail: View {
 
 
     /// The heading card is gone; a mismatch between what was asked for and
-    /// what the daemon reports still belongs at the top of the conversation.
-    private var mismatchLabel: some View {
-        Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
-            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-            .accessibilityIdentifier("work.session.modelMismatch")
+    /// what the daemon reports still belongs at the top of the conversation,
+    /// named: "依頼 Fable 5.2 → 実行 Opus 4.8", and when the Bridge saw the
+    /// switch itself, when.
+    @ViewBuilder private func mismatchLabel(_ session: LAAWorkSession) -> some View {
+        if let mismatch = LAAWorkSessionStyle.mismatch(session, options: options) {
+            LAAWorkMismatchLine(mismatch: mismatch)
+                .accessibilityIdentifier("work.session.modelMismatch")
+        } else {
+            Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                .accessibilityIdentifier("work.session.modelMismatch")
+        }
     }
 
     private func canInterrupt(_ session: LAAWorkSession) -> Bool {
@@ -379,18 +417,8 @@ struct LAAWorkSessionDetail: View {
     /// stop's ring was larger than Send's); only the square and its colour
     /// say which one ends the turn.
     private var stopButton: some View {
-        Button { beginStop() } label: {
-            Image(systemName: "stop.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(stopping ? LAAColor.secondaryText : LAAColor.end)
-                .frame(width: 36, height: 36)
-                .conduitGlassControl(cornerRadius: 18, tint: LAAColor.end.opacity(0.10), interactive: !stopping)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(stopping)
-        .accessibilityLabel(Text(verbatim: "中断"))
-        .accessibilityIdentifier("work.session.stop")
+        LAAGlassActionButton(systemImage: "stop.fill", label: "中断", role: .stop, enabled: !stopping,
+                             identifier: "work.session.stop") { beginStop() }
     }
 
     private func actions(_ session: LAAWorkSession) -> some View {
@@ -420,7 +448,7 @@ struct LAAWorkSessionDetail: View {
     @discardableResult @MainActor private func refreshSnapshot() async -> Bool {
         do {
             async let detailRead: LAAWorkSession = bridge.read("/v1/sessions/\(id)")
-            async let historyRead: LAAWorkPage<LAAWorkConversationMessage> = bridge.read("/v1/sessions/\(id)/conversation")
+            async let historyRead: LAAWorkConversationPage = bridge.read("/v1/sessions/\(id)/conversation")
             let detail = try await detailRead
             let detailData = try? snapshotData(detail)
             if detailData != lastDetailData {
@@ -429,12 +457,16 @@ struct LAAWorkSessionDetail: View {
             }
             do {
                 let history = try await historyRead
-                let data = try? snapshotData(history.items)
+                compacting = history.compacting == true
+                // An older Bridge still sends tool rows; they are not part of
+                // the conversation the owner reads.
+                let items = history.items.filter { $0.role != "tool" }
+                let data = try? snapshotData(items)
                 if data != lastHistoryData {
-                    messages = history.items; lastHistoryData = data
-                    prepareTranscript()
+                    messages = items; lastHistoryData = data
                     LAAWorkSessionCache.save(messages, store: drafts, device: bridge.deviceID, target: id + ":messages")
                 }
+                sentEchoes = LAAWorkSentEcho.pending(sentEchoes, in: messages)
                 historyReady = true
                 conversationUnavailable = false
             } catch {
@@ -460,16 +492,12 @@ struct LAAWorkSessionDetail: View {
         return try encoder.encode(value)
     }
 
-    private func prepareTranscript() {
-        conversationMessages = messages.filter { $0.role != "tool" }
-        workRecords = messages.filter { $0.role == "tool" }
-    }
-
     @MainActor private func observe() async {
         session = LAAWorkSessionCache.read(LAAWorkSession.self, store: drafts, device: bridge.deviceID, target: id)
         let cachedHistory = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages")
-        messages = cachedHistory ?? []; historyReady = cachedHistory != nil
-        prepareTranscript()
+        messages = (cachedHistory ?? []).filter { $0.role != "tool" }; historyReady = cachedHistory != nil
+        sentEchoes = []
+        compacting = false
         lastDetailData = session.flatMap { try? snapshotData($0) }
         lastHistoryData = try? snapshotData(messages)
         cursor = nil

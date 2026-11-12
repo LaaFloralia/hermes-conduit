@@ -18,6 +18,9 @@ struct LAAWorkMessageForm: View {
     let actionNotice: String?
     /// A message to quote into the field, from the transcript's 引用.
     let quote: LAAWorkQuoteRequest?
+    /// Told the text and pictures of a follow-up the Bridge accepted, so the
+    /// transcript can show it until Paseo's history does.
+    let onSent: ((String, [Attachment]) -> Void)?
     let onSuccess: (LAAWorkSession) -> Void
     @State private var focusRequest = 0
     @State private var text = ""
@@ -27,10 +30,12 @@ struct LAAWorkMessageForm: View {
     @State private var sending = false
     @State private var showResolution = false
     @State private var error: String?
+    @State private var preview: LAAWorkImagePreview.Request?
 
     init(sessionID: String, mode: Mode, drafts: ComposerDraftStore, canStart: Bool,
          settingsRow: AnyView? = nil, interrupt: AnyView? = nil, actionNotice: String? = nil,
          quote: LAAWorkQuoteRequest? = nil,
+         onSent: ((String, [Attachment]) -> Void)? = nil,
          onSuccess: @escaping (LAAWorkSession) -> Void) {
         self.sessionID = sessionID
         self.mode = mode
@@ -40,6 +45,7 @@ struct LAAWorkMessageForm: View {
         self.interrupt = interrupt
         self.actionNotice = actionNotice
         self.quote = quote
+        self.onSent = onSent
         self.onSuccess = onSuccess
     }
 
@@ -73,56 +79,78 @@ struct LAAWorkMessageForm: View {
 
     private var photoButton: some View {
         PhotosPicker(selection: $photo, matching: .images) {
-            Image(systemName: "photo")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(canAttach ? LAAColor.text : LAAColor.secondaryText)
-                .frame(width: 36, height: 36)
-                .conduitGlassControl(cornerRadius: 18, interactive: canAttach)
+            LAAGlassActionFace(systemImage: "photo", role: .neutral, enabled: canAttach)
         }
         .disabled(!canAttach)
         .accessibilityLabel(Text(verbatim: "画像を添付"))
         .accessibilityIdentifier("work.composer.photo")
     }
 
+    /// The shared glass button; its colour stays as it was before anything
+    /// was typed (owner, 2026-11-12), and it is only disabled when it cannot send.
     private var sendButton: some View {
-        Button(action: submit) {
-            Image(systemName: "arrow.up")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(canSubmit ? LAAColor.link : LAAColor.secondaryText)
-                .frame(width: 36, height: 36)
-                .conduitGlassControl(cornerRadius: 18, tint: canSubmit ? LAAColor.link.opacity(0.12) : .clear,
-                                     interactive: canSubmit)
-        }
-        .buttonStyle(.plain)
-        .disabled(!canSubmit)
-        .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.send))
-        .accessibilityIdentifier("\(composerPrefix).send")
+        LAAGlassActionButton(systemImage: "arrow.up", label: LAACopy.WorkTab.send, role: .send,
+                             enabled: canSubmit, identifier: "\(composerPrefix).send", action: submit)
     }
 
-    /// Attached pictures stay above the field as small removable chips.
+    /// Attached pictures stay above the field as thumbnails (owner,
+    /// 2026-11-12: a name alone could not be checked, and a tap removed it).
+    /// A tap opens the picture; only the small × takes it off.
     private var chips: some View {
-        HStack(spacing: LAASpacing.x2) {
-            ForEach(attachments) { attachment in
-                Button {
-                    attachments.removeAll { $0.id == attachment.id }
-                    saveDraft(text)
-                } label: {
-                    HStack(spacing: LAASpacing.x1) {
-                        Text(verbatim: attachment.name).lineLimit(1)
-                        Image(systemName: "xmark.circle")
-                    }
-                    .laaTextStyle(.secondary)
-                    .foregroundStyle(LAAColor.secondaryText)
-                    .padding(.horizontal, LAASpacing.x2)
-                    .frame(minHeight: 28)
-                    .background(LAAColor.subtleSurface, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: attachment.name + "を外す"))
+        HStack(spacing: LAASpacing.x3) {
+            ForEach(Array(attachments.enumerated()), id: \.element.id) { index, attachment in
+                thumbnail(attachment, index: index)
             }
             Spacer(minLength: 0)
         }
+        .padding(.top, 6)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.composer.attachments")
+    }
+
+    private func thumbnail(_ attachment: Attachment, index: Int) -> some View {
+        let image = LAAWorkAttachmentImage.image(attachment)
+        return Button {
+            let images = attachments.compactMap(LAAWorkAttachmentImage.image)
+            guard !images.isEmpty else { return }
+            let position = attachments.prefix(index).compactMap(LAAWorkAttachmentImage.image).count
+            preview = .init(images: images, index: min(position, images.count - 1))
+        } label: {
+            Group {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "photo").foregroundStyle(LAAColor.secondaryText)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .background(LAAColor.subtleSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(LAAColor.separator, lineWidth: 0.5) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: attachment.name))
+        .accessibilityHint(Text(verbatim: "全画面で開く"))
+        .accessibilityIdentifier("work.composer.attachment.\(index)")
+        .overlay(alignment: .topTrailing) {
+            Button {
+                attachments.removeAll { $0.id == attachment.id }
+                saveDraft(text)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(LAAColor.text)
+                    .frame(width: 20, height: 20)
+                    .conduitGlassControl(cornerRadius: 10, interactive: true)
+                    // A 20 pt mark with a 32 pt target, off the thumbnail's corner.
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .offset(x: 12, y: -12)
+            .accessibilityLabel(Text(verbatim: attachment.name + "を外す"))
+            .accessibilityIdentifier("work.composer.attachment.\(index).remove")
+        }
     }
 
     var body: some View {
@@ -170,6 +198,14 @@ struct LAAWorkMessageForm: View {
             revision &+= 1
             text = drafts.draft(for: key).text
             attachments = drafts.draft(for: key).attachments
+            #if DEBUG
+            // The UI tests cannot drive the system photo picker: they ask for
+            // two drawn pictures instead, through the same path a pick takes.
+            if mode == .followUp, attachments.isEmpty,
+               ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_WORK_ATTACHMENTS") {
+                LAAWorkMessageForm.samplePictures().forEach(addImage)
+            }
+            #endif
         }
         .onChange(of: quote) { _, request in
             guard let request, mode == .followUp, pending == nil, !sending else { return }
@@ -184,6 +220,7 @@ struct LAAWorkMessageForm: View {
                 photo = nil
             }
         }
+        .laaImagePreview($preview)
         .confirmationDialog(LAAWorkPresentation.japanese("送信状況を確認しましたか？"), isPresented: $showResolution, titleVisibility: .visible) {
             if let pending, mode == .followUp {
                 Button(LAACopy.WorkTab.confirmSent) { resolve(pending, restoring: false) }
@@ -194,6 +231,28 @@ struct LAAWorkMessageForm: View {
             Text(verbatim: "ログや回答を確認してください。未送信と確認できた場合だけ下書きに戻せます。判断できない場合は保留してください。")
         }
     }
+
+    #if DEBUG
+    static func samplePictures() -> [UIImage] {
+        let size = CGSize(width: 1200, height: 900)
+        let palettes: [(UIColor, UIColor, String)] = [
+            (UIColor(red: 0.96, green: 0.93, blue: 0.86, alpha: 1), UIColor(red: 0, green: 0.35, blue: 0.37, alpha: 1), "doc.richtext"),
+            (UIColor(red: 0.09, green: 0.15, blue: 0.16, alpha: 1), UIColor(red: 0.89, green: 0.72, blue: 0.40, alpha: 1), "chart.bar.xaxis"),
+        ]
+        return palettes.map { paper, ink, symbol in
+            UIGraphicsImageRenderer(size: size).image { context in
+                paper.setFill(); context.fill(CGRect(origin: .zero, size: size))
+                ink.setFill()
+                context.fill(CGRect(x: 120, y: 140, width: 960, height: 14))
+                context.fill(CGRect(x: 120, y: 746, width: 520, height: 14))
+                let configuration = UIImage.SymbolConfiguration(pointSize: 300, weight: .light)
+                UIImage(systemName: symbol, withConfiguration: configuration)?
+                    .withTintColor(ink, renderingMode: .alwaysOriginal)
+                    .draw(in: CGRect(x: 380, y: 230, width: 440, height: 440))
+            }
+        }
+    }
+    #endif
 
     private func addImage(_ image: UIImage) {
         guard attachments.count < 4 else { error = "画像は4枚までです。"; return }
@@ -257,6 +316,7 @@ struct LAAWorkMessageForm: View {
                 error = "送信結果を端末に保存できません。再送せず状態を確認してください。"; return
             }
             error = nil
+            if mode == .followUp { onSent?(item.draft.text, item.draft.attachments) }
             onSuccess(result)
         } catch let failure as LAABridgeHTTPError {
             if LAAWorkHTTP.outcomeUnknown(failure) { drafts.markSubmissionUnknown(item.id) }

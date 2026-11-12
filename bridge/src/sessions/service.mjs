@@ -35,6 +35,7 @@ import { settleLocalImages } from './local-images.mjs';
 import { daemonSessionID, snapshot } from './daemon.mjs';
 import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
 import { fastAvailable, fastValue } from './features.mjs';
+import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 
 // Kept exported from here for callers and tests that read a feature list
@@ -390,6 +391,9 @@ export function createSessionService({
           // the same name, so a list row and its detail cannot disagree.
           workspaceTitle, workspaceRootCount: rootAgents,
           requested: model, observed: state.modelCheck.observed, phase: state.phase,
+          // Which model was running when: the conversation names a reply only
+          // from these spans (model-log.mjs).
+          modelLog: foldModelLog(previous?.modelLog, state.modelCheck.observed, new Date(now()).toISOString()),
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
           observedFast: fastValue(state.features), fastAvailable: fastAvailable(state.features),
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
@@ -490,7 +494,10 @@ export function createSessionService({
 
   async function conversation(id) {
     const record = requireSession(id);
-    const messages = await history(record.delegate.sessionId);
+    // Read the log after the history: an observation made while the history
+    // was being read may close the span that covers its newest reply.
+    const read = await history(record.delegate.sessionId);
+    const messages = attributeReplies(read, (sessionStore.get(id) ?? record).modelLog);
     const references = images.references(id);
     // One batch for the whole page: a poll naming the same 215 pictures must
     // not open or rewrite the index 215 times.
@@ -801,6 +808,8 @@ export function createSessionService({
       // compares the observation with what the owner last asked for.
       sessionStore.update(id, (row) => {
         row.ownerChanged = { ...(row.ownerChanged ?? {}), model };
+        // The switch the owner asked for is not a provider's own fallback.
+        row.modelLog = markOwnerChange(row.modelLog, model);
         return [];
       });
     }
@@ -1127,6 +1136,7 @@ export function createSessionService({
       if (status.modelCheck?.observed) {
         record.observed = status.modelCheck.observed;
         record.runtimeVerified = status.modelCheck.runtimeVerified === true;
+        record.modelLog = foldModelLog(record.modelLog, status.modelCheck.observed, new Date(now()).toISOString());
       }
       if (status.daemonStatus) record.daemonStatus = status.daemonStatus;
       // A successful observation that does not report the provider toggle
@@ -1213,6 +1223,9 @@ export function createSessionService({
       // nothing was. `requested` keeps the original request.
       ownerChanged: record.ownerChanged ?? null,
       modelCheck: record.modelCheck ?? null,
+      // The last model change the Bridge itself saw ({from, to, seenAt,
+      // byOwner}); null when it has seen none.
+      modelChange: lastModelChange(record.modelLog),
       runtimeVerified: record.runtimeVerified === true,
       // Only the provider's own toggle value is exposed; the Bridge's request
       // (`fast`) is not proof that Fast is on now.
