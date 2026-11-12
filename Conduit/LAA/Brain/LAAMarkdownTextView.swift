@@ -565,11 +565,15 @@ final class LAAMarkdownUITextView: UITextView {
               let manager = textLayoutManager else { return nil }
         let offset = self.offset(from: beginningOfDocument, to: position)
         guard let font = caretFont(at: offset),
-              let baseline = caretBaseline(at: offset, near: system, manager: manager) else { return nil }
+              let line = caretLine(at: offset, near: system, manager: manager) else { return nil }
         let height = font.ascender - font.descender
-        guard height > 0 else { return nil }
+        // A blank line is shorter than the text typed into it; a taller caret
+        // would reach into the rows around it, so the system's box stays.
+        guard height > 0, height <= line.bounds.height else { return nil }
         let scale = max(traitCollection.displayScale, 1)
-        let top = ((baseline - font.ascender) * scale).rounded() / scale
+        // Hidden markers set an empty item's baseline at the box's foot; the
+        // caret never hangs below the line.
+        let top = (min(line.baseline - font.ascender, line.bounds.maxY - height) * scale).rounded() / scale
         return CGRect(x: system.minX, y: top, width: system.width, height: (height * scale).rounded() / scale)
     }
 
@@ -590,12 +594,16 @@ final class LAAMarkdownUITextView: UITextView {
         for index in [offset, offset - 1] where index >= 0 && index < storage.length {
             if let font = visible(storage.attribute(.font, at: index, effectiveRange: nil)) { return font }
         }
-        return visible(self.font)
+        // An item that holds only its hidden marker (UITextView's own font is
+        // the first character's, often a hidden heading mark): the body size
+        // its text will take.
+        return UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: LAAType.bodySize))
     }
 
-    /// The baseline, in this view's coordinates, of the line fragment the
-    /// system placed the caret on.
-    private func caretBaseline(at offset: Int, near system: CGRect, manager: NSTextLayoutManager) -> CGFloat? {
+    /// The baseline and box, in this view's coordinates, of the line fragment
+    /// the system placed the caret on.
+    private func caretLine(at offset: Int, near system: CGRect,
+                           manager: NSTextLayoutManager) -> (baseline: CGFloat, bounds: CGRect)? {
         let start = manager.documentRange.location
         var fragments: [NSTextLayoutFragment] = []
         for index in [offset, offset - 1] where index >= 0 {
@@ -626,7 +634,7 @@ final class LAAMarkdownUITextView: UITextView {
         }
         // A line that does not overlap the system's box is not the caret's.
         guard let best, best.bounds.minY < system.maxY, best.bounds.maxY > system.minY else { return nil }
-        return best.baseline
+        return (best.baseline, best.bounds)
     }
 
     private func revealCaretInDocument() {

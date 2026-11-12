@@ -164,6 +164,12 @@ enum LAAMarkdownStyler {
                 break
             }
 
+            // A list item or heading whose only characters are its hidden
+            // marker would collapse to the marker's 0.1 pt line and overlap
+            // the row above; it keeps the height its text will take.
+            if markerIsGlyph, let font = attributes[.font] as? UIFont {
+                paragraph.minimumLineHeight = floor(font.lineHeight * paragraph.lineHeightMultiple)
+            }
             attributes[.paragraphStyle] = paragraph
             // The whole line first: paragraph style and block typography. The
             // terminating newline is part of the paragraph, so an empty line

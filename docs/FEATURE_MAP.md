@@ -660,8 +660,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   continuation, the IME gate).
 - The editor's caret is as tall as the font being typed (ascender to
   descender) and sits on the line's TextKit 2 baseline, not the 1.7× line box,
-  on iPhone and Mac; hidden Markdown markers never size it, and revealing the
-  caret, selection and margin glyphs keep the system's line box (2026-11-12,
+  on iPhone and Mac; hidden Markdown markers never size it, an empty list item
+  or heading keeps its text's row height instead of collapsing onto the row
+  above, a blank line (shorter than the font) keeps the system's caret, and
+  revealing the caret, selection and margin glyphs keep the system's line box (2026-11-12,
   `ConduitTests/LAAMarkdownInteractionTests.swift`).
 - Editing keeps the latest unsaved buffer and its base in protected app-private
   storage after a 400 ms typing pause and when the app leaves the foreground.
