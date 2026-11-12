@@ -154,6 +154,47 @@ final class LAAMarkdownInteractionTests: XCTestCase {
         }
     }
 
+    @MainActor func testCaretIsAsTallAsTheTypingFontNotTheLineBox() throws {
+        let source = "# Heading\nBody text\n- [ ] "
+        let parent = LAAMarkdownTextView(text: source, session: LAAMarkdownEditingSession(), height: .constant(200),
+                                       autoFocus: false, isEnabled: true, onTextChange: { _ in }, onSelectionChange: { _ in })
+        let coordinator = parent.makeCoordinator()
+        let view = LAAMarkdownUITextView()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
+        window.addSubview(view)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        view.frame = CGRect(x: 0, y: 0, width: 400, height: 400)
+        view.text = source
+        view.delegate = coordinator
+        coordinator.attach(view)
+        view.layoutIfNeeded()
+        var heights: [String: CGFloat] = [:]
+        // Ends of the heading and the body line, and an empty checklist item
+        // whose only characters are hidden markers.
+        // The expected font is read from a visible character: "H" for the
+        // heading, "B" for the body and the empty item.
+        for (label, location, sample) in [("heading", 9, 2), ("body", 19, 10), ("empty item", 26, 10)] {
+            view.selectedRange = NSRange(location: location, length: 0)
+            coordinator.textViewDidChangeSelection(view)
+            view.layoutIfNeeded()
+            let position = try XCTUnwrap(view.position(from: view.beginningOfDocument, offset: location))
+            let caret = view.caretRect(for: position)
+            let line = view.systemCaretRect(for: position)
+            let font = try XCTUnwrap(view.textStorage.attribute(.font, at: sample, effectiveRange: nil) as? UIFont)
+            XCTAssertEqual(caret.height, font.ascender - font.descender, accuracy: 1, label)
+            XCTAssertEqual(caret.minX, line.minX, label)
+            heights[label] = caret.height
+            // The system sizes an empty item's caret from its hidden markers;
+            // the other lines keep the caret inside their own box.
+            guard label != "empty item" else { continue }
+            XCTAssertLessThan(caret.height, line.height, label)
+            XCTAssertGreaterThanOrEqual(caret.minY, line.minY - 0.5, "\(label) stays on its own line")
+            XCTAssertLessThanOrEqual(caret.maxY, line.maxY + 0.5, "\(label) stays on its own line")
+        }
+        XCTAssertGreaterThan(heights["heading"] ?? 0, (heights["body"] ?? 0) + 3, "a heading's caret follows its larger font")
+    }
+
     @MainActor func testEmptyNoteFocusWaitsUntilTheViewHasAWindow() async throws {
         let host = UIHostingController(rootView: LAAMarkdownEditor(text: "", autoFocus: true) { _ in })
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
