@@ -107,9 +107,14 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     func setWakeToken(_ data: Data) {
         let token = Self.hex(data)
         guard token != wakeToken else { return }
+        phoneUseLog.info("app push token received")
         wakeToken = token
         guard let start = pendingStartToken ?? startToken else { return }
         Task { await registerStart(token: start) }
+    }
+
+    func wakeTokenFailed(_ error: Error) {
+        phoneUseLog.error("no app push token: \(String(describing: error), privacy: .public)")
     }
 
     /// A background push from the Mac (`laa_phone_use`): an activity it

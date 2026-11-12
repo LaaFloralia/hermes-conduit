@@ -168,6 +168,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         Task { @MainActor in
             PushNotificationService.shared.didFailToRegister(error)
+            #if LAA_BUILD && !targetEnvironment(macCatalyst)
+            LAAPhoneUseService.shared.wakeTokenFailed(error)
+            #endif
         }
     }
 
