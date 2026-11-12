@@ -70,7 +70,9 @@ struct LAAWorkMessageForm: View {
     private var actionRow: some View {
         HStack(spacing: LAASpacing.x2) {
             photoButton
-            if let settingsRow { settingsRow }
+            // Before the spacer, so the model's name shows whenever the row
+            // has room for it; only a row too narrow drops it.
+            if let settingsRow { settingsRow.layoutPriority(1) }
             Spacer(minLength: LAASpacing.x2)
             if let interrupt { interrupt }
             sendButton
