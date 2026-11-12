@@ -2101,7 +2101,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 ## Composer editor and text size
 
 The LAA composer starts at one line, grows to eight and shows the
-full-height editor control from three lines. Settings > Chat offers separate input and response text
+full-height editor control at every height (owner, 2026-11-12). Settings > Chat offers separate input and response text
 sizes, each applied on top of the system's text size.
 
 **Siblings:** chat composer · group room composer · both full editors ·
@@ -2123,7 +2123,7 @@ Settings > Chat · chat and group responses · Japanese input methods
   The marked-text tests exercise the UIKit bridge but cannot reproduce every
   third-party keyboard behavior. Device steps: `docs/laa/COMPOSER-DEVICE-CHECKS.md`.
 
-**Checked:** 2026-11-11, laa/s2-integ (LAA stage 2); 2026-10-29, d7e98a56 (LAA Task 08).
+**Checked:** 2026-11-12, worktree-agent-af8a4f32c5bd7c018 (expand control at every height in the chat and group composers); 2026-11-11, laa/s2-integ (LAA stage 2); 2026-10-29, d7e98a56 (LAA Task 08).
 
 ## Composer drafts
 
@@ -4209,28 +4209,29 @@ and rollback instructions · the upstream App Store build
 
 - 2026-11-11 stage 2: `Conduit/LAA/Chat/LAAChatPresentation.swift` supplies sender role tags, native message menus and the six reaction palette, typing dots with work records, Japanese date/read states and information-sheet search. The Dots-style 64pt floating mascot/name pill replaces the persistent ellipsis; the one-row composer grows from one to eight lines. `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift` displays the profile-isolated PERF cache during connection and defers its editor handoff until Japanese composition commits.
 
-**Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · the upstream App Store build
+**Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · Work's follow-up composer (the form both follow; not changed here) · the Mac window's chat (same composer; no edge swipe there) · the upstream App Store build
 
 **Code**
 - Chat colours, columns, date separators and the composer's Liquid Glass (+, field, send; opaque with Reduce Transparency): `Conduit/LAA/Chat/LAAChatStyle.swift`, `Conduit/LAA/Design/LAATokens.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift`
 - Rich text and media: `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/MarkdownProseRun.swift`
-- Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`; the shared 36 pt glass buttons `Conduit/LAA/Design/LAAGlassActionButton.swift`
+- Left-edge swipe back on a chat that hides the system Back: `Conduit/LAA/Design/LAAEdgeSwipeBack.swift`, applied in `Conduit/Views/V2/V2ConversationScreen.swift`
 - Compact employee and group toolbar placement: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/GroupChatView.swift`
 - Visible message actions (copy, 引用, グッド): `Conduit/LAA/Work/LAAWorkMessageActions.swift` (LAAMessageActionBar), `Conduit/Views/ChatView.swift` (UserBubble, AssistantBubble)
-- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`, `ConduitTests/LAAChatPolishTests.swift`
+- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`, `ConduitUITests/LAAChatComposerUITests.swift`, `ConduitTests/LAAChatPolishTests.swift`, `ConduitTests/ComposerFullEditorTests.swift`
 
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
-- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture.
+- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture: hiding the system Back for LAA's turns the edge swipe off, so `laaEdgeSwipeBack` gives it back while the chat is pushed, never at the list itself (owner, 2026-11-12).
 - The LAA transcript reserves the entire growing composer height, so an eight-line draft cannot expose message text behind the controls. Group placeholders use primary ink on photo glass.
-- The employee and group composers keep +, the field and the Send control on one row. Send appears for a sendable draft; the expand control appears from three lines. The long-press menu contains copy, selection, reply and read-aloud. Employee chats also offer reactions. Under each reply a plain glyph row offers コピー, 引用 (the existing reply quote) and グッド (the 👍 reaction Hermes keeps, pressed again to remove); the owner's own messages offer コピー and 引用. No plate or border behind the glyphs (owner, 2026-11-11: copy, quote and like were missing from sight). Groups keep the long-press menu only. Only the latest owner message shows its delivery state.
+- The employee and group composers take Work's follow-up form (owner, 2026-11-12): the field on top with its expand control at every height, empty or not; under it + at the start and Send (Stop while a turn runs) at the end, each Work's 36 pt glass that answers a 44 pt touch. Send keeps one colour before and after typing and is only disabled with nothing to send. The long-press menu contains copy, selection, reply and read-aloud. Employee chats also offer reactions. Under each reply a plain glyph row offers コピー, 引用 (the existing reply quote) and グッド (the 👍 reaction Hermes keeps, pressed again to remove); the owner's own messages offer コピー and 引用. No plate or border behind the glyphs (owner, 2026-11-11: copy, quote and like were missing from sight). Groups keep the long-press menu only. Only the latest owner message shows its delivery state.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
 
 **Open gaps**
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
-**Checked:** 2026-11-11, worktree-agent-a84bbfed81904bb50 (visible copy · 引用 · グッド under employee chat messages); 2026-11-09, laa/group-composer (the group room's composer in the same form); 2026-11-09, laa/chat-composer-dots-cron (Send at the end of the row under the field, no mic or voice button); 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+**Checked:** 2026-11-12, worktree-agent-af8a4f32c5bd7c018 (Work's composer form, expand at every height, Send's fixed colour, edge swipe back); 2026-11-11, worktree-agent-a84bbfed81904bb50 (visible copy · 引用 · グッド under employee chat messages); 2026-11-09, laa/group-composer (the group room's composer in the same form); 2026-11-09, laa/chat-composer-dots-cron (Send at the end of the row under the field, no mic or voice button); 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
 
 
 ## LAA message senders and the owner's identity

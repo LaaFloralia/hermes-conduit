@@ -17,8 +17,9 @@ import UniformTypeIdentifiers
 enum ComposerShared {
     #if LAA_BUILD
     static let controlSize: CGFloat = LAASpacing.minimumTouchTarget
-    /// The row under the field: Work's 36 pt glass, Send included.
-    static let rowControlSize: CGFloat = 36
+    /// The row under the field: Work's 36 pt glass (LAAGlassActionButton),
+    /// Send included (owner, 2026-11-12: + and Send were too large).
+    static let rowControlSize: CGFloat = LAAGlassActionButton.size
     #else
     static let controlSize: CGFloat = 32
     static let rowControlSize: CGFloat = controlSize
@@ -152,12 +153,10 @@ struct ComposerBar: View, Equatable {
         let attachmentGeneration: UInt64
     }
 
+    /// Offered at every height, empty or not, as in Work's follow-up field
+    /// (owner, 2026-11-12).
     static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
-#if LAA_BUILD
-        measuredHeight >= ComposerPasteTextView.minimumHeight * 2
-#else
         true
-#endif
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String, dashboardID: UUID? = nil) -> ComposerDraftKey {
@@ -812,12 +811,12 @@ struct ComposerBar: View, Equatable {
                     .transition(.opacity)
             } else {
 #if LAA_BUILD
-                // Send sits at the end of the row below, as in Work; only a
-                // running turn's Stop stays beside the resting field.
-                HStack(alignment: .bottom, spacing: LAASpacing.x2) {
-                    attachmentButton
+                // Work's follow-up form (owner, 2026-11-12): the field with
+                // its expand control, and under it + at the start and Send
+                // (or Stop) at the end, each 36 pt glass in a 44 pt target.
+                VStack(spacing: LAASpacing.x2) {
                     composerField
-                    trailingSlot(size: 44)
+                    laaControlsRow
                 }
 #else
                 // The field spans the card; every control sits in the row
@@ -1058,6 +1057,21 @@ struct ComposerBar: View, Equatable {
     private var showsFullEditorButton: Bool {
         Self.showsFullEditorButton(measuredHeight: composerTextHeight)
     }
+
+#if LAA_BUILD
+    /// The margin between the 36 pt glass and its 44 pt touch.
+    static let touchMargin = (LAAGlassActionButton.touch - LAAGlassActionButton.size) / 2
+
+    /// The row under the field, in Work's order and spacing: + at the
+    /// start and Send (or Stop) at the end, both 36 pt glass.
+    private var laaControlsRow: some View {
+        HStack(spacing: LAASpacing.x2) {
+            attachmentButton
+            Spacer(minLength: LAASpacing.x2)
+            trailingSlot(size: ComposerShared.rowControlSize)
+        }
+    }
+#endif
 
     /// Anything that needs the full composer: focus, a draft, an
     /// attachment, a reply, dictation, steering a running turn, a notice, or
@@ -1508,24 +1522,31 @@ struct ComposerBar: View, Equatable {
                 }
             }
         } label: {
+        #if LAA_BUILD
+            // Work's attach button: 36 pt glass that answers a 44 pt touch.
+            // A menu's label takes touches only inside its frame, so the
+            // frame carries the 44 pt and the row takes back the margin.
+            LAAGlassActionFace(systemImage: "plus", role: .neutral, enabled: appState.composerIsEnabled)
+                .laaComposerPhotoInk()
+                .padding(Self.touchMargin)
+                .contentShape(Rectangle())
+        #else
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-        #if LAA_BUILD
-                .foregroundStyle(LAAColor.link)
-                .laaComposerPhotoInk()
-        #endif
                 .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
                 .contentShape(ComposerShared.controlHitShape)
+        #endif
         }
         #if LAA_BUILD
         .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
+        .accessibilityIdentifier("composer.attach")
         #else
         .accessibilityLabel(Text("Attach"))
         #endif
         // Open while Hermes replies: the files go as Queue (#1146).
         .disabled(!appState.composerIsEnabled)
 #if LAA_BUILD
-        .laaComposerGlass(in: Circle())
+        .padding(-Self.touchMargin)
 #else
         .conduitGlassControl(cornerRadius: ComposerShared.controlSize / 2, tint: .conduitAccent.opacity(0.08))
 #endif
@@ -1662,15 +1683,20 @@ struct ComposerBar: View, Equatable {
         }
     }
 
+    @ViewBuilder
     private func composerActionFace(size: CGFloat) -> some View {
+#if LAA_BUILD
+        // Work's Send (LAAGlassActionButton's face): 36 pt glass that answers
+        // a 44 pt touch, one colour before and after typing (owner,
+        // 2026-11-12). With nothing to send it is only disabled.
+        LAAGlassActionFace(systemImage: actionSymbol, role: stopOnly ? .stop : .send,
+                           enabled: action != .unavailable)
+            .laaComposerPhotoInk()
+            .animation(ConduitMotion.transition, value: action)
+#else
         HStack(spacing: 6) {
             Image(systemName: actionSymbol)
-#if LAA_BUILD
-                // Work's Send glyph.
-                .font(.system(size: stopOnly ? 12 : 15, weight: .bold))
-#else
                 .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
-#endif
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
@@ -1678,16 +1704,12 @@ struct ComposerBar: View, Equatable {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
-#if LAA_BUILD
-        .foregroundStyle(action == .unavailable ? LAAColor.secondaryText : LAAColor.filledButtonText)
-        .laaComposerPhotoInk()
-#else
         .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
-#endif
         .frame(minWidth: actionTitle == nil ? size : 86, minHeight: size)
         .padding(.horizontal, actionTitle == nil ? 0 : 4)
         .contentShape(ComposerShared.controlHitShape)
         .animation(ConduitMotion.transition, value: action)
+#endif
     }
 
     private var composerActionChrome: ComposerActionChrome {
@@ -3196,10 +3218,9 @@ private struct ComposerActionChrome: ViewModifier {
 
     func body(content: Content) -> some View {
 #if LAA_BUILD
-        // Glass like + beside it: plain while there is nothing to send,
-        // tinted with the send colour once there is.
-        content.laaComposerGlass(in: Circle(), fill: action == .unavailable ? nil : LAAColor.filledButton,
-                                 interactive: action != .unavailable)
+        // The face carries its own glass (composerActionFace); the plain
+        // style keeps the system from dimming or tinting it when disabled.
+        content.buttonStyle(.plain)
 #else
         content.conduitGlassControl(
             cornerRadius: ComposerShared.controlSize / 2,
