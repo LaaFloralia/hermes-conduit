@@ -10,6 +10,8 @@ extension LAACopy {
         static let granted = "付与"
         static let toppedUp = "補充後"
         static let left = "残り"
+        static let expires = "期限"
+        static let lapsed = "期限切れ"
         static let meter = "利用枠"
         static let lowestWeekly = "週間の残りが最も少ない枠"
     }
@@ -238,6 +240,16 @@ struct LAAUsageView: View {
         return (money ? LAACopy.Usage.toppedUp : LAACopy.Usage.granted) + " " + total + " · " + LAACopy.Usage.left + " " + left + "%"
     }
 
+    /// "期限 12月13日": the day a credit lapses, as its billing page names it
+    /// (a UTC date). Nil for anything that is not such a date.
+    static func expiryNote(_ text: String?) -> String? {
+        guard let text, text.count == 10 else { return nil }
+        let parts = text.split(separator: "-", omittingEmptySubsequences: false).map { Int($0) }
+        guard parts.count == 3, let month = parts[1], let day = parts[2], parts[0] != nil,
+              (1...12).contains(month), (1...31).contains(day) else { return nil }
+        return LAACopy.Usage.expires + " \(month)月\(day)日"
+    }
+
     /// GPT API and Claude API: the credit left, never the spend. Neither
     /// provider publishes a balance API, so the reading is the billing page's,
     /// carried with the moment it was checked; without one the row still
@@ -249,15 +261,19 @@ struct LAAUsageView: View {
                 ? LAAUsageItem.date(item.observedAt).map { LAACopy.Usage.billingReading + " " + LAADateText.string($0, .monthDayTime) }
                 : nil
             let empty = !(amount > 0)
+            // Credit past the day its billing page names no longer stands.
+            let lapsed = !empty && item.isExpired(now: evaluatedAt)
             // The meter the other rows draw: what is left since the last
             // top-up, and an empty bar when nothing is.
             let granted = item.detail?.grantedAmount
             let fraction = LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
             let parts = [item.retainedReason.map { Self.unavailableReason($0) }, empty ? LAACopy.Usage.noBalanceLeft : nil,
-                         empty ? nil : grantNote(granted, fraction: fraction, money: true), checked]
+                         lapsed ? LAACopy.Usage.lapsed : nil,
+                         empty || lapsed ? nil : grantNote(granted, fraction: fraction, money: true),
+                         empty ? nil : Self.expiryNote(item.detail?.expiresOnUtc), checked]
             let note = parts.compactMap { $0 }.joined(separator: " · ")
             readingRow(name: name, result: value(amount, unit: "usd"), age: age(item), fraction: fraction, countsDown: true,
-                       note: note.isEmpty ? nil : note, noteLink: billing, alert: empty)
+                       note: note.isEmpty ? nil : note, noteLink: billing, alert: empty || lapsed)
         } else {
             let note = item.map { $0.nullReason == "not_auto" || $0.nullReason == nil ? LAACopy.Usage.noAutomaticBalance : Self.unavailable($0) }
                 ?? LAACopy.Usage.noAutomaticBalance

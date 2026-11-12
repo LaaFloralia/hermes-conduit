@@ -239,7 +239,7 @@ function quotaItem(row, provider, context) {
 }
 
 // A billing page can read below zero: an unpaid balance is still the balance.
-function confirmedBalanceItem(balance, provider) {
+function confirmedBalanceItem(balance, provider, now) {
   const amount = finiteNumber(balance.amount, { min: Number.MIN_SAFE_INTEGER });
   const confirmedAt = isoTime(balance.confirmedAt);
   if (amount === null || confirmedAt === null) return unavailableItem({ ...baseOf(provider), unit: 'usd', reason: 'not_auto' });
@@ -248,8 +248,12 @@ function confirmedBalanceItem(balance, provider) {
   // the proxy has seen one; without it the row draws no scale.
   const granted = finiteNumber(balance.grantedAmount);
   if (granted !== null && granted > 0) detail.grantedAmount = granted;
-  return availableItem({ ...baseOf(provider), unit: 'usd', value: amount, observedAt: confirmedAt, stale: false, expired: false,
-    detail });
+  // Credit that lapses on a date the billing page names: the day is shown,
+  // and past it the balance no longer stands.
+  const expiresAt = typeof balance.expiresOnUtc === 'string' ? expiryTime(balance.expiresOnUtc) : null;
+  if (expiresAt !== null) detail.expiresOnUtc = balance.expiresOnUtc;
+  return availableItem({ ...baseOf(provider), unit: 'usd', value: amount, observedAt: confirmedAt, stale: false,
+    expired: expiresAt !== null && now > expiresAt, detail });
 }
 
 function balanceItem(row, provider, context) {
@@ -407,7 +411,7 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
   return USAGE_PROVIDERS.map((provider) => {
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
-    if (provider.kind === 'balance' && row.balance) return confirmedBalanceItem(row.balance, provider);
+    if (provider.kind === 'balance' && row.balance) return confirmedBalanceItem(row.balance, provider, now);
     const prior = observationAnchors.get(provider.id);
     const rowReceivedAt = prior?.observedAt === Date.parse(row.updatedAt) ? Math.min(prior.receivedAt, receivedAt) : receivedAt;
     const context = { now, fetchedAt, receivedAt: rowReceivedAt, autoStaleMs: autoLimit };

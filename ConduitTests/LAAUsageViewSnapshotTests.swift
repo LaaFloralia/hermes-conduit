@@ -48,6 +48,14 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
     }
 
+    func testACreditsLapseDayReadsAsMonthAndDay() {
+        XCTAssertEqual(LAAUsageView.expiryNote("2026-12-13"), "期限 12月13日")
+        XCTAssertEqual(LAAUsageView.expiryNote("2027-01-05"), "期限 1月5日")
+        for text in [nil, "", "soon", "2026-12-13T00:00:00Z", "2026-13-01", "2026-12-00", "20261213ab"] {
+            XCTAssertNil(LAAUsageView.expiryNote(text))
+        }
+    }
+
     /// The threshold tick used to be a laid-out sibling of the track, so a row
     /// with a mark was taller than one without. It is drawn over the track now.
     func testMeterHeightIsTheSameWithAndWithoutATick() {
@@ -161,7 +169,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
     }
 
     /// The API rows as the live feed sends them: Claude API's billing-page
-    /// reading below zero, GPT API with no reading at all; a low Codex week and
+    /// credit with the day it lapses, GPT API with no reading at all; a low Codex week and
     /// a Magnific grant nearly spent, so both meters turn.
     private func billingFixture() throws -> [LAAUsageItem] {
         let formatter = ISO8601DateFormatter()
@@ -170,6 +178,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         let freshUntil = formatter.string(from: now.addingTimeInterval(540))
         let checked = formatter.string(from: now.addingTimeInterval(-6 * 86_400))
         let reset = formatter.string(from: now.addingTimeInterval(86_400))
+        let lapses = String(formatter.string(from: now.addingTimeInterval(30 * 86_400)).prefix(10))
         let rows: [[String: Any]] = [
             ["id": "provider.codex.quota", "kind": "quota", "label": "Codex", "value": 8, "unit": "percent",
              "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
@@ -180,10 +189,10 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
              "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
              "stale": false, "estimated": false, "expired": false,
              "detail": ["freshUntil": freshUntil, "creditUnit": "AI credits", "grantedAmount": 240000]],
-            ["id": "provider.claude-api.balance", "kind": "balance", "label": "Claude API", "value": -0.19, "unit": "usd",
+            ["id": "provider.claude-api.balance", "kind": "balance", "label": "Claude API", "value": 160.24, "unit": "usd",
              "source": "codexbar-usage-proxy", "observedAt": checked, "availability": "available",
              "stale": false, "estimated": false, "expired": false,
-             "detail": ["sourceKind": "verified", "currency": "USD"]],
+             "detail": ["sourceKind": "verified", "currency": "USD", "grantedAmount": 160.25, "expiresOnUtc": lapses]],
             ["id": "provider.openai-api.balance", "kind": "balance", "label": "GPT API", "value": NSNull(), "unit": "usd",
              "source": "codexbar-usage-proxy", "observedAt": NSNull(), "availability": "unavailable", "nullReason": "not_auto",
              "stale": false, "estimated": false, "expired": false],

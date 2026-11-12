@@ -513,6 +513,23 @@ test('a balance carries what it counts down from when the proxy names it, and no
   assert.equal(byId(items, 'provider.venice.balance').detail.grantedAmount, 10.27);
 });
 
+test('a confirmed balance carries the day its credit lapses, and is expired past it', () => {
+  const feed = { version: 1, fetchedAt: '2026-11-13T05:00:00Z', stale: false, providers: [
+    { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
+      balance: { amount: 160.24, confirmedAt: '2026-11-12T22:47:00Z', grantedAmount: 160.25, expiresOnUtc: '2026-12-13' } },
+    { id: 'openai-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
+      balance: { amount: 5, confirmedAt: '2026-11-12T22:47:00Z', expiresOnUtc: 'soon' } },
+  ] };
+  const before = usageItemsFromFeed(feed, { now: Date.parse('2026-11-13T05:00:00Z') });
+  const claude = byId(before, 'provider.claude-api.balance');
+  assert.equal(claude.detail.expiresOnUtc, '2026-12-13');
+  assert.equal(claude.detail.grantedAmount, 160.25);
+  assert.equal(claude.expired, false);
+  assert.equal('expiresOnUtc' in byId(before, 'provider.openai-api.balance').detail, false);
+  const after = usageItemsFromFeed({ ...feed, fetchedAt: '2026-12-20T05:00:00Z' }, { now: Date.parse('2026-12-20T05:00:00Z') });
+  assert.equal(byId(after, 'provider.claude-api.balance').expired, true);
+});
+
 test('Venice USD and Magnific credits keep their units and priority, without Antigravity or nanoGPT', () => {
   const items = projection([
     { id: 'nanogpt', available: true, source: 'live', updatedAt: '2026-10-29T04:58:00Z',

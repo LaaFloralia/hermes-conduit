@@ -93,18 +93,38 @@ enum LAAChatModelCatalog {
         var id: String { provider + "\u{1F}" + model }
     }
 
+    /// Models LAA runs on the Claude subscription that the Claude CLI's own
+    /// picker (where Hermes reads this provider's list) does not name yet.
+    /// Hermes takes them by id, so they are offered ahead of the listed ones.
+    static let subscriptionExtras = ["claude-fable-5-2", "claude-mythos-5-2"]
+
+    static func isClaudeSubscription(_ provider: ProviderInfo) -> Bool {
+        provider.name.hasPrefix("claude-subscription-directsdk")
+    }
+
     static func choices(_ providers: [ProviderInfo], visibility: ModelVisibility,
                         runningModel: String?, runningProvider: String?) -> [Choice] {
         providers.filter { !visibility.hiddenProviders.contains($0.name) }.flatMap { provider in
-            provider.models
+            let running = runningProvider.map(provider.matches) == true
+            let listed = provider.models
                 .filter { !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0.id)") }
                 .map { model in
                     Choice(model: model.id, provider: provider.name,
                            providerName: provider.displayName ?? provider.name,
                            label: LAAModelCapsule.readableName(model.id) ?? model.label ?? model.id,
                            reasoning: model.reasoningCapable,
-                           current: model.id == runningModel && runningProvider.map(provider.matches) == true)
+                           current: model.id == runningModel && running)
                 }
+            guard isClaudeSubscription(provider) else { return listed }
+            let named = Set(provider.models.map { $0.id.replacingOccurrences(of: "[1m]", with: "") })
+            let extras = subscriptionExtras
+                .filter { !named.contains($0) && !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0)") }
+                .map { id in
+                    Choice(model: id, provider: provider.name, providerName: provider.displayName ?? provider.name,
+                           label: LAAModelCapsule.readableName(id) ?? id, reasoning: true,
+                           current: id == runningModel && running)
+                }
+            return extras + listed
         }
     }
 

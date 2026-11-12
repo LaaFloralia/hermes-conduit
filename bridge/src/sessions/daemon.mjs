@@ -267,7 +267,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
         throw new BridgeError(409, 'model_rejected', 'Paseo rejected the model change');
       }
       const after = await agent(c, id);
-      const applied = after.runtimeInfo?.model ?? after.model ?? null;
+      const applied = runningModel(after);
       if (applied !== model) throw new BridgeError(409, 'model_not_applied', 'Paseo did not apply the model');
       return statusOf(c, after);
     }),
@@ -350,10 +350,21 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
     }),
   };
 }
+// Paseo maps the model Claude Code reports onto its own list, and a version
+// that list does not know yet loses its minor part: "claude-fable-5-2" comes
+// back as "claude-fable-5". The unmapped value sits beside it, so it wins when
+// it is the mapped model plus a minor version.
+export function runningModel(a) {
+  const mapped = a.runtimeInfo?.model ?? a.model ?? null;
+  const raw = a.runtimeInfo?.extra?.runtimeModel;
+  if (typeof mapped !== 'string' || typeof raw !== 'string') return mapped;
+  const reported = raw.trim().replace(/\[1m\]$/i, '');
+  return reported.startsWith(`${mapped}-`) && /^-\d{1,2}$/.test(reported.slice(mapped.length)) ? reported : mapped;
+}
 export function snapshot(a, now) {
   const pending = a.pendingPermissions ?? [];
   const effort = a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null;
-  const observed = { provider: a.provider, model: a.runtimeInfo?.model ?? a.model ?? null, effort };
+  const observed = { provider: a.provider, model: runningModel(a), effort };
   return { title: a.title, daemonStatus: a.status, activeTurn: Boolean(a.activeTurn), archivedAt: a.archivedAt ?? null,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
     pending,

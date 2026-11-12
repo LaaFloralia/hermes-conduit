@@ -164,6 +164,8 @@ struct LAAModelCapsule: View {
         if let data = raw.data(using: .utf8), let route = try? JSONDecoder().decode([String].self, from: data),
            let last = route.last { raw = last }
         if raw.hasPrefix("Claude ") { raw = String(raw.dropFirst("Claude ".count)) }
+        // The 1M-context route of the same model: "claude-opus-5-5[1m]".
+        if raw.hasSuffix("[1m]") { raw = String(raw.dropLast("[1m]".count)) }
         let lower = raw.lowercased()
         if let match = lower.firstMatch(of: #/^claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/#) {
             return "\(match.1.capitalized) \(match.2)" + (match.3.map { ".\($0)" } ?? "")

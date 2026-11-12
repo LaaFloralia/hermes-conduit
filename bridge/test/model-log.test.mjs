@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from '../src/sessions/model-log.mjs';
+import { runningModel, snapshot } from '../src/sessions/daemon.mjs';
 
 const fable = { provider: 'claude', model: 'claude-fable-5-2', effort: 'xhigh' };
 const opus = { provider: 'claude', model: 'claude-opus-4-8', effort: 'xhigh' };
@@ -86,4 +87,20 @@ test('an unrequested switch takes the name off the turn before it was seen', () 
   // The owner's own switch applies from the next turn: nothing is doubted.
   assert.deepEqual(named(markOwnerChange(log, 'claude-opus-4-8')),
     { a1: 'claude-fable-5-2', a2: 'claude-fable-5-2', a3: 'claude-opus-4-8' });
+});
+
+test('a version Paseo maps down to its family keeps the name Claude Code reported', () => {
+  const agent = (runtimeInfo, model = 'claude-fable-5-2') => ({ provider: 'claude', model, runtimeInfo });
+  // The session this was found in: the mapped value lost "-2" after the first turn.
+  assert.equal(runningModel(agent({ model: 'claude-fable-5', extra: { runtimeModel: 'claude-fable-5-2' } })), 'claude-fable-5-2');
+  assert.equal(runningModel(agent({ model: 'claude-fable-5', extra: { runtimeModel: 'claude-fable-5-2[1m]' } })), 'claude-fable-5-2');
+  // A dated or prefixed spelling of a known model stays on the mapped ID.
+  assert.equal(runningModel(agent({ model: 'claude-opus-5-5', extra: { runtimeModel: 'claude-opus-5-5-20261001' } })), 'claude-opus-5-5');
+  assert.equal(runningModel(agent({ model: 'claude-opus-5-5', extra: { runtimeModel: 'us.anthropic.claude-opus-5-5-v1:0' } })), 'claude-opus-5-5');
+  // A real change of model is not papered over, and nothing is invented.
+  assert.equal(runningModel(agent({ model: 'claude-opus-5-5', extra: { runtimeModel: 'claude-opus-5-5' } })), 'claude-opus-5-5');
+  assert.equal(runningModel(agent({ model: 'claude-fable-5' })), 'claude-fable-5');
+  assert.equal(runningModel(agent(undefined)), 'claude-fable-5-2');
+  assert.equal(runningModel({ provider: 'claude' }), null);
+  assert.equal(snapshot(agent({ model: 'claude-fable-5', extra: { runtimeModel: 'claude-fable-5-2' } }), 0).modelCheck.observed.model, 'claude-fable-5-2');
 });

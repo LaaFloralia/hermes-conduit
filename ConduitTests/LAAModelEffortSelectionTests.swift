@@ -75,6 +75,28 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertTrue(all.allSatisfy { !$0.current }, "nothing is checked when Hermes reported no model")
     }
 
+    /// The Claude CLI's picker, where Hermes reads the subscription's models,
+    /// names neither yet; Hermes switches to them by id.
+    func testTheClaudeSubscriptionOffersFableAndMythosAheadOfItsListedModels() {
+        let slug = "claude-subscription-directsdk-experimental"
+        let listed = [ModelInfo(id: "claude-opus-5-5[1m]", label: nil, reasoningCapable: true),
+                      ModelInfo(id: "claude-fable-5-1[1m]", label: nil, reasoningCapable: true)]
+        let providers = [ProviderInfo(name: slug, models: listed, displayName: "Claude Subscription"),
+                         ProviderInfo(name: "anthropic", models: [ModelInfo(id: "claude-opus-5-5", label: nil, reasoningCapable: true)])]
+        let choices = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(),
+                                                  runningModel: "claude-mythos-5-2", runningProvider: slug)
+        XCTAssertEqual(choices.map(\.label), ["Fable 5.2", "Mythos 5.2", "Opus 5.5", "Fable 5.1", "Opus 5.5"])
+        XCTAssertEqual(choices.prefix(2).map(\.model), ["claude-fable-5-2", "claude-mythos-5-2"])
+        XCTAssertEqual(choices.filter(\.current).map(\.model), ["claude-mythos-5-2"], "the running model is checked though unlisted")
+        XCTAssertTrue(choices.prefix(2).allSatisfy { $0.provider == slug && $0.reasoning })
+        // Once the picker names one, or the owner hides one, it is not added again.
+        let named = [ProviderInfo(name: slug, models: listed + [ModelInfo(id: "claude-fable-5-2[1m]", label: nil, reasoningCapable: true)])]
+        var hidden = ModelVisibility()
+        hidden.hiddenModels = ["\(slug)\u{1F}claude-mythos-5-2"]
+        XCTAssertEqual(LAAChatModelCatalog.choices(named, visibility: hidden, runningModel: nil, runningProvider: nil).map(\.model),
+                       ["claude-opus-5-5[1m]", "claude-fable-5-1[1m]", "claude-fable-5-2[1m]"])
+    }
+
     func testChatLocksSayWhy() {
         let one = LAAChatModelCatalog.Choice(model: "dots", provider: "custom", providerName: "Dots", label: "Dots",
                                              reasoning: false, current: true)
@@ -100,6 +122,7 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: nil, current: false), "最終確認 不明")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "laa-monet-local", provider: "claude"), "Claude")
         XCTAssertNil(LAAModelCapsule.readableName("laa-monet-local"))
+        XCTAssertEqual(LAAModelCapsule.readableName("claude-opus-5-5[1m]"), "Opus 5.5", "the 1M route reads as its model")
     }
 }
 #endif
