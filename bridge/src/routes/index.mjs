@@ -186,7 +186,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...deviceRoutes({ store, now }),
     ...refRoutes({ refs }),
     ...ownerProfileRoutes({ dir: store.dir }),
-    ...phoneUseRoutes({ service: options.phoneUse?.service ?? createPhoneUse({ dir: store.dir, now }) }),
+    ...phoneUseRoutes({ service: options.phoneUse?.service ?? createPhoneUse({ dir: store.dir, now, devices: (id) => store.read().devices?.[id] ?? null }) }),
   ];
   // Start after every factory has registered its source: the first live pass
   // must cover all five kinds, not only sessions and projects.

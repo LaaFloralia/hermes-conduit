@@ -31,7 +31,10 @@ const hexToken = (value, field) => {
 };
 const seconds = (ms) => Math.floor(ms / 1000);
 
-export function createPhoneUse({ dir, now = () => Date.now(), push = null } = {}) {
+// `devices(id)` reads the paired device record (null when unknown): answers
+// come only from the one iPhone that registered, and never once it is revoked.
+export function createPhoneUse({ dir, now = () => Date.now(), push = null, devices = () => null } = {}) {
+  const active = (id) => { const d = devices(id); return Boolean(d && !d.revokedAt); };
   const file = createJsonFile({ file: join(dir, 'phone-use.json'), initial: () => ({ startToken: null, requests: {} }) });
 
   function prune(state) {
@@ -69,11 +72,23 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null } = {}
 
   return {
     file: file.file,
-    setStartToken({ deviceId, token, environment }) {
+    // The first iPhone to register keeps the place while it stays paired;
+    // another device takes it only after `laa-bridge phone-use reset` on the Mac.
+    setStartToken({ deviceId, platform, token, environment }) {
       const value = hexToken(token, 'token');
       if (!['sandbox', 'production'].includes(environment)) throw badRequest('phone_use_invalid', 'environment is sandbox or production');
-      file.mutate((s) => { s.startToken = { deviceId, token: value, environment, updatedAt: now() }; });
-      return { registered: true };
+      if (platform !== 'ios') throw new BridgeError(403, 'phone_use_not_iphone', 'only an iPhone registers for phone use');
+      return file.mutate((s) => {
+        const held = s.startToken;
+        if (held && held.deviceId !== deviceId && active(held.deviceId)) {
+          throw new BridgeError(409, 'phone_use_device_pinned', 'another iPhone is registered; reset it on the Mac first');
+        }
+        s.startToken = { deviceId, token: value, environment, updatedAt: now() };
+        return { registered: true };
+      });
+    },
+    reset() {
+      return file.mutate((s) => { const had = Boolean(s.startToken); s.startToken = null; return { reset: had }; });
     },
     setActivityToken({ id, deviceId, token }) {
       const value = hexToken(token, 'token');
@@ -90,7 +105,7 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null } = {}
       if (!['allow', 'deny', 'stop'].includes(answer)) throw badRequest('phone_use_invalid', 'answer is allow, deny or stop');
       return file.mutate((s) => {
         const r = find(s, id);
-        if (r.deviceId !== deviceId) throw new BridgeError(403, 'phone_use_other_device', 'the request belongs to another device');
+        if (r.deviceId !== deviceId || !active(deviceId)) throw new BridgeError(403, 'phone_use_other_device', 'the request belongs to another device');
         const current = settle(r);
         const allowed = answer === 'stop' ? current.status === 'allowed' : current.status === 'pending';
         if (!allowed) throw new BridgeError(409, 'phone_use_closed', `the request is ${current.status}`, { details: { status: current.status } });
@@ -108,7 +123,7 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null } = {}
       const created = file.mutate((s) => {
         prune(s);
         const token = s.startToken;
-        if (!token) return { error: 'not_registered' };
+        if (!token || !active(token.deviceId)) return { error: 'not_registered' };
         const open = Object.values(s.requests).map(settle).find((r) => OPEN.has(r.status));
         if (open) return { error: 'busy', open: view(open) };
         const id = `pu_${randomBytes(8).toString('hex')}`;

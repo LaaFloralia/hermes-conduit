@@ -24,7 +24,7 @@ mkdirSync(dir, { recursive: true, mode: 0o700 });
 const store = createStore({ dir, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
 const push = apnsSenderFromEnv();
 if (!push) process.stderr.write('phone-use fixture: no APNs key in the environment; asks will fail\n');
-const phoneUse = createPhoneUse({ dir, push });
+const phoneUse = createPhoneUse({ dir, push, devices: (id) => store.read().devices?.[id] ?? null });
 const bridge = createBridge({ store, routeOptions: {
   workspaces: { roots: [dir] },
   usage: { capacitySource: { read: () => [], close() {} } },

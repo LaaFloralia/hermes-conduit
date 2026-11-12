@@ -17,9 +17,16 @@ async function fixture(t) {
   const h = await startBridge({ now });
   t.after(() => h.close());
   const pushes = [];
-  const cli = createPhoneUse({ dir: h.stateDir, now, push: async (p) => { pushes.push(p); return { status: 200 }; } });
-  const phone = await h.token(['sessions:read', 'sessions:write']);
-  return { h, cli, pushes, phone, now, advance: (ms) => { time += ms; } };
+  const devices = (id) => h.store.read().devices[id] ?? null;
+  const cli = createPhoneUse({ dir: h.stateDir, now, devices, push: async (p) => { pushes.push(p); return { status: 200 }; } });
+  // A paired device of the given platform, as the app enrolls.
+  const device = async (platform = 'ios', scopes = ['sessions:read', 'sessions:write']) => {
+    const paired = await h.pair({ scopes });
+    const enrolled = await h.request('/v1/devices/enroll', { method: 'POST', body: { code: paired.code, name: 'iPhone', platform } });
+    return { token: enrolled.body.data.token, id: enrolled.body.data.deviceId };
+  };
+  const iphone = await device();
+  return { h, cli, pushes, phone: iphone.token, phoneId: iphone.id, device, devices, now, advance: (ms) => { time += ms; } };
 }
 const register = (f, token = f.phone) => f.h.request('/v1/phone-use/start-token', { method: 'PUT', token, body: { token: START, environment: 'production' } });
 const answer = (f, id, value, token = f.phone) => f.h.request(`/v1/phone-use/requests/${id}/answer`, { method: 'POST', token, body: { answer: value } });
@@ -32,8 +39,9 @@ test('ask before the phone registered: not_registered, nothing pushed', async (t
 
 test('start token needs sessions:write and a hex token; file is private', async (t) => {
   const f = await fixture(t);
-  const reader = await f.h.token(['sessions:read']);
+  const reader = (await f.device('ios', ['sessions:read'])).token;
   assert.equal((await register(f, reader)).status, 403);
+  assert.equal((await register(f, (await f.device('macos')).token)).body.error.code, 'phone_use_not_iphone');
   assert.equal((await f.h.request('/v1/phone-use/start-token', { method: 'PUT', token: f.phone, body: { token: 'zz', environment: 'production' } })).status, 400);
   assert.equal((await f.h.request('/v1/phone-use/start-token', { method: 'PUT', token: f.phone, body: { token: START, environment: 'staging' } })).status, 400);
   assert.equal((await register(f)).status, 200);
@@ -76,7 +84,8 @@ test('allow: push-to-start payload, owner allows, operating until end, end push 
 test('deny and stop close the request; another device cannot answer', async (t) => {
   const f = await fixture(t);
   await register(f);
-  const other = await f.h.token(['sessions:read', 'sessions:write']);
+  const other = (await f.device()).token;
+  assert.equal((await register(f, other)).body.error.code, 'phone_use_device_pinned', 'the first iPhone keeps the place');
   const a = (await f.cli.ask({ who: 'GPT', purpose: '確認' })).request.id;
   assert.equal((await answer(f, a, 'allow', other)).status, 403);
   assert.equal((await answer(f, a, 'stop')).status, 409, 'stop only while operating');
@@ -106,10 +115,27 @@ test('no answer: expires at answerBy, the wait ends the activity; allowed one en
   assert.equal((await f.cli.ask({ who: 'DeepSeek', purpose: '次' })).ok, true, 'a lapsed session does not block the next ask');
 });
 
+test('a revoked iPhone is never asked and cannot answer; reset hands the place over', async (t) => {
+  const f = await fixture(t);
+  await register(f);
+  const id = (await f.cli.ask({ who: 'Claude', purpose: '確認' })).request.id;
+  f.h.store.mutate((s) => { s.devices[f.phoneId].revokedAt = new Date(f.now()).toISOString(); });
+  assert.equal((await answer(f, id, 'allow')).status, 401, 'a revoked token is refused before the route');
+  assert.equal(f.cli.answer.length, 1);
+  assert.throws(() => f.cli.answer({ id, deviceId: f.phoneId, answer: 'allow' }), (e) => e.code === 'phone_use_other_device');
+  await f.cli.end(id);
+  assert.equal((await f.cli.ask({ who: 'Claude', purpose: '確認' })).error, 'not_registered');
+  const next = await f.device();
+  assert.equal((await register(f, next.token)).status, 200, 'a revoked holder gives up the place');
+  assert.equal((await f.cli.ask({ who: 'Claude', purpose: '確認' })).ok, true);
+  assert.deepEqual(f.cli.reset(), { reset: true });
+  assert.equal((await f.cli.ask({ who: 'Claude', purpose: '確認' })).error, 'not_registered');
+});
+
 test('a failed push marks the request failed and reports it', async (t) => {
   const f = await fixture(t);
   await register(f);
-  const cli = createPhoneUse({ dir: f.h.stateDir, now: f.now, push: async () => { throw Object.assign(new Error('x'), { code: 'apns_410_Unregistered' }); } });
+  const cli = createPhoneUse({ dir: f.h.stateDir, now: f.now, devices: f.devices, push: async () => { throw Object.assign(new Error('x'), { code: 'apns_410_Unregistered' }); } });
   const r = await cli.ask({ who: 'Claude', purpose: '確認' });
   assert.deepEqual([r.ok, r.error, r.reason, r.request.status], [false, 'push_failed', 'apns_410_Unregistered', 'failed']);
   assert.equal((await cli.ask({ who: 'Claude', purpose: '確認' })).error, 'push_failed', 'a failed one does not block');
