@@ -49,11 +49,20 @@ export function apnsSenderFromEnv(env = process.env) {
   // The token's environment follows the build's signing, which the app can
   // only guess (a Debug build may carry the production entitlement): a token
   // APNs calls bad in one environment is tried once in the other.
-  return async (push) => {
+  // A connection that dropped before any answer (a cancelled HTTP/2 stream)
+  // is tried once more; a timeout may have delivered, so it is not.
+  const sent = async (push) => {
     try { return await once(push); }
     catch (error) {
+      if (/^apns_(\d+_|timeout$)/.test(String(error.code))) throw error;
+      return once(push);
+    }
+  };
+  return async (push) => {
+    try { return await sent(push); }
+    catch (error) {
       if (!String(error.code).endsWith('_BadDeviceToken')) throw error;
-      return { ...(await once({ ...push, environment: push.environment === 'sandbox' ? 'production' : 'sandbox' })), switched: true };
+      return { ...(await sent({ ...push, environment: push.environment === 'sandbox' ? 'production' : 'sandbox' })), switched: true };
     }
   };
 }

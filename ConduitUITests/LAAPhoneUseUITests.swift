@@ -104,7 +104,11 @@ final class LAAPhoneUseUITests: XCTestCase {
         shot("2-operating")
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作中"].exists)
         let ended = try XCTUnwrap(control("/end?id=\(id)"))
-        XCTAssertEqual(ended["endPush"] as? String, "sent")
+        let pushed = ended["endPush"] as? String == "sent"
+        add(XCTAttachment(string: "end push: \(ended["endPush"] ?? "none")"))
+        // Without the activity's update token (iOS gave none) the end push
+        // can't be sent: the app takes the activity down when it next runs.
+        if !pushed { XCUIApplication().activate(); Thread.sleep(forTimeInterval: 3); XCUIDevice.shared.press(.home) }
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作中"].waitForNonExistence(timeout: 30))
         shot("3-ended")
     }

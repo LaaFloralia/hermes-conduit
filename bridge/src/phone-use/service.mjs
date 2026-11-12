@@ -99,6 +99,14 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
         return view(r);
       }, { tag: id });
     },
+    // The update token often comes late or never (iOS need not wake the app
+    // for an activity a push started), so the phone also reads its request
+    // whenever it runs and takes down an activity whose request closed.
+    statusFor({ id, deviceId }) {
+      const r = find(file.read(), id);
+      if (r.deviceId !== deviceId) throw new BridgeError(403, 'phone_use_other_device', 'the request belongs to another device');
+      return view(r);
+    },
     // The owner's answer from the Live Activity. Allow and Don't Allow only
     // while the request waits; Stop only while the agent works.
     answer({ id, deviceId, answer }) {

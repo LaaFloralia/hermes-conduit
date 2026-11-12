@@ -96,6 +96,12 @@ test('deny and stop close the request; another device cannot answer', async (t) 
   await answer(f, b, 'allow');
   assert.equal((await answer(f, b, 'stop')).body.data.status, 'stopped');
   assert.equal(f.cli.status(b).status, 'stopped');
+
+  // The phone reads its own requests (to take down an activity no end push reached), only its own.
+  const read = (token) => f.h.request(`/v1/phone-use/requests/${b}`, { token });
+  assert.deepEqual([(await read(f.phone)).status, (await read(f.phone)).body.data.status], [200, 'stopped']);
+  assert.equal((await read(other)).status, 403);
+  assert.equal((await f.h.request('/v1/phone-use/requests/pu_0000000000000000', { token: f.phone })).body.error.code, 'phone_use_not_found');
 });
 
 test('no answer: expires at answerBy, the wait ends the activity; allowed one ends at its limit', async (t) => {

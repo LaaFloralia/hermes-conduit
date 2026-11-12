@@ -63,19 +63,36 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
 
     /// Every activity on screen, whenever the app runs: hand the Bridge any
     /// update token it lacks (an activity started while the app was suspended
-    /// may not have come through `activityUpdates`), and take down a question
-    /// whose answer time passed when no end push reached it.
+    /// may not have come through `activityUpdates`), then match the activity
+    /// to its request. iOS need not wake the app with the update token of an
+    /// activity a push started, so the Mac's end push may never reach it: an
+    /// activity whose request closed, or whose answer time passed, ends here.
     func refresh() async {
         for activity in Activity<LAAPhoneUseAttributes>.activities {
             observe(activity)
+            let requestID = activity.attributes.requestID
             if let data = activity.pushToken {
-                await registerActivity(requestID: activity.attributes.requestID, token: Self.hex(data))
+                await registerActivity(requestID: requestID, token: Self.hex(data))
             }
-            let state = activity.content.state
-            if state.usePhase == .ask, activity.attributes.answerDate < Date() {
-                let ended = LAAPhoneUseAttributes.ContentState(phase: LAAPhoneUsePhase.expired.rawValue, endedAt: Date().timeIntervalSince1970)
-                await activity.end(ActivityContent(state: ended, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(4)))
+            if let status = await requestStatus(requestID), status != "pending" {
+                if !answering.contains(requestID) { await show(status: status, for: requestID) }
+            } else if activity.content.state.usePhase == .ask, activity.attributes.answerDate < Date() {
+                await show(status: "expired", for: requestID)
             }
+        }
+    }
+
+    /// The request's state on the Bridge; nil when it can't be read (offline).
+    private func requestStatus(_ requestID: String) async -> String? {
+        guard Self.isRequestID(requestID), let credentials = credentials() else { return nil }
+        do {
+            let response: LAABridgeResponse<RequestView> = try await client.request(
+                method: "GET", path: "/v1/phone-use/requests/\(requestID)", credentials: credentials)
+            return response.data.status
+        } catch let error as LAABridgeHTTPError where error.code == "phone_use_not_found" {
+            return "expired"
+        } catch {
+            return nil
         }
     }
 
@@ -145,6 +162,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
             let now = Date()
             switch status {
             case "allowed":
+                guard activity.content.state.usePhase == .ask else { continue }
                 let state = LAAPhoneUseAttributes.ContentState(phase: LAAPhoneUsePhase.operating.rawValue, since: now.timeIntervalSince1970)
                 await activity.update(ActivityContent(state: state, staleDate: now.addingTimeInterval(1800)))
             default:
