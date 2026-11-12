@@ -594,7 +594,10 @@ final class LAAMarkdownUITextView: UITextView {
         for index in [offset, offset - 1] where index >= 0 && index < storage.length {
             if let font = visible(storage.attribute(.font, at: index, effectiveRange: nil)) { return font }
         }
-        return visible(self.font)
+        // An item that holds only its hidden marker (UITextView's own font is
+        // the first character's, often a hidden heading mark): the body size
+        // its text will take.
+        return UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: LAAType.bodySize))
     }
 
     /// The baseline and box, in this view's coordinates, of the line fragment
