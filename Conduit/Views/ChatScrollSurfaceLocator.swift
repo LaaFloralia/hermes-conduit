@@ -114,6 +114,14 @@ final class UIScrollViewChatSurface: NSObject, ChatScrollSurface {
                 guard change.oldValue?.size != change.newValue?.size else { return }
                 Self.onMain { self?.engine?.surfaceLayoutChanged() }
             },
+            // SwiftUI sizes the scroll view through its frame, which the
+            // view's bounds above never report; its layer's bounds do. A
+            // composer that grew under a send left the latest message
+            // behind it (owner, 2026-11-12).
+            scrollView.layer.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
+                guard change.oldValue?.size != change.newValue?.size else { return }
+                Self.onMain { self?.engine?.surfaceLayoutChanged() }
+            },
             scrollView.observe(\.contentInset, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
                 Self.onMain { self?.engine?.surfaceLayoutChanged() }
