@@ -53,6 +53,9 @@ struct ConduitWidgets: WidgetBundle {
         CharacterLauncherWidget()
         #endif
         HermesTurnLiveActivity()
+        #if LAA_BUILD && os(iOS) && !targetEnvironment(macCatalyst)
+        LAAPhoneUseLiveActivity()
+        #endif
     }
 }
 

@@ -4467,3 +4467,25 @@ Work presents Sessions, Decisions, Tasks and Routines and opens on Sessions; Dec
 - Physical-device acceptance covers Wi-Fi latency, full playback, Picture in Picture, AirPlay and background audio. See `docs/laa/DRIVE-PLAYER-API.md`.
 
 **Checked:** 2026-11-11, 13b2feac (Drive stage 2 contracts).
+
+## LAA iPhone Use permission (Dynamic Island)
+
+An agent that finds the owner's iPhone open (in use) asks in the Dynamic Island before operating it.
+
+**Siblings:** `laa-phone unlock`/`lock` and the iPhone MCP (`/Users/laa/dev/laa-jev/phone`, outside this repo) · the turn Live Activity (same glass, disc and type) · the decision board (another owner answer that reaches the Mac; not used here because the answer must come from the phone in use, within seconds) · the upstream App Store build (none: LAA only) · Mac Catalyst (none: no Live Activities)
+
+**Code**
+- Attributes, phases and the answer intent (app and widget): `Shared/Widgets/LAAPhoneUseActivity.swift`
+- Dynamic Island and Lock Screen: `ConduitWidgets/LAA/LAAPhoneUseLiveActivity.swift`, `ConduitWidgets/LauncherWidgets.swift`, copy in `Conduit/LAA/LAACopy.swift`
+- Token registration and answers: `Conduit/LAA/PhoneUse/LAAPhoneUseService.swift`, started in `Conduit/ConduitApp.swift`
+- Bridge requests, routes, APNs push-to-start and the CLI: `bridge/src/phone-use/`, `bridge/src/cli-phone-use.mjs`, `bridge/test/phone-use.test.mjs`
+
+**Rulings**
+- A locked iPhone is unlocked, operated and locked again without asking. An open one is never pressed before the owner allows it; Allow leaves it unlocked at the end (2026-11-12, the owner).
+- The Bridge starts the activity by push-to-start; the owner's answer is the only way an open iPhone is operated. Don't Allow, no answer within 90 s, or no way to ask returns `in_use`. While operating, the activity stays with Stop; Stop, `lock` or the idle/limit guard ends it.
+- Answers are accepted only from the device that registered the push-to-start token.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-12, laa/phone-use-permission, baseline 0d2fe78a (Bridge phone-use tests, laa-phone tests).

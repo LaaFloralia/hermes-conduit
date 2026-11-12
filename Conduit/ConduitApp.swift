@@ -71,6 +71,11 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             LAAUsageBackground.register()
             LAAUsageBackground.schedule()
             #endif
+            #if LAA_BUILD && !targetEnvironment(macCatalyst)
+            // Asking before an agent operates the iPhone in use: its Live
+            // Activity's buttons can launch the app in the background.
+            LAAPhoneUseService.shared.start()
+            #endif
             AppState.registerPhoneSyncTask()
             if PhoneSyncPreferences.load().isOn {
                 AppStateRuntimeRegistry.shared.appState.resumePhoneSyncAtLaunch()
