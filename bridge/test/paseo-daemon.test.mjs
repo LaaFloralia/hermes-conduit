@@ -782,13 +782,13 @@ test('each reply is named with the model the Bridge saw while it was written; a 
   let clock = start;
   const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null,
     now: () => clock, notify: async () => {},
-    history: async () => [
+    history: async () => ({ compacting: false, items: [
       { id: 'early', role: 'assistant', text: 'before any observation', timestamp: iso(-5) },
       { id: 'u1', role: 'user', text: '1', timestamp: iso(1) },
       { id: 'a1', role: 'assistant', text: 'Sol', timestamp: iso(2) },
       { id: 'u2', role: 'user', text: '2', timestamp: iso(20) },
       { id: 'a2', role: 'assistant', text: 'Terra', timestamp: iso(22) },
-    ] });
+    ] }) });
   await service.syncDaemon();
   clock = start + 10 * 60_000; await service.syncDaemon();
   const id = daemonSessionID('parent');
@@ -796,7 +796,7 @@ test('each reply is named with the model the Bridge saw while it was written; a 
   f.rows[0].model = 'gpt-6.1-terra';
   clock = start + 21 * 60_000; await service.syncDaemon();
   clock = start + 23 * 60_000; await service.syncDaemon();
-  const named = Object.fromEntries((await service.conversation(id)).map((m) => [m.id, m.model?.model ?? null]));
+  const named = Object.fromEntries((await service.conversation(id)).items.map((m) => [m.id, m.model?.model ?? null]));
   // a1 sits inside the Sol span but in the turn before the unrequested switch,
   // so it is not named; a2 is inside the Terra span.
   assert.deepEqual(named, { early: null, u1: null, a1: null, u2: null, a2: 'gpt-6.1-terra' });
