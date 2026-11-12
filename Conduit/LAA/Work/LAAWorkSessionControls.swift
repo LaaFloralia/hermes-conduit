@@ -43,6 +43,9 @@ struct LAAWorkSessionControls: View {
     @Binding var changingFast: Bool
     @Binding var notice: String?
     let refresh: () async -> Void
+    /// Which capsule says 変更中 while `changing`.
+    @State private var changingWhat: Change = .effort
+    private enum Change { case model, effort }
 
     private var applied: String? { LAAWorkSessionStyle.appliedModel(session, options: options) }
     private var currentEffort: String? { session.observed?.effort }
@@ -55,7 +58,12 @@ struct LAAWorkSessionControls: View {
             ?? LAAWorkSessionStyle.providerName(session.observed?.provider, model: currentModel)
     }
     private var mismatch: LAAWorkSessionStyle.Mismatch? { LAAWorkSessionStyle.mismatch(session, options: options) }
-    private var choices: [String] { LAAWorkSessionStyle.effortChoices(session, options: options) }
+    /// A model the table does not list still shows its applied effort,
+    /// checked and not offered, rather than an empty menu.
+    private var choices: [String] {
+        let listed = LAAWorkSessionStyle.effortChoices(session, options: options)
+        return listed.isEmpty ? (currentEffort.map { [$0] } ?? []) : listed
+    }
     private var models: [LAAWorkSessionStyle.ModelChoice] { LAAWorkSessionStyle.modelChoices(session, options: options) }
     /// False when the last read could not reach Paseo. The value we hold is then
     /// the last confirmed one, not the current setting.
@@ -75,29 +83,47 @@ struct LAAWorkSessionControls: View {
 
     var body: some View {
         HStack(spacing: LAASpacing.x2) {
-            if let modelText, let modelName, let currentEffort { modelPill(modelText, name: modelName, effort: currentEffort) }
+            if let modelText, let modelName, let currentEffort { pickers(modelText, name: modelName, effort: currentEffort) }
             if let fast { fastPill(fast) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.session.settings")
     }
 
-    /// Why nothing in the menu can be chosen, in one line, so a tap always
+    /// Why nothing in a menu can be chosen, in one line, so a tap always
     /// answers instead of doing nothing (owner, 2026-11-11).
-    private var lockedReason: String? {
+    private var sharedLock: String? {
         if !observing { return "最後に確認した値です。現在値は未確認です。" }
         if stopped { return "停止したセッションは変更できません。" }
         if changing { return "変更中です。" }
-        if !canChangeModel && !canChangeEffort { return "このセッションでは変更できません。" }
+        return nil
+    }
+    private var modelLock: String? {
+        if let sharedLock { return sharedLock }
+        if session.capabilities?.model != true { return "このセッションではモデルを変更できません。" }
+        if models.count < 2 { return "切り替えられるモデルがありません。" }
+        return nil
+    }
+    private var effortLock: String? {
+        if let sharedLock { return sharedLock }
+        if session.capabilities?.effort != true { return "このセッションでは推論を変更できません。" }
+        if choices.count < 2 { return "このモデルで選べる推論はこれだけです。" }
         return nil
     }
 
-    /// The pill always opens its menu (owner, 2026-11-11: a tap on a running
-    /// session's model did nothing): the models of the session's provider, then
-    /// the efforts of the current model. What cannot be changed stays listed
-    /// and disabled, with the reason at the top.
-    private func modelPill(_ modelText: String, name: String, effort: String) -> some View {
-        Menu {
+    /// Model and effort, each its own capsule and menu (LAAModelEffortPickers,
+    /// also in the new-session sheet, the task form and Chat). The model menu
+    /// lists the session provider's models under the request → running line;
+    /// the effort menu, the current model's efforts. What cannot be changed
+    /// stays listed and disabled, with the reason at the top.
+    private func pickers(_ modelText: String, name: String, effort: String) -> some View {
+        LAAModelEffortPickers(
+            model: currentModel, provider: session.observed?.provider, effort: effort, name: name,
+            current: observing, attention: mismatch != nil, changingModel: changing && changingWhat == .model,
+            changingEffort: changing && changingWhat != .model, identifier: "work.session",
+            modelValueSuffix: mismatch.map { "、依頼 " + $0.requested },
+            modelHint: modelLock ?? "モデルを変更", effortHint: effortLock ?? "推論の強さを変更"
+        ) {
             if let mismatch {
                 // Why the face says another model than the one asked for.
                 Section {
@@ -107,41 +133,29 @@ struct LAAWorkSessionControls: View {
                     }.disabled(true)
                 }
             }
-            if let lockedReason {
-                Section { Button {} label: { Text(verbatim: lockedReason) }.disabled(true) }
-            }
-            if !models.isEmpty {
-                Section {
-                    ForEach(models, id: \.self) { choice in
-                        Button { changeModel(choice.model) } label: {
-                            if choice.model == currentModel {
-                                Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
-                            } else {
-                                Text(verbatim: choice.label)
-                            }
+            if let modelLock { LAAMenuReason(text: modelLock) }
+            Section {
+                ForEach(models, id: \.self) { choice in
+                    Button { changeModel(choice.model) } label: {
+                        if choice.model == currentModel {
+                            Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
+                        } else {
+                            Text(verbatim: choice.label)
                         }
-                        .disabled(!canChangeModel || choice.model == currentModel)
-                        .accessibilityIdentifier("work.session.model.\(choice.model)")
                     }
-                } header: { Text(verbatim: "モデル") }
+                    .disabled(!canChangeModel || choice.model == currentModel)
+                    .accessibilityIdentifier("work.session.model.\(choice.model)")
+                }
             }
-            if !choices.isEmpty {
-                Section {
-                    ForEach(choices, id: \.self) { choice in
-                        LAAEffortMenu.Row(effort: choice, selected: choice == currentEffort) { change(choice) }
-                            .disabled(!canChangeEffort || choice == currentEffort || !offered(choice))
-                    }
-                } header: { Text(verbatim: "推論") }
+        } effortMenu: {
+            if let effortLock { LAAMenuReason(text: effortLock) }
+            Section {
+                ForEach(choices, id: \.self) { choice in
+                    LAAEffortMenu.Row(effort: choice, selected: choice == currentEffort) { change(choice) }
+                        .disabled(!canChangeEffort || choice == currentEffort || !offered(choice))
+                }
             }
-        } label: {
-            pill(name: name, effort: effort)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "モデルと推論"))
-        .accessibilityValue(Text(verbatim: mismatch.map { modelText + "、依頼 " + $0.requested } ?? modelText))
-        .accessibilityHint(Text(verbatim: lockedReason ?? "モデルと推論の強さを変更"))
-        .accessibilityIdentifier("work.session.effort")
     }
 
     /// A value the HQ table offers for this model. The daemon's current value
@@ -150,18 +164,9 @@ struct LAAWorkSessionControls: View {
         options?.profiles.contains { $0.provider == session.observed?.provider && $0.model == currentModel && $0.effort == effort } == true
     }
 
-    /// The shared chip (LAAModelEffortChip, also in Chat's composer), with the
-    /// name from the model table. It always opens the menu, so it always
-    /// carries the chevron, even when nothing in it can be chosen.
-    private func pill(name: String, effort: String) -> some View {
-        LAAModelEffortChip(model: currentModel, provider: session.observed?.provider, effort: effort,
-                           name: name, current: observing, interactive: true,
-                           attention: mismatch != nil, changing: changing)
-            .layoutPriority(-1)
-    }
-
     private func changeModel(_ model: String) {
         guard !changing, model != currentModel else { return }
+        changingWhat = .model
         changing = true
         notice = nil
         Task { @MainActor in
@@ -221,6 +226,7 @@ struct LAAWorkSessionControls: View {
 
     private func change(_ effort: String) {
         guard !changing, effort != currentEffort else { return }
+        changingWhat = .effort
         changing = true
         notice = nil
         Task { @MainActor in

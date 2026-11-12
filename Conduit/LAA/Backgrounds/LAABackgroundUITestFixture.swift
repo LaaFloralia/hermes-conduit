@@ -137,6 +137,11 @@ final class LAABackgroundFixture: ObservableObject {
             if parts.count > 2 { info["reasoning_effort"] = .string(parts[2]) }
             app.handleStreamEvent(.sessionInfo(sessionId: conversationID, snapshot: SessionRuntimeSnapshot(object: info)))
         }
+        // Hermes' model calls for the composer's pickers: "several" offers
+        // three Claude models (Mythos asks to confirm first), "single" one.
+        if let models = args.firstIndex(of: "-LAA_FIXTURE_CHAT_MODELS").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
+            app.laaChatModelOperationsForTesting = LAAChatModelFixture(variant: models, session: conversationID, app: app).operations
+        }
         if chatFixture == "long" {
             // Taller than the screen, so a send can start scrolled up.
             app.messages = (1...24).map { index in
@@ -348,6 +353,37 @@ enum LAABackgroundFixturePhoto {
             context.fill(CGRect(x: 0, y: 500, width: 640, height: 400))
         }
         return image.pngData()
+    }
+}
+/// Stands in for Hermes behind the chat's model and effort pickers. It
+/// answers as Hermes does: a switch is reported back through
+/// `model.options`, not by the picker itself.
+@MainActor
+private final class LAAChatModelFixture {
+    private let providers: [ProviderInfo]
+    private var model: String?
+    private var provider: String?
+
+    init(variant: String, session: String, app: AppState) {
+        let shown = app.laaChatRuntime.shown(for: [session])
+        model = shown.model; provider = shown.provider
+        let ids = variant == "single" ? ["claude-opus-5-5"] : ["claude-opus-5-5", "claude-mythos-5-2", "claude-fable-5-2"]
+        providers = [ProviderInfo(name: "claude", models: ids.map { ModelInfo(id: $0, label: nil, reasoningCapable: true) },
+                                  displayName: "Claude")]
+    }
+
+    var operations: LAAChatModelOperations {
+        LAAChatModelOperations(
+            options: { [self] _ in (model, provider, providers) },
+            setModel: { [self] _, model, provider, confirmed in
+                if model.contains("mythos") && !confirmed {
+                    return ModelSwitchOutcome(model: model, confirmRequired: true,
+                                              confirmMessage: "Mythosは上位のモデルです。この会話を切り替えますか？")
+                }
+                self.model = model; self.provider = provider
+                return ModelSwitchOutcome(model: model)
+            },
+            setReasoning: { _, _ in })
     }
 }
 #endif

@@ -709,7 +709,7 @@ final class LAAWorkTests: XCTestCase {
                                 requested: ["provider": "claude", "model": "claude-fable-5", "effort": "xhigh"],
                                 observed: ["provider": "claude", "model": "claude-fable-5", "effort": "xhigh"])
         XCTAssertEqual(LAAWorkSessionStyle.model(fable, options: nil), "Fable 5 · XHigh")
-        XCTAssertEqual(LAAModelEffortChip.displayName(model: "claude-fable-5", provider: "claude"), "Fable 5")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "claude-fable-5", provider: "claude"), "Fable 5")
         let unknown = try session("u", name: "u", updated: "x",
                                   requested: ["provider": "claude", "model": "kestrel-preview", "effort": "high"],
                                   observed: ["provider": "claude", "model": "kestrel-preview", "effort": "high"])
@@ -728,13 +728,13 @@ final class LAAWorkTests: XCTestCase {
     }
 
     func testSharedChipReadsNamesAndSaysUnknown() {
-        XCTAssertEqual(LAAModelEffortChip.displayName(model: "claude-opus-4-8", provider: "claude"), "Opus 4.8")
-        XCTAssertEqual(LAAModelEffortChip.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")
-        XCTAssertEqual(LAAModelEffortChip.displayName(model: "Claude Fable 5.2", provider: nil), "Fable 5.2")
-        XCTAssertEqual(LAAModelEffortChip.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "claude-opus-4-8", provider: "claude"), "Opus 4.8")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "Claude Fable 5.2", provider: nil), "Fable 5.2")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
                        "DeepSeek V4.1 Flash")
-        XCTAssertNil(LAAModelEffortChip.displayName(model: nil, provider: "claude"))
-        XCTAssertEqual(LAAModelEffortChip.unknown, "不明")
+        XCTAssertNil(LAAModelCapsule.displayName(model: nil, provider: "claude"))
+        XCTAssertEqual(LAAModelCapsule.unknown, "不明")
     }
 
     /// A held follow-up stays in the transcript until the history has it.

@@ -1068,7 +1068,7 @@ struct ComposerBar: View, Equatable {
     private var laaControlsRow: some View {
         HStack(spacing: LAASpacing.x2) {
             attachmentButton
-            LAAChatRuntimeChip(appState: appState)
+            LAAChatModelPickers(appState: appState)
             Spacer(minLength: LAASpacing.x2)
             trailingSlot(size: ComposerShared.rowControlSize)
         }

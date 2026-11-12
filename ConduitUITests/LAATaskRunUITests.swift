@@ -83,12 +83,17 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Monetが取得して、完了まで進めます。"].waitForExistence(timeout: 10))
         let model = app.descendants(matching: .any)["work.linear.model"].firstMatch
         XCTAssertTrue(model.waitForExistence(timeout: 10), "The model rows arrive from /v1/session-options")
-        model.tap()
-        let xhigh = app.buttons["Opus 5.5 XHigh"]
+        XCTAssertEqual(model.value as? String, "Opus 5.5")
+        let effort = app.descendants(matching: .any)["work.linear.effort"].firstMatch
+        XCTAssertEqual(effort.value as? String, "High")
+        effort.tap()
+        let xhigh = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "XHigh", "XHigh,")).firstMatch
         XCTAssertTrue(xhigh.waitForExistence(timeout: 10))
         xhigh.tap()
         XCTAssertTrue(xhigh.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Opus 5.5 XHigh"].waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value == %@", "XHigh"), evaluatedWith: effort)
+        waitForExpectations(timeout: 10)
+        XCTAssertEqual(model.value as? String, "Opus 5.5", "the effort changes alone")
         editor.tap(); editor.typeText("AI担当の確認")
         XCTAssertTrue((editor.value as? String)?.contains("AI担当の確認") == true)
         XCTAssertTrue(app.buttons["work.linear.save"].isEnabled)

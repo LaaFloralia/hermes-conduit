@@ -31,10 +31,12 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertEqual(stop.frame.midY, send.frame.midY, accuracy: 2)
         // The pill names the model and, whole beside it, the effort; the
         // transcript lists no tool traffic at all.
-        let pill = app.descendants(matching: .any)["work.session.effort"].firstMatch
+        let pill = app.descendants(matching: .any)["work.session.model"].firstMatch
+        let effort = app.descendants(matching: .any)["work.session.effort"].firstMatch
         XCTAssertTrue(pill.waitForExistence(timeout: 10))
         let value = pill.value as? String ?? ""
-        XCTAssertTrue(value.contains("Sol") && value.hasSuffix("· High"), value)
+        XCTAssertTrue(value.contains("Sol"), value)
+        XCTAssertEqual(effort.value as? String, "High")
         XCTAssertFalse(app.staticTexts["Read"].exists, "Tool traffic is not part of the conversation")
         XCTAssertFalse(app.buttons["work.session.records"].exists)
         capture(app, "session-detail", theme)

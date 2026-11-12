@@ -127,43 +127,56 @@ struct LAAWorkSessionLauncher: View {
         .accessibilityIdentifier("work.launch.project")
     }
 
-    /// The control layer of the sheet: model · effort, Fast and the favourite star
-    /// sit on one Liquid Glass bar (HIG: glass for controls, not content).
+    /// The control layer of the sheet: the model and the effort, each its
+    /// own capsule and menu (LAAModelEffortPickers), then Fast and the
+    /// favourite star, all 36pt Liquid Glass (HIG: glass for controls, not
+    /// content).
     private var modelBar: some View {
         HStack(spacing: LAASpacing.x2) {
-            Menu {
-                if let options {
-                    ForEach(groups(options), id: \.0) { group in
-                        Section(group.0) {
-                            ForEach(group.1) { item in
-                                // XHigh and Max carry the deep-effort mark here
-                                // too, as in a running session's menu.
-                                LAAEffortMenu.Row(effort: item.effort, selected: item.id == profile,
-                                                  identifier: "work.launch.profile.\(item.id)") { choose(item.id) }
+            let models = LAAWorkModelSelection.models(options)
+            let chosen = LAAWorkModelSelection.model(of: profile, in: options)
+            LAAModelEffortPickers(
+                model: selected?.model, provider: selected?.provider, effort: selected?.effort,
+                name: chosen?.label ?? (options == nil ? "読み込み中" : "モデルを選択"),
+                identifier: "work.launch"
+            ) {
+                if options == nil { LAAMenuReason(text: "モデルを読み込み中です。") }
+                ForEach(LAAWorkModelSelection.providers(models), id: \.name) { group in
+                    Section(group.name) {
+                        ForEach(group.models) { item in
+                            Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in if on { chooseModel(item) } })) {
+                                Text(verbatim: item.label)
                             }
+                            .accessibilityIdentifier("work.launch.model.\(item.model)")
                         }
                     }
                 }
-                Divider()
-                Toggle(isOn: $bypass) { Text(verbatim: "確認なしで実行") }
-            } label: {
-                HStack(spacing: LAASpacing.x1) {
-                    Text(verbatim: selected.map { LAAWorkSessionStyle.profileLabel($0) } ?? (options == nil ? "読み込み中" : "モデルを選択"))
-                        .fontWeight(.semibold).lineLimit(1)
-                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
+                Section {
+                    Toggle(isOn: $bypass) { Text(verbatim: "確認なしで実行") }
+                        .accessibilityIdentifier("work.launch.bypass")
                 }
-                .laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                .padding(.horizontal, LAASpacing.x4).frame(minHeight: 44)
-                .conduitGlassControl(cornerRadius: 22)
+            } effortMenu: {
+                if let chosen {
+                    if chosen.profiles.count < 2 { LAAMenuReason(text: "このモデルで選べる推論はこれだけです。") }
+                    Section {
+                        ForEach(chosen.profiles) { item in
+                            // XHigh and Max carry the deep-effort mark here
+                            // too, as in a running session's menu.
+                            LAAEffortMenu.Row(effort: item.effort, selected: item.id == profile,
+                                              identifier: "work.launch.effort.\(item.effort)") { choose(item.id) }
+                        }
+                    }
+                } else {
+                    LAAMenuReason(text: options == nil ? "モデルを読み込み中です。" : "先にモデルを選んでください。")
+                }
             }
-            .accessibilityIdentifier("work.launch.model")
 
             Button { fast.toggle(); remember() } label: {
                 Image(systemName: fast && selected?.fast == true ? "bolt.fill" : "bolt")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(fast && selected?.fast == true ? LAAColor.link : LAAColor.secondaryText)
-                    .frame(width: 44, height: 44)
-                    .conduitGlassControl(cornerRadius: 22)
+                    .frame(width: 36, height: 36)
+                    .conduitGlassControl(cornerRadius: 18)
             }
             .buttonStyle(.plain)
             .disabled(selected?.fast != true)
@@ -175,10 +188,10 @@ struct LAAWorkSessionLauncher: View {
             let saved = favorites.contains(current)
             Button { toggleFavorite() } label: {
                 Image(systemName: saved ? "star.fill" : "star")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(saved ? LAAColor.decorativeTan : LAAColor.secondaryText)
-                    .frame(width: 44, height: 44)
-                    .conduitGlassControl(cornerRadius: 22)
+                    .frame(width: 36, height: 36)
+                    .conduitGlassControl(cornerRadius: 18)
             }
             .buttonStyle(.plain)
             .disabled(selected == nil)
@@ -214,20 +227,6 @@ struct LAAWorkSessionLauncher: View {
         .accessibilityIdentifier("work.launch.favorites")
     }
 
-    private func groups(_ options: LAAWorkSessionOptions) -> [(String, [LAAWorkSessionOptions.Profile])] {
-        var order: [String] = []
-        var byLabel: [String: [LAAWorkSessionOptions.Profile]] = [:]
-        for item in options.profiles {
-            let label = LAAWorkSessionStyle.shortLabel(item.label)
-            if byLabel[label] == nil { order.append(label) }
-            byLabel[label, default: []].append(item)
-        }
-        let rank = ["low", "medium", "high", "xhigh", "max"]
-        return order.map { label in
-            (label, (byLabel[label] ?? []).sorted { (rank.firstIndex(of: $0.effort) ?? 9) < (rank.firstIndex(of: $1.effort) ?? 9) })
-        }
-    }
-
     private func applyInitialModel() {
         guard profile.isEmpty, let options else { return }
         let last = LAAWorkModelPreferences.decode("[\(lastRaw)]").first
@@ -237,6 +236,13 @@ struct LAAWorkSessionLauncher: View {
             profile = options.defaultProfile ?? options.profiles.first?.id ?? ""
         }
         bypass = options.defaultMode != "default"
+    }
+
+    /// Another model keeps the effort when it has it, else High, else the
+    /// nearest (LAAEffort.carried).
+    private func chooseModel(_ model: LAAWorkModelSelection.Model) {
+        guard let next = LAAWorkModelSelection.profile(switchingTo: model, from: selected) else { return }
+        choose(next.id)
     }
 
     private func choose(_ id: String) {
