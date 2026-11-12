@@ -78,13 +78,16 @@ final class LAABackgroundFixture: ObservableObject {
             }
         )
         let defaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defaults.set("laa-monet", forKey: "conduit.activeProfile")
+        // Another employee's chat: "-LAA_FIXTURE_PROFILE laa-cto".
+        let employee = args.firstIndex(of: "-LAA_FIXTURE_PROFILE")
+            .flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } ?? "laa-monet"
+        defaults.set(employee, forKey: "conduit.activeProfile")
         let app = AppState(defaults: defaults, loadSavedConnection: false,
                            clearSessionPresentationCache: {},
                            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(botRoster: { _ in
                                BotRosterSnapshot(bots: bots, supportsBotProtocol: true)
                            }), groupChatOperations: operations)
-        app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: "laa-monet")
+        app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: employee)
         app.isConnected = mode != "offline"
         _ = app.adoptDashboard(forNormalizedURL: "https://background-ui-test.invalid")
         app.activeSessionId = conversationID
@@ -124,6 +127,15 @@ final class LAABackgroundFixture: ObservableObject {
                 app.messages.append(ChatMessage(id: "reason", role: .reasoning, content: "予定を確認しています。", timestamp: String(now)))
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
             }
+        }
+        // What Hermes reports for the chat's running agent: "model,provider,effort".
+        if let runtime = args.firstIndex(of: "-LAA_FIXTURE_RUNTIME").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
+            let parts = runtime.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            var info: [String: AnyCodable] = [:]
+            if parts.count > 0 { info["model"] = .string(parts[0]) }
+            if parts.count > 1 { info["provider"] = .string(parts[1]) }
+            if parts.count > 2 { info["reasoning_effort"] = .string(parts[2]) }
+            app.handleStreamEvent(.sessionInfo(sessionId: conversationID, snapshot: SessionRuntimeSnapshot(object: info)))
         }
         self.state = app
         self.bots = bots

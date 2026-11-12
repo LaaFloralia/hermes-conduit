@@ -1063,10 +1063,12 @@ struct ComposerBar: View, Equatable {
     static let touchMargin = (LAAGlassActionButton.touch - LAAGlassActionButton.size) / 2
 
     /// The row under the field, in Work's order and spacing: + at the
-    /// start and Send (or Stop) at the end, both 36 pt glass.
+    /// start, then the model · effort the chat runs on (display only), and
+    /// Send (or Stop) at the end, all 36 pt glass.
     private var laaControlsRow: some View {
         HStack(spacing: LAASpacing.x2) {
             attachmentButton
+            LAAChatRuntimeChip(appState: appState)
             Spacer(minLength: LAASpacing.x2)
             trailingSlot(size: ComposerShared.rowControlSize)
         }

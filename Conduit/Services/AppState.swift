@@ -2100,6 +2100,11 @@ final class AppState: ObservableObject {
     // MARK: - Runtime
 
     @Published var runtime = RuntimeState()
+#if LAA_BUILD
+    /// The model and effort Hermes reported for each chat's running agent,
+    /// for the composer's chip; never the profile's configured values.
+    @Published private(set) var laaChatRuntime = LAAChatRuntime()
+#endif
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
     /// A card with an event this recent may belong to an agent the gateway
@@ -18435,6 +18440,14 @@ final class AppState: ObservableObject {
         if let reasoningEffort = snapshot.reasoningEffort {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
+#if LAA_BUILD
+        // Kept against the chat it describes, under the on-screen chat's id
+        // when it is that chat's (a runtime or stored alias).
+        let reportedFor = sessionID.map { eventBelongsToActiveSession($0) ? (activeSessionId ?? $0) : $0 }
+            ?? activeSessionId
+        laaChatRuntime.apply(sessionID: reportedFor, model: snapshot.model, provider: snapshot.provider,
+                             effort: snapshot.reasoningEffort)
+#endif
         if let fast = snapshot.fast { runtime.fast = fast }
         // A gateway that reports `fast` without the tier leaves no stale
         // Ultrafast behind.
@@ -27476,6 +27489,9 @@ final class AppState: ObservableObject {
         // Another chat's chip must not take this one's level.
         guard activeSessionId == sessionId else { return .abandoned }
         runtime.reasoningEffort = effort == "none" ? "" : effort
+#if LAA_BUILD
+        laaChatRuntime.apply(sessionID: sessionId, model: nil, provider: nil, effort: effort)
+#endif
         return .applied
     }
 
@@ -33999,6 +34015,9 @@ final class AppState: ObservableObject {
         case .modelUpdate(_, let model, let provider):
             runtime.model = model
             runtime.provider = provider
+#if LAA_BUILD
+            laaChatRuntime.apply(sessionID: activeSessionId, model: model, provider: provider, effort: nil)
+#endif
 
         case .agentCount(_, let count):
             activeAgents = count
