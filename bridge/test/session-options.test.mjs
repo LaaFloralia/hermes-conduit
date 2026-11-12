@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { daemonAdapter } from '../src/sessions/daemon.mjs';
 import { sessionOptionsFrom } from '../src/sessions/options.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -87,4 +88,55 @@ test('GET /v1/session-options reads the model table and fails closed when it is 
   const down = await bridge.request('/v1/session-options', { token });
   assert.equal(down.status, 503);
   assert.equal(down.body.error.code, 'options_unavailable');
+});
+
+test('the options carry the efforts Paseo lists per model; a provider it cannot list is left out', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-options-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'models.json');
+  writeFileSync(file, JSON.stringify(table));
+  const asked = [];
+  const client = {
+    close: async () => {},
+    getLastServerInfoMessage: () => ({ features: {} }),
+    listProviderModels: async (provider) => {
+      asked.push(provider);
+      if (provider === 'codex') throw new Error('provider is not signed in');
+      if (provider === 'dsh') return { models: [{ id: 'flash', thinkingOptions: [] }, { id: 7 }] };
+      return { models: [
+        { id: 'claude-fable-5-2', thinkingOptions: [{ id: 'low' }, { id: 'high', isDefault: true }, { id: 'max' }, { id: '' }, {}] },
+        { id: 'claude-opus-5-5', thinkingOptions: [{ id: 'medium' }, { id: 'high' }] },
+      ] };
+    },
+  };
+  let clock = 1000;
+  const daemon = daemonAdapter({ connect: async () => client, now: () => clock });
+  const bridge = await startBridge({ sessions: { modelsFile: file, daemon } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  const first = await bridge.request('/v1/session-options', { token });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.data.profiles.length, 5);
+  assert.deepEqual(first.body.data.efforts, [
+    { provider: 'claude', model: 'claude-fable-5-2', efforts: ['low', 'high', 'max'] },
+    { provider: 'claude', model: 'claude-opus-5-5', efforts: ['medium', 'high'] },
+  ]);
+  // Within a minute Paseo is not asked again for a provider it answered.
+  await bridge.request('/v1/session-options', { token });
+  assert.equal(asked.filter((provider) => provider === 'claude').length, 1);
+  clock += 61_000;
+  await bridge.request('/v1/session-options', { token });
+  assert.equal(asked.filter((provider) => provider === 'claude').length, 2);
+});
+
+test('without Paseo the options list no efforts and still answer', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-options-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'models.json');
+  writeFileSync(file, JSON.stringify(table));
+  const bridge = await startBridge({ sessions: { modelsFile: file } });
+  t.after(() => bridge.close());
+  const reply = await bridge.request('/v1/session-options', { token: await bridge.token() });
+  assert.equal(reply.status, 200);
+  assert.deepEqual(reply.body.data.efforts, []);
 });

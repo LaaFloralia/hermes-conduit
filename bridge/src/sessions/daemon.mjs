@@ -21,6 +21,7 @@ const isBusy = (a) => Boolean(a.activeTurn || a.pendingPermissions?.length) || !
 
 export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(), idleCloseMs = 30_000 } = {}) {
   const decisions = new Map();
+  const effortCache = new Map();
   // What the running daemon advertises. A hard-coded capability would offer an
   // operation this daemon cannot perform.
   let serverFeatures = {};
@@ -136,6 +137,22 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
     // Paseo has changed a running agent's model since before thinking updates,
     // so any connected daemon can; a client without the call cannot.
     capabilities: () => ({ effortUpdate: serverFeatures.agentThinkingUpdate === true, modelUpdate: modelUpdate === true }),
+    /// The thinking options Paseo lists for each model of a provider, as
+    /// [{ model, efforts }]: what a running session's effort menu can offer.
+    /// The HQ table names the profiles a new session may start with, which is
+    /// fewer (Fable and Mythos at High only).
+    efforts: (provider) => call(async (c) => {
+      const cached = effortCache.get(provider);
+      if (cached && now() - cached.at < 60_000) return cached.rows;
+      if (typeof c.listProviderModels !== 'function') return [];
+      const listed = await c.listProviderModels(provider);
+      const rows = (Array.isArray(listed?.models) ? listed.models : [])
+        .map((m) => ({ model: m?.id, efforts: (Array.isArray(m?.thinkingOptions) ? m.thinkingOptions : [])
+          .map((o) => o?.id).filter((id) => typeof id === 'string' && id !== '') }))
+        .filter((row) => typeof row.model === 'string' && row.efforts.length > 0);
+      effortCache.set(provider, { at: now(), rows });
+      return rows;
+    }),
     list: () => call(directory),
     /// Whether Paseo still holds this agent. Only Paseo's own 404 is "gone";
     /// every other failure is "unknown" and must leave the record alone.

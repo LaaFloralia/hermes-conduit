@@ -530,20 +530,24 @@ enum LAAWorkSessionStyle {
         return "\(displayModel(label ?? model)) · \(effort)"
     }
 
-    /// The effort values the daemon can apply to the observed model, in the same
-    /// order as the new-session picker. Empty when the model is unknown or the
-    /// model table has no matching profile: no menu is offered from a guess.
-    ///
-    /// The daemon's current value is always listed, even when the HQ table does
-    /// not offer it for this model (a Mythos session running at XHigh, where
-    /// the table has High only): the menu then shows what is applied instead of
-    /// a lone, unchecked High. It is listed to be read, not offered: once the
-    /// owner leaves it, only the table's values remain to choose.
+    /// The efforts the owner can move a running session to: what Paseo lists
+    /// for the model, or, when the Bridge could not ask it, the efforts of the
+    /// model table's profiles. The table alone left Fable and Mythos with
+    /// High only, also after switching away from Mythos (owner, 2026-11-13).
+    static func offeredEfforts(provider: String?, model: String?, options: LAAWorkSessionOptions?) -> Set<String> {
+        guard let options, let model else { return [] }
+        let listed = options.efforts?.first { $0.provider == provider && $0.model == model }?.efforts ?? []
+        if !listed.isEmpty { return Set(listed) }
+        return Set(options.profiles.filter { $0.provider == provider && $0.model == model }.map(\.effort))
+    }
+
+    /// The effort menu of a running session, lowest first. Empty when the
+    /// model is unknown or nothing is offered for it: no menu from a guess.
+    /// The daemon's current value is always listed, even when it is not
+    /// offered, so the menu shows what is applied.
     static func effortChoices(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> [String] {
-        guard let options, let observed = session.observed, let model = observed.model else { return [] }
-        var values = Set(options.profiles
-            .filter { $0.provider == observed.provider && $0.model == model }
-            .map(\.effort))
+        guard let observed = session.observed else { return [] }
+        var values = offeredEfforts(provider: observed.provider, model: observed.model, options: options)
         guard !values.isEmpty else { return [] }
         if let current = observed.effort, !current.isEmpty { values.insert(current) }
         return values.sorted { effortRank($0) < effortRank($1) }

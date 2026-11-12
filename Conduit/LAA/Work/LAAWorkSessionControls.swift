@@ -158,10 +158,10 @@ struct LAAWorkSessionControls: View {
         }
     }
 
-    /// A value the HQ table offers for this model. The daemon's current value
-    /// is listed even when it is not (effortChoices), but never offered.
+    /// A value Paseo can apply to this model. The daemon's current value is
+    /// listed even when it is not (effortChoices), but never offered.
     private func offered(_ effort: String) -> Bool {
-        options?.profiles.contains { $0.provider == session.observed?.provider && $0.model == currentModel && $0.effort == effort } == true
+        LAAWorkSessionStyle.offeredEfforts(provider: session.observed?.provider, model: currentModel, options: options).contains(effort)
     }
 
     private func changeModel(_ model: String) {

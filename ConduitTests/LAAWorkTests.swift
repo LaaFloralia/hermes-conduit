@@ -716,6 +716,33 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkSessionStyle.model(unknown, options: nil), "kestrel-preview · High")
     }
 
+    /// Paseo's list for the running model is the menu; the table's profiles
+    /// stand in only for a model Paseo did not list.
+    func testARunningSessionOffersTheEffortsPaseoListsForItsModel() throws {
+        var options = try tableOptions
+        options.efforts = [
+            .init(provider: "claude", model: "claude-fable-5-2", efforts: ["low", "medium", "high", "xhigh", "max"]),
+            .init(provider: "claude", model: "claude-mythos-5-2", efforts: ["low", "medium", "high", "xhigh", "max"]),
+        ]
+        // Switched from Mythos to Fable 5.2: the table has High only for both.
+        let fable = try session("f", name: "f", updated: "x",
+                                requested: ["provider": "claude", "model": "claude-mythos-5-2", "effort": "high"],
+                                observed: ["provider": "claude", "model": "claude-fable-5-2", "effort": "high"])
+        XCTAssertEqual(LAAWorkSessionStyle.effortChoices(fable, options: options), ["low", "medium", "high", "xhigh", "max"])
+        XCTAssertEqual(LAAWorkSessionStyle.offeredEfforts(provider: "claude", model: "claude-mythos-5-2", options: options),
+                       ["low", "medium", "high", "xhigh", "max"])
+        // Paseo listed the model for another provider only, or nothing at all:
+        // the table's profiles.
+        options.efforts = [.init(provider: "codex", model: "claude-fable-5-2", efforts: ["minimal"])]
+        XCTAssertEqual(LAAWorkSessionStyle.effortChoices(fable, options: options), ["high"])
+        options.efforts = []
+        XCTAssertEqual(LAAWorkSessionStyle.offeredEfforts(provider: "claude", model: "claude-mythos-5-2", options: options), ["high"])
+        XCTAssertTrue(LAAWorkSessionStyle.offeredEfforts(provider: "claude", model: "kestrel-preview", options: options).isEmpty)
+        // An older Bridge sends no list.
+        let decoded = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(#"{"profiles":[],"defaultProfile":null,"defaultMode":"bypass"}"#.utf8))
+        XCTAssertNil(decoded.efforts)
+    }
+
     /// The daemon's effort is listed even when the table does not offer it.
     func testCurrentEffortIsListedEvenOutsideTheTable() throws {
         let mythos = try session("m", name: "m", updated: "x",

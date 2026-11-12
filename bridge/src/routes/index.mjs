@@ -173,6 +173,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       sessions: sessionService,
       refs,
       sessionOptions: sessionChoices,
+      daemon,
     }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes({ store, now, registerCleanup: sessionOptions.registerCleanup, ...options.studio }),

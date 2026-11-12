@@ -201,9 +201,19 @@ struct LAAWorkSessionOptions: Decodable {
         let effort: String
         let fast: Bool
     }
+    /// The efforts Paseo can apply to one model of a running session. More
+    /// than the profiles: those name what a new session may start with.
+    struct ModelEfforts: Decodable, Hashable {
+        let provider: String
+        let model: String
+        let efforts: [String]
+    }
     let profiles: [Profile]
     let defaultProfile: String?
     let defaultMode: String?
+    /// Absent from a Bridge that predates it, and empty when Paseo could not
+    /// be asked; the profiles then stand in.
+    var efforts: [ModelEfforts]? = nil
 }
 
 struct LAAWorkWorkspace: Decodable, Identifiable, Hashable {

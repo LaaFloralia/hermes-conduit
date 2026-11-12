@@ -14,7 +14,7 @@
 import { sessionRefItem } from '../refs/items.mjs';
 import { parseObjectBody } from './state-file.mjs';
 
-export function createSessionRoutes({ sessions, sessionOptions, refs = null }) {
+export function createSessionRoutes({ sessions, sessionOptions, refs = null, daemon = null }) {
   function refItem(record) {
     return sessionRefItem(record, refs?.refFor);
   }
@@ -96,8 +96,19 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null }) {
     return { status: 200, data: decorate(sessions.view(result.session)) };
   }
 
+  // Beside the profiles a new session can start with: the efforts Paseo can
+  // apply to each model of the same providers, for a running session's menu.
+  // A provider Paseo cannot list is left out, and the app falls back on the
+  // profiles.
   async function options() {
-    return { status: 200, data: sessionOptions() };
+    const data = sessionOptions();
+    const providers = [...new Set(data.profiles.map((profile) => profile.provider))];
+    const listed = typeof daemon?.efforts === 'function'
+      ? await Promise.all(providers.map((provider) => daemon.efforts(provider)
+        .then((rows) => rows.map((row) => ({ provider, model: row.model, efforts: row.efforts })))
+        .catch(() => [])))
+      : [];
+    return { status: 200, data: { ...data, efforts: listed.flat() } };
   }
 
   async function stop({ params }) {
