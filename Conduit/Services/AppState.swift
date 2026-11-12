@@ -2104,6 +2104,30 @@ final class AppState: ObservableObject {
     /// The model and effort Hermes reported for each chat's running agent,
     /// for the composer's chip; never the profile's configured values.
     @Published private(set) var laaChatRuntime = LAAChatRuntime()
+#if DEBUG
+    /// UI tests stand in for Hermes' model calls (LAABackgroundUITestFixture).
+    var laaChatModelOperationsForTesting: LAAChatModelOperations?
+#endif
+    /// The chat composer's model and effort pickers reach Hermes through
+    /// these: the same `model.options` and session-scoped `config.set` as
+    /// the Model sheet. Nil while no gateway is connected.
+    var laaChatModelOperations: LAAChatModelOperations? {
+#if DEBUG
+        if let laaChatModelOperationsForTesting { return laaChatModelOperationsForTesting }
+#endif
+        return client.map(LAAChatModelOperations.init(client:))
+    }
+
+    /// What Hermes reported for a chat after a picker's change (its
+    /// `model.options` read-back): the runtime and the chip take it, as from
+    /// `session.info`. Another chat's report changes nothing on screen.
+    func laaApplyChatModelReport(sessionID: String, model: String?, provider: String?, effort: String?) {
+        guard sessionID == activeSessionId else { return }
+        if let model, !model.isEmpty { runtime.model = model }
+        if let provider, !provider.isEmpty { runtime.provider = provider }
+        if let effort { runtime.reasoningEffort = effort == "none" ? "" : effort }
+        laaChatRuntime.apply(sessionID: sessionID, model: model, provider: provider, effort: effort)
+    }
 #endif
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []

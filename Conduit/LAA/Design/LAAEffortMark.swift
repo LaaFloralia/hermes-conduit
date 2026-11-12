@@ -13,6 +13,19 @@ enum LAAEffort {
     /// effort colour wherever an effort is shown.
     static func isDeep(_ value: String?) -> Bool { value == "xhigh" || value == "max" }
 
+    /// The effort kept when the model changes: the same one if the new model
+    /// has it, else High, else the nearest by rank (the lower on a tie). Nil
+    /// only when the new model offers none.
+    static func carried(_ effort: String?, into available: [String]) -> String? {
+        if let effort, available.contains(effort) { return effort }
+        if available.contains("high") { return "high" }
+        let target = rank(effort ?? "high") == 9 ? rank("high") : rank(effort ?? "high")
+        return available.min { lhs, rhs in
+            let left = abs(rank(lhs) - target), right = abs(rank(rhs) - target)
+            return left != right ? left < right : rank(lhs) < rank(rhs)
+        }
+    }
+
     static func name(_ raw: String?) -> String? {
         switch raw {
         case "low": return "Low"

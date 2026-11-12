@@ -86,11 +86,13 @@ final class LAAChatPolishUITests: XCTestCase {
         XCTAssertEqual(stop.frame.width, send.frame.width, accuracy: 1, "stop and Send share one size")
         XCTAssertEqual(stop.frame.height, send.frame.height, accuracy: 1)
         capture(app, "polish-running-\(theme)")
-        let pill = any("work.session.effort", app)
+        let pill = any("work.session.model", app)
         XCTAssertTrue(pill.waitForExistence(timeout: 10))
         pill.tap()
-        XCTAssertTrue(app.buttons["このセッションでは変更できません。"].waitForExistence(timeout: 5)
-                      || app.staticTexts["このセッションでは変更できません。"].exists,
+        let reasons = ["このセッションではモデルを変更できません。", "切り替えられるモデルがありません。"]
+        let reason = app.buttons.matching(NSPredicate(format: "label IN %@", reasons)).firstMatch
+        XCTAssertTrue(reason.waitForExistence(timeout: 5)
+                      || app.staticTexts.matching(NSPredicate(format: "label IN %@", reasons)).firstMatch.exists,
                       "the menu must open and say why nothing can be chosen")
         capture(app, "polish-running-menu-\(theme)")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()

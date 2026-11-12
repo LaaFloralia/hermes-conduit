@@ -927,14 +927,46 @@ struct LAALinearTaskEditor: View {
         .task(id: bridge.revision) { await loadOptions() }
     }
 
+    /// The same two capsules as a new session (LAAModelEffortPickers): the
+    /// model, then the efforts that model offers. The profile id is what is
+    /// sent, as before.
     @ViewBuilder private var modelPicker: some View {
         if let options, !options.profiles.isEmpty {
-            Picker(selection: $profile) {
-                ForEach(options.profiles) { item in
-                    Text(verbatim: LAAWorkSessionStyle.profileLabel(item)).tag(item.id)
+            let chosen = LAAWorkModelSelection.model(of: profile, in: options)
+            HStack(spacing: LAASpacing.x2) {
+                Text(verbatim: "モデル").layoutPriority(1)
+                Spacer(minLength: LAASpacing.x2)
+                LAAModelEffortPickers(
+                    model: selectedProfile?.model, provider: selectedProfile?.provider,
+                    effort: selectedProfile?.effort, name: chosen?.label ?? "モデルを選択",
+                    identifier: "work.linear"
+                ) {
+                    ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(options)), id: \.name) { group in
+                        Section(group.name) {
+                            ForEach(group.models) { item in
+                                Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in
+                                    if on, let next = LAAWorkModelSelection.profile(switchingTo: item, from: selectedProfile) {
+                                        profile = next.id
+                                    }
+                                })) { Text(verbatim: item.label) }
+                                .accessibilityIdentifier("work.linear.model.\(item.model)")
+                            }
+                        }
+                    }
+                } effortMenu: {
+                    if let chosen {
+                        if chosen.profiles.count < 2 { LAAMenuReason(text: "このモデルで選べる推論はこれだけです。") }
+                        Section {
+                            ForEach(chosen.profiles) { item in
+                                LAAEffortMenu.Row(effort: item.effort, selected: item.id == profile,
+                                                  identifier: "work.linear.effort.\(item.effort)") { profile = item.id }
+                            }
+                        }
+                    } else {
+                        LAAMenuReason(text: "先にモデルを選んでください。")
+                    }
                 }
-            } label: { Text(verbatim: "モデル・推論") }
-            .accessibilityIdentifier("work.linear.model")
+            }
         } else if optionsFailed {
             Button { Task { await loadOptions(force: true) } } label: { Text(verbatim: "モデルを取得できません。読み直す") }
         } else {

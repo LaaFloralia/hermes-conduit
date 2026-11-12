@@ -295,23 +295,24 @@ final class LAAWorkSessionUITests: XCTestCase {
         let app = try launchFixture()
         open(runningID, app)
         let photo = app.buttons["work.composer.photo"].firstMatch
-        let model = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier == %@ OR identifier == %@",
-                        "work.session.effort", "work.session.model")).firstMatch
+        let model = app.descendants(matching: .any)["work.session.model"].firstMatch
+        let effort = app.descendants(matching: .any)["work.session.effort"].firstMatch
         let fast = app.descendants(matching: .any)["work.session.fast"].firstMatch
         let stop = app.buttons["work.session.stop"].firstMatch
         let send = app.buttons["work.composer.send"].firstMatch
-        for element in [photo, model, fast, stop, send] {
+        for element in [photo, model, effort, fast, stop, send] {
             XCTAssertTrue(element.waitForExistence(timeout: 15), element.debugDescription)
             XCTAssertTrue(element.isHittable, element.debugDescription)
         }
         // One line: every control shares the row's centre.
         let midY = photo.frame.midY
-        for element in [model, fast, stop, send] {
+        for element in [model, effort, fast, stop, send] {
             XCTAssertEqual(element.frame.midY, midY, accuracy: 2, "not on the row: \(element.debugDescription)")
         }
-        // The model name is the only thing that gives way.
-        XCTAssertLessThanOrEqual(model.frame.maxX, fast.frame.minX + 1)
+        // The model name is the only thing that gives way; the effort stays whole.
+        XCTAssertLessThanOrEqual(model.frame.maxX, effort.frame.minX + 1)
+        XCTAssertLessThanOrEqual(effort.frame.maxX, fast.frame.minX + 1)
+        XCTAssertFalse((effort.value as? String ?? "").isEmpty)
         XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX - 4)
         XCTAssertGreaterThan(photo.frame.minX, 4)
         // The values stay whole: only the model text truncates.

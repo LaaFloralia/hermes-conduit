@@ -128,9 +128,13 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         XCTAssertTrue(mismatch.label.contains("Fable 5.2") && mismatch.label.contains("Opus 4.8"), mismatch.label)
         XCTAssertTrue(mismatch.label.contains("切替を確認"), "the Bridge saw the switch: say when")
         XCTAssertTrue(any("work.session.progress.thinking", app).waitForExistence(timeout: 10))
-        let pill = any("work.session.effort", app)
+        let pill = any("work.session.model", app)
+        let effort = any("work.session.effort", app)
         XCTAssertTrue(pill.waitForExistence(timeout: 10))
-        XCTAssertTrue((pill.value as? String ?? "").contains("Opus 4.8 · XHigh"), "the effort sits beside the model")
+        XCTAssertTrue((pill.value as? String ?? "").contains("Opus 4.8"), pill.debugDescription)
+        XCTAssertEqual(effort.value as? String, "XHigh", "the effort is its own capsule beside the model")
+        XCTAssertEqual(pill.frame.midY, effort.frame.midY, accuracy: 1, "the two capsules share a line")
+        XCTAssertEqual(pill.frame.height, effort.frame.height, accuracy: 1, "and a height")
         capture(app, "switched-\(theme)")
         app.scrollViews.firstMatch.swipeDown()
         Thread.sleep(forTimeInterval: 0.5)
@@ -146,12 +150,19 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         app.buttons["work.image.preview.close"].tap()
         XCTAssertTrue(pill.waitForExistence(timeout: 5))
 
-        // The menu: the request → running line, then the efforts with XHigh
-        // checked and marked.
+        // The model menu: the request → running line and the models, no
+        // effort; the effort menu: the efforts, no model.
         pill.tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "依頼 Fable 5.2")).firstMatch
             .waitForExistence(timeout: 5), "the menu names the request and what runs")
+        XCTAssertFalse(menuRow("XHigh", app).exists, "the model menu lists models only")
         capture(app, "switched-menu-\(theme)")
+        dismissMenu(app)
+        effort.tap()
+        XCTAssertTrue(menuRow("XHigh", app).waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "依頼 Fable 5.2")).firstMatch.exists,
+                       "the effort menu lists efforts only")
+        capture(app, "switched-effort-menu-\(theme)")
         dismissMenu(app)
 
         // 5. Attached pictures: thumbnails, a tap opens, only × removes.
@@ -190,7 +201,7 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         open(mythosID, app)
         XCTAssertTrue(any("work.session.progress.compacting", app).waitForExistence(timeout: 10))
         capture(app, "compacting-\(theme)")
-        pill.tap()
+        effort.tap()
         // A system menu keeps the rows' labels, not their identifiers.
         let xhigh = menuRow("XHigh", app)
         XCTAssertTrue(xhigh.waitForExistence(timeout: 5), "the applied XHigh is listed")
@@ -201,11 +212,11 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         // 3. Max on a GPT model.
         app.navigationBars.buttons.firstMatch.tap()
         open(maxID, app)
-        XCTAssertTrue(pill.waitForExistence(timeout: 10))
-        XCTAssertTrue((pill.value as? String ?? "").contains("Max"), pill.debugDescription)
+        XCTAssertTrue(effort.waitForExistence(timeout: 10))
+        XCTAssertEqual(effort.value as? String, "Max", effort.debugDescription)
         XCTAssertFalse(any("work.session.progress.thinking", app).exists, "no progress line once the turn ended")
         capture(app, "max-\(theme)")
-        pill.tap()
+        effort.tap()
         XCTAssertTrue(menuRow("Max", app).waitForExistence(timeout: 5))
         capture(app, "max-menu-\(theme)")
         dismissMenu(app)
@@ -226,6 +237,39 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         models.tap()
         Thread.sleep(forTimeInterval: 0.8)
         capture(app, "launcher-models-\(theme)")
+
+        // Another model keeps the effort when it has it, else High: Opus
+        // XHigh → GPT-6 Astra keeps XHigh; → Sonnet takes High.
+        let launchEffort = any("work.launch.effort", app)
+        let opus = app.buttons["Opus 5.5"].firstMatch
+        XCTAssertTrue(opus.waitForExistence(timeout: 5))
+        XCTAssertFalse(menuRow("XHigh", app).exists, "the model menu lists models only")
+        if (models.value as? String) != "Opus 5.5" { opus.tap() } else { dismissMenu(app) }
+        expectation(for: NSPredicate(format: "value == %@", "Opus 5.5"), evaluatedWith: models)
+        waitForExpectations(timeout: 5)
+        launchEffort.tap()
+        let xhighRow = menuRow("XHigh", app)
+        XCTAssertTrue(xhighRow.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["GPT-6 Astra"].exists, "the effort menu lists efforts only")
+        capture(app, "launcher-efforts-\(theme)")
+        if (launchEffort.value as? String) != "XHigh" { xhighRow.tap() } else { dismissMenu(app) }
+        expectation(for: NSPredicate(format: "value == %@", "XHigh"), evaluatedWith: launchEffort)
+        waitForExpectations(timeout: 5)
+        models.tap()
+        let astra = app.buttons["GPT-6 Astra"].firstMatch
+        XCTAssertTrue(astra.waitForExistence(timeout: 5))
+        astra.tap()
+        expectation(for: NSPredicate(format: "value == %@", "GPT-6 Astra"), evaluatedWith: models)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(launchEffort.value as? String, "XHigh", "the same effort stays")
+        models.tap()
+        let sonnet = app.buttons["Sonnet 5.5"].firstMatch
+        XCTAssertTrue(sonnet.waitForExistence(timeout: 5))
+        sonnet.tap()
+        expectation(for: NSPredicate(format: "value == %@", "Sonnet 5.5"), evaluatedWith: models)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(launchEffort.value as? String, "High", "else High")
+        capture(app, "launcher-sonnet-\(theme)")
     }
 }
 #endif
