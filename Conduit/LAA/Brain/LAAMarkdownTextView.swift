@@ -542,9 +542,96 @@ final class LAAMarkdownUITextView: UITextView {
     private var lastViewportSize: CGSize = .zero
     private var lastViewportInsets = UIEdgeInsets.zero
 
+    // MARK: Caret
+
+    /// UITextView draws the caret as tall as the line's box, and these lines
+    /// are 1.7 times their font (headings add space above), so the caret stood
+    /// far taller than the text. It is drawn from the typing font's ascender
+    /// to its descender on the line's own baseline, read from TextKit 2's line
+    /// fragments; when that geometry is unavailable the system's box is kept.
+    override func caretRect(for position: UITextPosition) -> CGRect {
+        let system = super.caretRect(for: position)
+        return textCaretRect(for: position, system: system) ?? system
+    }
+
+    /// The line box the system would draw. Revealing the caret keeps using it,
+    /// so the whole line, not only its glyphs, scrolls into view as before.
+    func systemCaretRect(for position: UITextPosition) -> CGRect {
+        super.caretRect(for: position)
+    }
+
+    private func textCaretRect(for position: UITextPosition, system: CGRect) -> CGRect? {
+        guard !system.isNull, !system.isInfinite, system.height > 0,
+              let manager = textLayoutManager else { return nil }
+        let offset = self.offset(from: beginningOfDocument, to: position)
+        guard let font = caretFont(at: offset),
+              let baseline = caretBaseline(at: offset, near: system, manager: manager) else { return nil }
+        let height = font.ascender - font.descender
+        guard height > 0 else { return nil }
+        let scale = max(traitCollection.displayScale, 1)
+        let top = ((baseline - font.ascender) * scale).rounded() / scale
+        return CGRect(x: system.minX, y: top, width: system.width, height: (height * scale).rounded() / scale)
+    }
+
+    /// The font the next character takes: the typing attributes at the caret,
+    /// otherwise the text at that position. Hidden Markdown markers (0.1 pt)
+    /// never size the caret.
+    private func caretFont(at offset: Int) -> UIFont? {
+        func visible(_ value: Any?) -> UIFont? {
+            guard let font = value as? UIFont, font.pointSize >= 1 else { return nil }
+            return font
+        }
+        let selection = selectedRange
+        if selection.length == 0, selection.location == offset || markedTextRange != nil,
+           let font = visible(typingAttributes[.font]) {
+            return font
+        }
+        let storage = textStorage
+        for index in [offset, offset - 1] where index >= 0 && index < storage.length {
+            if let font = visible(storage.attribute(.font, at: index, effectiveRange: nil)) { return font }
+        }
+        return visible(self.font)
+    }
+
+    /// The baseline, in this view's coordinates, of the line fragment the
+    /// system placed the caret on.
+    private func caretBaseline(at offset: Int, near system: CGRect, manager: NSTextLayoutManager) -> CGFloat? {
+        let start = manager.documentRange.location
+        var fragments: [NSTextLayoutFragment] = []
+        for index in [offset, offset - 1] where index >= 0 {
+            guard let location = manager.location(start, offsetBy: index),
+                  let fragment = manager.textLayoutFragment(for: location),
+                  !fragments.contains(where: { $0 === fragment }) else { continue }
+            fragments.append(fragment)
+        }
+        let inset = textContainerInset
+        var best: (baseline: CGFloat, bounds: CGRect, matchesText: Bool, distance: CGFloat)?
+        for fragment in fragments {
+            let frame = fragment.layoutFragmentFrame
+            let local = offset - manager.offset(from: start, to: fragment.rangeInElement.location)
+            for line in fragment.textLineFragments {
+                let bounds = line.typographicBounds.offsetBy(dx: frame.minX + inset.left, dy: frame.minY + inset.top)
+                guard bounds.height > 0 else { continue }
+                let range = line.characterRange
+                let matchesText = NSLocationInRange(local, range) || NSMaxRange(range) == local
+                let distance = abs(bounds.midY - system.midY)
+                // Text position first; at a soft wrap both lines hold the
+                // offset, and the one the system drew on is the nearer.
+                if let current = best,
+                   current.matchesText && !matchesText || (current.matchesText == matchesText && current.distance <= distance) {
+                    continue
+                }
+                best = (bounds.minY + line.glyphOrigin.y, bounds, matchesText, distance)
+            }
+        }
+        // A line that does not overlap the system's box is not the caret's.
+        guard let best, best.bounds.minY < system.maxY, best.bounds.maxY > system.minY else { return nil }
+        return best.baseline
+    }
+
     private func revealCaretInDocument() {
         guard let selectedTextRange else { return }
-        let caret = caretRect(for: selectedTextRange.end)
+        let caret = systemCaretRect(for: selectedTextRange.end)
         var ancestor = superview
         while let container = ancestor {
             if let scroll = container as? UIScrollView, scroll.isScrollEnabled {
