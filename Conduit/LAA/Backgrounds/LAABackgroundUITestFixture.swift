@@ -137,6 +137,14 @@ final class LAABackgroundFixture: ObservableObject {
             if parts.count > 2 { info["reasoning_effort"] = .string(parts[2]) }
             app.handleStreamEvent(.sessionInfo(sessionId: conversationID, snapshot: SessionRuntimeSnapshot(object: info)))
         }
+        if chatFixture == "long" {
+            // Taller than the screen, so a send can start scrolled up.
+            app.messages = (1...24).map { index in
+                ChatMessage(id: "long-\(index)", role: index.isMultiple(of: 2) ? .assistant : .user,
+                            content: "長い会話の\(index)件目。予定と資料の確認を続けています。",
+                            timestamp: String(now - Double(240 - index)), rowId: index)
+            }
+        }
         self.state = app
         self.bots = bots
     }
