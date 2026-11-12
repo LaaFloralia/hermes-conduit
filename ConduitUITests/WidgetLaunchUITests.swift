@@ -207,7 +207,8 @@ final class WidgetLaunchUITests: XCTestCase {
         let review = app.buttons["composer.unknown-delivery"]
         XCTAssertTrue(review.waitForExistence(timeout: 15), tree(app))
         review.tap()
-        let restore = app.buttons["Restore to draft"]
+        // LAA's composer words the choice in Japanese (LAAChatLabels).
+        let restore = app.buttons.matching(NSPredicate(format: "label IN %@", ["Restore to draft", "下書きに戻す"])).firstMatch
         XCTAssertTrue(restore.waitForExistence(timeout: 5), tree(app))
         restore.tap()
         let field = app.textViews["composer.field"]

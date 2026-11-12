@@ -190,7 +190,9 @@ final class LAAChatDesignUITests: XCTestCase {
         }
     }
 
-    func testNameOpensInformationAndBackground() {
+    /// The name opens the introduction (owner, 2026-11-11); the
+    /// conversation's information and its background are one row inside it.
+    func testNameOpensTheIntroductionThenInformationAndBackground() {
         for dark in [false, true] {
             let app = launch(dark: dark, pushed: true)
             let header = app.buttons["laa.employee.header"]
@@ -200,6 +202,10 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertFalse(back.frame.intersects(header.frame))
             XCTAssertEqual(header.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 8)
             header.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["laa.staff.intro.motto"].waitForExistence(timeout: 5))
+            let conversation = app.buttons["laa.staff.intro.conversation"]
+            if !conversation.isHittable { app.swipeUp() }
+            conversation.tap()
             XCTAssertTrue(app.buttons["conversation.background"].waitForExistence(timeout: 10))
             capture(app, "conversation-information-after-\(dark ? "dark" : "light")")
             app.buttons["conversation.background"].tap()
