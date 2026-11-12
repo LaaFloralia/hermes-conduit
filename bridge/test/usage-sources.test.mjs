@@ -499,6 +499,20 @@ test('an API balance is the billing-page reading, below zero too, whether or not
   assert.equal(byId(items, 'provider.openai-api.balance').availability, 'unavailable');
 });
 
+test('a balance carries what it counts down from when the proxy names it, and nothing otherwise', () => {
+  const items = usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:00:00Z', stale: false, providers: [
+    { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
+      balance: { amount: 12.5, confirmedAt: '2026-10-20T14:24:00Z', grantedAmount: 50 } },
+    { id: 'openai-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
+      balance: { amount: 0, confirmedAt: '2026-10-20T14:24:00Z', grantedAmount: 0 } },
+    { id: 'venice', kind: 'balance', available: true, source: 'live',
+      updatedAt: '2026-10-29T04:58:00Z', amount: 8.5, currency: 'USD', grantedAmount: 10.27 },
+  ] }, { now: Date.parse('2026-10-29T05:00:00Z') });
+  assert.equal(byId(items, 'provider.claude-api.balance').detail.grantedAmount, 50);
+  assert.equal('grantedAmount' in byId(items, 'provider.openai-api.balance').detail, false);
+  assert.equal(byId(items, 'provider.venice.balance').detail.grantedAmount, 10.27);
+});
+
 test('Venice USD and Magnific credits keep their units and priority, without Antigravity or nanoGPT', () => {
   const items = projection([
     { id: 'nanogpt', available: true, source: 'live', updatedAt: '2026-10-29T04:58:00Z',

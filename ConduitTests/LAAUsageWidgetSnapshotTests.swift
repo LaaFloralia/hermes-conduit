@@ -50,12 +50,15 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
     }
 
-    func testLateEntryRendersLikeExpiredTimelineEntry() throws {
+    /// The widget draws no age (owner, 2026-11-12: no 「6日前」), so a value
+    /// past its freshness looks like the fresh one, whether the entry was
+    /// drawn late or is the expiry entry; VoiceOver's value keeps the age.
+    func testLateAndExpiredEntriesDrawNoAgeNote() throws {
         let now = Date(timeIntervalSince1970: 1_793_456_040)
         let fresh = try capture(style: .light, mode: .fullColor, name: "medium-before-expiry", now: now)
         let late = try capture(style: .light, mode: .fullColor, name: "medium-late-draw", now: now, renderedAtOffset: 600)
         let expired = try capture(style: .light, mode: .fullColor, name: "medium-expiry-entry", expired: true, now: now, renderedAtOffset: 600)
-        XCTAssertNotEqual(late, fresh)
+        XCTAssertEqual(late, fresh)
         XCTAssertEqual(late, expired)
     }
     func testMediumLightDarkAndTinted() throws {
@@ -178,7 +181,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
     {"id":"provider.claude-api.balance","kind":"balance","label":"Claude API","value":-0.19,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-05T14:24:00Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified","currency":"USD"}},
     {"id":"provider.claude-api.cost-month","kind":"cost","label":"Claude API","value":82.7940326,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:32Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"sourceLag":"typical-5m","periodTimezone":"UTC","freshUntil":"2026-11-11T22:51:32.000Z"}},
     {"id":"provider.liquid.usage","kind":"usage","label":"Liquid AI","value":123,"unit":"tokens","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:32Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"recordedCostUsd":1.31}},
-    {"id":"provider.venice.balance","kind":"balance","label":"Venice","value":10.27082039,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:39Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"currency":"USD","freshUntil":"2026-11-11T22:51:39.000Z"}}
+    {"id":"provider.venice.balance","kind":"balance","label":"Venice","value":10.27082039,"unit":"usd","source":"codexbar-usage-proxy","observedAt":"2026-11-11T22:41:39Z","availability":"available","stale":false,"estimated":false,"expired":false,"detail":{"currency":"USD","grantedAmount":20,"freshUntil":"2026-11-11T22:51:39.000Z"}}
     ]
     """
 
@@ -204,6 +207,12 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(LAAEmployeeWidgetView.displayValue(claudeAPI, entryDate: Self.liveNow, renderedAt: Self.liveNow), "-$0.19 · 6日前")
         let venice = try XCTUnwrap(entry.usage?.meters.first { $0.label == "Venice" })
         XCTAssertEqual(LAAEmployeeWidgetView.displayValue(venice, entryDate: Self.liveNow, renderedAt: Self.liveNow), "$10.27")
+        // Every row draws a meter, the API balances included (owner,
+        // 2026-11-12): an unpaid balance is an empty bar, Venice what is left
+        // of its last top-up.
+        XCTAssertEqual(entry.usage?.meters.compactMap(\.remainingFraction).count, 7)
+        XCTAssertEqual(claudeAPI.remainingFraction, 0)
+        XCTAssertEqual(venice.remainingFraction ?? 0, 0.5135, accuracy: 0.0001)
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "live-\(tag)-\(style == .dark ? "dark" : "light")"

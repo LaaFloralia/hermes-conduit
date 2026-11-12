@@ -223,11 +223,43 @@ final class LAAUsageWidgetTests: XCTestCase {
         let decoded = try JSONDecoder().decode(WidgetUsageMeter.self, from: JSONEncoder().encode(meter))
         XCTAssertEqual(decoded, meter)
         XCTAssertEqual(meter.lastKnown(label: "Magnific").granted, 240_000)
-        let balance = WidgetUsageMeter(id: "provider.venice.balance", label: "Venice", unit: .usd, amount: 9,
-                                       observedAt: now, freshUntil: nil, resetsAt: nil, stale: false, retained: false,
-                                       granted: 100)
-        XCTAssertNil(balance.granted)
-        XCTAssertNil(balance.remainingFraction)
+    }
+
+    /// The API rows draw a meter like the rest (owner, 2026-11-12): what is
+    /// left since the last top-up, an empty bar when nothing is left, and no
+    /// bar for a positive balance whose top-up was never seen.
+    func testAMoneyBalanceDrawsAMeterFromItsLastTopUp() throws {
+        XCTAssertEqual(LAAUsageMeterRule.balanceFraction(remaining: 2.5, granted: 10) ?? -1, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(LAAUsageMeterRule.balanceFraction(remaining: 0, granted: nil), 0)
+        XCTAssertEqual(LAAUsageMeterRule.balanceFraction(remaining: -0.19, granted: 10), 0)
+        XCTAssertNil(LAAUsageMeterRule.balanceFraction(remaining: 5, granted: nil))
+        XCTAssertNil(LAAUsageMeterRule.balanceFraction(remaining: nil, granted: 10))
+
+        let meters = LAAWidgetUsageBuilder.make(items: [
+            try item("openai-api", kind: "balance", label: "GPT API", value: 0, unit: "usd",
+                     observedAt: "2026-10-25T00:00:00Z", detail: ["sourceKind": "verified"]),
+            try item("claude-api", kind: "balance", label: "Claude API", value: -0.19, unit: "usd",
+                     observedAt: "2026-10-25T00:00:00Z", detail: ["sourceKind": "verified"]),
+            try item("venice", kind: "balance", label: "Venice", value: 7.5, unit: "usd",
+                     detail: ["grantedAmount": 10]),
+        ], receivedAt: now).meters
+        XCTAssertEqual(meters.map(\.label), ["GPT API", "Claude API", "Venice"])
+        XCTAssertEqual(meters.map(\.remainingFraction), [0, 0, 0.75])
+        XCTAssertEqual(meters[2].granted, 10)
+        let decoded = try JSONDecoder().decode(WidgetUsageMeter.self, from: JSONEncoder().encode(meters[2]))
+        XCTAssertEqual(decoded.remainingFraction, 0.75)
+        XCTAssertEqual(meters[2].lastKnown(label: "Venice").granted, 10)
+
+        // Recorded spend is money but not a balance: no meter.
+        let spend = WidgetUsageMeter(id: "provider.liquid.usage", label: "Liquid AI", unit: .usd, amount: 9,
+                                     observedAt: now, freshUntil: nil, resetsAt: nil, stale: false, retained: false,
+                                     granted: 100)
+        XCTAssertNil(spend.remainingFraction)
+        // A quota never takes a grant.
+        let quota = WidgetUsageMeter(id: "provider.claude.quota.weekly", label: "Claude", unit: .percent, amount: 40,
+                                     observedAt: now, freshUntil: nil, resetsAt: nil, stale: false, retained: false,
+                                     granted: 100)
+        XCTAssertNil(quota.granted)
     }
 
     func testLastKnownValuesSurviveMissingRowsWithoutChangingTheirTime() throws {

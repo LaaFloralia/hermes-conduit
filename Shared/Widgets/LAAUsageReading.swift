@@ -171,6 +171,16 @@ enum LAAUsageMeterRule {
         guard let remaining, let granted, remaining.isFinite, granted.isFinite, granted > 0 else { return nil }
         return min(max(remaining / granted, 0), 1)
     }
+
+    /// The share of a money balance still left, counted from its level after
+    /// the last top-up (`granted`). An empty or unpaid balance has nothing
+    /// left whatever it was topped up to, so it is an empty meter, not a
+    /// missing one (owner, 2026-11-12: the API rows draw a meter like the rest).
+    static func balanceFraction(remaining: Double?, granted: Double?) -> Double? {
+        guard let remaining, remaining.isFinite else { return nil }
+        if !(remaining > 0) { return 0 }
+        return grantFraction(remaining: remaining, granted: granted)
+    }
 }
 
 /// A historical observation keeps its timestamp; a fetch attempt never ages it forward.

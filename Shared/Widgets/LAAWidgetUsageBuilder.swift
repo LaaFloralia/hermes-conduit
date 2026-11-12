@@ -92,7 +92,8 @@ enum LAAWidgetUsageBuilder {
                 return .missing(id: item.id, label: slot.name)
             }
             return meter(id: item.id, label: slot.name, unit: .usd, amount: amount,
-                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt,
+                         granted: item.detail?.grantedAmount)
         case .credits:
             guard let item = feed.first(where: { $0.id == "\(prefix)credits" }) else { return nil }
             guard available(item), item.unit == "credits", let amount = item.value, amount.isFinite, amount >= 0 else {

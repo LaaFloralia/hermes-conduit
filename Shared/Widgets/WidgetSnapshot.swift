@@ -168,8 +168,9 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     // Optional so snapshots written by the previous app remain readable.
     let verified: Bool?
     let legacyFreshness: Bool?
-    /// The grant a credit row counts down from (Magnific's monthly AI credits);
-    /// nil when the feed names none, and for every other unit.
+    /// What the row counts down from: a credit grant (Magnific's monthly AI
+    /// credits) or a money balance's level after its last top-up; nil when
+    /// the feed names none, and for quotas.
     let granted: Double?
 
     init(id: String, label: String, unit: Unit, amount: Double, available: Bool = true,
@@ -179,7 +180,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         self.observedAt = observedAt; self.freshUntil = freshUntil; self.resetsAt = resetsAt
         self.stale = stale || retained; self.retained = retained; self.verified = verified
         self.legacyFreshness = legacyFreshness
-        self.granted = unit == .credits ? granted : nil
+        self.granted = unit == .percent ? nil : granted
     }
 
     /// A snapshot row with no reading: the label stays, the number does not.
@@ -216,14 +217,17 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
     var remainingPercent: Double? { available && unit == .percent ? amount : nil }
 
-    /// How full the row's meter is: a quota's share left, or what is left of
-    /// a named credit grant. Balances have no denominator and draw no meter.
+    /// How full the row's meter is: a quota's share left, what is left of a
+    /// named credit grant, or what is left of a balance since its last
+    /// top-up. Money that is not a balance (recorded spend) draws no meter.
     var remainingFraction: Double? {
         guard available else { return nil }
         switch unit {
         case .percent: return amount.isFinite ? min(max(amount / 100, 0), 1) : nil
         case .credits: return LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
-        case .usd: return nil
+        case .usd:
+            guard id.hasSuffix(".balance") else { return nil }
+            return LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
         }
     }
 

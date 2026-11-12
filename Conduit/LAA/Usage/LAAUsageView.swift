@@ -8,6 +8,7 @@ extension LAACopy {
         static let billingReading = "請求画面の確認値"
         static let noBalanceLeft = "残高なし"
         static let granted = "付与"
+        static let toppedUp = "補充後"
         static let left = "残り"
         static let meter = "利用枠"
         static let lowestWeekly = "週間の残りが最も少ない枠"
@@ -217,18 +218,24 @@ struct LAAUsageView: View {
             let amount = item.kind == "usage" ? item.detail?.recordedCostUsd : item.availableValue
             let unit = item.kind == "usage" ? "usd" : item.detail?.creditUnit ?? item.unit
             let granted = item.kind == "usage" ? nil : item.detail?.grantedAmount ?? item.detail?.monthlyGrantedAmount
-            let fraction = LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
+            // A money balance counts down from its level after the last
+            // top-up; a credit grant from the grant.
+            let money = item.kind == "balance" && unit == "usd"
+            let fraction = money ? LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
+                : LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
             readingRow(name: name, result: value(amount, unit: unit), age: age, fraction: fraction, countsDown: true,
-                       note: reason(item) ?? (item.kind == "usage" ? "記録済み費用" : grantNote(granted, fraction: fraction)))
+                       note: reason(item) ?? (item.kind == "usage" ? "記録済み費用" : grantNote(granted, fraction: fraction, money: money)))
         }
     }
 
-    /// The grant a credit meter counts down from, so the bar has a scale.
-    private func grantNote(_ granted: Double?, fraction: Double?) -> String? {
+    /// What a meter counts down from, so the bar has a scale: a credit grant,
+    /// or a balance's level after its last top-up.
+    private func grantNote(_ granted: Double?, fraction: Double?, money: Bool = false) -> String? {
         guard let granted, let fraction else { return nil }
-        let total = granted.formatted(.number.locale(locale).precision(.fractionLength(0...2)))
+        let total = money ? LAAUsageMoney.text(granted, locale: locale)
+            : granted.formatted(.number.locale(locale).precision(.fractionLength(0...2)))
         let left = (fraction * 100).formatted(.number.locale(locale).precision(.fractionLength(0)))
-        return LAACopy.Usage.granted + " " + total + " · " + LAACopy.Usage.left + " " + left + "%"
+        return (money ? LAACopy.Usage.toppedUp : LAACopy.Usage.granted) + " " + total + " · " + LAACopy.Usage.left + " " + left + "%"
     }
 
     /// GPT API and Claude API: the credit left, never the spend. Neither
@@ -242,9 +249,14 @@ struct LAAUsageView: View {
                 ? LAAUsageItem.date(item.observedAt).map { LAACopy.Usage.billingReading + " " + LAADateText.string($0, .monthDayTime) }
                 : nil
             let empty = !(amount > 0)
-            let parts = [item.retainedReason.map { Self.unavailableReason($0) }, empty ? LAACopy.Usage.noBalanceLeft : nil, checked]
+            // The meter the other rows draw: what is left since the last
+            // top-up, and an empty bar when nothing is.
+            let granted = item.detail?.grantedAmount
+            let fraction = LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
+            let parts = [item.retainedReason.map { Self.unavailableReason($0) }, empty ? LAACopy.Usage.noBalanceLeft : nil,
+                         empty ? nil : grantNote(granted, fraction: fraction, money: true), checked]
             let note = parts.compactMap { $0 }.joined(separator: " · ")
-            readingRow(name: name, result: value(amount, unit: "usd"), age: age(item), fraction: nil,
+            readingRow(name: name, result: value(amount, unit: "usd"), age: age(item), fraction: fraction, countsDown: true,
                        note: note.isEmpty ? nil : note, noteLink: billing, alert: empty)
         } else {
             let note = item.map { $0.nullReason == "not_auto" || $0.nullReason == nil ? LAACopy.Usage.noAutomaticBalance : Self.unavailable($0) }

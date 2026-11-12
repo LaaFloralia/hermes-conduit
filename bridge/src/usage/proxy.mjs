@@ -243,8 +243,13 @@ function confirmedBalanceItem(balance, provider) {
   const amount = finiteNumber(balance.amount, { min: Number.MIN_SAFE_INTEGER });
   const confirmedAt = isoTime(balance.confirmedAt);
   if (amount === null || confirmedAt === null) return unavailableItem({ ...baseOf(provider), unit: 'usd', reason: 'not_auto' });
+  const detail = { sourceKind: 'verified', currency: 'USD' };
+  // What the balance counts down from (its level after the last top-up), when
+  // the proxy has seen one; without it the row draws no scale.
+  const granted = finiteNumber(balance.grantedAmount);
+  if (granted !== null && granted > 0) detail.grantedAmount = granted;
   return availableItem({ ...baseOf(provider), unit: 'usd', value: amount, observedAt: confirmedAt, stale: false, expired: false,
-    detail: { sourceKind: 'verified', currency: 'USD' } });
+    detail });
 }
 
 function balanceItem(row, provider, context) {
@@ -267,6 +272,8 @@ function balanceItem(row, provider, context) {
     const value = finiteNumber(row[key], { max: key === 'monthlyRemainingPercent' ? 100 : Number.MAX_SAFE_INTEGER });
     if (value !== null) detail[key] = value;
   }
+  const granted = finiteNumber(row.grantedAmount);
+  if (granted !== null && granted > 0) detail.grantedAmount = granted;
   const components = normalizeComponents(row);
   if (components.length > 0) detail.components = components;
   if (typeof row.expiresOnUtc === 'string' && expiryTime(row.expiresOnUtc) !== null) {

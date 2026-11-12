@@ -131,8 +131,8 @@ struct LAAEmployeeWidgetView: View {
 
     private var medium: some View {
         GeometryReader { frame in
-            // The Usage column takes a little more than half: a name, an age note
-            // and a value share one line in each of its seven rows.
+            // The Usage column takes a little more than half: a name and a
+            // value share one line in each of its seven rows.
             let employeeWidth = max(0, (frame.size.width - LAASpacing.x3 * 2 - 1) * 0.48)
             HStack(spacing: LAASpacing.x3) {
                 VStack(spacing: LAASpacing.x1) {
@@ -360,7 +360,7 @@ private struct LAAWidgetUsageColumn: View {
     let entry: LAAEmployeeWidgetEntry
     let renderedAt: Date
     // The medium Usage column: one size for names and values, so seven rows
-    // fit a Pro Max with the heading; the age note is a step smaller.
+    // fit a Pro Max with the heading; the count of hidden rows is a step smaller.
     @ScaledMetric(relativeTo: .footnote) private var usageHeadingSize: CGFloat = 13
     @ScaledMetric(relativeTo: .caption) private var usageLabelSize: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var usageNoteSize: CGFloat = 11
@@ -421,8 +421,10 @@ private struct LAAWidgetUsageColumn: View {
     }
 
     /// One line per provider: the name, then the value right-aligned so the
-    /// numbers form a column, any age note in front of it, and a hairline
-    /// meter under quotas and Magnific's grant. Every row keeps the meter's
+    /// numbers form a column, and a hairline meter under quotas, Magnific's
+    /// grant and the money balances. No age is drawn (owner, 2026-11-12: no
+    /// 「6日前」 in the widget); VoiceOver still reads it, and the Usage
+    /// screen shows when each value was read. Every row keeps the meter's
     /// room, so rows with and without one share the same pitch.
     private func usageRow(_ meter: WidgetUsageMeter) -> some View {
         let hasValue = meter.hasRecordedValue(at: renderedAt)
@@ -431,15 +433,9 @@ private struct LAAWidgetUsageColumn: View {
             HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
                 Text(verbatim: meter.label.replacingOccurrences(of: " Weekly", with: ""))
                     .font(.system(size: usageLabelSize, weight: .medium))
-                    // Ahead of the age note for room; truncates before it
-                    // pushes the value out of the column.
+                    // Truncates before it pushes the value out of the column.
                     .lineLimit(1).layoutPriority(1)
                 Spacer(minLength: LAASpacing.x1)
-                if let note = LAAEmployeeWidgetView.freshnessText(meter, at: renderedAt, anchor: entry.freshnessAnchor) {
-                    Text(verbatim: note).font(.system(size: usageNoteSize))
-                        .foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                }
                 Text(verbatim: hasValue ? LAAEmployeeWidgetView.valueText(meter) : LAACopy.notFetched)
                     .font(.system(size: usageLabelSize, weight: hasValue ? .semibold : .regular))
                     .monospacedDigit().lineLimit(1)
