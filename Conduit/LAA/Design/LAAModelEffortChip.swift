@@ -53,9 +53,13 @@ struct LAAModelEffortChip: View {
                     .foregroundStyle(LAAColor.attention)
                     .accessibilityHidden(true)
             }
-            Text(verbatim: modelText)
-                .fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
-                .layoutPriority(-1)
+            // The whole name or none: in a narrow row the chip is the face
+            // and the effort, never "M…". VoiceOver still reads the name.
+            LAAWholeOrNone {
+                Text(verbatim: modelText).fontWeight(.semibold).lineLimit(1)
+            }
+            .clipped()
+            .layoutPriority(-1)
             Rectangle().fill(LAAColor.separator).frame(width: 1, height: 16)
                 .accessibilityHidden(true)
             if let effort, LAAEffort.name(effort) != nil {
@@ -102,6 +106,25 @@ struct LAAModelEffortChip: View {
         // Already a display name ("Opus 5.5", "GPT-6 Astra").
         if raw.contains(" ") && !raw.contains("/") && !raw.contains("[") { return raw }
         return LAAModelFace.face(model: raw, provider: provider).providerName
+    }
+}
+
+/// Its one child at its ideal width when that fits the offer, else nothing
+/// (zero width). One measurement per offer, so it settles in one pass.
+private struct LAAWholeOrNone: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let ideal = child.sizeThatFits(.unspecified)
+        if let width = proposal.width, width < ideal.width { return CGSize(width: 0, height: ideal.height) }
+        return ideal
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let child = subviews.first else { return }
+        let ideal = child.sizeThatFits(.unspecified)
+        let fits = bounds.width >= ideal.width
+        child.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+                    proposal: fits ? ProposedViewSize(ideal) : .zero)
     }
 }
 #endif

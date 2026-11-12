@@ -35,6 +35,14 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         let shown = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: echo)
         XCTAssertEqual(XCTWaiter.wait(for: [shown], timeout: 5), .completed, "the sent message must be on screen")
         capture(app, "sent-returns-to-end")
+
+        // The screen stays alive after the send: it scrolls and takes text.
+        let started = Date()
+        app.scrollViews.firstMatch.swipeDown()
+        field.tap()
+        field.typeText("続けて")
+        XCTAssertTrue((field.value as? String ?? "").contains("続けて"), "the field takes text after a send")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 20, "the app answered slowly after the send")
     }
     func testModelDisplayDark() throws { try run("dark") }
 
@@ -89,6 +97,10 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
+    }
+
+    private func menuRow(_ name: String, _ app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
     }
 
     private func any(_ id: String, _ app: XCUIApplication) -> XCUIElement {
@@ -179,14 +191,10 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         XCTAssertTrue(any("work.session.progress.compacting", app).waitForExistence(timeout: 10))
         capture(app, "compacting-\(theme)")
         pill.tap()
-        let xhigh = app.descendants(matching: .any)["work.session.effort.xhigh"].firstMatch
-        if !xhigh.waitForExistence(timeout: 3) {
-            print("LAA-NOTE mythos menu needed a second tap")
-            capture(app, "mythos-menu-first-tap-\(theme)")
-            pill.tap()
-        }
+        // A system menu keeps the rows' labels, not their identifiers.
+        let xhigh = menuRow("XHigh", app)
         XCTAssertTrue(xhigh.waitForExistence(timeout: 5), "the applied XHigh is listed")
-        XCTAssertTrue(app.descendants(matching: .any)["work.session.effort.high"].firstMatch.exists)
+        XCTAssertTrue(menuRow("High", app).exists)
         capture(app, "mythos-menu-\(theme)")
         dismissMenu(app)
 
@@ -198,7 +206,7 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         XCTAssertFalse(any("work.session.progress.thinking", app).exists, "no progress line once the turn ended")
         capture(app, "max-\(theme)")
         pill.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["work.session.effort.max"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(menuRow("Max", app).waitForExistence(timeout: 5))
         capture(app, "max-menu-\(theme)")
         dismissMenu(app)
 
