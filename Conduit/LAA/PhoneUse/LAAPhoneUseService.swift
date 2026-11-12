@@ -22,6 +22,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     private var started = false
     private var observed: Set<String> = []
     private var answering: Set<String> = []
+    private var registeredTokens: Set<String> = []
     private var pendingStartToken: String?
 
     /// Debug builds talk to the APNs sandbox, TestFlight to production.
@@ -49,12 +50,31 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
         Task {
             for await activity in Activity<LAAPhoneUseAttributes>.activityUpdates { observe(activity) }
         }
-        for activity in Activity<LAAPhoneUseAttributes>.activities { observe(activity) }
+        Task { await refresh() }
         // Not paired yet, or offline at launch: try again when the app is opened.
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in
+                await LAAPhoneUseService.shared.refresh()
                 guard let token = LAAPhoneUseService.shared.pendingStartToken else { return }
                 await LAAPhoneUseService.shared.registerStart(token: token)
+            }
+        }
+    }
+
+    /// Every activity on screen, whenever the app runs: hand the Bridge any
+    /// update token it lacks (an activity started while the app was suspended
+    /// may not have come through `activityUpdates`), and take down a question
+    /// whose answer time passed when no end push reached it.
+    func refresh() async {
+        for activity in Activity<LAAPhoneUseAttributes>.activities {
+            observe(activity)
+            if let data = activity.pushToken {
+                await registerActivity(requestID: activity.attributes.requestID, token: Self.hex(data))
+            }
+            let state = activity.content.state
+            if state.usePhase == .ask, activity.attributes.answerDate < Date() {
+                let ended = LAAPhoneUseAttributes.ContentState(phase: LAAPhoneUsePhase.expired.rawValue, endedAt: Date().timeIntervalSince1970)
+                await activity.end(ActivityContent(state: ended, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(4)))
             }
         }
     }
@@ -85,11 +105,12 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     }
 
     private func registerActivity(requestID: String, token: String) async {
-        guard let credentials = credentials() else { return }
+        guard !registeredTokens.contains(token), let credentials = credentials() else { return }
         do {
             let body = try JSONEncoder().encode(TokenBody(token: token, environment: nil))
             let _: LAABridgeResponse<RequestView> = try await client.request(
                 method: "PUT", path: "/v1/phone-use/requests/\(requestID)/activity-token", jsonBody: body, credentials: credentials)
+            registeredTokens.insert(token)
         } catch {
             phoneUseLog.error("activity token not registered: \(String(describing: error), privacy: .public)")
         }
@@ -100,6 +121,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     func answer(requestID: String, answer: LAAPhoneUseAnswer) async {
         guard Self.isRequestID(requestID), answering.insert(requestID).inserted else { return }
         defer { answering.remove(requestID) }
+        await refresh()
         guard let credentials = credentials() else { return }
         let status: String
         do {

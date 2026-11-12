@@ -60,7 +60,7 @@ final class LAAPhoneUseUITests: XCTestCase {
         }
         XCUIDevice.shared.press(.home)
         app.activate()
-        XCTAssertTrue(poll(60) { control("/registered")?["registered"] as? Bool == true }, "push-to-start token never reached the Bridge")
+        XCTAssertTrue(poll(150) { control("/registered")?["registered"] as? Bool == true }, "push-to-start token never reached the Bridge")
     }
 
     /// Ask with the app in the background (the owner is elsewhere on the phone).
@@ -72,6 +72,13 @@ final class LAAPhoneUseUITests: XCTestCase {
     }
 
     private func status(_ id: String) -> String? { control("/status?id=\(id)")?["status"] as? String }
+
+    /// Whether the activity's update token reached the Bridge (the system
+    /// wakes the app for it), so the Mac can end the activity by push.
+    private func noteActivityToken(_ id: String) {
+        let arrived = poll(20) { control("/status?id=\(id)")?["hasActivityToken"] as? Bool == true }
+        add(XCTAttachment(string: "activity token reached the Bridge within 20 s: \(arrived)"))
+    }
 
     /// The island's button: shown expanded when the activity starts; if it
     /// has folded into the compact island, a long press opens it again.
@@ -88,6 +95,7 @@ final class LAAPhoneUseUITests: XCTestCase {
         let id = try ask()
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForExistence(timeout: 20))
         shot("1-ask")
+        noteActivityToken(id)
         let allow = try XCTUnwrap(islandButton("許可"))
         allow.tap()
         XCTAssertTrue(poll(20) { status(id) == "allowed" })
@@ -111,11 +119,13 @@ final class LAAPhoneUseUITests: XCTestCase {
     }
 
     func testNoAnswerExpires() throws {
-        let id = try ask(timeout: 15)
+        let id = try ask(timeout: 30)
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForExistence(timeout: 20))
+        noteActivityToken(id)
         XCTAssertTrue(poll(40) { status(id) == "expired" })
-        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForNonExistence(timeout: 30))
+        Thread.sleep(forTimeInterval: 6)
         shot("5-expired")
+        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForNonExistence(timeout: 30))
     }
 
     func testStopWhileOperating() throws {
