@@ -88,6 +88,26 @@ enum LAACopy {
     // MARK: Bridge
 
     static let bridgeNotPairedBody = "Macに接続してください"
+
+    // MARK: iPhone Use (Live Activity)
+
+    static let phoneUseAsk = "iPhoneを操作してよいですか"
+    static let phoneUseOperating = "iPhoneを操作中"
+    static let phoneUseAllow = "許可"
+    static let phoneUseDeny = "許可しない"
+    static let phoneUseStop = "停止"
+    static let phoneUseOperatingShort = "操作中"
+
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    static func phoneUseFinished(_ phase: LAAPhoneUsePhase) -> String {
+        switch phase {
+        case .denied: return "許可しませんでした"
+        case .stopped: return "操作を止めました"
+        case .expired: return "時間切れのため操作しません"
+        case .ended, .ask, .operating: return "操作を終えました"
+        }
+    }
+    #endif
 }
 
 #endif

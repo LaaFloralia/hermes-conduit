@@ -71,6 +71,11 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             LAAUsageBackground.register()
             LAAUsageBackground.schedule()
             #endif
+            #if LAA_BUILD && !targetEnvironment(macCatalyst)
+            // Asking before an agent operates the iPhone in use: its Live
+            // Activity's buttons can launch the app in the background.
+            LAAPhoneUseService.shared.start()
+            #endif
             AppState.registerPhoneSyncTask()
             if PhoneSyncPreferences.load().isOn {
                 AppStateRuntimeRegistry.shared.appState.resumePhoneSyncAtLaunch()
@@ -99,6 +104,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Task { @MainActor in
             PushNotificationService.shared.didReceiveDeviceToken(deviceToken)
+            #if LAA_BUILD && !targetEnvironment(macCatalyst)
+            LAAPhoneUseService.shared.setWakeToken(deviceToken)
+            #endif
         }
     }
 
@@ -106,7 +114,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     /// that applies without asking. Conduit fetches it from the host and
     /// applies it in the time iOS gives.
     ///
-    /// The relay's only other silent push is its registration challenge: a
+    /// The LAA iPhone Use wake (`laa_phone_use`) has the app take down an
+    /// activity the Mac could not end by push. The relay's only other silent
+    /// push is its registration challenge: a
     /// nonce Conduit sends back to prove it holds this device token. Visible
     /// pushes are handled by the notification center delegate (willPresent /
     /// didReceive), so anything else here has nothing to do; it's logged so
@@ -116,6 +126,15 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        #if LAA_BUILD && !targetEnvironment(macCatalyst)
+        if LAAPhoneUseService.handlesWake(userInfo) {
+            Task { @MainActor in
+                await LAAPhoneUseService.shared.refresh()
+                completionHandler(.newData)
+            }
+            return
+        }
+        #endif
         if let nonce = PushNotificationService.tokenChallenge(in: userInfo) {
             Task { @MainActor in
                 PushNotificationService.shared.receiveTokenChallenge(nonce)
@@ -149,6 +168,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         Task { @MainActor in
             PushNotificationService.shared.didFailToRegister(error)
+            #if LAA_BUILD && !targetEnvironment(macCatalyst)
+            LAAPhoneUseService.shared.wakeTokenFailed(error)
+            #endif
         }
     }
 

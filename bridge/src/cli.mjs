@@ -22,6 +22,7 @@ import { createStore } from './store.mjs';
 import { grantInstructions, grantScopes, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
 import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
+import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,7 @@ Usage:
 
 ${TASKS_USAGE}
 ${DECISIONS_USAGE}
+${PHONE_USE_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
 Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
@@ -221,6 +223,9 @@ if (flags.help) {
 } else switch (command) {
   case 'decide':
     process.exitCode = await decisionsCommand(positional, flags);
+    break;
+  case 'phone-use':
+    process.exitCode = await phoneUseCommand(positional, flags);
     break;
   case 'serve':
     commandServe();
