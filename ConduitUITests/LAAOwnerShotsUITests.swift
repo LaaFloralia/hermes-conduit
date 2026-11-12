@@ -61,7 +61,12 @@ final class LAAOwnerShotsUITests: XCTestCase {
             if surface == "group" {
                 XCTAssertTrue(app.textViews["room.composer.field"].waitForExistence(timeout: 20))
             }
-            XCTAssertTrue(app.buttons["chat.code.copy"].waitForExistence(timeout: 15))
+            // The rich reply is drawn. Its code block's Copy carries the
+            // reply's identifier (chat.message.assistant) since the visible
+            // message actions, so it is found by the code it copies.
+            XCTAssertTrue(app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@", "next_step")).firstMatch
+                .waitForExistence(timeout: 15))
             let transcript = app.scrollViews[surface == "chat" ? "chat.transcript" : "room.transcript"]
             XCTAssertTrue(transcript.waitForExistence(timeout: 10))
             // The owner's question opens the example; show it with the answer.

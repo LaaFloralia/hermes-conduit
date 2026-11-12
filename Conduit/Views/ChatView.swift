@@ -367,13 +367,6 @@ struct ChatView: View {
             // The growing composer owns its whole height, including the
             // controls row. Keep the transcript outside that region.
             bottomBar
-                // Its height is taken from the transcript's frame, which the
-                // scroll view does not always report as a layout change: a
-                // composer that grows or shrinks (a notice under a send, the
-                // draft cleared) would leave the latest message behind it.
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                    scrollEngine.surfaceLayoutChanged()
-                }
 #else
             if !composerFloats {
                 bottomBar
