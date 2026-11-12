@@ -32,7 +32,7 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertFalse(app.buttons["conversation.menu"].exists)
             XCTAssertFalse(app.buttons["chat.replyMoreMenu"].exists)
             XCTAssertFalse(app.buttons["chat.message.quote.assistant"].exists)
-            XCTAssertFalse(app.buttons["composer.expand-editor"].exists)
+            XCTAssertTrue(app.buttons["composer.expand-editor"].exists)
             XCTAssertTrue(app.buttons["composer.action"].exists)
             XCTAssertFalse(app.buttons["composer.action"].isEnabled)
             XCTAssertTrue(app.staticTexts["chat.delivery.read"].exists)
@@ -61,7 +61,8 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue(send.waitForExistence(timeout: 5))
             XCTAssertTrue(send.isEnabled)
             XCTAssertGreaterThan(send.frame.minX, field.frame.midX)
-            XCTAssertLessThan(abs(send.frame.maxY - field.frame.maxY), 20)
+            // Send ends the row under the field, as in Work (owner, 2026-11-12).
+            XCTAssertGreaterThanOrEqual(send.frame.minY, field.frame.maxY - 1)
             capture(app, "composer-one-line-after-\(theme)")
             let short = field.frame.height
             field.typeText("\n二行目\n三行目")

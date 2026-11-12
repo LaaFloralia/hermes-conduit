@@ -367,6 +367,13 @@ struct ChatView: View {
             // The growing composer owns its whole height, including the
             // controls row. Keep the transcript outside that region.
             bottomBar
+                // Its height is taken from the transcript's frame, which the
+                // scroll view does not always report as a layout change: a
+                // composer that grows or shrinks (a notice under a send, the
+                // draft cleared) would leave the latest message behind it.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                    scrollEngine.surfaceLayoutChanged()
+                }
 #else
             if !composerFloats {
                 bottomBar
@@ -837,6 +844,18 @@ struct ChatView: View {
         content
             .onChange(of: appState.chatScrollRequest) { _, _ in
                 ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
+                // The send's own row first: this pulse and the transcript's
+                // change land in one update, in no set order. Read before
+                // its row, the hold armed below was for the previous
+                // message, and a reader scrolled up to it was left there
+                // instead of seeing what they sent (owner, 2026-11-12). A
+                // no-op once the transcript observer has run.
+                scrollEngine.transcriptChanged(
+                    messages: appState.messages,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    activeSessionKey: activeScrollSessionKey
+                )
                 requestLatest(animated: false, armsReplyHold: true)
             }
             .onChange(of: appState.chatReplyStartLandingRequest) { _, _ in

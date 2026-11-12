@@ -24,9 +24,6 @@ struct GroupRoomComposer: View {
     @State private var draft = ""
     @State private var draftRevision: UInt64 = 0
     /// A whole room message quoted with the next one (its Quote button).
-#if LAA_BUILD
-    @State private var measuredFieldLines = 1
-#endif
     @State private var replyReference: ComposerReplyReference?
     /// The bots picked in the "To" row, by tag, in the order picked. The
     /// next message is addressed to them; none picked, it goes to every bot.
@@ -146,14 +143,17 @@ struct GroupRoomComposer: View {
             }
 #if LAA_BUILD
             VStack(spacing: 0) {
-                // Send ends the row below, as in a chat.
-                HStack(alignment: .bottom, spacing: LAASpacing.x2) {
+                // A chat's form (owner, 2026-11-12): the field, then + and
+                // Send in 36 pt glass at the row's ends.
+                field
+                    .laaComposerPhotoInk()
+                    .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
+                HStack(spacing: LAASpacing.x2) {
                     attachButton
-                    field
-                        .laaComposerPhotoInk()
-                        .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
-                    sendSlot(size: 44)
+                    Spacer(minLength: LAASpacing.x2)
+                    sendSlot(size: ComposerShared.rowControlSize)
                 }
+                .padding(.top, LAASpacing.x2)
             }
             .laaComposerGlassGroup()
 #else
@@ -381,13 +381,8 @@ struct GroupRoomComposer: View {
         }
     }
 
-    private var showsExpand: Bool {
-#if LAA_BUILD
-        measuredFieldLines >= 3
-#else
-        true
-#endif
-    }
+    /// At every height, as in a chat (owner, 2026-11-12).
+    private var showsExpand: Bool { true }
     private var minimumFieldLines: Int {
 #if LAA_BUILD
         1
@@ -422,7 +417,7 @@ struct GroupRoomComposer: View {
     }
 
     private var roomTextEditor: ReturnKeyTextEditor {
-        var editor = ReturnKeyTextEditor(
+        let editor = ReturnKeyTextEditor(
             text: $draft,
             isFocused: $isFocused,
             accessibilityLabel: messagePlaceholder,
@@ -434,9 +429,6 @@ struct GroupRoomComposer: View {
             canSubmitFromReturn: canSubmitFromReturn,
             onSubmitFromReturn: { submitFromReturnKey() }
         )
-#if LAA_BUILD
-        editor.onMeasuredLines = { measuredFieldLines = $0 }
-#endif
         return editor
     }
 
@@ -555,25 +547,30 @@ struct GroupRoomComposer: View {
 #endif
             }
         } label: {
+        #if LAA_BUILD
+            // A chat's +: 36 pt glass that answers a 44 pt touch.
+            LAAGlassActionFace(systemImage: "plus", role: .neutral, enabled: canAttach && !isUploading)
+                .laaComposerPhotoInk()
+                // A menu's label takes touches only inside its frame.
+                .padding(ComposerBar.touchMargin)
+                .contentShape(Rectangle())
+        #else
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-        #if LAA_BUILD
-                .foregroundStyle(canAttach ? LAAColor.link : LAAColor.secondaryText)
-                .laaComposerPhotoInk()
-        #else
                 .foregroundStyle(canAttach ? Color.primary : Color.secondary)
-        #endif
                 .frame(width: controlSize, height: controlSize)
                 .contentShape(ComposerShared.controlHitShape)
+        #endif
         }
         #if LAA_BUILD
         .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
+        .accessibilityIdentifier("room.composer.attach")
         #else
         .accessibilityLabel(Text(LAAChatLabels.text("Attach")))
         #endif
         .disabled(isUploading)
 #if LAA_BUILD
-        .laaComposerGlass(in: Circle())
+        .padding(-ComposerBar.touchMargin)
 #else
         .conduitGlassControl(cornerRadius: controlSize / 2, tint: .conduitAccent.opacity(0.08))
 #endif
@@ -648,6 +645,19 @@ struct GroupRoomComposer: View {
         Button {
             send()
         } label: {
+#if LAA_BUILD
+            // A chat's Send (LAAGlassActionButton's face): one colour before
+            // and after typing (owner, 2026-11-12); it is only disabled.
+            if isUploading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: size, height: size)
+                    .conduitGlassControl(cornerRadius: size / 2, interactive: false)
+            } else {
+                LAAGlassActionFace(systemImage: "arrow.up", role: .send, enabled: canSend)
+                    .laaComposerPhotoInk()
+            }
+#else
             Group {
                 if isUploading {
                     ProgressView()
@@ -655,29 +665,19 @@ struct GroupRoomComposer: View {
                         .tint(.white)
                 } else {
                     Image(systemName: "arrow.up")
-#if LAA_BUILD
-                        // Work's Send glyph, as in a chat.
-                        .font(.system(size: 15, weight: .bold))
-#else
                         .font(.system(size: 14, weight: .semibold))
-#endif
                 }
             }
-#if LAA_BUILD
-            .foregroundStyle(canSend || isUploading ? LAAColor.filledButtonText : LAAColor.secondaryText)
-            .laaComposerPhotoInk()
-#else
             .foregroundStyle(canSend || isUploading ? Color.white : Color.secondary.opacity(0.48))
-#endif
             .frame(width: size, height: size)
             .contentShape(ComposerShared.controlHitShape)
+#endif
         }
-        .disabled(!canSend)
 #if LAA_BUILD
-        // Glass like + beside it, tinted with the send colour once there
-        // is something to send.
-        .laaComposerGlass(in: Circle(), fill: canSend || isUploading ? LAAColor.filledButton : nil, interactive: canSend)
-#else
+        .buttonStyle(.plain)
+#endif
+        .disabled(!canSend)
+#if !LAA_BUILD
         .conduitGlassControl(
             cornerRadius: controlSize / 2,
             tint: canSend || isUploading ? Color.conduitAccent : Color.primary.opacity(0.025),

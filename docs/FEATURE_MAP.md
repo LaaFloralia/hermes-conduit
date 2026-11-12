@@ -2106,7 +2106,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 ## Composer editor and text size
 
 The LAA composer starts at one line, grows to eight and shows the
-full-height editor control from three lines. Settings > Chat offers separate input and response text
+full-height editor control at every height (owner, 2026-11-12). Settings > Chat offers separate input and response text
 sizes, each applied on top of the system's text size.
 
 **Siblings:** chat composer · group room composer · both full editors ·
@@ -2128,7 +2128,7 @@ Settings > Chat · chat and group responses · Japanese input methods
   The marked-text tests exercise the UIKit bridge but cannot reproduce every
   third-party keyboard behavior. Device steps: `docs/laa/COMPOSER-DEVICE-CHECKS.md`.
 
-**Checked:** 2026-11-11, laa/s2-integ (LAA stage 2); 2026-10-29, d7e98a56 (LAA Task 08).
+**Checked:** 2026-11-12, worktree-agent-af8a4f32c5bd7c018 (expand control at every height in the chat and group composers); 2026-11-11, laa/s2-integ (LAA stage 2); 2026-10-29, d7e98a56 (LAA Task 08).
 
 ## Composer drafts
 
@@ -2323,17 +2323,17 @@ Settings > Chat's Long replies switch and captions (shared by Sync across
 devices)
 
 **Code**
-- Chats: `Conduit/Services/ChatScrollEngine.swift` (pin, replyHoldOffset, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference, checkForBlankViewport and scheduleBlankViewportCheckDuringLiveTurn; the same engine moves a browsing reader's offset in the pass that lands a prepend or a card's growth above them, see Cards drawn in web pages), `Conduit/Views/ChatScrollSurfaceLocator.swift`, `Conduit/Views/ChatView.swift` (jumpToLatest, the send pulse arming the hold, the unread landing observer, transcriptScrollID, the live rows' reportsLiveRowFrame)
+- Chats: `Conduit/Services/ChatScrollEngine.swift` (pin, replyHoldOffset, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference, checkForBlankViewport and scheduleBlankViewportCheckDuringLiveTurn; the same engine moves a browsing reader's offset in the pass that lands a prepend or a card's growth above them, see Cards drawn in web pages), `Conduit/Views/ChatScrollSurfaceLocator.swift`, `Conduit/Views/ChatView.swift` (jumpToLatest, the send pulse arming the hold after taking the send's own row, the LAA composer's height change re-pinning, the unread landing observer, transcriptScrollID, the live rows' reportsLiveRowFrame)
 - Unread open: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, chatReplyStartLandingRequest, takeChatReplyStartLanding)
 - Another device's message: `Conduit/Services/AppState.swift` (noteUserMessageElsewhere: one Hermes announces under a row id this chat doesn't show; its words decide only while this iPhone's latest send has no row id yet)
 - Group rooms: `Conduit/Views/GroupRoomScrollFollow.swift` (GroupRoomFollow, replyStart, isBlank, GroupRoomScrollLocator's checkForBlankViewport), `Conduit/Views/GroupChatView.swift` (isFollowingLatest, landAtTop, jumpToLatestButton, transcriptScrollID)
 - Delegate tail sheet (its own follow state and Latest button): `Conduit/Views/ChatSupportSheets.swift` (DelegateAgentTailSheet)
 - Room history kept: `Conduit/Services/GroupChatModels.swift` (GroupRoomReplay tailWindow, retainedLimit), `Conduit/Services/AppState.swift` (the open and resync tail windows)
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ReplyStartSettings), `Conduit/Services/AppState+SyncedPreferences.swift` (`app.stop_at_reply_start`)
-- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Blank viewport, Long replies stop at their start, An unread chat opens at its latest reply), `ConduitTests/ChatScrollHostedTests.swift` (the real ChatView: a long reply's stop, and following to the end with Long replies off), `ConduitTests/GroupChatModelsTests.swift`
+- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Blank viewport, Long replies stop at their start, An unread chat opens at its latest reply), `ConduitTests/ChatScrollHostedTests.swift` (the real ChatView: a long reply's stop, and following to the end with Long replies off), `ConduitTests/GroupChatModelsTests.swift`, `ConduitUITests/LAAChatSendScrollUITests.swift` (LAA: a send from a scrolled-up chat, keyboard up and from the full editor)
 
 **Rulings**
-- Only the user's own scroll leaves following, except a long reply's stop below. Being near the bottom (40 pt), the jump button or sending returns to it (chats: ChatScrollEngine; group rooms 2026-10-24, #1184).
+- Only the user's own scroll leaves following, except a long reply's stop below. Being near the bottom (40 pt), the jump button or sending returns to it (chats: ChatScrollEngine; group rooms 2026-10-24, #1184). A send always shows the sent message, wherever the reader had scrolled, keyboard up or from the full editor: the send pulse reads the transcript with the send's row before it arms the hold, so the hold is never for the previous message, and in LAA, where the composer's height comes out of the transcript's frame, a change of that height pins a following chat again (owner, 2026-11-12). A reply arriving alone never moves a browsing reader.
 - A reply longer than the screen stops at its start: following never pins past the bottom of the user's message it answers, and once the reply runs on, the reader is left browsing there. On by default, switchable in Settings > Chat (Eric, 2026-10-25, #1256, notifier issue 365).
 - The stop never moves the offset up: a reader already below the reply's start (back at its end, or a reply that outgrew the screen before its message was laid out) follows on to the end. It holds at the turn's start, not the answer text, because a turn's steps fold and their summaries arrive below that point (2026-10-25, #1256).
 - What arms it: a send, a new user message from another device, and opening a chat that was unread, which lands at the start of its latest reply once its transcript is in. The jump button, the title tap, a jump to a question and a session switch disarm it (2026-10-25, #1256).
@@ -2352,7 +2352,7 @@ devices)
 - A browsing reader (a chat or a room) is never rebuilt under, so a blank screen there waits until they reach the bottom or reopen the chat.
 - A group room that opens empty scrolls its first events to the end: that batch is usually the room's history arriving, which should open at its newest row, so only events after a row already seen land at a member message's start.
 
-**Checked:** 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
+**Checked:** 2026-11-12, worktree-agent-af8a4f32c5bd7c018 (a send from a scrolled-up chat shows the sent message; Code, Tests, Rulings); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
 
 ## Reconnecting to Hermes
 
@@ -4214,28 +4214,30 @@ and rollback instructions · the upstream App Store build
 
 - 2026-11-11 stage 2: `Conduit/LAA/Chat/LAAChatPresentation.swift` supplies sender role tags, native message menus and the six reaction palette, typing dots with work records, Japanese date/read states and information-sheet search. The Dots-style 64pt floating mascot/name pill replaces the persistent ellipsis; the one-row composer grows from one to eight lines. `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift` displays the profile-isolated PERF cache during connection and defers its editor handoff until Japanese composition commits.
 
-**Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · the upstream App Store build
+**Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · Work's follow-up composer (the form both follow; not changed here) · the Mac window's chat (same composer; no edge swipe there) · Work's model · effort chip (the same component; not changed here) · the upstream App Store build
 
 **Code**
 - Chat colours, columns, date separators and the composer's Liquid Glass (+, field, send; opaque with Reduce Transparency): `Conduit/LAA/Chat/LAAChatStyle.swift`, `Conduit/LAA/Design/LAATokens.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift`
 - Rich text and media: `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/MarkdownProseRun.swift`
-- Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`; the shared 36 pt glass buttons `Conduit/LAA/Design/LAAGlassActionButton.swift`
+- The composer's model · effort chip, from what Hermes reports for the chat's running agent: `Conduit/LAA/Chat/LAAChatRuntime.swift` (LAAChatRuntime, LAAChatRuntimeChip), fed by `Conduit/Services/AppState.swift` (applyRuntime, the modelUpdate event, setReasoning); the shared chip `Conduit/LAA/Design/LAAModelEffortChip.swift`
+- Left-edge swipe back on a chat that hides the system Back: `Conduit/LAA/Design/LAAEdgeSwipeBack.swift`, applied in `Conduit/Views/V2/V2ConversationScreen.swift`
 - Compact employee and group toolbar placement: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/GroupChatView.swift`
 - Visible message actions (copy, 引用, グッド): `Conduit/LAA/Work/LAAWorkMessageActions.swift` (LAAMessageActionBar), `Conduit/Views/ChatView.swift` (UserBubble, AssistantBubble)
-- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`, `ConduitTests/LAAChatPolishTests.swift`
+- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`, `ConduitUITests/LAAChatComposerUITests.swift`, `ConduitTests/LAAChatPolishTests.swift`, `ConduitTests/ComposerFullEditorTests.swift`, `ConduitTests/LAAChatRuntimeTests.swift`, `ConduitUITests/LAAChatRuntimeChipUITests.swift`
 
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
-- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture.
+- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture: hiding the system Back for LAA's turns the edge swipe off, so `laaEdgeSwipeBack` gives it back while the chat is pushed, never at the list itself (owner, 2026-11-12).
 - The LAA transcript reserves the entire growing composer height, so an eight-line draft cannot expose message text behind the controls. Group placeholders use primary ink on photo glass.
-- The employee and group composers keep +, the field and the Send control on one row. Send appears for a sendable draft; the expand control appears from three lines. The long-press menu contains copy, selection, reply and read-aloud. Employee chats also offer reactions. Under each reply a plain glyph row offers コピー, 引用 (the existing reply quote) and グッド (the 👍 reaction Hermes keeps, pressed again to remove); the owner's own messages offer コピー and 引用. No plate or border behind the glyphs (owner, 2026-11-11: copy, quote and like were missing from sight). Groups keep the long-press menu only. Only the latest owner message shows its delivery state.
+- The employee and group composers take Work's follow-up form (owner, 2026-11-12): the field on top with its expand control at every height, empty or not; under it + at the start and Send (Stop while a turn runs) at the end, each Work's 36 pt glass that answers a 44 pt touch. Send keeps one colour before and after typing and is only disabled with nothing to send. Between them the employee composer shows Work's model · effort chip, display only, with the model and effort Hermes reports for the chat's running agent (session.info, a resume's snapshot, a model change, /reasoning), never the profile's settings; a value not reported for this chat reads 「不明」, so a chat just opened or an employee just switched to never shows the previous one's (owner, 2026-11-12). Group rooms have no chip: their members run different models. The long-press menu contains copy, selection, reply and read-aloud. Employee chats also offer reactions. Under each reply a plain glyph row offers コピー, 引用 (the existing reply quote) and グッド (the 👍 reaction Hermes keeps, pressed again to remove); the owner's own messages offer コピー and 引用. No plate or border behind the glyphs (owner, 2026-11-11: copy, quote and like were missing from sight). Groups keep the long-press menu only. Only the latest owner message shows its delivery state.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
 
 **Open gaps**
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
-**Checked:** 2026-11-11, worktree-agent-a84bbfed81904bb50 (visible copy · 引用 · グッド under employee chat messages); 2026-11-09, laa/group-composer (the group room's composer in the same form); 2026-11-09, laa/chat-composer-dots-cron (Send at the end of the row under the field, no mic or voice button); 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+**Checked:** 2026-11-12, worktree-agent-af8a4f32c5bd7c018 (Work's composer form, expand at every height, Send's fixed colour, edge swipe back; the model · effort chip); 2026-11-11, worktree-agent-a84bbfed81904bb50 (visible copy · 引用 · グッド under employee chat messages); 2026-11-09, laa/group-composer (the group room's composer in the same form); 2026-11-09, laa/chat-composer-dots-cron (Send at the end of the row under the field, no mic or voice button); 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
 
 
 ## LAA message senders and the owner's identity

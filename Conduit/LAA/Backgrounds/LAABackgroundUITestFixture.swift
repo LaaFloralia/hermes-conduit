@@ -78,13 +78,16 @@ final class LAABackgroundFixture: ObservableObject {
             }
         )
         let defaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defaults.set("laa-monet", forKey: "conduit.activeProfile")
+        // Another employee's chat: "-LAA_FIXTURE_PROFILE laa-cto".
+        let employee = args.firstIndex(of: "-LAA_FIXTURE_PROFILE")
+            .flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } ?? "laa-monet"
+        defaults.set(employee, forKey: "conduit.activeProfile")
         let app = AppState(defaults: defaults, loadSavedConnection: false,
                            clearSessionPresentationCache: {},
                            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(botRoster: { _ in
                                BotRosterSnapshot(bots: bots, supportsBotProtocol: true)
                            }), groupChatOperations: operations)
-        app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: "laa-monet")
+        app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: employee)
         app.isConnected = mode != "offline"
         _ = app.adoptDashboard(forNormalizedURL: "https://background-ui-test.invalid")
         app.activeSessionId = conversationID
@@ -123,6 +126,23 @@ final class LAABackgroundFixture: ObservableObject {
                 app.messages.removeLast()
                 app.messages.append(ChatMessage(id: "reason", role: .reasoning, content: "予定を確認しています。", timestamp: String(now)))
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+            }
+        }
+        // What Hermes reports for the chat's running agent: "model,provider,effort".
+        if let runtime = args.firstIndex(of: "-LAA_FIXTURE_RUNTIME").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
+            let parts = runtime.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            var info: [String: AnyCodable] = [:]
+            if parts.count > 0 { info["model"] = .string(parts[0]) }
+            if parts.count > 1 { info["provider"] = .string(parts[1]) }
+            if parts.count > 2 { info["reasoning_effort"] = .string(parts[2]) }
+            app.handleStreamEvent(.sessionInfo(sessionId: conversationID, snapshot: SessionRuntimeSnapshot(object: info)))
+        }
+        if chatFixture == "long" {
+            // Taller than the screen, so a send can start scrolled up.
+            app.messages = (1...24).map { index in
+                ChatMessage(id: "long-\(index)", role: index.isMultiple(of: 2) ? .assistant : .user,
+                            content: "長い会話の\(index)件目。予定と資料の確認を続けています。",
+                            timestamp: String(now - Double(240 - index)), rowId: index)
             }
         }
         self.state = app

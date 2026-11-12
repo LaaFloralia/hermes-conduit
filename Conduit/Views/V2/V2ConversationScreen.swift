@@ -152,6 +152,9 @@ struct V2ConversationScreen: View {
 #if LAA_BUILD
         .modifier(LAAInCallBarModifier())
         .navigationBarBackButtonHidden(usesLAAChatBack)
+        // Hiding the system Back for LAA's also turns off the edge swipe;
+        // the chat keeps it (owner, 2026-11-12).
+        .laaEdgeSwipeBack(usesLAAChatBack)
         .environment(\.laaPresentChatMenu, laaDesktop ? nil : { messageMenu = $0 })
         .overlay {
             if let messageMenu {
