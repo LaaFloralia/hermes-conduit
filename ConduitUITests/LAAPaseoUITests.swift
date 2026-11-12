@@ -29,13 +29,15 @@ final class LAAPaseoUITests: XCTestCase {
         let stop = app.buttons["work.session.stop"].firstMatch
         XCTAssertTrue(stop.waitForExistence(timeout: 15))
         XCTAssertEqual(stop.frame.midY, send.frame.midY, accuracy: 2)
-        let records = app.buttons["work.session.records"]
-        XCTAssertTrue(records.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["GPT 6.1 Sol · High"].firstMatch.exists)
-        XCTAssertFalse(app.staticTexts["Read"].exists, "Tool traffic stays collapsed")
-        capture(app, "session-detail-closed", theme)
-        records.tap()
-        capture(app, "session-detail-open", theme)
+        // The pill names the model and, whole beside it, the effort; the
+        // transcript lists no tool traffic at all.
+        let pill = app.descendants(matching: .any)["work.session.effort"].firstMatch
+        XCTAssertTrue(pill.waitForExistence(timeout: 10))
+        let value = pill.value as? String ?? ""
+        XCTAssertTrue(value.contains("Sol") && value.hasSuffix("· High"), value)
+        XCTAssertFalse(app.staticTexts["Read"].exists, "Tool traffic is not part of the conversation")
+        XCTAssertFalse(app.buttons["work.session.records"].exists)
+        capture(app, "session-detail", theme)
         app.terminate()
     }
 

@@ -773,3 +773,35 @@ test("only a session's own checked Paseo attachment is served as its image", asy
   assert.throws(() => service.image(id, restored[0].images[0]), { code: 'not_found' });
   assert.deepEqual(readFileSync(outside), png);
 });
+
+test('each reply is named with the model the Bridge saw while it was written; a provider switch shows as a change', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-model-log-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture(), store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const start = Date.parse('2026-11-11T07:00:00Z');
+  const iso = (minute) => new Date(start + minute * 60_000).toISOString();
+  let clock = start;
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null,
+    now: () => clock, notify: async () => {},
+    history: async () => [
+      { id: 'early', role: 'assistant', text: 'before any observation', timestamp: iso(-5) },
+      { id: 'u1', role: 'user', text: '1', timestamp: iso(1) },
+      { id: 'a1', role: 'assistant', text: 'Sol', timestamp: iso(2) },
+      { id: 'u2', role: 'user', text: '2', timestamp: iso(20) },
+      { id: 'a2', role: 'assistant', text: 'Terra', timestamp: iso(22) },
+    ] });
+  await service.syncDaemon();
+  clock = start + 10 * 60_000; await service.syncDaemon();
+  const id = daemonSessionID('parent');
+  // The provider switches by itself (no owner PATCH).
+  f.rows[0].model = 'gpt-6.1-terra';
+  clock = start + 21 * 60_000; await service.syncDaemon();
+  clock = start + 23 * 60_000; await service.syncDaemon();
+  const named = Object.fromEntries((await service.conversation(id)).map((m) => [m.id, m.model?.model ?? null]));
+  // a1 sits inside the Sol span but in the turn before the unrequested switch,
+  // so it is not named; a2 is inside the Terra span.
+  assert.deepEqual(named, { early: null, u1: null, a1: null, u2: null, a2: 'gpt-6.1-terra' });
+  assert.deepEqual(service.view(store.get(id)).modelChange, {
+    from: { provider: 'codex', model: 'gpt-6.1-sol' }, to: { provider: 'codex', model: 'gpt-6.1-terra' },
+    seenAt: iso(21), byOwner: false,
+  });
+});

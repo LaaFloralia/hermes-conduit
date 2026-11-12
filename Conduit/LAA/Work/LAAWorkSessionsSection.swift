@@ -469,15 +469,8 @@ enum LAAWorkSessionOrder {
 
 enum LAAWorkSessionStyle {
     static func effort(_ raw: String?) -> String? {
-        switch raw {
-        case "low": return "Low"
-        case "medium": return "Medium"
-        case "high": return "High"
-        case "xhigh": return "XHigh"
-        case "max": return "Max"
-        case let value?: return value
-        case nil: return nil
-        }
+        if raw?.isEmpty == true { return raw }
+        return LAAEffort.name(raw)
     }
 
     /// "Opus 5.5 High": Claude's model names stand alone, so its prefix is dropped,
@@ -488,7 +481,7 @@ enum LAAWorkSessionStyle {
     }
 
     static func profileLabel(_ profile: LAAWorkSessionOptions.Profile, fast: Bool = false) -> String {
-        [shortLabel(profile.label), effort(profile.effort)].compactMap { $0 }.joined(separator: " ") + (fast ? " ⚡︎" : "")
+        [displayModel(profile.label), effort(profile.effort)].compactMap { $0 }.joined(separator: " ") + (fast ? " ⚡︎" : "")
     }
 
     static func model(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
@@ -503,8 +496,12 @@ enum LAAWorkSessionStyle {
         if let profile = options?.profiles.first(where: { $0.id == session.profile }) {
             return profileLabel(profile, fast: session.fast == true)
         }
+        // The same name the follow-up chip and the heading show; the id only
+        // when nothing readable is there.
+        let provider = session.observed?.provider ?? session.requested?.provider
         let model = session.observed?.model ?? session.requested?.model
-        return model.map { [displayModel($0), effort(session.requested?.effort)].compactMap { $0 }.joined(separator: " · ") }
+        return model.map { [modelName($0, provider: provider, options: options) ?? displayModel($0),
+                            effort(session.observed?.effort ?? session.requested?.effort)].compactMap { $0 }.joined(separator: " · ") }
     }
 
     static func displayModel(_ raw: String) -> String {
@@ -512,6 +509,11 @@ enum LAAWorkSessionStyle {
         if lower.contains("deepseek") { return "DeepSeek V4.1 Flash" }
         if lower.contains("gpt-6.1-sol") { return "GPT 6.1 Sol" }
         if lower.contains("gpt-6.1-terra") { return "GPT 6.1 Terra" }
+        // A Claude wire id the model table does not list ("claude-opus-4-8",
+        // the model a provider's own fallback ran on): "Opus 4.8".
+        if let match = lower.firstMatch(of: #/^claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/#) {
+            return "\(match.1.capitalized) \(match.2)" + (match.3.map { ".\($0)" } ?? "")
+        }
         if lower.contains("opus") {
             return shortLabel(raw).replacingOccurrences(of: "claude-opus-", with: "Opus ").replacingOccurrences(of: "-", with: ".")
         }
@@ -531,13 +533,79 @@ enum LAAWorkSessionStyle {
     /// The effort values the daemon can apply to the observed model, in the same
     /// order as the new-session picker. Empty when the model is unknown or the
     /// model table has no matching profile: no menu is offered from a guess.
+    ///
+    /// The daemon's current value is always listed, even when the HQ table does
+    /// not offer it for this model (a Mythos session running at XHigh, where
+    /// the table has High only): the menu then shows what is applied instead of
+    /// a lone, unchecked High. It is listed to be read, not offered: once the
+    /// owner leaves it, only the table's values remain to choose.
     static func effortChoices(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> [String] {
         guard let options, let observed = session.observed, let model = observed.model else { return [] }
-        let values = Set(options.profiles
+        var values = Set(options.profiles
             .filter { $0.provider == observed.provider && $0.model == model }
             .map(\.effort))
-        let rank = ["low", "medium", "high", "xhigh", "max"]
-        return values.sorted { (rank.firstIndex(of: $0) ?? 9) < (rank.firstIndex(of: $1) ?? 9) }
+        guard !values.isEmpty else { return [] }
+        if let current = observed.effort, !current.isEmpty { values.insert(current) }
+        return values.sorted { effortRank($0) < effortRank($1) }
+    }
+
+    static func effortRank(_ value: String) -> Int { LAAEffort.rank(value) }
+
+    static func isDeepEffort(_ value: String?) -> Bool { LAAEffort.isDeep(value) }
+
+    /// A model's name as the transcript and the pill show it: the model table's
+    /// label when it lists the model, else a name read from the wire id.
+    static func modelName(_ model: String?, provider: String?, options: LAAWorkSessionOptions?) -> String? {
+        guard let model, !model.isEmpty else { return nil }
+        let label = options?.profiles.first { $0.provider == provider && $0.model == model }?.label
+            ?? options?.profiles.first { $0.model == model }?.label
+        let name = displayModel(label ?? model)
+        return name == "AI" ? nil : name
+    }
+
+    /// The provider alone, for a reply whose exact model the Bridge cannot
+    /// vouch for: Paseo never moves a session to another provider.
+    static func providerName(_ provider: String?, model: String? = nil) -> String? {
+        LAAModelFace.face(model: model, provider: provider).providerName
+    }
+
+    /// What the owner last asked for: a later change in the app wins over the
+    /// request that started the session.
+    static func asked(_ session: LAAWorkSession) -> (model: String?, effort: String?) {
+        (session.ownerChanged?.model ?? session.requested?.model,
+         session.ownerChanged?.effort ?? session.requested?.effort)
+    }
+
+    /// The mismatch, as the owner reads it: "依頼 Fable 5.2 → 実行 Opus 4.8".
+    /// Nil when request and observation agree, or either is unknown.
+    struct Mismatch: Equatable {
+        let requested: String
+        let running: String
+        /// "11/11 07:46 に切替を確認": only when the Bridge itself saw the
+        /// switch to the running model and the owner did not ask for it.
+        let seen: String?
+    }
+
+    static func mismatch(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> Mismatch? {
+        guard session.modelMismatch, let observed = session.observed else { return nil }
+        let wanted = asked(session)
+        let provider = observed.provider ?? session.requested?.provider
+        var requested: [String] = [], running: [String] = []
+        if let model = wanted.model, let actual = observed.model, !model.isEmpty, !actual.isEmpty, model != actual {
+            requested.append(modelName(model, provider: provider, options: options) ?? model)
+            running.append(modelName(actual, provider: provider, options: options) ?? actual)
+        }
+        if let effort = wanted.effort, let actual = observed.effort, !effort.isEmpty, !actual.isEmpty, effort != actual {
+            requested.append(self.effort(effort) ?? effort)
+            running.append(self.effort(actual) ?? actual)
+        }
+        guard !requested.isEmpty else { return nil }
+        var seen: String?
+        if let change = session.modelChange, change.byOwner != true, change.to?.model == observed.model,
+           let date = change.seenAt.flatMap(LAAWorkFreshness.date) {
+            seen = LAADateText.string(date, .monthDayTime) + " に切替を確認"
+        }
+        return Mismatch(requested: requested.joined(separator: " "), running: running.joined(separator: " "), seen: seen)
     }
 
     struct ModelChoice: Hashable {

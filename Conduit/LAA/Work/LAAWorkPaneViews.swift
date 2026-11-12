@@ -361,9 +361,26 @@ private struct LAAWorkPaneHeader: View {
                             .foregroundStyle(LAAWorkSessionStyle.statusColor(session.needsDecision ? "awaiting_decision" : session.phase))
                         Text(verbatim: " " + status(session))
                             .foregroundStyle(LAAColor.secondaryText)
+                            .lineLimit(1).truncationMode(.tail)
+                            .layoutPriority(-1)
+                        // The effort is always beside the model, whole.
+                        if let effort = session.observed?.effort, LAAWorkSessionStyle.appliedModel(session, options: options) != nil {
+                            Text(verbatim: "  ")
+                            LAAEffortLabel(effort: effort, current: session.observation?.available != false, meterHeight: 10)
+                        }
+                        if let mismatch = LAAWorkSessionStyle.mismatch(session, options: options) {
+                            Text(verbatim: "  ")
+                            Image(systemName: "triangle.fill").font(.system(size: 6, weight: .bold))
+                                .foregroundStyle(LAAColor.attention)
+                            Text(verbatim: " 依頼 " + mismatch.requested)
+                                .foregroundStyle(LAAColor.secondaryText)
+                                .lineLimit(1).fixedSize()
+                                .help("依頼 \(mismatch.requested) → 実行 \(mismatch.running)" + (mismatch.seen.map { "（\($0)）" } ?? ""))
+                        }
                     }
                     .laaTextStyle(.note)
-                    .lineLimit(1).truncationMode(.tail)
+                    .lineLimit(1)
+                    .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("work.pane.\(number).status")
                 }
             } else if sessionID != nil {
@@ -378,10 +395,17 @@ private struct LAAWorkPaneHeader: View {
     }
 
     /// Phase first, then the model the pane is on: the two things the owner
-    /// scans across panes.
+    /// scans across panes. The effort follows as its own mark.
     private func status(_ session: LAAWorkSession) -> String {
         let phase = LAAWorkPresentation.phase(session.needsDecision ? "awaiting_decision" : session.phase)
-        return [phase, LAAWorkSessionStyle.model(session, options: options)].compactMap { $0 }.joined(separator: " · ")
+        let model: String?
+        if LAAWorkSessionStyle.appliedModel(session, options: options) != nil, let observed = session.observed {
+            model = LAAWorkSessionStyle.modelName(observed.model, provider: observed.provider, options: options)
+                ?? LAAWorkSessionStyle.providerName(observed.provider, model: observed.model)
+        } else {
+            model = LAAWorkSessionStyle.model(session, options: options)
+        }
+        return [phase, model].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var controls: some View {

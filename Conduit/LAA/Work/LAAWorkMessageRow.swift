@@ -16,6 +16,25 @@ enum LAAWorkSpeaker {
     static func agentName(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String {
         LAAWorkSessionStyle.appliedModel(session, options: options) ?? "AI"
     }
+
+    /// The name above one reply: the model the Bridge saw writing it
+    /// ("Fable 5.2"), else only the provider ("Claude"). The session's current
+    /// model is never lent to an earlier reply: it may have been another one.
+    static func replyName(_ message: LAAWorkConversationMessage, session: LAAWorkSession,
+                          options: LAAWorkSessionOptions?) -> String {
+        let provider = message.model?.provider ?? session.observed?.provider ?? session.requested?.provider
+        if let name = LAAWorkSessionStyle.modelName(message.model?.model, provider: provider, options: options) { return name }
+        return LAAWorkSessionStyle.providerName(provider, model: message.model?.model)
+            ?? LAAWorkSessionStyle.providerName(provider, model: (session.observed ?? session.requested)?.model)
+            ?? "AI"
+    }
+
+    /// The face beside it: the reply's own model, else the provider's face.
+    static func replyModel(_ message: LAAWorkConversationMessage, session: LAAWorkSession) -> LAAWorkModel {
+        if let model = message.model, model.model?.isEmpty == false { return model }
+        let provider = session.observed?.provider ?? session.requested?.provider
+        return LAAWorkModel(provider: provider, model: nil, effort: nil, sources: nil)
+    }
 }
 
 /// One Work message in the chat's form: the owner's bubble trailing with the
@@ -46,7 +65,9 @@ struct LAAWorkMessageRow: View {
                     }
                 }
             } else {
-                LAAAgentMessageRow(name: agentName, continues: continues) {
+                // Every reply names its model, the in-between progress notes
+                // too (owner, 2026-11-12): a run does not fold the header.
+                LAAAgentMessageRow(name: agentName, continues: false) {
                     LAAModelMark(model: model?.model, provider: model?.provider)
                 } content: {
                     VStack(alignment: .leading, spacing: 0) {

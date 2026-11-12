@@ -39,8 +39,19 @@ struct LAAWorkConversationMessage: Codable, Identifiable {
     let text: String
     let timestamp: String?
     var images: [String]? = nil
-    var toolName: String? = nil
-    var toolStatus: String? = nil
+    /// The model the Bridge observed both before and after this reply was
+    /// written. Absent when it cannot vouch for one (an older reply, a gap
+    /// between observations, the turn before a provider's own switch) or from
+    /// an older Bridge: the row then names the provider only.
+    var model: LAAWorkModel? = nil
+}
+
+/// `GET /v1/sessions/:id/conversation`. The Bridge sends only the owner's and
+/// the AI's messages; `compacting` says the provider is compacting the context
+/// now. An older Bridge omits it, which reads as false.
+struct LAAWorkConversationPage: Decodable {
+    let items: [LAAWorkConversationMessage]
+    var compacting: Bool? = nil
 }
 
 struct LAAWorkRoutine: Codable, Identifiable {
@@ -281,6 +292,21 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     var ownerChanged: LAAWorkModel? = nil
     /// The short number the owner says ("S4"). Absent from an older Bridge.
     let ref: String?
+    /// The last model change the Bridge itself observed. Absent when it has
+    /// seen none, and from an older Bridge.
+    var modelChange: ModelChange? = nil
+    /// Follow-ups the Bridge holds until the running turn ends.
+    var queue: Queue? = nil
+
+    struct ModelChange: Codable, Hashable {
+        let from: LAAWorkModel?
+        let to: LAAWorkModel?
+        let seenAt: String?
+        let byOwner: Bool?
+    }
+    struct Queue: Codable, Hashable {
+        let count: Int
+    }
 
     var isFavorite: Bool { favorite == true }
     var isArchived: Bool { archivedAt != nil }
