@@ -33,9 +33,10 @@ function expandModelId(table, value) {
 // automatic dispatch default.
 function manualEntranceExists(table, profile) {
   const modelId = table.models?.[profile.model]?.modelId;
+  const wireModel = profile.harness === 'hermes-claude-api' ? `anthropic:${modelId}` : modelId;
   return typeof modelId === 'string' && (table.entrances ?? []).some((entry) =>
     entry.kind === 'paseo' && entry.status === 'manual' &&
-    entry.paseo?.provider === profile.harness && expandModelId(table, entry.paseo?.model) === modelId &&
+    entry.paseo?.provider === profile.harness && expandModelId(table, entry.paseo?.model) === wireModel &&
     entry.paseo?.thinking === profile.effort);
 }
 
@@ -44,7 +45,8 @@ export function sessionOptionsFrom(table) {
   const choices = Object.entries(table?.profiles ?? {})
     .filter(([id, profile]) => profile && !Object.hasOwn(aliases, id) &&
       (profile.manual !== true || manualEntranceExists(table, profile)))
-    .filter(([, profile]) => ['claude', 'codex', 'dsh'].includes(profile.harness) && typeof profile.effort === 'string');
+    .filter(([, profile]) => ['claude', 'codex', 'dsh', 'hermes-claude-api'].includes(profile.harness) &&
+      (profile.harness !== 'hermes-claude-api' || profile.manual === true) && typeof profile.effort === 'string');
   const automaticIds = choices.filter(([, profile]) => profile.manual !== true).map(([id]) => id);
   // Existing clients fall back to the first item when defaultProfile is null.
   // Fail closed if HQ has no automatic choice, rather than selecting a manual one.
@@ -53,9 +55,9 @@ export function sessionOptionsFrom(table) {
       const model = table.models?.[profile.model] ?? {};
       return {
         id,
-        label: model.label ?? profile.model,
+        label: (model.label ?? profile.model) + (profile.harness === 'hermes-claude-api' ? '（API）' : ''),
         provider: profile.harness,
-        model: model.modelId ?? profile.model,
+        model: (profile.harness === 'hermes-claude-api' ? 'anthropic:' : '') + (model.modelId ?? profile.model),
         effort: profile.effort,
         fast: fastSupported(profile.harness, model.modelId),
       };
