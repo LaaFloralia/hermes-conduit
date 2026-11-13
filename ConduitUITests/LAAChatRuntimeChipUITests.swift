@@ -93,8 +93,11 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             XCTAssertLessThanOrEqual(control.frame.maxY, keyboardTop, id)
         }
         let header = app.buttons["laa.employee.header"]
-        XCTAssertGreaterThan(header.frame.height, 100, "the full mascot and name reserve their own height")
-        XCTAssertGreaterThanOrEqual(any("chat.transcript", app).frame.minY, header.frame.maxY - 1)
+        // The compact header floats over the transcript (owner, 2026-11-13):
+        // it stays on screen above the keyboard and takes no row of its own.
+        XCTAssertTrue(header.isHittable, "the mascot and name stay in view with the keyboard up")
+        XCTAssertLessThan(header.frame.height, 100, "the compact mascot and name")
+        XCTAssertLessThan(any("chat.transcript", app).frame.minY, header.frame.maxY, "the transcript runs under the header")
         app.terminate()
     }
 
