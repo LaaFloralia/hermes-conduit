@@ -344,6 +344,63 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(scheduled.isEmpty)
     }
 
+    /// Owner, 2026-11-13: the transcript went blank while typing in a chat
+    /// with no turn running. Nothing changes the transcript then, so the
+    /// keyboard resizing the viewport checks.
+    func testAKeyboardResizeInAnIdleChatFindsABlankViewport() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4000)
+        engine.rowFramesChanged(["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)])
+        events = []
+        scheduled = []
+        surface.viewportHeight = 500 // keyboard up
+        surface.layOut(contentHeight: 4000)
+        surface.layOut(contentHeight: 4000)
+        XCTAssertEqual(scheduled.count, 1, "one check at a time")
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+    }
+
+    func testAKeyboardResizeWithRowsOnScreenRebuildsNothing() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4000)
+        engine.rowFramesChanged(["m9": ChatScrollRowFrame(minY: 3300, maxY: 3900, order: 9)])
+        events = []
+        scheduled = []
+        surface.viewportHeight = 500
+        surface.layOut(contentHeight: 4000)
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+    }
+
+    /// A reader scrolled up keeps their place: no check, no rebuild.
+    func testAKeyboardResizeWhileBrowsingChecksNothing() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4000)
+        surface.userScroll(to: 1000)
+        XCTAssertFalse(engine.isFollowingLatest)
+        events = []
+        scheduled = []
+        surface.viewportHeight = 500
+        surface.layOut(contentHeight: 4000)
+        XCTAssertTrue(scheduled.isEmpty)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+    }
+
+    /// The jump to the latest message lands with no transcript change to
+    /// come, so it checks too.
+    func testAJumpToLatestInAnIdleChatFindsABlankViewport() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4000)
+        engine.rowFramesChanged(["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)])
+        events = []
+        scheduled = []
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(scheduled.count, 1)
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+    }
+
     func testARowOnScreenIsNotABlankViewport() {
         let (_, surface) = settleTurn(frames: ["m10": ChatScrollRowFrame(minY: 3000, maxY: 3700, order: 10)])
         XCTAssertFalse(events.contains(.rebuildTranscript))

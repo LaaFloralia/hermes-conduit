@@ -347,6 +347,8 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     var isFollowingLatest: Bool { mode == .following }
+    /// The viewport height of the last layout pass, to notice a resize.
+    private var lastViewportHeight: CGFloat?
 
     var restorationIsActive: Bool { restoration != nil }
 
@@ -404,6 +406,14 @@ final class ChatScrollEngine: ObservableObject {
         refreshTrackedMessageVisibility()
         refreshJumpButton()
         scheduleBlankViewportCheckDuringLiveTurn()
+        // The keyboard coming up or going away resizes the viewport under a
+        // transcript that may not change for minutes (the reader is typing),
+        // and the lazy stack can drop every row then as it can after a turn.
+        let viewportHeight = surface.viewportHeight
+        if let previous = lastViewportHeight, abs(previous - viewportHeight) > 0.5 {
+            scheduleBlankViewportCheckWhileIdle()
+        }
+        lastViewportHeight = viewportHeight
     }
 
     /// The offset changed (user scroll, deceleration, or one of ours).
@@ -983,6 +993,9 @@ final class ChatScrollEngine: ObservableObject {
         }
         refreshTrackedMessageVisibility()
         refreshJumpButton()
+        // A jump lands where the lazy stack may have laid nothing out, with
+        // no transcript change to come.
+        scheduleBlankViewportCheckWhileIdle()
     }
 
     /// Jump to the answerable clarification in transcript order without
@@ -1331,6 +1344,14 @@ final class ChatScrollEngine: ObservableObject {
     /// does the live rows' frames going away, one check at a time.
     private func scheduleBlankViewportCheckDuringLiveTurn() {
         guard !blankViewportCheckPending, mode == .following, !isPaused, !isDragging, liveTailShowing() else { return }
+        scheduleBlankViewportCheck(rebuildsLeft: 1)
+    }
+
+    /// The same blank screen with no turn running and no transcript change
+    /// to notice it: the viewport resized (the keyboard) or a jump to the
+    /// latest message landed. One check at a time, while following.
+    private func scheduleBlankViewportCheckWhileIdle() {
+        guard !blankViewportCheckPending, mode == .following, !isPaused else { return }
         scheduleBlankViewportCheck(rebuildsLeft: 1)
     }
 

@@ -389,15 +389,17 @@ struct ChatView: View {
             }
 #if LAA_BUILD
             // Typing starts at the latest message, so what is being
-            // answered sits above the composer rather than behind it.
-            if typing { requestLatest(animated: true) }
+            // answered sits above the composer rather than behind it. A
+            // reader scrolled up to an earlier message stays there (owner,
+            // 2026-11-13).
+            if typing, scrollEngine.isFollowingLatest { requestLatest(animated: true) }
 #endif
         }
 #if LAA_BUILD
         // Once more when the keyboard is up: it raises the composer after
         // focus does, and the transcript would stay where it was.
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
-            if composerTyping { requestLatest(animated: true) }
+            if composerTyping, scrollEngine.isFollowingLatest { requestLatest(animated: true) }
         }
 #endif
         .environment(\.chatTextSize, chatTextSize)
