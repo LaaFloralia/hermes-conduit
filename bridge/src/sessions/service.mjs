@@ -37,6 +37,8 @@ import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readine
 import { fastAvailable, fastValue } from './features.mjs';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
 import { notifyOwner } from '../notify/index.mjs';
+import { createModelSwitcher, joinedHistory } from './model-switch.mjs';
+import { sessionOptionsReader } from './options.mjs';
 
 // Kept exported from here for callers and tests that read a feature list
 // without the service; the shapes themselves live in features.mjs.
@@ -77,6 +79,8 @@ export function createSessionService({
   decisions = null,
   history = readConversation,
   images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
+  choices = sessionOptionsReader(),
+  modelSwitchOptions = {},
   findWorkspace,
   findProject = () => null,
   resolveProjectInstructions = () => null,
@@ -98,6 +102,7 @@ export function createSessionService({
   // An observation cache keeps a detail read and an events long-poll from
   // spawning the delegation CLI twice in the same second.
   const observations = new Map();
+  const switcher = createModelSwitcher({ store: sessionStore, daemon, history, choices, now, sleep, ...modelSwitchOptions });
 
   function sessionIdFor(requestId) {
     return `ses_${sha(`laa-bridge|${requestId}`).slice(0, 16)}`;
@@ -136,7 +141,7 @@ export function createSessionService({
 
   async function createSession({ deviceId, body = {}, resumedFrom = null }) {
     const requestId = parseRequestId(body.requestId);
-    const profile = parseProfile(body.profile);
+    let profile;
     const prompt = asText(body.prompt, 'prompt');
     const workspaceId = body.workspaceId === undefined || body.workspaceId === null || body.workspaceId === HOME_WORKSPACE_ID
       ? HOME_WORKSPACE_ID
@@ -155,6 +160,10 @@ export function createSessionService({
     // be refused as a different request, not silently re-run under new text.
     const project = projectId ? findProject(projectId) : null;
     if (projectId && !project) throw notFound('project not found');
+    profile = parseProfile(body.profile ?? project?.defaultProfile);
+    if (body.profile == null && project?.defaultProfile && !choices().profiles.some((item) => item.id === profile)) {
+      throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
+    }
     const instructions = project && applyProjectInstructions ? resolveInstructions(project) : null;
     const files = project ? (resolveProjectFiles(project) ?? []) : [];
 
@@ -357,6 +366,7 @@ export function createSessionService({
     if (!daemon) return;
     if (syncInFlight) return syncInFlight;
     syncInFlight = (async () => {
+      await switcher.recover();
       const agents = await daemon.list();
       // Paseo's pin belongs to the workspace. A failed read leaves every
       // local choice as it is rather than reading as "all unpinned".
@@ -366,9 +376,15 @@ export function createSessionService({
       const parents = new Map();
       for (const a of agents) if (!a.labels?.['paseo.parent-agent-id']) parents.set(a.workspaceId, (parents.get(a.workspaceId) ?? 0) + 1);
       const routines = routineAgents(agents);
-      const known = new Map(sessionStore.all().map((r) => [r.delegate?.sessionId, r]));
+      const known = new Map(sessionStore.all().flatMap((r) =>
+        [...(r.delegateHistory ?? []), r.delegate, ...(r.modelSwitch ? [{ sessionId: r.modelSwitch.nextId }] : [])]
+          .filter(Boolean).map((entry) => [entry.sessionId, r])));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
-      const rows = agents.map((a) => {
+      const rows = agents.filter((a) => {
+        const row = known.get(a.id);
+        return row ? row.delegate?.sessionId === a.id && !switcher.isBusy(row.id)
+          : !a.labels?.['laa.bridge.model-continuation'];
+      }).map((a) => {
         const state = snapshot(a, now());
         const previous = known.get(a.id);
         const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
@@ -403,7 +419,10 @@ export function createSessionService({
           createdAt: a.createdAt, updatedAt: a.updatedAt, sourceUpdatedAt: a.updatedAt,
           observedAt: new Date(now()).toISOString(), attentionTimestamp: a.attentionTimestamp ?? a.updatedAt, attentionReason: a.attentionReason, requiresAttention: a.requiresAttention };
       });
-      const transitions = sessionStore.importDirectory(rows);
+      const transitions = sessionStore.importDirectory(rows.filter((row) => {
+        const current = sessionStore.get(row.id);
+        return !switcher.isBusy(row.id) && (!current || current.delegate?.sessionId === row.delegate?.sessionId);
+      }));
       await markDeletedAgents(agents);
       for (const { previous, current } of transitions) {
         const phase = current.phase;
@@ -496,7 +515,7 @@ export function createSessionService({
     const record = requireSession(id);
     // Read the log after the history: an observation made while the history
     // was being read may close the span that covers its newest reply.
-    const { items: read, compacting } = await history(record.delegate.sessionId);
+    const { items: read, compacting } = await joinedHistory(record, history);
     const messages = attributeReplies(read, (sessionStore.get(id) ?? record).modelLog);
     const references = images.references(id);
     // One batch for the whole page: a poll naming the same 215 pictures must
@@ -724,6 +743,7 @@ export function createSessionService({
   }
 
   async function sendMessage({ id, body = {}, key }) {
+    switcher.assertUnlocked(id);
     const record = requireSession(id);
     if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') {
       throw conflict('session_stopped', 'the session is stopped; resume it instead of sending');
@@ -782,6 +802,7 @@ export function createSessionService({
   // favourites mirror a Paseo workspace pin when one is available. None of
   // these actions stops a turn: the adapter refuses a tree with a turn running.
   async function updateSession({ id, body = {} }) {
+    switcher.assertUnlocked(id);
     const existing = requireSession(id);
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
     const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
@@ -793,6 +814,17 @@ export function createSessionService({
       && model === undefined) {
       throw badRequest('payload_invalid', 'favorite, archived, name, model, effort or fast is required');
     }
+    if (body.provider !== undefined) {
+      if (model === undefined) throw badRequest('payload_invalid', 'provider requires a model');
+      const target = switcher.choice(body, existing);
+      if (target.provider !== (existing.observed?.provider ?? existing.requested?.provider)) {
+        if (Object.keys(body).some((key) => !['provider', 'model', 'effort'].includes(key))) {
+          throw badRequest('payload_invalid', 'a provider change must be saved separately');
+        }
+        if (decisions?.hasOpen(existing)) throw conflict('pending_decision_requires_reply', 'answer the pending decision before switching provider');
+        return { session: await switcher.switchProvider(id, target) };
+      }
+    }
     // The model goes first: an effort sent with it is the new model's option.
     if (model !== undefined) {
       if (!daemon || typeof existing.delegate?.sessionId !== 'string') {
@@ -801,6 +833,7 @@ export function createSessionService({
       if (existing.stopRequestedAt || ['stopped', 'stop_unconfirmed'].includes(existing.phase)) {
         throw conflict('session_stopped', 'the session is stopped; change the model after it is running again');
       }
+      if (daemon.continuationSource) await daemon.continuationSource(existing.delegate.sessionId, { requireWorkspace: false, relatedIds: (existing.delegateHistory ?? []).map((entry) => entry.sessionId) });
       // The provider's read-back inside setModel is the proof it applied.
       const status = await daemon.setModel(existing.delegate.sessionId, model);
       applyObservation(id, status);
@@ -808,7 +841,7 @@ export function createSessionService({
       // rewritten); the owner's later choice is kept beside it, so the detail
       // compares the observation with what the owner last asked for.
       sessionStore.update(id, (row) => {
-        row.ownerChanged = { ...(row.ownerChanged ?? {}), model };
+        row.ownerChanged = { ...(row.ownerChanged ?? {}), ...(body.provider ? { provider: body.provider } : {}), model };
         // The switch the owner asked for is not a provider's own fallback.
         row.modelLog = markOwnerChange(row.modelLog, model);
         return [];
@@ -890,6 +923,7 @@ export function createSessionService({
   }
 
   async function interruptSession(id) {
+    switcher.assertUnlocked(id);
     const record = requireSession(id);
     if (!daemon) throw new BridgeError(503, 'paseo_unavailable', 'Paseo interruption is unavailable');
     const result = await daemon.stop(record.delegate.sessionId);
@@ -903,6 +937,7 @@ export function createSessionService({
   }
 
   async function stopSession(id) {
+    switcher.assertUnlocked(id);
     const record = requireSession(id);
     let result;
     try {
@@ -933,6 +968,7 @@ export function createSessionService({
   // create path: same profile, same workspace, linked by resumedFrom. Nothing
   // about a stopped agent is modified or restarted behind the wrapper's back.
   async function resumeSession({ id, body = {}, key, deviceId }) {
+    switcher.assertUnlocked(id);
     const original = requireSession(id);
     if (original.phase === 'stop_unconfirmed') {
       throw conflict('stop_unconfirmed', 'the earlier stop is not confirmed; reconcile before resuming');
@@ -1102,6 +1138,7 @@ export function createSessionService({
   // --- observation ---------------------------------------------------------
 
   async function observe(id, { force = false } = {}) {
+    if (switcher.isBusy(id)) return { available: false, code: 'model_switch_pending' };
     const cached = observations.get(id);
     if (!force && cached && Date.now() - cached.at < observationTtlMs) return cached.result;
     const record = sessionStore.get(id);
@@ -1116,6 +1153,9 @@ export function createSessionService({
       return result;
     }
 
+    if (switcher.isBusy(id) || sessionStore.get(id)?.delegate.sessionId !== record.delegate.sessionId) {
+      return { available: false, code: 'model_switch_pending' };
+    }
     applyObservation(id, status);
     const result = { available: true, status };
     observations.set(id, { at: Date.now(), result });
@@ -1239,11 +1279,13 @@ export function createSessionService({
         // The provider must have said it has a Fast setting; a session without
         // one is offered no switch rather than a 409 on tap.
         fast: daemon !== null && typeof record.delegate?.sessionId === 'string' && record.fastAvailable === true,
-        // Paseo changes a running agent's model within its provider; the app
-        // offers only the same provider's models from /v1/session-options.
+        // Same-provider and continuation capabilities are advertised separately.
         model: daemon !== null && typeof record.delegate?.sessionId === 'string'
           && daemon.capabilities?.().modelUpdate === true,
+        providerSwitch: daemon !== null && typeof record.delegate?.sessionId === 'string'
+          && typeof daemon.startContinuation === 'function',
       },
+      modelSwitch: record.modelSwitch ? { phase: record.modelSwitch.phase, target: record.modelSwitch.target } : null,
       phase: record.phase,
       daemonStatus: record.daemonStatus ?? null,
       version: record.version,

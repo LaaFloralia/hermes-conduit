@@ -619,6 +619,7 @@ test('model changes use the daemon, are verified by read-back, and are kept besi
   const make = async (options = {}, withDaemon = true) => {
     const dir = mkdtempSync(join(tmpdir(), 'paseo-model-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
     const f = fixture(options);
+    f.rows[0].status = 'idle';
     const store = createSessionStore({ file: join(dir, 'sessions.json') });
     const service = createSessionService({
       sessionStore: store, daemon: withDaemon ? f.daemon : null, adapter: {},

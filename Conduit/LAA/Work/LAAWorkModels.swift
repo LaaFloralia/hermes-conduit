@@ -138,6 +138,8 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let id: String
     let name: String
     let nameSource: String?
+    let defaultProfile: String?
+    let hasDefaultProfile: Bool
     let instructionRef: String?
     let instructionHash: String?
     let instructionVersion: Int?
@@ -158,7 +160,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     // Bridge confirms it can return the actual body and protect the version.
     let hasInstructionBody: Bool
     enum CodingKeys: String, CodingKey {
-        case id, name, nameSource, instructionRef, instructionHash, instructionVersion
+        case id, name, nameSource, defaultProfile, instructionRef, instructionHash, instructionVersion
         case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files, ref
     }
     init(from decoder: Decoder) throws {
@@ -166,6 +168,8 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         id = try box.decode(String.self, forKey: .id)
         name = try box.decode(String.self, forKey: .name)
         nameSource = try box.decodeIfPresent(String.self, forKey: .nameSource)
+        defaultProfile = try box.decodeIfPresent(String.self, forKey: .defaultProfile)
+        hasDefaultProfile = box.contains(.defaultProfile)
         instructionRef = try box.decodeIfPresent(String.self, forKey: .instructionRef)
         instructionHash = try box.decodeIfPresent(String.self, forKey: .instructionHash)
         instructionVersion = try box.decodeIfPresent(Int.self, forKey: .instructionVersion)
@@ -262,6 +266,7 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
         /// session's provider. An older Bridge omits it: the menu lists the
         /// models without letting one be chosen.
         var model: Bool? = nil
+        var providerSwitch: Bool? = nil
     }
     let id: String
     let name: String
@@ -300,6 +305,8 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     /// What the owner changed after the start (model, effort); the request
     /// itself is never rewritten. Absent from an older Bridge.
     var ownerChanged: LAAWorkModel? = nil
+    struct ModelSwitch: Codable, Hashable { let phase: String; let target: LAAWorkModel }
+    var modelSwitch: ModelSwitch? = nil
     /// The short number the owner says ("S4"). Absent from an older Bridge.
     let ref: String?
     /// The last model change the Bridge itself observed. Absent when it has
@@ -330,7 +337,7 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
         // The owner's own later choice is what the observation should match.
         let model = ownerChanged?.model ?? requested.model
         let effort = ownerChanged?.effort ?? requested.effort
-        return [(requested.provider, observed.provider), (model, observed.model),
+        return [(ownerChanged?.provider ?? requested.provider, observed.provider), (model, observed.model),
                 (effort, observed.effort)].contains { pair in
             guard let requested = pair.0, let actual = pair.1, !requested.isEmpty, !actual.isEmpty else { return false }
             return requested != actual

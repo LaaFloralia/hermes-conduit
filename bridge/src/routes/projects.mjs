@@ -132,8 +132,16 @@ function migrateLegacyProjects(file) {
 
 // --- routes -----------------------------------------------------------------
 
-export function createProjectRoutes({ projects, now = () => Date.now(), refs = null }) {
+export function createProjectRoutes({ projects, now = () => Date.now(), refs = null, choices = () => ({ profiles: [] }) }) {
   const releasesReservation = (error) => error?.writeStarted === false;
+
+  function parseDefaultProfile(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string' || !choices().profiles.some((item) => item.id === value)) {
+      throw badRequest('model_choice_invalid', 'choose a listed project default profile');
+    }
+    return value;
+  }
 
   function decorate(item) {
     return refs ? { ...item, ref: refs.refFor('project', item.id) } : item;
@@ -176,6 +184,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
           instructionHash: project.instructionHash ?? null,
           instructionRef: project.instructionRef ?? null,
           instructions: project.instructions ?? null,
+          defaultProfile: project.defaultProfile ?? null,
         },
       },
     });
@@ -218,6 +227,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     let nameSource;
     let instructions;
     let instructionHash;
+    let defaultProfile;
     try {
       const body = parseObjectBody(rawBody);
       name = parseName(body.name, { required: true });
@@ -225,6 +235,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
       rejectInstructionRef(body);
       instructions = parseInstructions(body.instructions);
       instructionHash = instructions === null ? null : hashBody(instructions);
+      defaultProfile = parseDefaultProfile(body.defaultProfile);
     } catch (error) {
       throw markBeforeWrite(error);
     }
@@ -240,6 +251,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
         id,
         name,
         nameSource,
+        defaultProfile,
         instructionRef: null,
         instructions,
         instructionHash,
@@ -271,6 +283,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     let nextHash;
     let archivedChanged;
     let nextArchivedAt;
+    let nextDefaultProfile;
     let changed;
     let iso;
     try {
@@ -280,7 +293,8 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
       iso = new Date(now()).toISOString();
 
       const requested = body.name !== undefined || body.nameSource !== undefined
-        || body.instructionRef !== undefined || body.instructions !== undefined || body.archived !== undefined;
+        || body.instructionRef !== undefined || body.instructions !== undefined || body.archived !== undefined
+        || body.defaultProfile !== undefined;
       if (!requested) throw badRequest('payload_invalid', 'no supported change was requested');
 
       name = body.name === undefined ? undefined : parseName(body.name, { required: true });
@@ -317,7 +331,9 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
       }
       archivedChanged = body.archived !== undefined && body.archived !== Boolean(current.archivedAt);
       nextArchivedAt = body.archived ? iso : null;
-      changed = identityChanged || instructionsChanged || refCleared || archivedChanged;
+      nextDefaultProfile = body.defaultProfile === undefined ? (current.defaultProfile ?? null) : parseDefaultProfile(body.defaultProfile);
+      changed = identityChanged || instructionsChanged || refCleared || archivedChanged
+        || nextDefaultProfile !== (current.defaultProfile ?? null);
     } catch (error) {
       throw markBeforeWrite(error);
     }
@@ -332,6 +348,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
           record.name = name;
           record.nameSource = nameSource ?? 'owner';
         }
+        record.defaultProfile = nextDefaultProfile;
         if (refCleared) record.instructionRef = null;
         if (archivedChanged) record.archivedAt = nextArchivedAt;
         record.instructions = nextInstructions;
@@ -491,6 +508,7 @@ function view(project) {
     id: project.id,
     name: project.name,
     nameSource: project.nameSource,
+    defaultProfile: project.defaultProfile ?? null,
     // Legacy metadata only (see the header). Null for every project written
     // after refs were refused.
     instructionRef: project.instructionRef ?? null,

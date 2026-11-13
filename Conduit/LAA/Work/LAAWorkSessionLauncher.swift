@@ -99,6 +99,7 @@ struct LAAWorkSessionLauncher: View {
                 }
             }
         }
+        .onChange(of: projectID) { _, _ in applyProjectDefault() }
         .tint(LAAColor.link)
         .laaSheetSize(.form)
         .task(id: bridge.revision) {
@@ -229,6 +230,10 @@ struct LAAWorkSessionLauncher: View {
 
     private func applyInitialModel() {
         guard profile.isEmpty, let options else { return }
+        if applyProjectDefault() {
+            bypass = options.defaultMode != "default"
+            return
+        }
         let last = LAAWorkModelPreferences.decode("[\(lastRaw)]").first
         if let last, options.profiles.contains(where: { $0.id == last.profile }) {
             profile = last.profile; fast = last.fast
@@ -236,6 +241,17 @@ struct LAAWorkSessionLauncher: View {
             profile = options.defaultProfile ?? options.profiles.first?.id ?? ""
         }
         bypass = options.defaultMode != "default"
+    }
+
+    @discardableResult private func applyProjectDefault() -> Bool {
+        guard pending == nil, let id = projects.first(where: { $0.id == projectID })?.defaultProfile else { return false }
+        guard options?.profiles.contains(where: { $0.id == id }) == true else {
+            profile = ""; fast = false
+            error = "プロジェクトの既定モデルは現在選べません。別のモデルを選んでください。"
+            return true
+        }
+        profile = id; fast = false
+        return true
     }
 
     /// Another model keeps the effort when it has it, else High, else the

@@ -72,6 +72,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     retentionMs: sessionOptions.eventRetentionMs,
   });
   const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
+  const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() });
   let sessionService;
   const decisionsOptions = options.decisions ?? {};
   const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
@@ -83,6 +84,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   sessionService = sessionOptions.service ?? createSessionService({
     ...sessionOptions,
     sessionStore,
+    choices: sessionChoices,
     daemon,
     decisions,
     retentionMs: sessionOptions.eventRetentionMs,
@@ -146,7 +148,6 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   // must not leave it ticking.
   if (!sessionOptions.service) sessionOptions.registerCleanup?.(() => sessionService.close?.());
 
-  const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() });
   const linearOptions = options.linearOwnerTasks ?? {};
   const linearTasks = linearOptions.source ?? createLinearOwnerTaskSource();
   const taskDispatch = linearOptions.dispatch ?? createTaskDispatchService({
@@ -168,7 +169,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...skillRoutes({ ...(options.skills ?? {}), refs }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...brainRoutes({ store, now, options: options.brain ?? {} }),
-    ...createProjectRoutes({ projects: projectStore, now, refs }),
+    ...createProjectRoutes({ projects: projectStore, now, refs, choices: sessionChoices }),
     ...createWorkspaceRoutes({
       workspaceStore,
       service: workspaceService,
