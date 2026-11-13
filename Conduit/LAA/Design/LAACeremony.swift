@@ -41,46 +41,62 @@ enum LAAModelRank: Equatable {
 
 /// The one movement a control makes when a value it asked for is applied,
 /// within the house durations (tokens.json motion: base 220, gentle 300, slow
-/// 420 ms) and the `state` curve, and never again until the next one.
+/// 420 ms) and the `state` curve, and never again until the next one. Every
+/// value moves, at every standing and on either ground: a short light runs
+/// round the rim from the leading end's middle, over the top.
 ///
-/// - `breath`: the glass edge brightens once and settles (Low, Medium, an
-///   unranked model).
-/// - `pass`: a short light runs once round the edge from the leading end, over
-///   the top (High).
-/// - `trace`: the same light leaves the finish's metal line behind it; a
-///   second line follows a beat later for a double finish (XHigh and Max,
-///   Fable, Astra and Mythos).
+/// - `pass`: the light runs part of the rim and is gone, leaving nothing:
+///   half for Low, three quarters for Medium, the whole rim for High and for
+///   a model without a finish, each at about the same pace.
+/// - `trace`: the light runs the whole rim and leaves the finish's metal line
+///   behind it; a second line follows a beat later for a double finish
+///   (XHigh and Max, Fable, Astra and Mythos).
 enum LAACeremony {
-    enum Motion: Equatable { case breath, pass, trace }
+    enum Motion: Equatable {
+        case pass(turn: Double)
+        case trace
+
+        /// How much of the rim the light runs.
+        var turn: Double {
+            switch self {
+            case .pass(let turn): turn
+            case .trace: 1
+            }
+        }
+    }
 
     static let base: Double = 0.22
     static let gentle: Double = 0.30
     static let slow: Double = 0.42
 
     static func duration(_ motion: Motion) -> Double {
-        switch motion {
-        case .breath: base
-        case .pass: gentle
-        case .trace: slow
+        switch motion.turn {
+        case ...0.5: base
+        case ...0.75: gentle
+        default: slow
         }
     }
 
     static func motion(effort: String) -> Motion? {
         switch effort {
-        case "low", "medium": .breath
-        case "high": .pass
+        case "low": .pass(turn: 0.5)
+        case "medium": .pass(turn: 0.75)
+        case "high": .pass(turn: 1)
         case "xhigh", "max": .trace
         default: nil
         }
     }
 
-    static func motion(rank: LAAModelRank) -> Motion { rank == .none ? .breath : .trace }
+    static func motion(rank: LAAModelRank) -> Motion { rank == .none ? .pass(turn: 1) : .trace }
 
     static func duration(effort: String) -> Double { motion(effort: effort).map(duration) ?? 0 }
     static func duration(rank: LAAModelRank) -> Double { duration(motion(rank: rank)) }
 
     /// The light's length, as a share of the rim.
-    static let lightLength: Double = 0.14
+    static let lightLength: Double = 0.16
+    /// The light's trail from its head back, in equal steps, each fainter:
+    /// dense at the head, gone at the tail (solid strokes, no gradient).
+    static let trail: [Double] = [1, 0.6, 0.3, 0.12]
     /// How long the second line of a double finish waits behind the first.
     static let innerDelay: Double = 0.06
     /// The meter's ticks rise one after another, each in `base`.
@@ -122,8 +138,7 @@ struct LAARimLook: Equatable {
 
     /// Where the light's head is, as a share of the rim (`state` curve).
     var head: Double? {
-        guard let progress, motion != .breath else { return nil }
-        return LAACeremony.state(progress)
+        progress.map { LAACeremony.state($0) * motion.turn }
     }
 
     /// The light's span on the rim, trailing its head.
@@ -131,16 +146,22 @@ struct LAARimLook: Equatable {
         head.map { max(0, $0 - LAACeremony.lightLength)...$0 }
     }
 
-    /// The light fades in over the first tenth and out over the last fifth.
-    var lightOpacity: Double {
-        guard let progress, motion != .breath else { return 0 }
-        return min(1, progress / 0.1) * min(1, (1 - progress) / 0.2)
+    /// The light's trail as steps from the head back: each step's span on
+    /// the rim and its strength (`LAACeremony.trail` times `lightOpacity`).
+    var trail: [(span: ClosedRange<Double>, strength: Double)] {
+        guard let head, lightOpacity > 0 else { return [] }
+        let step = LAACeremony.lightLength / Double(LAACeremony.trail.count)
+        return LAACeremony.trail.enumerated().compactMap { index, weight in
+            let upper = head - step * Double(index), lower = max(0, upper - step)
+            guard upper > lower else { return nil }
+            return (lower...upper, weight * lightOpacity)
+        }
     }
 
-    /// How brightly the whole edge is lit in a breath: up and back once.
-    var breath: Double {
-        guard let progress, motion == .breath else { return 0 }
-        return sin(.pi * progress)
+    /// The light fades in over the first tenth and out over the last quarter.
+    var lightOpacity: Double {
+        guard let progress else { return 0 }
+        return min(1, progress / 0.1) * min(1, (1 - progress) / 0.25)
     }
 
     /// How much of the outer metal line is drawn: all of it at rest; in a
@@ -194,23 +215,18 @@ struct LAARimPath: Shape {
 
 /// The metal lines and the passing light, laid over a control's glass. Lines
 /// are 1 pt in the house tan, the outer one on the glass edge and the inner
-/// one a spacing step (4 pt) inside it; the light is the paper white of the
-/// glass at the icon stroke (1.5 pt), the same light that circles Send's rim.
+/// one a spacing step (4 pt) inside it. The light is drawn at the icon stroke
+/// (1.5 pt): on the dark glass the paper white that circles Send's rim, on
+/// the paper the tan, since white does not show there (LAAColor.rimLight).
 struct LAARimFinish: View {
     let look: LAARimLook
     var cornerRadius: CGFloat = 18
 
     static let innerInset: CGFloat = LAASpacing.x1
     static let lightWidth: CGFloat = 1.5
-    static let breathPeak: Double = 0.5
 
     var body: some View {
         ZStack {
-            if look.breath > 0 {
-                // Half strength at its peak: a breath, not a flash.
-                LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
-                    .stroke(LAAColor.glassLight.opacity(Self.breathPeak * look.breath), lineWidth: 1)
-            }
             if look.outer > 0 {
                 LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
                     .trim(from: 0, to: look.outer)
@@ -221,11 +237,11 @@ struct LAARimFinish: View {
                     .trim(from: 0, to: look.inner)
                     .stroke(LAAColor.decorativeTan, lineWidth: 1)
             }
-            if let light = look.light, look.lightOpacity > 0 {
+            ForEach(Array(look.trail.enumerated()), id: \.offset) { index, step in
                 LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
-                    .trim(from: light.lowerBound, to: light.upperBound)
-                    .stroke(LAAColor.glassLight.opacity(look.lightOpacity),
-                            style: StrokeStyle(lineWidth: Self.lightWidth, lineCap: .round))
+                    .trim(from: step.span.lowerBound, to: step.span.upperBound)
+                    .stroke(LAAColor.rimLight.opacity(step.strength),
+                            style: StrokeStyle(lineWidth: Self.lightWidth, lineCap: index == 0 ? .round : .butt))
             }
         }
         .allowsHitTesting(false)

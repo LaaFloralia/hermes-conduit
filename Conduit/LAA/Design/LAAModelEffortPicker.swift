@@ -11,9 +11,9 @@ import SwiftUI
 /// never "M…"); the effort never does. Standing shows on the glass, not in
 /// colour (LAAFinish): Fable, Astra and XHigh carry one fine tan line on the
 /// rim, Mythos and Max two. When a value this control asked for is applied,
-/// its capsule moves once, briefly (LAACeremony): the edge brightens, or a
-/// light runs round the rim, leaving the metal lines behind it for a ranked
-/// value. Every value may be unknown, and reads 「不明」, never a guess, and
+/// its capsule moves once, briefly (LAACeremony): a short light runs round
+/// the rim (tan on the paper, white on the dark glass) and is gone, or leaves
+/// the metal lines behind it for a ranked value. Every value may be unknown, and reads 「不明」, never a guess, and
 /// never moves.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",

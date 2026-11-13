@@ -29,9 +29,10 @@ enum LAAColor {
     static let decorativeTan = adaptive(light: 0xB99B7A, dark: 0xB99B7A)
     /// The brand ivory in both appearances: the paper disc under Claude's Spark.
     static let ivory = adaptive(light: 0xF6F2E9, dark: 0xF6F2E9)
-    /// Light on the operating glass's rim (the light glass surface, tokens
-    /// glass.light): a brief reflection, never a fill.
-    static let glassLight = adaptive(light: 0xFFFDF8, dark: 0xFFFDF8)
+    /// The light that runs once round a control's glass rim when a value is
+    /// applied: the tan on the paper, where white would not show; the light
+    /// glass surface (#FFFDF8) on the dark glass. A stroke, never a fill.
+    static let rimLight = adaptive(light: 0xB99B7A, dark: 0xFFFDF8)
 
     private static func adaptive(light: Int, dark: Int,
                                  highContrastLight: Int? = nil, highContrastDark: Int? = nil) -> Color {

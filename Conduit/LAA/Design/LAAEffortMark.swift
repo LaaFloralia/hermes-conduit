@@ -84,7 +84,7 @@ struct LAAEffortLook {
     /// The rim of the effort's control at this moment.
     var rim: LAARimLook {
         LAARimLook(finish: current ? LAAEffort.finish(effort) : .plain,
-                   motion: LAACeremony.motion(effort: effort) ?? .breath,
+                   motion: LAACeremony.motion(effort: effort) ?? .pass(turn: 1),
                    elapsed: current ? elapsed : nil)
     }
 }
