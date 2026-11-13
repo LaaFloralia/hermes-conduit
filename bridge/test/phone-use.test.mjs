@@ -81,6 +81,46 @@ test('allow: push-to-start payload, owner allows, operating until end, end push 
   assert.equal((await answer(f, id, 'stop')).status, 409);
 });
 
+test('begin: a locked start shows operating without asking; Stop and end close it', async (t) => {
+  const f = await fixture(t);
+  assert.equal((await f.cli.begin({ who: 'Claude', purpose: '設定の確認' })).error, 'not_registered');
+  await register(f);
+  const begun = await f.cli.begin({ who: 'Claude｜iPhone Use', purpose: '設定の確認', limitMs: 600_000 });
+  assert.deepEqual([begun.ok, begun.request.status, begun.request.unasked], [true, 'allowed', true]);
+  const id = begun.request.id;
+  const [start] = f.pushes;
+  assert.deepEqual([start.kind, start.payload.aps.event], ['start', 'start']);
+  assert.deepEqual(start.payload.aps['content-state'], { phase: 'operating', since: f.now() / 1000 });
+  assert.equal(start.payload.aps['stale-date'], (f.now() + 600_000) / 1000);
+  assert.equal(start.payload.aps.alert.title, 'iPhoneを操作中');
+  // Nothing to allow or deny; one request at a time.
+  assert.equal((await answer(f, id, 'allow')).status, 409);
+  assert.equal((await f.cli.ask({ who: 'Other', purpose: 'x' })).error, 'busy');
+  assert.equal((await f.cli.begin({ who: 'Other', purpose: 'x' })).error, 'busy');
+  const stopped = await answer(f, id, 'stop');
+  assert.deepEqual([stopped.status, stopped.body.data.status], [200, 'stopped']);
+  assert.equal(f.cli.status(id).status, 'stopped');
+
+  const again = await f.cli.begin({ who: 'Claude', purpose: '二回目', limitMs: 60_000 });
+  assert.equal(again.ok, true);
+  assert.equal((await f.cli.end(again.request.id)).status, 'ended');
+  const third = await f.cli.begin({ who: 'Claude', purpose: '三回目', limitMs: 60_000 });
+  f.advance(60_000);
+  assert.equal(f.cli.status(third.request.id).status, 'ended');
+  await assert.rejects(f.cli.begin({ who: 'Claude', purpose: 'x', limitMs: 5 }), /limit/);
+});
+
+test('CLI: begin prints the request; who and purpose are required', async (t) => {
+  const f = await fixture(t);
+  await register(f);
+  const lines = [];
+  const io = { write: (s) => lines.push(s), service: f.cli };
+  assert.equal(await phoneUseCommand(['begin'], { json: true }, io), 2);
+  assert.equal(await phoneUseCommand(['begin'], { who: 'Claude', purpose: '確認', limit: '120', json: true }, io), 0);
+  const body = JSON.parse(lines.at(-1));
+  assert.deepEqual([body.ok, body.request.status, body.request.unasked], [true, 'allowed', true]);
+});
+
 test('no update token: end wakes the app with a background push, once', async (t) => {
   const f = await fixture(t);
   const WAKE = 'ef'.repeat(32);

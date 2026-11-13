@@ -7,6 +7,10 @@
 // activity stays as "operating" with a Stop button; `laa-phone lock`, its
 // guard or Stop ends it.
 //
+// A locked iPhone needs no answer: `laa-phone unlock` opens it and starts the
+// same activity already "operating" (`begin`), so it shows while the agent
+// works there too.
+//
 // The phone registers its push-to-start token and each activity's update
 // token through the device routes; the CLI process holds the APNs key, given
 // by 1Password for that run only. Nothing here sees the passcode or a screen.
@@ -52,7 +56,8 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
   const view = (r) => {
     const s = settle(r);
     return { id: s.id, who: s.who, purpose: s.purpose, status: s.status, createdAt: s.createdAt, answerBy: s.answerBy,
-      answeredAt: s.answeredAt ?? null, endedAt: s.endedAt ?? null, reason: s.reason ?? null, hasActivityToken: Boolean(s.activityToken) };
+      answeredAt: s.answeredAt ?? null, endedAt: s.endedAt ?? null, reason: s.reason ?? null, hasActivityToken: Boolean(s.activityToken),
+      ...(s.unasked ? { unasked: true } : {}) };
   };
   function find(state, id) {
     const r = typeof id === 'string' ? state.requests[id] : null;
@@ -68,6 +73,42 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
   function endPayload(r, phase) {
     const at = seconds(now());
     return { aps: { timestamp: at, event: 'end', 'content-state': { phase, endedAt: at }, 'dismissal-date': at + (phase === 'ended' ? 4 : 8) } };
+  }
+
+  // One request and its push-to-start push. `timeoutMs` 0 opens it already
+  // allowed (see `begin`); otherwise it waits for the owner's answer.
+  async function start({ who, purpose, timeoutMs, limitMs }) {
+    const w = clean(who, 'who', 40), p = clean(purpose, 'purpose', 80);
+    if (!Number.isInteger(limitMs) || limitMs < 10_000 || limitMs > 7200_000) throw badRequest('phone_use_invalid', 'limit is 10..7200 seconds');
+    const operating = timeoutMs === 0;
+    const created = file.mutate((s) => {
+      prune(s);
+      const token = s.startToken;
+      if (!token || !active(token.deviceId)) return { error: 'not_registered' };
+      const open = Object.values(s.requests).map(settle).find((r) => OPEN.has(r.status));
+      if (open) return { error: 'busy', open: view(open) };
+      const id = `pu_${randomBytes(8).toString('hex')}`;
+      const r = { id, who: w, purpose: p, status: operating ? 'allowed' : 'pending', createdAt: now(), answerBy: now() + timeoutMs, limitMs,
+        deviceId: token.deviceId, environment: token.environment, wakeToken: token.wakeToken ?? null,
+        ...(operating ? { answeredAt: now(), until: now() + limitMs, unasked: true } : {}) };
+      s.requests[id] = r;
+      return { request: r, token };
+    });
+    if (created.error) return { ok: false, error: created.error, open: created.open ?? null };
+    const r = created.request, at = seconds(now());
+    const payload = { aps: {
+      timestamp: at, event: 'start', 'attributes-type': ATTRIBUTES_TYPE,
+      attributes: { requestID: r.id, who: r.who, purpose: r.purpose, answerBy: r.answerBy / 1000 },
+      'content-state': operating ? { phase: 'operating', since: at } : { phase: 'ask' },
+      'stale-date': seconds(operating ? r.until : r.answerBy), 'input-push-token': 1,
+      alert: { title: operating ? 'iPhoneを操作中' : 'iPhoneの操作', body: `${r.who}：${r.purpose}` },
+    } };
+    const sent = await send('start', created.token.token, created.token.environment, payload);
+    if (!sent.sent) {
+      file.mutate((s) => { const x = s.requests[r.id]; if (x) { x.status = 'failed'; x.endedAt = now(); x.reason = String(sent.reason).slice(0, 80); } });
+      return { ok: false, error: 'push_failed', reason: sent.reason, request: view(file.read().requests[r.id]) };
+    }
+    return { ok: true, request: view(r) };
   }
 
   return {
@@ -130,34 +171,15 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
     status(id) { return view(find(file.read(), id)); },
     // Start the Live Activity. `busy` while another request is still open.
     async ask({ who, purpose, timeoutMs = 90_000, limitMs = 1800_000 }) {
-      const w = clean(who, 'who', 40), p = clean(purpose, 'purpose', 80);
       if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 300_000) throw badRequest('phone_use_invalid', 'timeout is 10..300 seconds');
-      const created = file.mutate((s) => {
-        prune(s);
-        const token = s.startToken;
-        if (!token || !active(token.deviceId)) return { error: 'not_registered' };
-        const open = Object.values(s.requests).map(settle).find((r) => OPEN.has(r.status));
-        if (open) return { error: 'busy', open: view(open) };
-        const id = `pu_${randomBytes(8).toString('hex')}`;
-        const r = { id, who: w, purpose: p, status: 'pending', createdAt: now(), answerBy: now() + timeoutMs, limitMs,
-          deviceId: token.deviceId, environment: token.environment, wakeToken: token.wakeToken ?? null };
-        s.requests[id] = r;
-        return { request: r, token };
-      });
-      if (created.error) return { ok: false, error: created.error, open: created.open ?? null };
-      const r = created.request, at = seconds(now());
-      const payload = { aps: {
-        timestamp: at, event: 'start', 'attributes-type': ATTRIBUTES_TYPE,
-        attributes: { requestID: r.id, who: r.who, purpose: r.purpose, answerBy: r.answerBy / 1000 },
-        'content-state': { phase: 'ask' }, 'stale-date': seconds(r.answerBy), 'input-push-token': 1,
-        alert: { title: 'iPhoneの操作', body: `${r.who}：${r.purpose}` },
-      } };
-      const sent = await send('start', created.token.token, created.token.environment, payload);
-      if (!sent.sent) {
-        file.mutate((s) => { const x = s.requests[r.id]; if (x) { x.status = 'failed'; x.endedAt = now(); x.reason = String(sent.reason).slice(0, 80); } });
-        return { ok: false, error: 'push_failed', reason: sent.reason, request: this.status(r.id) };
-      }
-      return { ok: true, request: view(r) };
+      return start({ who, purpose, timeoutMs, limitMs });
+    },
+    // An agent that unlocked a locked iPhone needs no answer (the owner's
+    // rule): the activity starts as "operating", so the owner who picks the
+    // phone up sees who works on it and can press Stop. It closes like an
+    // allowed request: `end`, Stop, or its limit.
+    async begin({ who, purpose, limitMs = 1800_000 }) {
+      return start({ who, purpose, timeoutMs: 0, limitMs });
     },
     // Wait for the answer: polls the file (the answer arrives in the server's
     // process). Ends the activity itself when the time runs out.
