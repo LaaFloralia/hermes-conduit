@@ -40,8 +40,9 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 }
 
-/// The full mascot/name height participates in the chat's layout instead
-/// of overflowing a 44-point navigation item over the first messages.
+/// The heading over the transcript: the mascot on the navigation row and the
+/// name under it. It is a top bar of the conversation (`v2EdgeBar`), so the
+/// transcript rests below it and scrolls beneath it.
 struct LAAEmployeeConversationHeader: View {
     var screenWidth: CGFloat
     var menu: AnyView? = nil
@@ -76,8 +77,8 @@ struct LAAEmployeeConversationHeader: View {
         header
             .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
             .frame(maxWidth: .infinity)
-            // Keep the mascot's original top at the navigation controls;
-            // reserve its remaining height for the transcript below it.
+            // The mascot's top is the navigation controls' top; only what
+            // hangs below that row insets the transcript.
             .padding(.top, -LAAConversationHeaderLayout.controlHeight)
     }
 }
@@ -120,6 +121,10 @@ struct LAAConversationControls<Controls: View>: View {
 enum LAAConversationHeaderLayout {
     /// The bar's controls are all this tall, so their centers line up.
     static let controlHeight: CGFloat = 44
+    /// The employee's 3D in the conversation's heading.
+    static let mascotSize: CGFloat = 56
+    /// At accessibility text sizes, where the name needs the room.
+    static let compactMascotSize: CGFloat = 48
     /// What the call/menu capsule and its margin take on the trailing side.
     /// A name no wider than the screen less this on both sides fits between
     /// equal margins, so the bar keeps it on the screen's center.
@@ -196,8 +201,10 @@ struct LAAEmployeeHeader: View {
     var information: AnyView? = nil
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
-    /// The mascot is the bar's one picture: larger than the controls around it.
-    private var mascotSize: CGFloat { compact ? 64 : 100 }
+    /// The mascot sits on the bar's own row, a little taller than the
+    /// controls beside it, with the name tight under it, so the heading
+    /// takes the bar and one line (owner, 2026-11-13).
+    private var mascotSize: CGFloat { compact ? LAAConversationHeaderLayout.compactMascotSize : LAAConversationHeaderLayout.mascotSize }
 
     var body: some View {
         headerLabel

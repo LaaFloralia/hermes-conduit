@@ -197,23 +197,25 @@ struct LAAChatsContent: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Button { openPerson(monet) } label: {
-                    HStack(spacing: 12) {
-                        avatar(profile: monet.profile, name: monet.name, size: 88)
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: LAASpacing.x2) {
-                                Text(verbatim: "Monet").font(.custom("Georgia", size: 22, relativeTo: .title3))
+                    // Monet leads the list in the same size as every other
+                    // employee's row (owner, 2026-11-13: not a larger 3D).
+                    HStack(spacing: LAASpacing.x3) {
+                        avatar(profile: monet.profile, name: monet.name, size: Self.personAvatarSize)
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            HStack(spacing: 6) {
+                                Text(verbatim: "Monet").font(LAAType.title("Monet", size: 17, relativeTo: .body))
                                 LAARoleBadge(role: "Secretary")
                                 if let unread = snapshot.unreadByProfile[monet.profile], unread > 0 {
                                     if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                                 }
                             }
                             if let preview = monet.lastMessage, !preview.isEmpty {
-                                Text(verbatim: preview).font(.system(size: 15))
+                                Text(verbatim: preview).font(.system(size: 13))
                                     .lineLimit(1).foregroundStyle(LAAColor.secondaryText)
                             }
                         }
                         Spacer(minLength: 0)
-                    }.frame(minHeight: 96).contentShape(Rectangle())
+                    }.frame(minHeight: rowHeight).contentShape(Rectangle())
                 }.buttonStyle(LAAListRowStyle())
                     .disabled(!monet.available)
                     .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
@@ -249,7 +251,7 @@ struct LAAChatsContent: View {
             } else {
                 VStack(spacing: 0) {
                 ForEach(employees) { employee in
-                    Button { openPerson(employee) } label: { personRow(employee, size: 48, selected: isSelected("person.\(employee.profile)")) }
+                    Button { openPerson(employee) } label: { personRow(employee, size: Self.personAvatarSize, selected: isSelected("person.\(employee.profile)")) }
                         .buttonStyle(LAAListRowStyle())
                         .disabled(!employee.available)
                         .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))
@@ -326,6 +328,9 @@ struct LAAChatsContent: View {
     }
 
     private var rowHeight: CGFloat { selection == nil ? 64 : 72 }
+
+    /// Every person's 3D in the list, Monet's included.
+    static let personAvatarSize: CGFloat = 48
 
     private func unreadDot(_ count: Int) -> some View {
         Circle().fill(LAAColor.link).frame(width: 8, height: 8)

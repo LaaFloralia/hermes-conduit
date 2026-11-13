@@ -196,17 +196,18 @@ struct V2ConversationScreen: View {
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             VStack(spacing: 0) {
+                conversation
+            }
 #if LAA_BUILD
-                if appState.activeRoomSurface == nil {
-                    LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
-                        .fixedSize(horizontal: false, vertical: true)
+                // The employee's heading is a bar over the transcript, which
+                // rests below it and scrolls beneath it (owner, 2026-11-13).
+                .v2EdgeBar(.top) {
+                    if appState.activeRoomSurface == nil {
+                        LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 #endif
-                conversation
-#if LAA_BUILD
-                    .clipped()
-#endif
-            }
                 .overlay(alignment: .bottomTrailing) {
 #if !LAA_BUILD
                     if appState.activeRoomSurface == nil {
