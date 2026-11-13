@@ -88,7 +88,7 @@ Work details (own headers, unchanged)
 **Open gaps**
 - The preview's first message sits about 7 pt lower than the live chat's.
 
-**Checked:** 2026-11-13, laa/chat-ui-layout: 42 tests on the 440×956 simulator (header snapshots at 375/440,
+**Checked:** 2026-11-13, 3ef5680d (laa/chat-ui-layout): 42 tests on the 440×956 simulator (header snapshots at 375/440,
 normal and accessibility sizes, light and dark; Chat list, conversation, preview, composer and send-scroll UI tests).
 
 ## Hermes is waiting on you
@@ -1102,7 +1102,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-13, laa/chat-ui-layout + master 8ab12bb9: busy conversations hold the answer and the Bridge delivers it after the turn (bridge decisions tests 25, production record J13 delivered by the Bridge after three failed sends); the app's waiting line and copy (LAADecisionTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
+**Checked:** 2026-11-13, 8ab12bb9 and f4908ecf (laa/chat-ui-layout): busy conversations hold the answer and the Bridge delivers it after the turn (bridge decisions tests 25, production record J13 delivered by the Bridge after three failed sends); the app's waiting line and copy (LAADecisionTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
 
 ## Voice beside the tabs
 
