@@ -51,6 +51,7 @@ struct LAAWorkDesktopSessionsView: View {
     @State private var projectOrder = false
     @State private var showProjects = false
     @State private var editingProject: LAAWorkProject?
+    @State private var archivePrompt: LAAWorkArchivePrompt?
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
@@ -125,7 +126,15 @@ struct LAAWorkDesktopSessionsView: View {
                                     .contextMenu {
                                         if let project {
                                             Button(String("名前と指示を変更")) { editingProject = project }
-                                            Button(String("アーカイブ")) { Task { try? await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge); reloadID += 1 } }
+                                            Button(String("アーカイブ")) {
+                                                archivePrompt = .project(project) {
+                                                    Task {
+                                                        do { try await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge) }
+                                                        catch { archivePrompt = .refused(error) }
+                                                        reloadID += 1
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                             }
@@ -173,6 +182,7 @@ struct LAAWorkDesktopSessionsView: View {
             #endif
         }
         .accessibilityIdentifier("work.desktop.sessions")
+        .laaWorkArchivePrompt($archivePrompt)
         #if targetEnvironment(macCatalyst)
         .onAppear {
             guard !panesRestored else { return }
@@ -257,7 +267,10 @@ struct LAAWorkDesktopSessionsView: View {
             Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
                 Label { Text(verbatim: session.isFavorite ? "ピンを外す" : "ピン留め") } icon: { Image(systemName: "pin") }
             }
-            Button { Task { await update(session, archived: !session.isArchived) } } label: {
+            Button {
+                if session.isArchived { Task { await update(session, archived: false) } }
+                else { archivePrompt = .session(session) { Task { await update(session, archived: true) } } }
+            } label: {
                 Label { Text(verbatim: session.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
             }
         }
@@ -336,8 +349,11 @@ struct LAAWorkDesktopSessionsView: View {
             // Archiving takes the children along.
             if archived != nil { reloadID += 1 }
         } catch let error as LAABridgeHTTPError {
+            // A refused archive changes nothing; say why in full.
+            if archived == true { archivePrompt = .refused(error); return }
             failure = LAAWorkHTTP.message(error)
         } catch {
+            if archived == true { archivePrompt = .refused(error); return }
             failure = "変更を保存できません。"
         }
     }
@@ -357,6 +373,7 @@ struct LAAWorkDesktopProjectsView: View {
     @State private var showNew = false
     @State private var reloadID = 0
     @State private var showArchived = false
+    @State private var archivePrompt: LAAWorkArchivePrompt?
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
 
@@ -419,7 +436,10 @@ struct LAAWorkDesktopProjectsView: View {
                             .buttonStyle(.plain)
                             .onHover { hoveredID = $0 ? project.id : (hoveredID == project.id ? nil : hoveredID) }
                             .contextMenu {
-                                Button { Task { await setArchived(project) } } label: {
+                                Button {
+                                    if project.isArchived { Task { await setArchived(project) } }
+                                    else { archivePrompt = .project(project) { Task { await setArchived(project) } } }
+                                } label: {
                                     Label { Text(verbatim: project.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
                                 }
                             }
@@ -472,6 +492,7 @@ struct LAAWorkDesktopProjectsView: View {
             }
         }
         .accessibilityIdentifier("work.desktop.projects")
+        .laaWorkArchivePrompt($archivePrompt)
         .sheet(isPresented: $showNew, onDismiss: { reloadID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts)
                 .environmentObject(bridge)
@@ -520,8 +541,10 @@ struct LAAWorkDesktopProjectsView: View {
             try await LAAWorkHTTP.setProjectArchived(project, archived: !project.isArchived, bridge: bridge)
             reloadID += 1
         } catch let error as LAABridgeHTTPError {
+            if !project.isArchived { archivePrompt = .refused(error); return }
             failure = LAAWorkHTTP.message(error)
         } catch {
+            if !project.isArchived { archivePrompt = .refused(error); return }
             failure = "変更を保存できません。"
         }
     }

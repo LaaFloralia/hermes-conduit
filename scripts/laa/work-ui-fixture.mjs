@@ -221,6 +221,8 @@ const releaseImages = () => {
   imageHold = null;
 };
 const sessionFor = (id) => sessions.find((session) => session.id === id) ?? null;
+// Archive changes the app sent, for the control server's /state.
+const archiveRequests = [];
 // Follow-ups the app sent, for the control server's /state.
 const followUps = [];
 
@@ -468,7 +470,7 @@ const api = http.createServer(async (req, res) => {
   }
   if (path === '/v1/sessions') {
     const archived = url.searchParams.get('archived') === 'only';
-    return send(res, 200, { items: archived ? [] : sessions, nextCursor: null });
+    return send(res, 200, { items: sessions.filter((s) => Boolean(s.archivedAt) === archived), nextCursor: null });
   }
   if (path === '/v1/session-options') return send(res, 200, {
     profiles: [
@@ -550,6 +552,16 @@ const api = http.createServer(async (req, res) => {
         session.ownerChanged = { ...(session.ownerChanged ?? {}), model: body.model };
       }
       if (typeof body.fast === 'boolean') session.observedFast = body.fast;
+      // Archiving: the Bridge refuses a tree with anything at work (409
+      // session_running) and changes nothing; otherwise the row leaves.
+      if (typeof body.archived === 'boolean') {
+        archiveRequests.push({ id: session.id, archived: body.archived });
+        if (body.archived && session.phase === 'running') {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: { code: 'session_running', message: 'a session in this tree is still running', retryable: false }, requestId: 'fixture' }));
+        }
+        session.archivedAt = body.archived ? '2026-11-13T00:00:00Z' : null;
+      }
     }
     return send(res, 200, session);
   }
@@ -569,6 +581,7 @@ const control = http.createServer((req, res) => {
     });
     longMessages.length = 63;
     followUps.length = 0;
+    archiveRequests.length = 0;
     conversationDelay = 0;
     advanced = 0;
     lastServed = 0;
@@ -593,7 +606,7 @@ const control = http.createServer((req, res) => {
       text: `新着メッセージ ${advanced}`, timestamp: '2026-11-06T00:00:00Z', model: opus55 });
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed, followUps,
+  res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed, followUps, archiveRequests,
     created: createdBodies, completed, lastAnswer,
     answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null,
       note: d.answer?.note ?? null, label: d.answer?.label ?? null, delivery: d.delivery?.state ?? null })) }));

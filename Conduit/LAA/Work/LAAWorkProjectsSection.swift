@@ -17,6 +17,7 @@ struct LAAWorkProjectsSection: View {
     @State private var showNew = false
     @State private var editorID = 0
     @State private var showArchived = false
+    @State private var archivePrompt: LAAWorkArchivePrompt?
     @State private var opened: LAAWorkProject?
     @State private var openRow: String?
 
@@ -36,7 +37,8 @@ struct LAAWorkProjectsSection: View {
                         LAAWorkSwipeRow(id: project.id, openID: $openRow,
                                         leading: .init(title: project.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive,
                                                        systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox",
-                                                       tint: LAAColor.attention) { Task { await setArchived(project) } },
+                                                       tint: LAAColor.attention,
+                                                       identifier: "work.project.archive.\(project.id)") { toggleArchive(project) },
                                         onOpen: { opened = project }) {
                             HStack(spacing: LAASpacing.x3) {
                                 Image(systemName: "folder").foregroundStyle(LAAColor.link).frame(width: 22)
@@ -58,7 +60,7 @@ struct LAAWorkProjectsSection: View {
                             .contentShape(Rectangle())
                         }
                         .contextMenu {
-                            Button { Task { await setArchived(project) } } label: {
+                            Button { toggleArchive(project) } label: {
                                 Label { Text(verbatim: project.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
                             }
                         }
@@ -82,6 +84,7 @@ struct LAAWorkProjectsSection: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.projects")
+        .laaWorkArchivePrompt($archivePrompt)
         .navigationDestination(item: $opened) { project in
             LAAWorkProjectHome(project: project, drafts: drafts)
         }
@@ -119,16 +122,24 @@ struct LAAWorkProjectsSection: View {
         }
     }
 
+    /// Archiving asks first; bringing a project back does not.
+    private func toggleArchive(_ project: LAAWorkProject) {
+        if project.isArchived { Task { await setArchived(project) }; return }
+        archivePrompt = .project(project) { Task { await setArchived(project) } }
+    }
+
     @MainActor private func setArchived(_ project: LAAWorkProject) async {
         openRow = nil
+        let archiving = !project.isArchived
         do {
-            try await LAAWorkHTTP.setProjectArchived(project, archived: !project.isArchived, bridge: bridge)
+            try await LAAWorkHTTP.setProjectArchived(project, archived: archiving, bridge: bridge)
             await load()
         } catch let error as LAABridgeHTTPError {
-            failure = LAAWorkHTTP.isVersionConflict(error) ? "別の端末で更新されています。読み直してからもう一度操作してください。" : LAAWorkHTTP.message(error)
+            let text = LAAWorkHTTP.isVersionConflict(error) ? "別の端末で更新されています。読み直してからもう一度操作してください。" : LAAWorkArchivePrompt.refusal(error)
+            if archiving { archivePrompt = .init(title: LAAWorkArchivePrompt.refusedTitle, message: text, archive: nil) } else { failure = text }
             await load()
         } catch {
-            failure = "変更を保存できませんでした。"
+            if archiving { archivePrompt = .refused(error) } else { failure = "変更を保存できませんでした。" }
         }
     }
 }

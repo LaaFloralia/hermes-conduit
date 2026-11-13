@@ -24,6 +24,7 @@ struct LAAWorkSessionsSection: View {
     @State private var projects: [LAAWorkProject] = []
     @State private var options: LAAWorkSessionOptions?
     @State private var showArchived = false
+    @State private var archivePrompt: LAAWorkArchivePrompt?
     @State private var showLauncher = false
     @State private var opened: LAAWorkSession?
     @State private var failure: String?
@@ -83,7 +84,9 @@ struct LAAWorkSessionsSection: View {
                             .contextMenu {
                                 Button(String("開く")) { projectHome = project }
                                 Button(String("名前と指示を変更")) { editingProject = project }
-                                Button(String("アーカイブ")) { Task { await archiveProject(project) } }
+                                Button(String("アーカイブ")) {
+                                    archivePrompt = .project(project) { Task { await archiveProject(project) } }
+                                }
                             }
                         let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
                         if rows.isEmpty { Text(verbatim: "セッションはありません").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
@@ -101,6 +104,7 @@ struct LAAWorkSessionsSection: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.sessions")
+        .laaWorkArchivePrompt($archivePrompt)
         .navigationDestination(item: $opened) { session in
             LAAWorkSessionDetail(id: session.id, projects: projects, workspaces: [], drafts: drafts)
         }
@@ -163,7 +167,8 @@ struct LAAWorkSessionsSection: View {
                         LAAWorkSwipeRow(id: session.id, openID: $openRow,
                                         leading: .init(title: session.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive,
                                                        systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox",
-                                                       tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } },
+                                                       tint: LAAColor.attention,
+                                                       identifier: "work.session.archive.\(session.id)") { toggleArchive(session) },
                                         trailing: .init(title: session.isFavorite ? LAACopy.WorkTab.unpin : LAACopy.WorkTab.pin,
                                                         systemImage: session.isFavorite ? "pin.slash" : "pin",
                                                         tint: LAAColor.link) { Task { await update(session, favorite: !session.isFavorite) } },
@@ -176,7 +181,7 @@ struct LAAWorkSessionsSection: View {
                             Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
                                 Label { Text(verbatim: session.isFavorite ? LAACopy.WorkTab.unpin : LAACopy.WorkTab.pin) } icon: { Image(systemName: "pin") }
                             }
-                            Button { Task { await update(session, archived: !session.isArchived) } } label: {
+                            Button { toggleArchive(session) } label: {
                                 Label { Text(verbatim: session.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
                             }
                         }
@@ -253,7 +258,13 @@ struct LAAWorkSessionsSection: View {
 
     @MainActor private func archiveProject(_ project: LAAWorkProject) async {
         do { try await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge); await load() }
-        catch { failure = "変更を保存できません" }
+        catch { archivePrompt = .refused(error) }
+    }
+
+    /// Archiving asks first; bringing a session back does not.
+    private func toggleArchive(_ session: LAAWorkSession) {
+        if session.isArchived { Task { await update(session, archived: false) }; return }
+        archivePrompt = .session(session) { Task { await update(session, archived: true) } }
     }
 
     @MainActor private func update(_ session: LAAWorkSession, favorite: Bool? = nil, archived: Bool? = nil) async {
@@ -271,8 +282,12 @@ struct LAAWorkSessionsSection: View {
             // Archiving takes the children along.
             if archived != nil { await load() }
         } catch let error as LAABridgeHTTPError {
+            // A refused archive changes nothing: the row stays, and the
+            // reason is said in full rather than in the one-line banner.
+            if archived == true { archivePrompt = .refused(error); return }
             failure = error.status == 404 || error.status == 405 ? "MacのLAAアプリを最新にすると使えます。" : LAAWorkHTTP.message(error)
         } catch {
+            if archived == true { archivePrompt = .refused(error); return }
             failure = "変更を保存できませんでした。"
         }
     }
@@ -690,13 +705,16 @@ struct LAAWorkFailure: View {
     }
 }
 
-/// A row that reveals one action on each side. A full swipe runs it, like Mail.
+/// A row that reveals one action on each side. A short swipe opens the
+/// button and leaves it there to be chosen; a full swipe chooses it. Either
+/// way the action decides whether to ask first (archiving always asks).
 /// The drag only claims clearly horizontal movement so the page still scrolls.
 struct LAAWorkSwipeRow<Content: View>: View {
     struct Action {
         let title: String
         let systemImage: String
         let tint: Color
+        var identifier: String? = nil
         let run: () -> Void
     }
     let id: String
@@ -708,15 +726,13 @@ struct LAAWorkSwipeRow<Content: View>: View {
 
     @State private var offset: CGFloat = 0
     @State private var settled: CGFloat = 0
-    private let reveal: CGFloat = 88
-    private let commit: CGFloat = 170
 
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
-                actionButton(leading).frame(width: max(0, offset)).opacity(offset > 0 ? 1 : 0)
+                actionButton(leading, shown: offset > 0).frame(width: max(0, offset)).opacity(offset > 0 ? 1 : 0)
                 Spacer(minLength: 0)
-                if let trailing { actionButton(trailing).frame(width: max(0, -offset)).opacity(offset < 0 ? 1 : 0) }
+                if let trailing { actionButton(trailing, shown: offset < 0).frame(width: max(0, -offset)).opacity(offset < 0 ? 1 : 0) }
             }
             content()
                 .background(LAAColor.surface)
@@ -725,17 +741,17 @@ struct LAAWorkSwipeRow<Content: View>: View {
                 // A completed drag must not also activate the row. Keep the
                 // gesture on the content so the revealed buttons stay separate.
                 .simultaneousGesture(drag.exclusively(before: TapGesture().onEnded { open() }))
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { open() }
+                .accessibilityAction(named: Text(verbatim: leading.title)) { leading.run() }
+                .accessibilityActions {
+                    if let trailing { Button { trailing.run() } label: { Text(verbatim: trailing.title) } }
+                }
         }
         .clipped()
         .onChange(of: openID) { _, value in
             if value != id && offset != 0 { withAnimation(.snappy) { offset = 0 }; settled = 0 }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { open() }
-        .accessibilityAction(named: Text(verbatim: leading.title)) { leading.run() }
-        .accessibilityActions {
-            if let trailing { Button { trailing.run() } label: { Text(verbatim: trailing.title) } }
         }
     }
 
@@ -752,11 +768,11 @@ struct LAAWorkSwipeRow<Content: View>: View {
                         withAnimation(.snappy) { offset = settled }
                         return
                     }
-                    let final = settled + value.predictedEndTranslation.width
-                    if final > commit { finish(leading) }
-                    else if final < -commit, let trailing { finish(trailing) }
-                    else {
-                        let target: CGFloat = final > reveal / 2 ? reveal : final < -reveal / 2 && trailing != nil ? -reveal : 0
+                    switch LAAWorkSwipe.outcome(settled: settled, moved: value.translation.width,
+                                                predicted: value.predictedEndTranslation.width, hasTrailing: trailing != nil) {
+                    case .runLeading: finish(leading)
+                    case .runTrailing: if let trailing { finish(trailing) }
+                    case .rest(let target):
                         withAnimation(.snappy) { offset = target }
                         settled = target
                     }
@@ -772,7 +788,7 @@ struct LAAWorkSwipeRow<Content: View>: View {
         }
     }
 
-    private func actionButton(_ action: Action) -> some View {
+    private func actionButton(_ action: Action, shown: Bool) -> some View {
         Button { finish(action) } label: {
             VStack(spacing: 2) {
                 Image(systemName: action.systemImage).font(.system(size: 16, weight: .semibold))
@@ -783,13 +799,49 @@ struct LAAWorkSwipeRow<Content: View>: View {
             .background(action.tint)
         }
         .buttonStyle(.plain)
-        .accessibilityHidden(true)
+        // Reachable once it is on screen; VoiceOver uses the row's actions.
+        .accessibilityHidden(!shown)
+        .accessibilityLabel(Text(verbatim: action.title))
+        .accessibilityIdentifier(action.identifier ?? "")
     }
 
     private func finish(_ action: Action) {
         withAnimation(.snappy) { offset = 0 }
         settled = 0
         action.run()
+    }
+}
+
+/// Where a swipe on a Work row ends. A short swipe (about a third of the
+/// button) opens the button and leaves it there; the action runs only from a
+/// full swipe the finger really made, so a quick flick opens the button
+/// instead of choosing it (2026-11-13).
+enum LAAWorkSwipe {
+    static let reveal: CGFloat = 88
+    static let commit: CGFloat = 200
+    static let open: CGFloat = 28
+
+    enum Outcome: Equatable { case runLeading, runTrailing, rest(CGFloat) }
+
+    static func outcome(settled: CGFloat, moved: CGFloat, predicted: CGFloat, hasTrailing: Bool) -> Outcome {
+        let reached = settled + moved
+        if reached > commit { return .runLeading }
+        if reached < -commit, hasTrailing { return .runTrailing }
+        let final = settled + predicted
+        let target: CGFloat
+        if settled > 0 {
+            // Open on the left: a drag back to the left closes it.
+            target = moved < -open ? (hasTrailing && final < -open ? -reveal : 0) : reveal
+        } else if settled < 0 {
+            target = moved > open ? (final > open ? reveal : 0) : -reveal
+        } else if max(reached, final) > open {
+            target = reveal
+        } else if hasTrailing, min(reached, final) < -open {
+            target = -reveal
+        } else {
+            target = 0
+        }
+        return .rest(target)
     }
 }
 #endif
