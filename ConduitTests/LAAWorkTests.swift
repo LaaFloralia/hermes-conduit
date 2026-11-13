@@ -666,7 +666,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkSpeaker.replyName(unknown, session: running, options: options), "Claude")
         XCTAssertEqual(LAAWorkSpeaker.replyName(opus, session: running, options: options), "Opus 4.8")
         XCTAssertNil(LAAWorkSpeaker.replyModel(unknown, session: running).model, "no model face is guessed")
-        XCTAssertEqual(LAAModelFace.face(model: nil, provider: "claude"), .claude(rays: 12))
+        XCTAssertEqual(LAAModelFace.face(model: nil, provider: "claude"), .claude)
         let decoded = try JSONDecoder().decode(LAAWorkConversationPage.self, from: Data(
             #"{"items":[{"id":"a","role":"assistant","text":"x","timestamp":null,"model":{"provider":"claude","model":"claude-fable-5-2"}}]}"#.utf8))
         XCTAssertEqual(decoded.items.first?.model?.model, "claude-fable-5-2")

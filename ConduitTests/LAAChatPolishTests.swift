@@ -61,11 +61,11 @@ final class LAAChatPolishTests: XCTestCase {
     // MARK: - 4. Model faces
 
     func testEachModelFamilyGetsItsOwnFace() {
-        XCTAssertEqual(LAAModelFace.face(model: "claude-opus-5-5", provider: "claude"), .claude(rays: 12))
-        XCTAssertEqual(LAAModelFace.face(model: "claude-sonnet-5-5", provider: "claude"), .claude(rays: 14))
-        XCTAssertEqual(LAAModelFace.face(model: "claude-haiku-5-5", provider: "claude"), .claude(rays: 5))
-        XCTAssertEqual(LAAModelFace.face(model: "claude-mythos-5-2", provider: nil), .claude(rays: 7))
-        XCTAssertEqual(LAAModelFace.face(model: "claude-fable-5-2", provider: nil), .claude(rays: 9))
+        XCTAssertEqual(LAAModelFace.face(model: "claude-opus-5-5", provider: "claude"), .claude)
+        XCTAssertEqual(LAAModelFace.face(model: "claude-sonnet-5-5", provider: "claude"), .claude)
+        XCTAssertEqual(LAAModelFace.face(model: "claude-haiku-5-5", provider: "claude"), .claude)
+        XCTAssertEqual(LAAModelFace.face(model: "claude-mythos-5-2", provider: nil), .claude)
+        XCTAssertEqual(LAAModelFace.face(model: "claude-fable-5-2", provider: nil), .claude)
         XCTAssertEqual(LAAModelFace.face(model: "gpt-6.1-sol", provider: "codex"), .gpt(.sol))
         XCTAssertEqual(LAAModelFace.face(model: "gpt-6.1-terra", provider: "codex"), .gpt(.terra))
         XCTAssertEqual(LAAModelFace.face(model: "gpt-6-luna", provider: "codex"), .gpt(.luna))
