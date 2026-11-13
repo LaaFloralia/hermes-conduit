@@ -145,7 +145,7 @@ struct LAAWorkSessionLauncher: View {
                     Section(group.name) {
                         ForEach(group.models) { item in
                             Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in if on { chooseModel(item) } })) {
-                                Text(verbatim: item.label)
+                                LAAModelMenu.Name(label: item.label, model: item.model)
                             }
                             .accessibilityIdentifier("work.launch.model.\(item.model)")
                         }

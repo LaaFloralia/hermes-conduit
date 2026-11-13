@@ -264,7 +264,7 @@ struct LAAChatModelPickers: View {
                         if isCurrent {
                             Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
                         } else {
-                            Text(verbatim: choice.label)
+                            LAAModelMenu.Name(label: choice.label, model: choice.model)
                         }
                     }
                     .disabled(modelLock != nil || isCurrent)

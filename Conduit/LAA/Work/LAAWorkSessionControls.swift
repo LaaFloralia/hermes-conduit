@@ -140,7 +140,7 @@ struct LAAWorkSessionControls: View {
                         if choice.model == currentModel {
                             Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
                         } else {
-                            Text(verbatim: choice.label)
+                            LAAModelMenu.Name(label: choice.label, model: choice.model)
                         }
                     }
                     .disabled(!canChangeModel || choice.model == currentModel)

@@ -5,7 +5,7 @@ import Foundation
 enum LAAModelDisplay {
     static func name(_ identifier: String, label: String? = nil) -> String {
         if let label, !label.isEmpty, label != identifier, isDisplayLabel(label),
-           !["gpt-", "deepseek-", "claude-", "opus-", "sonnet-", "haiku-"].contains(where: { label.lowercased().hasPrefix($0) }) { return label }
+           !["gpt-", "deepseek-", "claude-", "opus-", "sonnet-", "haiku-", "fable-", "mythos-"].contains(where: { label.lowercased().hasPrefix($0) }) { return label }
         var model = identifier
         if let data = model.data(using: .utf8), let route = try? JSONDecoder().decode([String].self, from: data), route.count == 2 {
             model = route[1]
@@ -18,7 +18,7 @@ enum LAAModelDisplay {
         if lower.hasPrefix("gpt-") {
             return "GPT-" + model.dropFirst(4).split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
         }
-        for family in ["opus", "sonnet", "haiku"] {
+        for family in ["opus", "sonnet", "haiku", "fable", "mythos"] {
             if let range = lower.range(of: family + "-") {
                 let version = lower[range.upperBound...].split(separator: "-")
                 if version.allSatisfy({ $0.allSatisfy { $0.isNumber || $0 == "." } }), !version.isEmpty {

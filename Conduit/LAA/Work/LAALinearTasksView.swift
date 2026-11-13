@@ -948,7 +948,7 @@ struct LAALinearTaskEditor: View {
                                     if on, let next = LAAWorkModelSelection.profile(switchingTo: item, from: selectedProfile) {
                                         profile = next.id
                                     }
-                                })) { Text(verbatim: item.label) }
+                                })) { LAAModelMenu.Name(label: item.label, model: item.model) }
                                 .accessibilityIdentifier("work.linear.model.\(item.model)")
                             }
                         }

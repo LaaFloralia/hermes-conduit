@@ -1,13 +1,17 @@
 #if LAA_BUILD
 import SwiftUI
+import UIKit
 
-/// Which face a model gets. The provider sets the colour; the model's family
-/// sets the small joke inside it: Claude's spark has as many rays as its
-/// family name suggests (a haiku's five, a sonnet's fourteen lines), and GPT's
-/// celestial names draw their own body (Sol the sun, Terra the earth, Luna the
-/// moon, Astra a star). Rendering only: the identifiers are not changed.
+/// Which face a model gets: its provider's own mark (owner, 2026-11-13: the
+/// official icons). Claude's Spark and OpenAI's Blossom are drawn as their
+/// makers issue them, never recoloured, reshaped or turned; what tells one
+/// model from another is its name and its capsule's rank colour
+/// (LAAModelRank), not the mark. Until OpenAI's mark is in the asset
+/// catalogue, GPT keeps the celestial symbol of its name (Sol the sun, Terra
+/// the earth, Luna the moon, Astra a star). Rendering only: the identifiers
+/// are not changed.
 enum LAAModelFace: Equatable {
-    case claude(rays: Int)
+    case claude
     case gpt(LAAModelFace.Body)
     case deepSeek
     case gemini
@@ -24,11 +28,7 @@ enum LAAModelFace: Equatable {
         if raw.contains("grok") || provider == "grok" { return .grok }
         if raw.contains("claude") || ["opus", "sonnet", "haiku", "mythos", "fable"].contains(where: raw.contains)
             || provider == "claude" {
-            if raw.contains("haiku") { return .claude(rays: 5) }
-            if raw.contains("sonnet") { return .claude(rays: 14) }
-            if raw.contains("mythos") { return .claude(rays: 7) }
-            if raw.contains("fable") { return .claude(rays: 9) }
-            return .claude(rays: 12)
+            return .claude
         }
         if raw.contains("gpt") || provider == "codex" || provider == "openai" {
             if raw.contains("sol") { return .gpt(.sol) }
@@ -54,20 +54,19 @@ enum LAAModelFace: Equatable {
 }
 
 /// The model's round face beside its name, in Work's transcript, the session
-/// heading and the model pill. Flat colour on a flat disc, no gradient or
-/// shadow; an unknown model keeps the neutral sparkle.
+/// heading and the model capsule: the provider's official mark on a plain
+/// disc, with room around it. No gradient or shadow; an unknown model keeps
+/// the neutral sparkle.
 struct LAAModelMark: View {
     let model: String?
     let provider: String?
     var size: CGFloat = LAASender.avatarSize
-    @Environment(\.colorScheme) private var scheme
-
     private var face: LAAModelFace { .face(model: model, provider: provider) }
 
     var body: some View {
         Group {
             switch face {
-            case .claude(let rays): claude(rays)
+            case .claude: claude
             case .gpt(let body): gpt(body)
             case .deepSeek: deepSeek
             case .gemini: symbol("sparkle", ink: LAAModelInk.gemini, disc: LAAModelInk.geminiDisc, scale: 0.56)
@@ -79,27 +78,38 @@ struct LAAModelMark: View {
         .accessibilityHidden(true)
     }
 
-    /// Claude: the clay disc and a hand-cut spark of uneven rays.
-    private func claude(_ rays: Int) -> some View {
-        ZStack {
-            Circle().fill(LAAModelInk.claudeDisc(scheme))
-            ForEach(0..<rays, id: \.self) { index in
-                // Alternate long and short rays, so the spark reads as drawn
-                // rather than as a gear.
-                let long = index % 2 == 0 || rays < 8
-                Capsule()
-                    .fill(LAAModelInk.claude)
-                    .frame(width: max(1.4, size * (rays > 10 ? 0.07 : 0.09)),
-                           height: size * (long ? 0.34 : 0.25))
-                    .offset(y: -size * (long ? 0.17 : 0.125))
-                    .rotationEffect(.degrees(Double(index) / Double(rays) * 360 + 8))
-            }
-        }
-        .overlay { Circle().strokeBorder(LAAModelInk.claude.opacity(0.18), lineWidth: 0.5) }
+    /// Claude: Anthropic's Spark in Clay (#D97757), as issued
+    /// (`LAAClaudeMark`, original rendering), on a paper disc with a fifth of
+    /// the disc clear on every side.
+    private var claude: some View {
+        Image("LAAClaudeMark")
+            .renderingMode(.original)
+            .resizable().scaledToFit()
+            .frame(width: size * 0.6, height: size * 0.6)
+            .frame(width: size, height: size)
+            .background(LAACeremonyColor.claudeDisc, in: Circle())
+            .overlay { Circle().strokeBorder(LAACeremonyColor.claudeDiscRim, lineWidth: 0.5) }
     }
 
-    /// GPT: graphite disc, the body its name is named after.
-    private func gpt(_ body: LAAModelFace.Body) -> some View {
+    /// GPT: OpenAI's Blossom as issued (`LAAOpenAIMark`: black, with a white
+    /// dark appearance) on a neutral disc, once it is in the catalogue;
+    /// until then the graphite disc and the body its name is named after.
+    @ViewBuilder private func gpt(_ body: LAAModelFace.Body) -> some View {
+        if LAAModelMark.hasOpenAIMark {
+            Image("LAAOpenAIMark")
+                .renderingMode(.original)
+                .resizable().scaledToFit()
+                .frame(width: size * 0.6, height: size * 0.6)
+                .frame(width: size, height: size)
+                .background(LAACeremonyColor.openAIDisc, in: Circle())
+        } else {
+            celestial(body)
+        }
+    }
+
+    static let hasOpenAIMark = UIImage(named: "LAAOpenAIMark") != nil
+
+    private func celestial(_ body: LAAModelFace.Body) -> some View {
         let glyph: (String, Color, CGFloat) = switch body {
         case .sol: ("sun.max.fill", LAAModelInk.sol, 0.56)
         case .terra: ("globe.asia.australia.fill", LAAModelInk.terra, 0.56)
@@ -144,12 +154,8 @@ struct LAAModelMark: View {
 }
 
 /// The marks' own colours. They name a provider, so they stay the same in
-/// light and dark; only Claude's paper-like disc darkens with the page.
+/// light and dark. Claude's and OpenAI's discs are in LAACeremonyColor.
 enum LAAModelInk {
-    static let claude = Color(red: 0.80, green: 0.42, blue: 0.29)
-    static func claudeDisc(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(red: 0.24, green: 0.17, blue: 0.14) : Color(red: 0.96, green: 0.91, blue: 0.86)
-    }
     static let gptDisc = Color(red: 0.13, green: 0.14, blue: 0.15)
     static let sol = Color(red: 0.98, green: 0.73, blue: 0.27)
     static let terra = Color(red: 0.36, green: 0.78, blue: 0.62)
@@ -161,5 +167,38 @@ enum LAAModelInk {
     static let gemini = Color(red: 0.36, green: 0.52, blue: 0.97)
     static let geminiDisc = Color(red: 0.92, green: 0.94, blue: 1.0)
     static let grokDisc = Color(red: 0.06, green: 0.06, blue: 0.07)
+}
+/// A model's rank in a menu row. The system draws the row's text in one ink,
+/// so a ranked model carries a small disc of its capsule's face (Mythos with
+/// its rim); other models carry nothing.
+enum LAAModelMenu {
+    @MainActor
+    static func icon(model: String?, scheme: ColorScheme, scale: CGFloat) -> Image? {
+        guard let rank = LAAModelRank.of(model).colors else { return nil }
+        let disc = Circle().fill(rank.fill)
+            .overlay { Circle().strokeBorder(rank.rim ?? LAAColor.separator, lineWidth: 1) }
+            .frame(width: 16, height: 16)
+            .environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: disc)
+        renderer.scale = scale
+        return renderer.uiImage.map { Image(uiImage: $0.withRenderingMode(.alwaysOriginal)) }
+    }
+
+    /// A model row's name, with the rank disc when the model has one. The
+    /// current value's row keeps the system's check instead.
+    struct Name: View {
+        let label: String
+        let model: String?
+        @Environment(\.colorScheme) private var scheme
+        @Environment(\.displayScale) private var scale
+
+        var body: some View {
+            if let icon = LAAModelMenu.icon(model: model, scheme: scheme, scale: scale) {
+                Label { Text(verbatim: label) } icon: { icon }
+            } else {
+                Text(verbatim: label)
+            }
+        }
+    }
 }
 #endif
