@@ -104,8 +104,28 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertNil(LAADecisionBoardView.meta(LAADecision(id: "x", title: "t", summary: ""), now: now))
     }
 
+    /// A busy conversation holds the answer; the board says the Bridge will
+    /// deliver it and offers nothing to resend (2026-11-13).
+    func testHeldAnswerReadsAsWaitingNotAsFailure() throws {
+        let json = #"{"kind":"board","id":"dec_9","status":"answered","title":"公開日を決める","summary":"","options":[{"label":"来週","recommended":true}],"source":{"paseoAgentId":"a","sessionId":null,"name":"HP｜公開"},"answer":{"optionIndex":0,"label":"来週","note":null,"answeredAt":"2026-11-13T11:00:00Z"},"delivery":{"state":"pending","attempts":1,"messageId":"dec_9:answer:1","deliveredAt":null,"error":null,"waiting":true,"waitingSince":"2026-11-13T11:00:00Z","holds":1}}"#
+        let held = try JSONDecoder().decode(LAADecision.self, from: Data(json.utf8))
+        XCTAssertTrue(held.deliveryWaiting)
+        XCTAssertFalse(held.deliveryFailed)
+        XCTAssertFalse(LAADecisionBoardView.needsAttention(held))
+        XCTAssertEqual(LAADecisionCopy.pending(held), LAADecisionCopy.waitingDetail)
+        let line = String(LAADecisionBoardView.answeredLine(held, answer: try XCTUnwrap(held.answer)).characters)
+        XCTAssertTrue(line.hasSuffix(LAADecisionCopy.waiting), line)
+        XCTAssertFalse(line.contains(LAADecisionCopy.replied))
+        XCTAssertTrue(LAADecisionCopy.accessibilityLabel(held).contains(LAADecisionCopy.waiting))
+        XCTAssertFalse(LAADecisionCopy.accessibilityLabel(held).contains(LAADecisionCopy.notDelivered))
+        // An interrupted send keeps the older wording; a delivery an older Bridge wrote has no flag.
+        let plain = LAADecision(id: "dec_8", title: "t", summary: "", delivery: .init(state: "pending", attempts: 1, deliveredAt: nil, error: nil))
+        XCTAssertFalse(plain.deliveryWaiting)
+        XCTAssertEqual(LAADecisionCopy.pending(plain), LAADecisionCopy.pendingDetail)
+    }
+
     func testDeliveryErrorsReadAsSentences() {
-        for code in ["agent_archived", "pending_decision_requires_reply", "paseo_unavailable", "delivery_unconfirmed", "not_found", nil, "new_code"] {
+        for code in ["agent_archived", "pending_decision_requires_reply", "paseo_unavailable", "delivery_unconfirmed", "not_found", "delivery_wait_expired", nil, "new_code"] {
             XCTAssertFalse(LAADecisionCopy.deliveryError(code).isEmpty)
         }
         let closed = LAABridgeHTTPError(status: 409, code: "decision_closed", message: nil, retryable: false,

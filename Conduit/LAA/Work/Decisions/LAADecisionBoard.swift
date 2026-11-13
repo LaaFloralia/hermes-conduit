@@ -205,7 +205,7 @@ import SwiftUI
             else { board.items.append(merged) }
             board.items = LAADecisionOrder.sorted(board.items)
             return .notDelivered(decision.delivery?.state == "pending"
-                                 ? "回答は保存済みです。配達結果を確認しています。"
+                                 ? LAADecisionCopy.pending(merged)
                                  : LAADecisionCopy.deliveryError(decision.delivery?.error))
         case "stored": return .done(stored: true)
         case "delivered": return .done(stored: false)

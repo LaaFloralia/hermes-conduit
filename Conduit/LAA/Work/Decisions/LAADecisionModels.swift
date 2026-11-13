@@ -37,6 +37,9 @@ struct LAADecision: Codable, Identifiable, Equatable {
         let attempts: Int?
         let deliveredAt: String?
         let error: String?
+        /// The conversation was busy: the Bridge holds the answer and delivers
+        /// it when that turn ends. Only a pending delivery carries it.
+        var waiting: Bool? = nil
     }
     enum Kind: String, Codable { case board, session }
 
@@ -105,6 +108,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
 
     var recommended: Option? { options.first(where: \.recommended) }
     var deliveryFailed: Bool { delivery?.state == "failed" }
+    /// Answered, and the Bridge delivers it by itself once the conversation is free.
+    var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's
     /// optionIndex refers to the stored order, which is the same.
     func index(of option: Option) -> Int? { options.firstIndex(of: option) }
@@ -172,6 +177,12 @@ enum LAADecisionCopy {
     static let recommended = "推奨"
     static let otherTitle = "選択肢以外で答える"
     static let notDelivered = "届いていません"
+    /// An answer held for a busy conversation; nothing for the owner to do.
+    static let waiting = "会話が空き次第、自動で届けます"
+    static let waitingDetail = "回答は保存済みです。依頼元の会話が処理中のため、届け直す必要はありません。"
+    static let pendingDetail = "回答は保存済みです。配達結果を確認しています。"
+    /// What a pending delivery tells the owner.
+    static func pending(_ item: LAADecision) -> String { item.deliveryWaiting ? waitingDetail : pendingDetail }
     /// The one line an answered decision shows, with the time it went back.
     static let replied = "返答済み"
     /// The same line when the answer was stored, not delivered.
@@ -188,6 +199,7 @@ enum LAADecisionCopy {
         if let answer = item.answer { parts.append("回答 \(answer.label)") }
         else if let label = item.recommended?.label { parts.append("推奨 \(label)") }
         if item.deliveryFailed { parts.append(notDelivered) }
+        if item.deliveryWaiting { parts.append(waiting) }
         if let deadline = LAADecisionDeadline.describe(item.deadline, now: now) { parts.append(deadline.text) }
         if let source = item.sourceLine { parts.append(source) }
         return parts.joined(separator: "、")
@@ -202,6 +214,7 @@ enum LAADecisionCopy {
         case "paseo_unavailable": return LAABridgeError.response(status: 503, code: "paseo_unavailable").japaneseText
         case "delivery_unconfirmed": return "送りましたが、会話が再開したことを確認できませんでした。"
         case "not_found": return "依頼元の会話が見つかりません。"
+        case "delivery_wait_expired": return "依頼元の会話が長く処理中のままで、届けられませんでした。"
         default: return "依頼元の会話へ届けられませんでした。"
         }
     }
