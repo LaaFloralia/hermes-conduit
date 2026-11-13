@@ -56,6 +56,15 @@ final class LAADecisionUITests: XCTestCase {
         app.buttons["work.decision.\(id)"].firstMatch
     }
 
+    private func openUnansweredDecision(_ id: String, _ app: XCUIApplication) {
+        let card = row(id, app)
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        let tappable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: card)
+        XCTAssertEqual(XCTWaiter.wait(for: [tappable], timeout: 10), .completed)
+        card.tap()
+        XCTAssertTrue(app.buttons["work.decision.option.0"].waitForExistence(timeout: 10))
+    }
+
     private func screenshot(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -120,6 +129,71 @@ final class LAADecisionUITests: XCTestCase {
         retry.tap()
         XCTAssertTrue(row(cardID, app).waitForNonExistence(timeout: 10))
         XCTAssertEqual(answered(cardID)?["delivery"] as? String, "delivered")
+    }
+
+    func testColdLaunchToInteractiveWorkTiming() throws {
+        guard fixture("/reset") != nil else { throw XCTSkip("Start the Work fixture") }
+        let app = XCUIApplication()
+        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-tab", "work"]
+        for run in 1...3 {
+            let start = Date()
+            app.launch()
+            XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
+            print("LAA_COLD_LAUNCH run=\(run) interactive_seconds=\(Date().timeIntervalSince(start))")
+            app.terminate()
+        }
+    }
+
+    func testLostResponseReadsSavedDeliveryWithoutAnsweringTwice() throws {
+        let app = try launch(board: "normal")
+        defer { app.terminate() }
+        fixture("/decisions/lose-next-response")
+        openUnansweredDecision(hpID, app)
+        app.buttons["work.decision.option.0"].tap()
+        app.buttons["work.decision.send"].tap()
+        XCTAssertTrue(app.buttons["work.decision.answered.\(hpID)"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertEqual(fixture("/state")?["decisionPosts"] as? Int, 1)
+        XCTAssertEqual(answered(hpID)?["delivery"] as? String, "delivered")
+        screenshot("decision-lost-response-reconciled", app)
+    }
+
+    func testSavedFailureBecomesDeliveredWhileDetailIsOpenWithoutResend() throws {
+        let app = try launch(board: "normal")
+        defer { app.terminate() }
+        fixture("/decisions/fail-next")
+        openUnansweredDecision(cardID, app)
+        app.buttons["work.decision.option.0"].tap()
+        app.buttons["work.decision.send"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.decision.undelivered"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["work.decision.recorded"].exists)
+        screenshot("decision-saved-delivery-failed", app)
+        fixture("/decisions/deliver-saved")
+        XCTAssertTrue(app.buttons["work.decision.send"].waitForNonExistence(timeout: 12))
+        XCTAssertFalse(app.descendants(matching: .any)["work.decision.undelivered"].firstMatch.exists)
+        screenshot("decision-later-delivered", app)
+        app.buttons["work.decision.close"].tap()
+        XCTAssertTrue(app.buttons["work.decision.answered.\(cardID)"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(fixture("/state")?["decisionPosts"] as? Int, 1)
+    }
+
+    func testDetailRetryClearsFailureWithoutAnotherAnswer() throws {
+        let app = try launch(board: "normal")
+        defer { app.terminate() }
+        fixture("/decisions/fail-next")
+        openUnansweredDecision(cardID, app)
+        app.buttons["work.decision.option.0"].tap()
+        let send = app.buttons["work.decision.send"]
+        send.tap()
+        let failure = app.descendants(matching: .any)["work.decision.undelivered"].firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 10))
+        send.tap()
+        let cleared = failure.waitForNonExistence(timeout: 12)
+        screenshot("decision-detail-after-retry", app)
+        XCTAssertTrue(cleared, "A successful detail retry must clear its old failure")
+        XCTAssertFalse(send.exists)
+        XCTAssertEqual(answered(cardID)?["delivery"] as? String, "delivered")
+        XCTAssertEqual(fixture("/state")?["decisionPosts"] as? Int, 2)
     }
 
     func testDarkBoardAndDetail() throws {

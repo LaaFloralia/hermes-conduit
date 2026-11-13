@@ -345,7 +345,7 @@ struct LAADecisionBoardView: View {
             board.linkedID = nil
             Task {
                 if let record: LAADecision = try? await bridge.read("/v1/decisions/\(id)"),
-                   record.status == "open" || record.deliveryFailed { show(record) }
+                   record.id == id { show(record) }
             }
         }
     }
@@ -357,7 +357,7 @@ struct LAADecisionBoardView: View {
         case .done:
             retryFailure[item.id] = nil
             retried += 1
-            remember(Self.delivered(item))
+            remember(board.records[item.id] ?? Self.delivered(item))
         case .notDelivered(let reason), .failed(let reason):
             retryFailure[item.id] = reason
         }

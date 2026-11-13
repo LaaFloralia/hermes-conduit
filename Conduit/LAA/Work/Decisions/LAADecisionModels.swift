@@ -196,6 +196,7 @@ enum LAADecisionCopy {
     /// Why a delivery failed, in the owner's words. Codes come from the Bridge.
     static func deliveryError(_ code: String?) -> String {
         switch code {
+        case "session_busy": return "依頼元の会話が処理中です。回答は保存済みです。"
         case "agent_archived": return "依頼元の会話はアーカイブされています。"
         case "pending_decision_requires_reply": return "依頼元の会話が別の確認を待っています。その確認に答えてから届け直してください。"
         case "paseo_unavailable": return LAABridgeError.response(status: 503, code: "paseo_unavailable").japaneseText

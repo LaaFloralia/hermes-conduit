@@ -161,6 +161,26 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertFalse(chose)
         XCTAssertEqual(board.phase, .idle)
     }
+    func testKnownDeliveredAnswerCannotBeSentAgainFromStaleCard() async {
+        let old = LAADecision(id: "dec_0000000000000b04", title: "試験用の判断", summary: "",
+                              options: [.init(label: "作業を進める", recommended: true)])
+        let delivered = LAADecision(id: old.id, status: "answered", title: old.title, summary: old.summary,
+                                    options: old.options,
+                                    answer: .init(optionIndex: 0, label: "作業を進める", note: nil,
+                                                  answeredAt: "2026-11-13T03:57:56.476Z"),
+                                    delivery: .init(state: "delivered", attempts: 3,
+                                                    deliveredAt: "2026-11-13T04:02:28.067Z", error: nil))
+        let board = LAADecisionBoard()
+        board.setForTesting([delivered])
+        // No connection exists: the result can only come from the known saved
+        // record, never a second write of the old option card.
+        let outcome = await board.answer(old, optionIndex: 0, note: nil,
+                                         bridge: LAABridgeSession(statusForTesting: .unpaired))
+        XCTAssertEqual(outcome, .done(stored: false))
+        XCTAssertEqual(board.records[old.id]?.delivery?.attempts, 3)
+        XCTAssertEqual(board.records[old.id]?.answer, delivered.answer)
+    }
+
     func testBoardCacheRetainsNativeQuestionsAndFailedDelivery() throws {
         let values = [
             LAADecision(kind: .session, id: "ses_native", title: "判断", summary: "どちら", sessionId: "ses_native"),

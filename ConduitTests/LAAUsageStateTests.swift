@@ -26,6 +26,61 @@ final class LAAUsageStateTests: XCTestCase {
         """)
     }
 
+    func testWidgetWriteContentionDoesNotBlockTheUIExecutor() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let held = expectation(description: "widget writer holds lock")
+        let gate = DispatchSemaphore(value: 0)
+        let writer = WidgetSnapshotStore(directory: directory, writeObserver: {
+            held.fulfill()
+            _ = gate.wait(timeout: .now() + 3)
+        })
+        let state = LAAUsageState(widgetStore: WidgetSnapshotStore(directory: directory))
+        DispatchQueue.global().async {
+            _ = try? writer.write(WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []))
+        }
+        await fulfillment(of: [held], timeout: 3)
+        defer { gate.signal() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) { gate.signal() }
+        let start = Date()
+        let heartbeat = Task { @MainActor in
+            try await Task.sleep(for: .milliseconds(20))
+            return Date().timeIntervalSince(start)
+        }
+        let reading = try quota()
+        await state.refreshUsage { [reading] }
+        let latency = try await heartbeat.value
+        XCTAssertLessThan(latency, 0.3, "Widget file locking blocked UI for \(latency)s")
+        XCTAssertGreaterThan(Date().timeIntervalSince(start), 0.6, "The write must actually wait for the competing writer")
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+        print("USAGE_CONTENTION ui_heartbeat_seconds=\(latency) refresh_seconds=\(Date().timeIntervalSince(start))")
+    }
+
+    func testScopeChangeWhileWidgetSaveWaitsDoesNotRestoreOldTimestamp() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let held = expectation(description: "widget writer holds lock")
+        let gate = DispatchSemaphore(value: 0)
+        let writer = WidgetSnapshotStore(directory: directory, writeObserver: {
+            held.fulfill(); _ = gate.wait(timeout: .now() + 3)
+        })
+        let state = LAAUsageState(widgetStore: WidgetSnapshotStore(directory: directory))
+        state.selectScope(bridgeRevision: 0)
+        DispatchQueue.global().async {
+            _ = try? writer.write(WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []))
+        }
+        await fulfillment(of: [held], timeout: 3)
+        defer { gate.signal() }
+        let reading = try quota()
+        let refresh = Task { await state.refreshUsage { [reading] } }
+        while state.usage.value == nil { await Task.yield() }
+        state.selectScope(bridgeRevision: 1)
+        gate.signal()
+        await refresh.value
+        XCTAssertNil(state.usage.value)
+        XCTAssertNil(state.updatedAt)
+    }
+
     func testRefreshFailureAndMissingRowsRetainValuesAndObservationTimes() async throws {
         let state = LAAUsageState(widgetStore: nil)
         let first = try quota()

@@ -239,10 +239,12 @@ const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02',
 const longSummary = '新しいHPと名刺、写真の選び直しが同時に進んでいます。'.repeat(24) + '公開日と告知の順番を決めると、ここから先の作業を止めずに進められます。';
 let decisionMode = 'off';
 let failNextDelivery = false;
+let loseNextDecisionResponse = false;
+let decisionPosts = 0;
 let decisions = [];
 const iso = (offsetHours) => new Date(Date.now() + offsetHours * 3600 * 1000).toISOString();
 const resetDecisions = () => {
-  decisionMode = 'off'; failNextDelivery = false;
+  decisionMode = 'off'; failNextDelivery = false; loseNextDecisionResponse = false; decisionPosts = 0;
   decisions = [
     { id: DECISION_IDS.hp, ref: 'J1', status: 'open', title: 'HPの公開日を決める',
       summary: '新しいHPは公開できる状態です。告知の準備に合わせて公開日を1つ選んでください。選んだ日に合わせて告知文と予約投稿を整えます。',
@@ -387,6 +389,7 @@ const api = http.createServer(async (req, res) => {
     const { requestId, ...visible } = decision;
     if (!decisionMatch[2] && req.method === 'GET') return send(res, 200, { ...visible });
     if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+    decisionPosts++;
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : {};
     if (decisionMatch[2] === 'answer') {
@@ -401,6 +404,7 @@ const api = http.createServer(async (req, res) => {
     }
     await new Promise((resolve) => setTimeout(resolve, 600));
     settleDecision(decision);
+    if (loseNextDecisionResponse) { loseNextDecisionResponse = false; res.destroy(); return; }
     const { requestId: _, ...result } = decision;
     return send(res, 200, { decision: result });
   }
@@ -591,6 +595,15 @@ const control = http.createServer((req, res) => {
   const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long)$/);
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
+  if (req.url === '/decisions/lose-next-response') loseNextDecisionResponse = true;
+  // Synthetic J4 lifecycle, using the production schema without production
+  // identifiers, text or side effects. An external retry later confirms delivery.
+  if (req.url === '/decisions/deliver-saved') {
+    for (const decision of decisions.filter((d) => d.delivery?.state === 'failed')) {
+      failNextDelivery = false; settleDecision(decision);
+      decision.delivery.attempts = 3;
+    }
+  }
   if (req.url === '/tasks/refuse-staff') refuseStaffCreate = true;
   if (req.url === '/tasks/allow-staff') refuseStaffCreate = false;
   const refuseCompleteMatch = req.url.match(/^\/tasks\/refuse-complete\/([0-9a-f-]+)$/);
@@ -607,7 +620,7 @@ const control = http.createServer((req, res) => {
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed, followUps, archiveRequests,
-    created: createdBodies, completed, lastAnswer,
+    created: createdBodies, completed, lastAnswer, decisionPosts,
     answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null,
       note: d.answer?.note ?? null, label: d.answer?.label ?? null, delivery: d.delivery?.state ?? null })) }));
 });

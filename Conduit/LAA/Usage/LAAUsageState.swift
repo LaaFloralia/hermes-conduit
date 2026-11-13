@@ -41,6 +41,32 @@ enum LAAUsageProblem: Error, Equatable {
     }
 }
 
+/// Keychain and the widget's cross-process file lock can wait on another
+/// process. Keep those waits off the UI executor, including during launch.
+private actor LAAUsageStorage {
+    let store: WidgetSnapshotStore
+    init(_ store: WidgetSnapshotStore) { self.store = store }
+
+    func connection(_ value: LAAWidgetUsageConnection) throws -> (changed: Bool, cached: [LAAUsageItem]?) {
+        let previous = LAAWidgetUsageConnection.read()
+        let changed = previous != nil && previous != value
+        try LAAWidgetUsageConnection.save(value)
+        return (changed, previous == value ? store.readUsageItems() : nil)
+    }
+    func saveItems(_ items: [LAAUsageItem]) { try? store.writeUsageItems(items) }
+    func previous() -> WidgetUsageSnapshot? { store.read()?.usage }
+    func update(_ items: [LAAUsageItem], receivedAt: Date) -> Bool {
+        (try? store.updateUsage { LAAWidgetUsageBuilder.make(items: items, receivedAt: receivedAt, previous: $0) }) ?? false
+    }
+    func publish(_ snapshot: WidgetUsageSnapshot?) -> Bool {
+        if snapshot == nil {
+            try? LAAWidgetUsageConnection.save(nil)
+            try? store.writeUsageItems(nil)
+        }
+        return (try? store.writeUsage(snapshot)) ?? false
+    }
+}
+
 /// Owns one refresh at a time; failed reads retain the last observation.
 @MainActor
 final class LAAUsageState: ObservableObject {
@@ -53,27 +79,23 @@ final class LAAUsageState: ObservableObject {
     private var bridgeRevision: Int?
     private var lastRefreshAttempt: Date?
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
-    private let widgetStore: WidgetSnapshotStore?
+    private let storage: LAAUsageStorage?
+    private var isPublishing = false
     private let reloadWidgets: @MainActor () -> Void
     private let loadUsage: @MainActor (LAABridgeSession) async throws -> [LAAUsageItem]
 
     init(widgetStore: WidgetSnapshotStore? = WidgetSnapshotStore.production,
          reloadWidgets: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.employee) },
          loader: (@MainActor (LAABridgeSession) async throws -> [LAAUsageItem])? = nil) {
-        self.widgetStore = widgetStore
+        self.storage = widgetStore.map(LAAUsageStorage.init)
         self.reloadWidgets = reloadWidgets
         self.loadUsage = loader ?? { try await Self.loadPages(bridge: $0) }
-        if LAAWidgetUsageConnection.read() != nil, let saved = widgetStore?.readUsageItems() {
-            usage.value = saved
-            usage.fetchedAt = saved.compactMap { LAAUsageItem.date($0.observedAt) }.max()
-            updatedAt = usage.fetchedAt
-        }
     }
 
     /// The shell owns this state so widgets update even if Usage is never opened.
     func synchronize(bridge: LAABridgeSession, active: Bool) async {
         let changed = selectScope(bridgeRevision: bridge.revision)
-        if changed || bridge.status != .paired { publish(nil) }
+        if changed || bridge.status != .paired { await publish(nil) }
         guard active, bridge.status == .paired, (!isPresented || lastRefreshAttempt == nil) else { return }
         let revision = bridge.revision
         let inFlight = isRefreshing ? generation : nil
@@ -115,7 +137,7 @@ final class LAAUsageState: ObservableObject {
     func refreshOnTabOpen(bridge: LAABridgeSession, now: () -> Date = Date.init,
                           minimumInterval: TimeInterval = 60) async {
         let changed = selectScope(bridgeRevision: bridge.revision)
-        if changed || bridge.status != .paired { publish(nil) }
+        if changed || bridge.status != .paired { await publish(nil) }
         guard bridge.status == .paired else { return }
         let revision = bridge.revision
         await waitUntilIdle()
@@ -129,57 +151,58 @@ final class LAAUsageState: ObservableObject {
     }
 
     func refreshAndPublish(bridge: LAABridgeSession, attemptedAt: Date? = nil) async {
-        if selectScope(bridgeRevision: bridge.revision) { publish(nil) }
-        guard bridge.status == .paired else { publish(nil); return }
-        guard !isRefreshing else { return }
+        if selectScope(bridgeRevision: bridge.revision) { await publish(nil) }
+        guard bridge.status == .paired else { await publish(nil); return }
+        guard !isRefreshing, !isPublishing else { return }
+        isPublishing = true
+        defer { isPublishing = false }
         lastRefreshAttempt = attemptedAt ?? Date()
         let revision = bridge.revision
         // Sharing the existing app credential uses the already entitled App
         // Group's Keychain, never a file or a second pairing.
-        if widgetStore != nil {
+        if let storage {
             try? await bridge.withAuthenticatedClient { _, credentials in
                 let connection = LAAWidgetUsageConnection(baseURL: credentials.baseURL,
                                                            deviceID: credentials.deviceID, token: credentials.token)
-                if let shared = LAAWidgetUsageConnection.read(), shared != connection {
+                let result = try await storage.connection(connection)
+                guard !Task.isCancelled, bridge.revision == revision else { return }
+                if result.changed {
                     self.usage = .init()
                     self.updatedAt = nil
-                    self.publish(nil)
+                    await self.publish(nil)
+                    guard !Task.isCancelled, bridge.revision == revision else { return }
+                    _ = try await storage.connection(connection)
+                } else if self.usage.value == nil, let cached = result.cached {
+                    self.usage.value = cached
+                    self.usage.fetchedAt = cached.compactMap { LAAUsageItem.date($0.observedAt) }.max()
+                    self.updatedAt = self.usage.fetchedAt
                 }
-                try LAAWidgetUsageConnection.save(connection)
             }
         }
+        guard !Task.isCancelled, bridge.revision == revision else { return }
+
         await refreshUsage { try await self.loadUsage(bridge) }
-        guard bridge.status == .paired else { usage = .init(); updatedAt = nil; publish(nil); return }
+        guard bridge.status == .paired else { usage = .init(); updatedAt = nil; await publish(nil); return }
         guard !Task.isCancelled, bridge.revision == revision else { return }
         if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
             usage = .init(error: error)
             updatedAt = nil
-            publish(nil)
+            await publish(nil)
         } else if let items = usage.value {
-            if let store = widgetStore {
-                do {
-                    if try store.updateUsage({ LAAWidgetUsageBuilder.make(items: items,
-                                                    receivedAt: usage.fetchedAt ?? Date(), previous: $0) }) {
-                        reloadWidgets()
-                    }
-                } catch { /* Keep the previous observation. */ }
+            if let storage, await storage.update(items, receivedAt: usage.fetchedAt ?? Date()) {
+                reloadWidgets()
             }
-        } else if let previous = widgetStore?.read()?.usage {
+        } else if let previous = await storage?.previous() {
+            guard !Task.isCancelled, bridge.revision == revision else { return }
             // Preserve the observation for recovery, but immediately mark it
             // stale so a failed fetch can never leave a fresh-looking number.
-            publish(WidgetUsageSnapshot(meters: previous.meters.map { $0.lastKnown(label: $0.label) },
+            await publish(WidgetUsageSnapshot(meters: previous.meters.map { $0.lastKnown(label: $0.label) },
                                         checkedAt: previous.checkedAt))
         }
     }
 
-    private func publish(_ snapshot: WidgetUsageSnapshot?) {
-        guard let store = widgetStore else { return }
-        if snapshot == nil {
-            try? LAAWidgetUsageConnection.save(nil)
-            try? store.writeUsageItems(nil)
-        }
-        do { if try store.writeUsage(snapshot) { reloadWidgets() } }
-        catch { /* Keep the last valid widget snapshot. */ }
+    private func publish(_ snapshot: WidgetUsageSnapshot?) async {
+        if let storage, await storage.publish(snapshot) { reloadWidgets() }
     }
 
     private static func loadPages(bridge: LAABridgeSession) async throws -> [LAAUsageItem] {
@@ -254,10 +277,11 @@ final class LAAUsageState: ObservableObject {
                 var retained = $0; retained.retainedReason = "fetch_failed"; return retained
             }
             usage.apply(.success(items), at: finished)
-            try? widgetStore?.writeUsageItems(items)
+            await storage?.saveItems(items)
         case .failure(let error):
             usage.apply(.failure(error), at: finished)
         }
+        guard mine == generation, !Task.isCancelled else { return }
         if case .success = result { updatedAt = finished }
         completedGeneration = mine
     }

@@ -8,6 +8,7 @@ import SwiftUI
 /// reply view underneath.
 struct LAADecisionDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var board: LAADecisionBoard
     @ObservedObject var drafts: ComposerDraftStore
@@ -67,6 +68,15 @@ struct LAADecisionDetailView: View {
                 }
             }
         }
+        .task(id: "\(item.id)|\(scenePhase == .active)") {
+            guard item.kind == .board, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                if let record = await board.refreshRecord(item.id, bridge: bridge) { reconcile(record) }
+                guard item.delivery?.state != "delivered", item.delivery?.state != "stored",
+                      item.status == "open" || item.answer != nil else { return }
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            }
+        }
         .sensoryFeedback(.selection, trigger: choice)
         .sensoryFeedback(.warning, trigger: undelivered) { old, new in old == nil && new != nil }
     }
@@ -83,6 +93,9 @@ struct LAADecisionDetailView: View {
                     if undelivered != nil { undeliveredBlock }
                     answerBlock(answer)
                     if laaDesktop, showsSend { desktopAction }
+                } else if item.status != "open" {
+                    Text(verbatim: "この判断は閉じられています。")
+                        .accessibilityIdentifier("work.decision.closed")
                 } else {
                     choices
                     if laaDesktop { desktopAction }
@@ -125,11 +138,17 @@ struct LAADecisionDetailView: View {
 
     /// The one line that replaces the old celebration. It only advances a
     /// just-sent answer on the phone; an answered record stays put.
-    private func answeredLine(_ answer: LAADecision.Answer) -> some View {
-        let finish: (() -> Void)? = stored != nil && !laaDesktop ? { onFinished(false) } : nil
-        return LAADecisionCelebration(stored: stored == true,
-                                      answeredAt: LAAWorkFreshness.date(answer.answeredAt),
-                                      onFinished: finish)
+    @ViewBuilder private func answeredLine(_ answer: LAADecision.Answer) -> some View {
+        if item.deliveryFailed || item.delivery?.state == "pending" {
+            Text(verbatim: "回答は保存済みです")
+                .laaTextStyle(.secondary)
+                .accessibilityIdentifier("work.decision.recorded")
+        } else {
+            let finish: (() -> Void)? = stored != nil && !laaDesktop ? { onFinished(false) } : nil
+            LAADecisionCelebration(stored: stored == true || item.delivery?.state == "stored",
+                                   answeredAt: LAAWorkFreshness.date(answer.answeredAt),
+                                   onFinished: finish)
+        }
     }
 
     @ViewBuilder private var facts: some View {
@@ -288,10 +307,10 @@ struct LAADecisionDetailView: View {
         }
     }
 
-    private var retrying: Bool { item.answer != nil && undelivered != nil }
+    private var retrying: Bool { item.answer != nil && item.deliveryFailed && undelivered != nil }
 
     /// One primary action, and only while there is something to send.
-    private var showsSend: Bool { item.kind == .board && (item.answer == nil || retrying) }
+    private var showsSend: Bool { item.kind == .board && ((item.status == "open" && item.answer == nil) || retrying) }
 
     private var sendTitle: String {
         sending ? "届けています" : retrying ? "届け直す" : "この内容で返す"
@@ -344,6 +363,17 @@ struct LAADecisionDetailView: View {
         .frame(maxWidth: fullWidth ? .infinity : nil)
     }
 
+    private func reconcile(_ record: LAADecision) {
+        guard record.id == item.id else { return }
+        item = record
+        undelivered = record.deliveryFailed ? LAADecisionCopy.deliveryError(record.delivery?.error)
+            : record.delivery?.state == "pending" ? "回答は保存済みです。配達結果を確認しています。" : nil
+        if record.answer != nil { failure = nil; noteFocused = false }
+        if record.delivery?.state == "delivered" || record.delivery?.state == "stored" {
+            onAnswered?(record)
+        }
+    }
+
     private func send() async {
         guard !sending else { return }
         sending = true; failure = nil
@@ -352,8 +382,8 @@ struct LAADecisionDetailView: View {
             switch await board.retry(item, bridge: bridge) {
             case .done:
                 noteFocused = false
-                withAnimation { stored = false }
-                onAnswered?(LAADecisionBoardView.delivered(item))
+                if let record = board.records[item.id] { reconcile(record) }
+                withAnimation { stored = false; undelivered = nil }
             case .notDelivered(let reason):
                 if let updated = board.items.first(where: { $0.id == item.id }) { item = updated }
                 withAnimation { undelivered = reason }
@@ -370,11 +400,11 @@ struct LAADecisionDetailView: View {
         switch outcome {
         case .done(let wasStored):
             noteFocused = false
-            let answered = Self.answered(item, optionIndex: index,
+            let answered = board.records[item.id] ?? Self.answered(item, optionIndex: index,
                                          label: index.map { item.options[$0].label } ?? text,
                                          note: index == nil ? nil : (text.isEmpty ? nil : text))
             item = answered
-            withAnimation { stored = wasStored }
+            withAnimation { stored = wasStored; undelivered = nil }
             onAnswered?(answered)
         case .notDelivered(let reason):
             if let updated = board.items.first(where: { $0.id == item.id }) { item = updated }

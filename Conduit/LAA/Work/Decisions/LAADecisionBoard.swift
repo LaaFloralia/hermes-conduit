@@ -26,12 +26,16 @@ import SwiftUI
     /// replays instead of answering twice.
     private var requestIDs: [String: LAABridgeIdempotencyKey] = [:]
 
+    @Published private(set) var records: [String: LAADecision] = [:]
+    private var sendingIDs = Set<String>()
+    private var writeRevisions: [String: Int] = [:]
+
     private var loadedAt: Date?
 
     var count: Int { items.count }
 
     func reset() {
-        items = []; phase = .idle; loadedAt = nil
+        items = []; records = [:]; phase = .idle; loadedAt = nil
     }
 
     func restoreIfNeeded(_ cached: [LAADecision]) {
@@ -60,6 +64,7 @@ import SwiftUI
         defer { loading = false }
         do {
             let page: LAADecisionPage = try await bridge.read("/v1/decisions")
+            for item in page.items { records[item.id] = item }
             items = LAADecisionOrder.sorted(page.items)
             phase = .loaded
             loadedAt = Date()
@@ -76,6 +81,7 @@ import SwiftUI
     /// Snapshot and unit tests set a state directly.
     func setForTesting(_ items: [LAADecision], phase: Phase = .loaded) {
         self.items = LAADecisionOrder.sorted(items); self.phase = phase
+        for item in items { records[item.id] = item }
     }
     #endif
 
@@ -108,6 +114,9 @@ import SwiftUI
     }
 
     func answer(_ item: LAADecision, optionIndex: Int?, note: String?, bridge: LAABridgeSession) async -> Outcome {
+        let current = records[item.id] ?? item
+        if current.answer != nil { return Self.outcome(of: current, replacing: item, in: self) }
+        guard current.status == "open" else { return .failed("この判断はすでに閉じられています。") }
         let key = requestIDs[item.id] ?? LAABridgeIdempotencyKey()
         requestIDs[item.id] = key
         return await send(item, path: "/v1/decisions/\(item.id)/answer", key: key, bridge: bridge,
@@ -116,13 +125,24 @@ import SwiftUI
 
     func retry(_ item: LAADecision, bridge: LAABridgeSession) async -> Outcome {
         struct Body: Encodable { let requestId: String }
-        let key = LAABridgeIdempotencyKey()
+        // Read before retrying: another device or the original request may
+        // already have delivered this saved answer.
+        if let current = await refreshRecord(item.id, bridge: bridge), current.delivery?.state != "failed" {
+            return Self.outcome(of: current, replacing: item, in: self)
+        }
+        let key = requestIDs[item.id] ?? LAABridgeIdempotencyKey()
         requestIDs[item.id] = key
         return await send(item, path: "/v1/decisions/\(item.id)/retry", key: key, bridge: bridge, body: Body(requestId: key.value))
     }
 
     private func send<B: Encodable>(_ item: LAADecision, path: String, key: LAABridgeIdempotencyKey,
                                     bridge: LAABridgeSession, body: B) async -> Outcome {
+        guard sendingIDs.insert(item.id).inserted else { return .failed("回答を送信中です。") }
+        writeRevisions[item.id, default: 0] += 1
+        defer {
+            sendingIDs.remove(item.id)
+            writeRevisions[item.id, default: 0] += 1
+        }
         do {
             let data = try JSONEncoder().encode(body)
             let result: LAADecisionAnswerResult = try await LAAWorkHTTP.write(bridge, path: path, body: data, key: key)
@@ -131,16 +151,49 @@ import SwiftUI
         } catch let error as LAABridgeHTTPError {
             // A refusal the Bridge confirms means nothing was recorded; a new
             // request may follow. Anything else keeps the id for a replay.
+            if let current = await refreshRecord(item.id, bridge: bridge), current.answer != nil {
+                // A failed record may predate an unknown retry. Keep that
+                // retry's key until its attempt or delivery is observed.
+                if path.hasSuffix("/answer") || ["pending", "stored", "delivered"].contains(current.delivery?.state ?? "")
+                    || (current.delivery?.attempts ?? 0) > (item.delivery?.attempts ?? 0) {
+                    requestIDs[item.id] = nil
+                }
+                return Self.outcome(of: current, replacing: item, in: self)
+            }
             if !LAAWorkHTTP.outcomeUnknown(error) { requestIDs[item.id] = nil }
             return .failed(LAADecisionCopy.answerError(error))
         } catch {
+            if let current = await refreshRecord(item.id, bridge: bridge), current.answer != nil {
+                // A failed record may predate an unknown retry. Keep that
+                // retry's key until its attempt or delivery is observed.
+                if path.hasSuffix("/answer") || ["pending", "stored", "delivered"].contains(current.delivery?.state ?? "")
+                    || (current.delivery?.attempts ?? 0) > (item.delivery?.attempts ?? 0) {
+                    requestIDs[item.id] = nil
+                }
+                return Self.outcome(of: current, replacing: item, in: self)
+            }
             return .failed(LAADecisionCopy.answerError(error))
         }
     }
 
+    /// Reconcile by reading only. Never replay a production answer to discover
+    /// whether a timed-out response was actually accepted.
+    func refreshRecord(_ id: String, bridge: LAABridgeSession) async -> LAADecision? {
+        guard bridge.status == .paired else { return nil }
+        let revision = bridge.revision
+        let writeRevision = writeRevisions[id, default: 0]
+        guard let record: LAADecision = try? await bridge.read("/v1/decisions/\(id)"),
+              !Task.isCancelled, bridge.revision == revision,
+              writeRevisions[id, default: 0] == writeRevision else { return nil }
+        records[id] = record
+        if let index = items.firstIndex(where: { $0.id == id }) { items[index] = record }
+        return record
+    }
+
     private static func outcome(of decision: LAADecision, replacing item: LAADecision, in board: LAADecisionBoard) -> Outcome {
+        board.records[decision.id] = decision
         switch decision.delivery?.state {
-        case "failed":
+        case "failed", "pending":
             // Keep the row with its new delivery state; it stays on the board.
             let merged = LAADecision(kind: .board, id: decision.id, ref: decision.ref ?? item.ref, status: decision.status,
                                      title: decision.title, summary: decision.summary, options: decision.options,
@@ -151,9 +204,12 @@ import SwiftUI
             if let index = board.items.firstIndex(where: { $0.id == item.id }) { board.items[index] = merged }
             else { board.items.append(merged) }
             board.items = LAADecisionOrder.sorted(board.items)
-            return .notDelivered(LAADecisionCopy.deliveryError(decision.delivery?.error))
+            return .notDelivered(decision.delivery?.state == "pending"
+                                 ? "回答は保存済みです。配達結果を確認しています。"
+                                 : LAADecisionCopy.deliveryError(decision.delivery?.error))
         case "stored": return .done(stored: true)
-        default: return .done(stored: false)
+        case "delivered": return .done(stored: false)
+        default: return .failed("送信の結果を確認できません。読み直してください。")
         }
     }
 }
