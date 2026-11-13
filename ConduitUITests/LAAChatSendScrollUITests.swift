@@ -95,5 +95,80 @@ final class LAAChatSendScrollUITests: XCTestCase {
         assertOnScreen(row(app, "最大化から送信"), in: app, above: field, "the full editor's send also shows it")
         capture(app, "send-scroll-full-editor-after-send")
     }
+
+    // MARK: - A reader scrolled up stays; otherwise the chat is at its end (owner, 2026-11-13)
+
+    /// The first fixture row wholly on screen in the transcript's upper
+    /// half, and where it sits.
+    private func anchor(_ app: XCUIApplication, above field: XCUIElement) -> (index: Int, minY: CGFloat)? {
+        let middle = transcript(app).frame.midY
+        for index in 1...24 {
+            let element = row(app, "長い会話の\(index)件目")
+            if isOnScreen(element, in: app, above: field), element.frame.maxY < middle {
+                return (index, element.frame.minY)
+            }
+        }
+        return nil
+    }
+
+    private func assertStill(_ app: XCUIApplication, _ place: (index: Int, minY: CGFloat), above field: XCUIElement,
+                             _ message: String, file: StaticString = #filePath, line: UInt = #line) {
+        Thread.sleep(forTimeInterval: 2)
+        let element = row(app, "長い会話の\(place.index)件目")
+        XCTAssertTrue(element.exists, message, file: file, line: line)
+        XCTAssertEqual(element.frame.minY, place.minY, accuracy: 2,
+                       "\(message): row \(place.index) moved", file: file, line: line)
+        XCTAssertFalse(isOnScreen(row(app, "長い会話の24件目"), in: app, above: field),
+                       "\(message): the chat went to its end", file: file, line: line)
+    }
+
+    /// Focusing the composer and the keyboard coming up leave a reader
+    /// scrolled up where they were.
+    func testFocusingTheComposerWhileScrolledUpKeepsThePlace() throws {
+        let app = launch()
+        let field = app.textViews["composer.field"]
+        scrollUp(app, times: 3)
+        let place = try XCTUnwrap(anchor(app, above: field), "a row to watch in the upper half")
+        capture(app, "scroll-rule-reading-before-focus")
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        assertStill(app, place, above: field, "focusing the composer while reading back")
+        capture(app, "scroll-rule-reading-after-focus")
+        field.typeText("読み戻し中の入力")
+        assertStill(app, place, above: field, "typing while reading back")
+    }
+
+    /// At the end, the keyboard coming up keeps the latest message above it.
+    func testFocusingTheComposerAtTheEndKeepsTheLatestMessageInView() {
+        let app = launch()
+        let field = app.textViews["composer.field"]
+        assertOnScreen(row(app, "長い会話の24件目"), in: app, above: field, "the chat opens at its end")
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        assertOnScreen(row(app, "長い会話の24件目"), in: app, above: field, "the latest message stays above the keyboard")
+        capture(app, "scroll-rule-following-after-focus")
+    }
+
+    /// Leaving the app and coming back: a reader scrolled up finds their
+    /// place, a chat at its end is still at its end.
+    func testComingBackToTheAppKeepsThePlaceOrTheEnd() throws {
+        let app = launch()
+        let field = app.textViews["composer.field"]
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 2)
+        app.activate()
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        assertOnScreen(row(app, "長い会話の24件目"), in: app, above: field, "back at the end after returning")
+        capture(app, "scroll-rule-following-after-return")
+
+        scrollUp(app, times: 3)
+        let place = try XCTUnwrap(anchor(app, above: field), "a row to watch in the upper half")
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 2)
+        app.activate()
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        assertStill(app, place, above: field, "returning to the app while reading back")
+        capture(app, "scroll-rule-reading-after-return")
+    }
 }
 #endif
