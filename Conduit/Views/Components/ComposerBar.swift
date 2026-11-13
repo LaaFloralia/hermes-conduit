@@ -119,13 +119,6 @@ struct ComposerBar: View, Equatable {
     @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
-    /// The prediction row above the field (`ComposerPrediction`). On until
-    /// this device turns it off; off is the plain composer.
-    @AppStorage(ComposerPrediction.preferenceKey) private var composerPredictionEnabled = true
-    /// Whether the IME owns marked text in the field right now. The SwiftUI
-    /// bridge does not surface composition, so each user edit asks the
-    /// editor itself; while it is true no prediction is offered at all.
-    @State private var isIMEComposing = false
     /// V2's conversation: rest as a slim bar until the composer is used.
     @Environment(\.v2ComposerRests) private var restsWhenIdle
     /// Kept expanded a moment after use ends, so a tap on a control (which
@@ -333,17 +326,6 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    /// A tapped prediction goes in through the same single write path as
-    /// every other programmatic replacement, cursor after the words it
-    /// added. The row only offers itself at the end of the draft (empty, or
-    /// after a sentence), which is where the caret stays while writing.
-    private func insertPrediction(_ candidate: ComposerPrediction.Candidate) {
-        Haptics.selection()
-        replaceComposerText(ComposerPrediction.inserting(text, with: candidate), cursorAtEnd: true)
-        Task { @MainActor in
-            isFocused = true
-        }
-    }
 
     /// "New Chat" beside the screenshot: what was typed goes with it, so
     /// none of it is left behind in this chat's draft.
@@ -380,14 +362,6 @@ struct ComposerBar: View, Equatable {
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
         guard isFocused, let query = MentionAutocomplete.activeQuery(in: text) else { return [] }
         return MentionAutocomplete.filter(appState.composerMentionCandidates, query: query)
-    }
-
-    /// What the row above the field offers, while the editor has focus.
-    /// `ComposerPrediction` decides everything else (empty or sentence-end
-    /// draft, and nothing at all while the IME has marked text).
-    private var predictionCandidates: [ComposerPrediction.Candidate] {
-        guard ComposerPrediction.showsRow(enabled: composerPredictionEnabled, isFocused: isFocused) else { return [] }
-        return appState.composerPredictionCandidates(draft: text, isComposing: isIMEComposing)
     }
 
     private var action: ComposerAction {
@@ -580,11 +554,6 @@ struct ComposerBar: View, Equatable {
         }
         .onChange(of: photoItems) { _, _ in
             handlePhotoSelection()
-        }
-        .onChange(of: isFocused) { _, focused in
-            // No composition survives the editor losing focus; a stale flag
-            // would keep the prediction row away the next time it has it.
-            if !focused { isIMEComposing = false }
         }
         .onChange(of: updates.inputs.chatTakeover?.readyToken) { _, _ in
             resendAfterChatTakeover()
@@ -789,19 +758,6 @@ struct ComposerBar: View, Equatable {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-#if LAA_BUILD
-            // One line of the owner's own words and the roster, above the
-            // field. A typed @ or / takes the space; converting never does.
-            if mentionCandidates.isEmpty && !predictionCandidates.isEmpty {
-                ComposerPredictionRow(candidates: predictionCandidates) { candidate in
-                    insertPrediction(candidate)
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-#endif
-
             // A voice message being recorded or previewed takes the field's
             // place; the draft waits underneath.
             if showsVoiceMessage {
@@ -933,12 +889,6 @@ struct ComposerBar: View, Equatable {
                     // write is dictation's.
                     dictatedDraft = nil
                     appState.noteComposerUserEdit()
-#if LAA_BUILD
-                    // Read before this keystroke reaches the draft, so the
-                    // prediction row is already withheld on the frame a
-                    // composition starts and back after it ends.
-                    isIMEComposing = ComposerMarkedText.isComposing
-#endif
                     // Typing ends a dictation: its next result would rewrite
                     // the draft from where it began and drop the keystrokes.
                     // The words so far stay.
@@ -3233,80 +3183,3 @@ private struct ComposerActionChrome: ViewModifier {
 #endif
     }
 }
-
-#if LAA_BUILD
-/// The prediction row above the field: one line of the owner's own recent
-/// sentences and the roster. Same glass, type and hairlines as
-/// `MentionSuggestionList`, so it reads as that layer, not a new one.
-private struct ComposerPredictionRow: View {
-    let candidates: [ComposerPrediction.Candidate]
-    let onSelected: (ComposerPrediction.Candidate) -> Void
-    @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
-                    Button {
-                        onSelected(candidate)
-                    } label: {
-                        Text(candidate.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(Text(verbatim: "この文を入力します。"))
-                    .accessibilityIdentifier("composer.prediction.\(index)")
-                    if index < candidates.count - 1 {
-                        Divider()
-                            .frame(height: rowHeight / 2)
-                            .opacity(0.3)
-                    }
-                }
-            }
-        }
-        .frame(height: rowHeight)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("composer.prediction")
-    }
-}
-
-/// Composition state of the composer's own field. The SwiftUI bridge does not
-/// publish it, so the row asks the editor UIKit already holds — the same
-/// `markedTextRange` the UIKit bridges defer their own writes on.
-@MainActor
-private enum ComposerMarkedText {
-    static var isComposing: Bool { field()?.markedTextRange != nil }
-
-    /// The field itself, by the identifier its bridge sets. The other text
-    /// views around the app (the full editor, Brain) are never this one.
-    private static func field(in view: UIView) -> UITextView? {
-        if let textView = view as? UITextView, textView.accessibilityIdentifier == "composer.field" {
-            return textView
-        }
-        for child in view.subviews {
-            if let found = field(in: child) { return found }
-        }
-        return nil
-    }
-
-    private static func field() -> UITextView? {
-        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-            for window in scene.windows {
-                if let found = field(in: window) { return found }
-            }
-        }
-        return nil
-    }
-}
-#endif

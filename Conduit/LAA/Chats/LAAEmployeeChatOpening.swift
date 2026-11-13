@@ -24,6 +24,7 @@ struct LAAEmployeeChatOpeningView: View {
     @ObservedObject var preview: LAAEmployeeChatPreview
     var compositionChanged: (Bool) -> Void = { _ in }
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var draft = ""
     @State private var focused = false
     @State private var composing = false
@@ -51,10 +52,6 @@ struct LAAEmployeeChatOpeningView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            LAAEmployeeHeader(profile: profile, name: name,
-                status: preview.failure == nil ? "接続中…" : "Macに接続できません", compact: true)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, -LAAConversationHeaderLayout.controlHeight)
             ScrollView {
             LazyVStack(spacing: 20) {
                 if messages.isEmpty {
@@ -82,8 +79,18 @@ struct LAAEmployeeChatOpeningView: View {
                     }
                 }
             }.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
-            }.defaultScrollAnchor(.bottom).clipped()
+            }.defaultScrollAnchor(.bottom)
         }
+            // The same heading, in the same place and size as the connected
+            // conversation's, so nothing moves when it takes over.
+            .v2EdgeBar(.top) {
+                LAAEmployeeHeader(profile: profile, name: name,
+                    status: preview.failure == nil ? "接続中…" : "Macに接続できません",
+                    compact: dynamicTypeSize.isAccessibilitySize)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, -LAAConversationHeaderLayout.controlHeight)
+            }
             .background(LAAColor.background.ignoresSafeArea())
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: LAASpacing.x2) {

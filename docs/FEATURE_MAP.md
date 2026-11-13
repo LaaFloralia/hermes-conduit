@@ -49,15 +49,47 @@ maintainer decides (2026-10-20).
 The cached opening view keeps its model/effort menus and send state visible
 above the keyboard. Until the target employee is connected, the menus explain
 why values are unavailable and Send stays disabled; Retry reconnects without
-submitting the draft. The live header reserves the mascot/name's full height,
-and the transcript is clipped below it. Ending Japanese composition releases
-the preview route, with the draft retained for the same employee.
+submitting the draft. The header is a top bar over the transcript (2026-11-13,
+owner request: it took too much room): a 56 pt mascot on the row of the back
+and call buttons with the name directly under it, the same size and position
+in the opening preview and the live chat, and the transcript scrolls beneath
+it instead of being clipped below a reserved block. Accessibility type sizes
+use a 48 pt mascot. Ending Japanese composition releases the preview route,
+with the draft retained for the same employee.
+
+The Chat tab lists Monet in the same row shape and 48 pt mascot as every other
+employee (2026-11-13, owner request); Monet stays first with its call button.
+The row of the owner's own recent sentences above the composer, and its
+Settings switch, were removed (2026-11-13, owner request).
 
 Opening an employee chat uses the ordinary 30-second launch budget. The former
 eight-second deadline cancelled an in-flight connection and left a failed
 preview requiring manual retry. This budget does not extend authentication,
 approval, pause or stop requirements. The regression covers failed preview,
 keyboard controls, draft handoff, the eight-second boundary and final expiry.
+
+**Siblings:** opening preview · live chat (one header) · Chat tab list on iPhone and Mac · group rooms and
+Work details (own headers, unchanged)
+
+**Code**
+- `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`,
+  `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`,
+  `Conduit/Views/Components/ComposerBar.swift`
+- Tests: `ConduitTests/LAAConversationHeaderSnapshotTests.swift`, `ConduitTests/LAAEmployeeChatPreviewTests.swift`,
+  `ConduitUITests/LAAChatsUITests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`,
+  `ConduitUITests/LAAChatComposerUITests.swift`
+
+**Rulings**
+- The header overlays the transcript and is the same in the preview and the live chat (owner, 2026-11-13).
+- Monet's row on the Chat tab is the common employee row (owner, 2026-11-13).
+- No suggestion row above the composer (owner, 2026-11-13). Upstream's opt-in `PredictiveRow` is a separate
+  feature and stays off by default.
+
+**Open gaps**
+- The preview's first message sits about 7 pt lower than the live chat's.
+
+**Checked:** 2026-11-13, 3ef5680d (laa/chat-ui-layout): 42 tests on the 440×956 simulator (header snapshots at 375/440,
+normal and accessibility sizes, light and dark; Chat list, conversation, preview, composer and send-scroll UI tests).
 
 ## Hermes is waiting on you
 
@@ -1056,6 +1088,10 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   「Macのアップデート待ち」.
 - The confirmation is one checkmark, a success haptic and one line; Reduce Motion keeps it to a fade. No glow,
   confetti or new colours.
+- An answer to a conversation that is still working is held, not failed (owner, 2026-11-13: 「decisionが送信エラー
+  多発」): the Bridge keeps it `pending` with `waiting: true` and delivers it itself when that turn ends. The board
+  keeps the row and reads 「会話が空き次第、自動で届けます」 with no 「届け直す」 and no attention colour; 「届いていません」
+  is only for an archived or missing conversation, a stopped Paseo, an unconfirmed send or a wait that expired.
 
 **Owner check on the device**
 - Open a production-sized decision and write the answer in 「選択肢以外で答える」 without tapping any card; it should reach the conversation that asked and leave the board.
@@ -1066,7 +1102,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
+**Checked:** 2026-11-13, 8ab12bb9 and f4908ecf (laa/chat-ui-layout): busy conversations hold the answer and the Bridge delivers it after the turn (bridge decisions tests 25, production record J13 delivered by the Bridge after three failed sends); the app's waiting line and copy (LAADecisionTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
 
 ## Voice beside the tabs
 

@@ -36,7 +36,8 @@ struct LAADecisionDetailView: View {
         self.drafts = drafts
         self.onAnswered = onAnswered
         self.onFinished = onFinished
-        _undelivered = State(initialValue: item.deliveryFailed ? LAADecisionCopy.deliveryError(item.delivery?.error) : nil)
+        _undelivered = State(initialValue: item.deliveryFailed ? LAADecisionCopy.deliveryError(item.delivery?.error)
+                             : item.deliveryWaiting ? LAADecisionCopy.waitingDetail : nil)
     }
 
     #if DEBUG
@@ -285,8 +286,10 @@ struct LAADecisionDetailView: View {
 
     private var undeliveredBlock: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: LAADecisionCopy.notDelivered)
-                .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.attention)
+            // A held answer is not a failure: no attention colour, nothing to resend.
+            Text(verbatim: item.deliveryWaiting ? LAADecisionCopy.waiting : LAADecisionCopy.notDelivered)
+                .laaTextStyle(.body).fontWeight(.semibold)
+                .foregroundStyle(item.deliveryWaiting ? LAAColor.text : LAAColor.attention)
             if let undelivered {
                 Text(verbatim: undelivered).laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
                     .fixedSize(horizontal: false, vertical: true)
@@ -367,7 +370,7 @@ struct LAADecisionDetailView: View {
         guard record.id == item.id else { return }
         item = record
         undelivered = record.deliveryFailed ? LAADecisionCopy.deliveryError(record.delivery?.error)
-            : record.delivery?.state == "pending" ? "回答は保存済みです。配達結果を確認しています。" : nil
+            : record.delivery?.state == "pending" ? LAADecisionCopy.pending(record) : nil
         if record.answer != nil { failure = nil; noteFocused = false }
         if record.delivery?.state == "delivered" || record.delivery?.state == "stored" {
             onAnswered?(record)

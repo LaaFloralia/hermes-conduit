@@ -411,7 +411,16 @@ struct LAADecisionBoardView: View {
             piece.foregroundColor = LAAColor.secondaryText
             line += piece
         }
-        if let time = clock(answer.answeredAt) {
+        if item.deliveryWaiting {
+            if !line.characters.isEmpty {
+                var separator = AttributedString(" · ")
+                separator.foregroundColor = LAAColor.secondaryText
+                line += separator
+            }
+            var piece = AttributedString(LAADecisionCopy.waiting)
+            piece.foregroundColor = LAAColor.secondaryText
+            line += piece
+        } else if let time = clock(answer.answeredAt) {
             if !line.characters.isEmpty {
                 var separator = AttributedString(" · ")
                 separator.foregroundColor = LAAColor.secondaryText
