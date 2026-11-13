@@ -30,8 +30,10 @@
 	<true/>
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
+	<!-- The owner's app waits on every answer: Background starved the Bridge of CPU
+	     and memory whenever the Mac was busy (2026-11-13). -->
 	<key>ProcessType</key>
-	<string>Background</string>
+	<string>Interactive</string>
 	<key>StandardOutPath</key>
 	<string>@@HOME@@/Library/Logs/com.laa.bridge.log</string>
 	<key>StandardErrorPath</key>
