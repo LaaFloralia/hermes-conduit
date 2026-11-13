@@ -628,14 +628,23 @@ final class ChatScrollHostedTests: XCTestCase {
         let mounted = try mount(messages)
         settle(mounted.host.view, seconds: 0.4)
 
+#if LAA_BUILD
+        // LAA hides ordinary tool activity. Hidden steps must add no rows
+        // or spacing: the reply follows the visible question directly.
+        for step in steps {
+            XCTAssertNil(mounted.engine.rowFrame(for: step.id), "ordinary tool steps are hidden in LAA")
+        }
+        let header = try XCTUnwrap(mounted.engine.rowFrame(for: "ask"), "the preceding visible question is laid out")
+#else
         let header = try XCTUnwrap(mounted.engine.rowFrame(for: "step-0"), "the run's line is laid out")
-        let reply = try XCTUnwrap(mounted.engine.rowFrame(for: "reply"), "the reply is laid out")
         XCTAssertGreaterThan(header.maxY - header.minY, 1, "the run shows as one line")
+#endif
+        let reply = try XCTUnwrap(mounted.engine.rowFrame(for: "reply"), "the reply is laid out")
         XCTAssertEqual(
             reply.minY - header.maxY,
             ChatStepStyle.transcriptRowSpacing,
             accuracy: 1,
-            "one row spacing between the collapsed run and the reply"
+            "one row spacing after the preceding visible row"
         )
     }
 
@@ -697,11 +706,17 @@ final class ChatScrollHostedTests: XCTestCase {
         let surface = try XCTUnwrap(mounted.engine.surface)
         let rowBottom = surface.transcriptOriginY + last.maxY - view.contentOffset.y
         let composerTop = view.bounds.height - view.adjustedContentInset.bottom
+#if LAA_BUILD
+        // V2 requests a resting composer, but LAA always stacks it below
+        // the transcript. The reply-to-composer gap remains the same rule.
+        XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "LAA stacks either composer mode below the scroll view")
+#else
         if composerRests {
             XCTAssertGreaterThan(view.adjustedContentInset.bottom, 40, "the scroll view insets for the resting composer")
         } else {
             XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "the stacked composer sits below the scroll view")
         }
+#endif
         XCTAssertLessThan(composerTop - rowBottom, 30, "no band of empty space above the composer")
         XCTAssertEqual(
             composerTop - rowBottom,

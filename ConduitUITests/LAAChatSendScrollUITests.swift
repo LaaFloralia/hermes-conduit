@@ -149,6 +149,40 @@ final class LAAChatSendScrollUITests: XCTestCase {
         capture(app, "scroll-rule-following-after-focus")
     }
 
+    /// Hiding the keyboard resizes the viewport without moving a reader's row.
+    func testDismissingTheKeyboardWhileScrolledUpKeepsThePlace() throws {
+        let app = launch()
+        let field = app.textViews["composer.field"]
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        scrollUp(app, times: 3)
+        let place = try XCTUnwrap(anchor(app, above: field), "a row to watch before hiding the keyboard")
+        capture(app, "scroll-rule-reading-before-dismiss")
+        dismissKeyboard(app)
+        assertStill(app, place, above: field, "hiding the keyboard while reading back")
+        capture(app, "scroll-rule-reading-after-dismiss")
+    }
+
+    /// At the end, the enlarged viewport still ends above the composer.
+    func testDismissingTheKeyboardAtTheEndKeepsTheLatestMessageInView() {
+        let app = launch()
+        let field = app.textViews["composer.field"]
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        assertOnScreen(row(app, "長い会話の24件目"), in: app, above: field, "at the end before hiding the keyboard")
+        dismissKeyboard(app)
+        assertOnScreen(row(app, "長い会話の24件目"), in: app, above: field, "at the end after hiding the keyboard")
+        capture(app, "scroll-rule-following-after-dismiss")
+    }
+
+    private func dismissKeyboard(_ app: XCUIApplication) {
+        // A tap, rather than a drag that would itself change the scroll position.
+        transcript(app).coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 5)
+    }
+
     /// Leaving the app and coming back: a reader scrolled up finds their
     /// place, a chat at its end is still at its end.
     func testComingBackToTheAppKeepsThePlaceOrTheEnd() throws {
