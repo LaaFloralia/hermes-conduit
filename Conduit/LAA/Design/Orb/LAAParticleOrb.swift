@@ -20,8 +20,9 @@ enum LAAParticleOrb {
 
     /// The same particle set at every size: the ball is only scaled, so a small orb looks like the
     /// large one shrunk (its particles average out under the pixels), not like a thinner drawing.
-    /// `radiusPx` is kept for callers that want to step the count down under load.
-    static let fullCount = 1820
+    /// The count is the inside particles; the shell adds two thirds of it. `radiusPx` is kept for
+    /// callers that want to step the count down under load.
+    static let fullCount = 1500
     static func particleCount(radiusPx: Double) -> Int { fullCount }
 
     /// Draws the orb centred in `canvas`. The ball's radius is 0.48 `size` (the orb's frame); its glow
@@ -73,27 +74,33 @@ enum LAAParticleOrb {
         // Glow on the dark ground only, gone by 1.3 R. Inside, a haze that falls smoothly from the
         // centre to the edge (no dark moat before the shell), and a soft heart: a cloud, not a dot.
         if ground != .paperBead {
-            radial(R * 1.3, light, [(0.70, 0.06), (0.77, 0.04), (0.85, 0.018), (0.92, 0.006), (1.0, 0)])
+            radial(R * 1.3, light, [(0.70, 0.07), (0.77, 0.085), (0.81, 0.09), (0.85, 0.075), (0.92, 0.035), (1.0, 0)])
         }
-        radial(R * 1.0, light, [(0, 0.45), (0.3, 0.38), (0.5, 0.31), (0.65, 0.26), (0.8, 0.21),
-                                (0.9, 0.16), (0.96, 0.08), (1, 0)])
-        let heartR = R * (0.30 + 0.03 * level) * breath
-        radial(heartR, (1.0, 1.0, 1.0), [(0, 0.95), (0.3, 0.7), (0.6, 0.32), (0.85, 0.08), (1, 0)])
+        radial(R * 1.0, light, [(0, 0.45), (0.3, 0.38), (0.4, 0.27), (0.5, 0.18), (0.6, 0.17), (0.7, 0.16), (0.8, 0.13),
+                                (0.9, 0.07), (0.95, 0.04), (0.98, 0.015), (1, 0)])
+        let heartR = R * (0.29 + 0.03 * level) * breath
+        radial(heartR, (1.0, 1.0, 1.0), [(0, 1.0), (0.45, 0.9), (0.75, 0.35), (1, 0)])
 
         // Particles. Each lives 1/k of the wave's turn, flares and fades while it moves outward, then
         // reappears elsewhere. Every one is a streak along its outward motion that tapers to nothing at
-        // both ends (motion blur), filled as a lens. Kinds: 0 shell (short streaks on 0.95...1.0 R),
-        // 1 core (fine streaks in a cloud to 0.4 R, some streaming to 0.6 R), 3 rain (medium streaks
-        // 0.5...0.82 R), 2 drops (16 large soft lenses, mostly in the upper half).
+        // both ends (motion blur), filled as a lens.
+        //   inside (`n`): 1 core cloud (fine streaks to 0.3 R and a grainy band at 0.25...0.45 R),
+        //     5 streams (0.3...0.6 R), 3 rain (0.5...0.82 R), 4 hairs (very thin long dim streaks);
+        //   0 shell (`n` x 2/3): a soft band 0.88...1.0 R, brightest near 0.94 R, lumps and gaps along it;
+        //   2 drops (38 big bright lumps with a soft halo, most in four clusters in the upper half).
+        // Shell, rain, hairs and drops lie across the view (placed by their seen radius), so the shell
+        // is one band at the edge and nothing piles up into a second ring.
         let n = count ?? particleCount(radiusPx: R * Double(displayScale))
-        let nDrops = 16
+        let nShell = n * 2 / 3, nDrops = 38
         let phase = (wave / (2 * .pi)).truncatingRemainder(dividingBy: 1) + (wave < 0 ? 1 : 0)
         let buckets = 6
         var shellP = [Path](repeating: Path(), count: buckets)
         var coreP = [Path](repeating: Path(), count: buckets)
         var rainP = [Path](repeating: Path(), count: buckets)
         var dropP = [Path](repeating: Path(), count: buckets)
-        let width = 0.0105 * R                              // widest point of a fine streak
+        var blueP = [Path](repeating: Path(), count: buckets)        // pale blue grains around the heart
+        var haloP = Path()                                          // wide soft light around the big lumps
+        let width = 0.0145 * R                              // widest point of a fine streak
         func lens(_ x: Double, _ y: Double, _ ux: Double, _ uy: Double, _ len: Double, _ w: Double) -> Path {
             // a streak centred on (x, y) along (ux, uy), len long, w wide at the middle, pointed ends
             let hx = ux * len / 2, hy = uy * len / 2, nx = -uy * w, ny = ux * w
@@ -104,104 +111,119 @@ enum LAAParticleOrb {
             p.closeSubpath()
             return p
         }
-        for i in 0..<(n + nDrops) {
+        for i in 0..<(n + nShell + nDrops) {
             let m = i % 25
-            // 48 % shell, 4 % rain, 40 % core cloud, 8 % core streams
-            let kind = i >= n ? 2 : (m < 12 ? 0 : (m < 13 ? 3 : 1))
+            let kind = i >= n + nShell ? 2 : i >= n ? 0 : (m < 3 ? 3 : m < 5 ? 4 : m < 7 ? 5 : 1)
             let k = kind == 0 ? 6 + Int(hash(UInt64(i), 0) * 7)
-                  : kind == 1 ? 10 + Int(hash(UInt64(i), 0) * 10)
-                  : kind == 3 ? 7 + Int(hash(UInt64(i), 0) * 6) : 4 + Int(hash(UInt64(i), 0) * 4)
+                  : kind == 2 ? 4 + Int(hash(UInt64(i), 0) * 4) : 8 + Int(hash(UInt64(i), 0) * 10)
             let x = phase * Double(k) + hash(UInt64(i), 1)
             let cyc = Int(x) % k, u = x - floor(x)
             let s = UInt64(i) &* 977 &+ UInt64(cyc) &* 7919
             if kind != 2 && hash(s, 2) > activity { continue }
-            // Direction: uniform on the sphere, z toward the viewer. Rain and drops move across the
-            // view (in its plane), placed by their seen radius, so they do not pile up into a second ring.
-            var dz = 2 * hash(s, 3) - 1
-            if kind == 2 || kind == 3 { dz = 0 }
-            let phi = 2 * .pi * hash(s, 4)
+            let inPlane = kind != 1 && kind != 5
+            // Direction: uniform on the sphere, z toward the viewer (the core cloud and its streams).
+            let dz = inPlane ? 0 : 2 * hash(s, 3) - 1
+            var phi = 2 * .pi * hash(s, 4)
             let sxy = (1 - dz * dz).squareRoot()
-            let ux = cos(phi)
+            var ux = cos(phi)
             var uy = sin(phi)
-            if kind == 2 && uy > 0 && hash(s, 13) < 0.75 { uy = -uy }   // drops gather in the upper half
-            var limb = 1.0
-            if kind == 0 {
-                // The shell is seen mostly at its limb. Its clumps change brightness only, so the
-                // outline stays an exact circle.
-                let clump = 0.82 + 0.18 * sin(3 * phi + 1.3 + 0.6 * beat) + 0.12 * sin(7 * phi + 4.1 - 0.9 * beat)
-                                 + 0.08 * sin(12 * phi + 2.0 + 1.4 * beat)
-                if hash(s, 10) > 0.05 + 0.95 * pow(sxy, 7) { continue }
-                limb = (0.35 + 0.65 * pow(sxy, 4)) * max(0.4, min(1.2, clump))
-            }
+            if kind == 2 && uy > 0 && hash(s, 13) < 0.85 { uy = -uy }   // drops gather in the upper half
             let life = 2.86 / Double(k)
             var rho: Double, len: Double, w: Double, peak: Double, speed: Double, env0: Double
+            var shade = 1.0, upW = 0.35
             switch kind {
             case 0:
-                len = 0.036 * exp(0.35 * gauss(hash(s, 6), hash(s, 7)))
-                rho = (0.995 - len / 2) - 0.03 * hash(s, 5)       // the outer tip never passes 1.0 R
-                w = width * 1.05
-                peak = 2.5 * (1 + 0.6 * level); speed = 0; env0 = pow(sin(.pi * u), 0.8)
+                // brightness clumps along the band (the outline stays an exact circle); top brighter
+                // bright lumps and dark gaps alternate along the band
+                let clump = 0.55 + 0.50 * sin(3 * phi + 1.3 + 0.5 * beat) + 0.35 * sin(7 * phi + 4.1 - 0.8 * beat)
+                                 + 0.20 * sin(13 * phi + 2.0 + 1.3 * beat)
+                shade = max(0.12, min(1.5, clump)) * (0.35 + 0.85 * hash(s, 12)); upW = 0.3
+                let h5 = hash(s, 5)
+                // a wide band 0.88...1.0 R: longer and dimmer inward, brightest near 0.94 R, the outer row dim
+                len = 0.04 * (1 + 1.0 * (1 - h5)) * exp(0.35 * gauss(hash(s, 6), hash(s, 7)))
+                rho = min(0.88 + 0.12 * pow(h5, 0.6), 0.997 - len / 2)
+                shade *= 0.25 + 0.75 * exp(-pow((rho - 0.94) / 0.035, 2))
+                w = 0.0125 * R
+                peak = 1.5 * (1 + 0.6 * level); speed = 0; env0 = pow(sin(.pi * u), 0.8)
             case 1:
-                let stream = m >= 23 || hash(s, 11) < 0.1
-                rho = stream ? 0.34 + 0.26 * hash(s, 5) : 0.40 * pow(hash(s, 5), 0.5)
-                len = (stream ? 0.07 : 0.03) * exp(0.4 * gauss(hash(s, 6), hash(s, 7)))
-                w = width * (stream ? 1.0 : 0.9)
-                peak = 1.45; speed = 0.10 + 0.10 * thinking; env0 = pow(sin(.pi * u), 0.8)
+                rho = hash(s, 11) < 0.40 ? 0.40 * pow(hash(s, 5), 0.5) : 0.24 + 0.32 * hash(s, 5)
+                len = 0.03 * exp(0.4 * gauss(hash(s, 6), hash(s, 7)))
+                w = width * 0.75
+                peak = 3.0; speed = 0.10 + 0.10 * thinking; env0 = pow(sin(.pi * u), 0.8)
+            case 5:
+                rho = 0.30 + 0.30 * hash(s, 5)
+                len = 0.04 + 0.04 * hash(s, 6)
+                w = width * 0.65
+                peak = 2.0; speed = 0.12 + 0.12 * thinking; env0 = pow(sin(.pi * u), 0.9)
             case 3:
                 rho = 0.50 + 0.32 * pow(hash(s, 5), 1.3)
-                len = 0.07 + 0.05 * hash(s, 6)
-                w = width * 1.1
-                peak = 0.95; speed = 0.12 + 0.12 * thinking; env0 = pow(sin(.pi * u), 1.0)
+                len = 0.03 + 0.04 * hash(s, 6)
+                w = width * 0.6
+                peak = 1.5; speed = 0.12 + 0.12 * thinking; env0 = pow(sin(.pi * u), 1.0)
+            case 4:
+                len = 0.15 + 0.15 * hash(s, 6)
+                rho = 0.22 + 0.3 * hash(s, 5) + len / 2
+                w = 0.004 * R
+                peak = 0.4; speed = 0.15 + 0.15 * thinking; env0 = pow(sin(.pi * u), 1.0)
             default:
-                rho = 0.40 + 0.38 * hash(s, 5)
-                len = 0.13 + 0.06 * hash(s, 6)
-                w = 0.036 * R * (0.8 + 0.4 * hash(s, 9))
-                peak = 1.8; speed = 0.15 + 0.15 * thinking; env0 = pow(sin(.pi * u), 1.3)
+                // big bright lumps: most gather in four clusters in the upper half, drifting slowly
+                if hash(s, 15) < 0.65 {
+                    let j = Int(hash(UInt64(i), 16) * 4)
+                    let ca = [-2.35, -1.85, -1.25, -0.75][j] + 0.15 * sin(beat + Double(j))
+                    let cr = [0.50, 0.62, 0.55, 0.46][j]
+                    let ex = cr * cos(ca) + 0.10 * gauss(hash(s, 17), hash(s, 18))
+                    let ey = cr * sin(ca) + 0.10 * gauss(hash(s, 19), hash(s, 20))
+                    rho = min(0.8, (ex * ex + ey * ey).squareRoot()); phi = atan2(ey, ex)
+                    ux = cos(phi); uy = sin(phi)
+                } else {
+                    rho = 0.30 + 0.45 * hash(s, 5)
+                }
+                len = 0.07 + 0.11 * hash(s, 6)
+                w = 0.027 * R * (0.5 + 0.7 * hash(s, 9))
+                peak = 2.2; speed = 0.15 + 0.15 * thinking; env0 = pow(sin(.pi * u), 1.3)
             }
-            rho = rho * (kind == 2 || kind == 3 ? 1 : sxy) + (kind == 0 ? 0 : speed * (u - 0.5) * life * sxy)
+            rho = rho * sxy + speed * (u - 0.5) * life * sxy
             let up = -uy * rho                              // screen y grows downward
             let depth = 0.82 + 0.18 * dz                    // the far side a little dimmer
-            let env = env0 * peak * (0.65 + 0.35 * hash(s, 8)) * breath * (1 + 0.35 * up) * depth * limb
+            let env = env0 * peak * (0.65 + 0.35 * hash(s, 8)) * breath * (1 + upW * up) * depth * shade
             // seen length: the outward motion foreshortened (a dot when it moves toward the viewer)
-            let seen = max(len * (kind == 2 || kind == 3 ? 1 : sxy) * R, 1.6 * w)
+            let seen = max(len * sxy * R, 1.6 * w)
             let p = lens(c.x + ux * rho * R, c.y + uy * rho * R, ux, uy, seen, w)
             let bk = max(0, min(buckets - 1, Int(env * Double(buckets))))
             switch kind {
             case 0: shellP[bk].addPath(p)
-            case 1: coreP[bk].addPath(p)
-            case 3: rainP[bk].addPath(p)
-            default: dropP[bk].addPath(p)
+            case 1: if hash(s, 14) < 0.42 { blueP[bk].addPath(p) } else { coreP[bk].addPath(p) }
+            case 5: coreP[bk].addPath(p)
+            case 2:
+                dropP[bk].addPath(p)
+                if env > 0.35 { haloP.addPath(lens(c.x + ux * rho * R, c.y + uy * rho * R, ux, uy, seen * 1.9, w * 3.2)) }
+            default: rainP[bk].addPath(p)
             }
         }
         // Each group is drawn with a slight blur; then again blurred wide to bleed light around the
         // sharp streaks (the reference's brightness comes from this bloom). The shell's bloom is weak,
         // so there is no thick glowing band at the edge.
         func alpha(_ b: Int) -> Double { min(1, 1.8 * (Double(b) + 0.5) / Double(buckets)) }
-        let groups: [([Path], Double)] = [(shellP, 0.45), (coreP, 0.7), (rainP, 0.7)]
+        let white = (0.90, 0.95, 1.0), pale = (0.62, 0.76, 1.0)
+        // (paths, sharp tint, bloom strength): crisp grains, and a bloom that is weak on the shell
+        let groups: [([Path], (Double, Double, Double), Double)] = [
+            (shellP, white, 0.5), (coreP, white, 1.6), (blueP, pale, 1.6), (rainP, white, 0.9), (dropP, white, 2.4)]
         ctx.drawLayer { l in
             l.blendMode = .plusLighter
-            l.addFilter(.blur(radius: 0.006 * R))
-            for (paths, _) in groups {
-                for b in 0..<buckets { l.fill(paths[b], with: .color(color((0.90, 0.95, 1.0), alpha(b)))) }
+            l.addFilter(.blur(radius: 0.0065 * R))
+            for (paths, tint, _) in groups {
+                for b in 0..<buckets { l.fill(paths[b], with: .color(color(tint, alpha(b)))) }
             }
-        }
-        ctx.drawLayer { l in                                // the drops are softer, out-of-focus blobs
-            l.blendMode = .plusLighter
-            l.addFilter(.blur(radius: 0.014 * R))
-            for b in 0..<buckets { l.fill(dropP[b], with: .color(color((0.90, 0.95, 1.0), alpha(b)))) }
-            for b in 0..<buckets { l.fill(dropP[b], with: .color(color((0.66, 0.79, 1.0), 0.5 * alpha(b)))) }
         }
         ctx.drawLayer { l in
             l.blendMode = .plusLighter
             l.addFilter(.blur(radius: 0.035 * R))
-            for (paths, bs) in groups {
+            for (paths, _, bs) in groups {
                 for b in 0..<buckets {
-                    let a = bs * alpha(b)
-                    l.fill(paths[b], with: .color(color((0.66, 0.79, 1.0), a)))
-                    if bs >= 0.6 { l.stroke(paths[b], with: .color(color((0.66, 0.79, 1.0), 0.6 * a)),
-                                            style: StrokeStyle(lineWidth: width * 1.5, lineCap: .round)) }
+                    l.fill(paths[b], with: .color(color((0.66, 0.79, 1.0), min(1, 1.6 * bs * alpha(b)))))
                 }
             }
+            l.fill(haloP, with: .color(color((0.66, 0.79, 1.0), 0.36)))
         }
         ctx.blendMode = .normal
     }
@@ -240,7 +262,8 @@ struct LAAParticleOrbView: View {
                                     wave: (2.2 * t).truncatingRemainder(dividingBy: 2 * .pi),
                                     spin: (0.2 * t).truncatingRemainder(dividingBy: 20 * .pi),
                                     level: level, thinking: thinking, solid: solid,
-                                    ground: ground == .dark && size >= 120 ? .darkRim : ground)
+                                    ground: ground == .dark && size >= 120 ? .darkRim : ground,
+                                    count: size >= 120 ? 1000 : nil)
             }
             .frame(width: size * 1.3, height: size * 1.3)
         }

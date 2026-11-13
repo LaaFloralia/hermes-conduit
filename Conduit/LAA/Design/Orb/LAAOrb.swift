@@ -75,7 +75,9 @@ private struct LAAOrbCanvas: View, Animatable {
                                     beat: (0.35 * t).truncatingRemainder(dividingBy: 2 * .pi),
                                     wave: (2.2 * t).truncatingRemainder(dividingBy: 2 * .pi),
                                     spin: (0.2 * t).truncatingRemainder(dividingBy: 20 * .pi),
-                                    level: level, thinking: thinking, solid: solid, ground: ground)
+                                    level: level, thinking: thinking, solid: solid, ground: ground,
+                                    // The large orb draws fewer inner particles: the same look, a lighter frame.
+                                    count: size >= 120 ? 1000 : nil)
             }
             .frame(width: size * 1.3, height: size * 1.3)
         }
