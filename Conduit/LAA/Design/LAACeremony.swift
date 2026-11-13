@@ -202,12 +202,14 @@ struct LAARimFinish: View {
 
     static let innerInset: CGFloat = LAASpacing.x1
     static let lightWidth: CGFloat = 1.5
+    static let breathPeak: Double = 0.5
 
     var body: some View {
         ZStack {
             if look.breath > 0 {
+                // Half strength at its peak: a breath, not a flash.
                 LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
-                    .stroke(LAAColor.glassLight.opacity(0.9 * look.breath), lineWidth: 1)
+                    .stroke(LAAColor.glassLight.opacity(Self.breathPeak * look.breath), lineWidth: 1)
             }
             if look.outer > 0 {
                 LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
