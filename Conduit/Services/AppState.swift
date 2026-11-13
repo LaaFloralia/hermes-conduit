@@ -1096,6 +1096,8 @@ final class AppState: ObservableObject {
     /// the card changing redraws the card alone.
     let chatCards = ChatCardsModel()
     /// Cached once per transcript mutation so view updates do not rescan the full history.
+    private var clarifyToolIDs: [String: String] = [:]
+    private var latestClarifyToolID: [String: String] = [:]
     @Published private(set) var pendingClarifyMessageID: String?
     /// What that card is, for the jump button's words.
     @Published private(set) var pendingDecisionKind = PendingDecisionKind.question
@@ -17690,6 +17692,7 @@ final class AppState: ObservableObject {
                 sessionIDs: presentationCacheSessionIDs(for: result.sessionId)
             )
         }
+        reconcileClarifyRequests(result.snapshot)
         // The gateway's authoritative pending clarification restores the
         // answerable card even when the one-shot clarify.request fired while
         // this device was detached; answers locked before the detach come
@@ -33786,6 +33789,7 @@ final class AppState: ObservableObject {
                 authoritativeYolo: authoritativeYolo,
                 authoritativeApprovalsMode: authoritativeApprovalsMode
             )
+            reconcileClarifyRequests(snapshot)
             // Some gateway generations also carry `pending_clarify` on the
             // session.info snapshot; wherever it appears it is the same
             // authoritative state as the resume copy.
@@ -33821,7 +33825,10 @@ final class AppState: ObservableObject {
                     await syncPresentedScreens()
                 }
             }
-            if name.lowercased() == "clarify" { break }
+            if name.lowercased() == "clarify" {
+                latestClarifyToolID[streamSessionId] = eventToolID
+                break
+            }
             let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
             let stableToolID = toolID?.isEmpty == false ? toolID : nil
             // Tool lifecycle events can be replayed after a resume. A stable
@@ -33861,7 +33868,23 @@ final class AppState: ObservableObject {
             )
 
         case .toolComplete(_, let name, let output, let eventToolID):
-            if name.lowercased() == "clarify" { break }
+            if name.lowercased() == "clarify" {
+                if let toolID = eventToolID,
+                   let requestID = clarifyToolIDs.removeValue(forKey: streamSessionId + "\u{1F}" + toolID),
+                   let index = messages.firstIndex(where: { $0.clarify?.requestId == requestID }),
+                   let record = ClarifyActivity.historyRecord(for: ToolActivity(id: toolID, name: name, input: nil, output: output, status: .complete), rowID: toolID),
+                   var card = messages[index].clarify, card.questions.count == record.questions.count {
+                    for i in card.questions.indices where card.questions[i].status != .answered || card.questions[i].answer == nil {
+                        card.questions[i].status = record.questions[i].status
+                        card.questions[i].answer = record.questions[i].answer
+                    }
+                    card.isExpired = record.isExpired
+                    card.error = record.error
+                    messages[index].clarify = card
+                    cacheMessagePresentation()
+                }
+                break
+            }
             // Hermes may have changed files an open Folder tab shows.
             noteWorkspaceToolCompleted(name)
             // Hermes just read or asked to change Conduit's settings.
@@ -34004,6 +34027,9 @@ final class AppState: ObservableObject {
             ))
 
         case .clarify(_, let activity):
+            if let toolID = latestClarifyToolID.removeValue(forKey: streamSessionId) {
+                clarifyToolIDs[streamSessionId + "\u{1F}" + toolID] = activity.requestId
+            }
             applyClarifyActivity(activity, source: .streamEvent)
             setRunning(true)
             noteHermesCallChatWaiting(sessionID: streamSessionId)
@@ -34500,17 +34526,30 @@ final class AppState: ObservableObject {
     /// presenting answer controls and a late response can no longer make the
     /// request read as answered. Request identity — never question text —
     /// decides which card is torn down, so unrelated clarifies are untouched.
+    private func reconcileClarifyRequests(_ snapshot: SessionRuntimeSnapshot) {
+        guard snapshot.hasAuthoritativeOpenRequests else { return }
+        let open = Set(([snapshot.pendingClarify].compactMap { $0 } + snapshot.additionalPendingClarifies).map(\.requestId))
+        let missing = messages.compactMap { message -> String? in
+            guard let card = message.clarify, card.hasPendingDecision,
+                  !card.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                  !open.contains(card.requestId) else { return nil }
+            return card.requestId
+        }
+        for id in missing { expireClarifyRequest(requestId: id, reason: "withdrawn") }
+    }
+
     private func expireClarifyRequest(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
               !activity.isExpired else { return }
-        activity.isExpired = true
+        let resolved = reason == "resolved"
+        activity.isExpired = !resolved
         for questionIndex in activity.questions.indices
         where activity.questions[questionIndex].status != .answered {
-            activity.questions[questionIndex].status = .expired
+            activity.questions[questionIndex].status = resolved ? .answered : .expired
             activity.questions[questionIndex].error = nil
         }
-        activity.error = Self.clarifyExpiredNotice(for: activity.questions.count, reason: reason)
+        activity.error = resolved ? nil : Self.clarifyExpiredNotice(for: activity.questions.count, reason: reason)
         messages[index].clarify = activity
         cacheMessagePresentation()
     }

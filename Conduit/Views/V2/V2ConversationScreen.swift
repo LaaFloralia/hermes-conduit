@@ -195,7 +195,18 @@ struct V2ConversationScreen: View {
             // A Bot Chat glows in its bot's color, as its working line does;
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
-            conversation
+            VStack(spacing: 0) {
+#if LAA_BUILD
+                if appState.activeRoomSurface == nil {
+                    LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+#endif
+                conversation
+#if LAA_BUILD
+                    .clipped()
+#endif
+            }
                 .overlay(alignment: .bottomTrailing) {
 #if !LAA_BUILD
                     if appState.activeRoomSurface == nil {
@@ -294,7 +305,7 @@ struct V2ConversationScreen: View {
         // Session-only controls: an open room owns the title and actions.
         if appState.activeRoomSurface == nil {
 #if LAA_BUILD
-            LAAEmployeeChatToolbar(screenWidth: screenWidth, menu: AnyView(conversationMenu))
+            LAAEmployeeChatToolbar()
 #else
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {

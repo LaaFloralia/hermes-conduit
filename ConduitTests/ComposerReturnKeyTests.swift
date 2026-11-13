@@ -460,6 +460,22 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertNil(view.onSubmitFromReturn)
     }
 
+#if LAA_BUILD
+    func testEndingEditingReleasesJapaneseCompositionRoute() {
+        var changes: [Bool] = []
+        var editor = ReturnKeyTextEditor(text: .constant("下書き"), isFocused: .constant(true),
+            accessibilityLabel: "メッセージ", accessibilityIdentifier: nil,
+            canSubmitFromReturn: false, onSubmitFromReturn: { false })
+        editor.onCompositionChanged = { changes.append($0) }
+        let coordinator = editor.makeCoordinator()
+        let field = UITextView()
+        field.text = "下書き"
+        coordinator.textDidChange(in: field, hasMarkedText: true)
+        coordinator.textViewDidEndEditing(field)
+        XCTAssertEqual(changes, [true, false])
+    }
+#endif
+
     // MARK: - Held-Shift chord state (begin / end / cancel)
 
     func testCancelledShiftPressReleasesTrackedState() {

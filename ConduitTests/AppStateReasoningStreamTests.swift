@@ -17,6 +17,53 @@ import XCTest
 @MainActor
 final class AppStateReasoningStreamTests: XCTestCase {
 
+    func testClarifyToolCompletionExpiresOnlyItsRequest() {
+        let state = makeAppState()
+        installActiveSession(state, id: "clarify-session")
+        state.handleStreamEvent(.toolStart(sessionId: "clarify-session", toolName: "clarify", toolInput: "{}", toolID: "call-a"))
+        state.handleStreamEvent(.clarify(sessionId: "clarify-session", activity: ClarifyActivity(requestId: "request-a", question: "Budget?", choices: [], status: .pending)))
+        state.handleStreamEvent(.clarify(sessionId: "clarify-session", activity: ClarifyActivity(requestId: "request-b", question: "Budget?", choices: [], status: .pending)))
+        state.handleStreamEvent(.toolComplete(sessionId: "clarify-session", toolName: "clarify", toolOutput: #"{"outcome":"timed_out","responses":[{"question":"Budget?","status":"unanswered"}]}"#, toolID: "call-a"))
+        XCTAssertEqual(state.messages.first { $0.clarify?.requestId == "request-a" }?.clarify?.status, .expired)
+        XCTAssertEqual(state.messages.first { $0.clarify?.requestId == "request-b" }?.clarify?.status, .pending)
+    }
+
+    func testResolvedClarifyNotificationRemovesInputWithoutInventingAnswer() {
+        let state = makeAppState()
+        installActiveSession(state, id: "clarify-session")
+        state.handleStreamEvent(.clarify(sessionId: "clarify-session", activity: ClarifyActivity(requestId: "request-a", question: "Budget?", choices: [], status: .pending)))
+        state.handleStreamEvent(.clarifyExpire(sessionId: "clarify-session", requestId: "request-a", reason: "resolved"))
+        let card = state.messages.first { $0.clarify?.requestId == "request-a" }?.clarify
+        XCTAssertEqual(card?.status, .answered)
+        XCTAssertNil(card?.questions.first?.answer)
+        XCTAssertFalse(card?.isExpired ?? true)
+    }
+
+    func testAuthoritativeOpenRequestsRetireMissingCardOnly() {
+        let state = makeAppState()
+        installActiveSession(state, id: "clarify-session")
+        for id in ["srq-open", "srq-gone"] {
+            state.handleStreamEvent(.clarify(sessionId: "clarify-session", activity: ClarifyActivity(requestId: id, question: "Budget?", choices: [], status: .pending)))
+        }
+        let snapshot = SessionRuntimeSnapshot(object: ["open_requests": .array([.object(["id": .string("srq-open"), "method": .string("clarify"), "params": .object(["question": .string("Budget?")])])])])
+        state.handleStreamEvent(.sessionInfo(sessionId: "clarify-session", snapshot: snapshot))
+        XCTAssertEqual(state.messages.first { $0.clarify?.requestId == "srq-open" }?.clarify?.status, .pending)
+        XCTAssertEqual(state.messages.first { $0.clarify?.requestId == "srq-gone" }?.clarify?.status, .expired)
+        XCTAssertNil(state.messages.first { $0.clarify?.requestId == "srq-gone" }?.clarify?.questions.first?.answer)
+    }
+
+    func testClosedClarifyDoesNotReopenFromReplayedRequest() {
+        for reason in ["timeout", "cancelled", "resolved"] {
+            let state = makeAppState()
+            installActiveSession(state, id: "clarify-session")
+            let card = ClarifyActivity(requestId: "srq-closed", question: "Budget?", choices: [], status: .pending)
+            state.handleStreamEvent(.clarify(sessionId: "clarify-session", activity: card))
+            state.handleStreamEvent(.clarifyExpire(sessionId: "clarify-session", requestId: card.requestId, reason: reason))
+            state.handleStreamEvent(.clarify(sessionId: "clarify-session", activity: card))
+            XCTAssertFalse(state.messages.first { $0.clarify?.requestId == card.requestId }?.clarify?.hasPendingDecision ?? true, reason)
+        }
+    }
+
     // MARK: - Harness
 
     private func makeAppState(

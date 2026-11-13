@@ -26,6 +26,7 @@ struct LAAEmployeeChatOpeningView: View {
     @EnvironmentObject private var appState: AppState
     @State private var draft = ""
     @State private var focused = false
+    @State private var composing = false
     @State private var retainedMessages: [ChatMessage] = []
     @State private var savedKey: ComposerDraftKey?
     private var name: String { LAAStaff(profile: profile)?.name ?? "AI社員" }
@@ -40,13 +41,21 @@ struct LAAEmployeeChatOpeningView: View {
         var field = ReturnKeyTextEditor(text: $draft, isFocused: $focused,
             accessibilityLabel: "メッセージ", accessibilityIdentifier: "laa.chats.preview.composer",
             maxLines: 8, canSubmitFromReturn: false, onSubmitFromReturn: { false })
-        field.onCompositionChanged = compositionChanged
+        field.onCompositionChanged = { value in
+            composing = value
+            handoffIfReady()
+        }
         return field.frame(minHeight: 22).background(alignment: .topLeading) {
             if draft.isEmpty { Text(verbatim: "メッセージ").foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
         }
     }
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            LAAEmployeeHeader(profile: profile, name: name,
+                status: preview.failure == nil ? "接続中…" : "Macに接続できません", compact: true)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, -LAAConversationHeaderLayout.controlHeight)
+            ScrollView {
             LazyVStack(spacing: 20) {
                 if messages.isEmpty {
                     VStack(spacing: 8) {
@@ -72,34 +81,46 @@ struct LAAEmployeeChatOpeningView: View {
                         }
                     }
                 }
-            }.padding(.horizontal, 20).padding(.top, 76).padding(.bottom, 12)
-        }.defaultScrollAnchor(.bottom)
+            }.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
+            }.defaultScrollAnchor(.bottom).clipped()
+        }
             .background(LAAColor.background.ignoresSafeArea())
             .safeAreaInset(edge: .bottom) {
-                HStack(alignment: .bottom, spacing: 8) {
+                VStack(spacing: LAASpacing.x2) {
+                    if preview.failure != nil {
+                        Button { appState.laaRetryEmployeeChat() } label: {
+                            Label("接続を再試行", systemImage: "arrow.clockwise")
+                        }.accessibilityIdentifier("laa.chats.preview.retry")
+                    }
                     previewComposer
                         .padding(.horizontal, 18).padding(.vertical, 11)
                         .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
                         .accessibilityIdentifier("laa.chats.preview.composer")
-                }.padding(.horizontal, 20).padding(.vertical, 8)
-            }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 0) {
-                        StaffAvatarView(profile: profile, name: name, size: 64)
-                        HStack(spacing: 6) {
-                            Text(verbatim: LAAChatPerson.name(name)).font(.custom("Georgia", size: 17, relativeTo: .headline))
-                            if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
-                        }.padding(.horizontal, 8).padding(.vertical, 5).laaComposerGlass(in: Capsule(), interactive: false)
-                        HStack(spacing: 6) {
-                            Text(verbatim: preview.failure == nil ? "接続中…" : "Macに接続できません").font(.caption2)
-                            if preview.failure != nil { Button(String("再試行")) { appState.laaRetryEmployeeChat() }.font(.caption2) }
-                        }.foregroundStyle(LAAColor.secondaryText)
-                    }.fixedSize().frame(height: 44, alignment: .top)
-                }
+                    HStack(spacing: LAASpacing.x2) {
+                        LAAModelEffortPickers(model: nil, provider: nil, effort: nil,
+                            identifier: "laa.chats.preview.runtime", modelHint: "接続後に変更できます", effortHint: "接続後に変更できます") {
+                            LAAMenuReason(text: "接続後にモデルを変更できます")
+                        } effortMenu: {
+                            LAAMenuReason(text: "接続後に推論の強さを変更できます")
+                        }
+                        Spacer(minLength: 0)
+                        Button { focused = false } label: {
+                            Image(systemName: "arrow.up").frame(width: ComposerShared.rowControlSize, height: ComposerShared.rowControlSize)
+                        }.buttonStyle(.plain)
+                            .disabled(appState.laaOpeningEmployeeChat != nil)
+                            .accessibilityLabel(appState.laaOpeningEmployeeChat == nil ? "入力を確定してチャットへ" : "接続後に送信できます")
+                            .accessibilityIdentifier("laa.chats.preview.send")
+                    }
+                }.fixedSize(horizontal: false, vertical: true).padding(.horizontal, 20).padding(.vertical, 8)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { retainedMessages = preview.presentation?.displayedMessages ?? [] }
+            .onAppear {
+                // Keep the route mounted through connection completion until
+                // its draft is saved, including an active Japanese composition.
+                compositionChanged(true)
+                retainedMessages = preview.presentation?.displayedMessages ?? []
+            }
+            .onChange(of: appState.laaOpeningEmployeeChat) { _, _ in handoffIfReady() }
             .onChange(of: preview.presentation?.displayedMessages) { _, value in
                 if let value { retainedMessages = value }
             }
@@ -110,15 +131,19 @@ struct LAAEmployeeChatOpeningView: View {
                 savedKey = key
             }
             .onChange(of: draft) { _, _ in if let savedKey { saveDraft(to: savedKey) } }
-            .onDisappear {
-                if appState.conversationIdentityProfile == profile, let id = appState.activeSessionId,
-                   let dashboard = savedKey?.dashboardID, !draft.isEmpty {
-                    let key = ComposerDraftKey(profile: profile, sessionID: id, dashboardID: dashboard)
-                    if appState.composerDraftStore.draft(for: key).text.isEmpty { saveDraft(to: key) }
-                }
-            }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("laa.chats.opening")
     }
+    private func handoffIfReady() {
+        guard appState.laaOpeningEmployeeChat == nil, !composing else { return }
+        if appState.conversationIdentityProfile == profile, appState.activeSessionId != nil,
+           let dashboardID = savedKey?.dashboardID, dashboardID == appState.activeDashboardID, !draft.isEmpty {
+            let key = appState.composerDraftKeyOnScreen
+            if appState.composerDraftStore.draft(for: key).text.isEmpty { saveDraft(to: key) }
+        }
+        compositionChanged(false)
+    }
+
     private func saveDraft(to key: ComposerDraftKey) {
         var value = appState.composerDraftStore.draft(for: key)
         value.text = draft

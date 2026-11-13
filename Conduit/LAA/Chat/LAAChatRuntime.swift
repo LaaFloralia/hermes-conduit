@@ -141,7 +141,13 @@ enum LAAChatModelCatalog {
 
     /// The efforts offered: Low to Max, and a level Hermes reports outside
     /// them ("minimal"), listed to be read.
-    static func efforts(current: String?) -> [String] {
+    static func efforts(current: String?, model: String? = nil, provider: String? = nil) -> [String] {
+        // Hermes agent/reasoning_effort.py CODEX_ASTRA_EFFORTS and the
+        // OpenAI Astra model contract: none/minimal are rejected.
+        if ["openai-codex", "codex", "openai"].contains(provider ?? ""),
+           ["gpt-6-astra", "gpt-6-astra-900k"].contains(model ?? "") {
+            return ["low", "medium", "high", "xhigh", "max"]
+        }
         guard let current, !current.isEmpty, !LAAEffort.order.contains(current) else { return LAAEffort.order }
         return LAAEffort.order + [current]
     }
@@ -233,7 +239,7 @@ struct LAAChatModelPickers: View {
         .onReceive(appState.$laaChatRuntime.removeDuplicates()) { runtime = $0 }
         .onReceive(appState.$activeSessionId.removeDuplicates()) { activeSessionID = $0 }
         .onReceive(appState.$client.map { $0 != nil }.removeDuplicates()) { connected = $0 || appState.laaChatModelOperations != nil }
-        .task(id: "\(activeSessionID ?? "")|\(connected)") { await load() }
+        .task(id: "\(activeSessionID ?? "")|\(connected)|\(shown.model ?? "")|\(shown.provider ?? "")") { await load() }
         .alert(Text(verbatim: "モデルを切り替えますか？"), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                presenting: pending) { item in
             Button { switchModel(item.choice, confirmed: true) } label: { Text(verbatim: "切り替える") }
@@ -271,7 +277,7 @@ struct LAAChatModelPickers: View {
     @ViewBuilder private var effortMenu: some View {
         if let effortLock { LAAMenuReason(text: effortLock) }
         Section {
-            ForEach(LAAChatModelCatalog.efforts(current: shown.effort), id: \.self) { effort in
+            ForEach(LAAChatModelCatalog.efforts(current: shown.effort, model: shown.model, provider: shown.provider), id: \.self) { effort in
                 LAAEffortMenu.Row(effort: effort, selected: effort == shown.effort,
                                   identifier: "composer.runtime.effort.\(effort)") { changeEffort(effort) }
                     .disabled(effortLock != nil || effort == shown.effort || !LAAEffort.order.contains(effort))
@@ -286,11 +292,11 @@ struct LAAChatModelPickers: View {
         phase = .loading
         do {
             let result = try await operations.options(sessionID)
-            guard sessionID == appState.activeSessionId else { return }
+            guard !Task.isCancelled, sessionID == appState.activeSessionId else { return }
             phase = .ready(LAAChatModelCatalog.choices(result.providers, visibility: appState.modelVisibility,
                                                        runningModel: result.model, runningProvider: result.provider))
         } catch {
-            guard sessionID == appState.activeSessionId else { return }
+            guard !Task.isCancelled, sessionID == appState.activeSessionId else { return }
             phase = .failed
         }
     }

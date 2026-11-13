@@ -89,7 +89,7 @@ final class LAAEmployeeChatPreviewTests: XCTestCase {
         }
     }
 
-    func testSlowEmployeeOpenExpiresBeforeGenericLaunch() async throws {
+    func testColdEmployeeOpenKeepsGenericBudgetAndStillExpires() async throws {
         var time: Duration = .zero
         var result: WidgetLaunchOutcome?
         let coordinator = WidgetLaunchCoordinator(now: { time }, prepare: { _, _ in .deferred },
@@ -100,6 +100,11 @@ final class LAAEmployeeChatPreviewTests: XCTestCase {
         coordinator.receive(link)
         for _ in 0..<20 { await Task.yield() }
         time = .seconds(8)
+        coordinator.readinessChanged()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(result, "A healthy cold connection must not be cancelled at eight seconds")
+        XCTAssertTrue(coordinator.hasPendingRequest)
+        time = WidgetLaunchCoordinator.launchTimeout
         coordinator.readinessChanged()
         for _ in 0..<20 { await Task.yield() }
         XCTAssertEqual(result, .failed(LAAEmployeeChatPreview.unavailable))

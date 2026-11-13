@@ -193,7 +193,6 @@ enum StreamEventParser {
             // clarify.expire (reason nil) or an explicit "timeout" says so.
             let reason = payload?["reason"]?.stringValue ?? ""
             if method == "clarify" {
-                guard reason != "resolved" else { return nil }
                 return .clarifyExpire(sessionId: sessionId, requestId: requestId, reason: reason)
             }
             if InputPromptActivity.Kind(rawValue: method) != nil {

@@ -142,6 +142,31 @@ final class LAABackgroundFixture: ObservableObject {
         if let models = args.firstIndex(of: "-LAA_FIXTURE_CHAT_MODELS").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
             app.laaChatModelOperationsForTesting = LAAChatModelFixture(variant: models, session: conversationID, app: app).operations
         }
+        if args.contains("-LAA_FIXTURE_CLARIFY") {
+            let transport = LAAClarifyFixtureTransport()
+            let connection = HermesConnection(baseUrl: "https://fixture.invalid", ticket: "synthetic")
+            let client = HermesClient(connection: connection, profile: app.activeProfile, transportFactory: { transport }, keepaliveInterval: nil, monitorsPath: false)
+            app.connection = connection; app.client = client
+            client.onEvent = { [weak app] event in app?.handleStreamEvent(event) }
+            transport.socket.onAnswer = { [weak app] id, answer in
+                guard id == "srq-fixture-budget" else { return }
+                app?.handleStreamEvent(.messageInterim(sessionId: conversationID, text: "同じ質問への回答を受領：" + answer, alreadyStreamed: false))
+                app?.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: false))
+            }
+            Task { @MainActor in
+                try? await client.connect()
+                app.handleStreamEvent(.toolStart(sessionId: conversationID, toolName: "clarify", toolInput: "{}", toolID: "call-fixture-budget"))
+                transport.socket.deliver(["jsonrpc": "2.0", "id": "srq-fixture-budget", "method": "clarify", "params": ["session_id": conversationID, "question": "試験用の予算上限は？"]])
+                if let end = args.firstIndex(of: "-LAA_FIXTURE_CLARIFY_END").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
+                    try? await Task.sleep(for: .seconds(1))
+                    if end == "timeout" {
+                        app.handleStreamEvent(.toolComplete(sessionId: conversationID, toolName: "clarify", toolOutput: #"{"outcome":"timed_out","responses":[{"question":"試験用の予算上限は？","status":"unanswered"}]}"#, toolID: "call-fixture-budget"))
+                    } else {
+                        transport.socket.deliver(["jsonrpc": "2.0", "method": "event", "params": ["session_id": conversationID, "type": "request.cancel", "payload": ["id": "srq-fixture-budget", "method": "clarify", "reason": end == "cancelled" ? "interrupted" : end]]])
+                    }
+                }
+            }
+        }
         if chatFixture == "long" {
             // Taller than the screen, so a send can start scrolled up.
             app.messages = (1...24).map { index in
@@ -149,6 +174,11 @@ final class LAABackgroundFixture: ObservableObject {
                             content: "長い会話の\(index)件目。予定と資料の確認を続けています。",
                             timestamp: String(now - Double(240 - index)), rowId: index)
             }
+        }
+        if args.contains("-LAA_FIXTURE_PREVIEW_FAILED"), let dashboardID = app.activeDashboardID {
+            let link = WidgetLaunchLink(action: .employeeChat, workspace: .init(dashboardID: dashboardID, profile: employee), reference: nil)!
+            app.widgetLaunchPendingLinkChanged(link)
+            app.laaEmployeeChatLaunchEnded(link, outcome: .failed("fixture unavailable"))
         }
         self.state = app
         self.bots = bots
@@ -320,7 +350,19 @@ struct LAABackgroundUITestFixtureScreen: View {
     }
 
     @ViewBuilder private var baseConversationScreen: some View {
-        if ProcessInfo.processInfo.arguments.contains("-LAA_FORCE_COMPACT_CHAT") {
+        if ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_PREVIEW_FAILED") {
+            LAAConversationRoute()
+                .overlay(alignment: .topTrailing) {
+                    Button("接続を復元") {
+                        // The fixture performs the same successful launch handoff,
+                        // with no credentials or live employee state.
+                        if let workspace = fake.state.laaEmployeeChatPreview.workspace,
+                           let link = WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil) {
+                            fake.state.laaEmployeeChatLaunchEnded(link, outcome: .handled)
+                        }
+                    }.accessibilityIdentifier("fixture.preview.recover")
+                }
+        } else if ProcessInfo.processInfo.arguments.contains("-LAA_FORCE_COMPACT_CHAT") {
             V2ConversationScreen()
                 .frame(width: 440)
                 .environment(\.horizontalSizeClass, .compact)
@@ -360,11 +402,13 @@ enum LAABackgroundFixturePhoto {
 /// `model.options`, not by the picker itself.
 @MainActor
 private final class LAAChatModelFixture {
+    let variant: String
     private let providers: [ProviderInfo]
     private var model: String?
     private var provider: String?
 
     init(variant: String, session: String, app: AppState) {
+        self.variant = variant
         let shown = app.laaChatRuntime.shown(for: [session])
         model = shown.model; provider = shown.provider
         let ids = variant == "single" ? ["claude-opus-5-5"] : ["claude-opus-5-5", "claude-mythos-5-2", "claude-fable-5-2"]
@@ -374,7 +418,11 @@ private final class LAAChatModelFixture {
 
     var operations: LAAChatModelOperations {
         LAAChatModelOperations(
-            options: { [self] _ in (model, provider, providers) },
+            options: { [self] _ in
+                var rows = providers
+                if variant == "astra", let astra = ProviderInfo(from: AnyCodable(jsonObject: ["slug": "openai-codex", "models": ["gpt-6-astra"], "capabilities": ["gpt-6-astra": ["reasoning": true]]])) { rows.append(astra) }
+                return (model, provider, rows)
+            },
             setModel: { [self] _, model, provider, confirmed in
                 if model.contains("mythos") && !confirmed {
                     return ModelSwitchOutcome(model: model, confirmRequired: true,

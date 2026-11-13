@@ -12,6 +12,12 @@ final class LAAChatRuntimeTests: XCTestCase {
                       effort: snapshot.reasoningEffort)
     }
 
+    func testAstraOffersOnlySupportedRouteEffortsAfterSwitch() {
+        XCTAssertEqual(LAAChatModelCatalog.efforts(current: "high", model: "gpt-6-astra", provider: "openai-codex"),
+                       ["low", "medium", "high", "xhigh", "max"])
+        XCTAssertEqual(LAAChatModelCatalog.efforts(current: "high", model: "claude-mythos-5-2", provider: "claude"), LAAEffort.order)
+    }
+
     func testModelAndEffortAsHermesReportsThem() {
         var runtime = LAAChatRuntime()
         report(["model": .string("deepseek-v4.1-flash"), "provider": .string("laa-dsh"),

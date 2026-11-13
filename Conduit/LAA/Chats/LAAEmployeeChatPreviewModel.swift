@@ -14,7 +14,9 @@ final class LAAEmployeeChatPreview: ObservableObject {
     private static let log = OSLog(subsystem: "com.laa.performance", category: .pointsOfInterest)
     private var interval: OSSignpostID?
 
-    static let timeout: Duration = .seconds(8)
+    // A cold ticket, profile catalog and native history resume share the
+    // same bounded launch budget; eight seconds cancelled healthy 5G opens.
+    static let timeout: Duration = WidgetLaunchCoordinator.launchTimeout
     static let unavailable = "Macの会話サービスから応答がありません。接続を確認して再試行してください。"
 
     func begin(workspace: WidgetWorkspaceID, directory: URL, preferredSessionID: String?) {

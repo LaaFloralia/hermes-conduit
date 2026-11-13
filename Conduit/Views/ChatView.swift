@@ -367,6 +367,8 @@ struct ChatView: View {
             // The growing composer owns its whole height, including the
             // controls row. Keep the transcript outside that region.
             bottomBar
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
 #else
             if !composerFloats {
                 bottomBar
@@ -3888,6 +3890,7 @@ struct ClarifyQuestionRow: View {
                 Text("No longer active")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("clarify.expired.\(question.id)")
             case .submitting:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
@@ -3963,6 +3966,7 @@ struct ClarifyQuestionRow: View {
             // rejected text must not display as what Hermes received.
             Text("Answered on another device")
                 .font(.caption)
+                .accessibilityIdentifier("clarify.answeredElsewhere.\(question.id)")
                 .foregroundStyle(.secondary)
         }
     }
@@ -4118,6 +4122,7 @@ struct ClarifyQuestionRow: View {
                 text: $customAnswer,
                 axis: .vertical
             )
+            .accessibilityIdentifier("clarify.answer.\(question.id)")
             .lineLimit(1...4)
             .submitLabel(.send)
             .onSubmit { submitCustomAnswer() }
@@ -4133,6 +4138,7 @@ struct ClarifyQuestionRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(AppLocalization.string("Send answer"))
+            .accessibilityIdentifier("clarify.send.\(question.id)")
             .foregroundStyle(.white)
             .background(Color.orange, in: Circle())
             .disabled(!canSubmitCustomAnswer)

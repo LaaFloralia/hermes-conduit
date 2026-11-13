@@ -2,14 +2,8 @@
 import SwiftUI
 
 struct LAAEmployeeChatToolbar: ToolbarContent {
-    /// The screen width, which bounds the name so the bar can keep it on
-    /// the screen's center.
-    var screenWidth: CGFloat = 0
-    /// The conversation menu, after the call button in the same glass.
-    var menu: AnyView? = nil
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
 
     private var profile: String { appState.conversationIdentityProfile }
@@ -21,6 +15,45 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
     private var reason: String? {
         LAAEmployeeCallAvailability.reason(appState: appState, bridge: bridge.status, calls: calls)
+    }
+    private var callButton: some View {
+        LAAEmployeeCallButton(reason: reason) {
+            if LAAStaff(profile: profile) != nil {
+                _ = calls.startEmployeeConversation(appState)
+            } else if sameCall {
+                calls.showCall()
+            } else {
+                calls.start(profile: profile, name: name, conversationID: appState.activeSessionId)
+            }
+        }
+    }
+
+    // Keep the call action in the native trailing slot beside Back.
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        if reason == nil, LAAStaff(profile: profile)?.supportsCalls != false {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarTrailing) { callButton }.sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarTrailing) { callButton }
+            }
+        }
+    }
+}
+
+/// The full mascot/name height participates in the chat's layout instead
+/// of overflowing a 44-point navigation item over the first messages.
+struct LAAEmployeeConversationHeader: View {
+    var screenWidth: CGFloat
+    var menu: AnyView? = nil
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private var profile: String { appState.conversationIdentityProfile }
+    private var name: String {
+        LAAStaff(profile: profile)?.name ?? (profile == "default" ? LAACopy.agent : appState.conversationAgentIdentity.name)
+    }
+    private var sameCall: Bool {
+        calls.snapshot?.context.profile == profile && calls.snapshot?.context.conversationID == appState.activeSessionId
     }
     private var status: String {
         if sameCall {
@@ -39,33 +72,13 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
             .laaPhotoGlassScope()
     }
 
-    private var callButton: some View {
-        LAAEmployeeCallButton(reason: reason) {
-            if LAAStaff(profile: profile) != nil {
-                _ = calls.startEmployeeConversation(appState)
-            } else if sameCall {
-                calls.showCall()
-            } else {
-                calls.start(profile: profile, name: name, conversationID: appState.activeSessionId)
-            }
-        }
-    }
-
-    // The system's own slots: it centers the name on the screen and gives
-    // the call button and menu one glass with Back's margin.
-    @ToolbarContentBuilder var body: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            header
-                .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
-                .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
-        }
-        if reason == nil, LAAStaff(profile: profile)?.supportsCalls != false {
-            if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarTrailing) { callButton }.sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarTrailing) { callButton }
-            }
-        }
+    var body: some View {
+        header
+            .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
+            .frame(maxWidth: .infinity)
+            // Keep the mascot's original top at the navigation controls;
+            // reserve its remaining height for the transcript below it.
+            .padding(.top, -LAAConversationHeaderLayout.controlHeight)
     }
 }
 
@@ -188,10 +201,9 @@ struct LAAEmployeeHeader: View {
 
     var body: some View {
         headerLabel
-            .frame(height: 44, alignment: .top)
             .overlay(alignment: .top) {
                 Button { showDetails = true } label: {
-                    Color.clear.frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
                     .accessibilityLabel(Text(verbatim: LAACopy.staffIntroHeaderLabel(name)))

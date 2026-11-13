@@ -44,10 +44,34 @@ maintainer decides (2026-10-20).
   results models read, the notifier's tool descriptions and skills,
   README.md and docs/.
 
+## LAA employee chat connection and composer
+
+The cached opening view keeps its model/effort menus and send state visible
+above the keyboard. Until the target employee is connected, the menus explain
+why values are unavailable and Send stays disabled; Retry reconnects without
+submitting the draft. The live header reserves the mascot/name's full height,
+and the transcript is clipped below it. Ending Japanese composition releases
+the preview route, with the draft retained for the same employee.
+
+Opening an employee chat uses the ordinary 30-second launch budget. The former
+eight-second deadline cancelled an in-flight connection and left a failed
+preview requiring manual retry. This budget does not extend authentication,
+approval, pause or stop requirements. The regression covers failed preview,
+keyboard controls, draft handoff, the eight-second boundary and final expiry.
+
 ## Hermes is waiting on you
 
 An approval, a clarify question or a phone change that Hermes can't go on
 without.
+
+Clarify tool completion settles the live card by tool-call/request identity;
+`request.cancel` also carries resolved answers from another surface. An
+authoritative `open_requests` snapshot retires cached native requests absent
+from that list. Replayed requests cannot reopen terminal cards. No expired
+answer is promoted to approval. The iPhone UI regression enters an answer,
+sends its original request ID and renders the resumed response, plus timeout,
+cancelled and answered-elsewhere states. Owner TestFlight acceptance is tracked
+in Linear; automated fixtures contain only synthetic questions and answers.
 
 **Siblings:** chat card · notification · Classic voice (phone, CarPlay) ·
 Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live · Watch calls ·
@@ -2593,6 +2617,15 @@ voice reply model pickers · the Kanban task composer's catalog
 
 How the composer's Model sheet changes the chat's model, reasoning, speed and
 YOLO: each one applies when it's tapped, with no Apply step.
+
+LAA's chat capsules reload `model.options` when the live model/provider changes.
+String model lists read the gateway's sibling `capabilities` map; Astra on the
+Codex Responses route offers low, medium, high, xhigh and max, matching Hermes'
+`CODEX_ASTRA_EFFORTS` and OpenAI's model contract. Picks remain session-scoped.
+Regression coverage: `LAAChatRuntimeTests`, `ModelPickerTests` and
+`LAAChatRuntimeChipUITests` (Mythos → Astra → Max → Mythos).
+Owner acceptance on TestFlight: change Monet's effort after switching models;
+the owner's check remains tracked in Linear with the release evidence.
 
 **Siblings:** the sheet's Model rows and search matches (tapped, or picked
 with Return), Reasoning pills, Fast mode and YOLO toggles · the composer's

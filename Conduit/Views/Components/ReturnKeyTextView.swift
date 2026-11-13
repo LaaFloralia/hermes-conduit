@@ -417,6 +417,9 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
 
         func textViewDidEndEditing(_ textView: UITextView) {
             if parent.isFocused { parent.isFocused = false }
+#if LAA_BUILD
+            parent.onCompositionChanged?(false)
+#endif
         }
     }
 }

@@ -502,6 +502,7 @@ struct SessionRuntimeSnapshot {
     /// Further unanswered clarify server requests from `open_requests`
     /// (after the oldest, which rides `pendingClarify`).
     let additionalPendingClarifies: [ClarifyActivity]
+    let hasAuthoritativeOpenRequests: Bool
     /// Raw authoritative approval still blocking the session. AppState adds
     /// the enclosing runtime session id when normalizing the card.
     let pendingApprovalPayload: [String: AnyCodable]?
@@ -569,11 +570,19 @@ struct SessionRuntimeSnapshot {
         approvalsMode = object["approvals_mode"]?.stringValue
             ?? object["approval_mode"]?.stringValue
             ?? object["approvals"]?.objectValue?["mode"]?.stringValue
+        hasAuthoritativeOpenRequests = object["open_requests"]?.arrayValue != nil
+        let openClarifies = HermesClient.openClarifyPayloads(in: object["open_requests"]).compactMap {
+            MessageNormalizer.pendingClarifyActivity(from: $0)
+        }
         pendingClarify = object["pending_clarify"]?.objectValue
-            .flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
-        additionalPendingClarifies = (object["open_clarifies"]?.arrayValue ?? []).compactMap {
+            .flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) } ?? openClarifies.first
+        var otherClarifies = (object["open_clarifies"]?.arrayValue ?? []).compactMap {
             $0.objectValue.flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
         }
+        for card in openClarifies where card.requestId != pendingClarify?.requestId && !otherClarifies.contains(where: { $0.requestId == card.requestId }) {
+            otherClarifies.append(card)
+        }
+        additionalPendingClarifies = otherClarifies
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
         todoState = (object["todo_state"]?.anyValue as? [String: Any]).flatMap { AgentPlan(snapshot: $0) }
@@ -1735,7 +1744,7 @@ final class HermesClient: ObservableObject {
     /// The legacy `clarify.request` payload shape for a `clarify` server
     /// request: its params, keyed by the server request id (which the
     /// response frame and `clarify.lock` both address).
-    static func clarifyPayload(serverRequestID: String, params: [String: AnyCodable]) -> [String: AnyCodable] {
+    nonisolated static func clarifyPayload(serverRequestID: String, params: [String: AnyCodable]) -> [String: AnyCodable] {
         var payload = params
         payload["request_id"] = .string(serverRequestID)
         return payload
@@ -1750,7 +1759,7 @@ final class HermesClient: ObservableObject {
 
     /// Every `clarify` entry of a resume's `open_requests`, oldest first, as
     /// legacy clarify payloads (locked batch answers ride `answers`).
-    static func openClarifyPayloads(in openRequests: AnyCodable?) -> [[String: AnyCodable]] {
+    nonisolated static func openClarifyPayloads(in openRequests: AnyCodable?) -> [[String: AnyCodable]] {
         (openRequests?.arrayValue ?? []).compactMap { entry in
             guard let object = entry.objectValue,
                   object["method"]?.stringValue == "clarify",
@@ -2441,7 +2450,7 @@ final class HermesClient: ObservableObject {
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.
-        for key in ["pending_clarify", "pending_approval", "todo_state"] {
+        for key in ["pending_clarify", "pending_approval", "todo_state", "open_requests"] {
             if let value = object[key] {
                 snapshotObject[key] = value
             }
@@ -3649,7 +3658,7 @@ extension ProviderInfo {
         }
         self.models = (object["models"]?.arrayValue ?? []).compactMap { model in
             if let id = model.stringValue, !id.isEmpty {
-                return ModelInfo(id: id, label: nil, reasoningCapable: false)
+                return ModelInfo(id: id, label: nil, reasoningCapable: object["capabilities"]?.objectValue?[id]?.objectValue?["reasoning"]?.boolValue ?? false)
             }
             let item = model.objectValue ?? [:]
             guard let id = item["id"]?.stringValue ?? item["model"]?.stringValue ?? item["name"]?.stringValue,
@@ -3657,7 +3666,7 @@ extension ProviderInfo {
             return ModelInfo(
                 id: id,
                 label: item["label"]?.stringValue,
-                reasoningCapable: item["reasoning"]?.boolValue ?? false
+                reasoningCapable: object["capabilities"]?.objectValue?[id]?.objectValue?["reasoning"]?.boolValue ?? item["reasoning"]?.boolValue ?? false
             )
         }
     }
