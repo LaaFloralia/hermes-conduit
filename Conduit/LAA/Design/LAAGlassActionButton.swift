@@ -81,8 +81,51 @@ struct LAAGlassActionFace: View {
             .conduitGlassControl(cornerRadius: LAAGlassActionButton.size / 2,
                                  tint: role == .stop ? LAAColor.end.opacity(0.10) : .clear,
                                  interactive: enabled)
+            .overlay { if role == .send { LAAGlassRimReflection() } }
             // 36 pt to the eye, 44 pt to the finger.
             .contentShape(Circle().inset(by: -(LAAGlassActionButton.touch - LAAGlassActionButton.size) / 2))
+    }
+}
+
+/// Send's glass edge with a reflection travelling round it (owner's
+/// reference, 2026-11-14): the 1 px rim of the operating glass, brighter over
+/// two arcs that circle once in `period` seconds. It turns the same before and
+/// after typing, so Send still looks one way; Reduce Motion holds it still.
+struct LAAGlassRimReflection: View {
+    static let period: Double = 9
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var turning = false
+
+    /// The rim at rest and at the reflection's peak: the glass edge of the
+    /// design tokens, lit to paper white.
+    static func rim(dark: Bool) -> (rest: Color, peak: Color) {
+        dark
+            ? (Color(red: 236 / 255, green: 231 / 255, blue: 220 / 255).opacity(0.16),
+               Color(red: 1, green: 253 / 255, blue: 248 / 255).opacity(0.86))
+            : (Color(red: 215 / 255, green: 213 / 255, blue: 204 / 255).opacity(0.9),
+               Color(red: 1, green: 253 / 255, blue: 248 / 255))
+    }
+
+    /// Where the light sits round the rim (0...1 of a turn): a long arc, and a short one across from it.
+    static let stops: [(at: Double, lit: Bool)] = [
+        (0.00, false), (0.10, true), (0.16, true), (0.30, false),
+        (0.56, false), (0.62, true), (0.65, true), (0.72, false), (1.00, false),
+    ]
+
+    var body: some View {
+        let rim = Self.rim(dark: colorScheme == .dark)
+        Circle()
+            .inset(by: 0.5)
+            .stroke(AngularGradient(stops: Self.stops.map { .init(color: $0.lit ? rim.peak : rim.rest, location: $0.at) },
+                                    center: .center),
+                    lineWidth: 1)
+            .rotationEffect(.degrees(turning ? 360 : 0))
+            .animation(turning ? .linear(duration: Self.period).repeatForever(autoreverses: false) : nil, value: turning)
+            .onAppear { turning = !reduceMotion }
+            .onChange(of: reduceMotion) { _, still in turning = !still }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

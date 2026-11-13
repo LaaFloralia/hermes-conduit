@@ -217,25 +217,41 @@ extension View {
     }
 }
 
+/// The working mark of every LAA chat: the orb (24 pt), what the agent is
+/// doing when the caller knows it, and how long the turn has run. A room
+/// passes neither words nor a start time and shows the orb alone.
 struct LAATypingDots: View {
     var startedAt: Date? = nil
     var records: [ChatMessage] = []
+    /// The real state only: thinking, a tool running, or idle while another device receives the reply.
+    var state: LAAOrbState = .thinking
+    var phrase: String? = nil
+    /// False for the third and later orbs on one screen; they hold a still frame.
+    var animates = true
     @State private var showingRecords = false
     var body: some View {
         Button { showingRecords = true } label: {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                HStack(spacing: 8) {
-                    LAAActivityDots()
-                        .frame(width: 64, height: 36)
-                        .background(LAAColor.surface, in: Capsule())
-                    if let startedAt, context.date.timeIntervalSince(startedAt) > 60 {
-                        Text(verbatim: "\(Int(context.date.timeIntervalSince(startedAt) / 60))分")
-                            .font(.caption2).foregroundStyle(LAAColor.secondaryText)
-                    }
-                }.frame(minHeight: 44)
-            }
+            HStack(spacing: LAASpacing.x2) {
+                LAAOrbView(state: state, diameter: 24, isOnScreen: animates)
+                if let phrase {
+                    Text(verbatim: phrase)
+                        .font(.subheadline).foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                        .animation(.easeOut(duration: 0.22), value: phrase)
+                }
+                if let startedAt {
+                    Spacer(minLength: LAASpacing.x2)
+                    // Counts on its own; the row does not re-render each second.
+                    Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+                        .font(.caption.weight(.medium)).monospacedDigit()
+                        .foregroundStyle(LAAColor.secondaryText)
+                        .fixedSize()
+                }
+            }.frame(minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityLabel(String("入力中、作業の記録を表示"))
+            .accessibilityValue(phrase ?? "")
             .accessibilityIdentifier("chat.typing")
             .sheet(isPresented: $showingRecords) {
                 NavigationStack {
@@ -289,15 +305,33 @@ private struct LAAChatLiveDelivery: View {
 struct LAAChatTypingRow: View {
     var startedAt: Date?
     @ObservedObject var projection: LiveTurnProjection
+    /// The tool running now, its input and its own words for it, as the upstream working line reads them.
+    var currentToolName: String? = nil
+    var currentToolInput: String? = nil
+    var currentToolTitle: String? = nil
+    /// Another device is getting this chat's reply.
+    var repliesElsewhere = false
     @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: LAASpacing.x3) {
             StaffAvatarView(profile: appState.conversationIdentityProfile,
                 name: appState.conversationAgentIdentity.name, size: 30, scrolling: true)
                 .frame(width: 30, height: 30)
-            LAATypingDots(startedAt: startedAt, records: records)
-            Spacer(minLength: 0)
+            LAATypingDots(startedAt: startedAt, records: records, state: orbState, phrase: phrase)
         }.laaChatColumn(.leading)
+    }
+    private var orbState: LAAOrbState {
+        if repliesElsewhere { return .idle }
+        return currentToolName != nil || currentToolTitle != nil ? .tool : .thinking
+    }
+    private var phrase: String {
+        if repliesElsewhere { return AppLocalization.string("Replying on another device") }
+        if let currentToolTitle { return currentToolTitle }
+        if let currentToolName {
+            return ChatStepLabel(toolName: currentToolName, input: currentToolInput, catalog: rowState.toolCatalog).runningTitle
+        }
+        return AppLocalization.string("Thinking")
     }
     private var records: [ChatMessage] {
         var result = appState.messages.filter { $0.role == .tool || $0.role == .reasoning }

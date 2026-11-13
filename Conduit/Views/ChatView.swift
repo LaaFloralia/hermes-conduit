@@ -4882,7 +4882,9 @@ struct ChatLiveTurnRows: View {
         if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
             Group {
 #if LAA_BUILD
-                LAAChatTypingRow(startedAt: turnStartedAt, projection: projection)
+                LAAChatTypingRow(startedAt: turnStartedAt, projection: projection,
+                    currentToolName: currentToolName, currentToolInput: currentToolInput,
+                    currentToolTitle: currentToolTitle, repliesElsewhere: repliesElsewhere)
 #else
                 ChatWorkingLine(
                     currentToolName: currentToolName,
@@ -4919,7 +4921,16 @@ struct StreamingBubble: View {
             timestamp: startedAt.map { ISO8601DateFormatter().string(from: $0) }) {
                 StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name, size: 30, scrolling: true)
             } content: {
+                // The working orb hangs below the bubble without taking room,
+                // so the reply settling in does not move the transcript.
                 streamingContent.laaAssistantSurface()
+                    .overlay(alignment: .bottomLeading) {
+                        if active {
+                            LAAOrbView(state: .thinking, diameter: 18)
+                                .offset(y: 18 + LAASpacing.x2)
+                                .accessibilityHidden(true)
+                        }
+                    }
             }.laaChatColumn(.leading)
 #else
         let identity = rowState.agentIdentity
