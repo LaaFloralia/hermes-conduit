@@ -78,6 +78,57 @@ final class LAAChatPolishTests: XCTestCase {
         XCTAssertEqual(LAAModelFace.face(model: nil, provider: nil), .unknown)
     }
 
+    /// A menu row's standing is a small figure of the capsule's finish: tan
+    /// rings, never a filled disc of colour (owner, 2026-11-14).
+    func testMenuRowsCarryRingsOfTheFinish() throws {
+        XCTAssertNil(LAAModelMenu.icon(model: "claude-opus-5-5", scheme: .light, scale: 2))
+        XCTAssertNil(LAAModelMenu.icon(model: "gpt-6.1-sol", scheme: .dark, scale: 2))
+        for scheme in [ColorScheme.light, .dark] {
+            let mythos = try XCTUnwrap(LAAModelMenu.icon(model: "claude-mythos-5-2", scheme: scheme, scale: 2))
+            let fable = try XCTUnwrap(LAAModelMenu.icon(model: "claude-fable-5-2", scheme: scheme, scale: 2))
+            let astra = try XCTUnwrap(LAAModelMenu.icon(model: "gpt-6-astra", scheme: scheme, scale: 2))
+            for image in [mythos, fable, astra] {
+                let pixels = try rgba(image)
+                XCTAssertEqual(pixels.size, 32)
+                XCTAssertEqual(pixels.at(16, 16).alpha, 0, "the middle is empty: rings, not a disc")
+                let rim = pixels.at(16, 1)
+                XCTAssertGreaterThan(rim.alpha, 0.5, "the outer ring")
+                for (got, want) in zip([rim.rgb >> 16, (rim.rgb >> 8) & 0xFF, rim.rgb & 0xFF], [0xB9, 0x9B, 0x7A]) {
+                    XCTAssertEqual(got, want, accuracy: 3, "in the house tan")
+                }
+            }
+            XCTAssertGreaterThan(try rgba(mythos).at(16, 9).alpha, 0.5, "Mythos has the inner ring")
+            XCTAssertEqual(try rgba(fable).at(16, 9).alpha, 0, "one ring for Fable")
+        }
+    }
+
+    private struct Pixels {
+        let size: Int
+        let bytes: [UInt8]
+        func at(_ x: Int, _ y: Int) -> (rgb: Int, alpha: Double) {
+            let i = (y * size + x) * 4
+            let a = Double(bytes[i + 3]) / 255
+            guard a > 0 else { return (0, 0) }
+            func channel(_ k: Int) -> Int { Int((Double(bytes[i + k]) / a).rounded()) }
+            return ((channel(0) << 16) | (channel(1) << 8) | channel(2), a)
+        }
+    }
+
+    /// The image's pixels, premultiplied RGBA in sRGB.
+    private func rgba(_ image: Image) throws -> Pixels {
+        // The icon is 16 pt drawn at scale 2: 32 px across.
+        let rendered = ImageRenderer(content: image)
+        rendered.scale = 2
+        let cg = try XCTUnwrap(rendered.cgImage)
+        let size = cg.width
+        var bytes = [UInt8](repeating: 0, count: size * size * 4)
+        let context = try XCTUnwrap(CGContext(data: &bytes, width: size, height: size, bitsPerComponent: 8,
+                                              bytesPerRow: size * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: size, height: size))
+        return Pixels(size: size, bytes: bytes)
+    }
+
     // MARK: - 5. Quote and good
 
     func testQuoteIsAMarkdownBlockAddedAfterTheDraft() {

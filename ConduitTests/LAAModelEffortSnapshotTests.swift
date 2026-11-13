@@ -5,8 +5,9 @@ import XCTest
 @testable import Conduit
 
 /// 440 × 956 pt light and dark captures of the model and effort pickers
-/// (owner, 2026-11-12): every state of the two capsules, the new-session
-/// sheet and the task form. Attachments are exported from the result bundle.
+/// (owner, 2026-11-12): every state of the two capsules, each finish (no
+/// line, one, two), the new-session sheet and the task form. Attachments are
+/// exported from the result bundle.
 @MainActor
 final class LAAModelEffortSnapshotTests: XCTestCase {
     private let options = LAAWorkSessionOptions(profiles: [
@@ -20,6 +21,30 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     func testPickerStatesLightAndDark() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             try capture(gallery, style: style, name: "pickers-states-\(style == .dark ? "dark" : "light")", settle: 1.6)
+        }
+    }
+
+    /// The one movement, held at moments 0 to 420 ms (owner, 2026-11-14): the
+    /// light runs round the rim from the leading end and leaves the tan lines.
+    func testCeremonyMomentsLightAndDark() throws {
+        let moments: [Double] = [0, 0.07, 0.14, 0.21, 0.28, 0.35, 0.42]
+        let strip = VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            ForEach(moments, id: \.self) { t in
+                HStack(spacing: LAASpacing.x2) {
+                    Text(verbatim: "\(Int((t * 1000).rounded()))").font(.caption.monospacedDigit())
+                        .foregroundStyle(LAAColor.secondaryText).frame(width: 28, alignment: .trailing)
+                    LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: t).fixedSize()
+                    LAAEffortCapsule(effort: "max").capsule(elapsed: t)
+                    LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t)
+                    LAAEffortCapsule(effort: "high").capsule(elapsed: t)
+                }
+            }
+        }
+        .padding(LAASpacing.horizontal)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(LAAColor.background.ignoresSafeArea())
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            try capture(strip, style: style, name: "pickers-ceremony-\(style == .dark ? "dark" : "light")")
         }
     }
 
@@ -53,8 +78,11 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     private var gallery: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
-                row("Opus 5.5 · High", pickers("claude-opus-5-5", "claude", "high"))
-                row("Mythos 5.2 · XHigh", pickers("claude-mythos-5-2", "claude", "xhigh"))
+                // Standing is the number of tan lines on the rim (owner, 2026-11-14): none, one, two.
+                row("Mythos 5.2 · Max（2本・2本）", pickers("claude-mythos-5-2", "claude", "max"))
+                row("Fable 5.2 · XHigh（1本・1本）", pickers("claude-fable-5-2", "claude", "xhigh"))
+                row("GPT 6 Astra · High（1本・なし）", pickers("gpt-6-astra", "codex", "high"))
+                row("Opus 5.5 · Medium", pickers("claude-opus-5-5", "claude", "medium"))
                 row("GPT 6.1 Sol · Max", pickers("gpt-6.1-sol", "codex", "max"))
                 row("DeepSeek · Low", pickers(#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"))
                 row("不明 · 不明", pickers(nil, nil, nil))

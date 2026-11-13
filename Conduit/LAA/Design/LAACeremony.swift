@@ -1,106 +1,24 @@
 #if LAA_BUILD
 import SwiftUI
-import UIKit
 
-/// The colours of the model and effort capsules' ceremony and of a model's
-/// rank, in one place. The owner asked for them (2026-11-13: "Mythos is set
-/// apart, Fable and Astra each their own colour"; an effort that is applied
-/// moves like Claude Code's Ultracode), so they are the one place where the
-/// house rule against colour flowing over a surface gives way, and only on
-/// the capsules' letters and faces. Studio: 「LAAアプリ｜モデルとeffortの演出 2026.11」.
-enum LAACeremonyColor {
-    // MARK: Effort
+/// How a value's standing shows on its glass control (owner, 2026-11-14: no
+/// colour; keep the Liquid Glass and make it quietly luxurious). Not a hue but
+/// the number of fine metal lines on the rim, in the house tan, the colour of
+/// rules and figures: none, one, or two like a bezel. The model and effort
+/// controls of Chat and Work share it, so a top model and the deepest effort
+/// read alike. Studio: 「LAAアプリ｜モデルとeffortの演出 2026.11」.
+enum LAAFinish: Int, Comparable {
+    case plain = 0, line = 1, double = 2
 
-    /// XHigh's gilt is the house deep-effort colour; this is the light that
-    /// passes over it.
-    static let giltLight = adaptive(light: 0xC8952F, dark: 0xFFF4DC)
+    static func < (lhs: LAAFinish, rhs: LAAFinish) -> Bool { lhs.rawValue < rhs.rawValue }
 
-    /// Which colours flow over Max. `.pigments` is the recommendation: five
-    /// colours, one per meter tick, readable on the paper. `.rainbow` is the
-    /// reference's pale rainbow (Claude Code's own values in dark, darkened
-    /// to stay readable on the paper in light).
-    enum FlowStyle { case pigments, rainbow }
-    static let flowStyle: FlowStyle = .pigments
-
-    static var flow: [Color] { flowStyle == .pigments ? pigments : rainbow }
-    static var flowLight: [Color] { flowStyle == .pigments ? pigmentsLight : rainbowLight }
-
-    /// Teal, verdigris, gilt, red earth, plum.
-    private static let pigments = [
-        adaptive(light: 0x00585E, dark: 0x75C3C3), adaptive(light: 0x2F6B4F, dark: 0x9CCBA6),
-        adaptive(light: 0x8A5F14, dark: 0xE2B866), adaptive(light: 0x9A4527, dark: 0xE9A27F),
-        adaptive(light: 0x6C244C, dark: 0xD49AB6),
-    ]
-    /// Each pigment lifted toward white (45% light, 55% dark): the passing light.
-    private static let pigmentsLight = [
-        adaptive(light: 0x73A3A6, dark: 0xC1E4E4), adaptive(light: 0x8DAE9E, dark: 0xD2E8D7),
-        adaptive(light: 0xBFA77E, dark: 0xF2DFBA), adaptive(light: 0xC79988, dark: 0xF5D5C5),
-        adaptive(light: 0xAE879D, dark: 0xECD2DE),
-    ]
-    private static let rainbow = [
-        adaptive(light: 0xB4413F, dark: 0xFF8787), adaptive(light: 0xA8562A, dark: 0xFFAF87),
-        adaptive(light: 0x86640F, dark: 0xFFD787), adaptive(light: 0x3D7444, dark: 0xAFD7AF),
-        adaptive(light: 0x4B4E9A, dark: 0xAFAFD7), adaptive(light: 0x87488A, dark: 0xD7AFD7),
-    ]
-    private static let rainbowLight = [
-        adaptive(light: 0xD69695, dark: 0xFFC9C9), adaptive(light: 0xCFA28A, dark: 0xFFDBC9),
-        adaptive(light: 0xBCAA7B, dark: 0xFFEDC9), adaptive(light: 0x94B398, dark: 0xDBEDDB),
-        adaptive(light: 0x9C9EC7, dark: 0xDBDBED), adaptive(light: 0xBD9ABF, dark: 0xEDDBED),
-    ]
-
-    // MARK: Model rank
-
-    struct Rank {
-        /// The capsule's face, laid inside the glass.
-        let fill: Color
-        /// The name and chevron on that face.
-        let ink: Color
-        /// The light that passes over the name when the model is applied.
-        let light: Color
-        /// A 1 pt rim, Mythos only.
-        let rim: Color?
-        /// The ▲ on this face, where the house plum would not read.
-        var attention: Color = LAAColor.attention
-    }
-
-    /// Lacquer and gilt in light; a gilt face and ink in dark. The strongest
-    /// face of the three, so it reads first.
-    static let mythos = Rank(fill: adaptive(light: 0x1C2A2B, dark: 0xE2B866),
-                             ink: adaptive(light: 0xE9C77E, dark: 0x172627),
-                             light: adaptive(light: 0xFFF1CF, dark: 0xFFF8E8),
-                             rim: adaptive(light: 0xB99B7A, dark: 0xF2CF8A),
-                             attention: adaptive(light: 0xD49AB6, dark: 0x6C244C))
-    /// The house teal, softened to a face.
-    static let fable = Rank(fill: adaptive(light: 0xD3E5E1, dark: 0x21494B),
-                            ink: adaptive(light: 0x00585E, dark: 0xA4DDDC),
-                            light: adaptive(light: 0x2E9C9F, dark: 0xE4F6F5), rim: nil)
-    /// Indigo, a star's night: apart from Fable at a glance.
-    static let astra = Rank(fill: adaptive(light: 0xE2E1F1, dark: 0x2E3152),
-                            ink: adaptive(light: 0x3D3F86, dark: 0xC9CBF4),
-                            light: adaptive(light: 0x8C8FD9, dark: 0xF0F1FF), rim: nil)
-
-    // MARK: Model marks
-
-    /// The paper disc under Claude's Spark (Clay, as Anthropic issues it).
-    static let claudeDisc = adaptive(light: 0xF6F2E9, dark: 0xF6F2E9)
-    static let claudeDiscRim = adaptive(light: 0xD7D5CC, dark: 0xB99B7A)
-    /// The neutral disc under OpenAI's Blossom, black in light and white in
-    /// dark as OpenAI issues it (the asset's own appearances).
-    static let openAIDisc = adaptive(light: 0xEBE6DC, dark: 0x243638)
-
-    static func adaptive(light: Int, dark: Int) -> Color {
-        Color(uiColor: UIColor { traits in
-            let value = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: CGFloat((value >> 16) & 0xFF) / 255,
-                           green: CGFloat((value >> 8) & 0xFF) / 255,
-                           blue: CGFloat(value & 0xFF) / 255, alpha: 1)
-        })
-    }
+    var lines: Int { rawValue }
 }
 
-/// A model's rank, read from its id: Mythos above all, then Fable and Astra,
-/// each its own colour; every other model (and an unknown one) keeps the
-/// neutral glass.
+/// A model's standing, read from its id: Mythos above all with two lines,
+/// Fable and Astra with one; every other model (and an unknown one) keeps the
+/// bare glass. Fable and Astra are told apart by their makers' marks and
+/// names, not by a colour.
 enum LAAModelRank: Equatable {
     case mythos, fable, astra, none
 
@@ -112,56 +30,63 @@ enum LAAModelRank: Equatable {
         return .none
     }
 
-    var colors: LAACeremonyColor.Rank? {
+    var finish: LAAFinish {
         switch self {
-        case .mythos: LAACeremonyColor.mythos
-        case .fable: LAACeremonyColor.fable
-        case .astra: LAACeremonyColor.astra
-        case .none: nil
+        case .mythos: .double
+        case .fable, .astra: .line
+        case .none: .plain
         }
     }
 }
 
-/// How long and how fast. Effort: the meter's ticks rise one after another;
-/// from High on, a light passes letter by letter, as Claude Code's Ultracode
-/// does; Max's colours flow over the ticks and letters. Model: a ranked face
-/// wipes in from the leading edge, then a light passes over the name.
+/// The one movement a control makes when a value it asked for is applied,
+/// within the house durations (tokens.json motion: base 220, gentle 300, slow
+/// 420 ms) and the `state` curve, and never again until the next one.
+///
+/// - `breath`: the glass edge brightens once and settles (Low, Medium, an
+///   unranked model).
+/// - `pass`: a short light runs once round the edge from the leading end, over
+///   the top (High).
+/// - `trace`: the same light leaves the finish's metal line behind it; a
+///   second line follows a beat later for a double finish (XHigh and Max,
+///   Fable, Astra and Mythos).
 enum LAACeremony {
-    static let rise: Double = 0.22
-    static let riseStagger: Double = 0.06
+    enum Motion: Equatable { case breath, pass, trace }
 
-    static func duration(effort: String) -> Double {
+    static let base: Double = 0.22
+    static let gentle: Double = 0.30
+    static let slow: Double = 0.42
+
+    static func duration(_ motion: Motion) -> Double {
+        switch motion {
+        case .breath: base
+        case .pass: gentle
+        case .trace: slow
+        }
+    }
+
+    static func motion(effort: String) -> Motion? {
         switch effort {
-        case "low": 0.30
-        case "medium": 0.36
-        case "high": 0.62
-        case "xhigh": 1.30
-        case "max": 1.60
-        default: 0
+        case "low", "medium": .breath
+        case "high": .pass
+        case "xhigh", "max": .trace
+        default: nil
         }
     }
-    static let highDelay: Double = 0.16, highStep: Double = 0.07
-    static let xhighDelay: Double = 0.10, xhighStep: Double = 0.065, xhighPasses = 2
-    static let maxCycles = 4
 
-    static func duration(rank: LAAModelRank) -> Double {
-        switch rank {
-        case .mythos: 1.25
-        case .fable, .astra: 0.90
-        case .none: 0.60
-        }
-    }
-    static func wipe(rank: LAAModelRank) -> Double {
-        switch rank {
-        case .mythos: 0.42
-        case .fable, .astra: 0.30
-        case .none: 0
-        }
-    }
-    static let nameStep: Double = 0.045
+    static func motion(rank: LAAModelRank) -> Motion { rank == .none ? .breath : .trace }
 
-    /// The house `pop` and `state` curves (tokens.json motion.easing).
-    static func pop(_ x: Double) -> Double { bezier(x, 0.3, 1.4, 0.55, 1) }
+    static func duration(effort: String) -> Double { motion(effort: effort).map(duration) ?? 0 }
+    static func duration(rank: LAAModelRank) -> Double { duration(motion(rank: rank)) }
+
+    /// The light's length, as a share of the rim.
+    static let lightLength: Double = 0.14
+    /// How long the second line of a double finish waits behind the first.
+    static let innerDelay: Double = 0.06
+    /// The meter's ticks rise one after another, each in `base`.
+    static let riseStagger: Double = 0.04
+
+    /// The house `state` curve (tokens.json motion.easing).
     static func state(_ x: Double) -> Double { bezier(x, 0.25, 0.9, 0.3, 1) }
 
     private static func bezier(_ t: Double, _ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
@@ -177,13 +102,142 @@ enum LAACeremony {
     }
 }
 
+/// What a control's rim shows at one moment: at rest (`elapsed` nil, or the
+/// movement over) or that many seconds into its one movement. Shares of the
+/// rim run from the leading end's middle, clockwise over the top.
+struct LAARimLook: Equatable {
+    let finish: LAAFinish
+    let motion: LAACeremony.Motion
+    var elapsed: Double? = nil
+
+    private var duration: Double { LAACeremony.duration(motion) }
+
+    /// Into the movement, 0...1; nil at rest.
+    private var progress: Double? {
+        guard let elapsed, elapsed < duration, duration > 0 else { return nil }
+        return max(0, elapsed) / duration
+    }
+
+    var live: Bool { progress != nil }
+
+    /// Where the light's head is, as a share of the rim (`state` curve).
+    var head: Double? {
+        guard let progress, motion != .breath else { return nil }
+        return LAACeremony.state(progress)
+    }
+
+    /// The light's span on the rim, trailing its head.
+    var light: ClosedRange<Double>? {
+        head.map { max(0, $0 - LAACeremony.lightLength)...$0 }
+    }
+
+    /// The light fades in over the first tenth and out over the last fifth.
+    var lightOpacity: Double {
+        guard let progress, motion != .breath else { return 0 }
+        return min(1, progress / 0.1) * min(1, (1 - progress) / 0.2)
+    }
+
+    /// How brightly the whole edge is lit in a breath: up and back once.
+    var breath: Double {
+        guard let progress, motion == .breath else { return 0 }
+        return sin(.pi * progress)
+    }
+
+    /// How much of the outer metal line is drawn: all of it at rest; in a
+    /// trace, as far as the light has gone.
+    var outer: Double {
+        guard finish.lines >= 1 else { return 0 }
+        guard let head, motion == .trace else { return 1 }
+        return head
+    }
+
+    /// The inner line of a double finish, a beat behind the outer one and
+    /// done by the end of the movement.
+    var inner: Double {
+        guard finish.lines >= 2 else { return 0 }
+        guard live, motion == .trace, let elapsed else { return 1 }
+        let span = duration - LAACeremony.innerDelay
+        return LAACeremony.state((elapsed - LAACeremony.innerDelay) / span)
+    }
+}
+
+/// The rim of a control's glass as a path that starts at the leading end's
+/// middle and runs clockwise over the top, so a trim of it is a known stretch
+/// of the rim on any OS. The same rounded rectangle as `conduitGlassControl`,
+/// which is a capsule at the controls' height.
+struct LAARimPath: Shape {
+    var cornerRadius: CGFloat
+    var inset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r0 = rect.insetBy(dx: inset, dy: inset)
+        guard r0.width > 0, r0.height > 0 else { return Path() }
+        let radius = max(0, min(cornerRadius - inset, r0.height / 2, r0.width / 2))
+        var path = Path()
+        path.move(to: CGPoint(x: r0.minX, y: r0.midY))
+        path.addLine(to: CGPoint(x: r0.minX, y: r0.minY + radius))
+        path.addArc(center: CGPoint(x: r0.minX + radius, y: r0.minY + radius), radius: radius,
+                    startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.addLine(to: CGPoint(x: r0.maxX - radius, y: r0.minY))
+        path.addArc(center: CGPoint(x: r0.maxX - radius, y: r0.minY + radius), radius: radius,
+                    startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false)
+        path.addLine(to: CGPoint(x: r0.maxX, y: r0.maxY - radius))
+        path.addArc(center: CGPoint(x: r0.maxX - radius, y: r0.maxY - radius), radius: radius,
+                    startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        path.addLine(to: CGPoint(x: r0.minX + radius, y: r0.maxY))
+        path.addArc(center: CGPoint(x: r0.minX + radius, y: r0.maxY - radius), radius: radius,
+                    startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The metal lines and the passing light, laid over a control's glass. Lines
+/// are 1 pt in the house tan, the outer one on the glass edge and the inner
+/// one a spacing step (4 pt) inside it; the light is the paper white of the
+/// glass at the icon stroke (1.5 pt), the same light that circles Send's rim.
+struct LAARimFinish: View {
+    let look: LAARimLook
+    var cornerRadius: CGFloat = 18
+
+    static let innerInset: CGFloat = LAASpacing.x1
+    static let lightWidth: CGFloat = 1.5
+
+    var body: some View {
+        ZStack {
+            if look.breath > 0 {
+                LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
+                    .stroke(LAAColor.glassLight.opacity(0.9 * look.breath), lineWidth: 1)
+            }
+            if look.outer > 0 {
+                LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
+                    .trim(from: 0, to: look.outer)
+                    .stroke(LAAColor.decorativeTan, lineWidth: 1)
+            }
+            if look.inner > 0 {
+                LAARimPath(cornerRadius: cornerRadius, inset: Self.innerInset + 0.5)
+                    .trim(from: 0, to: look.inner)
+                    .stroke(LAAColor.decorativeTan, lineWidth: 1)
+            }
+            if let light = look.light, look.lightOpacity > 0 {
+                LAARimPath(cornerRadius: cornerRadius, inset: 0.5)
+                    .trim(from: light.lowerBound, to: light.upperBound)
+                    .stroke(LAAColor.glassLight.opacity(look.lightOpacity),
+                            style: StrokeStyle(lineWidth: Self.lightWidth, lineCap: .round))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 /// Starts a ceremony when an applied value arrives, never for a value only
 /// chosen. The capsules get no event of their own, so the change itself is
 /// the trigger, and only one this control asked for: the value must change
 /// while `changing` is on or within a short grace after it ends. Opening
 /// another session or chat, which swaps the value without a request, stays
 /// still. Unknown values, last-confirmed values and Reduce Motion never
-/// start one.
+/// start one: the new face simply shows.
 struct LAACeremonyTrigger<Value: Equatable>: ViewModifier {
     let value: Value
     let changing: Bool
@@ -223,18 +277,6 @@ extension View {
     func laaCeremonyTrigger<Value: Equatable>(value: Value, changing: Bool, enabled: Bool,
                                               start: Binding<Date?>) -> some View {
         modifier(LAACeremonyTrigger(value: value, changing: changing, enabled: enabled, start: start))
-    }
-}
-
-extension Text {
-    /// Letters each in their own colour, joined into one Text so the line
-    /// still wraps, scales and reads as one word.
-    static func laaLetters(_ value: String, colors: (Int) -> Color) -> Text {
-        var text = Text(verbatim: "")
-        for (index, character) in value.enumerated() {
-            text = text + Text(verbatim: String(character)).foregroundStyle(colors(index))
-        }
-        return text
     }
 }
 #endif

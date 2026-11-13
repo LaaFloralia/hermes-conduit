@@ -5,8 +5,8 @@ import UIKit
 /// Which face a model gets: its provider's own mark (owner, 2026-11-13: the
 /// official icons). Claude's Spark and OpenAI's Blossom are drawn as their
 /// makers issue them, never recoloured, reshaped or turned; what tells one
-/// model from another is its name and its capsule's rank colour
-/// (LAAModelRank), not the mark. Until OpenAI's mark is in the asset
+/// model from another is its name and its capsule's finish (LAAModelRank),
+/// not the mark. Until OpenAI's mark is in the asset
 /// catalogue, GPT keeps the celestial symbol of its name (Sol the sun, Terra
 /// the earth, Luna the moon, Astra a star). Rendering only: the identifiers
 /// are not changed.
@@ -87,8 +87,8 @@ struct LAAModelMark: View {
             .resizable().scaledToFit()
             .frame(width: size * 0.6, height: size * 0.6)
             .frame(width: size, height: size)
-            .background(LAACeremonyColor.claudeDisc, in: Circle())
-            .overlay { Circle().strokeBorder(LAACeremonyColor.claudeDiscRim, lineWidth: 0.5) }
+            .background(LAAColor.ivory, in: Circle())
+            .overlay { Circle().strokeBorder(LAAColor.separator, lineWidth: 0.5) }
     }
 
     /// GPT: OpenAI's Blossom as issued (`LAAOpenAIMark`: black, with a white
@@ -101,7 +101,7 @@ struct LAAModelMark: View {
                 .resizable().scaledToFit()
                 .frame(width: size * 0.6, height: size * 0.6)
                 .frame(width: size, height: size)
-                .background(LAACeremonyColor.openAIDisc, in: Circle())
+                .background(LAAColor.subtleSurface, in: Circle())
         } else {
             celestial(body)
         }
@@ -154,7 +154,7 @@ struct LAAModelMark: View {
 }
 
 /// The marks' own colours. They name a provider, so they stay the same in
-/// light and dark. Claude's and OpenAI's discs are in LAACeremonyColor.
+/// light and dark. Claude's and OpenAI's discs are the house ivory and wash.
 enum LAAModelInk {
     static let gptDisc = Color(red: 0.13, green: 0.14, blue: 0.15)
     static let sol = Color(red: 0.98, green: 0.73, blue: 0.27)
@@ -168,23 +168,31 @@ enum LAAModelInk {
     static let geminiDisc = Color(red: 0.92, green: 0.94, blue: 1.0)
     static let grokDisc = Color(red: 0.06, green: 0.06, blue: 0.07)
 }
-/// A model's rank in a menu row. The system draws the row's text in one ink,
-/// so a ranked model carries a small disc of its capsule's face (Mythos with
-/// its rim); other models carry nothing.
+/// A model's standing in a menu row. The system draws the row's text in one
+/// ink, so a ranked model carries a small figure of its capsule's finish at
+/// the row's end: one tan ring for Fable and Astra, two for Mythos, nothing
+/// filled; other models carry nothing.
 enum LAAModelMenu {
+    static let iconSize: CGFloat = 16
+
     @MainActor
     static func icon(model: String?, scheme: ColorScheme, scale: CGFloat) -> Image? {
-        guard let rank = LAAModelRank.of(model).colors else { return nil }
-        let disc = Circle().fill(rank.fill)
-            .overlay { Circle().strokeBorder(rank.rim ?? LAAColor.separator, lineWidth: 1) }
-            .frame(width: 16, height: 16)
-            .environment(\.colorScheme, scheme)
-        let renderer = ImageRenderer(content: disc)
+        let finish = LAAModelRank.of(model).finish
+        guard finish != .plain else { return nil }
+        let rings = ZStack {
+            Circle().inset(by: 0.5).stroke(LAAColor.decorativeTan, lineWidth: 1)
+            if finish == .double {
+                Circle().inset(by: LAARimFinish.innerInset + 0.5).stroke(LAAColor.decorativeTan, lineWidth: 1)
+            }
+        }
+        .frame(width: iconSize, height: iconSize)
+        .environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: rings)
         renderer.scale = scale
         return renderer.uiImage.map { Image(uiImage: $0.withRenderingMode(.alwaysOriginal)) }
     }
 
-    /// A model row's name, with the rank disc when the model has one. The
+    /// A model row's name, with the finish's rings when the model has them. The
     /// current value's row keeps the system's check instead.
     struct Name: View {
         let label: String

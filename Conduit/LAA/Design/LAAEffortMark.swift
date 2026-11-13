@@ -9,8 +9,7 @@ enum LAAEffort {
 
     static func rank(_ value: String) -> Int { order.firstIndex(of: value) ?? 9 }
 
-    /// XHigh and Max: the two settings that think longest, drawn in colour
-    /// wherever an effort is shown.
+    /// XHigh and Max: the two settings that think longest.
     static func isDeep(_ value: String?) -> Bool { value == "xhigh" || value == "max" }
 
     /// The effort kept when the model changes: the same one if the new model
@@ -39,102 +38,59 @@ enum LAAEffort {
     }
 }
 
-/// What the meter and the name look like at one moment: at rest (`elapsed`
-/// nil) or that many seconds into the ceremony that follows an applied
-/// change. The meter's five ticks come first, then the name's letters, so a
-/// light or a colour runs across both as one line, left to right.
-///
-/// At rest: Low to High in ink; XHigh in gilt; Max in five colours, one per
-/// tick, carried on into the letters. In the ceremony the filled ticks rise
-/// one after another; High has one teal light pass over its letters; XHigh
-/// a lighter gilt passes twice over ticks and letters; Max's colours flow
-/// right while a lighter light passes twice over them, then settle exactly
-/// on the resting colours.
+/// The effort's standing: XHigh carries one metal line on its control's rim,
+/// Max two (LAAFinish); Low to High the bare glass.
+extension LAAEffort {
+    static func finish(_ value: String?) -> LAAFinish {
+        switch value {
+        case "xhigh": .line
+        case "max": .double
+        default: .plain
+        }
+    }
+}
+
+/// What the meter looks like at one moment: at rest (`elapsed` nil) or that
+/// many seconds into the movement that follows an applied change. In ink at
+/// every setting; the number of filled ticks is the setting. In the movement
+/// the filled ticks rise one after another on the house `state` curve, all
+/// within the control's own movement (LAACeremony).
 struct LAAEffortLook {
     let effort: String
-    let name: String
     var current = true
     var elapsed: Double? = nil
 
-    private var level: Int { LAAEffort.order.firstIndex(of: effort).map { $0 + 1 } ?? 0 }
-    private var cells: Int { 5 + name.count }
+    var level: Int { LAAEffort.order.firstIndex(of: effort).map { $0 + 1 } ?? 0 }
+
     private var live: Bool {
         guard current, let elapsed else { return false }
         return elapsed < LAACeremony.duration(effort: effort)
     }
-    private var flow: [Color] { LAACeremonyColor.flow }
-
-    /// Max's colour shift, in cells; a whole number of turns at the end.
-    private var shift: Int {
-        guard live, effort == "max", let elapsed else { return 0 }
-        let turns = flow.count * LAACeremony.maxCycles
-        return min(turns, Int(elapsed / (LAACeremony.duration(effort: "max") / Double(turns))))
-    }
-
-    /// The cell the passing light is on, if any.
-    private var lit: Int? {
-        guard live, let elapsed else { return nil }
-        switch effort {
-        case "high":
-            let k = Int(floor((elapsed - LAACeremony.highDelay) / LAACeremony.highStep))
-            return (0..<name.count).contains(k) ? 5 + k : nil
-        case "xhigh":
-            let k = Int(floor((elapsed - LAACeremony.xhighDelay) / LAACeremony.xhighStep))
-            return (0..<cells * LAACeremony.xhighPasses).contains(k) ? k % cells : nil
-        case "max":
-            let step = LAACeremony.duration(effort: "max") / Double(flow.count * LAACeremony.maxCycles)
-            let k = Int(elapsed / step)
-            return k < cells * 2 ? k % cells : nil
-        default:
-            return nil
-        }
-    }
-
-    private func base(_ cell: Int) -> Color {
-        guard current else { return LAAColor.secondaryText }
-        switch effort {
-        case "xhigh": return LAAColor.deepEffort
-        case "max":
-            let n = flow.count
-            return flow[((cell - shift) % n + n) % n]
-        default: return LAAColor.text
-        }
-    }
-
-    private func color(_ cell: Int) -> Color {
-        guard cell == lit else { return base(cell) }
-        switch effort {
-        case "high": return LAAColor.link
-        case "xhigh": return LAACeremonyColor.giltLight
-        default:
-            let n = flow.count
-            return LAACeremonyColor.flowLight[((cell - shift) % n + n) % n]
-        }
-    }
 
     /// Nil for an unfilled tick.
-    func tick(_ index: Int) -> Color? { index < level ? color(index) : nil }
-
-    func letter(_ index: Int) -> Color { color(5 + index) }
-
-    /// A filled tick grows from a fifth of its height with the house `pop`.
-    func tickScale(_ index: Int) -> CGFloat {
-        guard live, index < level, let elapsed else { return 1 }
-        let p = (elapsed - LAACeremony.riseStagger * Double(index)) / LAACeremony.rise
-        return 0.2 + 0.8 * CGFloat(LAACeremony.pop(p))
+    func tick(_ index: Int) -> Color? {
+        guard index < level else { return nil }
+        return current ? LAAColor.text : LAAColor.secondaryText
     }
 
-    /// The deep settings tint their capsule; the tint swells once in the ceremony.
-    var tint: Double {
-        guard current, LAAEffort.isDeep(effort) else { return 0 }
-        guard live, let elapsed else { return 0.10 }
-        return 0.10 + 0.10 * sin(.pi * min(1, elapsed / LAACeremony.duration(effort: effort)))
+    /// A filled tick grows from a fifth of its height.
+    func tickScale(_ index: Int) -> CGFloat {
+        guard live, index < level, let elapsed else { return 1 }
+        let rise = LAACeremony.duration(effort: effort) - LAACeremony.riseStagger * Double(max(0, level - 1))
+        let p = (elapsed - LAACeremony.riseStagger * Double(index)) / max(rise, 0.01)
+        return 0.2 + 0.8 * CGFloat(LAACeremony.state(p))
+    }
+
+    /// The rim of the effort's control at this moment.
+    var rim: LAARimLook {
+        LAARimLook(finish: current ? LAAEffort.finish(effort) : .plain,
+                   motion: LAACeremony.motion(effort: effort) ?? .breath,
+                   elapsed: current ? elapsed : nil)
     }
 }
 
 /// How hard the model thinks, drawn from the value itself: five rising ticks,
-/// filled up to the setting (Low one, Max all five), in the colours of
-/// LAAEffortLook.
+/// filled up to the setting (Low one, Max all five), in ink on the rule.
 struct LAAEffortMeter: View {
     let effort: String
     var height: CGFloat = 13
@@ -142,13 +98,12 @@ struct LAAEffortMeter: View {
     var elapsed: Double? = nil
 
     var body: some View {
-        let look = LAAEffortLook(effort: effort, name: LAAEffort.name(effort) ?? effort,
-                                 current: current, elapsed: elapsed)
+        let look = LAAEffortLook(effort: effort, current: current, elapsed: elapsed)
         let tick = max(2, height * 0.2)
         HStack(alignment: .bottom, spacing: max(1.2, height * 0.11)) {
             ForEach(0..<5, id: \.self) { index in
                 Capsule()
-                    .fill(look.tick(index) ?? LAAColor.secondaryText.opacity(0.28))
+                    .fill(look.tick(index) ?? LAAColor.separator)
                     .frame(width: tick, height: height * (0.36 + 0.16 * CGFloat(index)))
                     .scaleEffect(x: 1, y: look.tickScale(index), anchor: .bottom)
             }
@@ -158,24 +113,20 @@ struct LAAEffortMeter: View {
     }
 }
 
-/// The effort beside the model: the meter and its name. `elapsed` is set by
-/// the effort capsule while its ceremony plays; everywhere else the label
-/// rests (XHigh's gilt and Max's five colours stay, without motion).
+/// The effort beside the model: the meter and its name, in ink. `elapsed` is
+/// set by the effort capsule while its movement plays; everywhere else the
+/// label rests.
 struct LAAEffortLabel: View {
     let effort: String
     var current = true
     var meterHeight: CGFloat = 13
     var elapsed: Double? = nil
 
-    private var deep: Bool { LAAEffort.isDeep(effort) && current }
-    private var name: String { LAAEffort.name(effort) ?? effort }
-
     var body: some View {
-        let look = LAAEffortLook(effort: effort, name: name, current: current, elapsed: elapsed)
         HStack(spacing: 5) {
             LAAEffortMeter(effort: effort, height: meterHeight, current: current, elapsed: elapsed)
-            Text.laaLetters(name) { look.letter($0) }
-                .fontWeight(deep ? .semibold : .medium)
+            Text(verbatim: LAAEffort.name(effort) ?? effort)
+                .fontWeight(.medium)
                 .lineLimit(1)
                 .fixedSize()
         }
@@ -183,9 +134,8 @@ struct LAAEffortLabel: View {
 }
 
 /// The effort rows of a menu. The system draws a menu's text in one ink and
-/// does not animate it, so each row carries the meter itself as its picture,
-/// in its resting colours (Max's five, XHigh's gilt), and the deep settings
-/// a short line under the name.
+/// does not animate it, so each row carries the meter itself as its small
+/// picture at the row's end, and the deep settings a short line under the name.
 enum LAAEffortMenu {
     @MainActor
     static func icon(_ effort: String, scheme: ColorScheme, scale: CGFloat) -> Image? {
@@ -195,7 +145,7 @@ enum LAAEffortMenu {
             .environment(\.colorScheme, scheme))
         renderer.scale = scale
         guard let image = renderer.uiImage else { return nil }
-        // Original rendering keeps the colours: a template image takes the menu's ink.
+        // Original rendering keeps the filled and empty ticks apart: a template image would fill all five.
         return Image(uiImage: image.withRenderingMode(.alwaysOriginal))
     }
 
