@@ -2305,6 +2305,28 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(messages.isEmpty)
     }
 
+    #if LAA_BUILD
+    /// Hermes's display projection of a mid-turn compaction: the summary is
+    /// gone and the request it was working on comes back under a model-facing
+    /// header. The owner sees their own words (2026-11-13).
+    func testRestatedInFlightRequestShowsTheOwnersWordsWithoutTheHeader() {
+        let header = MessageNormalizer.inFlightRequestHeader
+        let messages = MessageNormalizer.normalizeMessages([
+            .object(["id": .number(91), "role": .string("user"),
+                     "content": .string(header + "\n今日の予定を整理して。")]),
+            .object(["id": .number(92), "role": .string("assistant"), "content": .string("整理しました。")]),
+            // Nothing but the header: no empty bubble.
+            .object(["id": .number(93), "role": .string("user"), "content": .string(header + "\n ")]),
+            // Quoted mid-message, it is the owner's text.
+            .object(["id": .number(94), "role": .string("user"), "content": .string("これは何？ " + header)]),
+            // An assistant that prints it is left alone.
+            .object(["id": .number(95), "role": .string("assistant"), "content": .string(header + "\n説明します。")])
+        ])
+        XCTAssertEqual(messages.map(\.content), ["今日の予定を整理して。", "整理しました。", "これは何？ " + header, header + "\n説明します。"])
+        XCTAssertEqual(messages.first?.role, .user)
+    }
+    #endif
+
     func testPersistedCompactionSummaryRecognizedByCurrentPrefixWithoutMetadata() {
         // Large on purpose: the prefix detector must decide from a bounded
         // head without copying a summary-sized payload.

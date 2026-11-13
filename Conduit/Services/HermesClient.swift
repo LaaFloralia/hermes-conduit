@@ -4223,6 +4223,13 @@ enum MessageNormalizer {
             if isSteerRow {
                 rawContent = steerText(fromMarker: rawContent)
             }
+            #if LAA_BUILD
+            if !isToolResult, role == .user {
+                // The owner's own request, without Hermes's restatement header.
+                guard let restated = inFlightRequestText(from: rawContent) else { continue }
+                rawContent = restated
+            }
+            #endif
             let modelChange = modelChangeActivity(fromText: rawContent)
             let systemNotice = systemNoticeText(fromText: rawContent)
             // A known synthetic display kind never renders as a human turn,
@@ -4601,6 +4608,27 @@ enum MessageNormalizer {
         }
         return body.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    #if LAA_BUILD
+    /// After compacting in the middle of a turn, Hermes restates the request
+    /// it was working on as a user row headed by this model-facing line
+    /// (`agent/context_compressor.py`, `_INFLIGHT_TASK_REPLAY_HEADER`). The
+    /// display projection keeps the header, so it would lead the owner's
+    /// bubble. Returns the owner's words; nil when nothing but the header is
+    /// left. Text without the header comes back unchanged.
+    static func inFlightRequestText(from text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(inFlightRequestHeader) else { return text }
+        let body = trimmed.dropFirst(inFlightRequestHeader.count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return body.isEmpty ? nil : body
+    }
+
+    static let inFlightRequestHeader =
+        "[STILL IN PROGRESS — this is the active request, restated after the "
+        + "compaction boundary because it was not finished yet. Continue it; do not "
+        + "start over.]"
+    #endif
 
     static func isUserCorrectionInterruptionNotice(_ text: String) -> Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
