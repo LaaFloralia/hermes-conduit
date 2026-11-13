@@ -1349,9 +1349,12 @@ final class ChatScrollEngine: ObservableObject {
 
     /// The same blank screen with no turn running and no transcript change
     /// to notice it: the viewport resized (the keyboard) or a jump to the
-    /// latest message landed. One check at a time, while following.
+    /// latest message landed. One check at a time, while following, in a
+    /// transcript that had rows laid out.
     private func scheduleBlankViewportCheckWhileIdle() {
-        guard !blankViewportCheckPending, mode == .following, !isPaused else { return }
+        // Rows had been laid out: a chat still opening has none yet, and
+        // building it again then would undo its first placement.
+        guard !blankViewportCheckPending, mode == .following, !isPaused, !rowFrames.isEmpty else { return }
         scheduleBlankViewportCheck(rebuildsLeft: 1)
     }
 

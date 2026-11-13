@@ -373,6 +373,20 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertFalse(events.contains(.rebuildTranscript))
     }
 
+    /// A chat still opening has no row laid out yet; its viewport settling
+    /// is not a blank screen, and nothing is built again.
+    func testAViewportResizeBeforeAnyRowIsLaidOutChecksNothing() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4000)
+        events = []
+        scheduled = []
+        surface.viewportHeight = 700
+        surface.layOut(contentHeight: 4000)
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertTrue(scheduled.isEmpty)
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+    }
+
     /// A reader scrolled up keeps their place: no check, no rebuild.
     func testAKeyboardResizeWhileBrowsingChecksNothing() {
         let (engine, surface) = makeEngine()
