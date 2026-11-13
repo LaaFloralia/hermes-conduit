@@ -4,6 +4,7 @@ import { createJsonFile } from '../routes/state-file.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 
 const RETENTION = 30 * 86400_000;
+const WAIT_FIELDS = ['waiting', 'waitingSince', 'holds'];
 export function text(value, field, max, { optional = false } = {}) {
   if (value == null && optional) return null;
   if (typeof value !== 'string') throw badRequest('decision_invalid', `${field} must be text`);
@@ -56,6 +57,10 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
         || !Number.isSafeInteger(d.attempts) || d.attempts < 1 || d.messageId !== `${r.id}:answer:${d.attempts}`
         || (d.state === 'delivered' ? !validTime(d.deliveredAt) : d.deliveredAt !== null)
         || (d.state === 'failed' ? text(d.error, 'error', 80) !== d.error : d.error !== null)
+        // `waiting` holds an accepted answer for a busy conversation; only a pending delivery may carry it.
+        || (d.waiting !== undefined && (d.state !== 'pending' || d.waiting !== true))
+        || (d.waitingSince !== undefined && (d.state !== 'pending' || !validTime(d.waitingSince)))
+        || (d.holds !== undefined && (d.state !== 'pending' || !Number.isSafeInteger(d.holds) || d.holds < 1))
         || text(a.deviceId, 'deviceId', 200) !== a.deviceId || text(a.label, 'answer', 600) !== a.label
         || text(a.note, 'note', 600, { optional: true }) !== a.note) return false;
       return a.optionIndex === null ? r.allowOther && Boolean(a.label) : Number.isInteger(a.optionIndex) && r.options[a.optionIndex]?.label === a.label;
@@ -134,7 +139,27 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     reserve: (id, deviceId, body, retry = false) => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry)),
     settle(id, messageId, state, error = null) {
       return mutate((s) => { const r = find(s, id); if (r.delivery?.messageId !== messageId || r.delivery.state !== 'pending') return r;
+        for (const key of WAIT_FIELDS) delete r.delivery[key];
         Object.assign(r.delivery, { state, error, deliveredAt: state === 'delivered' ? stamp() : null }); r.updatedAt = stamp(); return r; });
+    },
+    // The conversation is busy: keep the accepted answer and let the Bridge
+    // deliver it, with the same message id, once that turn ends.
+    hold(id, messageId) {
+      return mutate((s) => { const r = find(s, id); const d = r.delivery;
+        if (d?.messageId !== messageId || d.state !== 'pending' || d.waiting) return r;
+        Object.assign(d, { waiting: true, waitingSince: d.waitingSince ?? stamp(), holds: (d.holds ?? 0) + 1 }); r.updatedAt = stamp(); return r; });
+    },
+    // Claim a waiting answer for one send. Only the claimant sends; a Bridge
+    // that stops mid-send leaves a plain pending record, which is never resent.
+    release(id, messageId) {
+      return mutate((s) => { const r = find(s, id); const d = r.delivery;
+        if (d?.messageId !== messageId || d.state !== 'pending' || !d.waiting) return null;
+        delete d.waiting; r.updatedAt = stamp(); return r; });
+    },
+    // Answers an earlier Bridge filed as failed because the conversation was busy.
+    requeueBusy() {
+      return mutate((s) => s.records.filter((r) => r.status === 'answered' && r.delivery?.state === 'failed' && r.delivery.error === 'session_busy' && r.source.paseoAgentId)
+        .map((r) => { Object.assign(r.delivery, { state: 'pending', error: null, deliveredAt: null, waiting: true, waitingSince: stamp(), holds: 1 }); r.updatedAt = stamp(); return r; }));
     },
     notificationDone(id, key) { return access(() => Boolean(checked(file.read()).notifications[id]?.includes(key))); },
     markNotification(id, key) { mutate((s) => { const keys = s.notifications[id] ??= []; if (!keys.includes(key)) keys.push(key); }); },

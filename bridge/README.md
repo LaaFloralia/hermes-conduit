@@ -91,7 +91,14 @@ finished notification. CLI reads do not consume pending notifications.
 Answers use the existing daemon adapter with a stable
 `<id>:answer:<attempt>` message ID and steering behavior. A fresh agent read
 must confirm an active/running turn or a timestamp advanced past the send.
-Failure preserves the answer, keeps it on the board and notifies once per failed
+A conversation that is still working refuses the send (`session_busy`). That is
+not a failure: the delivery stays `pending` with `waiting: true`, the record
+stays on the board, and the Bridge sends it with the same message ID once the
+turn ends (checked at startup, then every 15 seconds for ten minutes and every
+minute after, for at most 24 hours or 50 refused sends). An archived or missing
+conversation, a stopped Paseo, an unconfirmed send or an expired wait
+(`delivery_wait_expired`) is a failure:
+failure preserves the answer, keeps it on the board and notifies once per failed
 attempt. Only an explicit retry sends again. Interrupted pending attempts become
 failed after 60 seconds. Agents without a Paseo ID get `delivery.state=stored`
 and read their answer through the CLI. Device request IDs prevent duplicate
@@ -99,7 +106,7 @@ answers; another answer after closure is `409 decision_closed`.
 
 | method / path | scope | response |
 |---|---|---|
-| `GET /v1/decisions` | `sessions:read` | `{items,fetchedAt}`; board open/failed plus native pending sessions, failed first, then deadline, then newest |
+| `GET /v1/decisions` | `sessions:read` | `{items,fetchedAt}`; board open/failed/waiting plus native pending sessions, failed first, then deadline, then newest |
 | `GET /v1/decisions/{dec_id}` | `sessions:read` | One record, any status; omits posting `requestId` |
 | `POST /v1/decisions/{dec_id}/answer` | `sessions:write` | `{optionIndex,note?,requestId}` → `{decision}` after delivery; null index requires a free answer and `allowOther` |
 | `POST /v1/decisions/{dec_id}/retry` | `sessions:write` | `{requestId}` → `{decision}`; only failed delivery |

@@ -54,7 +54,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
     else result = { items: (await service.list()).items };
     if (flags.json) write(`${JSON.stringify({ ok: true, ...result })}\n`);
     else if (sub === 'add') write(`判断ボードへ登録しました（${result.decision.ref ? `${result.decision.ref} · ` : ''}${result.decision.id}）。社長の回答はこの会話に届きます。ここで手番を終えてください。\n`);
-    else if (result.decision) write(`${result.decision.id}  ${result.decision.status}  ${result.decision.title}\n回答: ${result.decision.answer?.label ?? '未回答'}\n配達: ${result.decision.delivery?.state ?? '未回答'}\n`);
+    else if (result.decision) write(`${result.decision.id}  ${result.decision.status}  ${result.decision.title}\n回答: ${result.decision.answer?.label ?? '未回答'}\n配達: ${result.decision.delivery?.state ?? '未回答'}${result.decision.delivery?.waiting ? '（会話が空き次第、自動で届けます）' : ''}\n`);
     else for (const r of result.items) write(`${r.ref ?? r.id}  ${r.status}  ${r.title}\n`);
     return 0;
   } catch (e) {

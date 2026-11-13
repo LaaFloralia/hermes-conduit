@@ -40,7 +40,7 @@ import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
 import { deviceRoutes } from './devices.mjs';
 import { createDecisionStore } from '../decisions/store.mjs';
-import { createDecisionService } from '../decisions/service.mjs';
+import { createDecisionService, isWaiting } from '../decisions/service.mjs';
 import { createDecisionRoutes } from './decisions.mjs';
 import { createRefService } from '../refs/service.mjs';
 import { projectRefItem, sessionRefItem } from '../refs/items.mjs';
@@ -103,7 +103,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   // A decision holds its J number while the owner still has to act on it:
   // open, or answered but not delivered. Delivery or withdrawal releases it.
   refs.registerSource('decision', () => decisionStore.all()
-    .filter((d) => d.status === 'open' || (d.status === 'answered' && d.delivery?.state === 'failed'))
+    .filter((d) => d.status === 'open' || (d.status === 'answered' && d.delivery?.state === 'failed') || isWaiting(d))
     .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
   if (!sessionOptions.service && sessionOptions.live) {
@@ -114,6 +114,13 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     const delivery = setInterval(() => { flushOwnerNotifications().catch(() => {}); }, 30_000);
     delivery.unref();
     sessionOptions.registerCleanup?.(() => clearInterval(delivery));
+    // Answers held for a busy conversation go out when its turn ends, and
+    // survive a restart: the first pass runs now.
+    const held = () => { decisions.deliverWaiting?.().catch(() => {}); };
+    const waiting = setInterval(held, 5000);
+    waiting.unref();
+    sessionOptions.registerCleanup?.(() => clearInterval(waiting));
+    held();
   }
 
   const ownerTasks = options.ownerTasks ?? {};

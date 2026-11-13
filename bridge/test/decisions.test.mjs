@@ -362,3 +362,153 @@ test('real concurrent CLI writers keep one record for one idempotency key', asyn
   const ids = await Promise.all([run(), run(), run(), run()]);
   assert.equal(new Set(ids).size, 1); assert.equal(f.store.all().length, 1);
 });
+
+// A conversation in the middle of a turn refuses a second foreground prompt.
+function busyFixture(t, options = {}) {
+  const f = fixture(t, options);
+  const state = { busy: true, archived: false, down: false, raceOnce: false };
+  f.daemon.status = async () => {
+    if (state.down) throw new BridgeError(503, 'paseo_unavailable', 'down');
+    return { daemonStatus: state.busy ? 'running' : 'idle', activeTurn: state.busy, pending: [], archivedAt: state.archived ? '2026-11-08T00:00:00Z' : null,
+      updatedAt: new Date(f.now() - 1000).toISOString() };
+  };
+  f.daemon.send = async (id, message) => {
+    if (state.busy || state.raceOnce) { state.raceOnce = false; throw new BridgeError(409, 'session_busy', 'busy'); }
+    f.sent.push({ id, ...message }); state.busy = true;
+  };
+  return { ...f, state };
+}
+const failedNotices = (f) => f.notifications.filter((e) => e.kind === 'decision.failed');
+
+test('waiting: an answer to a busy conversation waits, stays on the board without a failure notice, then is delivered once the turn ends', async (t) => {
+  const f = busyFixture(t);
+  const r = f.service.add(request()).decision;
+  const a = await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(a.decision.delivery.state, 'pending');
+  assert.equal(a.decision.delivery.waiting, true);
+  assert.equal(a.decision.delivery.error, null);
+  // Past the 60 s interruption rule and several checks: still waiting, never failed.
+  for (let i = 0; i < 20; i += 1) { f.advance(15_000); await f.service.deliverWaiting(); }
+  const listed = (await f.service.list()).items.find((i) => i.id === r.id);
+  assert.equal(listed.delivery.state, 'pending'); assert.equal(listed.delivery.waiting, true);
+  assert.equal(failedNotices(f).length, 0); assert.equal(f.sent.length, 0);
+  // The owner cannot pile retries onto a waiting answer.
+  await assert.rejects(f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'retry' }, retry: true }), code('decision_closed'));
+  f.state.busy = false;
+  f.advance(15_000); await f.service.deliverWaiting();
+  const done = f.store.get(r.id);
+  assert.equal(done.delivery.state, 'delivered');
+  assert.equal(done.delivery.messageId, `${r.id}:answer:1`);
+  assert(!('waiting' in done.delivery) && !('waitingSince' in done.delivery) && !('holds' in done.delivery));
+  assert.deepEqual(f.sent.map((m) => m.messageId), [`${r.id}:answer:1`]);
+  assert.equal((await f.service.list()).items.length, 0);
+  assert.equal(failedNotices(f).length, 0);
+});
+
+test('waiting: one send per answer across concurrent passes, a lost race and later passes', async (t) => {
+  const f = busyFixture(t);
+  const r = f.service.add(request()).decision;
+  await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  // The turn ended, but another prompt wins the race: the answer goes back to waiting.
+  f.state.busy = false; f.state.raceOnce = true;
+  f.advance(15_000); await f.service.deliverWaiting();
+  assert.equal(f.store.get(r.id).delivery.waiting, true); assert.equal(f.store.get(r.id).delivery.holds, 2);
+  assert.equal(f.sent.length, 0);
+  f.advance(15_000);
+  await Promise.all([f.service.deliverWaiting(), f.service.deliverWaiting(), f.service.deliverWaiting()]);
+  assert.equal(f.store.get(r.id).delivery.state, 'delivered');
+  // A second service on the same file (the CLI, or the next Bridge) finds nothing left to send.
+  const other = createDecisionService({ store: createDecisionStore({ dir: f.dir, now: f.now }), now: f.now, daemon: f.daemon, notify: null });
+  f.state.busy = false; f.advance(60_000);
+  await other.deliverWaiting(); await f.service.deliverWaiting();
+  assert.equal(f.sent.length, 1);
+  // A send claimed by a Bridge that then stopped is never repeated: it becomes a visible failure.
+  const second = f.service.add(request({ requestId: 'two' })).decision;
+  f.state.busy = true;
+  await f.service.answer({ id: second.id, deviceId: 'phone', body: { requestId: 'answer-2', optionIndex: 0 } });
+  const held = f.store.get(second.id);
+  assert(f.store.release(second.id, held.delivery.messageId)); // claimed, then the Bridge died mid-send
+  assert.equal(f.store.release(second.id, held.delivery.messageId), null);
+  f.state.busy = false; f.advance(61_000);
+  await other.deliverWaiting(); await other.sync();
+  assert.equal(f.store.get(second.id).delivery.state, 'failed');
+  assert.equal(f.store.get(second.id).delivery.error, 'delivery_unconfirmed');
+  assert.equal(f.sent.length, 1);
+});
+
+test('waiting: an archived or deleted conversation, a stopped Paseo and an expired wait fail visibly, once', async (t) => {
+  for (const [failure, arrange] of [
+    ['agent_archived', (f) => { f.state.archived = true; }],
+    ['not_found', (f) => { f.daemon.status = async () => { throw new BridgeError(404, 'not_found', 'gone'); }; }],
+  ]) {
+    const f = busyFixture(t);
+    const r = f.service.add(request()).decision;
+    await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+    arrange(f);
+    f.advance(15_000); await f.service.deliverWaiting(); await f.service.deliverWaiting();
+    const failed = (await f.service.list()).items.find((i) => i.id === r.id);
+    assert.equal(failed.delivery.state, 'failed'); assert.equal(failed.delivery.error, failure);
+    assert(!('waiting' in failed.delivery));
+    assert.equal(failedNotices(f).length, 1); assert.match(failedNotices(f)[0].title, /^届いていません/);
+    assert.equal(f.sent.length, 0);
+  }
+  // Paseo restarting is tolerated for five minutes; stopped for longer is a failure.
+  const f = busyFixture(t);
+  const r = f.service.add(request()).decision;
+  await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  f.state.down = true;
+  f.advance(15_000); await f.service.deliverWaiting();
+  f.advance(120_000); await f.service.deliverWaiting();
+  assert.equal(f.store.get(r.id).delivery.waiting, true);
+  f.state.down = false; f.advance(15_000); await f.service.deliverWaiting();
+  f.state.down = true;
+  for (let i = 0; i < 6; i += 1) { f.advance(60_000); await f.service.deliverWaiting(); }
+  assert.equal(f.store.get(r.id).delivery.error, 'paseo_unavailable');
+  assert.equal(failedNotices(f).length, 1);
+  // A day of a busy conversation ends the wait; that failure is not picked up again.
+  const g = busyFixture(t);
+  const d = g.service.add(request()).decision;
+  await g.service.answer({ id: d.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  g.advance(86_400_000 + 1); await g.service.deliverWaiting(); await g.service.deliverWaiting();
+  assert.equal(g.store.get(d.id).delivery.error, 'delivery_wait_expired');
+  assert.equal(failedNotices(g).length, 1);
+  g.state.busy = false;
+  const retried = await g.service.answer({ id: d.id, deviceId: 'phone', body: { requestId: 'retry' }, retry: true });
+  assert.equal(retried.decision.delivery.state, 'delivered'); assert.equal(retried.decision.delivery.attempts, 2);
+});
+
+test('waiting: survives a Bridge restart, and an answer an earlier Bridge filed as failed(session_busy) is picked up', async (t) => {
+  const f = busyFixture(t);
+  const r = f.service.add(request()).decision;
+  await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  // Written by the Bridge before this change.
+  const old = f.service.add(request({ requestId: 'old', source: { paseoAgentId: 'agent-2' } })).decision;
+  const reserved = f.store.reserve(old.id, 'phone', { requestId: 'old-answer', optionIndex: 1 }).decision;
+  f.store.settle(old.id, reserved.delivery.messageId, 'failed', 'session_busy');
+  const other = f.service.add(request({ requestId: 'other', source: { paseoAgentId: 'agent-3' } })).decision;
+  const kept = f.store.reserve(other.id, 'phone', { requestId: 'other-answer', optionIndex: 1 }).decision;
+  f.store.settle(other.id, kept.delivery.messageId, 'failed', 'agent_archived');
+  // The stored shape stays readable by the store's own validation.
+  const raw = JSON.parse(readFileSync(f.store.file, 'utf8')).records.find((x) => x.id === r.id).delivery;
+  assert.deepEqual(Object.keys(raw).sort(), ['attempts', 'deliveredAt', 'error', 'holds', 'messageId', 'state', 'waiting', 'waitingSince']);
+  assert.equal(raw.state, 'pending'); assert.equal(raw.error, null);
+  // Restart: a new store and service over the same file.
+  f.advance(3_600_000);
+  const store = createDecisionStore({ dir: f.dir, now: f.now });
+  const notices = [];
+  const service = createDecisionService({ store, now: f.now, daemon: f.daemon, notify: async (e) => { notices.push(e); return { delivered: true }; } });
+  await service.sync();
+  assert.equal(store.get(r.id).delivery.waiting, true);
+  await service.deliverWaiting(); // startup pass: still busy
+  assert.equal(store.get(old.id).delivery.state, 'pending'); assert.equal(store.get(old.id).delivery.waiting, true);
+  assert.equal(store.get(old.id).delivery.messageId, `${old.id}:answer:1`);
+  assert.equal(store.get(other.id).delivery.error, 'agent_archived');
+  assert.equal(f.sent.length, 0);
+  f.state.busy = false;
+  f.advance(60_000); await service.deliverWaiting();
+  f.state.busy = false;
+  f.advance(60_000); await service.deliverWaiting();
+  assert.deepEqual(f.sent.map((m) => `${m.id} ${m.messageId}`).sort(), [`agent-1 ${r.id}:answer:1`, `agent-2 ${old.id}:answer:1`].sort());
+  assert.equal(store.get(r.id).delivery.state, 'delivered'); assert.equal(store.get(old.id).delivery.state, 'delivered');
+  assert.equal(notices.filter((e) => e.kind === 'decision.failed' && e.dedupeKey.startsWith(r.id)).length, 0);
+});
