@@ -23,7 +23,7 @@ function fixture(t, overrides = {}) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   let clock = Date.parse(iso);
   const store = createSessionStore({ file: join(dir, 'sessions.json'), now: () => clock });
-  const record = { id: 'ses_0123456789abcdef', name: 'owner title', favorite: true,
+  const record = { id: 'ses_0123456789abcdef', name: 'owner title', nameSource: 'owner', favorite: true,
     parentId: 'ses_1111111111111111', projectId: 'prj_111111111111', source: 'paseo',
     requested: profiles[0], observed: profiles[0], phase: 'awaiting_review',
     delegate: { sessionId: 'old' }, createdAt: iso, version: 1,
