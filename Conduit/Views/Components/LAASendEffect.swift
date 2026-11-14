@@ -129,7 +129,7 @@ struct LAASendThinkingLabel: View {
                         ForEach(Array(text.enumerated()), id: \.offset) { index, letter in
                             Text(String(letter))
                                 .opacity(revealed ? 1 : 0)
-                                .animation(.easeOut(duration: 0.12).delay(Double(index) * 0.04), value: revealed)
+                                .animation(.easeOut(duration: 0.12).delay(Double(index) * min(0.04, 0.58 / Double(max(1, text.count - 1)))), value: revealed)
                         }
                     }
                 }
