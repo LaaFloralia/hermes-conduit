@@ -1108,7 +1108,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-14, laa/app-final: a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
+**Checked:** 2026-11-14, 6cf44994 (laa/app-final): a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
 
 ## Voice beside the tabs
 
@@ -2466,7 +2466,7 @@ background · a failed sync's retry · the backoff itself
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
+**Checked:** 2026-11-14, 86b5e1b6 (laa/app-final): the LAA reconnect reads the roster beside the sync; 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Native sign-in browser
 
