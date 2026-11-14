@@ -70,6 +70,8 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 
 - モデル: 22ptの顔、依頼と実行が違う時の▲、名前、chevron。幅が足りなければ名前を丸ごと省いて顔だけにし、「M…」にしない。メニューはモデルだけ（依頼 → 実行の説明行はここ）。新規セッションは提供元ごとの節と、末尾に「確認なしで実行」。
 - 推論: 5段メーターと名前、chevron。常に欠けない。メニューは選んだモデルで選べるeffortだけ。モデルを替えた時は同じeffort、なければHigh、なければ最も近い値にする。
+- Fast（Chatの入力欄とWorkのセッション詳細、2026-11-14 社長の依頼）: 稲妻と「Fast／Ultrafast」の3つ目のカプセル。部品は `Conduit/LAA/Chat/LAAChatFast.swift` の `LAAFastCapsuleLabel`（Work・Chat共通）と `LAAChatFastCapsule`。値は会話ごとで、Hermesが報告した値に変わった時だけ表示を変える。モデルがUltrafastを提供する時は 通常／Fast／Ultrafast のメニュー、提供しない時は押すたびに 通常⇄Fast、Fast自体が無いモデルでは出さない。会話の開始前・未接続・書込み中は押せず、理由をメニューに出す。識別子は `composer.runtime.fast`。
+- Monet（Dots）: 3カプセルを「Astra／Max／Ultrafast」の固定表示にし、Hermesへ model・reasoning・fast を書かない。判定と値は `LAAChatFixedRuntime`（`LAAChatFast.swift`）の1か所。メニューは理由「Monet（Dots）はモデルと推論を選べません。」だけを出す。
 - 選択演出（2026-11-14、社長訂正）: 外枠の線・紋様を撤去し、Liquid Glassの内側に紫が一度広がって落ち着く。Mythosを最も強く、FableとAstraを次の段とする。推論もXHighからMax・Ultra Codeへ段階を上げる。動きを減らす設定は静止した色、透明度低減は不透明面で同じ段階を示す。色の数値はHQ `design/tokens.json` の `appSelection`。
 - 2つは高さ36pt・角丸18pt・内側の余白・chevron（10pt、補助色）・押下時のガラスの反応を揃え、間は8pt。値が不明なら「不明」、最後に確認した値なら「最終確認」を付け、変更中は「変更中」を出す。
 - 変更できない時もメニューは開き、理由を1行の無効行で示す（2026-11-11の指摘を維持）。VoiceOverは「モデル」「推論」を別の操作として読む。
