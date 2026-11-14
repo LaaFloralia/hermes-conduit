@@ -308,6 +308,7 @@ private struct LAAWorkPaneView: View {
 /// The pane's heading. The focused pane carries the link colour on its top
 /// edge and the selection tint, as the sidebar marks its selected row.
 private struct LAAWorkPaneHeader: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
     @State private var showingInitialInstruction = false
     let session: LAAWorkSession?
     let sessionID: String?
@@ -343,7 +344,7 @@ private struct LAAWorkPaneHeader: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.pane.\(number).header")
         .sheet(isPresented: $showingInitialInstruction) {
-            if let sessionID { LAAWorkInitialInstruction(sessionID: sessionID) }
+            if let sessionID { LAAWorkInitialInstruction(sessionID: sessionID).environmentObject(bridge) }
         }
     }
 

@@ -362,14 +362,14 @@ struct LAABackgroundUITestFixtureScreen: View {
         if ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_PREVIEW_FAILED") {
             LAAConversationRoute()
                 .overlay(alignment: .topTrailing) {
-                    Button("接続を復元") {
+                    Button {
                         // The fixture performs the same successful launch handoff,
                         // with no credentials or live employee state.
                         if let workspace = fake.state.laaEmployeeChatPreview.workspace,
                            let link = WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil) {
                             fake.state.laaEmployeeChatLaunchEnded(link, outcome: .handled)
                         }
-                    }.accessibilityIdentifier("fixture.preview.recover")
+                    } label: { Text(verbatim: "接続を復元") }.accessibilityIdentifier("fixture.preview.recover")
                 }
         } else if ProcessInfo.processInfo.arguments.contains("-LAA_FORCE_COMPACT_CHAT") {
             V2ConversationScreen()

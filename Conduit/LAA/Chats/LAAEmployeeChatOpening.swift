@@ -96,7 +96,7 @@ struct LAAEmployeeChatOpeningView: View {
                 VStack(spacing: LAASpacing.x2) {
                     if preview.failure != nil {
                         Button { appState.laaRetryEmployeeChat() } label: {
-                            Label("接続を再試行", systemImage: "arrow.clockwise")
+                            Label { Text(verbatim: "接続を再試行") } icon: { Image(systemName: "arrow.clockwise") }
                         }.accessibilityIdentifier("laa.chats.preview.retry")
                     }
                     previewComposer

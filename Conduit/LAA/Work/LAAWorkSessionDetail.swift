@@ -200,7 +200,7 @@ struct LAAWorkSessionDetail: View {
                 }
             }
         }
-        .sheet(isPresented: $showingInitialInstruction) { LAAWorkInitialInstruction(sessionID: id) }
+        .sheet(isPresented: $showingInitialInstruction) { LAAWorkInitialInstruction(sessionID: id).environmentObject(bridge) }
         .onChange(of: session?.needsDecision) { _, waiting in
             guard waiting == true else { parkedOnDecision = false; return }
             guard didInitialScroll, !userDragged else { return }
