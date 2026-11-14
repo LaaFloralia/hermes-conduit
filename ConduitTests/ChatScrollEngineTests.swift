@@ -513,6 +513,71 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(engine.isFollowingLatest)
     }
 
+    /// SwiftUI answered the pin that opened a long chat on its latest
+    /// message with the offset it had before, the top, and nothing laid
+    /// out afterwards to pin again (ChatScrollHostedTests, 2026-11-14).
+    func testFollowingTakesBackAnOffsetWrittenOverItsPin() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 3800)
+        surface.sets.removeAll()
+
+        surface.contentOffsetY = 0
+        engine.surfaceScrolled()
+        XCTAssertTrue(surface.sets.isEmpty, "not inside the update that wrote it")
+        drainMainQueue()
+        XCTAssertEqual(surface.contentOffsetY, 3800)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testAWriterThatAnswersEveryPinIsGivenUpOnWhenTheHoldLapses() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4600)
+        surface.sets.removeAll()
+
+        clock += ChatScrollEngine.pinHoldDuration / 2
+        surface.contentOffsetY = 0
+        engine.surfaceScrolled()
+        drainMainQueue()
+        XCTAssertEqual(surface.contentOffsetY, 3800)
+
+        // Taking the offset back does not renew the hold.
+        clock += ChatScrollEngine.pinHoldDuration / 2 + 0.01
+        surface.contentOffsetY = 0
+        engine.surfaceScrolled()
+        drainMainQueue()
+        XCTAssertEqual(surface.contentOffsetY, 0)
+        XCTAssertEqual(surface.sets.count, 1)
+    }
+
+    /// An offset that moves with no finger long after a pin is VoiceOver's
+    /// scroll or a keyboard's: following waits for the next layout, as before.
+    func testAnOffsetMovedLongAfterAPinIsLeftAlone() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4600)
+        surface.sets.removeAll()
+
+        clock += ChatScrollEngine.pinHoldDuration + 0.01
+        surface.contentOffsetY = 3000
+        engine.surfaceScrolled()
+        drainMainQueue()
+        XCTAssertEqual(surface.contentOffsetY, 3000)
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    func testADragTakesAnOffsetWrittenOverAPin() {
+        let (engine, surface) = makeEngine()
+        surface.layOut(contentHeight: 4600)
+        surface.sets.removeAll()
+
+        surface.contentOffsetY = 0
+        engine.surfaceScrolled()
+        surface.userScroll(to: 1000)
+        drainMainQueue()
+        XCTAssertEqual(surface.contentOffsetY, 1000, "a finger owns the offset")
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
     func testATitleTapCancelsAPendingPastTheBottomCheck() {
         let (engine, surface) = makeEngine()
         surface.contentHeight = 3700

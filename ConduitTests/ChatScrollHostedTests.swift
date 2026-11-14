@@ -54,6 +54,7 @@ final class ChatScrollHostedTests: XCTestCase {
         let host: UIViewController
         let scrollView: UIScrollView
         let engine: ChatScrollEngine
+        let opening: ScrollRecorder
     }
 
     private static func transcript(_ range: Range<Int>) -> [ChatMessage] {
@@ -101,8 +102,11 @@ final class ChatScrollHostedTests: XCTestCase {
         let found = try XCTUnwrap(locator)
         let scrollView = try XCTUnwrap(found.surface?.scrollView)
         let engine = try XCTUnwrap(found.engine)
+        // From the moment the scroll view exists, so a chat that opened
+        // somewhere else says who put it there.
+        let opening = ScrollRecorder(scrollView)
         settle(host.view)
-        return Mounted(appState: appState, host: host, scrollView: scrollView, engine: engine)
+        return Mounted(appState: appState, host: host, scrollView: scrollView, engine: engine, opening: opening)
     }
 
     private static func find<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
@@ -137,7 +141,23 @@ final class ChatScrollHostedTests: XCTestCase {
         line: UInt = #line
     ) {
         let distance = maxOffset(mounted.scrollView) - mounted.scrollView.contentOffset.y
-        XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance))", file: file, line: line)
+        XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance); \(state(mounted)))", file: file, line: line)
+    }
+
+    /// Where the engine and the scroll view each think the transcript is, so a
+    /// failure says whether the engine never pinned or pinned somewhere else.
+    private func state(_ mounted: Mounted) -> String {
+        let view = mounted.scrollView
+        let engine = mounted.engine
+        let surface = engine.surface
+        return "mode \(engine.mode) paused \(engine.isPaused) dragging \(engine.isDragging)"
+            + " offset \(view.contentOffset.y) content \(view.contentSize.height) bounds \(view.bounds.height)"
+            + " inset \(view.adjustedContentInset.top)/\(view.adjustedContentInset.bottom)"
+            + " surface offset \(surface?.contentOffsetY ?? -1) max \(surface?.maxOffsetY ?? -1)"
+            + " origin \(surface?.transcriptOriginY ?? -1) top row \(engine.topVisibleMessageID ?? "none")"
+            + " tracking \(view.isTracking) decelerating \(view.isDecelerating)"
+            + " animating \(engine.latestAnimationInFlight)"
+            + "\nsince the scroll view was found:\n\(mounted.opening.dump())"
     }
 
     /// What a finger would do: begin a drag, move the content, let go.

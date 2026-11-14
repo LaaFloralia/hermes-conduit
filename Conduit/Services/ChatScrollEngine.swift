@@ -231,6 +231,10 @@ final class ChatScrollEngine: ObservableObject {
     /// the cards measured during it take their heights (#1238). UIKit can
     /// still report the deceleration on the tick that ends it.
     static let scrollRestDelay: TimeInterval = 0.1
+    /// How long after following puts the offset on the latest message an
+    /// offset written back above it is taken for SwiftUI's answer to that
+    /// pin, not the reader's doing.
+    static let pinHoldDuration: TimeInterval = 0.5
     /// How long a card's announced growth waits for the layout pass that
     /// lands it before it is dropped.
     static let cardGrowthDeadline: TimeInterval = 1
@@ -268,6 +272,8 @@ final class ChatScrollEngine: ObservableObject {
     /// Bumped when the reader or a command takes over, so a pending
     /// past-the-bottom check does nothing when it runs.
     private var pastBottomCheckGeneration: UInt64 = 0
+    /// Where and when following last moved the offset, for `pinHoldDuration`.
+    private var lastPin: (offsetY: CGFloat, at: TimeInterval)?
     /// Bumped by every row the reader opens or closes, and by a drag, the
     /// explicit commands, a session switch and a restoration, so only the
     /// latest settle check acts. Anything else that changes the mode leaves
@@ -470,6 +476,13 @@ final class ChatScrollEngine: ObservableObject {
             if !pastBottomCheckScheduled {
                 pin(surface)
             }
+            schedulePastBottomCheck()
+        } else if !isDragging, pinWasOverwritten(on: surface) {
+            // SwiftUI also answers a pin with the offset it had before it
+            // (HostingScrollView.updateContext, observed putting a chat that
+            // had opened on its latest message back at its first). Nothing
+            // lays out after that, so no later pass pins again: the check
+            // after this update does, for as long as the hold lasts.
             schedulePastBottomCheck()
         }
         refreshTrackedMessageVisibility()
@@ -1100,6 +1113,8 @@ final class ChatScrollEngine: ObservableObject {
                 emit(.persistSnapshot(renderedSessionKey))
             }
             if abs(surface.contentOffsetY - target) > 0.5 {
+                // Above an earlier pin on purpose.
+                lastPin = (target, now())
                 surface.setContentOffsetY(target, animated: false)
             }
         } else {
@@ -1316,9 +1331,16 @@ final class ChatScrollEngine: ObservableObject {
             guard let surface = self.surface,
                   !self.isPaused,
                   !self.isDragging,
-                  self.canPinWhileFollowing(surface),
-                  surface.distanceFromBottom < -0.5 else { return }
-            self.pin(surface)
+                  self.canPinWhileFollowing(surface) else { return }
+            if surface.distanceFromBottom < -0.5 {
+                self.pin(surface)
+            } else if self.pinWasOverwritten(on: surface) {
+                // The hold is not renewed, so a writer that answers every
+                // pin is given up on when it lapses.
+                self.pin(surface, renewsHold: false)
+            } else {
+                return
+            }
             self.refreshJumpButton()
         }
     }
@@ -1436,7 +1458,15 @@ final class ChatScrollEngine: ObservableObject {
         mode == .following && !surface.isTracking && !surface.isDecelerating && !latestAnimationInFlight
     }
 
-    private func pin(_ surface: ChatScrollSurface) {
+    /// Following put the offset on the latest message a moment ago, and
+    /// with no finger, momentum or jump it now sits above that.
+    private func pinWasOverwritten(on surface: ChatScrollSurface) -> Bool {
+        guard canPinWhileFollowing(surface), let lastPin,
+              now() - lastPin.at <= Self.pinHoldDuration else { return false }
+        return surface.contentOffsetY < lastPin.offsetY - 0.5
+    }
+
+    private func pin(_ surface: ChatScrollSurface, renewsHold: Bool = true) {
         var target = surface.maxOffsetY
         if let hold = replyHoldOffset(on: surface) {
             if surface.contentOffsetY > hold + 0.5 {
@@ -1461,6 +1491,9 @@ final class ChatScrollEngine: ObservableObject {
             }
         }
         guard abs(surface.contentOffsetY - target) > 0.5 else { return }
+        if renewsHold {
+            lastPin = (target, now())
+        }
         surface.setContentOffsetY(target, animated: false)
     }
 
