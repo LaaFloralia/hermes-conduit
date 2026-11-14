@@ -66,7 +66,7 @@ final class LAAUnknownDeliveryTests: XCTestCase {
         store.markSubmissionUnknown(item.id)
         let stamp = try? XCTUnwrap(store.unknownSubmissions.first?.reservedAt)
         XCTAssertNotNil(stamp)
-        XCTAssertGreaterThanOrEqual(stamp ?? .distantPast, before.addingTimeInterval(-1))
+        XCTAssertGreaterThanOrEqual((stamp ?? .distantPast).timeIntervalSince(before), -1)
     }
 
     func testAQuotedReplyKeepsTheWordsAtItsEnd() {

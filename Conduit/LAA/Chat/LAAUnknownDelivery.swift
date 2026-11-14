@@ -31,7 +31,7 @@ enum LAAUnknownDelivery {
         if let reservedAt {
             let earliest = reservedAt.addingTimeInterval(-clockSkew)
             let dated = carrying.compactMap { MessageTimestampFormatter.date(from: $0.timestamp) }
-            if !dated.isEmpty { return dated.contains { $0 >= earliest } }
+            if !dated.isEmpty { return dated.contains { $0.timeIntervalSince(earliest) >= 0 } }
         }
         if let newest = owned.last, carrying.last?.id == newest.id { return true }
         return words.count >= distinctiveLength
