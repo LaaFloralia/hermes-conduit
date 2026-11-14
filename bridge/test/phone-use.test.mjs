@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { statSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,8 +64,11 @@ test('allow: push-to-start payload, owner allows, operating until end, end push 
   assert.deepEqual(start.payload.aps['content-state'], { phase: 'ask' });
   assert.equal(start.payload.aps['input-push-token'], 1);
   assert.equal(start.payload.aps.alert.body, 'Claude｜iPhone Use：LAAアプリの 表示確認');
+  assert.equal(asked.request.startPushAcceptedAt, f.now());
+  assert.equal(asked.request.activityRegisteredAt, null);
 
   assert.equal((await f.h.request(`/v1/phone-use/requests/${id}/activity-token`, { method: 'PUT', token: f.phone, body: { token: ACTIVITY } })).status, 200);
+  assert.equal(f.cli.status(id).activityRegisteredAt, f.now());
   const waiting = f.cli.waitForAnswer(id, { pollMs: 1 });
   const allowed = await answer(f, id, 'allow');
   assert.equal(allowed.status, 200); assert.equal(allowed.body.data.status, 'allowed');
@@ -172,6 +176,7 @@ test('no answer: expires at answerBy, the wait ends the activity; allowed one en
   await f.h.request(`/v1/phone-use/requests/${id}/activity-token`, { method: 'PUT', token: f.phone, body: { token: ACTIVITY } });
   const result = await f.cli.waitForAnswer(id, { sleep: async () => f.advance(5_000) });
   assert.equal(result.status, 'expired');
+  assert.equal(result.reason, 'no_answer');
   assert.equal(f.pushes.at(-1).payload.aps['content-state'].phase, 'expired');
   assert.equal((await answer(f, id, 'allow')).status, 409);
 
@@ -180,6 +185,49 @@ test('no answer: expires at answerBy, the wait ends the activity; allowed one en
   f.advance(61_000);
   assert.equal(f.cli.status(b).status, 'ended');
   assert.equal((await f.cli.ask({ who: 'DeepSeek', purpose: '次' })).ok, true, 'a lapsed session does not block the next ask');
+});
+
+test('APNs accepted without an activity token: delivery stays unconfirmed and never grants permission', async (t) => {
+  const f = await fixture(t);
+  await register(f);
+  const id = (await f.cli.ask({ who: 'GPT', purpose: '確認', timeoutMs: 10_000 })).request.id;
+  const result = await f.cli.waitForAnswer(id, { sleep: async () => f.advance(5_000) });
+  assert.equal(result.status, 'expired');
+  assert.equal(result.reason, 'delivery_unconfirmed');
+  assert.equal(result.hasActivityToken, false);
+  assert.equal(result.activityRegisteredAt, null);
+  assert.equal((await answer(f, id, 'allow')).status, 409);
+});
+
+test('CLI reports unconfirmed delivery as not asked, without changing the expired request to allowed', async (t) => {
+  const f = await fixture(t);
+  await register(f);
+  const wait = f.cli.waitForAnswer.bind(f.cli);
+  f.cli.waitForAnswer = (id) => wait(id, { sleep: async () => f.advance(5_000) });
+  const lines = [];
+  const code = await phoneUseCommand(['ask'], { who: 'GPT', purpose: '確認', timeout: '10', json: true },
+    { service: f.cli, write: (line) => lines.push(line) });
+  const result = JSON.parse(lines.at(-1));
+  assert.equal(code, 1);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'delivery_unconfirmed');
+  assert.equal(result.request.status, 'expired');
+});
+
+test('after Stop, the next request uses the newly registered start token and still waits for Allow', async (t) => {
+  const f = await fixture(t);
+  await register(f);
+  const id = (await f.cli.ask({ who: 'GPT', purpose: '確認' })).request.id;
+  await answer(f, id, 'allow');
+  await answer(f, id, 'stop');
+  const nextToken = 'ef'.repeat(32);
+  assert.equal((await f.h.request('/v1/phone-use/start-token', { method: 'PUT', token: f.phone,
+    body: { token: nextToken, environment: 'production' } })).status, 200);
+  const next = await f.cli.ask({ who: 'GPT', purpose: '再開確認' });
+  assert.equal(next.request.status, 'pending');
+  assert.equal(f.pushes.at(-1).token, nextToken);
+  assert.equal((await answer(f, id, 'allow')).status, 409);
+  assert.equal((await answer(f, next.request.id, 'allow')).body.data.status, 'allowed');
 });
 
 test('a revoked iPhone is never asked and cannot answer; reset hands the place over', async (t) => {
@@ -233,4 +281,29 @@ test('APNs JWT is ES256 over header.claims; sender needs both env values', () =>
   assert.equal(apnsSenderFromEnv({ APNS_KEY: key }), null);
   assert.equal(apnsSenderFromEnv({ APNS_KEY: 'op://x', APNS_KEY_ID: 'k' }), null);
   assert.equal(typeof apnsSenderFromEnv({ APNS_KEY: key, APNS_KEY_ID: 'k' }), 'function');
+});
+
+test('APNs start delivery expires with its request deadline', async () => {
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const headers = [];
+  const connectAPNs = () => {
+    const client = new EventEmitter();
+    client.destroy = () => {};
+    client.request = (value) => {
+      headers.push(value);
+      const request = new EventEmitter();
+      request.end = () => queueMicrotask(() => {
+        request.emit('response', { ':status': 200 });
+        request.emit('end');
+      });
+      return request;
+    };
+    return client;
+  };
+  const send = apnsSenderFromEnv({ APNS_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }), APNS_KEY_ID: 'TEST' }, { connectAPNs });
+  await send({ kind: 'start', token: START, environment: 'sandbox', payload: { aps: { 'stale-date': 1_700_000_090 } } });
+  assert.equal(headers[0]['apns-expiration'], '1700000090');
+  assert.equal(headers[0]['apns-push-type'], 'liveactivity');
+  await send({ kind: 'end', token: ACTIVITY, environment: 'sandbox', payload: { aps: { event: 'end' } } });
+  assert.equal(headers[1]['apns-expiration'], undefined, 'ending behavior stays unchanged');
 });

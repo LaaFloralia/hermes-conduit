@@ -57,6 +57,7 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
     const s = settle(r);
     return { id: s.id, who: s.who, purpose: s.purpose, status: s.status, createdAt: s.createdAt, answerBy: s.answerBy,
       answeredAt: s.answeredAt ?? null, endedAt: s.endedAt ?? null, reason: s.reason ?? null, hasActivityToken: Boolean(s.activityToken),
+      startPushAcceptedAt: s.startPushAcceptedAt ?? null, activityRegisteredAt: s.activityRegisteredAt ?? null,
       ...(s.unasked ? { unasked: true } : {}) };
   };
   function find(state, id) {
@@ -108,7 +109,8 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
       file.mutate((s) => { const x = s.requests[r.id]; if (x) { x.status = 'failed'; x.endedAt = now(); x.reason = String(sent.reason).slice(0, 80); } });
       return { ok: false, error: 'push_failed', reason: sent.reason, request: view(file.read().requests[r.id]) };
     }
-    return { ok: true, request: view(r) };
+    file.mutate((s) => { if (s.requests[r.id]) s.requests[r.id].startPushAcceptedAt = now(); });
+    return { ok: true, request: view(file.read().requests[r.id]) };
   }
 
   return {
@@ -141,6 +143,7 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
         const r = find(s, id);
         if (r.deviceId !== deviceId) throw new BridgeError(403, 'phone_use_other_device', 'the request belongs to another device');
         r.activityToken = value;
+        r.activityRegisteredAt = now();
         return view(r);
       }, { tag: id });
     },
@@ -187,7 +190,7 @@ export function createPhoneUse({ dir, now = () => Date.now(), push = null, devic
       for (;;) {
         const v = this.status(id);
         if (v.status !== 'pending') {
-          if (v.status === 'expired') await this.end(id, { reason: 'no_answer' });
+          if (v.status === 'expired') await this.end(id, { reason: v.hasActivityToken ? 'no_answer' : 'delivery_unconfirmed' });
           return this.status(id);
         }
         await sleep(pollMs);

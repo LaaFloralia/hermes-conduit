@@ -12,7 +12,7 @@ export function apnsJwt({ key, keyId, teamId, now = Date.now() }) {
   return `${unsigned}.${signature.toString('base64url')}`;
 }
 
-export function apnsSenderFromEnv(env = process.env) {
+export function apnsSenderFromEnv(env = process.env, { connectAPNs = connect } = {}) {
   const key = env.APNS_KEY, keyId = env.APNS_KEY_ID;
   if (!key || !keyId || key.startsWith('op://')) return null;
   const teamId = env.LAA_PHONE_USE_TEAM_ID || 'PAW258GB42';
@@ -20,7 +20,7 @@ export function apnsSenderFromEnv(env = process.env) {
   const once = ({ kind, token, environment, payload }) => new Promise((resolve, reject) => {
     // `wake` is a background push to the app itself; the rest go to Live Activities.
     const wake = kind === 'wake';
-    const client = connect(ORIGINS[environment] ?? ORIGINS.production);
+    const client = connectAPNs(ORIGINS[environment] ?? ORIGINS.production);
     let done = false;
     const finish = (error, result) => {
       if (done) return;
@@ -35,6 +35,7 @@ export function apnsSenderFromEnv(env = process.env) {
       authorization: `bearer ${apnsJwt({ key, keyId, teamId })}`,
       'apns-push-type': wake ? 'background' : 'liveactivity', 'apns-topic': wake ? bundle : `${bundle}.push-type.liveactivity`,
       'apns-priority': wake ? '5' : '10',
+      ...(kind === 'start' ? { 'apns-expiration': String(payload.aps['stale-date']) } : {}),
       'content-type': 'application/json', 'content-length': Buffer.byteLength(body),
     });
     let status = 0, text = '';
