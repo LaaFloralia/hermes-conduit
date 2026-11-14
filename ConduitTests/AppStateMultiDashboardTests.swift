@@ -643,6 +643,7 @@ final class AppStateMultiDashboardTests: XCTestCase {
         )
         KeychainHelper.saveConnection(HermesConnection(baseUrl: review.normalizedURL, ticket: "t"), dashboardID: review.id)
 
+        appState.appLockPolicy = AppLockPolicy(isEnabled: true)
         XCTAssertEqual(appState.savedSignIn(for: home.id), .biometric)
         XCTAssertEqual(appState.savedSignIn(for: mac.id), .password)
         XCTAssertEqual(appState.savedSignIn(for: review.id), .session)

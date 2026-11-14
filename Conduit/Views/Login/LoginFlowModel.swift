@@ -577,7 +577,7 @@ final class LoginFlowModel {
         }
         var remembered = appState.savedDashboardRegistry.dashboard(with: id)?.username
         if remembered?.isEmpty ?? true,
-           let credentials = KeychainHelper.loadCredentials(dashboardID: id), !credentials.requiresFaceID {
+           let credentials = KeychainHelper.loadCredentials(dashboardID: id), !appState.appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID) {
             remembered = credentials.username
         }
         username = remembered ?? ""
@@ -606,7 +606,10 @@ final class LoginFlowModel {
         let username = self.username
         let password = self.password
         let saveSignIn = self.saveSignIn
-        let useBiometrics = self.useBiometrics
+        // Preserve a saved lock preference while the LAA build suspends it.
+        let useBiometrics = AppLockPolicy.current.isEnabled
+            ? self.useBiometrics
+            : (appState.savedCredentialsForDashboard(at: target.baseURL)?.requiresFaceID ?? false)
         do {
             let client = makeTransport(target.baseURL, target.cloudflare)
             let authenticated = try await client.connect(username: username, password: password)
