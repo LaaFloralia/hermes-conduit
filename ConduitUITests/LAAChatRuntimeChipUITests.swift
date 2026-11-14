@@ -74,8 +74,30 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         model.tap(); menuRow("Mythos 5.2", app).tap()
         let confirm = app.buttons["切り替える"]
         if confirm.waitForExistence(timeout: 3) { confirm.tap() }
-        waitValue(model, "Mythos 5.2")
+        waitValue(model, "Claude Mythos 5.2")
         effort.tap(); menuRow("High", app).tap(); waitValue(effort, "High")
+        app.terminate()
+    }
+
+    /// Every model's name whole (owner, 2026-11-14): the longest Claude name
+    /// with Ultra Code leaves no room beside + and Send, so the capsules
+    /// take their own line above them; none is cut or off screen.
+    func testLongNamesTakeTheirOwnLineWhole() {
+        let app = launch(profile: "laa-monet", runtime: "claude-mythos-5-2,claude,ultracode", dark: true, models: "astra")
+        let model = any("composer.runtime.model", app)
+        XCTAssertTrue(model.waitForExistence(timeout: 10))
+        waitValue(model, "Claude Mythos 5.2")
+        let effort = any("composer.runtime.effort", app), action = any("composer.action", app)
+        let attach = any("composer.attach", app), window = app.windows.firstMatch.frame
+        XCTAssertTrue(action.exists && attach.exists)
+        for element in [model, effort, action, attach] {
+            XCTAssertGreaterThanOrEqual(element.frame.minX, window.minX)
+            XCTAssertLessThanOrEqual(element.frame.maxX, window.maxX)
+        }
+        XCTAssertLessThanOrEqual(model.frame.maxX, effort.frame.minX, "the effort follows the model")
+        XCTAssertLessThan(model.frame.maxY, attach.frame.minY + 1, "the capsules sit on their own line above +")
+        XCTAssertEqual(attach.frame.midY, action.frame.midY, accuracy: 1, "+ and Send share the line under them")
+        capture(app, "long-name-own-line")
         app.terminate()
     }
 
@@ -87,10 +109,12 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         field.typeText("今ってssdつながってる？")
         capture(app, "keyboard-composer-controls")
         let keyboardTop = app.keyboards.firstMatch.frame.minY
+        let window = app.windows.firstMatch.frame
         for id in ["composer.action", "composer.attach", "composer.runtime.model", "composer.runtime.effort"] {
             let control = any(id, app)
             XCTAssertTrue(control.isHittable, id)
             XCTAssertLessThanOrEqual(control.frame.maxY, keyboardTop, id)
+            XCTAssertLessThanOrEqual(control.frame.maxX, window.maxX, "\(id) stays on screen")
         }
         let header = app.buttons["laa.employee.header"]
         // The compact header floats over the transcript (owner, 2026-11-13):
@@ -185,7 +209,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             let theme = dark ? "dark" : "light"
             let model = any("composer.runtime.model", app)
             let effort = any("composer.runtime.effort", app)
-            XCTAssertEqual(chipValue(app), "Opus 5.5 · High")
+            XCTAssertEqual(chipValue(app), "Claude Opus 5.5 · High")
 
             model.tap()
             let fable = app.buttons["Fable 5.2"].firstMatch
@@ -193,7 +217,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             XCTAssertFalse(menuRow("XHigh", app).exists, "the model menu lists models only")
             capture(app, "chat-model-menu-\(theme)")
             fable.tap()
-            waitValue(model, "Fable 5.2")
+            waitValue(model, "Claude Fable 5.2")
             XCTAssertEqual(effort.value as? String, "High", "the effort is left alone")
 
             // Mythos asks first, as Hermes' confirm_required does.
@@ -202,9 +226,9 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             let confirm = app.alerts.buttons["切り替える"]
             XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the confirmation must come up")
             capture(app, "chat-model-confirm-\(theme)")
-            XCTAssertEqual(model.value as? String, "Fable 5.2", "nothing changes before the confirmation")
+            XCTAssertEqual(model.value as? String, "Claude Fable 5.2", "nothing changes before the confirmation")
             confirm.tap()
-            waitValue(model, "Mythos 5.2")
+            waitValue(model, "Claude Mythos 5.2")
 
             effort.tap()
             let xhigh = menuRow("XHigh", app)
@@ -213,7 +237,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             capture(app, "chat-effort-menu-\(theme)")
             xhigh.tap()
             waitValue(effort, "XHigh")
-            XCTAssertEqual(model.value as? String, "Mythos 5.2")
+            XCTAssertEqual(model.value as? String, "Claude Mythos 5.2")
             capture(app, "chat-changed-\(theme)")
             app.terminate()
         }
@@ -258,7 +282,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
 
     func testEachEmployeeShowsItsOwnRunningModelAndEffort() {
         let cases: [(profile: String, runtime: String?, expected: String)] = [
-            ("laa-monet", "claude-opus-5-5,claude,high", "Opus 5.5 · High"),
+            ("laa-monet", "claude-opus-5-5,claude,high", "Claude Opus 5.5 · High"),
             ("laa-cto", "deepseek-v4.1-flash,laa-dsh,xhigh", "DeepSeek V4.1 Flash · XHigh"),
             ("laa-cfo", "deepseek-v4.1-flash,laa-dsh,", "DeepSeek V4.1 Flash · 不明"),
             ("laa-cso", nil, "不明 · 不明"),

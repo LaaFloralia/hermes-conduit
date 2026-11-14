@@ -64,7 +64,7 @@ enum LAAChatFastControl {
 struct LAAChatFixedRuntime: Equatable {
     let model: String
     let provider: String
-    /// The name on the model capsule, short enough to stay beside the other two at 440 pt.
+    /// The name on the model capsule, whole (LAAModelCapsule.fullName).
     let name: String
     let effort: String
     let speed: ModelSpeed

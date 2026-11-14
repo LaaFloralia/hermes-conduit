@@ -121,15 +121,19 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").finish, .crystal)
         XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").finish, .polished)
         XCTAssertEqual(LAAModelRank.of("gpt-6-astra").finish, .polished)
-        XCTAssertEqual(LAAModelRank.of("claude-opus-5-5").finish, .plain)
+        XCTAssertEqual(LAAModelRank.of("claude-opus-5-5").finish, .plain, "owner, 2026-11-14 22:00: Opus has no particles")
+        XCTAssertEqual(LAAModelRank.of("gpt-6.1-sol").finish, .plain)
+        XCTAssertEqual(LAAModelRank.of("gpt-6.1-terra").finish, .plain)
+        XCTAssertEqual(LAAModelRank.of("deepseek-v4.1-flash").finish, .plain)
         XCTAssertEqual(LAAModelRank.of(nil).finish, .plain)
-        XCTAssertEqual(LAAEffort.finish("high"), .plain)
+        XCTAssertEqual(LAAEffort.finish("medium"), .plain)
+        XCTAssertEqual(LAAEffort.finish("high"), .plain, "XHigh and above hold particles")
         XCTAssertEqual(LAAEffort.finish("xhigh"), .polished)
         XCTAssertEqual(LAAEffort.finish("max"), .crystal)
         XCTAssertEqual(LAAEffort.name("ultracode"), "Ultra Code")
         for dark in [false, true] {
-            let plain = LAAGlassLook(finish: .plain), polished = LAAGlassLook(finish: .polished)
-            let crystal = LAAGlassLook(finish: .crystal)
+            let plain = LAAGlassLook(finish: .plain)
+            let polished = LAAGlassLook(finish: .polished), crystal = LAAGlassLook(finish: .crystal)
             XCTAssertEqual(plain.topLight(dark: dark), 0, "plain glass holds no light of its own")
             XCTAssertEqual(plain.body(dark: dark), 0)
             XCTAssertEqual(plain.glint(dark: dark), 0)
@@ -144,6 +148,37 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         }
     }
 
+    /// The particles (owner, 2026-11-14 21:45): none in plain glass, more and
+    /// brighter at each step, all inside the capsule, and none at all when the
+    /// glass is still (Reduce Motion, Low Power Mode).
+    func testParticlesGrowWithTheStepAndStayInsideTheGlass() {
+        let size = CGSize(width: 180, height: 36)
+        func average(_ finish: LAAFinish) -> (count: Double, alpha: Double) {
+            var count = 0, alpha = 0.0
+            for frame in 0..<48 {
+                let grains = LAAGlassLook(finish: finish, time: 100 + Double(frame) / 4).grains(in: size)
+                count += grains.count
+                alpha += grains.map(\.alpha).reduce(0, +)
+                for grain in grains {
+                    XCTAssert((0...size.width).contains(CGFloat(grain.x)) && (0...size.height).contains(CGFloat(grain.y)),
+                              "\(grain) lies outside the glass")
+                    XCTAssert((0...1).contains(grain.alpha))
+                }
+            }
+            return (Double(count) / 48, alpha / Double(max(count, 1)))
+        }
+        XCTAssertEqual(average(.plain).count, 0, "plain glass holds no particle")
+        let polished = average(.polished), crystal = average(.crystal)
+        XCTAssertGreaterThan(polished.count, 4)
+        XCTAssertGreaterThan(crystal.count, polished.count)
+        XCTAssertGreaterThan(crystal.alpha, polished.alpha)
+        XCTAssertLessThan(crystal.count, 40, "a few dozen at most: a light drawing")
+        XCTAssertTrue(LAAGlassLook(finish: .crystal, time: nil).grains(in: size).isEmpty, "still glass draws none")
+        let a = LAAGlassLook(finish: .crystal, time: 12).grains(in: size)
+        XCTAssertEqual(a, LAAGlassLook(finish: .crystal, time: 12).grains(in: size), "any moment draws the same")
+        XCTAssertNotEqual(a, LAAGlassLook(finish: .crystal, time: 12.5).grains(in: size), "and they drift")
+    }
+
     @MainActor
     func testUltraCodeCapsuleKeepsItsRankedFinishOutsideTheFiveGeneralEfforts() {
         let capsule = LAAEffortCapsule(effort: "ultracode")
@@ -153,49 +188,61 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertNil(LAAEffortCapsule(effort: "unknown").ranked)
     }
 
-    func testOnePassOfLightCrossesTheGlassAndTheStandingSettlesBehindIt() {
+    func testOneFrontOfLightCrossesTheGlassAndTheStandingSettlesBehindIt() {
         let d = LAACeremony.slow
         let start = LAAGlassLook(finish: .crystal, elapsed: 0, duration: d)
         let middle = LAAGlassLook(finish: .crystal, elapsed: d * 0.4, duration: d)
         let end = LAAGlassLook(finish: .crystal, elapsed: d, duration: d)
-        XCTAssertLessThan(start.sweep()!, 0, "the light enters from beyond the leading end")
-        XCTAssertGreaterThan(middle.sweep()!, start.sweep()!)
-        XCTAssertLessThan(middle.sweep(lag: 0.16)!, middle.sweep()!, "the crystal's second reflection follows")
-        XCTAssertGreaterThan(middle.sweepStrength, 0.9)
-        XCTAssertGreaterThan(middle.echoStrength, 0)
-        XCTAssertLessThan(start.topLight(dark: false), middle.topLight(dark: false), "the standing light settles behind the pass")
-        XCTAssertNil(end.sweep(), "once over, nothing moves")
+        XCTAssertLessThan(start.front!, 0, "the light enters from beyond the leading end")
+        XCTAssertGreaterThan(middle.front!, start.front!)
+        XCTAssertGreaterThan(middle.frontStrength, 0.9)
+        XCTAssertLessThan(start.topLight(dark: false), middle.topLight(dark: false), "the standing light settles behind the front")
+        XCTAssertNil(end.front, "once over, nothing moves but the particles")
         XCTAssertEqual(end.topLight(dark: false), LAAGlassLook(finish: .crystal).topLight(dark: false))
-        let plain = LAAGlassLook(finish: .plain, elapsed: d * 0.4, duration: d)
-        XCTAssertGreaterThan(plain.sweepStrength, 0, "every applied choice shows its light")
-        XCTAssertLessThan(plain.sweepStrength, middle.sweepStrength)
-        XCTAssertEqual(plain.echoStrength, 0)
-        XCTAssertEqual(LAAGlassLook(finish: .polished, elapsed: d * 0.4, duration: d).echoStrength, 0)
+        let size = CGSize(width: 120, height: 36)
+        let plain = LAAGlassLook(finish: .plain, elapsed: d * 0.4, duration: d, time: 3)
+        XCTAssertTrue(plain.grains(in: size).isEmpty, "plain glass holds no particle, not even in the front")
+        let polished = LAAGlassLook(finish: .polished, elapsed: d * 0.4, duration: d, time: 3)
+        let burst = polished.grains(in: size).count - LAAGlassLook(finish: .polished, time: 3).grains(in: size).count
+        XCTAssertGreaterThan(burst, 0, "the front carries a burst of its own")
+        XCTAssertLessThan(polished.frontStrength, middle.frontStrength, "the crystal's front is the strongest")
         XCTAssertGreaterThan(LAACeremony.duration(rank: .mythos), LAACeremony.duration(rank: .none), "Mythos takes the slow time")
         XCTAssertLessThanOrEqual(LAACeremony.duration(rank: .mythos), LAACeremony.slow)
     }
 
-    func testTheMeterIsInkAndRisesWithinItsMovement() {
-        let rest = LAAEffortLook(effort: "max")
-        XCTAssertEqual(rest.level, 5)
-        XCTAssertEqual((0..<5).map { rest.tickScale($0) }, [1, 1, 1, 1, 1])
-        XCTAssertEqual(LAAEffortLook(effort: "xhigh").finish, .polished)
-        XCTAssertEqual(LAAEffortLook(effort: "max").finish, .crystal)
-        XCTAssertEqual(LAAEffortLook(effort: "max", current: false).finish, .plain, "a last-confirmed value has no finish")
-        XCTAssertNil(LAAEffortLook(effort: "low").tick(1), "Low fills one tick")
-        let rising = LAAEffortLook(effort: "max", elapsed: 0.05)
-        XCTAssertLessThan(rising.tickScale(4), rising.tickScale(0), "one after another")
-        let end = LAAEffortLook(effort: "max", elapsed: LAACeremony.duration(effort: "max") - 0.001)
-        XCTAssertEqual(end.tickScale(4), 1, accuracy: 0.02, "the last tick is up before the movement ends")
-        XCTAssertEqual(LAAEffortLook(effort: "max", current: false, elapsed: 0.05).tickScale(0), 1, "a last-confirmed value never moves")
+    /// The capsules wrap whole: a row too narrow for both puts the effort on
+    /// the next line rather than cutting the model's name (owner, 2026-11-14).
+    func testCapsulesWrapWholeAndTheComposerGivesThemALine() {
+        XCTAssertEqual(LAAWrapRow.lines([180, 110, 64], available: nil, spacing: 8), [0, 0, 0])
+        XCTAssertEqual(LAAWrapRow.lines([180, 110, 64], available: 340, spacing: 8), [0, 0, 1])
+        XCTAssertEqual(LAAWrapRow.lines([180, 110, 64], available: 250, spacing: 8), [0, 1, 1])
+        XCTAssertEqual(LAAWrapRow.lines([300, 110], available: 250, spacing: 8), [0, 1], "a capsule wider than the row keeps a line")
+        typealias Row = LAAComposerControlsRow
+        XCTAssertTrue(Row.oneLine(lead: 36, middle: 220, trail: 80, available: 400, spacing: 8))
+        XCTAssertFalse(Row.oneLine(lead: 36, middle: 340, trail: 80, available: 400, spacing: 8))
+        XCTAssertTrue(Row.oneLine(lead: 36, middle: 340, trail: 80, available: nil, spacing: 8))
     }
 
-    func testCapsuleNames() {
-        XCTAssertEqual(LAAModelCapsule.text(model: "claude-mythos-5-2", provider: "claude", name: nil, current: true), "Mythos 5.2")
+    func testCapsuleNamesAreWholeAndBeginWithTheirMaker() {
+        XCTAssertEqual(LAAModelCapsule.text(model: "claude-mythos-5-2", provider: "claude", name: nil, current: true),
+                       "Claude Mythos 5.2")
+        XCTAssertEqual(LAAModelCapsule.text(model: "claude-opus-5-5", provider: "claude", name: "Opus 5.5", current: true),
+                       "Claude Opus 5.5", "a short table label gets its maker")
+        XCTAssertEqual(LAAModelCapsule.text(model: "gpt-6-astra", provider: "openai-codex", name: "GPT 6 Astra", current: true),
+                       "GPT 6 Astra")
         XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: nil, current: false), "最終確認 不明")
+        XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: "モデルを選択", current: true), "モデルを選択")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "laa-monet-local", provider: "claude"), "Claude")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
+                       "DeepSeek V4.1 Flash")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "deepseek-v4.1-pro", provider: "dsh"), "DeepSeek V4.1 Pro",
+                       "each DeepSeek model by its own name")
         XCTAssertNil(LAAModelCapsule.readableName("laa-monet-local"))
         XCTAssertEqual(LAAModelCapsule.readableName("claude-opus-5-5[1m]"), "Opus 5.5", "the 1M route reads as its model")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "claude-opus-5-5[1m]", provider: "claude"), "Claude Opus 5.5")
+        let dots = LAAChatFixedRuntime.dots
+        XCTAssertEqual(LAAModelCapsule.text(model: dots.model, provider: dots.provider, name: dots.name, current: true), "GPT 6 Astra")
     }
 }
 #endif
