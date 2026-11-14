@@ -3193,3 +3193,25 @@ private enum PushNotificationError: LocalizedError {
         }
     }
 }
+
+#if LAA_BUILD
+extension PushNotificationService {
+    /// The LAA Bridge session id a notification carries (LAANotificationMeta),
+    /// and a key that names that one sealed message. Only a sealed push that
+    /// verifies has one: a plaintext push, even from a pairing that never set
+    /// up encryption, answers nothing. Reading it routes nothing and records
+    /// no replay, so the notification can still be tapped afterwards.
+    func laaBridgeNotification(_ userInfo: [AnyHashable: Any]) -> (sessionID: String, key: String)? {
+        let evaluation = NotificationE2E.evaluate(
+            userInfo,
+            records: Self.e2eKeyStore.records(),
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
+        )
+        guard case .verified(let verified) = evaluation,
+              let target = Self.target(for: evaluation, userInfo: userInfo),
+              target.sessionId.hasPrefix(LAANotificationMeta.prefix) else { return nil }
+        return (target.sessionId, verified.envelope.replayKey)
+    }
+}
+#endif

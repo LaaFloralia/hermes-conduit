@@ -3964,6 +3964,12 @@ private struct NotificationsSettingsDetail: View {
                     notificationToggle(AppLocalization.string("Approval cards in pushes"), detail: AppLocalization.string("Include approval details so cards work from notifications. Disable for maximum privacy."), keyPath: \.decisionCards)
                 }
 
+                #if LAA_BUILD
+                // The Mac's own notifications (decisions, Work conversations,
+                // tasks, events): which arrive, and which arrive quietly.
+                LAAWorkNotificationSettingsSection()
+                #endif
+
                 // #115: which sources' replies notify, per profile on the host.
                 if notifications.preferences.responseReady, appState.activeDashboardID != nil,
                    appState.notifierPlugin.reports(ReplySourcesClient.capability) {

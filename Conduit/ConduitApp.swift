@@ -29,6 +29,13 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         UNUserNotificationCenter.current().delegate = self
         // A "Hermes wants to talk" notification's Talk button (#449).
         HermesCallNotifications.registerCategory()
+        #if LAA_BUILD
+        // An answer given from a notification while the Mac was out of reach
+        // goes out when the app is next in front.
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in await LAAQuickAnswerCenter.shared.retryPending() }
+        }
+        #endif
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
@@ -126,6 +133,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        #if LAA_BUILD
+        // Any push that wakes the app is a chance to send a waiting answer.
+        Task { @MainActor in await LAAQuickAnswerCenter.shared.retryPending() }
+        #endif
         #if LAA_BUILD && !targetEnvironment(macCatalyst)
         if LAAPhoneUseService.handlesWake(userInfo) {
             Task { @MainActor in
@@ -180,6 +191,17 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        #if LAA_BUILD
+        // An answer button on a Bridge notification (tapped here, on the Mac
+        // or on the Apple Watch), or the notice about such an answer.
+        if LAAQuickAnswerNotifications.handles(response) {
+            Task { @MainActor in
+                await LAAQuickAnswerNotifications.handle(response)
+                completionHandler()
+            }
+            return
+        }
+        #endif
         // "Draft ready in Conduit" from the share sheet (#812): coming to the
         // front picks the draft up; one already on screen takes it now.
         if request.identifier.hasPrefix(ShareDraftInbox.notificationIdentifierPrefix), !(request.trigger is UNPushNotificationTrigger) {
@@ -241,6 +263,14 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([])
             return
         }
+        #if LAA_BUILD
+        // What became of an answer given from a notification is shown even
+        // with the app in front: the answer may have come from the Watch.
+        if LAAQuickAnswerNotifications.isNotice(notification.request) {
+            completionHandler([.banner, .list])
+            return
+        }
+        #endif
         // Directions to tap: posted from the background, kept if Conduit
         // came to the front before it showed.
         if notification.request.identifier == MapsNavigator.notificationIdentifier {

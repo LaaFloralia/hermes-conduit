@@ -66,7 +66,7 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
               if (sent[key]) continue;
               const result = await notify({ kind: 'calendar', title: event.title, body: event.allDay ? '終日の予定' : event.start,
                 deepLink: `laa://today/events/${encodeURIComponent(event.id)}?calendar=${encodeURIComponent(calendar.id)}`, dedupeKey: key });
-              if (result.delivered) { sent[key] = time; persist(); }
+              if (result.delivered || result.reason === 'muted') { sent[key] = time; persist(); }
             }
           }
         }

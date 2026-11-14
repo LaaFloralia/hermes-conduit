@@ -95,6 +95,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     return r;
   }
   function reserve(s, id, deviceId, body, retry) {
+    if (body.quick !== undefined && typeof body.quick !== 'boolean') throw badRequest('decision_invalid', 'quick must be boolean');
     const r = find(s, id);
     const key = JSON.stringify([deviceId, requestKey(body.requestId)]);
     const note = retry ? null : text(body.note, 'note', 600, { optional: true });
@@ -108,6 +109,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       if (r.status !== 'answered' || r.delivery?.state !== 'failed') throw conflict('decision_closed', 'only failed delivery can be retried');
     } else {
       if (r.status !== 'open') throw conflict('decision_closed', 'decision is already closed');
+      if (body.quick && r.deadline !== null && Date.parse(r.deadline) < now()) throw conflict('decision_expired', '回答期限を過ぎています。判断ボードで確認してください。');
       if (optionIndex === null ? (!r.allowOther || !note) : (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= r.options.length)) throw badRequest('decision_invalid', 'choose an option or provide a free answer');
       r.answer = { optionIndex, label: optionIndex === null ? note : r.options[optionIndex].label, note: optionIndex === null ? null : note, answeredAt: stamp(), deviceId };
       r.status = 'answered';

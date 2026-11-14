@@ -115,7 +115,8 @@ test('owner notification reuses plugin event routing and durable dedupe; failure
   const payload = { kind: 'session.finished', title: '終了', body: '確認してください', deepLink: 'laa://work/sessions/ses_0123456789abcdef', dedupeKey: 'one' };
   const notify = createOwnerNotifier({ file, deliver: async (p) => { sent.push(p); return { delivered: true }; } });
   assert.equal((await notify(payload)).delivered, true);
-  assert.equal(sent[0].session_id, `laa-bridge:${payload.deepLink}`);
+  assert.equal(sent[0].session_id.split('#')[0], `laa-bridge:${payload.deepLink}`);
+  assert.deepEqual(JSON.parse(Buffer.from(sent[0].session_id.split('#')[1], 'base64url')), { lv: 'p', v: 1, k: 'session.finished' });
   assert.equal((await notify(payload)).reason, 'duplicate');
   const afterRestart = createOwnerNotifier({ file, deliver: async () => assert.fail('duplicate delivery') });
   assert.equal((await afterRestart(payload)).reason, 'duplicate');
@@ -154,7 +155,8 @@ test('undelivered owner notifications survive restart and keep the complete cale
   const retry = createOwnerNotifier({ file, deliver: async (event) => { sent.push(event); return { delivered: true }; } });
   await retry.flush(); await retry.flush();
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].session_id, 'laa-bridge:' + payload.deepLink);
+  assert.equal(sent[0].session_id.split('#')[0], 'laa-bridge:' + payload.deepLink);
+  assert.equal(JSON.parse(Buffer.from(sent[0].session_id.split('#')[1], 'base64url')).k, payload.kind);
 });
 
 

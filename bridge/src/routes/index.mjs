@@ -11,6 +11,7 @@
 // groups arrive as the handler's `params` array (same shape as drive.mjs).
 // Handlers return `{status, data, headers?}` or throw a BridgeError.
 
+import { notificationRoutes } from './notifications.mjs';
 import { flushOwnerNotifications } from '../notify/index.mjs';
 import { daemonAdapter } from '../sessions/daemon.mjs';
 import { personalAgentAdapter } from '../sessions/adapter.mjs';
@@ -163,6 +164,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   }
 
   const routes = [
+    ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
     ...createDecisionRoutes({ service: decisions }),
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...linearOwnerTaskRoutes({ ...linearOptions, source: linearTasks, dispatch: taskDispatch, refs }),
