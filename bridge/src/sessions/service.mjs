@@ -1476,7 +1476,6 @@ export function defaultName(prompt) {
   if (/journal|日誌/i.test(prompt) && /手法/.test(prompt)) return 'Journal｜手法の研究・図解とTradingView受入';
   if (/Monet|モネット/i.test(prompt) && /無検閲/.test(prompt)) return 'LAAアプリ｜Monet（無検閲）の会話作成を修復';
   if (/studio|PR動画/i.test(prompt) && /X|参考|収集/.test(prompt)) return 'Studio｜Xの参考収集とPR動画';
-  if (/会話名|セッション名/.test(prompt)) return 'Work｜会話名と最初の指示の表示';
   const line = prompt.split('\n').map((item) => item.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim()).find(Boolean);
   if (!line) return null;
   const graphemes = [...TITLE_SEGMENTER.segment(line)].map((item) => item.segment);
