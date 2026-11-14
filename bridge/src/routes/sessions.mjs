@@ -169,6 +169,10 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     return { status: 200, data: { items: result.items, nextCursor: null } };
   }
 
+  async function initialInstruction({ params }) {
+    return { status: 200, data: { instruction: await sessions.initialInstruction(params[0]) } };
+  }
+
   async function conversation({ params }) {
     return { status: 200, data: await sessions.conversation(params[0]) };
   }
@@ -192,6 +196,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:read', handler: detail },
     { method: 'PATCH', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:write', idempotent: true, handler: update },
     { method: 'GET', path: '/v1/session-options', auth: true, scope: 'sessions:read', handler: options },
+    { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/initial-instruction$/, auth: true, scope: 'sessions:read', handler: initialInstruction },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/conversation$/, auth: true, scope: 'sessions:read', handler: conversation },
     {
       method: 'GET',

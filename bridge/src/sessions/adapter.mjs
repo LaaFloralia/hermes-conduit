@@ -59,6 +59,8 @@ const ERROR_MAP = new Map(Object.entries({
   session_identity_mismatch: [503, 'delegation_inconsistent'],
   caller_context_unavailable: [503, 'delegation_unavailable', true],
   worker_reply_forbidden: [403, 'worker_reply_forbidden'],
+  worker_bypass_forbidden: [403, 'worker_bypass_forbidden'],
+  paseo_subagent_entry_required: [403, 'paseo_subagent_entry_required'],
   operation_failed: [503, 'delegation_failed', true],
   unsupported_mode: [400, 'profile_unsupported'],
   fast_unsupported: [400, 'profile_unsupported'],
