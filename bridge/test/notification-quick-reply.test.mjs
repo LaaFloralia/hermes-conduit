@@ -10,7 +10,7 @@ import { createDecisionService } from '../src/decisions/service.mjs';
 import { createOwnerTaskNotificationPoller } from '../src/tasks/owner-notifications.mjs';
 import { createCalendarReminders } from '../src/calendar/reminders.mjs';
 import { daemonAdapter, daemonSessionID, pendingHash } from '../src/sessions/daemon.mjs';
-import { quickQuestion, sessionNotificationMeta, quickReply } from '../src/sessions/quick-reply.mjs';
+import { approvalSummary, quickQuestion, sessionNotificationMeta, quickReply } from '../src/sessions/quick-reply.mjs';
 import { BridgeError } from '../src/errors.mjs';
 import { startBridge } from './helpers.mjs';
 const decode = (s) => JSON.parse(Buffer.from(s.split('#')[1], 'base64url').toString());
@@ -136,13 +136,14 @@ test('quick session HTTP: metadata hash matches decision; mismatch, invalid opti
 
 test('quick session: approval summary, allow/deny, unsupported and failed metadata read', async (t) => {
   const f = nativeFixture();
-  f.agent.pendingPermissions = [{ id: 'tool', kind: 'tool', name: 'shell', input: { command: 'a\n' + '文'.repeat(200) } }];
+  f.agent.pendingPermissions = [{ id: 'tool', kind: 'tool', name: 'shell', input: { command: 'ls -la\n/tmp' } }];
   const h = await startBridge({ sessions: { daemon: f.daemon, notify: async (n) => f.notices.push(n) } }); t.after(() => h.close());
   const token = await h.token(), path = `/v1/sessions/${daemonSessionID(f.agent.id)}`;
   await h.request('/v1/sessions', { token });
   const detail = (await h.request(`${path}/decision`, { token })).body.data;
   assert.deepEqual(f.notices[0].meta, { sid: daemonSessionID(f.agent.id), h: detail.requestHash, a: 1 });
-  assert(f.notices[0].body.startsWith('承認: shell')); assert(Array.from(f.notices[0].body).length <= 140); assert(!/[\x00-\x1f\x7f]/.test(f.notices[0].body));
+  // The whole request on one line, the newline visible as an escape.
+  assert.equal(f.notices[0].body, '承認: shell {"command":"ls -la\\n/tmp"}');
   const post = (hash, choice, key) => h.request(`${path}/quick-reply`, { token, method: 'POST', key, body: { requestHash: hash, choice } });
   assert.equal((await post(detail.requestHash, 'allow', 'allow')).status, 200); assert.equal(f.sent[0].behavior, 'allow');
   f.agent.pendingPermissions = [f.question, { ...f.question, id: 'q2' }];
@@ -151,6 +152,30 @@ test('quick session: approval summary, allow/deny, unsupported and failed metada
   f.agent.pendingPermissions = [{ ...f.question, name: 'unknown' }]; current = await f.daemon.decision(f.agent.id);
   assert.equal((await post(current.requestHash, { optionIndex: 0 }, 'unsupported')).body.error.code, 'quick_reply_unsupported');
   assert.equal((await post(current.requestHash, 'deny', 'deny')).status, 200); assert.equal(f.sent[1].behavior, 'deny');
+});
+
+test('quick session: an approval that cannot be shown whole has no allow', async (t) => {
+  const tool = (input, name = 'shell') => ({ id: 'tool', kind: 'tool', name, detail: JSON.stringify(input, null, 2) });
+  assert.equal(approvalSummary(tool({})), '承認: shell');
+  assert.equal(approvalSummary(tool({ command: 'git status' })), '承認: shell {"command":"git status"}');
+  for (const input of [{ command: '文'.repeat(200) }, { command: 'curl -H "Authorization: x" https://example.com' },
+    { command: 'export K=sk-abcdefgh' }, { env: 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6' }, { command: 'echo \u202eabc' }]) {
+    assert.equal(approvalSummary(tool(input)), null, JSON.stringify(input));
+  }
+  assert.equal(approvalSummary({ kind: 'question', name: 'AskUserQuestion' }), null);
+
+  const f = nativeFixture();
+  f.agent.pendingPermissions = [{ id: 'tool', kind: 'tool', name: 'shell', input: { command: 'a\n' + '文'.repeat(200) } }];
+  const h = await startBridge({ sessions: { daemon: f.daemon, notify: async (n) => f.notices.push(n) } }); t.after(() => h.close());
+  const token = await h.token(), sid = daemonSessionID(f.agent.id), path = `/v1/sessions/${sid}`;
+  await h.request('/v1/sessions', { token });
+  const detail = (await h.request(`${path}/decision`, { token })).body.data;
+  // No buttons and no tool text: the owner opens the conversation to read it.
+  assert.deepEqual(f.notices[0].meta, { sid });
+  assert.equal(f.notices[0].body, '操作の承認をお願いします。');
+  const post = (choice, key) => h.request(`${path}/quick-reply`, { token, method: 'POST', key, body: { requestHash: detail.requestHash, choice } });
+  assert.equal((await post('allow', 'allow')).body.error.code, 'quick_reply_unsupported'); assert.equal(f.sent.length, 0);
+  assert.equal((await post('deny', 'deny')).status, 200); assert.equal(f.sent[0].behavior, 'deny');
 });
 
 test('quick board HTTP: 409 expired, accepted before expiry, replay after expiry and closed second answer', async (t) => {
@@ -219,7 +244,7 @@ test('quick question boundaries: both formats, 2–6 options and exactly one que
 
 test('quick reply preserves existing daemon and confirmation errors', async () => {
   const requestHash = 'a'.repeat(64);
-  const detail = { requestHash, expiresAt: Date.now() + 300000, requests: [{ id: 'tool', kind: 'tool' }] };
+  const detail = { requestHash, expiresAt: Date.now() + 300000, requests: [{ id: 'tool', kind: 'tool', name: 'shell' }] };
   for (const expected of ['stale_decision', 'pending_request_changed', 'reply_unconfirmed', 'paseo_unavailable']) {
     const error = new BridgeError(expected === 'paseo_unavailable' ? 503 : 409, expected, 'fixture');
     await assert.rejects(quickReply({ id: 'sid', body: { requestHash, choice: 'allow' }, decision: async () => detail, reply: async () => { throw error; } }), (e) => e === error);

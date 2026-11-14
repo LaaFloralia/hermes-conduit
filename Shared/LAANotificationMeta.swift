@@ -177,9 +177,12 @@ enum LAANotificationActions {
         return kept
     }
 
-    /// Called by the notification extension with the verified session id:
-    /// quiet delivery and the answer buttons. `completion` always runs once.
-    static func decorate(_ content: UNMutableNotificationContent, sessionID: String?, now: Date = Date(),
+    /// Called by the notification extension with the push's session id:
+    /// quiet delivery and the answer buttons. Only a sealed, verified push
+    /// gets buttons (`answers`); a plaintext one from a pairing without
+    /// encryption is shown and opened, never answered from the notification.
+    /// `completion` always runs once.
+    static func decorate(_ content: UNMutableNotificationContent, sessionID: String?, answers: Bool = true, now: Date = Date(),
                          center: LAANotificationCategoryCenter = UNUserNotificationCenter.current(),
                          completion: @escaping () -> Void) {
         guard let meta = LAANotificationMeta.parse(sessionID) else { completion(); return }
@@ -188,7 +191,7 @@ enum LAANotificationActions {
             content.interruptionLevel = .passive
         }
         // A decision past its deadline is shown, but not answered from here.
-        guard let quick = meta.quick, !(meta.deadline.map { $0 < now } ?? false) else { completion(); return }
+        guard answers, let quick = meta.quick, !(meta.deadline.map { $0 < now } ?? false) else { completion(); return }
         let category = category(for: quick)
         center.laaCategories { existing in
             center.laaDeliveredCategoryIdentifiers { delivered in

@@ -377,7 +377,7 @@ enum LAAQuickAnswerNotifications {
             return
         }
         await LAAQuickAnswerCenter.shared.answer(meta: meta, choice: choice,
-                                                 notificationKey: source.key ?? request.identifier,
+                                                 notificationKey: source.key,
                                                  title: request.content.title)
     }
 

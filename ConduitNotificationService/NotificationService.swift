@@ -55,7 +55,7 @@ final class NotificationService: UNNotificationServiceExtension {
         ) {
         case .legacy:
             #if LAA_BUILD
-            decorated(content, sessionID: NotificationE2E.routingStub(userInfo)?["session_id"] as? String)
+            decorated(content, sessionID: NotificationE2E.routingStub(userInfo)?["session_id"] as? String, answers: false)
             #else
             deliver(content)
             #endif
@@ -81,7 +81,7 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
             #if LAA_BUILD
-            decorated(content, sessionID: verified.content["session_id"] as? String)
+            decorated(content, sessionID: verified.content["session_id"] as? String, answers: true)
             #else
             deliver(content)
             #endif
@@ -89,11 +89,11 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     #if LAA_BUILD
-    /// An LAA Bridge notification gets its answer buttons and quiet delivery
-    /// from the session id it was sealed with (LAANotificationMeta); every
-    /// other notification is delivered as it is.
-    private func decorated(_ content: UNMutableNotificationContent, sessionID: String?) {
-        LAANotificationActions.decorate(content, sessionID: sessionID) { [weak self] in self?.deliver(content) }
+    /// An LAA Bridge notification gets quiet delivery from its session id
+    /// (LAANotificationMeta), and its answer buttons only when that id came
+    /// sealed and verified; every other notification is delivered as it is.
+    private func decorated(_ content: UNMutableNotificationContent, sessionID: String?, answers: Bool) {
+        LAANotificationActions.decorate(content, sessionID: sessionID, answers: answers) { [weak self] in self?.deliver(content) }
     }
     #endif
 

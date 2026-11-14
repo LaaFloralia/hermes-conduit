@@ -1160,7 +1160,12 @@ same extension and delegate) · the decision board and the session reply card (u
   Watch on the wrist already has. No answer button brings the app forward.
 - What became of an answer is a local notification: quiet when it arrived, with sound when the owner has to look
   (refused, saved but not delivered, waiting for the Mac, given up). Tapping it opens the decision or conversation.
-- An approval's notification says what is asked, the tool's name and the start of its input, in 140 characters.
+- An approval is allowed from a notification only when the notification shows the whole request: the tool's name
+  and its input on one line, within 140 characters, nothing cut and nothing shaped like a secret (the text also
+  reaches the lock screen). Any other approval says only that one is waiting, has no buttons, and the Bridge refuses
+  an allow for it; it is read and answered in the conversation.
+- Answer buttons are attached, and a tap acted on, only for a push that came sealed and verifies. A plaintext push,
+  even from a pairing that never set up encryption, is shown and opened like any other.
   More than one pending request, more than one question, or a question with no listed choices gets no buttons: it
   opens the app.
 - Kinds and defaults (owner's choice in Settings; the recommendation shipped 2026-11-14): decision, question,

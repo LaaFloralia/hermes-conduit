@@ -137,8 +137,11 @@ Every kind uses `response.ready` with `session_id` equal to
 `decision.new` adds `id`, saved-order option labels `o` and optional epoch-second
 `d`; `decision.failed` adds `id`. Session kinds add `sid`; a supported single
 question adds `h` (the exact decision `requestHash`) and `o`, and a single tool
-approval adds `h` and `a:1`. Tool approval bodies summarize name and input in at
-most 140 characters without control characters. If the daemon read fails, the
+approval adds `h` and `a:1` only when its body can say the whole request: the
+tool's name and its input as one line of compact JSON, at most 140 characters,
+nothing cut and nothing shaped like a secret. Any other approval keeps the
+generic body, has no buttons, and `quick-reply` refuses `allow` for it with
+`quick_reply_unsupported` (`deny` still works). If the daemon read fails, the
 ordinary notification still goes out with `sid`. Task/calendar add no fields.
 The UTF-8 limit is 512 bytes: shorten all option labels evenly with `…`, then
 remove `o`, then fall back to the legacy link if necessary. Stored retries keep

@@ -163,6 +163,17 @@ final class LAAQuickAnswerTests: XCTestCase {
         XCTAssertEqual(late.categoryIdentifier, "")
         XCTAssertEqual(center.sets, 0)
 
+        // A push that came unsealed keeps quiet delivery and gets no buttons.
+        let plain = UNMutableNotificationContent()
+        plain.sound = .default
+        var delivered = 0
+        LAANotificationActions.decorate(plain, sessionID: sessionID("laa://work/decisions/\(decision)", [
+            "v": 1, "k": "decision.new", "id": decision, "o": ["A", "B"], "lv": "p"]), answers: false, center: center) { delivered += 1 }
+        XCTAssertEqual(delivered, 1)
+        XCTAssertEqual(plain.categoryIdentifier, "")
+        XCTAssertNil(plain.sound)
+        XCTAssertEqual(center.sets, 0)
+
         // Any other notification is left exactly as it came.
         let chat = UNMutableNotificationContent()
         chat.sound = .default
