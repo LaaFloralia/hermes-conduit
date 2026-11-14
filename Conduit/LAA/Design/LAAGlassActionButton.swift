@@ -97,14 +97,13 @@ struct LAAGlassRimReflection: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var turning = false
 
-    /// The rim at rest and at the reflection's peak: the glass edge of the
-    /// design tokens, lit to paper white.
+    /// The rim at rest and at the reflection's peak: the glass edge, lit by
+    /// the same rim light the model and effort pickers use (tan on the paper,
+    /// where white would not show; the light glass surface on dark glass).
     static func rim(dark: Bool) -> (rest: Color, peak: Color) {
         dark
-            ? (Color(red: 236 / 255, green: 231 / 255, blue: 220 / 255).opacity(0.16),
-               Color(red: 1, green: 253 / 255, blue: 248 / 255).opacity(0.86))
-            : (Color(red: 215 / 255, green: 213 / 255, blue: 204 / 255).opacity(0.9),
-               Color(red: 1, green: 253 / 255, blue: 248 / 255))
+            ? (LAAColor.text.opacity(0.16), LAAColor.rimLight.opacity(0.86))
+            : (LAAColor.separator.opacity(0.9), LAAColor.rimLight)
     }
 
     /// Where the light sits round the rim (0...1 of a turn): a long arc, and a short one across from it.
