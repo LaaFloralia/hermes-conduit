@@ -161,7 +161,8 @@ export function createSessionService({
     const project = projectId ? findProject(projectId) : null;
     if (projectId && !project) throw notFound('project not found');
     profile = parseProfile(body.profile ?? project?.defaultProfile);
-    if (body.profile == null && project?.defaultProfile && !choices().profiles.some((item) => item.id === profile)) {
+    const defaultChoices = body.profile == null && project?.defaultProfile ? choices() : null;
+    if (defaultChoices && !(defaultChoices.switchProfiles ?? defaultChoices.profiles).some((item) => item.id === profile)) {
       throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
     }
     const instructions = project && applyProjectInstructions ? resolveInstructions(project) : null;

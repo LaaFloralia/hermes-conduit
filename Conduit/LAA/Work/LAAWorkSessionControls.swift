@@ -64,7 +64,7 @@ struct LAAWorkSessionControls: View {
         let listed = LAAWorkSessionStyle.effortChoices(session, options: options)
         return listed.isEmpty ? (currentEffort.map { [$0] } ?? []) : listed
     }
-    private var models: [LAAWorkModelSelection.Model] { LAAWorkModelSelection.models(options).filter {
+    private var models: [LAAWorkModelSelection.Model] { LAAWorkModelSelection.models(options?.switchingOptions).filter {
         session.capabilities?.providerSwitch == true || $0.provider == session.observed?.provider
     } }
     /// False when the last read could not reach Paseo. The value we hold is then

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSessionStore } from '../src/sessions/store.mjs';
-import { createModelSwitcher, joinedHistory } from '../src/sessions/model-switch.mjs';
+import { createModelSwitcher, joinedHistory, handoffSections } from '../src/sessions/model-switch.mjs';
 import { createSessionService } from '../src/sessions/service.mjs';
 import { daemonAdapter } from '../src/sessions/daemon.mjs';
 import { BridgeError } from '../src/errors.mjs';
@@ -18,6 +18,13 @@ const profiles = [
 ];
 const choices = () => ({ profiles });
 const iso = '2026-11-14T00:00:00.000Z';
+
+test('handoff quotes decisions, changed paths, checks and remaining work outside the recent tail without inventing facts', () => {
+  const old = { id: 'earlier', role: 'assistant', text: '決定: 既定値を保持する\n変更: feature.mjs\n試験: 3成功\n残件: 画面は未実施' };
+  const text = handoffSections([old, ...Array.from({ length: 15 }, (_, i) => ({ id: `u${i}`, role: 'user', text: '近況' }))]);
+  for (const line of old.text.split('\n')) assert.ok(text.includes(`[assistant / earlier] ${line}`));
+  assert.match(handoffSections([]), /抜粋できません/);
+});
 function fixture(t, overrides = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'model-switch-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

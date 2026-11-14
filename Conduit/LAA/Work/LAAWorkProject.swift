@@ -163,13 +163,14 @@ struct LAAWorkProjectEditor: View {
     }
     private var defaultModelSection: some View {
         Section(LAAWorkPresentation.japanese("新しい会話の既定モデル")) {
-            let selected = options?.profiles.first { $0.id == defaultProfile }
-            let model = LAAWorkModelSelection.model(of: defaultProfile, in: options)
+            let choices = options?.switchingOptions
+            let selected = choices?.profiles.first { $0.id == defaultProfile }
+            let model = LAAWorkModelSelection.model(of: defaultProfile, in: choices)
             LAAModelEffortPickers(model: selected?.model, provider: selected?.provider, effort: selected?.effort,
                                  name: model?.label ?? (defaultProfile.isEmpty ? "共通の既定値" : "現在は選べないモデル"),
                                  identifier: "work.project.default") {
                 Button { defaultProfile = "" } label: { Text(verbatim: "共通の既定値") }
-                ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(options)), id: \.name) { group in
+                ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(choices)), id: \.name) { group in
                     Section(group.name) {
                         ForEach(group.models) { choice in
                             Button {
@@ -181,7 +182,7 @@ struct LAAWorkProjectEditor: View {
             } effortMenu: {
                 ForEach(model?.efforts ?? [], id: \.self) { effort in
                     LAAEffortMenu.Row(effort: effort, selected: effort == selected?.effort) {
-                        if let next = LAAWorkModelSelection.profile(effort: effort, of: defaultProfile, in: options) { defaultProfile = next.id }
+                        if let next = LAAWorkModelSelection.profile(effort: effort, of: defaultProfile, in: choices) { defaultProfile = next.id }
                     }
                 }
             }

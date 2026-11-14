@@ -218,6 +218,10 @@ struct LAAWorkSessionOptions: Decodable {
     /// Absent from a Bridge that predates it, and empty when Paseo could not
     /// be asked; the profiles then stand in.
     var efforts: [ModelEfforts]? = nil
+    var switchProfiles: [Profile]? = nil
+    var switchingOptions: Self {
+        Self(profiles: switchProfiles ?? profiles, defaultProfile: defaultProfile, defaultMode: defaultMode, efforts: efforts)
+    }
 }
 
 struct LAAWorkWorkspace: Decodable, Identifiable, Hashable {

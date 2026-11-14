@@ -137,7 +137,8 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 
   function parseDefaultProfile(value) {
     if (value === undefined || value === null) return null;
-    if (typeof value !== 'string' || !choices().profiles.some((item) => item.id === value)) {
+    const catalog = choices();
+    if (typeof value !== 'string' || !(catalog.switchProfiles ?? catalog.profiles).some((item) => item.id === value)) {
       throw badRequest('model_choice_invalid', 'choose a listed project default profile');
     }
     return value;
