@@ -100,13 +100,8 @@ extension ComposerDraftStoreTests {
             reason: "unsupported_command",
             detail: "Run `hermes profile export [name] -o <file>` in a terminal."
         )
-#if LAA_BUILD
-        let service = "Monet"
-        let app = "LAA"
-#else
-        let service = "Hermes"
-        let app = "Conduit"
-#endif
+        let service = LAAProductBrand.display("Hermes")
+        let app = LAAProductBrand.appName
         XCTAssertEqual(
             AppState.slashFailureNote(command: "export", error: refusal),
             "\(service) doesn't run /export for \(app) chats.\nRun `hermes profile export [name] -o <file>` in a terminal."

@@ -93,10 +93,10 @@ final class ConnectionFailureTests: XCTestCase {
         let presentation = ConnectionFailurePresentation.presenting(
             ConnectionFailureClassifier.classify(URLError(.cannotConnectToHost))
         )
-        XCTAssertEqual(presentation.title, "Couldn’t reach Hermes")
+        XCTAssertEqual(presentation.title, LAAProductBrand.display("Couldn’t reach Hermes"))
         XCTAssertEqual(
             presentation.message,
-            "Conduit could not connect to the dashboard at this address. Make sure the dashboard is running and that this device can reach it."
+            LAAProductBrand.display("Conduit could not connect to the dashboard at this address. Make sure the dashboard is running and that this device can reach it.")
         )
         XCTAssertEqual(presentation.helpDestination, .network)
     }
@@ -334,7 +334,7 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Login failed")
         XCTAssertEqual(
             presentation.message,
-            "Hermes rejected that username or password. Check your dashboard credentials and try again."
+            LAAProductBrand.display("Hermes rejected that username or password. Check your dashboard credentials and try again.")
         )
         XCTAssertFalse(presentation.message.contains("HTTP 401"), "Raw status must not be the user-facing message")
         XCTAssertEqual(presentation.helpDestination, .credentials)
@@ -388,7 +388,7 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Too many login attempts")
         XCTAssertEqual(
             presentation.message,
-            "Hermes temporarily blocked additional login attempts. Wait about a minute before trying again."
+            LAAProductBrand.display("Hermes temporarily blocked additional login attempts. Wait about a minute before trying again.")
         )
         XCTAssertFalse(
             presentation.message.lowercased().contains("username"),
@@ -570,7 +570,7 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Could not start the session")
         XCTAssertEqual(
             presentation.message,
-            "Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again."
+            LAAProductBrand.display("Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again.")
         )
         XCTAssertEqual(presentation.helpDestination, .dashboard)
         XCTAssertTrue(presentation.offersRecoveryActions)

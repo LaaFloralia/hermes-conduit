@@ -43,7 +43,7 @@ extension ConnectionFailureTests {
     func testTimeoutNeverNamesTheRPCMethod() {
         let message = HermesError.timeout("slash.exec").localizedDescription
         XCTAssertFalse(message.contains("slash.exec"))
-        XCTAssertTrue(message.contains("Hermes server is running"))
+        XCTAssertEqual(message, LAAProductBrand.display("Hermes didn't answer in time. Check that your Hermes server is running, then try again."))
     }
 
     func testDashboardHTTPFailures() {
@@ -55,19 +55,19 @@ extension ConnectionFailureTests {
         XCTAssertEqual(text(409, "task is not in triage"), "task is not in triage")
         XCTAssertTrue(text(500, "database is locked").contains("database is locked"))
         // Bare status phrases and fetch errors are not.
-        XCTAssertEqual(text(404, "Not Found"), "Your Hermes server doesn't support this yet. Update Hermes, then try again.")
-        XCTAssertEqual(text(500, "Internal Server Error"), "Hermes ran into a problem on the server. Check the Hermes logs, then try again.")
-        XCTAssertEqual(text(0, "TypeError: Load failed"), "Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
+        XCTAssertEqual(text(404, "Not Found"), LAAProductBrand.display("Your Hermes server doesn't support this yet. Update Hermes, then try again."))
+        XCTAssertEqual(text(500, "Internal Server Error"), LAAProductBrand.display("Hermes ran into a problem on the server. Check the Hermes logs, then try again."))
+        XCTAssertEqual(text(0, "TypeError: Load failed"), LAAProductBrand.display("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running."))
         XCTAssertEqual(text(0, "AbortError: The operation was aborted."), HermesError.timeoutMessage)
-        XCTAssertEqual(text(429, "Too Many Requests"), "Hermes is busy right now. Wait a moment, then try again.")
-        XCTAssertEqual(text(503, "Service Unavailable"), "Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.")
+        XCTAssertEqual(text(429, "Too Many Requests"), LAAProductBrand.display("Hermes is busy right now. Wait a moment, then try again."))
+        XCTAssertEqual(text(503, "Service Unavailable"), LAAProductBrand.display("Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment."))
         XCTAssertTrue(text(401, "Unauthorized").contains("Sign in again"))
         XCTAssertEqual(
             text(401, DashboardTicketBridgeError.signInRefreshedDetail),
             DashboardTicketBridgeError.signInRefreshedDetail,
             "Conduit's own refresh says to try again, not to sign in"
         )
-        XCTAssertEqual(text(400, "Dashboard request failed (400)."), "Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
+        XCTAssertEqual(text(400, "Dashboard request failed (400)."), LAAProductBrand.display("Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this."))
     }
 
     // #792: the location settings banner (turn on, delete a rule, delete
