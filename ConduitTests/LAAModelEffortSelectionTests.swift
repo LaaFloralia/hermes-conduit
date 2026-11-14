@@ -117,21 +117,30 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(C.efforts(current: nil), LAAEffort.order)
     }
 
-    func testModelAndEffortUseTwoStrengthsOfGlassTint() {
-        XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").finish, .intense)
-        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").finish, .tinted)
-        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").finish, .tinted)
+    func testStandingIsLightAndMaterialNeverColour() {
+        XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").finish, .crystal)
+        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").finish, .polished)
+        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").finish, .polished)
+        XCTAssertEqual(LAAModelRank.of("claude-opus-5-5").finish, .plain)
         XCTAssertEqual(LAAModelRank.of(nil).finish, .plain)
         XCTAssertEqual(LAAEffort.finish("high"), .plain)
-        XCTAssertEqual(LAAEffort.finish("xhigh"), .tinted)
-        XCTAssertEqual(LAAEffort.finish("max"), .intense)
+        XCTAssertEqual(LAAEffort.finish("xhigh"), .polished)
+        XCTAssertEqual(LAAEffort.finish("max"), .crystal)
         XCTAssertEqual(LAAEffort.name("ultracode"), "Ultra Code")
         for dark in [false, true] {
-            let regular = LAALiquidLook(finish: .tinted).opacity(dark: dark)
-            let strong = LAALiquidLook(finish: .intense).opacity(dark: dark)
-            XCTAssertGreaterThan(strong, regular)
-            XCTAssertGreaterThan(regular, 0)
-            XCTAssertLessThan(strong, 0.5, "glass remains translucent")
+            let plain = LAAGlassLook(finish: .plain), polished = LAAGlassLook(finish: .polished)
+            let crystal = LAAGlassLook(finish: .crystal)
+            XCTAssertEqual(plain.topLight(dark: dark), 0, "plain glass holds no light of its own")
+            XCTAssertEqual(plain.body(dark: dark), 0)
+            XCTAssertEqual(plain.glint(dark: dark), 0)
+            XCTAssertGreaterThan(polished.topLight(dark: dark), 0)
+            XCTAssertGreaterThan(crystal.topLight(dark: dark), polished.topLight(dark: dark), "Mythos holds the most light")
+            XCTAssertGreaterThan(crystal.body(dark: dark), polished.body(dark: dark), "and is the densest glass")
+            XCTAssertLessThan(crystal.body(dark: dark), 0.1, "the glass stays clear")
+            XCTAssertGreaterThan(crystal.glint(dark: dark), polished.glint(dark: dark))
+            XCTAssertGreaterThan(crystal.glintLength, polished.glintLength)
+            XCTAssertEqual(polished.counterGlint(dark: dark), 0, "only the crystal catches the light twice")
+            XCTAssertGreaterThan(crystal.counterGlint(dark: dark), 0)
         }
     }
 
@@ -139,30 +148,39 @@ final class LAAModelEffortSelectionTests: XCTestCase {
     func testUltraCodeCapsuleKeepsItsRankedFinishOutsideTheFiveGeneralEfforts() {
         let capsule = LAAEffortCapsule(effort: "ultracode")
         XCTAssertEqual(capsule.ranked, "ultracode")
-        XCTAssertEqual(LAAEffort.finish(capsule.ranked), .intense)
+        XCTAssertEqual(LAAEffort.finish(capsule.ranked), .crystal)
         XCTAssertFalse(LAAEffort.order.contains("ultracode"))
         XCTAssertNil(LAAEffortCapsule(effort: "unknown").ranked)
     }
 
-    func testColourSettlesAfterOneSpreadAndNeverMarksAnUnknownValue() {
-        let start = LAALiquidLook(finish: .intense, elapsed: 0)
-        let middle = LAALiquidLook(finish: .intense, elapsed: 0.21)
-        let end = LAALiquidLook(finish: .intense, elapsed: 0.42)
-        XCTAssertLessThan(start.spread, middle.spread)
-        XCTAssertGreaterThan(middle.bloom, 0.9)
-        XCTAssertEqual(end.bloom, 0)
-        XCTAssertEqual(end.opacity(dark: false), LAALiquidLook(finish: .intense).opacity(dark: false))
-        for t in [0.0, 0.1, 0.3, 0.42] {
-            XCTAssertEqual(LAALiquidLook(finish: .plain, elapsed: t).opacity(dark: true), 0)
-        }
+    func testOnePassOfLightCrossesTheGlassAndTheStandingSettlesBehindIt() {
+        let d = LAACeremony.slow
+        let start = LAAGlassLook(finish: .crystal, elapsed: 0, duration: d)
+        let middle = LAAGlassLook(finish: .crystal, elapsed: d * 0.4, duration: d)
+        let end = LAAGlassLook(finish: .crystal, elapsed: d, duration: d)
+        XCTAssertLessThan(start.sweep()!, 0, "the light enters from beyond the leading end")
+        XCTAssertGreaterThan(middle.sweep()!, start.sweep()!)
+        XCTAssertLessThan(middle.sweep(lag: 0.16)!, middle.sweep()!, "the crystal's second reflection follows")
+        XCTAssertGreaterThan(middle.sweepStrength, 0.9)
+        XCTAssertGreaterThan(middle.echoStrength, 0)
+        XCTAssertLessThan(start.topLight(dark: false), middle.topLight(dark: false), "the standing light settles behind the pass")
+        XCTAssertNil(end.sweep(), "once over, nothing moves")
+        XCTAssertEqual(end.topLight(dark: false), LAAGlassLook(finish: .crystal).topLight(dark: false))
+        let plain = LAAGlassLook(finish: .plain, elapsed: d * 0.4, duration: d)
+        XCTAssertGreaterThan(plain.sweepStrength, 0, "every applied choice shows its light")
+        XCTAssertLessThan(plain.sweepStrength, middle.sweepStrength)
+        XCTAssertEqual(plain.echoStrength, 0)
+        XCTAssertEqual(LAAGlassLook(finish: .polished, elapsed: d * 0.4, duration: d).echoStrength, 0)
+        XCTAssertGreaterThan(LAACeremony.duration(rank: .mythos), LAACeremony.duration(rank: .none), "Mythos takes the slow time")
+        XCTAssertLessThanOrEqual(LAACeremony.duration(rank: .mythos), LAACeremony.slow)
     }
 
     func testTheMeterIsInkAndRisesWithinItsMovement() {
         let rest = LAAEffortLook(effort: "max")
         XCTAssertEqual(rest.level, 5)
         XCTAssertEqual((0..<5).map { rest.tickScale($0) }, [1, 1, 1, 1, 1])
-        XCTAssertEqual(LAAEffortLook(effort: "xhigh").finish, .tinted)
-        XCTAssertEqual(LAAEffortLook(effort: "max").finish, .intense)
+        XCTAssertEqual(LAAEffortLook(effort: "xhigh").finish, .polished)
+        XCTAssertEqual(LAAEffortLook(effort: "max").finish, .crystal)
         XCTAssertEqual(LAAEffortLook(effort: "max", current: false).finish, .plain, "a last-confirmed value has no finish")
         XCTAssertNil(LAAEffortLook(effort: "low").tick(1), "Low fills one tick")
         let rising = LAAEffortLook(effort: "max", elapsed: 0.05)

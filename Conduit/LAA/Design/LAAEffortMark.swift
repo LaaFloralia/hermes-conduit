@@ -39,12 +39,12 @@ enum LAAEffort {
     }
 }
 
-/// XHigh tints the glass; Max and Ultra Code deepen it.
+/// XHigh polishes the glass; Max and Ultra Code make it crystal (LAAFinish).
 extension LAAEffort {
     static func finish(_ value: String?) -> LAAFinish {
         switch value {
-        case "xhigh": .tinted
-        case "max", "ultracode": .intense
+        case "xhigh": .polished
+        case "max", "ultracode": .crystal
         default: .plain
         }
     }
