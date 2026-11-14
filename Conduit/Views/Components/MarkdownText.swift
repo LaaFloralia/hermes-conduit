@@ -49,6 +49,31 @@ enum MarkdownRichMetrics {
 #endif
 }
 
+/// Preserve intentional line breaks in messages written by the owner while
+/// leaving fenced code and paragraph boundaries intact.
+enum OwnerMessageMarkdown {
+    static func renderSource(_ source: String, usesAccentSurface: Bool) -> String {
+        usesAccentSurface ? preservingLineBreaks(source) : source
+    }
+
+    static func preservingLineBreaks(_ source: String) -> String {
+        var lines = source.components(separatedBy: "\n")
+        var fence: MarkdownFence?
+        for index in lines.indices {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            if let open = fence {
+                if open.closes(trimmed) { fence = nil }
+                continue
+            }
+            if let open = MarkdownFence.opening(trimmed) { fence = open; continue }
+            guard index + 1 < lines.count, !trimmed.isEmpty,
+                  !lines[index + 1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            lines[index] += "  "
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
 struct MarkdownText: View {
     let source: String
     var foregroundStyle: Color = .primary
@@ -117,7 +142,7 @@ struct MarkdownText: View {
         // stage of parse/format/layout scales with the whole source.
         if MarkdownLargeDocumentPolicy.isLargeDocument(source) {
             LargeMarkdownDocumentView(
-                source: source,
+                source: OwnerMessageMarkdown.renderSource(source, usesAccentSurface: usesAccentSurface),
                 foregroundStyle: effectiveForeground,
                 usesAccentSurface: usesAccentSurface,
                 gatewayMediaDataURL: gatewayMediaDataURL
@@ -141,7 +166,7 @@ struct MarkdownText: View {
         let _ = isStreaming ? () : TranscriptPerf.note(.settledMarkdownBody, context: source)
         let foregroundStyle = effectiveForeground
         let rendering = MarkdownRenderCache.rendering(
-            source: source,
+            source: OwnerMessageMarkdown.renderSource(source, usesAccentSurface: usesAccentSurface),
             recognizesGatewayMedia: gatewayMediaDataURL != nil,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,

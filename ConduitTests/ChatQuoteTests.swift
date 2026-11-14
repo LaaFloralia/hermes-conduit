@@ -16,6 +16,13 @@ private final class QuoteRecorder {
 extension ChatTextSelectionTests {
     // MARK: - Quote formatting
 
+    func testMultilineReplyKeepsItsNewline() throws {
+        let reference = ComposerReplyReference(authorName: "Hermes", text: "Earlier")
+        let message = "first line\nsecond line"
+        let outbound = ComposerReplyReference.outboundText(message, hasAttachments: false, replyingTo: reference)
+        XCTAssertEqual(try XCTUnwrap(ReplyQuoteEnvelope.parse(outbound)).message, message)
+    }
+
     func testBlockquotePrefixesEveryLineAndKeepsBlankLinesInsideTheQuote() {
         XCTAssertEqual(ChatQuote.blockquote("first\n\nsecond\n"), "> first\n>\n> second")
         XCTAssertEqual(ChatQuote.blockquote("\n\n  indented code  \r\nnext"), ">   indented code\n> next")

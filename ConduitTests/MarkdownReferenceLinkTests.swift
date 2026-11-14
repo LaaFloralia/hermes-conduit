@@ -18,6 +18,20 @@ final class MarkdownReferenceLinkTests: XCTestCase {
 
     private let fullSyntaxOptions: AttributedString.MarkdownParsingOptions = .init(interpretedSyntax: .full)
 
+    func testOwnerMessageKeepsSingleLineBreakAndMarkdownLink() throws {
+        let source = "first line\nsecond [link](https://example.com)"
+        let prepared = OwnerMessageMarkdown.preservingLineBreaks(source)
+        let rendered = try AttributedString(markdown: prepared, options: fullSyntaxOptions)
+        XCTAssertEqual(String(rendered.characters), "first line\nsecond link")
+        let range = try XCTUnwrap(rendered.characters.firstRange(of: "link"))
+        XCTAssertEqual(rendered[range].link?.absoluteString, "https://example.com")
+    }
+
+    func testOwnerMessageLeavesCodeAndParagraphBreaksAlone() {
+        let source = "before\n\n```\na\nb\n```\n\nafter"
+        XCTAssertEqual(OwnerMessageMarkdown.preservingLineBreaks(source), source)
+    }
+
     // MARK: - Foundation characterization
 
     func testFoundationFullDocumentResolvesReferenceLinkAndHidesDefinition() throws {

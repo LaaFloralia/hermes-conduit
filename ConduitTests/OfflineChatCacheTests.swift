@@ -1701,6 +1701,17 @@ final class OfflineChatCacheTests: XCTestCase {
 
     /// A message sent over the copy waits in it and in its file; the next
     /// one joins it, and a slash command isn't taken.
+    func testWaitingMultilineMessageKeepsItsNewlineInStorage() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        let message = "first line\nsecond line"
+        XCTAssertTrue(appState.sendWhenConnected(message, replyReference: nil))
+        XCTAssertEqual(appState.pendingComposerSendOnScreen?.draftText, message)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).first?.draftText, message)
+    }
+
     func testAMessageSentOverTheCopyWaitsInItsChat() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
