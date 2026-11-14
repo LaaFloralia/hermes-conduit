@@ -51,11 +51,11 @@ enum LAAParticleOrb {
             ctx.fill(disc(R * 1.02), with: .color(Color(red: 0.059, green: 0.106, blue: 0.110)))
         }
         if ground == .paperBead {
-            // Lighter than a hole in the paper: deep teal #1F3D3F...#163033, a thin rim lit from above.
+            // Lighter than a hole in the paper: the dark glass, wash #243638 to surface #172627, a thin rim lit from above.
             let b = R * 1.05
             ctx.fill(disc(b), with: .radialGradient(Gradient(stops: [
-                .init(color: Color(red: 0.122, green: 0.239, blue: 0.247), location: 0),
-                .init(color: Color(red: 0.086, green: 0.188, blue: 0.200), location: 1),
+                .init(color: Color(red: 0.141, green: 0.212, blue: 0.220), location: 0),
+                .init(color: Color(red: 0.090, green: 0.149, blue: 0.153), location: 1),
             ]), center: CGPoint(x: c.x, y: c.y - 0.3 * b), startRadius: 0, endRadius: b * 1.3))
             ctx.stroke(disc(b - 0.5 * px), with: .linearGradient(Gradient(colors: [
                 Color.white.opacity(0.45), Color.white.opacity(0.12), Color.white.opacity(0.22)]),
