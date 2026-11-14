@@ -30,7 +30,7 @@ function fixture(t, overrides = {}) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   let clock = Date.parse(iso);
   const store = createSessionStore({ file: join(dir, 'sessions.json'), now: () => clock });
-  const record = { id: 'ses_0123456789abcdef', name: 'owner title', nameSource: 'owner', favorite: true,
+  const record = { id: 'ses_0123456789abcdef', initialInstruction: { text: '最初の社長の依頼', createdAt: iso, source: 'Bridge' }, name: 'owner title', nameSource: 'owner', favorite: true,
     parentId: 'ses_1111111111111111', projectId: 'prj_111111111111', source: 'paseo',
     requested: profiles[0], observed: profiles[0], phase: 'awaiting_review', mode: 'bypass',
     delegate: { sessionId: 'old' }, createdAt: iso, version: 1,
@@ -68,7 +68,7 @@ test('a session that asks before acting is never continued without prompts', asy
 test('verified owner switch keeps the logical row, metadata, old message IDs and linked history', async (t) => {
   const f = fixture(t);
   const result = await f.switcher.switchProvider(f.record.id, profiles[1]);
-  for (const key of ['id', 'name', 'favorite', 'parentId', 'projectId', 'requested', 'createdAt']) assert.deepEqual(result[key], f.record[key]);
+  for (const key of ['id', 'name', 'favorite', 'parentId', 'projectId', 'requested', 'createdAt', 'initialInstruction']) assert.deepEqual(result[key], f.record[key]);
   assert.equal(result.delegateHistory[0].sessionId, 'old');
   assert.equal(result.ownerChanged.provider, 'codex');
   assert.equal(result.modelLog.at(-1).owner, true);

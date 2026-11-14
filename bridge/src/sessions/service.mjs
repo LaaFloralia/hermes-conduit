@@ -19,11 +19,12 @@
 // therefore a conflict, not a second run under a prompt the owner never saw.
 //
 // The session's display name is also the Paseo agent title, so the daemon shows
-// "Project｜Session" instead of "Origin / owner: laa-bridge". The title is not
+// "対象｜作業" instead of "Origin / owner: laa-bridge". The title is not
 // part of the request identity: renaming a session must not look like a new
 // request.
 
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { sessionImageStore } from './images.mjs';
@@ -102,6 +103,7 @@ export function createSessionService({
   // An observation cache keeps a detail read and an events long-poll from
   // spawning the delegation CLI twice in the same second.
   const observations = new Map();
+  const startedAt = now();
   const switcher = createModelSwitcher({ store: sessionStore, daemon, history, choices, now, sleep, ...modelSwitchOptions });
 
   function sessionIdFor(requestId) {
@@ -226,7 +228,7 @@ export function createSessionService({
     // part of the request identity (see the header comment). The wrapper takes
     // at most 200 UTF-8 bytes and refuses an empty title, so the composed value
     // is normalised and bounded here instead of failing as a 503 downstream.
-    const title = sessionTitle(project ? `${project.name}｜${name}` : name);
+    const title = sessionTitle(name);
     const delegateRequestId = delegateIdFor(requestId);
     const created = await adapter.create({
       requestId: delegateRequestId,
@@ -254,6 +256,7 @@ export function createSessionService({
       name,
       nameSource,
       sentTitle: title,
+      initialInstruction: { text: body.prompt, createdAt: new Date(now()).toISOString(), source: "Bridge" },
       profile,
       mode,
       fast,
@@ -402,7 +405,7 @@ export function createSessionService({
         // the title it was given, so the one parent in a workspace shows Paseo's
         // unless the agent named itself after a title the Bridge sent.
         const renamed = previous?.sentTitle !== undefined && previous.sentTitle !== a.title;
-        const paseoTitle = !renamed && rootAgents === 1 && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitle : null;
+        const paseoTitle = !isNamedTitle(a.title) && !renamed && rootAgents === 1 && !a.labels?.['paseo.parent-agent-id'] ? workspaceTitle : null;
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
           routine: routines.get(a.id) ?? null,
@@ -428,6 +431,15 @@ export function createSessionService({
         const current = storedById.get(row.id);
         return !switcher.isBusy(row.id) && (!current || current.delegate?.sessionId === row.delegate?.sessionId);
       }));
+      // Only sessions born during this Bridge process are captured eagerly.
+      // Old sessions are backfilled on demand without changing their names.
+      for (const row of rows) {
+        const createdAt = Date.parse(row.createdAt);
+        if (storedById.get(row.id)?.initialInstruction || createdAt < startedAt || now() - createdAt > 600000) continue;
+        try {
+          await initialInstruction(row.id);
+        } catch { /* Recording must never prevent a conversation from continuing. */ }
+      }
       await markDeletedAgents(agents);
       for (const { previous, current } of transitions) {
         const phase = current.phase;
@@ -514,6 +526,32 @@ export function createSessionService({
         observedAt: current.observedAt ?? null,
       },
     };
+  }
+
+  async function initialInstruction(id) {
+    const record = requireSession(id);
+    if (record.initialInstruction) return record.initialInstruction;
+    let initial = null;
+    // ACP can omit the initial user entry from its timeline. Its first-turn
+    // local receipt is copied into the Bridge record once, before any switch.
+    const agentId = record.delegateHistory?.[0]?.sessionId ?? record.delegate?.sessionId;
+    if (/^[0-9a-f-]{36}$/.test(agentId ?? '')) {
+      try {
+        const directory = process.env.LAA_SESSION_NAMING_STATE ?? join(homedir(), '.local/state/laa-session-naming');
+        const receipt = JSON.parse(await readFile(join(directory, 'instructions', `${agentId}.json`), 'utf8'));
+        if (typeof receipt.text === 'string' && receipt.text.trim()) initial = { text: receipt.text, createdAt: record.createdAt, source: 'Work' };
+      } catch { /* history remains available for other providers */ }
+    }
+    if (!initial) {
+      try {
+        const { items } = await joinedHistory(record, history, sessionStore.file);
+        const first = items.find((item) => item.role === 'user' && typeof item.text === 'string' && item.text.trim());
+        if (first) initial = { text: first.text, createdAt: first.timestamp ?? record.createdAt, source: 'Work / recovered history' };
+      } catch { /* no historical record */ }
+    }
+    if (!initial) return null;
+    sessionStore.update(id, (row) => { row.initialInstruction ??= initial; return []; });
+    return sessionStore.get(id).initialInstruction;
   }
 
   async function conversation(id) {
@@ -827,6 +865,7 @@ export function createSessionService({
           throw badRequest('payload_invalid', 'a provider change must be saved separately');
         }
         if (decisions?.hasOpen(existing)) throw conflict('pending_decision_requires_reply', 'answer the pending decision before switching provider');
+        await initialInstruction(id);
         return { session: await switcher.switchProvider(id, target) };
       }
     }
@@ -1210,7 +1249,7 @@ export function createSessionService({
         && record.parentId == null
         && record.workspaceRootCount === 1
         && workspaceTitle !== ''
-        && !renamed;
+        && !renamed && !isNamedTitle(title);
       const nextName = useWorkspaceTitle ? workspaceTitle : title;
       if (nextName !== '' && nextName !== record.name && record.nameSource !== 'owner') {
         record.name = nextName.length > MAX_NAME_LENGTH ? [...nextName].slice(0, MAX_NAME_LENGTH).join('') : nextName;
@@ -1339,6 +1378,7 @@ export function createSessionService({
     visibleRecords,
     getSession,
     conversation,
+    initialInstruction,
     image: (id, imageID) => { requireSession(id); return images.read(id, imageID); },
     sendMessage,
     updateSession,
@@ -1427,8 +1467,17 @@ function composePrompt(projectId, instructions, files, prompt) {
 
 // The prompt's first line, short enough for a list row, until the agent renames
 // the session after its first answer.
+// Recognised requests get a local title. Other subjects keep the provisional
+// title until the first-turn naming hook asks that conversation to name itself.
+function isNamedTitle(title) { return /^(?:子｜)?[^｜\n]+｜[^｜\n]+/.test(title ?? ""); }
+
 export function defaultName(prompt) {
-  const line = prompt.split('\n').map((item) => item.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim()).find((item) => item !== '');
+  if (/レートリミット.*解除|全セッション.*完了|全会話.*(?:完了|引継)/s.test(prompt)) return '統括｜全会話の引継ぎと完了';
+  if (/journal|日誌/i.test(prompt) && /手法/.test(prompt)) return 'Journal｜手法の研究・図解とTradingView受入';
+  if (/Monet|モネット/i.test(prompt) && /無検閲/.test(prompt)) return 'LAAアプリ｜Monet（無検閲）の会話作成を修復';
+  if (/studio|PR動画/i.test(prompt) && /X|参考|収集/.test(prompt)) return 'Studio｜Xの参考収集とPR動画';
+  if (/会話名|セッション名/.test(prompt)) return 'Work｜会話名と最初の指示の表示';
+  const line = prompt.split('\n').map((item) => item.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim()).find(Boolean);
   if (!line) return null;
   const graphemes = [...TITLE_SEGMENTER.segment(line)].map((item) => item.segment);
   return graphemes.length > DEFAULT_NAME_GRAPHEMES ? `${graphemes.slice(0, DEFAULT_NAME_GRAPHEMES).join('')}…` : line;
