@@ -68,6 +68,17 @@ test('every endpoint requires authentication and enforces read/write scopes befo
     assert.equal((await api.request(path, { method, body: value })).status, 401);
     assert.equal((await api.request(path, { method, token: readOnly, body: value })).status, 403);
   }
+  // Write responses carry the habit or its week, so write-only access is refused
+  // and nothing about the habit leaks through the refusal.
+  const writeOnly = await api.token(['tasks:write']);
+  for (const [path, method, value] of writes) {
+    const refused = await api.request(path, { method, token: writeOnly, body: value,
+      headers: { 'idempotency-key': 'write-only-1', 'if-match': `"${h.revision}"` } });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.error.code, 'insufficient_scope');
+    assert.equal(JSON.stringify(refused.body).includes(h.title), false);
+  }
+  assert.equal((await api.request('/v1/habits', { token })).body.data.items.length, 1);
 });
 
 test('HTTP rejects keys, unknown fields, invalid dates and stale/missing If-Match with contract codes', async (t) => {

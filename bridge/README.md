@@ -391,9 +391,9 @@ laa-bridge tasks restore --from <snapshot> --to <dir>
 | 端点 | scope | 内容 |
 |---|---|---|
 | `GET /v1/habits?week=`・`/history?weeks=`・`/archived`・`/events?limit=&cursor=` | `tasks:read` | その週の習慣と記録／過去の週／保管済み／変更の記録 |
-| `POST /v1/habits` | `tasks:write` + `Idempotency-Key` | 201 + 習慣 + `ETag`。同じ鍵の再送は200で同じ習慣 |
-| `PATCH /v1/habits/{id}` | `tasks:write` + `If-Match` | 項目の変更、`archived` で保管・復帰。欠落428、不一致412 |
-| `PUT /v1/habits/{id}/checkins/{date}` | `tasks:write` | `{done}`。未来日・作成週より前・保管中は拒否 |
+| `POST /v1/habits` | `tasks:write` + `tasks:read` + `Idempotency-Key` | 201 + 習慣 + `ETag`。同じ鍵の再送は200で同じ習慣 |
+| `PATCH /v1/habits/{id}` | `tasks:write` + `tasks:read` + `If-Match` | 項目の変更、`archived` で保管・復帰。欠落428、不一致412 |
+| `PUT /v1/habits/{id}/checkins/{date}` | `tasks:write` + `tasks:read` | `{done}`。未来日・作成週より前・保管中は拒否 |
 
 AIの経路は `laa-bridge habits <week|history|events|add|update|archive|restore|check|uncheck>`。書込みは `--by`・`--reason` 必須で、変更の記録に `actor: agent` として残る。`support: off` の習慣は読めず変えられず、`support` はアプリ（社長）だけが変えられる。戻す時は `habits-backups/` の該当日を、Bridgeを止めてから `habits.json` へ複製する。
 
