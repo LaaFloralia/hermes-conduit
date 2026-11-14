@@ -59,7 +59,8 @@ enum LAAWorkModelSelection {
             byProvider[item.provider, default: []].append(item)
         }
         return order.map { provider in
-            (LAAModelFace.face(model: byProvider[provider]?.first?.model, provider: provider).providerName ?? provider,
+            (provider == "hermes-claude-api" ? "Claude API" :
+                (LAAModelFace.face(model: byProvider[provider]?.first?.model, provider: provider).providerName ?? provider),
              byProvider[provider] ?? [])
         }
     }

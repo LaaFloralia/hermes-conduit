@@ -72,6 +72,25 @@ test('manual profiles never become the automatic default or the sole fallback', 
   assert.deepEqual(fallback.profiles.map((p) => p.id), ['fable-high', 'sonnet-high']);
 });
 
+test('Claude API choices retain their paid route and require an explicit manual entrance', () => {
+  const api = { ...table, profiles: { ...table.profiles,
+    'fable-api-high': { model: 'fable', harness: 'hermes-claude-api', effort: 'high', manual: true },
+  }, entrances: [...table.entrances, { kind: 'paseo', status: 'manual', paseo: {
+    provider: 'hermes-claude-api', model: 'anthropic:{{id:fable}}', thinking: 'high',
+  } }] };
+  const options = sessionOptionsFrom(api);
+  assert.deepEqual(options.profiles.find(p => p.id === 'fable-api-high'), {
+    id: 'fable-api-high', label: 'Claude Fable 5.2（API）', provider: 'hermes-claude-api',
+    model: 'anthropic:claude-fable-5-2', effort: 'high', fast: false,
+  });
+  assert.equal(options.defaultProfile, 'opus-high');
+  api.entrances.at(-1).status = 'stopped';
+  assert.ok(!sessionOptionsFrom(api).profiles.some(p => p.id === 'fable-api-high'));
+  api.entrances.at(-1).status = 'manual';
+  api.profiles['fable-api-high'].manual = false;
+  assert.ok(!sessionOptionsFrom(api).profiles.some(p => p.id === 'fable-api-high'));
+});
+
 test('GET /v1/session-options reads the model table and fails closed when it is missing', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-options-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
