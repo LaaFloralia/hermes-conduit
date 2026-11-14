@@ -245,7 +245,7 @@ struct LAAWorkSessionLauncher: View {
 
     @discardableResult private func applyProjectDefault() -> Bool {
         guard pending == nil, let id = projects.first(where: { $0.id == projectID })?.defaultProfile else { return false }
-        guard options?.profiles.contains(where: { $0.id == id }) == true else {
+        guard options?.switchingOptions.profiles.contains(where: { $0.id == id }) == true else {
             profile = ""; fast = false
             error = "プロジェクトの既定モデルは現在選べません。別のモデルを選んでください。"
             return true
