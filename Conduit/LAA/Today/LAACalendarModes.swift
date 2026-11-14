@@ -18,9 +18,9 @@ enum LAACalendarDates {
     }
 }
 enum LAACalendarMode: String, CaseIterable {
-    case day, week, month, list
-    static let visibleModes: [Self] = [.list, .week, .month]
-    var title: String { switch self { case .day, .list: return AppLocalization.string("Agenda view"); case .week: return AppLocalization.string("Week view"); case .month: return AppLocalization.string("Month view") } }
+    case day, week, month, list, habits
+    static let visibleModes: [Self] = [.list, .week, .month, .habits]
+    var title: String { switch self { case .day, .list: return AppLocalization.string("Agenda view"); case .week: return AppLocalization.string("Week view"); case .month: return AppLocalization.string("Month view"); case .habits: return LAACopy.habitsMode } }
     static func agendaDays(events: [LAACalendarEvent], now: Date, calendar: Calendar = .current) -> [Date] {
         let today = calendar.startOfDay(for: now)
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }.filter { day in
@@ -33,7 +33,7 @@ enum LAACalendarMode: String, CaseIterable {
         let day = calendar.startOfDay(for: date)
         switch self {
         case .day: return DateInterval(start: day, end: calendar.date(byAdding: .day, value: 1, to: day)!)
-        case .week: return calendar.dateInterval(of: .weekOfYear, for: date)!
+        case .habits, .week: return calendar.dateInterval(of: .weekOfYear, for: date)!
         case .month:
             let month = calendar.dateInterval(of: .month, for: date)!
             let start = calendar.dateInterval(of: .weekOfYear, for: month.start)!.start

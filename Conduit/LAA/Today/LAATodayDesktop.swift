@@ -72,7 +72,7 @@ struct LAATodayDesktopView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             LAAScreenHeader(title: "Today", identifier: "laa.today.title")
-            LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title)
+            LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title, identifier: { "laa.calendar.mode." + $0.rawValue })
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("laa.calendar.mode")
 
