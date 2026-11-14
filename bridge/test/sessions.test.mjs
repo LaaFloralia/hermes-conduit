@@ -1053,7 +1053,7 @@ test('initial instruction is private, exact, persisted across restart and indepe
   const created = await createSession(ctx, { name: undefined, prompt });
   assert.equal(created.status, 201);
   const id = created.body.data.id;
-  assert.match(created.body.data.name, /^Work｜/);
+  assert.equal(created.body.data.name, 'LAAアプリについて、会話名を整理してください。');
   assert.ok(!JSON.stringify(created.body).includes('最初の依頼の全文'));
   const path = `/v1/sessions/${id}/initial-instruction`;
   assert.equal((await ctx.bridge.request(path)).status, 401);
