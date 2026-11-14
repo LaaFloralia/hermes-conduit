@@ -1014,14 +1014,15 @@ struct ComposerBar: View, Equatable {
     static let touchMargin = (LAAGlassActionButton.touch - LAAGlassActionButton.size) / 2
 
     /// The row under the field, in Work's order and spacing: + at the
-    /// start, then the model · effort the chat runs on (display only), and
-    /// Send (or Stop) at the end, all 36 pt glass.
+    /// start, then the model · effort · Fast the chat runs on, and Send (or
+    /// Stop) at the end, all 36 pt glass. Long model names put the capsules
+    /// on a line of their own above + and Send (LAAComposerControlsRow).
     private var laaControlsRow: some View {
-        HStack(spacing: LAASpacing.x2) {
+        LAAComposerControlsRow {
             attachmentButton
             LAAChatModelPickers(appState: appState)
-            Spacer(minLength: LAASpacing.x2)
-            trailingSlot(size: ComposerShared.rowControlSize)
+            // One child, whatever the slot holds (Stop and Send while a reply runs).
+            HStack(spacing: LAASpacing.x2) { trailingSlot(size: ComposerShared.rowControlSize) }
         }
     }
 #endif

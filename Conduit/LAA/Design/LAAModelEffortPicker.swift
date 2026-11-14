@@ -3,15 +3,16 @@ import SwiftUI
 
 /// The model and its effort as two Liquid Glass capsules side by side, each
 /// opening its own menu: the model's face, name and chevron; then the
-/// effort's meter, name and chevron (owner, 2026-11-12: one control for both
-/// was one too few). Work's session row, the new-session sheet, the task form
-/// and Chat's composer all use it, so the four read and press alike.
+/// effort's name and chevron (owner, 2026-11-12: one control for both was
+/// one too few). Work's session row, the new-session sheet, the task form and
+/// Chat's composer all use it, so the four read and press alike.
 ///
-/// The model name gives way whole when the row is narrow (the face stays,
-/// never "M…"); the effort never does. Standing is light held inside the
-/// glass, never a colour: Mythos, Max and Ultra Code crystal, Fable, Astra
-/// and XHigh polished (LAAFinish). An applied change sends one pass of light
-/// through the glass. Unknown and stale values stay plain.
+/// The model's name is always whole, beginning with its maker ("Claude Opus
+/// 5.5"), never cut or "…" (owner, 2026-11-14): when the row is too narrow
+/// the effort moves to the next line (LAAWrapRow). Standing is light held
+/// inside the glass, never a colour: the Thinking orb's particles drift in it,
+/// more at each step (LAAFinish). An applied change carries a front of light
+/// across it once. Unknown and stale values stay plain.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
 ///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
@@ -55,14 +56,13 @@ struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: LAASpacing.x2) {
+        LAAWrapRow {
             Menu { modelMenu() } label: {
                 LAAModelCapsule(model: model, provider: provider, name: name, current: current,
                                 attention: attention, changing: changingModel)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
-            .layoutPriority(-1)
             .accessibilityLabel(Text(verbatim: "モデル"))
             .accessibilityValue(Text(verbatim: modelText + (modelValueSuffix ?? "")))
             .accessibilityHint(Text(verbatim: modelHint))
@@ -105,8 +105,8 @@ private enum LAAPickerMetrics {
     }
 }
 
-/// The model capsule: face, ▲ when it differs from the request, the name
-/// (whole or none) and the chevron.
+/// The model capsule: face, ▲ when it differs from the request, the whole
+/// name and the chevron.
 struct LAAModelCapsule: View {
     let model: String?
     let provider: String?
@@ -118,7 +118,7 @@ struct LAAModelCapsule: View {
     static let unknown = "不明"
 
     static func text(model: String?, provider: String?, name: String?, current: Bool) -> String {
-        let shown = name ?? displayName(model: model, provider: provider) ?? unknown
+        let shown = name.map(fullName) ?? displayName(model: model, provider: provider) ?? unknown
         return current ? shown : "最終確認 " + shown
     }
 
@@ -128,9 +128,7 @@ struct LAAModelCapsule: View {
     private var shown: String { Self.text(model: model, provider: provider, name: name, current: current) }
 
     var body: some View {
-        TimelineView(.animation(paused: start == nil)) { context in
-            face(elapsed: start.map { context.date.timeIntervalSince($0) })
-        }
+        content(motion: .live(start))
         .laaCeremonyTrigger(value: model, changing: changing,
                             enabled: current && Self.displayName(model: model, provider: provider) != nil,
                             start: $start)
@@ -141,26 +139,29 @@ struct LAAModelCapsule: View {
         }
     }
 
-    /// The capsule at rest (`elapsed` nil) or that far into its movement: the
-    /// glass with the light it holds, crossed once by a pass after a choice.
-    /// Internal so a capture can hold a moment of it.
-    func face(elapsed: Double?) -> some View {
+    /// The capsule held at one moment for a capture: at rest (`elapsed` nil)
+    /// or that far into its movement, with the particles at `time` (nil:
+    /// still, as with Reduce Motion).
+    func face(elapsed: Double?, time: Double? = 0) -> some View {
+        content(motion: .frozen(elapsed: elapsed, time: time))
+    }
+
+    private func content(motion: LAAGlassMotion) -> some View {
         row
             .laaTextStyle(.secondary)
             // The face sits as far from the rim as it is from top and bottom.
             .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
             .contentShape(Capsule())
-            .laaGlassSelection(finish: rank.finish, elapsed: elapsed,
+            .laaGlassSelection(finish: rank.finish, motion: motion,
                                duration: LAACeremony.duration(rank: rank),
                                cornerRadius: LAAPickerMetrics.radius)
     }
 
     private var row: some View {
-        // The whole name or none: in a narrow row the capsule is the face
-        // and the chevron, never "M…", and it shrinks to them, leaving no
-        // gap. VoiceOver still reads the name.
-        LAANameOrNoneRow(spacing: 6) {
+        // The whole name on one line; only a row narrower than the name
+        // itself (never at the phone's width) wraps it at a space, never "…".
+        HStack(spacing: 6) {
             LAAModelMark(model: model, provider: provider, size: 22)
             if changing { Text(verbatim: "変更中").font(.caption).foregroundStyle(LAAColor.text).fixedSize() }
             if attention {
@@ -172,24 +173,34 @@ struct LAAModelCapsule: View {
             }
             Text(verbatim: shown)
                 .foregroundStyle(LAAColor.text)
-                .fontWeight(.semibold).lineLimit(1).fixedSize()
-                // Takes the width it is given and clips, so left out it draws nothing.
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
-                .layoutValue(key: LAAGivesWay.self, value: true)
+                .fontWeight(.semibold)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
             LAAPickerMetrics.chevronView()
         }
     }
 
-    /// A model's name from its wire id: "claude-opus-4-8" → "Opus 4.8",
-    /// "gpt-6.1-sol" → "GPT 6.1 Sol"; a name already written for people is
-    /// kept. Nil when nothing readable is there.
+    /// The capsule's name from a wire id, whole and beginning with its maker:
+    /// "claude-opus-4-8" → "Claude Opus 4.8", "gpt-6.1-sol" → "GPT 6.1 Sol";
+    /// a name already written for people is kept. Nil when nothing readable
+    /// is there.
     static func displayName(model: String?, provider: String?) -> String? {
         guard let raw = model?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
-        return readableName(raw) ?? LAAModelFace.face(model: raw, provider: provider).providerName
+        return readableName(raw).map(fullName) ?? LAAModelFace.face(model: raw, provider: provider).providerName
     }
 
-    /// The name read from the id itself, without falling back to the
-    /// provider's: nil for an id it cannot read ("laa-monet-local").
+    /// A Claude model's short name with its maker in front ("Opus 5.5" →
+    /// "Claude Opus 5.5"); any other name as it is ("GPT 6 Astra").
+    static func fullName(_ name: String) -> String {
+        guard let first = name.split(separator: " ").first,
+              ["Opus", "Sonnet", "Haiku", "Fable", "Mythos"].contains(String(first)) else { return name }
+        return "Claude " + name
+    }
+
+    /// The short name read from the id itself (a menu row under its
+    /// provider's heading), without falling back to the provider's: nil for
+    /// an id it cannot read ("laa-monet-local").
     static func readableName(_ value: String) -> String? {
         var raw = value.trimmingCharacters(in: .whitespaces)
         guard !raw.isEmpty else { return nil }
@@ -206,17 +217,21 @@ struct LAAModelCapsule: View {
         if let match = lower.firstMatch(of: #/^gpt-([\d.]+)-([a-z]+)$/#) {
             return "GPT \(match.1) \(match.2.capitalized)"
         }
-        if lower.hasPrefix("deepseek") { return "DeepSeek V4.1 Flash" }
+        if lower.hasPrefix("deepseek") {
+            // "deepseek-v4.1-flash" → "DeepSeek V4.1 Flash", each word as written.
+            let words = raw.dropFirst("deepseek".count).split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            return (["DeepSeek"] + words).joined(separator: " ")
+        }
         // Already a display name ("Opus 5.5", "GPT-6 Astra").
         if raw.contains(" ") && !raw.contains("/") && !raw.contains("[") { return raw }
         return nil
     }
 }
 
-/// The effort capsule: the meter and its name, or 「不明」, and the chevron.
-/// XHigh and Max hold light inside the glass; after a requested change,
-/// the meter rises and one pass of light crosses the glass
-/// (LAAEffortLook, LAAGlassLook).
+/// The effort capsule: its name, or 「不明」, and the chevron, with no meter
+/// beside it (owner, 2026-11-14). High and above hold particles inside the
+/// glass; after a requested change a front of light crosses it once
+/// (LAAGlassLook).
 struct LAAEffortCapsule: View {
     let effort: String?
     var current = true
@@ -228,9 +243,7 @@ struct LAAEffortCapsule: View {
     var ranked: String? { known.flatMap { LAAEffort.order.contains($0) || $0 == "ultracode" ? $0 : nil } }
 
     var body: some View {
-        TimelineView(.animation(paused: start == nil)) { context in
-            capsule(elapsed: start.map { context.date.timeIntervalSince($0) })
-        }
+        content(motion: current ? .live(start) : .frozen(elapsed: nil, time: nil))
         .laaCeremonyTrigger(value: effort, changing: changing, enabled: current && ranked != nil, start: $start)
         .task(id: start) {
             guard let started = start, let ranked else { return }
@@ -239,13 +252,16 @@ struct LAAEffortCapsule: View {
         }
     }
 
-    /// The capsule at rest (`elapsed` nil) or that far into its movement.
-    /// Internal so a capture can hold a moment of it.
-    func capsule(elapsed: Double?) -> some View {
+    /// The capsule held at one moment for a capture (LAAModelCapsule.face).
+    func capsule(elapsed: Double?, time: Double? = 0) -> some View {
+        content(motion: .frozen(elapsed: current ? elapsed : nil, time: time))
+    }
+
+    private func content(motion: LAAGlassMotion) -> some View {
         HStack(spacing: 6) {
             if changing { Text(verbatim: "変更中").font(.caption) }
             if let known {
-                LAAEffortLabel(effort: known, current: current, elapsed: elapsed)
+                LAAEffortLabel(effort: known, current: current)
             } else {
                 Text(verbatim: LAAModelCapsule.unknown).foregroundStyle(LAAColor.secondaryText)
             }
@@ -257,47 +273,66 @@ struct LAAEffortCapsule: View {
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
         .laaGlassSelection(finish: current ? LAAEffort.finish(ranked) : .plain,
-                           elapsed: current ? elapsed : nil,
+                           motion: motion,
                            duration: ranked.map { LAACeremony.duration(effort: $0) } ?? LAACeremony.slow,
                            cornerRadius: LAAPickerMetrics.radius)
     }
 }
 
-/// Marks the one child of LAANameOrNoneRow that gives way.
-private struct LAAGivesWay: LayoutValueKey {
-    static let defaultValue = false
-}
+/// Children at their ideal widths, left to right, moving whole to the next
+/// line when the row is full: the model and effort capsules (and Chat's Fast)
+/// wrap instead of cutting a name. A child wider than the row alone gets the
+/// row's width. Each line is centred on its tallest child.
+struct LAAWrapRow: Layout {
+    var spacing: CGFloat = LAASpacing.x2
+    var lineSpacing: CGFloat = LAASpacing.x2
 
-/// A row of children at their ideal widths; when the offer is narrower than
-/// all of them, the one marked LAAGivesWay is left out whole and the row is
-/// that much narrower. One measurement per offer, so it settles in one pass.
-private struct LAANameOrNoneRow: Layout {
-    var spacing: CGFloat
+    /// The line each width falls on, for an `available` width (nil: one line).
+    static func lines(_ widths: [CGFloat], available: CGFloat?, spacing: CGFloat) -> [Int] {
+        var line = 0, x: CGFloat = 0, out: [Int] = []
+        for (index, width) in widths.enumerated() {
+            if index > 0, let available, x + spacing + width > available + 0.5 { line += 1; x = 0 }
+            else if index > 0 { x += spacing }
+            out.append(line)
+            x += width
+        }
+        return out
+    }
 
-    private func shown(_ proposal: ProposedViewSize, _ subviews: Subviews) -> [Bool] {
-        let widths = subviews.map { $0.sizeThatFits(.unspecified).width }
-        let full = widths.reduce(0, +) + spacing * CGFloat(max(0, subviews.count - 1))
-        // The offer comes back rounded to the pixel, a hair under the ideal.
-        let fits = proposal.width.map { $0 + 1 >= full } ?? true
-        return subviews.map { fits || !$0[LAAGivesWay.self] }
+    private func frames(_ proposal: ProposedViewSize, _ subviews: Subviews) -> (frames: [CGRect], size: CGSize) {
+        let available = proposal.width.flatMap { $0.isFinite ? $0 : nil }
+        let sizes = subviews.map { subview -> CGSize in
+            let ideal = subview.sizeThatFits(.unspecified)
+            guard let available, ideal.width > available + 0.5 else { return ideal }
+            return subview.sizeThatFits(ProposedViewSize(width: available, height: nil))
+        }
+        let line = Self.lines(sizes.map(\.width), available: available, spacing: spacing)
+        var frames: [CGRect] = [], y: CGFloat = 0, width: CGFloat = 0
+        for current in Set(line).sorted() {
+            let members = line.indices.filter { line[$0] == current }
+            let height = members.map { sizes[$0].height }.max() ?? 0
+            var x: CGFloat = 0
+            for index in members {
+                if x > 0 { x += spacing }
+                frames.append(CGRect(x: x, y: y + (height - sizes[index].height) / 2,
+                                     width: sizes[index].width, height: sizes[index].height))
+                x += sizes[index].width
+            }
+            width = max(width, x)
+            y += height + lineSpacing
+        }
+        return (frames, CGSize(width: width, height: max(0, y - lineSpacing)))
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let visible = zip(subviews, shown(proposal, subviews)).filter(\.1).map { $0.0.sizeThatFits(.unspecified) }
-        let width = visible.map(\.width).reduce(0, +) + spacing * CGFloat(max(0, visible.count - 1))
-        return CGSize(width: width, height: visible.map(\.height).max() ?? 0)
+        frames(proposal, subviews).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        for (subview, visible) in zip(subviews, shown(proposal, subviews)) {
-            guard visible else {
-                subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: .zero)
-                continue
-            }
-            let size = subview.sizeThatFits(.unspecified)
-            subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(size))
-            x += size.width + spacing
+        let placed = frames(ProposedViewSize(width: bounds.width, height: bounds.height), subviews).frames
+        for (subview, frame) in zip(subviews, placed) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          anchor: .topLeading, proposal: ProposedViewSize(frame.size))
         }
     }
 }

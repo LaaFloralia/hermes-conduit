@@ -5,7 +5,7 @@ import XCTest
 @testable import Conduit
 
 /// 440 × 956 pt light and dark captures of the model and effort pickers
-/// (owner, 2026-11-14): every state of the two capsules, the light each
+/// (owner, 2026-11-14): every state of the two capsules, the particles each
 /// standing holds, the new-session sheet and the task form. Attachments are
 /// exported from the result bundle.
 @MainActor
@@ -69,21 +69,21 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
                 let t = Double(frame) / 30
                 let board = VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: t).fixedSize()
-                        LAAEffortCapsule(effort: "max").capsule(elapsed: t)
+                        LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: t, time: 10 + t).fixedSize()
+                        LAAEffortCapsule(effort: "max").capsule(elapsed: t, time: 10 + t)
                     }
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelCapsule(model: "claude-fable-5-2", provider: "claude").face(elapsed: t).fixedSize()
-                        LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t)
+                        LAAModelCapsule(model: "claude-fable-5-2", provider: "claude").face(elapsed: t, time: 10 + t).fixedSize()
+                        LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t, time: 10 + t)
                     }
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelCapsule(model: "gpt-6.1-sol", provider: "codex").face(elapsed: t).fixedSize()
-                        LAAEffortCapsule(effort: "high").capsule(elapsed: t)
+                        LAAModelCapsule(model: "gpt-6.1-sol", provider: "codex").face(elapsed: t, time: 10 + t).fixedSize()
+                        LAAEffortCapsule(effort: "high").capsule(elapsed: t, time: 10 + t)
                     }
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelCapsule(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh").face(elapsed: t).fixedSize()
-                        LAAEffortCapsule(effort: "medium").capsule(elapsed: t)
-                        LAAEffortCapsule(effort: "low").capsule(elapsed: t)
+                        LAAModelCapsule(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh").face(elapsed: t, time: 10 + t).fixedSize()
+                        LAAEffortCapsule(effort: "medium").capsule(elapsed: t, time: 10 + t)
+                        LAAEffortCapsule(effort: "low").capsule(elapsed: t, time: 10 + t)
                     }
                 }
                 .padding(LAASpacing.horizontal)
@@ -91,6 +91,34 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
                 .background(LAAColor.background.ignoresSafeArea())
                 try capture(board, style: style, settle: 0.25,
                             name: String(format: "ceremony-frame-%@-%02d", style == .dark ? "dark" : "light", frame))
+            }
+        }
+    }
+
+    /// The particles at rest, 12 frames a second for two seconds, for the
+    /// recording and the strip: each step from none to crystal.
+    func testParticleFramesLightAndDark() throws {
+        let rows: [(String, String, String)] = [
+            ("claude-mythos-5-2", "claude", "ultracode"), ("gpt-6-astra", "codex", "max"),
+            ("claude-fable-5-2", "claude", "xhigh"), ("claude-opus-5-5", "claude", "high"),
+        ]
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for frame in 0..<24 {
+                let t = 20 + Double(frame) / 12
+                let board = VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        HStack(spacing: LAASpacing.x2) {
+                            LAAModelCapsule(model: row.0, provider: row.1).face(elapsed: nil, time: t).fixedSize()
+                            LAAEffortCapsule(effort: row.2).capsule(elapsed: nil, time: t)
+                        }
+                        .frame(height: 48, alignment: .leading)
+                    }
+                }
+                .padding(.top, 24).padding(.horizontal, LAASpacing.horizontal)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(LAAColor.background.ignoresSafeArea())
+                try capture(board, style: style, settle: 0.15, scale: 3,
+                            name: String(format: "particles-%@-%02d", style == .dark ? "dark" : "light", frame))
             }
         }
     }
@@ -125,6 +153,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     private static let compareModels: [(model: String, provider: String, slug: String)] = [
         ("claude-mythos-5-2", "claude", "mythos"), ("claude-opus-5-5", "claude", "opus"),
         ("gpt-6.1-sol", "codex", "gpt"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "dsh"),
+        ("claude-fable-5-2", "claude", "fable"), ("gpt-6-astra", "codex", "astra"),
     ]
     private static let compareEfforts = ["low", "medium", "high", "xhigh", "max", "ultracode"]
     /// What the capsules showed before the choice: the house default, or one
@@ -213,10 +242,10 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         let moving = phase == "moment"
         HStack(spacing: LAASpacing.x2) {
             LAAModelCapsule(model: shown.0, provider: shown.1)
-                .face(elapsed: moving && before.0 != model ? seconds : nil)
+                .face(elapsed: moving && before.0 != model ? seconds : nil, time: 10 + seconds)
                 .fixedSize()
             LAAEffortCapsule(effort: shown.2)
-                .capsule(elapsed: moving && before.2 != effort ? seconds : nil)
+                .capsule(elapsed: moving && before.2 != effort ? seconds : nil, time: 10 + seconds)
         }
         .frame(height: 48, alignment: .leading)
     }
@@ -252,20 +281,24 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
                 // Standing is light in the glass; menu rows have no ring ornaments.
-                row("Mythos 5.2 · Max", pickers("claude-mythos-5-2", "claude", "max"))
-                row("Fable 5.2 · XHigh", pickers("claude-fable-5-2", "claude", "xhigh"))
-                row("GPT 6 Astra · High", pickers("gpt-6-astra", "codex", "high"))
-                row("Mythos 5.2 · Ultra Code", pickers("claude-mythos-5-2", "claude", "ultracode"))
-                row("GPT 6.1 Sol · Max", pickers("gpt-6.1-sol", "codex", "max"))
-                row("DeepSeek · Low", pickers(#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"))
+                row("Mythos · Max（crystal・crystal）", pickers("claude-mythos-5-2", "claude", "max"))
+                row("Fable · XHigh（polished・polished）", pickers("claude-fable-5-2", "claude", "xhigh"))
+                row("Opus · High（粒子なし）", pickers("claude-opus-5-5", "claude", "high"))
+                row("Astra · Ultra Code", pickers("gpt-6-astra", "codex", "ultracode"))
+                row("Sol · Medium", pickers("gpt-6.1-sol", "codex", "medium"))
+                row("DeepSeek · Low（粒子なし）", pickers(#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"))
                 row("不明 · 不明", pickers(nil, nil, nil))
                 row("最終確認", pickers("claude-fable-5-2", "claude", "xhigh", current: false))
                 row("依頼と実行の不一致・変更中", pickers("claude-opus-4-8", "claude", "high", attention: true, changing: true))
-                row("狭い行（名前は丸ごと省く）", HStack(spacing: LAASpacing.x2) {
+                row("狭い行（名前は切らず、推論を次の行へ）", HStack(spacing: LAASpacing.x2) {
                     LAAGlassActionButton(systemImage: "photo", label: "写真", role: .neutral) {}
                     pickers("claude-mythos-5-2", "claude", "xhigh")
                     Spacer(minLength: 0)
-                }.frame(width: 170, alignment: .leading))
+                }.frame(width: 250, alignment: .leading))
+                row("静止（Reduce Motion・低電力）", HStack(spacing: LAASpacing.x2) {
+                    LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: nil, time: nil).fixedSize()
+                    LAAEffortCapsule(effort: "max").capsule(elapsed: nil, time: nil)
+                })
             }
             .padding(LAASpacing.horizontal)
             .frame(maxWidth: .infinity, alignment: .leading)

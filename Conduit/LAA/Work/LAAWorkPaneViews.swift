@@ -375,7 +375,7 @@ private struct LAAWorkPaneHeader: View {
                         // The effort is always beside the model, whole.
                         if let effort = session.observed?.effort, LAAWorkSessionStyle.appliedModel(session, options: options) != nil {
                             Text(verbatim: "  ")
-                            LAAEffortLabel(effort: effort, current: session.observation?.available != false, meterHeight: 10)
+                            LAAEffortLabel(effort: effort, current: session.observation?.available != false)
                         }
                         if let mismatch = LAAWorkSessionStyle.mismatch(session, options: options) {
                             Text(verbatim: "  ")

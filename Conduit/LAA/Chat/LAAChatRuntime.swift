@@ -204,6 +204,66 @@ import SwiftUI
 import UIKit
 import Combine
 
+/// The row under the chat field: + at the start, the model · effort · Fast
+/// capsules, and Send (or Stop) at the end. When the capsules, with their
+/// whole names, leave no room on one line (owner, 2026-11-14: every model
+/// name in full, nothing cut), they take a line of their own above + and
+/// Send, wrapping there if they must. Three children, in that order.
+struct LAAComposerControlsRow: Layout {
+    var spacing: CGFloat = LAASpacing.x2
+
+    /// True when + , the capsules and Send fit one line of `available` points
+    /// with at least a spacing of room between the capsules and Send.
+    static func oneLine(lead: CGFloat, middle: CGFloat, trail: CGFloat, available: CGFloat?, spacing: CGFloat) -> Bool {
+        guard let available else { return true }
+        return lead + middle + trail + 3 * spacing <= available + 0.5
+    }
+
+    private struct Arrangement {
+        var frames: [CGRect]
+        var size: CGSize
+    }
+
+    private func arrange(_ proposal: ProposedViewSize, _ subviews: Subviews) -> Arrangement {
+        guard subviews.count == 3 else {
+            return Arrangement(frames: subviews.map { CGRect(origin: .zero, size: $0.sizeThatFits(.unspecified)) }, size: .zero)
+        }
+        let available = proposal.width.flatMap { $0.isFinite ? $0 : nil }
+        let lead = subviews[0].sizeThatFits(.unspecified), trail = subviews[2].sizeThatFits(.unspecified)
+        let ideal = subviews[1].sizeThatFits(.unspecified)
+        if Self.oneLine(lead: lead.width, middle: ideal.width, trail: trail.width, available: available, spacing: spacing) {
+            let height = max(lead.height, ideal.height, trail.height)
+            let width = available ?? (lead.width + ideal.width + trail.width + 3 * spacing)
+            return Arrangement(frames: [
+                CGRect(x: 0, y: (height - lead.height) / 2, width: lead.width, height: lead.height),
+                CGRect(x: lead.width + spacing, y: (height - ideal.height) / 2, width: ideal.width, height: ideal.height),
+                CGRect(x: width - trail.width, y: (height - trail.height) / 2, width: trail.width, height: trail.height),
+            ], size: CGSize(width: width, height: height))
+        }
+        let width = available ?? ideal.width
+        let middle = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let actions = max(lead.height, trail.height)
+        let top = middle.height + spacing
+        return Arrangement(frames: [
+            CGRect(x: 0, y: top + (actions - lead.height) / 2, width: lead.width, height: lead.height),
+            CGRect(x: 0, y: 0, width: middle.width, height: middle.height),
+            CGRect(x: width - trail.width, y: top + (actions - trail.height) / 2, width: trail.width, height: trail.height),
+        ], size: CGSize(width: width, height: top + actions))
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(proposal, subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = arrange(ProposedViewSize(width: bounds.width, height: nil), subviews).frames
+        for (subview, frame) in zip(subviews, frames) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+        }
+    }
+}
+
 /// The chat composer's model and effort: the shared two capsules
 /// (LAAModelEffortPickers), each opening its own menu. What they show is
 /// what Hermes reports for the chat's agent; a choice is sent to Hermes for
@@ -256,7 +316,9 @@ struct LAAChatModelPickers: View {
     }
 
     var body: some View {
-        HStack(spacing: LAASpacing.x2) {
+        // Model, effort and Fast wrap as whole capsules when the names are
+        // long (LAAWrapRow); none is ever cut.
+        LAAWrapRow {
             if let fixed {
                 // Nothing here is Hermes' to change: no menu rows, no writes.
                 LAAModelEffortPickers(
