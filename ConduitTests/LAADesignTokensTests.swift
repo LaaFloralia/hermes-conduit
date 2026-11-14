@@ -53,7 +53,9 @@ final class LAADesignTokensTests: XCTestCase {
             ("filledControl", LAAColor.filledControl, 0x00585E, 0x1E6B70),
             ("filledControlText", LAAColor.filledControlText, 0xF6F2E9, 0xF6F2E9),
             ("attention", LAAColor.attention, 0x6C244C, 0xD49AB6),
-            ("decorativeTan", LAAColor.decorativeTan, 0xB99B7A, 0xB99B7A)
+            ("decorativeTan", LAAColor.decorativeTan, 0xB99B7A, 0xB99B7A),
+            ("ivory", LAAColor.ivory, 0xF6F2E9, 0xF6F2E9),
+            ("rimLight", LAAColor.rimLight, 0xB99B7A, 0xFFFDF8)
         ]
         for (name, color, light, dark) in roles {
             XCTAssertEqual(hex(color, style: .light), light, "\(name) light")

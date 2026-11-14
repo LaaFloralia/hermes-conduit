@@ -8,12 +8,13 @@ import SwiftUI
 /// and Chat's composer all use it, so the four read and press alike.
 ///
 /// The model name gives way whole when the row is narrow (the face stays,
-/// never "M…"); the effort never does. Mythos, Fable and Astra lay their
-/// rank's face inside the model capsule; XHigh takes the gilt and Max five
-/// colours. When a value this control asked for is applied, its capsule
-/// plays a short ceremony (LAACeremony): the stronger the effort, the more
-/// it does, up to a light and colours running over the letters. Every value
-/// may be unknown, and reads 「不明」, never a guess, and never plays.
+/// never "M…"); the effort never does. Standing shows on the glass, not in
+/// colour (LAAFinish): Fable, Astra and XHigh carry one fine tan line on the
+/// rim, Mythos and Max two. When a value this control asked for is applied,
+/// its capsule moves once, briefly (LAACeremony): a short light runs round
+/// the rim (tan on the paper, white on the dark glass) and is gone, or leaves
+/// the metal lines behind it for a ranked value. Every value may be unknown, and reads 「不明」, never a guess, and
+/// never moves.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
 ///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
@@ -32,13 +33,13 @@ struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
     /// A name to show instead of the one read from `model` (a model table's label).
     var name: String? = nil
     /// False when the values are the last confirmed ones, not the current
-    /// setting: the name is prefixed 最終確認, colours and ceremonies are withheld.
+    /// setting: the name is prefixed 最終確認, the finish and movement are withheld.
     var current = true
     /// A plum ▲ before the model's name: what runs differs from what was asked for.
     var attention = false
     /// On while a change this control asked for is being applied: 「変更中」
     /// shows, and the value that arrives next (or within a moment after)
-    /// plays the ceremony. Pass the applied values, not the chosen ones.
+    /// moves the capsule once. Pass the applied values, not the chosen ones.
     var changingModel = false
     var changingEffort = false
     /// "work.session" → "work.session.model" and "work.session.effort".
@@ -143,80 +144,45 @@ struct LAAModelCapsule: View {
         }
     }
 
-    /// The capsule at rest (`elapsed` nil) or that far into its ceremony: a
-    /// ranked face wipes in from the leading edge with the house `state`
-    /// curve, then a light passes letter by letter over the name (twice for
-    /// Mythos, once for the rest).
-    private func face(elapsed: Double?) -> some View {
-        let colors = rank.colors
-        let duration = LAACeremony.duration(rank: rank)
-        let live = elapsed.map { $0 < duration } ?? false
-        let wipe: CGFloat = {
-            guard colors != nil, live, let elapsed else { return 1 }
-            let span = LAACeremony.wipe(rank: rank)
-            return CGFloat(LAACeremony.state(span > 0 ? elapsed / span : 1))
-        }()
-        let lit: Int? = {
-            guard live, let elapsed else { return nil }
-            let begin = colors == nil ? 0.05 : LAACeremony.wipe(rank: rank) * 0.8
-            let passes = rank == .mythos ? 2 : 1
-            let k = Int(floor((elapsed - begin) / LAACeremony.nameStep))
-            return (0..<shown.count * passes).contains(k) ? k % shown.count : nil
-        }()
-        let litColor = colors?.light ?? LAAColor.link
-        return row(ink: LAAColor.text, chevron: LAAColor.secondaryText, triangle: LAAColor.attention,
-                   lit: lit, litColor: litColor)
-            .overlay {
-                // The same row in the rank's ink, uncovered with the face.
-                if let colors {
-                    row(ink: colors.ink, chevron: colors.ink.opacity(0.7), triangle: colors.attention,
-                        lit: lit, litColor: litColor)
-                        .mask(alignment: .leading) { wiped(wipe) }
-                }
-            }
+    /// The capsule at rest (`elapsed` nil) or that far into its movement: the
+    /// glass with its finish's metal lines, and the light of the one movement.
+    /// Internal so a capture can hold a moment of it.
+    func face(elapsed: Double?) -> some View {
+        row
             .laaTextStyle(.secondary)
             // The face sits as far from the rim as it is from top and bottom.
             .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
-            .background {
-                if let colors {
-                    Capsule().fill(colors.fill)
-                        .overlay { if let rim = colors.rim { Capsule().strokeBorder(rim, lineWidth: 1) } }
-                        .mask(alignment: .leading) { wiped(wipe) }
-                }
-            }
             .contentShape(Capsule())
             .conduitGlassControl(cornerRadius: LAAPickerMetrics.radius, interactive: true)
+            .overlay {
+                LAARimFinish(look: LAARimLook(finish: rank.finish, motion: LAACeremony.motion(rank: rank),
+                                              elapsed: elapsed),
+                             cornerRadius: LAAPickerMetrics.radius)
+            }
     }
 
-    private func wiped(_ fraction: CGFloat) -> some View {
-        GeometryReader { proxy in
-            Rectangle().frame(width: proxy.size.width * fraction)
-        }
-    }
-
-    private func row(ink: Color, chevron: Color, triangle: Color, lit: Int?, litColor: Color) -> some View {
+    private var row: some View {
         // The whole name or none: in a narrow row the capsule is the face
         // and the chevron, never "M…", and it shrinks to them, leaving no
         // gap. VoiceOver still reads the name.
         LAANameOrNoneRow(spacing: 6) {
             LAAModelMark(model: model, provider: provider, size: 22)
-            if changing { Text(verbatim: "変更中").font(.caption).foregroundStyle(ink).fixedSize() }
+            if changing { Text(verbatim: "変更中").font(.caption).foregroundStyle(LAAColor.text).fixedSize() }
             if attention {
                 // ▲ is the house mark for "check this".
                 Image(systemName: "triangle.fill")
                     .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(triangle)
+                    .foregroundStyle(LAAColor.attention)
                     .accessibilityHidden(true)
             }
-            Text.laaLetters(shown) { $0 == lit ? litColor : ink }
+            Text(verbatim: shown)
+                .foregroundStyle(LAAColor.text)
                 .fontWeight(.semibold).lineLimit(1).fixedSize()
                 // Takes the width it is given and clips, so left out it draws nothing.
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
                 .layoutValue(key: LAAGivesWay.self, value: true)
-            LAAPickerMetrics.chevron.font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(chevron)
-                .accessibilityHidden(true)
+            LAAPickerMetrics.chevronView()
         }
     }
 
@@ -254,8 +220,9 @@ struct LAAModelCapsule: View {
 }
 
 /// The effort capsule: the meter and its name, or 「不明」, and the chevron.
-/// A deep setting tints the glass with its gilt; when an effort this control
-/// asked for is applied, the label plays its ceremony (LAAEffortLook).
+/// XHigh and Max carry their metal lines on the rim; when an effort this
+/// control asked for is applied, the meter's ticks rise and the rim moves once
+/// (LAAEffortLook).
 struct LAAEffortCapsule: View {
     let effort: String?
     var current = true
@@ -277,10 +244,10 @@ struct LAAEffortCapsule: View {
         }
     }
 
-    private func capsule(elapsed: Double?) -> some View {
-        let tint = known.map { LAAEffortLook(effort: $0, name: LAAEffort.name($0) ?? $0,
-                                             current: current, elapsed: elapsed).tint } ?? 0
-        return HStack(spacing: 6) {
+    /// The capsule at rest (`elapsed` nil) or that far into its movement.
+    /// Internal so a capture can hold a moment of it.
+    func capsule(elapsed: Double?) -> some View {
+        HStack(spacing: 6) {
             if changing { Text(verbatim: "変更中").font(.caption) }
             if let known {
                 LAAEffortLabel(effort: known, current: current, elapsed: elapsed)
@@ -294,8 +261,13 @@ struct LAAEffortCapsule: View {
         .padding(.leading, LAASpacing.x3).padding(.trailing, LAASpacing.x3)
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
-        .conduitGlassControl(cornerRadius: LAAPickerMetrics.radius,
-                             tint: tint > 0 ? LAAColor.deepEffort.opacity(tint) : .clear, interactive: true)
+        .conduitGlassControl(cornerRadius: LAAPickerMetrics.radius, interactive: true)
+        .overlay {
+            if let ranked {
+                LAARimFinish(look: LAAEffortLook(effort: ranked, current: current, elapsed: elapsed).rim,
+                             cornerRadius: LAAPickerMetrics.radius)
+            }
+        }
     }
 }
 

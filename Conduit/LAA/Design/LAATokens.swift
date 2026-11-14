@@ -27,10 +27,12 @@ enum LAAColor {
     static let attention = adaptive(light: 0x6C244C, dark: LAAColorValues.attentionDark)
     static let end = Color.red
     static let decorativeTan = adaptive(light: 0xB99B7A, dark: 0xB99B7A)
-    /// XHigh and Max effort: a warm gilt, the tan's deeper sibling, readable
-    /// as text on the paper and on the dark teal.
-    static let deepEffort = adaptive(light: 0x8A5F14, dark: 0xE2B866,
-                                     highContrastLight: 0x6B4808, highContrastDark: 0xF2CF8A)
+    /// The brand ivory in both appearances: the paper disc under Claude's Spark.
+    static let ivory = adaptive(light: 0xF6F2E9, dark: 0xF6F2E9)
+    /// The light that runs once round a control's glass rim when a value is
+    /// applied: the tan on the paper, where white would not show; the light
+    /// glass surface (#FFFDF8) on the dark glass. A stroke, never a fill.
+    static let rimLight = adaptive(light: 0xB99B7A, dark: 0xFFFDF8)
 
     private static func adaptive(light: Int, dark: Int,
                                  highContrastLight: Int? = nil, highContrastDark: Int? = nil) -> Color {
