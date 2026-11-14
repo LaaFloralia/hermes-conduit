@@ -55,6 +55,7 @@ struct ComposerBar: View, Equatable {
     @EnvironmentObject private var laaBridge: LAABridgeSession
     #endif
     @State private var text = ""
+    @State private var sendEffectGeneration = 0
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
     /// A whole reply attached with its Quote button (#385); it rides along
@@ -1556,6 +1557,14 @@ struct ComposerBar: View, Equatable {
         switch control {
         case .voice: voiceButton
         case .action: composerActionButton(size: size)
+#if LAA_BUILD
+            .overlay {
+                LAASendEffect(generation: sendEffectGeneration, color: .conduitAccent, reduceMotion: reduceMotion)
+                    .frame(width: 160, height: 160)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+#endif
         case .dictation: ComposerDictationStopButton(dictation: dictation)
         }
     }
@@ -1853,7 +1862,9 @@ struct ComposerBar: View, Equatable {
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
 
         switch submittedAction {
-        case .send: Haptics.medium()
+        case .send:
+            sendEffectGeneration &+= 1
+            Haptics.medium()
         case .steer, .queue: Haptics.light()
         case .interrupt: Haptics.warning()
         case .stop, .unavailable: break
