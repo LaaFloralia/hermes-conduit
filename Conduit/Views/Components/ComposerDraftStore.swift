@@ -47,6 +47,9 @@ final class ComposerDraftStore: ObservableObject {
         var groupOutboundText: String? = nil
         // Work-only: the original device/viewer key stays bound to its ledger.
         var personalOrigin: ComposerDraftKey? = nil
+        /// When the message was reserved; nil for reservations saved by older
+        /// builds. Lets a restart tell the saved copy from an earlier one.
+        var reservedAt: Date? = nil
     }
 
     private struct Entry: Codable {
@@ -269,7 +272,8 @@ final class ComposerDraftStore: ObservableObject {
         let submission = Submission(id: submission.id, key: submission.key, dashboardID: submission.dashboardID,
                                     draft: durable, pendingSendID: submission.pendingSendID, screenshotID: submission.screenshotID,
                                     groupEventID: submission.groupEventID, groupOutboundText: submission.groupOutboundText,
-                                    personalOrigin: submission.personalOrigin)
+                                    personalOrigin: submission.personalOrigin,
+                                    reservedAt: submission.reservedAt ?? Date())
         let oldDrafts = drafts, oldOrder = order, oldGenerations = generations
         submissions.append(submission)
         if clearingDraft {

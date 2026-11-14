@@ -46,7 +46,9 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertTrue(store.save(ComposerDraft(text: "new draft", attachments: []), for: key))
 
         let relaunched = ComposerDraftStore(capacity: .max, fileURL: url)
-        XCTAssertEqual(relaunched.unknownSubmissions, [submission])
+        // The reservation keeps its time across the relaunch; the rest is unchanged.
+        XCTAssertNotNil(relaunched.unknownSubmissions.first?.reservedAt)
+        XCTAssertEqual(relaunched.unknownSubmissions.map { var saved = $0; saved.reservedAt = nil; return saved }, [submission])
         XCTAssertEqual(relaunched.draft(for: key).text, "new draft")
         XCTAssertTrue(relaunched.finishSubmission(submission.id, restoring: true))
         XCTAssertEqual(relaunched.draft(for: key).text, "sent?\n\nnew draft")

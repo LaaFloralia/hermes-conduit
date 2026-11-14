@@ -1185,7 +1185,7 @@ final class AppState: ObservableObject {
         for submission in composerDraftStore.unknownSubmissions
         where submission.dashboardID == dashboardID && submission.pendingSendID == nil
             && submission.groupEventID == nil && composerDraftKeysAreSameChat(submission.key, onScreen)
-            && LAAUnknownDelivery.landed(submission.draft.text, messages: messages, durableIDs: durablePersistedRowIDs) {
+            && LAAUnknownDelivery.landed(submission.draft.text, reservedAt: submission.reservedAt, messages: messages, durableIDs: durablePersistedRowIDs) {
             composerDraftStore.finishSubmission(submission.id, restoring: false)
         }
     }

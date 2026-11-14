@@ -23,9 +23,50 @@ final class LAAUnknownDeliveryTests: XCTestCase {
         XCTAssertFalse(LAAUnknownDelivery.landed(sent, messages: rows, durableIDs: ["1"]))
     }
 
-    func testAnOlderIdenticalMessageDoesNotCountWhenANewerOneFollows() {
-        let rows = [row("1", .user, sent), row("2", .assistant, "是。"), row("3", .user, "別の依頼")]
-        XCTAssertFalse(LAAUnknownDelivery.landed(sent, messages: rows, durableIDs: ["1", "2", "3"]))
+    func testAShortOldMessageDoesNotCountWhenANewerOneFollows() {
+        // "続けて" repeats by chance; without a reservation time only the
+        // newest owner row can carry it.
+        let rows = [row("1", .user, "続けて"), row("2", .assistant, "是。"), row("3", .user, "別の依頼")]
+        XCTAssertFalse(LAAUnknownDelivery.landed("続けて", messages: rows, durableIDs: ["1", "2", "3"]))
+    }
+
+    func testALongMessageFollowedByLaterTurnsStillArrived() {
+        // MacBook, 2026-11-15: the 20:11 message stayed "unconfirmed" while
+        // later owner messages and background notices followed it.
+        let rows = [row("1", .user, sent), row("2", .assistant, "是。"),
+                    row("3", .user, "[IMPORTANT: Background process completed]"), row("4", .user, "別の依頼")]
+        XCTAssertTrue(LAAUnknownDelivery.landed(sent, messages: rows, durableIDs: ["1", "2", "3", "4"]))
+    }
+
+    private func dated(_ id: String, _ text: String, _ stamp: String) -> ChatMessage {
+        ChatMessage(id: id, role: .user, content: text, rawContent: nil, timestamp: stamp, author: nil, attachments: nil)
+    }
+
+    func testWithAReservationTimeAnySavedCopyAfterItArrived() {
+        let reserved = MessageTimestampFormatter.date(from: "2026-11-14T11:11:50Z")!
+        let rows = [dated("1", "続けて", "2026-11-14T11:11:56Z"), dated("2", "別の依頼", "2026-11-14T12:49:54Z")]
+        XCTAssertTrue(LAAUnknownDelivery.landed("続けて", reservedAt: reserved, messages: rows, durableIDs: ["1", "2"]))
+    }
+
+    func testWithAReservationTimeACopyFromBeforeItProvesNothing() {
+        // The same words sent an hour earlier are a different message.
+        let reserved = MessageTimestampFormatter.date(from: "2026-11-14T12:48:40Z")!
+        let rows = [dated("1", sent, "2026-11-14T11:11:56Z"), dated("2", "別の依頼", "2026-11-14T11:30:00Z")]
+        XCTAssertFalse(LAAUnknownDelivery.landed(sent, reservedAt: reserved, messages: rows, durableIDs: ["1", "2"]))
+    }
+
+    func testANewReservationRecordsItsTime() {
+        let store = ComposerDraftStore(capacity: 8, fileURL: nil)
+        let key = ComposerDraftKey(profile: "laa-monet", sessionID: "s1", dashboardID: UUID())
+        let item = ComposerDraftStore.Submission(id: UUID(), key: key, dashboardID: key.dashboardID!,
+                                                 draft: ComposerDraft(text: sent, attachments: [], replyReference: nil),
+                                                 pendingSendID: nil)
+        let before = Date()
+        XCTAssertTrue(store.beginSubmission(item, clearingDraft: true))
+        store.markSubmissionUnknown(item.id)
+        let stamp = try? XCTUnwrap(store.unknownSubmissions.first?.reservedAt)
+        XCTAssertNotNil(stamp)
+        XCTAssertGreaterThanOrEqual(stamp ?? .distantPast, before.addingTimeInterval(-1))
     }
 
     func testAQuotedReplyKeepsTheWordsAtItsEnd() {
