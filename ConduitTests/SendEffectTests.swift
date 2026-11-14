@@ -44,6 +44,7 @@ final class SendEffectTests: XCTestCase {
             host.view.addSubview(view)
             host.view.layoutIfNeeded()
             view.play(color: UIColor(red: dark ? 117/255 : 0, green: dark ? 195/255 : 88/255, blue: dark ? 195/255 : 94/255, alpha: 1), reduceMotion: false)
+            CATransaction.flush()
             var previous = 0.0
             for moment in [0.04, 0.16, 0.32, 0.56, 0.86] {
                 RunLoop.current.run(until: Date(timeIntervalSinceNow: moment - previous))
@@ -56,6 +57,7 @@ final class SendEffectTests: XCTestCase {
                 attachment.lifetime = .keepAlways
                 add(attachment)
             }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
             XCTAssertEqual(view.layer.sublayers?.count ?? 0, 0, "One-shot must release all layers")
             window.isHidden = true
         }
