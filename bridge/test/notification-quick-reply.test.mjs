@@ -158,8 +158,12 @@ test('quick session: an approval that cannot be shown whole has no allow', async
   const tool = (input, name = 'shell') => ({ id: 'tool', kind: 'tool', name, detail: JSON.stringify(input, null, 2) });
   assert.equal(approvalSummary(tool({})), '承認: shell');
   assert.equal(approvalSummary(tool({ command: 'git status' })), '承認: shell {"command":"git status"}');
+  // Ordinary Japanese text and the ideographic space are shown as they are.
+  assert.equal(approvalSummary(tool({ command: 'echo 日本語\u3000テスト' })), '承認: shell {"command":"echo 日本語\u3000テスト"}');
+  assert.equal(approvalSummary({ kind: 'tool', name: 'sh\u200bell', detail: '{}' }), null);
   for (const input of [{ command: '文'.repeat(200) }, { command: 'curl -H "Authorization: x" https://example.com' },
-    { command: 'export K=sk-abcdefgh' }, { env: 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6' }, { command: 'echo \u202eabc' }]) {
+    { command: 'export K=sk-abcdefgh' }, { env: 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6' }, { command: 'echo \u202eabc' },
+    ...['\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\ufeff', '\u061c', '\u180e', '\u2060', '\u2028', '\u2029', '\ue000', '\u0378'].map((c) => ({ command: `rm -rf ./tmp${c}x` }))]) {
     assert.equal(approvalSummary(tool(input)), null, JSON.stringify(input));
   }
   assert.equal(approvalSummary({ kind: 'question', name: 'AskUserQuestion' }), null);

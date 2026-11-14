@@ -139,7 +139,9 @@ Every kind uses `response.ready` with `session_id` equal to
 question adds `h` (the exact decision `requestHash`) and `o`, and a single tool
 approval adds `h` and `a:1` only when its body can say the whole request: the
 tool's name and its input as one line of compact JSON, at most 140 characters,
-nothing cut and nothing shaped like a secret. Any other approval keeps the
+nothing cut, no character that shows nothing or changes how the text reads
+(controls, zero-width and bidirectional marks, separators, private or
+unassigned code points) and nothing shaped like a secret. Any other approval keeps the
 generic body, has no buttons, and `quick-reply` refuses `allow` for it with
 `quick_reply_unsupported` (`deny` still works). If the daemon read fails, the
 ordinary notification still goes out with `sid`. Task/calendar add no fields.

@@ -1179,7 +1179,7 @@ same extension and delegate) · the decision board and the session reply card (u
 - What became of an answer is a local notification: quiet when it arrived, with sound when the owner has to look
   (refused, saved but not delivered, waiting for the Mac, given up). Tapping it opens the decision or conversation.
 - An approval is allowed from a notification only when the notification shows the whole request: the tool's name
-  and its input on one line, within 140 characters, nothing cut and nothing shaped like a secret (the text also
+  and its input on one line, within 140 characters, nothing cut, no invisible or direction-changing character, and nothing shaped like a secret (the text also
   reaches the lock screen). Any other approval says only that one is waiting, has no buttons, and the Bridge refuses
   an allow for it; it is read and answered in the conversation.
 - Answer buttons are attached, and a tap acted on, only for a push that came sealed and verifies. A plaintext push,

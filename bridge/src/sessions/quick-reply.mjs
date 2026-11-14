@@ -14,6 +14,11 @@ export function quickQuestion(requests) {
 // push service.
 const APPROVAL_SUMMARY_MAX = 140;
 const SECRET_SHAPED = /(?:pass(?:word|wd|phrase)?|secret|token|api[_-]?key|authorization|bearer|credential|private[_-]?key|cookie|-----BEGIN|\b(?:sk|pk|rk)[-_][A-Za-z0-9]|\bgh[pousr]_|\bxox[abprs]-|\bAKIA[0-9A-Z]{8}|\beyJ[A-Za-z0-9_-]{8}|[A-Za-z0-9+_=-]{32,})/i;
+// Characters that show nothing, or change how the rest reads, so the owner
+// could see one request and allow another: controls, format characters (zero
+// width, bidirectional marks, U+FEFF), line and paragraph separators, private
+// use, surrogates and unassigned code points.
+const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
 export function approvalSummary(request) {
   if (request?.kind !== 'tool' || typeof request.name !== 'string' || !request.name.trim()) return null;
   let input = '';
@@ -21,7 +26,7 @@ export function approvalSummary(request) {
     try { input = JSON.stringify(JSON.parse(request.detail)); } catch { input = JSON.stringify(request.detail); }
   }
   const text = `承認: ${request.name.trim()}${input && input !== '{}' ? ` ${input}` : ''}`;
-  if (Array.from(text).length > APPROVAL_SUMMARY_MAX || /[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]/.test(text) || SECRET_SHAPED.test(text)) return null;
+  if (Array.from(text).length > APPROVAL_SUMMARY_MAX || HIDDEN_CHARACTERS.test(text) || SECRET_SHAPED.test(text)) return null;
   return text;
 }
 export function sessionNotificationMeta(sid, kind, detail) {
