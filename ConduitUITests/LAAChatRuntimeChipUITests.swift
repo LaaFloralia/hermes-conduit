@@ -95,7 +95,15 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             XCTAssertLessThanOrEqual(element.frame.maxX, window.maxX)
         }
         XCTAssertLessThanOrEqual(model.frame.maxX, effort.frame.minX, "the effort follows the model")
-        XCTAssertLessThan(model.frame.maxY, attach.frame.minY + 1, "the capsules sit on their own line above +")
+        // On a wide phone the whole row fits on one line; on a narrower one
+        // the capsules move to their own line above + and Send. Either way
+        // the name stays whole.
+        if abs(model.frame.midY - attach.frame.midY) > 1 {
+            XCTAssertLessThan(model.frame.maxY, attach.frame.minY + 1, "the capsules sit on their own line above +")
+        } else {
+            XCTAssertLessThanOrEqual(attach.frame.maxX, model.frame.minX, "+ leads the one line")
+            XCTAssertLessThanOrEqual(effort.frame.maxX, action.frame.minX, "Send ends the one line")
+        }
         XCTAssertEqual(attach.frame.midY, action.frame.midY, accuracy: 1, "+ and Send share the line under them")
         capture(app, "long-name-own-line")
         app.terminate()
