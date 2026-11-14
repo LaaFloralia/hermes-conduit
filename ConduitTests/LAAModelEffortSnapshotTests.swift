@@ -20,24 +20,35 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
 
     func testPickerStatesLightAndDark() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
-            try capture(gallery, style: style, name: "pickers-states-\(style == .dark ? "dark" : "light")", settle: 1.6)
+            try capture(gallery, style: style, settle: 1.6, name: "pickers-states-\(style == .dark ? "dark" : "light")")
         }
     }
 
     /// The one movement, held at moments 0 to 420 ms (owner, 2026-11-14): the
     /// light runs round the rim from the leading end and leaves the tan lines.
+    /// Two blocks, so every capsule fits the 440 pt width.
     func testCeremonyMomentsLightAndDark() throws {
         let moments: [Double] = [0, 0.07, 0.14, 0.21, 0.28, 0.35, 0.42]
-        let strip = VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            ForEach(moments, id: \.self) { t in
-                HStack(spacing: LAASpacing.x2) {
-                    Text(verbatim: "\(Int((t * 1000).rounded()))").font(.caption.monospacedDigit())
-                        .foregroundStyle(LAAColor.secondaryText).frame(width: 28, alignment: .trailing)
-                    LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: t).fixedSize()
-                    LAAEffortCapsule(effort: "max").capsule(elapsed: t)
-                    LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t)
-                    LAAEffortCapsule(effort: "high").capsule(elapsed: t)
+        func block(@ViewBuilder _ capsules: @escaping (Double) -> some View) -> some View {
+            VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                ForEach(moments, id: \.self) { t in
+                    HStack(spacing: LAASpacing.x2) {
+                        Text(verbatim: "\(Int((t * 1000).rounded()))").font(.caption.monospacedDigit())
+                            .foregroundStyle(LAAColor.secondaryText).frame(width: 28, alignment: .trailing)
+                        capsules(t)
+                    }
                 }
+            }
+        }
+        let strip = VStack(alignment: .leading, spacing: LAASpacing.x6) {
+            block { t in
+                LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: t).fixedSize()
+                LAAEffortCapsule(effort: "max").capsule(elapsed: t)
+            }
+            block { t in
+                LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t)
+                LAAEffortCapsule(effort: "high").capsule(elapsed: t)
+                LAAEffortCapsule(effort: "low").capsule(elapsed: t)
             }
         }
         .padding(LAASpacing.horizontal)
@@ -45,6 +56,41 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         .background(LAAColor.background.ignoresSafeArea())
         for style in [UIUserInterfaceStyle.light, .dark] {
             try capture(strip, style: style, name: "pickers-ceremony-\(style == .dark ? "dark" : "light")")
+        }
+    }
+
+    /// The same movement frame by frame at 30 a second, on the real glass, for
+    /// a short recording put together from the attachments: each model
+    /// standing and each effort, then the lines at rest.
+    func testCeremonyFramesLightAndDark() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for frame in 0...18 {
+                let t = Double(frame) / 30
+                let board = VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    HStack(spacing: LAASpacing.x2) {
+                        LAAModelCapsule(model: "claude-mythos-5-2", provider: "claude").face(elapsed: t).fixedSize()
+                        LAAEffortCapsule(effort: "max").capsule(elapsed: t)
+                    }
+                    HStack(spacing: LAASpacing.x2) {
+                        LAAModelCapsule(model: "claude-fable-5-2", provider: "claude").face(elapsed: t).fixedSize()
+                        LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t)
+                    }
+                    HStack(spacing: LAASpacing.x2) {
+                        LAAModelCapsule(model: "gpt-6.1-sol", provider: "codex").face(elapsed: t).fixedSize()
+                        LAAEffortCapsule(effort: "high").capsule(elapsed: t)
+                    }
+                    HStack(spacing: LAASpacing.x2) {
+                        LAAModelCapsule(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh").face(elapsed: t).fixedSize()
+                        LAAEffortCapsule(effort: "medium").capsule(elapsed: t)
+                        LAAEffortCapsule(effort: "low").capsule(elapsed: t)
+                    }
+                }
+                .padding(LAASpacing.horizontal)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(LAAColor.background.ignoresSafeArea())
+                try capture(board, style: style, settle: 0.25,
+                            name: String(format: "ceremony-frame-%@-%02d", style == .dark ? "dark" : "light", frame))
+            }
         }
     }
 
@@ -104,7 +150,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         FileManager.default.temporaryDirectory.appendingPathComponent("laa-picker-snapshot-\(UUID().uuidString).json")
     }
 
-    private func capture<V: View>(_ view: V, style: UIUserInterfaceStyle, name: String, settle: TimeInterval = 0.8) throws {
+    private func capture<V: View>(_ view: V, style: UIUserInterfaceStyle, settle: TimeInterval = 0.8, name: String) throws {
         let bridge = LAABridgeSession(statusForTesting: .paired)
         let screen = view.environmentObject(bridge)
             .environment(\.locale, Locale(identifier: "ja_JP"))
