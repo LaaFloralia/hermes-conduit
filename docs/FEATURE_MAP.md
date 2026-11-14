@@ -2206,6 +2206,13 @@ a saved copy's composer and its waiting message ("Sends when connected") ·
 group rooms · the full editor · the notices that say where words went ·
 the composer's Sending… while a send checks Hermes
 
+While transport recovery owns the chat, a missing network path or exhausted
+status-banner retries do not lock typing or the durable waiting message.
+Sign-in refusal and explicit disconnect still prevent queueing. The latest
+host-free connection timeline (60 events, 16 KiB maximum) is saved off the
+main thread to Application Support/ConnectionDiagnostics/latest.txt for
+read-only device-container recovery; the path records offline/metered/unmetered.
+
 | Leaving by | Chat composer | Group room |
 |---|---|---|
 | Back, another chat, app termination | text, files and quote kept | text, files, quote and recipient picks kept |
