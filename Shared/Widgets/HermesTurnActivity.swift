@@ -122,7 +122,13 @@ enum HermesToolCategory: String, Codable, CaseIterable {
 /// in Conduit/Localizable.xcstrings (the widget extension bundles it).
 enum HermesTurnCopy {
     static func status(_ state: HermesTurnAttributes.ContentState, language: String) -> String {
-        WidgetLocalization.string(statusKey(state), language: language)
+#if LAA_BUILD
+        switch state.turnPhase {
+        case .thinking, .tool: return statusKey(state)
+        default: break
+        }
+#endif
+        return WidgetLocalization.string(statusKey(state), language: language)
     }
 
     static func statusKey(_ state: HermesTurnAttributes.ContentState) -> String {

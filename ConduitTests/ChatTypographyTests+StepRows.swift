@@ -4,6 +4,25 @@ import XCTest
 /// The V2 thinking and tool rows: what a step is called, what it was about,
 /// and which tool the working line names.
 extension ChatTypographyTests {
+#if LAA_BUILD
+    func testActivityLabelsStayEnglishWithJapaneseAppLanguage() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: AppLanguageStore.defaultsKey)
+        defaults.set("ja", forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previous { defaults.set(previous, forKey: AppLanguageStore.defaultsKey) }
+            else { defaults.removeObject(forKey: AppLanguageStore.defaultsKey) }
+        }
+        XCTAssertEqual(AppLanguage.current, .localization("ja"))
+        XCTAssertEqual(ChatStepLabel(toolName: "").runningTitle, "Using a tool")
+        XCTAssertEqual(ChatStepLabel(toolName: "").doneTitle, "Used a tool")
+        XCTAssertEqual(ChatStepLabel(toolName: "terminal").runningTitle, "Running a command")
+        XCTAssertEqual(ChatStepLabel(toolName: "tool_search").runningTitle, "Looking for tools")
+        XCTAssertEqual(HermesTurnCopy.status(.init(phase: .thinking), language: "ja"), "Thinking")
+        XCTAssertEqual(HermesTurnCopy.status(.init(phase: .tool, tool: .terminal), language: "ja"), "Running a command")
+    }
+#endif
+
     func testStepStylesUseTheLiveActivityCategories() {
         XCTAssertEqual(ChatStepStyle(toolName: "web_search").category, .web)
         XCTAssertEqual(ChatStepStyle(toolName: "terminal").category, .terminal)
