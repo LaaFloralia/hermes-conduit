@@ -1560,7 +1560,8 @@ struct ComposerBar: View, Equatable {
         case .action: composerActionButton(size: size)
 #if LAA_BUILD
             .overlay {
-                LAASendEffect(generation: sendEffectGeneration, color: .conduitAccent, reduceMotion: reduceMotion)
+                LAASendEffect(generation: sendEffectGeneration, color: .conduitAccent, rim: LAAColor.rimLight,
+                              reduceMotion: reduceMotion)
                     .frame(width: 160, height: 160)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)

@@ -121,10 +121,12 @@ struct LAAConversationControls<Controls: View>: View {
 enum LAAConversationHeaderLayout {
     /// The bar's controls are all this tall, so their centers line up.
     static let controlHeight: CGFloat = 44
-    /// The employee's 3D in the conversation's heading.
-    static let mascotSize: CGFloat = 56
+    /// The employee's 3D in the conversation's heading: one size up from
+    /// 56 (owner, 2026-11-14: 一回り大きく), still clear of Back and the call
+    /// capsule beside it.
+    static let mascotSize: CGFloat = 66
     /// At accessibility text sizes, where the name needs the room.
-    static let compactMascotSize: CGFloat = 48
+    static let compactMascotSize: CGFloat = 56
     /// What the call/menu capsule and its margin take on the trailing side.
     /// A name no wider than the screen less this on both sides fits between
     /// equal margins, so the bar keeps it on the screen's center.
