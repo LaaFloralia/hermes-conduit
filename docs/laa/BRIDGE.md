@@ -131,6 +131,7 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 - 保持：idempotency台帳は7日、event cursorは24時間。期限切れのcursorは410を返し、アプリは全件を再取得する。
 - Workの提供元切替（2026-11-14）：`PATCH /v1/sessions/{id}` に `{provider,model,effort}` を渡す。同じ提供元は既存のモデル変更、別の提供元は同じworkspace・親IDの新しい実行エージェントへ引き継ぐ。会話IDと参照番号、名前、ピン、プロジェクト、判断とLinearの紐づけは維持する。選択はHQのactive/manual Work入口と完全一致するswitchProfilesだけ。従来のprofilesと自動既定は別に保つ。別提供元での起動はHigh以上・Bypass・Fast無効。社長の操作だけで起こり、自動の代替・課金経路・認証情報のコピーは追加しない。
   - 切替中は `modelSwitch:{phase,target}` と `capabilities.providerSwitch` を返す。旧履歴は `delegateHistory`、新しい実行先は `delegate` に保存する。会話表示は履歴を連結し、内部の引継ぎ入力は表示しない。引継ぎには目的、決定・変更・検証・残件の原文と、元の会話記録を保存した0600のsnapshotの場所を含める。
+  - 新側は確認なし（bypass）で起動するため、提供元の切替は元の会話が `mode: bypass` の時だけ受ける。確認ありの会話（`default`、記録なしを含む）は409 `model_unsupported` で断り、`capabilities.providerSwitch` もfalseにする。切替で権限を広げない（2026-11-14）。
   - 新側の実モデル・effortと最初の応答を読み戻した後だけ旧側を単独で保管する。失敗時は旧側へ戻す。途中再起動で残った準備状態も同期時に戻し、新側の保管が未確認なら状態を残して追加送信を断る。実行中は409 `model_switch_busy`、子孫の実行・判断待ちは `model_switch_children_busy`、準備・後始末待ちは `model_switch_pending`、作業先不明は `model_switch_workspace`、確認失敗は `model_switch_failed`、選択肢外は400 `model_choice_invalid`。判断ボードに未回答がある場合も切替を断る。
   - `requested` は開始時のまま、`ownerChanged:{provider,model,effort}` と `modelLog` のowner印に「社長の切替」を記録する。旧アプリは同じ提供元の従来PATCHを使える。
 - Project既定モデル（2026-11-14）：`defaultProfile` はHQのprofile IDかnull。Projectの作成・更新・一覧・詳細に含み、更新には従来どおりIf-Matchが必要。本文の版とは別にProjectの版を進め、412の現在側にも返す。nullで共通既定へ戻す。新規会話の `profile` が省略されるとProject既定を使い、明示値があればその値を使う。既定が選択肢から消えた時は409 `project_default_unavailable` とし、自動で別モデルへ送らない。

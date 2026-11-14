@@ -83,6 +83,9 @@ export function createModelSwitcher({ store, daemon, history, choices, now, slee
         throw fail('session_stopped', 'restore the session before changing its provider');
       }
       if ((record.outbox ?? []).some((item) => item.status === 'queued')) throw fail('model_switch_busy', 'send the queued messages before changing provider');
+      // The continuation starts without approval prompts, so only a session the owner already runs that way may move:
+      // switching must never widen what a session is allowed to do unasked.
+      if (record.mode !== 'bypass') throw conflict('model_unsupported', 'a session that asks before acting cannot continue on another provider');
       // This reads the daemon, including descendants, rather than trusting a cached phase.
       const source = await daemon.continuationSource(record.delegate.sessionId, { relatedIds: (record.delegateHistory ?? []).map((entry) => entry.sessionId) });
       const page = await joinedHistory(record, history);

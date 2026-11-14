@@ -1283,8 +1283,9 @@ export function createSessionService({
         // Same-provider and continuation capabilities are advertised separately.
         model: daemon !== null && typeof record.delegate?.sessionId === 'string'
           && daemon.capabilities?.().modelUpdate === true,
+        // A continuation starts without approval prompts; a session that asks first is not offered one.
         providerSwitch: daemon !== null && typeof record.delegate?.sessionId === 'string'
-          && typeof daemon.startContinuation === 'function',
+          && typeof daemon.startContinuation === 'function' && record.mode === 'bypass',
       },
       modelSwitch: record.modelSwitch ? { phase: record.modelSwitch.phase, target: record.modelSwitch.target } : null,
       phase: record.phase,

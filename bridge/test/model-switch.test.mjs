@@ -32,7 +32,7 @@ function fixture(t, overrides = {}) {
   const store = createSessionStore({ file: join(dir, 'sessions.json'), now: () => clock });
   const record = { id: 'ses_0123456789abcdef', name: 'owner title', nameSource: 'owner', favorite: true,
     parentId: 'ses_1111111111111111', projectId: 'prj_111111111111', source: 'paseo',
-    requested: profiles[0], observed: profiles[0], phase: 'awaiting_review',
+    requested: profiles[0], observed: profiles[0], phase: 'awaiting_review', mode: 'bypass',
     delegate: { sessionId: 'old' }, createdAt: iso, version: 1,
     modelLog: [{ provider: 'claude', model: 'opus', from: iso, to: iso }] };
   store.create({ record });
@@ -53,6 +53,17 @@ function fixture(t, overrides = {}) {
   const args = { store, daemon, history, choices, now: () => clock, sleep: async () => { clock += 100; }, timeoutMs: 200, pollMs: 100 };
   return { ...args, record, pages, calls, switcher: createModelSwitcher(args) };
 }
+
+test('a session that asks before acting is never continued without prompts', async (t) => {
+  for (const mode of ['default', undefined]) {
+    const f = fixture(t);
+    f.store.update(f.record.id, (row) => { row.mode = mode; return []; });
+    await assert.rejects(f.switcher.switchProvider(f.record.id, profiles[1]), (error) => error.code === 'model_unsupported');
+    assert.equal(f.calls.length, 0, 'nothing is started');
+    assert.equal(f.store.get(f.record.id).modelSwitch ?? null, null);
+    assert.equal(f.store.get(f.record.id).delegate.sessionId, 'old');
+  }
+});
 
 test('verified owner switch keeps the logical row, metadata, old message IDs and linked history', async (t) => {
   const f = fixture(t);
