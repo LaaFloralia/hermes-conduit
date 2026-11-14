@@ -1,6 +1,5 @@
 import XCTest
 import UIKit
-import SwiftUI
 @testable import Conduit
 
 @MainActor
@@ -43,7 +42,7 @@ final class SendEffectTests: XCTestCase {
             view.frame = CGRect(x: 304, y: 88, width: 160, height: 160)
             host.view.addSubview(view)
             host.view.layoutIfNeeded()
-            view.play(color: UIColor(Color.conduitAccent), reduceMotion: false)
+            view.play(color: UIColor(red: dark ? 117/255 : 0, green: dark ? 195/255 : 88/255, blue: dark ? 195/255 : 94/255, alpha: 1), reduceMotion: false)
             var previous = 0.0
             for moment in [0.04, 0.16, 0.32, 0.56, 0.86] {
                 RunLoop.current.run(until: Date(timeIntervalSinceNow: moment - previous))
