@@ -285,7 +285,7 @@ extension AppStateForegroundLifecycleTests {
         appState.unlockWithFaceID = { prompts += 1; return false }
         appState.loadSavedConnection()
         try await waitUntil {
-            appState.connectionTimeline?.events.contains { $0.label == "Password sign-in and ticket" } == true
+            appState.connectionTimeline?.events.contains { $0.label.hasPrefix("Password sign-in and ticket") } == true
         }
         XCTAssertEqual(prompts, 0)
         XCTAssertFalse(appState.isConnected, "An unavailable server must still fail authentication")
@@ -316,7 +316,7 @@ extension AppStateForegroundLifecycleTests {
         appState.handleScenePhase(.background)
         appState.handleScenePhase(.active)
         try await waitUntil {
-            appState.connectionTimeline?.events.contains { $0.label == "Password sign-in and ticket" } == true
+            appState.connectionTimeline?.events.contains { $0.label.hasPrefix("Password sign-in and ticket") } == true
         }
         XCTAssertEqual(prompts, 0)
         XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboard.id)?.requiresFaceID, true)

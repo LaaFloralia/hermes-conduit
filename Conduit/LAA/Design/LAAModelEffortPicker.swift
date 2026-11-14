@@ -222,7 +222,8 @@ struct LAAEffortCapsule: View {
     @State private var start: Date?
 
     private var known: String? { effort.flatMap { LAAEffort.name($0) == nil ? nil : $0 } }
-    private var ranked: String? { known.flatMap { LAAEffort.order.contains($0) ? $0 : nil } }
+    // Ultra Code is a ranked finish without adding a sixth general effort.
+    var ranked: String? { known.flatMap { LAAEffort.order.contains($0) || $0 == "ultracode" ? $0 : nil } }
 
     var body: some View {
         TimelineView(.animation(paused: start == nil)) { context in

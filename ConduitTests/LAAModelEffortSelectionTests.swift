@@ -135,6 +135,15 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testUltraCodeCapsuleKeepsItsRankedFinishOutsideTheFiveGeneralEfforts() {
+        let capsule = LAAEffortCapsule(effort: "ultracode")
+        XCTAssertEqual(capsule.ranked, "ultracode")
+        XCTAssertEqual(LAAEffort.finish(capsule.ranked), .intense)
+        XCTAssertFalse(LAAEffort.order.contains("ultracode"))
+        XCTAssertNil(LAAEffortCapsule(effort: "unknown").ranked)
+    }
+
     func testColourSettlesAfterOneSpreadAndNeverMarksAnUnknownValue() {
         let start = LAALiquidLook(finish: .intense, elapsed: 0)
         let middle = LAALiquidLook(finish: .intense, elapsed: 0.21)
