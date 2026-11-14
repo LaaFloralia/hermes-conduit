@@ -19109,6 +19109,21 @@ final class AppState: ObservableObject {
         // missing from a roster that still reports `.available` — and absence
         // is what the authority gates read.
         guard botRosterVerifiedForCurrentConnection else {
+            #if LAA_BUILD
+            // LAA (owner, 2026-11-14: 「チャット画面に行った時に最初の読み込み速度が遅い」):
+            // the roster read took 3.24 s of a 5.19 s reconnect and held the
+            // chat sync behind it. A roster this process already verified
+            // against the same server (a server boundary clears it) is the
+            // resume evidence; the fresh read runs beside the sync.
+            if botModePhase == .available, !botRoster.isEmpty {
+                let startedAt = Date()
+                Task { @MainActor [weak self] in
+                    await self?.refreshBotRoster()
+                    self?.noteConnectionStep("Bot roster beside the sync", since: startedAt)
+                }
+                return
+            }
+            #endif
             let startedAt = Date()
             await refreshBotRoster()
             noteConnectionStep("Bot roster", since: startedAt)
