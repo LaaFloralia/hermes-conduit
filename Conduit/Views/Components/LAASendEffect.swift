@@ -103,10 +103,12 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
             let grow = CABasicAnimation(keyPath: "transform.scale")
             grow.fromValue = 1
             grow.toValue = 1.9
+            grow.duration = Self.slow
             grow.timingFunction = Self.state
             let glow = CAKeyframeAnimation(keyPath: "opacity")
             glow.values = [0, 0.9, 0]
             glow.keyTimes = [0, 0.25, 1]
+            glow.duration = Self.slow
             let release = CAAnimationGroup()
             release.animations = [grow, glow]
             release.duration = Self.slow
@@ -122,11 +124,13 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
                 pane.backgroundColor = accent.withAlphaComponent(CGFloat(tint.glass)).cgColor
                 pane.borderColor = light.cgColor
                 pane.borderWidth = 1
-                pane.opacity = 0
-                root.addSublayer(pane)
                 // Each pane leaves Send for its own square of a grid over
                 // the field; the nearer ones first, so the grid spreads out.
+                // It rests there (the model value) while it fades.
                 let end = CGPoint(x: CGFloat(cell.x) * Self.cell, y: CGFloat(cell.y) * Self.cell)
+                pane.position = end
+                pane.opacity = 0
+                root.addSublayer(pane)
                 let reach = hypot(Double(cell.x), Double(cell.y))
                 let travel = CABasicAnimation(keyPath: "position")
                 travel.fromValue = NSValue(cgPoint: CGPoint(x: end.x * 0.2, y: end.y * 0.2))
@@ -136,9 +140,11 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
                 let size = CAKeyframeAnimation(keyPath: "transform.scale")
                 size.values = [0.55, 1, 0.9]
                 size.keyTimes = [0, 0.45, 1]
+                size.duration = Self.slow + Self.quick
                 let fade = CAKeyframeAnimation(keyPath: "opacity")
                 fade.values = [0, 1, 0.75, 0]
                 fade.keyTimes = [0, 0.2, 0.6, 1]
+                fade.duration = Self.slow + Self.quick
                 let group = CAAnimationGroup()
                 group.animations = [travel, size, fade]
                 group.duration = Self.slow + Self.quick

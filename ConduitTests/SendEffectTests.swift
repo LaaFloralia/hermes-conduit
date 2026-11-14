@@ -22,7 +22,7 @@ final class SendEffectTests: XCTestCase {
     /// Short (owner's direction via the parent, 2026-11-14: refined and
     /// short) and on LAA's motion steps; the panes land on a 12 pt grid inside
     /// the effect's 160 pt square, above or level with Send.
-    func testBurstIsShortAndPanesLandOnTheGrid() {
+    func testBurstIsShortAndPanesLandOnTheGrid() throws {
         XCTAssertEqual(LAASendEffectView.slow, 0.42, accuracy: 0.001)
         XCTAssertEqual(LAASendEffectView.quick, 0.12, accuracy: 0.001)
         XCTAssertLessThanOrEqual(LAASendEffectView.duration, 0.62 + 0.001)
@@ -38,6 +38,33 @@ final class SendEffectTests: XCTestCase {
         XCTAssertEqual(Set(LAASendEffectView.cells.map { "\($0.x),\($0.y)" }).count, LAASendEffectView.cells.count)
         XCTAssertEqual(LAASendEffectView.tint(dark: false).glass, 0.16, accuracy: 0.001)
         XCTAssertEqual(LAASendEffectView.tint(dark: true).glass, 0.26, accuracy: 0.001)
+
+        // Every part runs its whole step (an inner animation without its own
+        // duration falls back to 0.25 s), and a pane rests on its square, not
+        // on Send, while it fades.
+        let view = LAASendEffectView()
+        view.frame = CGRect(x: 0, y: 0, width: 160, height: 160)
+        view.play(color: .systemTeal, rim: .white, reduceMotion: false)
+        let parts = view.layer.sublayers?.first?.sublayers ?? []
+        XCTAssertGreaterThanOrEqual(parts.count, 2 + LAASendEffectView.lowPowerPaneCount)
+        for part in parts {
+            for key in part.animationKeys() ?? [] {
+                let animation = try XCTUnwrap(part.animation(forKey: key))
+                if let group = animation as? CAAnimationGroup {
+                    for inner in group.animations ?? [] {
+                        XCTAssertGreaterThanOrEqual(inner.duration, LAASendEffectView.slow - 0.001, "\(key) part")
+                    }
+                } else {
+                    XCTAssertGreaterThanOrEqual(animation.duration, LAASendEffectView.slow - 0.001, key)
+                }
+            }
+        }
+        let panes = parts.dropFirst(2)
+        for (pane, cell) in zip(panes, LAASendEffectView.cells) {
+            XCTAssertEqual(pane.position, CGPoint(x: CGFloat(cell.x) * LAASendEffectView.cell, y: CGFloat(cell.y) * LAASendEffectView.cell))
+            XCTAssertEqual(pane.opacity, 0)
+        }
+        view.didMoveToWindow()
     }
 
     func testBurstFinishesAndCaptureSequence() throws {
