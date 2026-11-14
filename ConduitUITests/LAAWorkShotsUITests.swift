@@ -31,7 +31,7 @@ final class LAAWorkShotsUITests: XCTestCase {
     }
 
     /// Work's four lists as the owner opens them: Sessions first, then the
-    /// board, Tasks with its pulldown open, and the routines' day tree.
+    /// board, Tasks with its count menu open, and the routines' day tree.
     func testListShotsLight() throws { try listShots("light") }
     func testListShotsDark() throws { try listShots("dark") }
 
@@ -51,11 +51,11 @@ final class LAAWorkShotsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["work.ref.T12"].waitForExistence(timeout: 20))
         settle(1)
         capture(app, "list-tasks-\(theme)")
-        app.buttons["work.tasks.filter"].tap()
+        app.buttons["work.tasks.quick"].tap()
         XCTAssertTrue(app.buttons["work.linear.archive"].waitForExistence(timeout: 5))
         settle(1)
         capture(app, "list-tasks-menu-\(theme)")
-        app.buttons["work.tasks.filter.related"].tap()
+        app.buttons["work.tasks.quick.all"].tap()
 
         app.buttons["work.section.routines"].tap()
         XCTAssertTrue(app.staticTexts["昼の市況メモ"].waitForExistence(timeout: 20))
@@ -68,7 +68,8 @@ final class LAAWorkShotsUITests: XCTestCase {
 
     /// The task list at the owner's size (about thirty tasks in eight
     /// genres): genre sections, a folded section, the grouping menu, the due
-    /// grouping, a quick filter, a ticked circle and the detail.
+    /// grouping, a range toggle, the count menu and a quick filter, a ticked
+    /// circle and the detail.
     func testTaskBoardShotsLight() throws { try taskBoardShots("light") }
     func testTaskBoardShotsDark() throws { try taskBoardShots("dark") }
 
@@ -101,8 +102,19 @@ final class LAAWorkShotsUITests: XCTestCase {
         app.buttons["work.tasks.grouping"].tap()
         app.buttons["work.tasks.grouping.genre"].tap(); settle(1)
 
+        // The range toggles: 自分が担当 lit, then off again.
+        app.buttons["work.tasks.filter.assigned"].tap(); settle(1)
+        capture(app, "tasks-filter-assigned-\(theme)")
+        app.buttons["work.tasks.filter.assigned"].tap(); settle(1)
+
+        app.buttons["work.tasks.quick"].tap()
+        XCTAssertTrue(app.buttons["work.tasks.quick.attention"].waitForExistence(timeout: 5))
+        settle(1)
+        capture(app, "tasks-quick-menu-\(theme)")
         app.buttons["work.tasks.quick.attention"].tap(); settle(1)
         capture(app, "tasks-quick-attention-\(theme)")
+        app.buttons["work.tasks.quick"].tap()
+        XCTAssertTrue(app.buttons["work.tasks.quick.all"].waitForExistence(timeout: 5))
         app.buttons["work.tasks.quick.all"].tap(); settle(1)
 
         // Two picked boxes and the batch button under the controls, then

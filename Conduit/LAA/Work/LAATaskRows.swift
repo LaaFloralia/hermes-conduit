@@ -329,29 +329,104 @@ struct LAATaskSectionHeader: View {
     }
 }
 
-/// The list's controls: the range pulldown, the grouping menu, then the
-/// quick filters as glass chips. Chips with nothing in them are not drawn.
-struct LAATaskControls<Range: View>: View {
+/// The list's controls on one line (owner, 2026-11-14): the range as two
+/// glass toggles, 自分が作成 and 自分が担当, then, beside the grouping, one
+/// glass menu with the rows' count that holds the quick filters and the
+/// archive. The quick filters used to take a second line of chips, which
+/// pushed the rows down. The capsules never truncate: when the line does not
+/// fit at full width (a 402 pt phone), the grouping keeps only its icon.
+struct LAATaskControls: View {
+    @Binding var filter: LAALinearTaskFilter
     @Binding var grouping: LAATaskGrouping
     @Binding var quick: LAATaskQuickFilter
+    @Binding var archived: Bool
+    /// Rows before the quick filter, by quick filter.
     let counts: [LAATaskQuickFilter: Int]
-    let showsQuick: Bool
+    /// The rows on screen, which the menu shows for the archive.
+    let shown: Int
     let allFolded: Bool
     let foldAll: (Bool) -> Void
-    @ViewBuilder let range: () -> Range
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack(spacing: LAASpacing.x2) {
-                range()
-                Spacer(minLength: LAASpacing.x2)
-                groupingMenu
+        ViewThatFits(in: .horizontal) {
+            line(groupingTitle: true)
+            line(groupingTitle: false)
+        }
+        .sensoryFeedback(.selection, trigger: filter)
+    }
+
+    private func line(groupingTitle: Bool) -> some View {
+        HStack(spacing: 6) {
+            // The archive is not cut by the range, so the toggles step aside.
+            if !archived {
+                ForEach(LAALinearTaskFilter.toggles) { option in toggle(option) }
             }
-            if showsQuick { chips }
+            Spacer(minLength: LAASpacing.x2)
+            viewMenu
+            groupingMenu(title: groupingTitle)
         }
     }
 
-    private var groupingMenu: some View {
+    private func change(_ body: () -> Void) {
+        if reduceMotion { body() } else { withAnimation(.snappy(duration: 0.22), body) }
+    }
+
+    private func toggle(_ option: LAALinearTaskFilter) -> some View {
+        let lit = filter == option
+        return Button {
+            change { filter = filter.toggling(option) }
+        } label: {
+            Text(verbatim: option.title)
+                .laaTextStyle(.secondary).fontWeight(.medium)
+                .foregroundStyle(lit ? LAAColor.link : LAAColor.text)
+                .fixedSize()
+                .modifier(LAATaskControlFace(selected: lit))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(lit ? .isSelected : [])
+        .accessibilityValue(Text(verbatim: lit ? "オン" : "オフ"))
+        .accessibilityIdentifier("work.tasks.filter.\(option.rawValue)")
+    }
+
+    private var viewTitle: String { archived ? LAACopy.WorkTab.archived : quick.title }
+    private var viewCount: Int { archived ? shown : counts[quick] ?? 0 }
+
+    /// What is shown, with how many: すべて, the quick filters that have rows,
+    /// and the archive under a divider.
+    private var viewMenu: some View {
+        Menu {
+            ForEach(LAATaskQuickFilter.allCases) { option in
+                let count = counts[option] ?? 0
+                if option == .all || count > 0 || (!archived && option == quick) {
+                    LAAWorkPickerItem(title: "\(option.title)　\(count)", selected: !archived && option == quick,
+                                      identifier: "work.tasks.quick.\(option.rawValue)") {
+                        change { archived = false; quick = option }
+                    }
+                }
+            }
+            Divider()
+            LAAWorkPickerItem(title: LAACopy.WorkTab.archived, selected: archived,
+                              identifier: "work.linear.archive") {
+                change { archived = true }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(verbatim: viewTitle).fontWeight(.medium)
+                Text(verbatim: "\(viewCount)").monospacedDigit()
+                    .foregroundStyle(archived || quick != .all ? LAAColor.link : LAAColor.secondaryText)
+            }
+            .laaTextStyle(.secondary)
+            .foregroundStyle(archived || quick != .all ? LAAColor.link : LAAColor.text)
+            .fixedSize()
+            .modifier(LAATaskControlFace(selected: archived || quick != .all))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "表示、\(viewTitle)、\(viewCount)件"))
+        .accessibilityIdentifier("work.tasks.quick")
+    }
+
+    private func groupingMenu(title: Bool) -> some View {
         Menu {
             // Plain items: inside a menu Section their identifiers do not reach UI tests.
             ForEach(LAATaskGrouping.allCases) { option in
@@ -367,56 +442,29 @@ struct LAATaskControls<Range: View>: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: grouping.symbol).font(.system(size: 12, weight: .semibold))
-                Text(verbatim: grouping.title).laaTextStyle(.secondary).fontWeight(.medium)
+                if title { Text(verbatim: grouping.title).laaTextStyle(.secondary).fontWeight(.medium) }
             }
             .foregroundStyle(LAAColor.link)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 32)
-            .laaGlass(in: Capsule())
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .contentShape(Rectangle())
+            .fixedSize()
+            .modifier(LAATaskControlFace(selected: false))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: "まとめ方、\(grouping.title)"))
         .accessibilityIdentifier("work.tasks.grouping")
     }
+}
 
-    private var chips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(LAATaskQuickFilter.allCases) { option in
-                    let count = counts[option] ?? 0
-                    if option == .all || count > 0 || option == quick {
-                        chip(option, count: count)
-                    }
-                }
-            }
-            .padding(.vertical, 2)
-        }
-        .scrollClipDisabled()
-    }
-
-    private func chip(_ option: LAATaskQuickFilter, count: Int) -> some View {
-        let selected = quick == option
-        return Button {
-            withAnimation(.snappy(duration: 0.22)) { quick = selected && option != .all ? .all : option }
-        } label: {
-            HStack(spacing: 5) {
-                Text(verbatim: option.title).fontWeight(selected ? .semibold : .regular)
-                Text(verbatim: "\(count)").monospacedDigit()
-                    .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
-            }
-            .laaTextStyle(.secondary)
-            .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+/// One glass capsule of the list's controls: 32pt to the eye, 44pt to the
+/// finger, tinted while it narrows the list.
+private struct LAATaskControlFace: ViewModifier {
+    let selected: Bool
+    func body(content: Content) -> some View {
+        content
             .padding(.horizontal, 12)
-            .frame(minHeight: 30)
+            .frame(minHeight: 32)
             .laaGlass(in: Capsule(), selected: selected)
-            .frame(minHeight: 36)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("work.tasks.quick.\(option.rawValue)")
     }
 }
 

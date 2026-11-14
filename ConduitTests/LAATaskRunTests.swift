@@ -75,13 +75,25 @@ final class LAATaskRunTests: XCTestCase {
         ownerRun.run = LAATaskRun(creator: "owner", assignee: .init(kind: "owner", staff: nil, name: nil),
                                  profile: nil, profileLabel: nil, state: nil, sessionId: nil, sessionRef: nil,
                                  decisionRef: nil, report: nil, error: nil)
-        XCTAssertEqual(LAALinearTaskFilter.allCases.map(\.title), ["自分に関係", "自分が作成", "自分が担当"])
+        XCTAssertEqual(LAALinearTaskFilter.toggles.map(\.title), ["自分が作成", "自分が担当"])
         XCTAssertTrue(LAALinearTaskFilter.related.matches(created))
         XCTAssertTrue(LAALinearTaskFilter.created.matches(created))
         XCTAssertFalse(LAALinearTaskFilter.assigned.matches(created))
         XCTAssertFalse(LAALinearTaskFilter.created.matches(assignedByAgent))
         XCTAssertTrue(LAALinearTaskFilter.assigned.matches(assignedByAgent))
         XCTAssertTrue(LAALinearTaskFilter.assigned.matches(ownerRun))
+    }
+
+    /// The two toggles: at most one is lit, the lit one goes back to every
+    /// task, the other moves the light, and the saved raw values still read.
+    func testFilterTogglesLightOneAtATime() {
+        XCTAssertEqual(LAALinearTaskFilter.related.toggling(.created), .created)
+        XCTAssertEqual(LAALinearTaskFilter.created.toggling(.created), .related)
+        XCTAssertEqual(LAALinearTaskFilter.created.toggling(.assigned), .assigned)
+        XCTAssertEqual(LAALinearTaskFilter.assigned.toggling(.assigned), .related)
+        XCTAssertEqual(LAALinearTaskFilter.assigned.toggling(.related), .related)
+        XCTAssertEqual(["related", "created", "assigned"].compactMap(LAALinearTaskFilter.init(rawValue:)),
+                       [.related, .created, .assigned])
     }
 
     func testCreateBodyCarriesStaffAndProfile() throws {

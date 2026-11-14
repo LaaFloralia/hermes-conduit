@@ -38,20 +38,29 @@ enum LAATaskStaff {
     }
 }
 
-/// The list's one filter. Every row comes from the owner's own range; the
-/// Bridge's run record is what tells a task the owner created from one an
-/// agent registered for the owner.
+/// The list's range, shown as two glass toggles, 自分が作成 and 自分が担当
+/// (owner, 2026-11-14: 「自分に関係」 is gone). At most one is lit, like the
+/// quick filters: neither lit is every task the Bridge returns for the owner
+/// (created or assigned, the old default), tapping the lit one goes back to
+/// that, and tapping the other moves the light. The raw values are the ones
+/// the device already keeps, so a saved range carries over.
 enum LAALinearTaskFilter: String, CaseIterable, Identifiable {
     case related, created, assigned
     static let storageKey = "laa.work.taskFilter"
+    /// The toggles, in the order they are drawn.
+    static let toggles: [LAALinearTaskFilter] = [.created, .assigned]
 
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .related: LAATaskRunCopy.filterRelated
+        case .related: LAATaskBoardCopy.all
         case .created: LAATaskRunCopy.filterCreated
         case .assigned: LAATaskRunCopy.filterAssigned
         }
+    }
+    /// The range after a tap on one toggle.
+    func toggling(_ option: LAALinearTaskFilter) -> LAALinearTaskFilter {
+        option == .related || option == self ? .related : option
     }
     /// The created filter needs a run record; an older Bridge (no `run`) keeps
     /// every row under 自分が担当, as it reads today.
@@ -82,7 +91,6 @@ struct LAATaskRunStatus: Equatable {
 }
 
 enum LAATaskRunCopy {
-    static let filterRelated = "自分に関係"
     static let filterCreated = "自分が作成"
     static let filterAssigned = "自分が担当"
     static let runningReason = "実施中のため、終わってから完了できます"
