@@ -234,7 +234,8 @@ struct LAATypingDots: View {
             HStack(spacing: LAASpacing.x2) {
                 LAAOrbView(state: state, diameter: 24, isOnScreen: animates)
                 if let phrase {
-                    Text(verbatim: phrase)
+                    LAASendThinkingLabel(text: phrase, active: animates && state == .thinking && UIView.areAnimationsEnabled)
+                        .id(phrase)
                         .font(.subheadline).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1)
                         .contentTransition(.opacity)
