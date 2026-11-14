@@ -360,6 +360,7 @@ export function createBridge({
           fingerprint,
           now: now(),
           inflightGraceMs: IDEMPOTENCY_INFLIGHT_GRACE_MS,
+          resumeUnresolved: route.resumeUnresolved === true,
         }));
 
         if (outcome.action === 'conflict') {

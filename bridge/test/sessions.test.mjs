@@ -1032,3 +1032,24 @@ test('a create the delegation path could not start can run again with the same k
   const replay = await createSession(ctx);
   assert.equal(replay.body.data.id, again.body.data.id);
 });
+
+// A create whose outcome the Bridge never learned (the delegation path timed
+// out) used to answer idempotency_outcome_unknown to the app's same-key retry
+// for good. The requestId is deduplicated below, so the retry runs.
+test('a create that never finished runs again under the same key once the in-flight grace has passed', async (t) => {
+  let clock = Date.now();
+  const ctx = await boot(t, { now: () => clock });
+  const create = ctx.adapter.create;
+  ctx.adapter.create = async () => { throw new BridgeError(503, 'delegation_timeout', 'slow', { retryable: true }); };
+  const lost = await createSession(ctx);
+  assert.equal(lost.body.error.code, 'delegation_timeout');
+  ctx.adapter.create = create;
+  const early = await createSession(ctx);
+  assert.equal(early.body.error.code, 'idempotency_key_in_flight');
+  clock += 61_000;
+  const again = await createSession(ctx);
+  assert.equal(again.status, 201, JSON.stringify(again.body));
+  const replay = await createSession(ctx);
+  assert.equal(replay.body.data.id, again.body.data.id);
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
+});

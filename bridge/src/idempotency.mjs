@@ -32,7 +32,12 @@ export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 //   { action: 'conflict', entry }
 //   { action: 'in_flight' }
 //   { action: 'unresolved', entry }
-export function reserve(state, { deviceId, key, method, path, fingerprint, now, inflightGraceMs }) {
+//
+// `resumeUnresolved` is for a route whose handler is idempotent on its own
+// request identity (a session create carries a requestId that the Bridge and
+// the delegation path both deduplicate): an earlier run that never finished is
+// run again under the same key instead of being refused for good.
+export function reserve(state, { deviceId, key, method, path, fingerprint, now, inflightGraceMs, resumeUnresolved = false }) {
   const id = ledgerKey(deviceId, key);
   const existing = state.idempotency[id];
   if (existing) {
@@ -41,9 +46,10 @@ export function reserve(state, { deviceId, key, method, path, fingerprint, now, 
     }
     if (existing.status === 'in_progress') {
       const age = now - existing.createdAt;
-      return age > inflightGraceMs
-        ? { action: 'unresolved', entry: existing }
-        : { action: 'in_flight' };
+      if (age <= inflightGraceMs) return { action: 'in_flight' };
+      if (!resumeUnresolved) return { action: 'unresolved', entry: existing };
+      existing.createdAt = now;
+      return { action: 'execute', entry: existing };
     }
     return { action: 'replay', entry: existing };
   }
