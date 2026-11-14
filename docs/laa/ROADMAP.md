@@ -8,7 +8,7 @@
 
 - 画面は「会話」「仕事」「Doc」「素材」「Usage」の5タブ（Docの内部名は`brain`）。仕事にセッション／Project／タスク／ルーティン、素材にDrive／Inspiration／Studioを置く。設定と検索は各画面から開く。
 - Mac mini上に**単一のLAA Bridgeサービス**を置き、既存Hermes Conduit pluginは会話・通話・通知の既存機能に使う。Bridgeは認証とAPI、既存サービスのアダプター、復帰可能なイベント配信を担当する。pluginにBrain・Drive・実行管理まで足すとHermesの更新とprofile単位の生存期間に全領域が結合する。逆にBridge内でHermes・Paseo・Kanban・Usage収集を再実装しない。既存 `laa-personal-agent`、daemon、cron、agent-control、Studio、Syncthingを段階的に接続する。サービス新設前に既存経路の実体とAPIを確認し、単一プロセス・明示的な権限分離で済むことを検証する。
-- 個人と社員のタスク・判断待ち・進捗の現行正本は**Linear**。Brain dailyは習慣・日誌で、タスク台帳ではない。Inboxの旧案にある「個人タスクはBrain正本」は現行 `hq/tools/LINEAR.md` より古く採用しない。Kanbanは担当だけでworkerを自動起動し得るため、社長タスクを複製しない。Linear代替は移行ゲート後に正本を切り替える。
+- 個人と社員のタスク・判断待ち・進捗の現行正本は**Linear**。Brain dailyは日誌で、タスク台帳ではない。週単位の習慣・禁止習慣はBridgeの `habits.json` が正本（2026-11-14、`bridge/docs/habits.md`）。Inboxの旧案にある「個人タスクはBrain正本」は現行 `hq/tools/LINEAR.md` より古く採用しない。Kanbanは担当だけでworkerを自動起動し得るため、社長タスクを複製しない。Linear代替は移行ゲート後に正本を切り替える。
 - Project（ジャンル・共通指示）、Workspace（repo／作業ディレクトリ／worktree）、Session（会話・担当・モデル）、Attempt（実行）を分ける。人が命名した名を優先し、自動命名と子の「子｜」を維持。社長・Monet・定期処理が同じ契約を使う。
 - 既存の会話モデル、provider、effort、サブスク認証と課金経路を維持。モデル名が一致するだけでは同等としない。MacのGUI操作は排他し、終了・失敗時に権利を回収する。長期memoryは既存方針どおり無効。
 
@@ -26,7 +26,7 @@
 | 入力のSimeji予測・小さい欄・文字サイズ | IME変換中の再生成を避ける。既存全画面・IME保護を再利用し、下書きを永続化 | P1／DSH | Simejiと標準日本語で変換中の返信、画面切替、終了復帰を実機確認。入力／回答の文字サイズ変更、添付・下書き復元、送信不明の表示を確認 |
 | 社長・Monetのセッション、ジャンル別Project | Projectとworkspaceは別。共通指示の適用版を保存、明示指定を優先、曖昧な割当は候補提示 | P2／DSH・親 | 両者が作成・入力・停止・再開し、自動命名と手動名を保持。worktree、モデルと指示版を確認 |
 | プレビュー | iPhoneのPC幅表示とMac実画面は別物。WebKitで横向きPC幅、Mac配信は既存資産を調査して別途実装 | P2／DSH | PCとiPhoneで同一対象を開き、横画面の幅・スクロールを検証。実画面配信は接続・権限・操作排他を別に検証 |
-| 社長・社員タスクと習慣 | 現在Linearがタスク正本、Brain dailyが習慣原本。仕事Taskと実行Jobを分離し人の担当では自動起動しない | P2／DSH・親 | 同一Taskを今日／ボードで表示し、実行成功と社長確認待ちを区別。習慣は同一dailyのチェックを更新、再送・日替わりで重複しない |
+| 社長・社員タスクと習慣 | Linearがタスク正本、習慣・禁止習慣はBridgeの `habits.json` が正本（Calendarタブの Habits。Google Calendarと分離）。仕事Taskと実行Jobを分離し人の担当では自動起動しない | P2／DSH・親 | 同一Taskを今日／ボードで表示し、実行成功と社長確認待ちを区別。習慣は週（月曜〜日曜）ごとに1日1回の記録、再送・週替わりで重複しない |
 | AI UsageとMac容量 | 既存Console／usage-meters／CodexBarの収集を再利用。推計・実請求・利用枠を混ぜない | P1／DSH | 出典・時刻・単位・未取得／古い値を表示。Mac空き容量・CPU・メモリを表示し、未取得を0にしない |
 | BrainをNotion風・Markdownネイティブに | SyncTrain／Syncthing・Obsidian・Gitが別writer。無損失編集と競合保全が前提 | P3／DSH・design-worker | 見出し・リスト・チェック・表・画像・コード、検索・最近・タグ・ギャラリー、原文切替。frontmatter・wikiリンク・未知構文・相対画像を保持し同時編集の両版を復旧できる |
 | Drive動画・Photos・審美眼 | Drive blobのRange取得をAVPlayerへ渡す。Photos既存全件の自由な一覧同期を前提にせずGoogle Photos Pickerで選択 | P3／DSH・design-worker | 実機で一覧・検索・再生・seek・回線断・非対応形式を確認。選択した写真だけ取り込み、出典・好きな理由・用途・採用状態を保存 |
@@ -40,7 +40,7 @@
 - 通信はTailscale内のMac miniへ限定し、Tailscaleの接続だけをアプリ利用者の認証と見なさない。端末単位の認証と認可、TLS、失効、再登録、監査、最小権限を設計・検証する。インターネットへ公開しない。トークンはKeychain等の正規保管先、Google認証はMacの既存正規経路を使い、秘密をログ・URL・モデルへ渡さない。Tailscale切断時は明示し、未送信を保持する。
 - `/v1/projects`：一覧・作成・更新。共通指示の版hashと参照権限を保存。`/v1/workspaces`：repo／worktree選択・作成・状態。パスは許可済み範囲に限定し既存worktreeを破壊しない。
 - `/v1/sessions`：一覧・作成・詳細、`/{id}/messages`、`/{id}/stop`、`/{id}/resume`、`/{id}/events`、`/{id}/artifacts`。子は親ID、request ID、workspaceと実際のprovider／model／effortを記録。eventは連番と再接続cursorを持つ。作成・送信にidempotency keyを要求し、結果不明時は再照合して二重起動を防ぐ。承認・質問回答はsession／request／内容hash／期限に束ねる。
-- `/v1/tasks`：現行はLinearの読み書きアダプター、将来は移行済みKanbanの単一正本。owner、executor、status、依存、結果、元IDを分離。`/v1/routines`：Brain dailyの習慣に対する読取・チェック操作。日付・対象・操作IDで重複防止し、チェックは実行許可にしない。
+- `/v1/tasks`：現行はLinearの読み書きアダプター、将来は移行済みKanbanの単一正本。owner、executor、status、依存、結果、元IDを分離。`/v1/habits`：週単位の習慣・禁止習慣の読取・記録・変更（`bridge/docs/habits.md`）。記録は実行許可にしない。
 - `/v1/brain/files`：許可されたvault内の一覧・取得・検索。`PUT /v1/brain/files/{id}`に取得時のcontent hashと新本文を渡す。パス正規化・symlink検査、書込直前の実ファイルhash照合、同一filesystemの一時ファイルからatomic renameを行う。API内の同時書込は直列化するが、外部writerとの間のcheck→rename競合はこれだけでは防げない。Syncthing／他writerとの調停方式を実装前に検証し、安全なCASを保証できない経路は書込を止める。hash不一致なら409と双方の識別情報を返し、元ファイルとユーザーの編集案を別に永続保存して解決を待つ。オフライン下書きも保持し、Git同期・既存のBrain禁止を尊重。
 - `/v1/drive/files`：既存権限内の一覧・検索・metadata、`/{id}/content`はRange・206・Content-Range・長さ・MIME・キャンセルを中継し、AVPlayerで認証付き再生・seek。Driveのダウンロード可否、形式・エラーを表示。非対応は原本を保持しMacでプレビュー生成。Workspace文書のexportはRange再生と区別。
 - `/v1/photos/picker/sessions`：Google Photos Pickerの作成・選択画面への遷移・完了確認・選択項目取得・終了を仲介。選ばれた素材だけを取込み、セッション有効期限と権限を扱う。iOSのPhotosPickerとGoogle Photos Pickerは別物。
@@ -80,7 +80,7 @@ P0 基準版：署名／発信の並行作業の結果を取り込み、設計�
 | 19 | タスク読取と人／Job分離（DSH） | 06 | Linearと照合し担当だけでworkerが起動しない |
 | 24 | Brain競合・同期調査（親） | 01、02 | 外部writer間の安全な調停と停止条件を実証 |
 | 25 | Brain読取・保存・競合保全（DSH） | 06、24 | 同時書込・中断・オフラインで両版保持 |
-| 20 | 習慣チェック（DSH） | 19、25 | daily原本に競合安全で反映、日付・再送で重複しない |
+| 20 | 習慣チェック（DSH） | 19、25 | Bridgeの `habits.json` に競合安全で反映、日付・再送で重複しない（2026-11-14実装） |
 | 21 | Kanban書込と移行リハーサル（DSH） | 19 | 旧ID・全必要属性・件数・履歴と戻しを照合 |
 | 22 | Linear切替と正本更新（親） | 20、21 | ゲートを満たし、正本文書と台帳を更新・整合検査 |
 | 23 | PC幅プレビュー（DSH） | 06、14 | iPhone横画面・PCで同一画面を表示 |
