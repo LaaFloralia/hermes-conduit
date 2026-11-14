@@ -222,7 +222,9 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
     /// A profile with one model (Dots, the uncensored one) still opens the
     /// menu and says why; the effort stays changeable.
     func testOneModelSaysWhyAndKeepsTheEffort() {
-        let app = launch(profile: "laa-monet-dots", runtime: "claude-opus-5-5,claude,high", models: "single")
+        // Monet (Dots) shows a fixed runtime and writes nothing since b902d323
+        // (LAAChatFastTests); an employee whose runtime can change is used here.
+        let app = launch(profile: "laa-monet", runtime: "claude-opus-5-5,claude,high", models: "single")
         let model = any("composer.runtime.model", app)
         XCTAssertTrue(model.waitForExistence(timeout: 10))
         model.tap()
