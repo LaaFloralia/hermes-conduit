@@ -7,13 +7,9 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
     enum Level: String, Codable, CaseIterable, Identifiable {
         case alert, quiet, off
         var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .alert: return "知らせる"
-            case .quiet: return "静かに"
-            case .off: return "届けない"
-            }
-        }
+        /// The LAA build shows Japanese only, like LAACopy.
+        private static let titles: [Level: String] = [.alert: "知らせる", .quiet: "静かに", .off: "届けない"]
+        var title: String { Self.titles[self] ?? rawValue }
     }
     struct Kind: Identifiable, Equatable {
         let id: String
@@ -115,11 +111,12 @@ struct LAAWorkNotificationSettingsSection: View {
 }
 
 struct LAAWorkNotificationSettingsRows: View {
+    private static let sectionTitle = "Work"
     @ObservedObject var model: LAAWorkNotificationSettingsModel
     let onSelect: (String, LAAWorkNotificationPreferences.Level) -> Void
 
     var body: some View {
-        ConduitSettingsSection(title: "Work", symbol: "bell.badge", tint: .conduitAccent) {
+        ConduitSettingsSection(title: Self.sectionTitle, symbol: "bell.badge", tint: .conduitAccent) {
             switch model.phase {
             case .loading:
                 LAALoadingDots()
