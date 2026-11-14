@@ -59,10 +59,39 @@ enum LAAWorkModelSelection {
             byProvider[item.provider, default: []].append(item)
         }
         return order.map { provider in
-            (provider == "hermes-claude-api" ? "Claude API" :
+            (provider == "dsh-venice" ? "Venice" : provider == "hermes-claude-api" ? "Claude API" :
                 (LAAModelFace.face(model: byProvider[provider]?.first?.model, provider: provider).providerName ?? provider),
              byProvider[provider] ?? [])
         }
+    }
+}
+/// Share launch catalogs across Work surfaces. Never persist credentials or
+/// replace a selection while the catalog refreshes.
+@MainActor enum LAAWorkOptionsStore {
+    private struct Entry {
+        let value: LAAWorkSessionOptions
+        let fetchedAt: Date
+    }
+    private static var entries: [String: Entry] = [:]
+    private static var loads: [String: Task<LAAWorkSessionOptions, Error>] = [:]
+
+    static func read(_ bridge: LAABridgeSession, force: Bool = false) async throws -> LAAWorkSessionOptions {
+        let key = "\(bridge.address)|\(bridge.deviceID ?? "")|\(bridge.revision)"
+        if !force, let entry = entries[key], Date().timeIntervalSince(entry.fetchedAt) < 60 {
+            return entry.value
+        }
+        if let load = loads[key] { return try await load.value }
+        let load = Task<LAAWorkSessionOptions, Error> {
+            try await bridge.read("/v1/session-options?catalogOnly=true")
+        }
+        loads[key] = load
+        defer { loads[key] = nil }
+        let value = try await load.value
+        guard key == "\(bridge.address)|\(bridge.deviceID ?? "")|\(bridge.revision)" else {
+            throw CancellationError()
+        }
+        entries = [key: Entry(value: value, fetchedAt: Date())]
+        return value
     }
 }
 #endif

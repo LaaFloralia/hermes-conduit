@@ -104,7 +104,7 @@ struct LAAWorkSessionLauncher: View {
         .laaSheetSize(.form)
         .task(id: bridge.revision) {
             if let key { revision &+= 1; prompt = drafts.draft(for: key).text }
-            if options == nil { options = try? await bridge.read("/v1/session-options") }
+            if let refreshed = try? await LAAWorkOptionsStore.read(bridge) { options = refreshed }
             applyInitialModel()
         }
     }

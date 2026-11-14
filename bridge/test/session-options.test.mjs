@@ -159,3 +159,113 @@ test('without Paseo the options list no efforts and still answer', async (t) => 
   assert.equal(reply.status, 200);
   assert.deepEqual(reply.body.data.efforts, []);
 });
+
+test('named manual dispatch profiles expose Max and Ultra Code without replacing the automatic default', () => {
+  const extended = { ...table, profiles: { ...table.profiles,
+    'fable-max': { model: 'fable', harness: 'claude', effort: 'max', manual: true },
+    'fable-ultracode': { model: 'fable', harness: 'claude', effort: 'ultracode', manual: true },
+  }, dispatch: { manual_profiles: ['astra-max', 'fable-max', 'fable-ultracode'] } };
+  const options = sessionOptionsFrom(extended);
+  assert.equal(options.defaultProfile, 'opus-high');
+  for (const id of extended.dispatch.manual_profiles) {
+    assert.ok(options.profiles.some(p => p.id === id));
+    assert.ok(options.switchProfiles.some(p => p.id === id));
+  }
+  assert.equal(options.profiles.find(p => p.id === 'astra-max').model, 'gpt-6-astra');
+});
+
+test('manual Venice DSH keeps its wire route and is never an automatic choice', () => {
+  const venice = { ...table, profiles: { ...table.profiles,
+    'uncensored-high': { model: 'uncensored', harness: 'dsh-venice', effort: 'high', manual: true },
+    'uncensored-max': { model: 'uncensored', harness: 'dsh-venice', effort: 'max', manual: true },
+  }, models: { ...table.models, uncensored: { modelId: 'deepseek-uncensored', label: 'DeepSeek Uncensored' } },
+  dispatch: { manual_profiles: ['uncensored-high', 'uncensored-max'] },
+  entrances: [{ kind: 'paseo', status: 'manual', paseo: {
+    provider: 'dsh-venice', model: '["venice","{{id:uncensored}}"]', thinking: null,
+  } }] };
+  const options = sessionOptionsFrom(venice);
+  for (const id of venice.dispatch.manual_profiles) {
+    const p = options.profiles.find(p => p.id === id);
+    assert.equal(p.provider, 'dsh-venice');
+    assert.equal(p.model, '["venice","deepseek-uncensored"]');
+    assert.equal(p.fast, false);
+  }
+  assert.equal(options.defaultProfile, 'opus-high');
+  venice.entrances[0].status = 'stopped';
+  assert.ok(!sessionOptionsFrom(venice).profiles.some(p => p.provider === 'dsh-venice'));
+});
+
+test('launch catalog does not wait for or call provider discovery', async () => {
+  const { createSessionRoutes } = await import('../src/routes/sessions.mjs');
+  const optionsRoute = (daemon) => createSessionRoutes({ sessions: {}, sessionOptions: () => sessionOptionsFrom(table), daemon })
+    .find(r => r.path === '/v1/session-options').handler;
+  let calls = 0;
+  const handler = optionsRoute({ efforts: async () => {
+    calls++;
+    await new Promise(resolve => setTimeout(resolve, 150));
+    return [];
+  } });
+  const oldStart = performance.now();
+  await handler();
+  const fullMs = performance.now() - oldStart;
+  const callsBefore = calls;
+  const start = performance.now();
+  const fast = await handler({ url: new URL('http://localhost/v1/session-options?catalogOnly=true') });
+  const catalogMs = performance.now() - start;
+  assert.equal(calls, callsBefore);
+  assert.equal(fast.data.defaultProfile, 'opus-high');
+  assert.deepEqual(fast.data.profiles, sessionOptionsFrom(table).profiles);
+  console.log(JSON.stringify({ providerDelayMs: 150, fullMs, catalogMs }));
+});
+
+test('provider discovery coalesces cold calls, refreshes stale rows and backs off failures', async () => {
+  let clock = 0, calls = 0, fail = false, release;
+  let gate = new Promise(resolve => { release = resolve; });
+  const client = { close: async () => {}, listProviderModels: async () => {
+    calls++;
+    await gate;
+    if (fail) throw new Error('offline');
+    return { models: [{ id: 'model', thinkingOptions: [{ id: 'max' }] }] };
+  } };
+  const adapter = daemonAdapter({ connect: async () => client, now: () => clock });
+  const a = adapter.efforts('claude'), b = adapter.efforts('claude');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1);
+  release();
+  assert.deepEqual(await a, await b);
+  clock = 61_000;
+  gate = new Promise(resolve => { release = resolve; });
+  assert.deepEqual(await adapter.efforts('claude'), [{ model: 'model', efforts: ['max'] }]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 2);
+  fail = true; release();
+  await new Promise(resolve => setImmediate(resolve));
+  await adapter.efforts('claude');
+  assert.equal(calls, 2);
+});
+
+test('new sessions forward explicit Max, Ultra Code and Venice profile keys unchanged', async (t) => {
+  const calls = [];
+  const requested = {
+    'astra-max': { provider: 'codex', model: 'gpt-6-astra', effort: 'max' },
+    'fable-ultracode': { provider: 'claude', model: 'claude-fable-5-2', effort: 'ultracode' },
+    'uncensored-max': { provider: 'dsh-venice', model: '["venice","deepseek-uncensored"]', effort: 'max' },
+  };
+  const bridge = await startBridge({ sessions: { adapter: {
+    create: async ({ profile }) => {
+      calls.push(profile);
+      return { sessionId: `fixture-${profile}`, requested: { profile, ...requested[profile] } };
+    },
+  } } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  for (const profile of Object.keys(requested)) {
+    const result = await bridge.request('/v1/sessions', { token, method: 'POST', key: `launch-${profile}`, body: {
+      requestId: `launch-${profile}`, profile, prompt: 'fixture only', mode: 'bypass',
+    } });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.data.profile, profile);
+    assert.deepEqual(result.body.data.requested, { profile, ...requested[profile] });
+  }
+  assert.deepEqual(calls, Object.keys(requested));
+});
