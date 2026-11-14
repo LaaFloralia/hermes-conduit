@@ -1166,7 +1166,30 @@ final class AppState: ObservableObject {
     /// ordering anchors — never populated from visible id shape, so local
     /// optimistic / streaming / positional ids can never masquerade as
     /// persisted anchors.
-    private var durablePersistedRowIDs: Set<String> = []
+    private var durablePersistedRowIDs: Set<String> = [] {
+        didSet {
+            #if LAA_BUILD
+            settleUnknownSubmissionsThatLanded()
+            #endif
+        }
+    }
+
+    #if LAA_BUILD
+    /// A message sent just before the app stopped comes back as of unknown
+    /// delivery. When the chat's saved transcript already holds it, it was
+    /// delivered: settle it, so the composer neither warns nor invites a
+    /// second send (LAAUnknownDelivery).
+    private func settleUnknownSubmissionsThatLanded() {
+        guard !durablePersistedRowIDs.isEmpty, let dashboardID = activeDashboardID else { return }
+        let onScreen = composerDraftKeyOnScreen
+        for submission in composerDraftStore.unknownSubmissions
+        where submission.dashboardID == dashboardID && submission.pendingSendID == nil
+            && submission.groupEventID == nil && composerDraftKeysAreSameChat(submission.key, onScreen)
+            && LAAUnknownDelivery.landed(submission.draft.text, messages: messages, durableIDs: durablePersistedRowIDs) {
+            composerDraftStore.finishSubmission(submission.id, restoring: false)
+        }
+    }
+    #endif
     @Published private(set) var isChatRefreshing = false
     @Published private(set) var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
     @Published private(set) var chatReturnSurface: ChatReturnSurface = .conversation
