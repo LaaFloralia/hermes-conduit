@@ -520,7 +520,7 @@ export function createSessionService({
     const record = requireSession(id);
     // Read the log after the history: an observation made while the history
     // was being read may close the span that covers its newest reply.
-    const { items: read, compacting } = await joinedHistory(record, history);
+    const { items: read, compacting } = await joinedHistory(record, history, sessionStore.file);
     const messages = attributeReplies(read, (sessionStore.get(id) ?? record).modelLog);
     const references = images.references(id);
     // One batch for the whole page: a poll naming the same 215 pictures must
