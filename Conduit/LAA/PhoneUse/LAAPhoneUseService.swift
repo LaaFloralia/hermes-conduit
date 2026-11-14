@@ -81,7 +81,8 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     /// activity a push started, so the Mac's end push may never reach it: an
     /// activity whose request closed, or whose answer time passed, ends here.
     func refresh() async {
-        await refreshStartToken()
+        // Token maintenance must not delay an owner's answer or ending an activity.
+        Task { await refreshStartToken() }
         for activity in Activity<LAAPhoneUseAttributes>.activities {
             observe(activity)
             let requestID = activity.attributes.requestID
