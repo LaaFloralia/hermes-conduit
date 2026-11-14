@@ -195,27 +195,31 @@ test('manual Venice DSH keeps its wire route and is never an automatic choice', 
   assert.ok(!sessionOptionsFrom(venice).profiles.some(p => p.provider === 'dsh-venice'));
 });
 
-test('launch catalog does not wait for or call provider discovery', async () => {
-  const { createSessionRoutes } = await import('../src/routes/sessions.mjs');
-  const optionsRoute = (daemon) => createSessionRoutes({ sessions: {}, sessionOptions: () => sessionOptionsFrom(table), daemon })
-    .find(r => r.path === '/v1/session-options').handler;
+test('HTTP launch catalog does not call provider discovery; full options still do', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-options-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'models.json');
+  writeFileSync(file, JSON.stringify(table));
   let calls = 0;
-  const handler = optionsRoute({ efforts: async () => {
+  const daemon = { efforts: async () => {
     calls++;
-    await new Promise(resolve => setTimeout(resolve, 150));
-    return [];
-  } });
-  const oldStart = performance.now();
-  await handler();
-  const fullMs = performance.now() - oldStart;
-  const callsBefore = calls;
-  const start = performance.now();
-  const fast = await handler({ url: new URL('http://localhost/v1/session-options?catalogOnly=true') });
-  const catalogMs = performance.now() - start;
-  assert.equal(calls, callsBefore);
-  assert.equal(fast.data.defaultProfile, 'opus-high');
-  assert.deepEqual(fast.data.profiles, sessionOptionsFrom(table).profiles);
-  console.log(JSON.stringify({ providerDelayMs: 150, fullMs, catalogMs }));
+    return [{ model: 'example', efforts: ['high'] }];
+  } };
+  const bridge = await startBridge({ sessions: { modelsFile: file, daemon } });
+  t.after(() => bridge.close());
+  const token = await bridge.token(['sessions:read']);
+  for (let i = 0; i < 2; i++) {
+    const fast = await bridge.request('/v1/session-options?catalogOnly=true', { token });
+    assert.equal(fast.status, 200);
+    assert.equal(calls, 0);
+    assert.equal(fast.body.data.defaultProfile, 'opus-high');
+    assert.deepEqual(fast.body.data.profiles, sessionOptionsFrom(table).profiles);
+    assert.deepEqual(fast.body.data.efforts, []);
+  }
+  const full = await bridge.request('/v1/session-options', { token });
+  assert.equal(full.status, 200);
+  assert.ok(calls > 0);
+  assert.equal(full.body.data.efforts.length, calls);
 });
 
 test('provider discovery coalesces cold calls, refreshes stale rows and backs off failures', async () => {
