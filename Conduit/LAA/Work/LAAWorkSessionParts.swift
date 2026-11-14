@@ -34,13 +34,18 @@ struct LAAWorkProgressLine: View {
     }
 
     @ViewBuilder private var mark: some View {
-        let image = Image(systemName: compacting ? "arrow.down.right.and.arrow.up.left" : "brain")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(LAAColor.secondaryText)
-        if reduceMotion {
-            image
+        if compacting {
+            let image = Image(systemName: "arrow.down.right.and.arrow.up.left")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(LAAColor.secondaryText)
+            if reduceMotion {
+                image
+            } else {
+                image.symbolEffect(.pulse, options: .repeating)
+            }
         } else {
-            image.symbolEffect(.pulse, options: .repeating)
+            // The same working mark as the chats; it holds a still frame under Reduce Motion.
+            LAAOrbView(state: .thinking, diameter: 22)
         }
     }
 }
