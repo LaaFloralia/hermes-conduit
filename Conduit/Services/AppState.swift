@@ -1182,12 +1182,32 @@ final class AppState: ObservableObject {
     private func settleUnknownSubmissionsThatLanded() {
         guard !durablePersistedRowIDs.isEmpty, let dashboardID = activeDashboardID else { return }
         let onScreen = composerDraftKeyOnScreen
+        var settled = 0, open = 0
         for submission in composerDraftStore.unknownSubmissions
-        where submission.dashboardID == dashboardID && submission.pendingSendID == nil
-            && submission.groupEventID == nil && composerDraftKeysAreSameChat(submission.key, onScreen)
-            && LAAUnknownDelivery.landed(submission.draft.text, reservedAt: submission.reservedAt, messages: messages, durableIDs: durablePersistedRowIDs) {
-            composerDraftStore.finishSubmission(submission.id, restoring: false)
+        where submission.dashboardID == dashboardID && submission.groupEventID == nil
+            && composerDraftKeysAreSameChat(submission.key, onScreen) {
+            guard LAAUnknownDelivery.landed(submission.draft.text, reservedAt: submission.reservedAt,
+                                            messages: messages, durableIDs: durablePersistedRowIDs) else {
+                open += 1
+                continue
+            }
+            // As the owner's "Confirmed sent" does (ComposerBar): a message
+            // that waited for the connection leaves its waiting file first,
+            // so it never comes back as a draft.
+            if let pendingID = submission.pendingSendID,
+               !removePendingComposerSendFile(id: pendingID, dashboardID: submission.dashboardID, profile: submission.key.profile) {
+                open += 1
+                continue
+            }
+            guard composerDraftStore.finishSubmission(submission.id, restoring: false) else { open += 1; continue }
+            if let screenshotID = submission.screenshotID, pendingScreenshot(forSession: activeSessionId)?.id == screenshotID {
+                discardPendingScreenshot(forSession: activeSessionId)
+            }
+            settled += 1
         }
+        guard settled + open > 0 else { return }
+        sessionCatalogLog.info("unknown delivery: settled \(settled, privacy: .public), still open \(open, privacy: .public), rows \(self.messages.count, privacy: .public)")
+        if settled > 0 { schedulePendingComposerSendCheck() }
     }
     #endif
     @Published private(set) var isChatRefreshing = false
