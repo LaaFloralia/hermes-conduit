@@ -59,7 +59,8 @@ enum LAAChatFastControl {
 
 /// A chat whose model, effort and speed are not Hermes' to report or change:
 /// the capsules show these values and their menus say why (owner, 2026-11-14:
-/// Monet · Dots reads Astra · Max · Ultrafast and offers no choice).
+/// Monet · Dots reads GPT 6 Astra · Ultra Code · Fast on and offers no choice;
+/// owner, 2026-11-14 20:45).
 struct LAAChatFixedRuntime: Equatable {
     let model: String
     let provider: String
@@ -69,8 +70,8 @@ struct LAAChatFixedRuntime: Equatable {
     let speed: ModelSpeed
     let reason: String
 
-    static let dots = LAAChatFixedRuntime(model: "gpt-6-astra", provider: "openai-codex", name: "Astra", effort: "max",
-                                          speed: .ultrafast, reason: "Monet（Dots）はモデルと推論を選べません。")
+    static let dots = LAAChatFixedRuntime(model: "gpt-6-astra", provider: "openai-codex", name: "GPT 6 Astra", effort: "ultracode",
+                                          speed: .fast, reason: "Monet（Dots）はモデルと推論を選べません。")
 
     static func of(profile: String) -> LAAChatFixedRuntime? {
         LAAStaff(profile: profile) == .monetDots ? dots : nil

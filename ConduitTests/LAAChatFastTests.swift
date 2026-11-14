@@ -83,13 +83,13 @@ final class LAAChatFastTests: XCTestCase {
         XCTAssertNil(LAAChatFastControl.capability([other, row], model: nil, provider: "openai-codex"))
     }
 
-    func testOnlyMonetDotsIsFixedAndReadsAstraMaxUltrafast() {
+    func testOnlyMonetDotsIsFixedAndReadsAstraUltraCodeFastOn() {
         let fixed = LAAChatFixedRuntime.of(profile: "laa-monet-dots")
         XCTAssertEqual(fixed, .dots)
-        XCTAssertEqual(fixed?.name, "Astra")
+        XCTAssertEqual(fixed?.name, "GPT 6 Astra")
         XCTAssertEqual(LAAModelCapsule.displayName(model: fixed?.model, provider: fixed?.provider), "GPT 6 Astra")
-        XCTAssertEqual(LAAEffort.name(fixed?.effort), "Max")
-        XCTAssertEqual(fixed?.fast.speed, .ultrafast)
+        XCTAssertEqual(LAAEffort.name(fixed?.effort), "Ultra Code")
+        XCTAssertEqual(fixed?.fast.speed, .fast)
         // Nothing to choose, and the menu says why.
         XCTAssertEqual(fixed?.fast.choices, [])
         XCTAssertEqual(fixed?.fast.toggles, false)
