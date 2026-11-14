@@ -308,6 +308,7 @@ private struct LAAWorkPaneView: View {
 /// The pane's heading. The focused pane carries the link colour on its top
 /// edge and the selection tint, as the sidebar marks its selected row.
 private struct LAAWorkPaneHeader: View {
+    @State private var showingInitialInstruction = false
     let session: LAAWorkSession?
     let sessionID: String?
     let number: Int
@@ -323,7 +324,11 @@ private struct LAAWorkPaneHeader: View {
 
     var body: some View {
         HStack(spacing: LAASpacing.x2) {
-            identity
+            Button { showingInitialInstruction = true } label: { identity }
+                .buttonStyle(.plain)
+                .disabled(session == nil)
+                .accessibilityLabel(Text(verbatim: (session?.name ?? "") + "、最初の指示を表示"))
+                .accessibilityIdentifier("work.pane.initialInstruction")
                 .frame(maxWidth: .infinity, alignment: .leading)
             if canSplitRight || canSplitDown || many || sessionID != nil { controls }
         }
@@ -337,6 +342,9 @@ private struct LAAWorkPaneHeader: View {
         .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1).accessibilityHidden(true) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.pane.\(number).header")
+        .sheet(isPresented: $showingInitialInstruction) {
+            if let sessionID { LAAWorkInitialInstruction(sessionID: sessionID) }
+        }
     }
 
     private var model: LAAWorkModel? { session?.observed ?? session?.requested }

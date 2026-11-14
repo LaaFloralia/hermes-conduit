@@ -169,6 +169,36 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["委譲先の状態を観測できていません。表示は最後に確認できた記録です。"].exists)
     }
 
+    func testTitleOpensInitialInstructionAndCopies() throws {
+        try verifyInitialInstruction(extra: [], screenshot: "initial-instruction-copy")
+    }
+
+    func testInitialInstructionSupportsLargeText() throws {
+        try verifyInitialInstruction(extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"],
+                                     screenshot: "initial-instruction-large-text")
+    }
+
+    private func verifyInitialInstruction(extra: [String], screenshot: String) throws {
+        let app = try launchFixture(extra: extra)
+        open(emptyID, app)
+        let title = app.buttons["work.session.detail.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        title.tap()
+        let text = app.descendants(matching: .any)["work.initialInstruction.text"].firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 15))
+        XCTAssertTrue((text.label + (text.value as? String ?? "")).contains("最初の指示の全文です。"))
+        let copy = app.buttons["work.initialInstruction.copy"]
+        if !copy.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(copy.isHittable)
+        copy.tap()
+        XCTAssertEqual(copy.label, "コピーしました")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = screenshot; shot.lifetime = .keepAlways
+        add(shot)
+        app.buttons["work.initialInstruction.done"].tap()
+        XCTAssertTrue(header(app).waitForExistence(timeout: 5))
+    }
+
     func testEmptyConversationOpensAtTheComposer() throws {
         let app = try launchFixture()
         open(emptyID, app)

@@ -54,6 +54,34 @@ function fixture(t, overrides = {}) {
   return { ...args, record, pages, calls, switcher: createModelSwitcher(args) };
 }
 
+test('initial instruction never substitutes a later provider follow-up for missing original history', async (t) => {
+  const f = fixture(t);
+  f.store.update(f.record.id, (row) => {
+    delete row.initialInstruction;
+    row.delegateHistory = [{ sessionId: 'old' }];
+    row.delegate = { sessionId: 'new', handoff: true };
+    return [];
+  });
+  f.pages.delete('old');
+  f.pages.set('new', { items: [{ id: 'u2', role: 'user', text: '次の作業をお願いします。', timestamp: iso }] });
+  const service = createSessionService({ sessionStore: f.store, adapter: {}, daemon: f.daemon, history: f.history, choices, notify: async () => {} });
+  t.after(() => service.close());
+  assert.equal(await service.initialInstruction(f.record.id), null);
+  assert.equal(f.store.get(f.record.id).initialInstruction, undefined);
+  f.pages.set('old', { items: [{ id: 'u1', role: 'user', text: '本来の最初の依頼です。', timestamp: iso }] });
+  assert.equal((await service.initialInstruction(f.record.id)).text, '本来の最初の依頼です。');
+});
+
+test('initial instruction recovers the first user from the handoff snapshot when the archived provider is empty', async (t) => {
+  const f = fixture(t);
+  await f.switcher.switchProvider(f.record.id, profiles[1]);
+  f.store.update(f.record.id, (row) => { delete row.initialInstruction; return []; });
+  f.pages.delete('old');
+  const service = createSessionService({ sessionStore: f.store, adapter: {}, daemon: f.daemon, history: f.history, choices, notify: async () => {} });
+  t.after(() => service.close());
+  assert.equal((await service.initialInstruction(f.record.id)).text, '目的は青い舟。残件は帆の確認。');
+});
+
 test('a session that asks before acting is never continued without prompts', async (t) => {
   for (const mode of ['default', undefined]) {
     const f = fixture(t);
