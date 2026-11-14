@@ -431,7 +431,8 @@ private final class LAAChatModelFixture {
                 self.model = model; self.provider = provider
                 return ModelSwitchOutcome(model: model)
             },
-            setReasoning: { _, _ in })
+            setReasoning: { _, _ in },
+            setSpeed: { _, _ in })
     }
 }
 #endif

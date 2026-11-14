@@ -13,6 +13,8 @@ struct LAAChatRuntime: Equatable {
     private(set) var provider: String?
     private(set) var effortSessionID: String?
     private(set) var effort: String?
+    private(set) var speedSessionID: String?
+    private(set) var speed: ModelSpeed?
 
     /// Takes what a report carried; a field it left out keeps its value.
     /// An empty value is a report that the chat has none to show.
@@ -31,19 +33,31 @@ struct LAAChatRuntime: Equatable {
         }
     }
 
+    /// The speed a report carried (`fast` and its `service_tier`). A report
+    /// without `fast` keeps the value.
+    mutating func applySpeed(sessionID: String?, fast: Bool?, serviceTier: String?) {
+        guard let sessionID, !sessionID.isEmpty, let fast else { return }
+        speedSessionID = sessionID
+        speed = ModelSpeed(fast: fast, serviceTier: serviceTier ?? "")
+    }
+
     struct Shown: Equatable {
         let model: String?
         let provider: String?
         let effort: String?
+        /// Nil until Hermes reports this chat's speed.
+        var speed: ModelSpeed? = nil
     }
 
     /// What the chip shows for the chat on screen; nil reads 「不明」.
     func shown(for sessionIDs: Set<String>) -> Shown {
         let modelKnown = modelSessionID.map(sessionIDs.contains) ?? false
         let effortKnown = effortSessionID.map(sessionIDs.contains) ?? false
+        let speedKnown = speedSessionID.map(sessionIDs.contains) ?? false
         return Shown(model: modelKnown ? model : nil,
                      provider: modelKnown ? provider : nil,
-                     effort: effortKnown ? effort : nil)
+                     effort: effortKnown ? effort : nil,
+                     speed: speedKnown ? speed : nil)
     }
 
     private static func value(_ raw: String) -> String? {
@@ -61,11 +75,14 @@ struct LAAChatModelOperations {
     var setModel: @MainActor (_ sessionID: String, _ model: String, _ provider: String, _ confirmed: Bool) async throws -> ModelSwitchOutcome
     /// Nil sends the effort through `AppState.setReasoningEffort`.
     var setReasoning: (@MainActor (_ sessionID: String, _ effort: String) async throws -> Void)?
+    /// Session-scoped `/fast`. Nil when the speed cannot be written.
+    var setSpeed: (@MainActor (_ sessionID: String, _ speed: ModelSpeed) async throws -> Void)?
 
     init(options: @escaping @MainActor (String) async throws -> Options,
          setModel: @escaping @MainActor (String, String, String, Bool) async throws -> ModelSwitchOutcome,
-         setReasoning: (@MainActor (String, String) async throws -> Void)? = nil) {
-        self.options = options; self.setModel = setModel; self.setReasoning = setReasoning
+         setReasoning: (@MainActor (String, String) async throws -> Void)? = nil,
+         setSpeed: (@MainActor (String, ModelSpeed) async throws -> Void)? = nil) {
+        self.options = options; self.setModel = setModel; self.setReasoning = setReasoning; self.setSpeed = setSpeed
     }
 
     @MainActor init(client: HermesClient) {
@@ -77,6 +94,7 @@ struct LAAChatModelOperations {
             try await client.setModel(sessionID, model: model, provider: provider, confirmed: confirmed)
         }
         setReasoning = nil
+        setSpeed = { sessionID, speed in try await client.setSpeed(sessionID, speed: speed) }
     }
 }
 
@@ -200,6 +218,9 @@ struct LAAChatModelPickers: View {
     @State private var phase: LAAChatModelCatalog.Phase = .idle
     @State private var switching = false
     @State private var writingEffort = false
+    @State private var writingSpeed = false
+    @State private var capability: ModelSpeedCapability?
+    @State private var fixed: LAAChatFixedRuntime?
     @State private var pending: Pending?
 
     private struct Pending: Identifiable {
@@ -226,20 +247,46 @@ struct LAAChatModelPickers: View {
                                        current: currentChoice, writing: writingEffort)
     }
 
+    /// The Fast capsule: the fixed one, or what Hermes reported for this chat.
+    private var fast: LAAChatFastControl.Display? {
+        if let fixed { return fixed.fast }
+        return LAAChatFastControl.display(
+            speed: shown.speed, capability: capability, sessionID: activeSessionID, connected: connected,
+            writable: appState.laaChatModelOperations?.setSpeed != nil, writing: writingSpeed)
+    }
+
     var body: some View {
-        LAAModelEffortPickers(
-            model: shown.model, provider: shown.provider, effort: shown.effort,
-            changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
-            modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
-        ) {
-            modelMenu
-        } effortMenu: {
-            effortMenu
+        HStack(spacing: LAASpacing.x2) {
+            if let fixed {
+                // Nothing here is Hermes' to change: no menu rows, no writes.
+                LAAModelEffortPickers(
+                    model: fixed.model, provider: fixed.provider, effort: fixed.effort, name: fixed.name,
+                    identifier: "composer.runtime", modelHint: fixed.reason, effortHint: fixed.reason
+                ) {
+                    LAAMenuReason(text: fixed.reason)
+                } effortMenu: {
+                    LAAMenuReason(text: fixed.reason)
+                }
+            } else {
+                LAAModelEffortPickers(
+                    model: shown.model, provider: shown.provider, effort: shown.effort,
+                    changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
+                    modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
+                ) {
+                    modelMenu
+                } effortMenu: {
+                    effortMenu
+                }
+            }
+            if let fast {
+                LAAChatFastCapsule(display: fast, changing: writingSpeed, identifier: "composer.runtime.fast") { changeSpeed($0) }
+            }
         }
         .onReceive(appState.$laaChatRuntime.removeDuplicates()) { runtime = $0 }
         .onReceive(appState.$activeSessionId.removeDuplicates()) { activeSessionID = $0 }
+        .onReceive(appState.$activeProfile.removeDuplicates()) { fixed = LAAChatFixedRuntime.of(profile: $0) }
         .onReceive(appState.$client.map { $0 != nil }.removeDuplicates()) { connected = $0 || appState.laaChatModelOperations != nil }
-        .task(id: "\(activeSessionID ?? "")|\(connected)|\(shown.model ?? "")|\(shown.provider ?? "")") { await load() }
+        .task(id: "\(activeSessionID ?? "")|\(connected)|\(shown.model ?? "")|\(shown.provider ?? "")|\(fixed != nil)") { await load() }
         .alert(Text(verbatim: "モデルを切り替えますか？"), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                presenting: pending) { item in
             Button { switchModel(item.choice, confirmed: true) } label: { Text(verbatim: "切り替える") }
@@ -286,13 +333,14 @@ struct LAAChatModelPickers: View {
     }
 
     @MainActor private func load() async {
-        guard let sessionID = activeSessionID, let operations = appState.laaChatModelOperations else {
-            phase = .idle; return
+        guard fixed == nil, let sessionID = activeSessionID, let operations = appState.laaChatModelOperations else {
+            phase = .idle; capability = nil; return
         }
         phase = .loading
         do {
             let result = try await operations.options(sessionID)
             guard !Task.isCancelled, sessionID == appState.activeSessionId else { return }
+            capability = LAAChatFastControl.capability(result.providers, model: result.model, provider: result.provider)
             phase = .ready(LAAChatModelCatalog.choices(result.providers, visibility: appState.modelVisibility,
                                                        runningModel: result.model, runningProvider: result.provider))
         } catch {
@@ -329,6 +377,7 @@ struct LAAChatModelPickers: View {
     @MainActor private func readBack(_ operations: LAAChatModelOperations, sessionID: String) async {
         guard let report = try? await operations.options(sessionID), sessionID == appState.activeSessionId else { return }
         appState.laaApplyChatModelReport(sessionID: sessionID, model: report.model, provider: report.provider, effort: nil)
+        capability = LAAChatFastControl.capability(report.providers, model: report.model, provider: report.provider)
         phase = .ready(LAAChatModelCatalog.choices(report.providers, visibility: appState.modelVisibility,
                                                    runningModel: report.model, runningProvider: report.provider))
     }
@@ -347,6 +396,24 @@ struct LAAChatModelPickers: View {
                 }
             } else if case .failed(let message) = await appState.setReasoningEffort(effort) {
                 notify(message, symbol: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    /// Writes the speed for this chat; the capsule changes when Hermes has
+    /// accepted it, and a refusal leaves it as it was and says why.
+    private func changeSpeed(_ speed: ModelSpeed) {
+        guard fixed == nil, !writingSpeed, speed != shown.speed, let sessionID = appState.activeSessionId,
+              let setSpeed = appState.laaChatModelOperations?.setSpeed else { return }
+        writingSpeed = true
+        Task { @MainActor in
+            defer { writingSpeed = false }
+            do {
+                try await setSpeed(sessionID, speed)
+                appState.laaApplyChatSpeed(sessionID: sessionID, speed: speed)
+            } catch {
+                guard appState.activeSessionId == sessionID else { return }
+                notify(UserFacingError.message(for: error), symbol: "exclamationmark.triangle")
             }
         }
     }
