@@ -244,7 +244,7 @@ final class LAADecisionUITests: XCTestCase {
                 .waitForExistence(timeout: 15))
             screenshot("work-decisions-after-\(style)", app)
             app.buttons["work.section.tasks"].tap()
-            XCTAssertTrue(app.buttons["work.tasks.filter"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.buttons["work.tasks.quick"].waitForExistence(timeout: 15))
             screenshot("work-tasks-after-\(style)", app)
             app.buttons["work.section.routines"].tap()
             XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 15))

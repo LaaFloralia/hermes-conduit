@@ -114,6 +114,67 @@ final class LAATaskRunUITests: XCTestCase {
 
     /// A device without sessions:write is refused for a staff assignee: the
     /// form keeps its words, says why, and can still save it as 社長's own.
+    /// The range is two glass toggles, 自分が作成 and 自分が担当, on the same
+    /// line as the count menu and the grouping (owner, 2026-11-14). At most
+    /// one is lit; neither lit shows every task, as 自分に関係 did.
+    func testRangeTogglesShareOneLineWithTheCount() throws {
+        let app = try launch()
+        tasks(app)
+        // T13 has no run record (自分が担当) and sits low in その他, off a
+        // 402 pt screen until the range leaves it nearly alone; T15 was
+        // created for Sherlock (自分が作成) and is the first row.
+        let mine = row(app, "今週の振り返りをまとめる")
+        let made = row(app, "名刺の紙を決める")
+        XCTAssertTrue(made.waitForExistence(timeout: 20))
+        let created = app.buttons["work.tasks.filter.created"]
+        let assigned = app.buttons["work.tasks.filter.assigned"]
+        let count = app.buttons["work.tasks.quick"]
+        let grouping = app.buttons["work.tasks.grouping"]
+        XCTAssertTrue(created.exists && assigned.exists && count.exists && grouping.exists)
+        XCTAssertFalse(created.isSelected)
+        XCTAssertFalse(assigned.isSelected)
+        XCTAssertFalse(app.buttons["work.tasks.filter"].exists, "the old pulldown is gone")
+        // One line: toggles, then the count beside the grouping; no chips under it.
+        XCTAssertEqual(count.frame.midY, created.frame.midY, accuracy: 2)
+        XCTAssertEqual(grouping.frame.midY, created.frame.midY, accuracy: 2)
+        XCTAssertLessThan(created.frame.maxX, assigned.frame.minX)
+        XCTAssertLessThan(assigned.frame.maxX, count.frame.minX)
+        XCTAssertLessThanOrEqual(count.frame.maxX, grouping.frame.minX + 1)
+        XCTAssertLessThanOrEqual(grouping.frame.maxX, app.frame.maxX)
+        XCTAssertFalse(app.buttons["work.tasks.quick.all"].exists, "the quick filters live in the count menu")
+        XCTAssertTrue(count.label.hasPrefix("表示、すべて、"), count.label)
+        let everything = count.label
+
+        assigned.tap()
+        XCTAssertTrue(made.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(mine.waitForExistence(timeout: 5))
+        XCTAssertTrue(assigned.isSelected)
+        XCTAssertFalse(created.isSelected)
+        XCTAssertEqual(count.label, "表示、すべて、1件")
+
+        created.tap()
+        XCTAssertTrue(mine.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(made.exists)
+        XCTAssertTrue(created.isSelected)
+        XCTAssertFalse(assigned.isSelected, "one toggle lit at a time")
+
+        created.tap()
+        XCTAssertTrue(made.waitForExistence(timeout: 5))
+        XCTAssertFalse(created.isSelected)
+        XCTAssertEqual(count.label, everything)
+
+        // The archive is in the count menu; the toggles step aside there.
+        count.tap()
+        XCTAssertTrue(app.buttons["work.linear.archive"].waitForExistence(timeout: 5))
+        app.buttons["work.linear.archive"].tap()
+        XCTAssertTrue(created.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(count.label.hasPrefix("表示、アーカイブ、"), count.label)
+        count.tap()
+        XCTAssertTrue(app.buttons["work.tasks.quick.all"].waitForExistence(timeout: 5))
+        app.buttons["work.tasks.quick.all"].tap()
+        XCTAssertTrue(created.waitForExistence(timeout: 5))
+    }
+
     func testStaffCreateWithoutSessionScopeKeepsTheForm() throws {
         let app = try launch()
         tasks(app)

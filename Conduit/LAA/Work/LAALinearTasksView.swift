@@ -4,8 +4,9 @@ import SwiftUI
 /// Work's task list (owner, 2026-11-11: 「タスクがめちゃくちゃ見にくい」).
 /// Sections by genre (or due date, assignee, priority) that fold, a box that
 /// picks a task and a button under the controls that completes the picked
-/// ones (owner, 2026-11-12), quick filters as glass chips, and rows that show
-/// only what is set. The sections are worked out once per change
+/// ones (owner, 2026-11-12), one line of glass controls (the range toggles,
+/// the count menu and the grouping; 2026-11-14), and rows that show only
+/// what is set. The sections are worked out once per change
 /// of their inputs (`LAATaskBoard`), not on every redraw, and a refresh that
 /// brings the same tasks changes nothing on screen.
 struct LAALinearTasksView: View {
@@ -208,12 +209,11 @@ struct LAALinearTasksView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 0) {
-            LAATaskControls(grouping: groupingBinding, quick: $quick, counts: board.counts, showsQuick: !archivedOnly,
+            LAATaskControls(filter: filterBinding, grouping: groupingBinding, quick: $quick, archived: archiveBinding,
+                            counts: board.counts, shown: board.total,
                             allFolded: !board.sections.isEmpty && board.sections.allSatisfy { folded.contains($0.id) },
-                            foldAll: { fold in setFolded(fold ? Set(board.sections.map(\.id)) : []) }) {
-                filterMenu
-            }
-            // Under the まとめ方 and the chips, only while something is picked.
+                            foldAll: { fold in setFolded(fold ? Set(board.sections.map(\.id)) : []) })
+            // Under the controls, only while something is picked.
             if !archivedOnly, !picks.isEmpty || batchProgress != nil {
                 LAATaskBatchBar(count: batchProgress?.total ?? picks.count, progress: batchProgress,
                                 enabled: bridge.status == .paired && !locked,
@@ -239,26 +239,17 @@ struct LAALinearTasksView: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: picks.isEmpty)
     }
 
-    /// The list's one pulldown, labelled with the range the rows below are in.
-    /// Every choice changes this list in place: the three ranges (kept on the
-    /// device) and the archive (not kept).
-    private var filterMenu: some View {
-        LAAWorkListPicker(title: archivedOnly ? LAACopy.WorkTab.archived : filter.title,
-                          identifier: "work.tasks.filter") {
-            ForEach(LAALinearTaskFilter.allCases) { option in
-                LAAWorkPickerItem(title: option.title, selected: !archivedOnly && option == filter,
-                                  identifier: "work.tasks.filter.\(option.rawValue)") {
-                    filterRaw = option.rawValue
-                    archivedOnly = false
-                }
-            }
-            Divider()
-            LAAWorkPickerItem(title: LAACopy.WorkTab.archived, selected: archivedOnly,
-                              identifier: "work.linear.archive") {
-                archivedOnly = true
-                if laaDesktop { desktopSelection = nil }
-            }
-        }
+    /// The two toggles' range, kept on the device.
+    private var filterBinding: Binding<LAALinearTaskFilter> {
+        Binding(get: { filter }, set: { filterRaw = $0.rawValue })
+    }
+
+    /// The archive, chosen from the count menu; not kept.
+    private var archiveBinding: Binding<Bool> {
+        Binding(get: { archivedOnly }, set: { value in
+            archivedOnly = value
+            if value, laaDesktop { desktopSelection = nil }
+        })
     }
 
     private func header(_ section: LAATaskSection) -> some View {
