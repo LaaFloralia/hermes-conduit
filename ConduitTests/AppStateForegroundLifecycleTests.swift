@@ -3322,6 +3322,31 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
     // MARK: - G. Ordinary successful prompt
 
+    func testMultilinePromptSurvivesSendAndRenderedUserBubble() async throws {
+        let original = "first line\nsecond line"
+        var sentText: String?
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            sendPrompt: { _, _, text in sentText = text; return .accepted },
+            probeActiveSessions: { _ in [] }
+        ))
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        let sent = await harness.appState.submitComposer(text: original)
+        XCTAssertTrue(sent)
+        XCTAssertEqual(sentText, original)
+        let saved = try JSONEncoder().encode(try XCTUnwrap(sentText))
+        let restored = try JSONDecoder().decode(String.self, from: saved)
+        XCTAssertEqual(restored, original)
+        XCTAssertEqual(harness.appState.messages.last?.content, original)
+        let rendering = MarkdownRenderCache.rendering(
+            source: OwnerMessageMarkdown.renderSource(restored, usesAccentSurface: true),
+            recognizesGatewayMedia: false, foregroundStyle: .white,
+            usesAccentSurface: true, isStreaming: false, chatTextSize: .default
+        )
+        XCTAssertEqual(try XCTUnwrap(rendering.selectableText).string, original)
+    }
+
     func testOrdinaryIdleSubmitStartsExactlyOneTurn() async {
         var submitCount = 0
         var probeCount = 0

@@ -52,6 +52,10 @@ enum MarkdownRichMetrics {
 /// Preserve intentional line breaks in messages written by the owner while
 /// leaving fenced code and paragraph boundaries intact.
 enum OwnerMessageMarkdown {
+    static func renderSource(_ source: String, usesAccentSurface: Bool) -> String {
+        usesAccentSurface ? preservingLineBreaks(source) : source
+    }
+
     static func preservingLineBreaks(_ source: String) -> String {
         var lines = source.components(separatedBy: "\n")
         var fence: MarkdownFence?
@@ -138,7 +142,7 @@ struct MarkdownText: View {
         // stage of parse/format/layout scales with the whole source.
         if MarkdownLargeDocumentPolicy.isLargeDocument(source) {
             LargeMarkdownDocumentView(
-                source: usesAccentSurface ? OwnerMessageMarkdown.preservingLineBreaks(source) : source,
+                source: OwnerMessageMarkdown.renderSource(source, usesAccentSurface: usesAccentSurface),
                 foregroundStyle: effectiveForeground,
                 usesAccentSurface: usesAccentSurface,
                 gatewayMediaDataURL: gatewayMediaDataURL
@@ -162,7 +166,7 @@ struct MarkdownText: View {
         let _ = isStreaming ? () : TranscriptPerf.note(.settledMarkdownBody, context: source)
         let foregroundStyle = effectiveForeground
         let rendering = MarkdownRenderCache.rendering(
-            source: usesAccentSurface ? OwnerMessageMarkdown.preservingLineBreaks(source) : source,
+            source: OwnerMessageMarkdown.renderSource(source, usesAccentSurface: usesAccentSurface),
             recognizesGatewayMedia: gatewayMediaDataURL != nil,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
