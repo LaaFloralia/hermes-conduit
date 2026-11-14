@@ -89,7 +89,9 @@ final class LAAChatPolishUITests: XCTestCase {
         let pill = any("work.session.model", app)
         XCTAssertTrue(pill.waitForExistence(timeout: 10))
         pill.tap()
-        let reasons = ["このセッションではモデルを変更できません。", "切り替えられるモデルがありません。"]
+        // A running session is the first reason since the provider switch
+        // (52fec4b2): the Bridge takes a switch only between turns.
+        let reasons = ["実行が終わってから変更できます。", "このセッションではモデルを変更できません。", "切り替えられるモデルがありません。"]
         let reason = app.buttons.matching(NSPredicate(format: "label IN %@", reasons)).firstMatch
         XCTAssertTrue(reason.waitForExistence(timeout: 5)
                       || app.staticTexts.matching(NSPredicate(format: "label IN %@", reasons)).firstMatch.exists,
