@@ -104,7 +104,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
                                           ("gpt-6.1-terra", "codex"), ("claude-haiku-5-5", "claude")]
         func page(_ rows: [(String, String, String)]) -> some View {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in pickers(row.0, row.1, row.2) }
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in self.pickers(row.0, row.1, row.2) }
             }
             .padding(LAASpacing.horizontal)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
