@@ -217,6 +217,13 @@ struct LAAWorkDesktopSessionsView: View {
                                                    target: showArchived ? "archived" : "list") ?? []
             }
             await load()
+            // The phone's list re-reads every five seconds. Without the same
+            // here a row kept its old state, model and time for as long as
+            // the window stayed open.
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                await load()
+            }
         }
     }
 
