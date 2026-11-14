@@ -88,6 +88,21 @@ struct ConnectionTimeline: Equatable {
         return lines.joined(separator: "\n")
     }
 
+    static let persistenceDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("ConnectionDiagnostics", isDirectory: true)
+    private static let persistenceQueue = DispatchQueue(label: "connection.timeline.persistence", qos: .utility)
+
+    /// One bounded, host-free snapshot, ordered off the main thread.
+    func persist(to directory: URL = Self.persistenceDirectory, route: String,
+                 completion: (@Sendable () -> Void)? = nil) {
+        let data = Data(("Started: \(startedAt)\nPath: \(route)\n" + report).utf8.prefix(16_384))
+        Self.persistenceQueue.async {
+            defer { completion?() }
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: directory.appendingPathComponent("latest.txt"), options: .atomic)
+        }
+    }
+
     static func seconds(_ interval: TimeInterval) -> String {
         String(format: "%.2f s", locale: Locale(identifier: "en_US_POSIX"), max(0, interval))
     }

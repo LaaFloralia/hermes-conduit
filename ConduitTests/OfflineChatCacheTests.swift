@@ -480,6 +480,35 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(appState.composerTakesText)
     }
 
+    func testSavedChatKeepsPendingSendAvailableWhileNetworkPathIsDown() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.connection = HermesConnection(baseUrl: "https://one.example", ticket: "test")
+        appState.showLogin = false
+        appState.handleDisconnectForTesting()
+        appState.deviceConditionsChanged(DeviceConditions(pathSatisfied: false, pathGeneration: 1))
+
+        XCTAssertFalse(appState.isRecoveringConnection, "Status must still report the unavailable network")
+        XCTAssertTrue(appState.composerTakesText, "A network handover must not lock the draft")
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .send)
+        XCTAssertTrue(appState.sendWhenConnected("Wait for this chat", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSendOnScreen)
+        XCTAssertEqual(pending.draftSessionID, "stored-a")
+        XCTAssertFalse(appState.isConnected, "Queueing must not claim transport or send directly")
+        XCTAssertFalse(appState.composerIsEnabled, "Live controls remain unavailable")
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: true), .unavailable)
+
+        appState.lastConnectionFailure = .loginRequired
+        XCTAssertFalse(appState.composerWaitsForChat, "A refused sign-in cannot queue automatic sends")
+        appState.lastConnectionFailure = nil
+        appState.showLogin = true
+        XCTAssertFalse(appState.composerWaitsForChat)
+        appState.showLogin = false
+        appState.connection = nil
+        XCTAssertFalse(appState.composerWaitsForChat, "An explicitly disconnected dashboard cannot queue")
+    }
+
     /// A chat tapped in the saved list shows at once (its saved copy, or its
     /// title while it opens) and opens nothing until the live list lands.
     func testPickingASavedChatShowsItAtOnceWithoutOpeningIt() throws {
