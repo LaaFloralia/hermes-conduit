@@ -143,7 +143,7 @@ struct LAAWorkProjectEditor: View {
             .onChange(of: clearLegacyRef) { _, _ in saveDraft() }
             .task {
                 restoreDraft()
-                options = try? await bridge.read("/v1/session-options")
+                options = try? await LAAWorkOptionsStore.read(bridge)
                 if clearLegacyRefInitially && current?.instructionRef != nil && pending == nil {
                     clearLegacyRef = true
                     saveDraft()

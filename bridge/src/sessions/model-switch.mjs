@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { BridgeError, badRequest, conflict } from '../errors.mjs';
 import { foldModelLog, markOwnerChange } from './model-log.mjs';
 
-const HIGH = new Set(['high', 'xhigh', 'max', 'ultra']);
+const HIGH = new Set(['high', 'xhigh', 'max', 'ultra', 'ultracode']);
 const TAG = '<work_model_handoff>';
 export const isHandoff = (item) => item.role === 'user' && item.text?.startsWith(TAG);
 

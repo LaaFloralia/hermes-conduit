@@ -22,6 +22,7 @@ const isBusy = (a) => Boolean(a.activeTurn || a.pendingPermissions?.length) || !
 export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(), idleCloseMs = 30_000 } = {}) {
   const decisions = new Map();
   const effortCache = new Map();
+  const effortLoads = new Map();
   // What the running daemon advertises. A hard-coded capability would offer an
   // operation this daemon cannot perform.
   let serverFeatures = {};
@@ -152,18 +153,32 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
     /// [{ model, efforts }]: what a running session's effort menu can offer.
     /// The HQ table names the profiles a new session may start with, which is
     /// fewer (Fable and Mythos at High only).
-    efforts: (provider) => call(async (c) => {
+    efforts: (provider) => {
       const cached = effortCache.get(provider);
-      if (cached && now() - cached.at < 60_000) return cached.rows;
-      if (typeof c.listProviderModels !== 'function') return [];
-      const listed = await c.listProviderModels(provider);
-      const rows = (Array.isArray(listed?.models) ? listed.models : [])
-        .map((m) => ({ model: m?.id, efforts: (Array.isArray(m?.thinkingOptions) ? m.thinkingOptions : [])
-          .map((o) => o?.id).filter((id) => typeof id === 'string' && id !== '') }))
-        .filter((row) => typeof row.model === 'string' && row.efforts.length > 0);
-      effortCache.set(provider, { at: now(), rows });
-      return rows;
-    }),
+      if (cached && now() - cached.at < 60_000) return Promise.resolve(cached.rows);
+      let load = effortLoads.get(provider);
+      if (!load) {
+        load = call(async (c) => {
+          if (typeof c.listProviderModels !== 'function') return [];
+          const listed = await c.listProviderModels(provider);
+          return (Array.isArray(listed?.models) ? listed.models : [])
+            .map((m) => ({ model: m?.id, efforts: (Array.isArray(m?.thinkingOptions) ? m.thinkingOptions : [])
+              .map((o) => o?.id).filter((id) => typeof id === 'string' && id !== '') }))
+            .filter((row) => typeof row.model === 'string' && row.efforts.length > 0);
+        }).then((rows) => {
+          effortCache.set(provider, { at: now(), rows });
+          return rows;
+        }).catch(() => {
+          // Keep the last successful answer and back off failed discovery.
+          const rows = cached?.rows ?? [];
+          effortCache.set(provider, { at: now(), rows });
+          return rows;
+        }).finally(() => effortLoads.delete(provider));
+        effortLoads.set(provider, load);
+      }
+      // A refresh must not hold up a menu that already has usable choices.
+      return cached ? Promise.resolve(cached.rows) : load;
+    },
     list: () => call(directory),
     /// Whether Paseo still holds this agent. Only Paseo's own 404 is "gone";
     /// every other failure is "unknown" and must leave the record alone.

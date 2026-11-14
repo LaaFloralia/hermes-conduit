@@ -977,9 +977,9 @@ struct LAALinearTaskEditor: View {
     private func loadOptions(force: Bool = false) async {
         guard force || options == nil else { return }
         optionsFailed = false
-        if let loaded: LAAWorkSessionOptions = try? await bridge.read("/v1/session-options") {
+        if let loaded: LAAWorkSessionOptions = try? await LAAWorkOptionsStore.read(bridge, force: force) {
             options = loaded
-            if profile.isEmpty || !loaded.profiles.contains(where: { $0.id == profile }) {
+            if profile.isEmpty {
                 profile = loaded.defaultProfile.flatMap { id in loaded.profiles.contains { $0.id == id } ? id : nil }
                     ?? loaded.profiles.first?.id ?? ""
             }
