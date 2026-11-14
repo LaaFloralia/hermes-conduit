@@ -278,6 +278,50 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(appState.connectionTimeline?.trigger, "retry on screen, password sign-in")
     }
 
+    func testSuspendedAppLockColdLaunchRetainsPreferenceAndAuthenticatesWithServer() async throws {
+        let (appState, dashboard) = installFaceIDDashboard(savedTicket: nil)
+        appState.appLockPolicy = AppLockPolicy(isEnabled: false)
+        var prompts = 0
+        appState.unlockWithFaceID = { prompts += 1; return false }
+        appState.loadSavedConnection()
+        try await waitUntil {
+            appState.connectionTimeline?.events.contains { $0.label == "Password sign-in and ticket" } == true
+        }
+        XCTAssertEqual(prompts, 0)
+        XCTAssertFalse(appState.isConnected, "An unavailable server must still fail authentication")
+        XCTAssertEqual(appState.savedSignIn(for: dashboard.id), .password)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboard.id)?.requiresFaceID, true)
+    }
+
+    func testSuspendedAppLockSavedDashboardSwitchDoesNotPrompt() async {
+        let (appState, dashboard) = installFaceIDDashboard(savedTicket: nil)
+        appState.appLockPolicy = AppLockPolicy(isEnabled: false)
+        var prompts = 0
+        appState.unlockWithFaceID = { prompts += 1; return false }
+        await appState.switchDashboard(to: dashboard.id)
+        XCTAssertEqual(prompts, 0)
+        XCTAssertFalse(appState.isConnected)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboard.id)?.requiresFaceID, true)
+    }
+
+    func testSuspendedAppLockForegroundRetryDoesNotPrompt() async throws {
+        let (appState, dashboard) = installFaceIDDashboard(savedTicket: nil)
+        appState.appLockPolicy = AppLockPolicy(isEnabled: false)
+        var away = true
+        var prompts = 0
+        appState.phoneScreenIsAway = { away }
+        appState.unlockWithFaceID = { prompts += 1; return false }
+        appState.showLogin = true
+        away = false
+        appState.handleScenePhase(.background)
+        appState.handleScenePhase(.active)
+        try await waitUntil {
+            appState.connectionTimeline?.events.contains { $0.label == "Password sign-in and ticket" } == true
+        }
+        XCTAssertEqual(prompts, 0)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboard.id)?.requiresFaceID, true)
+    }
+
     private func installFaceIDDashboard(savedTicket: String?) -> (AppState, SavedDashboard) {
         // Loopback port 1: nothing listens, so no request leaves the host.
         let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
@@ -295,6 +339,7 @@ extension AppStateForegroundLifecycleTests {
                 dashboardID: dashboard.id
             )
         }
+        appState.appLockPolicy = AppLockPolicy(isEnabled: true)
         appState.unlockWithFaceID = { false }
         return (appState, dashboard)
     }
