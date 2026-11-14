@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { BridgeError } from '../src/errors.mjs';
+import { delegationError } from '../src/sessions/adapter.mjs';
 import { sessionTitle } from '../src/sessions/service.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -647,7 +648,7 @@ test('a project instruction body is composed into the delegated prompt and recor
   assert.equal(session.instructionsApplied, true);
 
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
-  assert.equal(create.title, `${project.name}｜${session.name}`, 'the Paseo title names project and session');
+  assert.equal(create.title, sessionTitle(session.name), 'the app and daemon use the same composed name');
   const prompt = create.task.prompt;
   const header = `<project_instructions project="${project.id}" version="1" hash="${project.instructionHash}">`;
   assert.ok(prompt.startsWith(header), prompt.slice(0, 120));
@@ -678,22 +679,13 @@ test('a project instruction body is composed into the delegated prompt and recor
   assert.equal(decodedText(leaked.body.data.items).includes(body), true, 'a leaked body must be detected');
 });
 
-test('a long project name is cut to the delegation title limit', async (t) => {
+test('explicit session names are not prefixed with a long project name', async (t) => {
   const ctx = await boot(t);
-  const longName = 'あ'.repeat(80);
-  const project = await createProject(ctx, { name: longName, instructions: 'Always answer in Japanese.' }, 'k-title-long');
-  const created = await createSession(
-    ctx,
-    { requestId: 'req-title-long', projectId: project.id, name: '確認' },
-    'k-title-long-1',
-  );
+  const project = await createProject(ctx, { name: 'あ'.repeat(80), instructions: 'Japanese.' }, 'k-title-long');
+  const created = await createSession(ctx, { requestId: 'req-title-long', projectId: project.id, name: '確認' }, 'k-title-long-1');
   assert.equal(created.status, 201);
-  const create = ctx.adapter.calls.find((call) => call.op === 'create');
-  const bytes = Buffer.byteLength(create.title, 'utf8');
-  assert.ok(bytes <= 200, `title is ${bytes} bytes, over the delegation limit`);
-  assert.ok(bytes > 190, 'the title should use most of the budget');
-  assert.ok(create.title.startsWith('あ'));
-  assert.equal(created.body.data.name, '確認', 'the session name itself is not truncated');
+  assert.equal(ctx.adapter.calls.find((call) => call.op === 'create').title, '確認');
+  assert.equal(created.body.data.name, '確認');
 });
 
 test('the delegation title is one line without control or format characters', async (t) => {
@@ -728,9 +720,9 @@ test('a title whose first grapheme exceeds the budget is refused before delegati
   assert.throws(() => sessionTitle(name), { status: 400, code: 'payload_invalid' }, 'the helper must not return an empty title');
 
   const project = await createProject(ctx, { name, instructions: 'Always answer in Japanese.' }, 'k-title-cluster');
-  const created = await createSession(ctx, { requestId: 'req-title-cluster', projectId: project.id }, 'k-title-cluster-1');
+  const created = await createSession(ctx, { requestId: 'req-title-cluster', projectId: project.id, name }, 'k-title-cluster-1');
   assert.equal(created.status, 400);
-  assert.equal(created.body.error.code, 'payload_invalid');
+  assert.equal(created.body.error.code, 'payload_too_large');
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 0, 'no agent may be started');
 });
 
@@ -832,7 +824,7 @@ test('a legacy instructionRef record is never applied', async (t) => {
   assert.equal(created.body.data.instructionVersion, null);
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
   assert.equal(create.task.prompt, 'Reply with the single word ok.');
-  assert.equal(create.title, `${legacy.name}｜${created.body.data.name}`);
+  assert.equal(create.title, created.body.data.name);
 });
 
 test('a retry of a record created before instructions still reconciles', async (t) => {
@@ -1052,4 +1044,36 @@ test('a create that never finished runs again under the same key once the in-fli
   const replay = await createSession(ctx);
   assert.equal(replay.body.data.id, again.body.data.id);
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
+});
+
+
+test('initial instruction is private, exact, persisted across restart and independent of later history', async (t) => {
+  const ctx = await boot(t);
+  const prompt = '  LAAアプリについて、会話名を整理してください。\n最初の依頼の全文。  ';
+  const created = await createSession(ctx, { name: undefined, prompt });
+  assert.equal(created.status, 201);
+  const id = created.body.data.id;
+  assert.match(created.body.data.name, /^Work｜/);
+  assert.ok(!JSON.stringify(created.body).includes('最初の依頼の全文'));
+  const path = `/v1/sessions/${id}/initial-instruction`;
+  assert.equal((await ctx.bridge.request(path)).status, 401);
+  const first = await ctx.bridge.request(path, { token: ctx.token });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.data.instruction.text, prompt);
+  const call = ctx.adapter.calls.find((item) => item.op === 'create');
+  assert.equal(call.title, created.body.data.name);
+  assert.ok(call.task.prompt.includes(prompt.trim()));
+  assert.equal(call.profile, 'deepseek-flash-high');
+  await ctx.bridge.restart();
+  const again = await ctx.bridge.request(path, { token: ctx.token });
+  assert.deepEqual(again.body.data.instruction, first.body.data.instruction);
+});
+
+test('delegation permission refusals preserve the explicit 403 reason', () => {
+  for (const code of ['worker_bypass_forbidden', 'paseo_subagent_entry_required']) {
+    const error = delegationError(code);
+    assert.equal(error.status, 403);
+    assert.equal(error.code, code);
+    assert.ok(error.message.includes(code));
+  }
 });

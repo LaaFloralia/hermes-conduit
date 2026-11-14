@@ -806,3 +806,21 @@ test('each reply is named with the model the Bridge saw while it was written; a 
     seenAt: iso(21), byOwner: false,
   });
 });
+
+test('an ACP first-turn receipt is saved once even when its provider has no user history', async (t) => {
+  const dir=mkdtempSync(join(tmpdir(),'first-receipt-'));
+  const old=process.env.LAA_SESSION_NAMING_STATE;process.env.LAA_SESSION_NAMING_STATE=dir;
+  t.after(()=>{if(old===undefined)delete process.env.LAA_SESSION_NAMING_STATE;else process.env.LAA_SESSION_NAMING_STATE=old;rmSync(dir,{recursive:true,force:true});});
+  const agentId='cccccccc-cccc-cccc-cccc-cccccccccccc';
+  mkdirSync(join(dir,'instructions'));const file=join(dir,'instructions',`${agentId}.json`);
+  writeFileSync(file,JSON.stringify({text:'最初の全文\n二行目'}),{mode:0o600});
+  const f=fixture();f.rows[0].id=agentId;
+  const store=createSessionStore({file:join(dir,'sessions.json')});
+  const service=createSessionService({sessionStore:store,daemon:f.daemon,adapter:{},findWorkspace:async()=>null,notify:async()=>{}});
+  await service.listSessions();const id=daemonSessionID(agentId);
+  const first=await service.initialInstruction(id);
+  assert.deepEqual(first,{text:'最初の全文\n二行目',createdAt:f.rows[0].createdAt,source:'Work'});
+  truncateSync(file,0);
+  assert.deepEqual(await service.initialInstruction(id),first);
+  assert.deepEqual(store.get(id).initialInstruction,first);
+});
