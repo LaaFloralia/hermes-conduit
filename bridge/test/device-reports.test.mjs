@@ -29,6 +29,9 @@ test('device reports: a diagnostic is kept once per device, 0600, newest kept', 
   assert.equal(saved.deviceId, deviceDir);
   assert.equal(saved.appVersion, '1.0 (2611150800)');
   assert.deepEqual(saved.payload, crash(1));
+  assert.equal(saved.kind, 'diagnostics');
+  const metrics = await api.request('/v1/device-reports', { method: 'POST', token, body: report(9, { kind: 'metrics', name: 'metrics-1-2-9.json' }) });
+  assert.equal(metrics.status, 201);
 });
 
 test('device reports: bad bodies, scope and authentication', async (t) => {
@@ -37,7 +40,7 @@ test('device reports: bad bodies, scope and authentication', async (t) => {
   const token = await api.token(['sessions:read', 'sessions:write']);
   const readOnly = await api.token(['sessions:read']);
   for (const [body, code] of [
-    [report(2, { kind: 'metrics' }), 'kind_invalid'],
+    [report(2, { kind: 'logs' }), 'kind_invalid'],
     [report(2, { name: '../x.json' }), 'name_invalid'],
     [report(2, { appVersion: 'a/b' }), 'app_version_invalid'],
     [report(2, { payload: [1] }), 'payload_invalid'],

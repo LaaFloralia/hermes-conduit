@@ -121,7 +121,7 @@ struct MetricKitReportStore {
     }
 
 #if LAA_BUILD
-    /// Diagnostics already handed to the paired Mac, one file name a line,
+    /// Reports already handed to the paired Mac, one file name a line,
     /// beside the reports (not a report: `entry(for:)` reads only .json).
     static let sentListName = "bridge-sent.txt"
 
@@ -133,7 +133,7 @@ struct MetricKitReportStore {
     /// Records names as sent, dropping those whose report was pruned.
     func markDiagnosticsSent(_ names: [String]) {
         guard !names.isEmpty else { return }
-        let present = Set(entries(.diagnostics).map(\.url.lastPathComponent))
+        let present = Set(MetricKitReportKind.allCases.flatMap { entries($0) }.map(\.url.lastPathComponent))
         let kept = sentDiagnosticNames().union(names).intersection(present)
         do {
             try prepareDirectory()
@@ -584,9 +584,11 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
     }
 
 #if LAA_BUILD
-    /// Hands each stored diagnostic to the paired Mac once
+    /// Hands each stored report to the paired Mac once
     /// (`LAADeviceReportUpload`): a crash report reaches the Mac on the next
-    /// launch without the owner sharing anything. Only touched on `queue`.
+    /// launch without the owner sharing anything, and a day's metrics carry
+    /// why the app ended (memory limit, watchdog, bad access), which no crash
+    /// report shows. Only touched on `queue`.
     private var sender: (@Sendable (_ name: String, _ json: Data) async -> Bool)?
     private var sending = false
 
@@ -602,7 +604,7 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
     private func sendPendingDiagnostics() {
         guard let sender, !sending else { return }
         let sent = store.sentDiagnosticNames()
-        let items: [(String, Data)] = store.entries(.diagnostics)
+        let items: [(String, Data)] = (store.entries(.diagnostics) + store.entries(.metrics))
             .filter { !sent.contains($0.url.lastPathComponent) }
             .compactMap { entry in (try? Data(contentsOf: entry.url)).map { (entry.url.lastPathComponent, $0) } }
         guard !items.isEmpty else { return }
@@ -629,7 +631,7 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
             store.save(payload.jsonRepresentation(), kind: .diagnostics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
         }
 #if LAA_BUILD
-        if !diagnostics.isEmpty { sendPendingDiagnostics() }
+        if !diagnostics.isEmpty || !metrics.isEmpty { sendPendingDiagnostics() }
 #endif
     }
 }

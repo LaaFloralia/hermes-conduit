@@ -1,5 +1,7 @@
-// MetricKit diagnostics a device hands the Mac: crash, hang, launch and
-// resource-exception reports with their call stacks, as iOS wrote them.
+// MetricKit reports a device hands the Mac: crash, hang, launch and
+// resource-exception diagnostics with their call stacks, and each day's
+// metrics (which carry why the app ended: memory limit, watchdog), as iOS
+// wrote them.
 //
 // TestFlight's crash feed needs the tester to tap "Share", and often stays
 // empty; MetricKit hands the app its own crash report on the next launch.
@@ -7,7 +9,7 @@
 // state (0600, per device, newest few dozen) so a crash can be read from the
 // Mac with its stack. Nothing leaves the Mac from here.
 //
-// The body is `{kind: "diagnostics", name, appVersion, payload}`. The file
+// The body is `{kind: "diagnostics" | "metrics", name, appVersion, payload}`. The file
 // is named by the payload's content hash, so sending the same report twice
 // stores it once and reports `stored: false`.
 import { createHash } from 'node:crypto';
@@ -39,7 +41,7 @@ export function deviceReportRoutes({ dir, now = () => Date.now(), kept = DEVICE_
 
   function post({ device, rawBody }) {
     const body = parseObjectBody(rawBody);
-    if (body.kind !== 'diagnostics') throw badRequest('kind_invalid', 'only diagnostics are accepted');
+    if (!['diagnostics', 'metrics'].includes(body.kind)) throw badRequest('kind_invalid', 'kind is diagnostics or metrics');
     if (typeof body.name !== 'string' || !NAME.test(body.name)) throw badRequest('name_invalid', 'name is not a report file name');
     if (body.appVersion !== undefined && (typeof body.appVersion !== 'string' || !VERSION.test(body.appVersion))) {
       throw badRequest('app_version_invalid', 'appVersion is not a version');
@@ -58,6 +60,7 @@ export function deviceReportRoutes({ dir, now = () => Date.now(), kept = DEVICE_
       receivedAt: new Date(now()).toISOString(),
       deviceId: device.id,
       platform: device.platform ?? null,
+      kind: body.kind,
       appVersion: body.appVersion ?? null,
       name: body.name,
       payload: body.payload,

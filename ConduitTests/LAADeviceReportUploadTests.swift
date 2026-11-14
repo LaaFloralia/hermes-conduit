@@ -75,6 +75,8 @@ final class LAADeviceReportUploadTests: XCTestCase {
         let payload = try XCTUnwrap(object["payload"] as? [String: Any])
         XCTAssertNotNil(payload["crashDiagnostics"])
         XCTAssertNil(LAADeviceReportUpload.body(name: "x.json", json: Data("[1]".utf8)))
+        let metrics = try XCTUnwrap(LAADeviceReportUpload.body(name: "metrics-1-2-abc.json", json: crash(8), appVersion: "1.0 (1)"))
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: metrics) as? [String: Any])?["kind"] as? String, "metrics")
     }
 }
 #endif
