@@ -1015,3 +1015,20 @@ test('a favourite on a workspace session is written to Paseo, and a refused pin 
   const after = await ctx.bridge.request(`/v1/sessions/${created.id}`, { token: ctx.token });
   assert.equal(after.body.data.favorite, true, 'a refused pin leaves the row as it was');
 });
+
+// 2026-11-14: under heavy load the wrapper's caller check timed out, the create
+// answered 503 delegation_unavailable, and the app's same-key retry met
+// idempotency_outcome_unknown for good. Nothing had run, so the key is freed.
+test('a create the delegation path could not start can run again with the same key', async (t) => {
+  const ctx = await boot(t);
+  ctx.adapter.unavailable = true;
+  const refused = await createSession(ctx);
+  assert.equal(refused.status, 503);
+  assert.equal(refused.body.error.code, 'delegation_unavailable');
+  ctx.adapter.unavailable = false;
+  const again = await createSession(ctx);
+  assert.equal(again.status, 201, JSON.stringify(again.body));
+  assert.equal(again.body.data.requestId, 'req-1');
+  const replay = await createSession(ctx);
+  assert.equal(replay.body.data.id, again.body.data.id);
+});
