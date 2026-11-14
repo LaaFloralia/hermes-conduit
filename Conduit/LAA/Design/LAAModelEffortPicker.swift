@@ -8,13 +8,9 @@ import SwiftUI
 /// and Chat's composer all use it, so the four read and press alike.
 ///
 /// The model name gives way whole when the row is narrow (the face stays,
-/// never "M…"); the effort never does. Standing shows on the glass, not in
-/// colour (LAAFinish): Fable, Astra and XHigh carry one fine tan line on the
-/// rim, Mythos and Max two. When a value this control asked for is applied,
-/// its capsule moves once, briefly (LAACeremony): a short light runs round
-/// the rim (tan on the paper, white on the dark glass) and is gone, or leaves
-/// the metal lines behind it for a ranked value. Every value may be unknown, and reads 「不明」, never a guess, and
-/// never moves.
+/// never "M…"); the effort never does. A violet tint settles inside the
+/// glass: Mythos strongest, Fable and Astra next, XHigh and Max in two steps.
+/// Applied changes spread the colour once. Unknown and stale values stay plain.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
 ///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
@@ -145,7 +141,7 @@ struct LAAModelCapsule: View {
     }
 
     /// The capsule at rest (`elapsed` nil) or that far into its movement: the
-    /// glass with its finish's metal lines, and the light of the one movement.
+    /// glass with its internal colour, spreading once after a choice.
     /// Internal so a capture can hold a moment of it.
     func face(elapsed: Double?) -> some View {
         row
@@ -154,12 +150,8 @@ struct LAAModelCapsule: View {
             .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
             .contentShape(Capsule())
-            .conduitGlassControl(cornerRadius: LAAPickerMetrics.radius, interactive: true)
-            .overlay {
-                LAARimFinish(look: LAARimLook(finish: rank.finish, motion: LAACeremony.motion(rank: rank),
-                                              elapsed: elapsed),
-                             cornerRadius: LAAPickerMetrics.radius)
-            }
+            .laaLiquidSelection(finish: rank.finish, elapsed: elapsed,
+                                cornerRadius: LAAPickerMetrics.radius)
     }
 
     private var row: some View {
@@ -220,8 +212,8 @@ struct LAAModelCapsule: View {
 }
 
 /// The effort capsule: the meter and its name, or 「不明」, and the chevron.
-/// XHigh and Max carry their metal lines on the rim; when an effort this
-/// control asked for is applied, the meter's ticks rise and the rim moves once
+/// XHigh and Max carry colour inside the glass; after a requested change,
+/// the meter rises and the colour spreads once
 /// (LAAEffortLook).
 struct LAAEffortCapsule: View {
     let effort: String?
@@ -261,13 +253,8 @@ struct LAAEffortCapsule: View {
         .padding(.leading, LAASpacing.x3).padding(.trailing, LAASpacing.x3)
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
-        .conduitGlassControl(cornerRadius: LAAPickerMetrics.radius, interactive: true)
-        .overlay {
-            if let ranked {
-                LAARimFinish(look: LAAEffortLook(effort: ranked, current: current, elapsed: elapsed).rim,
-                             cornerRadius: LAAPickerMetrics.radius)
-            }
-        }
+        .laaLiquidSelection(finish: current ? LAAEffort.finish(ranked) : .plain,
+                            elapsed: current ? elapsed : nil, cornerRadius: LAAPickerMetrics.radius)
     }
 }
 

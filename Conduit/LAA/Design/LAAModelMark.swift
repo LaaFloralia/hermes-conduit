@@ -168,45 +168,13 @@ enum LAAModelInk {
     static let geminiDisc = Color(red: 0.92, green: 0.94, blue: 1.0)
     static let grokDisc = Color(red: 0.06, green: 0.06, blue: 0.07)
 }
-/// A model's standing in a menu row. The system draws the row's text in one
-/// ink, so a ranked model carries a small figure of its capsule's finish at
-/// the row's end: one tan ring for Fable and Astra, two for Mythos, nothing
-/// filled; other models carry nothing.
+/// The menu keeps the provider mark and the model name; standing is shown
+/// by the selected glass control, without ring ornaments in the list.
 enum LAAModelMenu {
-    static let iconSize: CGFloat = 16
-
-    @MainActor
-    static func icon(model: String?, scheme: ColorScheme, scale: CGFloat) -> Image? {
-        let finish = LAAModelRank.of(model).finish
-        guard finish != .plain else { return nil }
-        let rings = ZStack {
-            Circle().inset(by: 0.5).stroke(LAAColor.decorativeTan, lineWidth: 1)
-            if finish == .double {
-                Circle().inset(by: LAARimFinish.innerInset + 0.5).stroke(LAAColor.decorativeTan, lineWidth: 1)
-            }
-        }
-        .frame(width: iconSize, height: iconSize)
-        .environment(\.colorScheme, scheme)
-        let renderer = ImageRenderer(content: rings)
-        renderer.scale = scale
-        return renderer.uiImage.map { Image(uiImage: $0.withRenderingMode(.alwaysOriginal)) }
-    }
-
-    /// A model row's name, with the finish's rings when the model has them. The
-    /// current value's row keeps the system's check instead.
     struct Name: View {
         let label: String
         let model: String?
-        @Environment(\.colorScheme) private var scheme
-        @Environment(\.displayScale) private var scale
-
-        var body: some View {
-            if let icon = LAAModelMenu.icon(model: model, scheme: scheme, scale: scale) {
-                Label { Text(verbatim: label) } icon: { icon }
-            } else {
-                Text(verbatim: label)
-            }
-        }
+        var body: some View { Text(verbatim: label) }
     }
 }
 #endif

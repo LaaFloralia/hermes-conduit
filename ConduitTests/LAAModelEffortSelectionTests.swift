@@ -117,137 +117,44 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(C.efforts(current: nil), LAAEffort.order)
     }
 
-    // MARK: - Standing and the one movement (owner, 2026-11-14: no colour, glass and a quiet light)
-
-    func testStandingIsTheNumberOfMetalLinesNotAColour() {
-        XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").finish, .double)
-        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2[1m]").finish, .line)
-        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").finish, .line)
-        for plain in ["claude-opus-5-5", "claude-sonnet-5-5", "gpt-6.1-sol", "gpt-6.1-terra",
-                      #"["opencode-go","deepseek-v4.1-flash"]"#, "laa-router"] {
-            XCTAssertEqual(LAAModelRank.of(plain).finish, .plain, plain)
-        }
+    func testModelAndEffortUseTwoStrengthsOfGlassTint() {
+        XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").finish, .intense)
+        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").finish, .tinted)
+        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").finish, .tinted)
         XCTAssertEqual(LAAModelRank.of(nil).finish, .plain)
-        XCTAssertEqual(["low", "medium", "high", "xhigh", "max"].map { LAAEffort.finish($0).lines }, [0, 0, 0, 1, 2])
-        XCTAssertEqual(LAAEffort.finish("minimal"), .plain)
-        XCTAssertEqual(LAAEffort.finish(nil), .plain)
-        XCTAssertTrue(LAAFinish.plain < .line && LAAFinish.line < .double)
-    }
-
-    func testEachMovementIsOneOfTheHouseDurations() {
-        XCTAssertEqual(LAAEffort.order.compactMap { LAACeremony.motion(effort: $0) },
-                       [.pass(turn: 0.5), .pass(turn: 0.75), .pass(turn: 1), .trace, .trace])
-        XCTAssertEqual(LAAEffort.order.compactMap { LAACeremony.motion(effort: $0)?.turn }, [0.5, 0.75, 1, 1, 1],
-                       "the light runs further the deeper the effort")
-        XCTAssertEqual(LAAEffort.order.map { LAACeremony.duration(effort: $0) }, [0.22, 0.30, 0.42, 0.42, 0.42])
-        XCTAssertNil(LAACeremony.motion(effort: "minimal"), "an effort outside the five never moves")
-        XCTAssertEqual(LAACeremony.duration(effort: "minimal"), 0)
-        XCTAssertEqual(LAACeremony.motion(rank: .none), .pass(turn: 1), "a model without a finish still moves: a whole turn")
-        for rank in [LAAModelRank.mythos, .fable, .astra] {
-            XCTAssertEqual(LAACeremony.motion(rank: rank), .trace)
-            XCTAssertEqual(LAACeremony.duration(rank: rank), 0.42)
-        }
-        XCTAssertEqual(LAACeremony.duration(rank: .none), 0.42)
-    }
-
-    func testTheRimRestsWithItsLinesAndNoLight() {
-        for finish in [LAAFinish.plain, .line, .double] {
-            for motion in [LAACeremony.Motion.pass(turn: 0.5), .pass(turn: 0.75), .pass(turn: 1), .trace] {
-                for elapsed in [nil, LAACeremony.duration(motion), 5] as [Double?] {
-                    let look = LAARimLook(finish: finish, motion: motion, elapsed: elapsed)
-                    XCTAssertFalse(look.live)
-                    XCTAssertEqual(look.outer, finish.lines >= 1 ? 1 : 0)
-                    XCTAssertEqual(look.inner, finish.lines >= 2 ? 1 : 0)
-                    XCTAssertNil(look.light, "no light at rest")
-                    XCTAssertEqual(look.lightOpacity, 0)
-                    XCTAssertTrue(look.trail.isEmpty)
-                }
-            }
+        XCTAssertEqual(LAAEffort.finish("high"), .plain)
+        XCTAssertEqual(LAAEffort.finish("xhigh"), .tinted)
+        XCTAssertEqual(LAAEffort.finish("max"), .intense)
+        XCTAssertEqual(LAAEffort.name("ultracode"), "Ultra Code")
+        for dark in [false, true] {
+            let regular = LAALiquidLook(finish: .tinted).opacity(dark: dark)
+            let strong = LAALiquidLook(finish: .intense).opacity(dark: dark)
+            XCTAssertGreaterThan(strong, regular)
+            XCTAssertGreaterThan(regular, 0)
+            XCTAssertLessThan(strong, 0.5, "glass remains translucent")
         }
     }
 
-    func testATraceDrawsTheLinesBehindTheLightOnce() {
-        var lastOuter = -1.0, lastInner = -1.0
-        for step in 0..<42 {
-            let look = LAARimLook(finish: .double, motion: .trace, elapsed: Double(step) / 100)
-            XCTAssertTrue(look.live)
-            guard let light = look.light else { return XCTFail("a trace has its light at \(step)") }
-            XCTAssertEqual(look.outer, light.upperBound, accuracy: 1e-9, "the outer line ends at the light's head")
-            XCTAssertLessThanOrEqual(light.upperBound - light.lowerBound, LAACeremony.lightLength + 1e-9)
-            XCTAssertLessThanOrEqual(look.inner, look.outer + 1e-9, "the inner line follows")
-            XCTAssertGreaterThanOrEqual(look.outer, lastOuter)
-            XCTAssertGreaterThanOrEqual(look.inner, lastInner)
-            XCTAssertLessThanOrEqual(look.lightOpacity, 1)
-            lastOuter = look.outer; lastInner = look.inner
+    func testColourSettlesAfterOneSpreadAndNeverMarksAnUnknownValue() {
+        let start = LAALiquidLook(finish: .intense, elapsed: 0)
+        let middle = LAALiquidLook(finish: .intense, elapsed: 0.21)
+        let end = LAALiquidLook(finish: .intense, elapsed: 0.42)
+        XCTAssertLessThan(start.spread, middle.spread)
+        XCTAssertGreaterThan(middle.bloom, 0.9)
+        XCTAssertEqual(end.bloom, 0)
+        XCTAssertEqual(end.opacity(dark: false), LAALiquidLook(finish: .intense).opacity(dark: false))
+        for t in [0.0, 0.1, 0.3, 0.42] {
+            XCTAssertEqual(LAALiquidLook(finish: .plain, elapsed: t).opacity(dark: true), 0)
         }
-        XCTAssertGreaterThan(lastOuter, 0.99, "the light has gone all the way round by the end")
-        let mid = LAARimLook(finish: .line, motion: .trace, elapsed: 0.2)
-        XCTAssertEqual(mid.inner, 0, "a single line has no inner line")
-        XCTAssertEqual(mid.lightOpacity, 1)
-    }
-
-    /// Every standing moves on either ground (no breath that the paper hides):
-    /// a pass runs its share of the rim and leaves nothing.
-    func testAPassRunsItsShareOfTheRimAndLeavesNothing() {
-        for (effort, turn) in [("low", 0.5), ("medium", 0.75), ("high", 1.0)] {
-            guard let motion = LAACeremony.motion(effort: effort) else { return XCTFail(effort) }
-            let duration = LAACeremony.duration(motion)
-            var lastHead = -1.0
-            for step in 0..<20 {
-                let look = LAARimLook(finish: .plain, motion: motion, elapsed: duration * Double(step) / 20)
-                let head = look.head ?? -1
-                XCTAssertGreaterThanOrEqual(head, lastHead, effort)
-                XCTAssertLessThanOrEqual(head, turn + 1e-9, effort)
-                XCTAssertEqual(look.outer, 0, "\(effort) leaves no line")
-                lastHead = head
-            }
-            XCTAssertGreaterThan(lastHead, turn - 0.02, "\(effort) has run its share by the end")
-            let mid = LAARimLook(finish: .plain, motion: motion, elapsed: duration * 0.4)
-            XCTAssertEqual(mid.lightOpacity, 1, "\(effort) is fully lit mid-way")
-            XCTAssertFalse(mid.trail.isEmpty, "\(effort) shows its light")
-            XCTAssertNil(LAARimLook(finish: .plain, motion: motion, elapsed: duration).light, "\(effort) is gone at the end")
-        }
-    }
-
-    /// The light is dense at its head and gone at its tail, in solid steps.
-    func testTheTrailFadesFromItsHead() throws {
-        let look = LAARimLook(finish: .plain, motion: .pass(turn: 1), elapsed: 0.2)
-        let head = try XCTUnwrap(look.head)
-        let trail = look.trail
-        XCTAssertEqual(trail.count, LAACeremony.trail.count)
-        XCTAssertEqual(trail.first?.span.upperBound ?? -1, head, accuracy: 1e-9, "the densest step is at the head")
-        XCTAssertEqual(trail.first?.strength ?? 0, 1, accuracy: 1e-9)
-        for (a, b) in zip(trail, trail.dropFirst()) {
-            XCTAssertGreaterThan(a.strength, b.strength, "each step back is fainter")
-            XCTAssertEqual(a.span.lowerBound, b.span.upperBound, accuracy: 1e-9, "the steps meet")
-        }
-        XCTAssertEqual(head - (trail.last?.span.lowerBound ?? 0), LAACeremony.lightLength, accuracy: 1e-9)
-        XCTAssertLessThan(trail.last?.strength ?? 1, 0.2, "the tail all but vanishes")
-        let start = LAARimLook(finish: .plain, motion: .pass(turn: 1), elapsed: 0.01).trail
-        XCTAssertTrue(start.allSatisfy { $0.span.lowerBound >= 0 }, "the trail never runs back past the leading end")
-    }
-
-    func testTheLightSetsOffFromTheLeadingEndOverTheTop() {
-        let rect = CGRect(x: 0, y: 0, width: 140, height: 36)
-        let rim = LAARimPath(cornerRadius: 18, inset: 0.5).path(in: rect)
-        let start = rim.trimmedPath(from: 0, to: 0.005).boundingRect
-        XCTAssertLessThan(start.midX, 2, "at the leading end")
-        XCTAssertEqual(start.midY, rect.midY, accuracy: 1.5, "at its middle")
-        let soon = rim.trimmedPath(from: 0.15, to: 0.16).boundingRect
-        XCTAssertLessThan(soon.midY, 2, "then along the top")
-        let half = rim.trimmedPath(from: 0.49, to: 0.51).boundingRect
-        XCTAssertGreaterThan(half.midX, rect.maxX - 2, "half way round is the trailing end")
-        let inner = LAARimPath(cornerRadius: 18, inset: LAARimFinish.innerInset + 0.5).path(in: rect).boundingRect
-        XCTAssertEqual(inner.minX, 4.5, accuracy: 0.01, "the inner line sits a spacing step inside")
     }
 
     func testTheMeterIsInkAndRisesWithinItsMovement() {
         let rest = LAAEffortLook(effort: "max")
         XCTAssertEqual(rest.level, 5)
         XCTAssertEqual((0..<5).map { rest.tickScale($0) }, [1, 1, 1, 1, 1])
-        XCTAssertEqual(LAAEffortLook(effort: "xhigh").rim.finish, .line)
-        XCTAssertEqual(LAAEffortLook(effort: "max").rim.finish, .double)
-        XCTAssertEqual(LAAEffortLook(effort: "max", current: false).rim.finish, .plain, "a last-confirmed value has no finish")
+        XCTAssertEqual(LAAEffortLook(effort: "xhigh").finish, .tinted)
+        XCTAssertEqual(LAAEffortLook(effort: "max").finish, .intense)
+        XCTAssertEqual(LAAEffortLook(effort: "max", current: false).finish, .plain, "a last-confirmed value has no finish")
         XCTAssertNil(LAAEffortLook(effort: "low").tick(1), "Low fills one tick")
         let rising = LAAEffortLook(effort: "max", elapsed: 0.05)
         XCTAssertLessThan(rising.tickScale(4), rising.tickScale(0), "one after another")
