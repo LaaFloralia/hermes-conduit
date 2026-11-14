@@ -53,10 +53,10 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       if (Object.entries(normalized).some(([k, v]) => JSON.stringify(r[k]) !== JSON.stringify(v))) return false;
       if (r.status !== 'answered') return r.answer === null && r.delivery === null;
       const a = r.answer, d = r.delivery;
-      if (!a || !d || !validTime(a.answeredAt) || !['pending', 'delivered', 'failed', 'stored'].includes(d.state)
+      if (!a || !d || !validTime(a.answeredAt) || !['pending', 'delivered', 'failed', 'stored', 'gone'].includes(d.state)
         || !Number.isSafeInteger(d.attempts) || d.attempts < 1 || d.messageId !== `${r.id}:answer:${d.attempts}`
         || (d.state === 'delivered' ? !validTime(d.deliveredAt) : d.deliveredAt !== null)
-        || (d.state === 'failed' ? text(d.error, 'error', 80) !== d.error : d.error !== null)
+        || (['failed', 'gone'].includes(d.state) ? text(d.error, 'error', 80) !== d.error : d.error !== null)
         // `waiting` holds an accepted answer for a busy conversation; only a pending delivery may carry it.
         || (d.waiting !== undefined && (d.state !== 'pending' || d.waiting !== true))
         || (d.waitingSince !== undefined && (d.state !== 'pending' || !validTime(d.waitingSince)))
@@ -135,6 +135,14 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     withdraw(id, reason) {
       text(reason, 'reason', 200); // A reason is required; no extra conversation text is retained.
       return mutate((s) => { const r = find(s, id); if (r.status === 'withdrawn') return r; if (r.status !== 'open') throw conflict('decision_closed', 'decision is already closed'); r.status = 'withdrawn'; r.updatedAt = stamp(); return r; });
+    },
+    // The conversation that asked is gone: its saved answer can never be
+    // delivered, so it leaves the board and a retry is refused (owner, 2026-11-14).
+    retire(id, reason) {
+      text(reason, 'reason', 80);
+      return mutate((s) => { const r = find(s, id); const d = r.delivery;
+        if (r.status !== 'answered' || d?.state !== 'failed') return r;
+        Object.assign(d, { state: 'gone', error: reason, deliveredAt: null }); r.updatedAt = stamp(); return r; });
     },
     reserve: (id, deviceId, body, retry = false) => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry)),
     settle(id, messageId, state, error = null) {

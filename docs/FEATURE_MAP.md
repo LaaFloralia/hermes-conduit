@@ -1091,7 +1091,13 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 - An answer to a conversation that is still working is held, not failed (owner, 2026-11-13: 「decisionが送信エラー
   多発」): the Bridge keeps it `pending` with `waiting: true` and delivers it itself when that turn ends. The board
   keeps the row and reads 「会話が空き次第、自動で届けます」 with no 「届け直す」 and no attention colour; 「届いていません」
-  is only for an archived or missing conversation, a stopped Paseo, an unconfirmed send or a wait that expired.
+  is only for a stopped Paseo, an unconfirmed send or a wait that expired.
+- A decision whose asker is gone leaves the board on its own (owner, 2026-11-14: 「もうその判断はないはずなのに、
+  これが残ってしまう」): an open record past its deadline, or whose conversation Paseo reports archived or missing,
+  is withdrawn; a saved answer whose conversation is archived or missing turns `delivery.state: "gone"` instead of
+  failed, with no 「届いていません」 notice, and `/retry` refuses it (`decision_closed`). Paseo being unreachable is
+  not proof of either. The app drops a withdrawn or gone record from the board whenever it reads one. A short Paseo
+  id given to `decide add` is resolved to the one full id it names, so delivery can find the conversation.
 
 **Owner check on the device**
 - Open a production-sized decision and write the answer in 「選択肢以外で答える」 without tapping any card; it should reach the conversation that asked and leave the board.
@@ -1102,7 +1108,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-13, 8ab12bb9 and f4908ecf (laa/chat-ui-layout): busy conversations hold the answer and the Bridge delivers it after the turn (bridge decisions tests 25, production record J13 delivered by the Bridge after three failed sends); the app's waiting line and copy (LAADecisionTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
+**Checked:** 2026-11-14, laa/app-final: a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
 
 ## Voice beside the tabs
 
@@ -2451,6 +2457,11 @@ background · a failed sync's retry · the backoff itself
 - Someone waiting by voice skips the backoff but keeps its count, so one request after another against a gateway that is down doesn't reset it (#1060).
 - The path change's ping of an open socket waits while a large frame (a picture) is still being written: its pings can't be answered in time and would close a working socket. A path that really died fails the write (2026-10-25, #1268).
 - A call's request to Hermes made while Conduit is off screen (CarPlay, a locked phone, a Watch call, a call from Hermes; every voice mode, spoken approvals and answers included) first pings a socket that has been quiet 30 s, as the phone coming on screen does: iOS may have held Conduit suspended until the car or the call woke it, and a socket that died then still looks open. Starting, titling and cancelling a call's jobs count, and so does asking whether a chat is busy before its turn. One that doesn't answer in a keepalive ping's 10 s (a relayed path can be slow off screen without being dead) is closed and the request waits for the reconnect, as after any drop. Before, GPT-Live started from CarPlay ran (it starts over HTTP) while every request it handed Hermes waited on the dead socket until it timed out (2026-10-27, #1382, from #1362).
+
+- LAA build: a reconnect to the same server no longer waits for the Bot Mode roster before the chat sync when this process
+  already holds a verified roster; the fresh read runs beside the sync (owner, 2026-11-14: 「チャット画面に行った時に
+  最初の読み込み速度が遅い」; Mac timeline before: roster 3.24 s of 5.19 s to Chat ready). A cold launch, an empty
+  roster or a new server still waits, so the resume decision keeps its evidence.
 
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).

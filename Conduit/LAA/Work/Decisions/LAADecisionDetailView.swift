@@ -390,7 +390,7 @@ struct LAADecisionDetailView: View {
             case .notDelivered(let reason):
                 if let updated = board.items.first(where: { $0.id == item.id }) { item = updated }
                 withAnimation { undelivered = reason }
-            case .failed(let message):
+            case .failed(let message), .gone(let message):
                 failure = message
             }
             return
@@ -412,7 +412,7 @@ struct LAADecisionDetailView: View {
         case .notDelivered(let reason):
             if let updated = board.items.first(where: { $0.id == item.id }) { item = updated }
             withAnimation { undelivered = reason }
-        case .failed(let message):
+        case .failed(let message), .gone(let message):
             failure = message
         }
     }

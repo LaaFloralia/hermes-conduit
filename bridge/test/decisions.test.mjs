@@ -103,15 +103,36 @@ test('answer: no agent stores free answer for CLI without daemon or notification
   assert.equal(f.store.get(r.id).answer.label, '再来週');
 });
 
-for (const failure of ['not_found', 'agent_archived', 'pending_decision_requires_reply', 'paseo_unavailable', 'delivery_unconfirmed']) {
+// A conversation that no longer exists cannot take the answer: it leaves the
+// board without a 届いていません notice, and 届け直す is refused (owner, 2026-11-14).
+for (const failure of ['not_found', 'agent_archived']) {
+  test(`delivery: ${failure} retires the answer instead of asking for a resend`, async (t) => {
+    const f = fixture(t);
+    f.daemon.status = async () => {
+      if (failure === 'agent_archived') return { archivedAt: '2026-11-08' };
+      throw new BridgeError(404, failure, 'do not leak details');
+    };
+    const r = f.service.add(request()).decision;
+    const a = await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+    assert.equal(a.decision.status, 'answered');
+    assert.equal(a.decision.delivery.state, 'gone');
+    assert.equal(a.decision.delivery.error, failure);
+    assert.equal((await f.service.list()).items.length, 0);
+    await f.service.sync();
+    assert.equal(f.notifications.filter((e) => e.kind === 'decision.failed').length, 0);
+    await assert.rejects(f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'retry' }, retry: true }), code('decision_closed'));
+    assert.equal(f.sent.length, 0);
+  });
+}
+
+for (const failure of ['pending_decision_requires_reply', 'paseo_unavailable', 'delivery_unconfirmed']) {
   test(`delivery: ${failure} stays answered, visible, notifies once and retry uses next attempt`, async (t) => {
     const f = fixture(t);
     const normal = f.daemon.status;
     f.daemon.status = async () => {
-      if (failure === 'agent_archived') return { archivedAt: '2026-11-08' };
       if (failure === 'pending_decision_requires_reply') return { pending: [{}] };
       if (failure === 'delivery_unconfirmed') return { daemonStatus: 'idle', updatedAt: '2026-11-07T00:00:00Z' };
-      throw new BridgeError(failure === 'not_found' ? 404 : 503, failure, 'do not leak details');
+      throw new BridgeError(503, failure, 'do not leak details');
     };
     const r = f.service.add(request()).decision;
     const a = await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
@@ -437,7 +458,7 @@ test('waiting: one send per answer across concurrent passes, a lost race and lat
   assert.equal(f.sent.length, 1);
 });
 
-test('waiting: an archived or deleted conversation, a stopped Paseo and an expired wait fail visibly, once', async (t) => {
+test('waiting: an archived or deleted conversation leaves the board quietly; a stopped Paseo and an expired wait fail visibly, once', async (t) => {
   for (const [failure, arrange] of [
     ['agent_archived', (f) => { f.state.archived = true; }],
     ['not_found', (f) => { f.daemon.status = async () => { throw new BridgeError(404, 'not_found', 'gone'); }; }],
@@ -447,10 +468,11 @@ test('waiting: an archived or deleted conversation, a stopped Paseo and an expir
     await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
     arrange(f);
     f.advance(15_000); await f.service.deliverWaiting(); await f.service.deliverWaiting();
-    const failed = (await f.service.list()).items.find((i) => i.id === r.id);
-    assert.equal(failed.delivery.state, 'failed'); assert.equal(failed.delivery.error, failure);
-    assert(!('waiting' in failed.delivery));
-    assert.equal(failedNotices(f).length, 1); assert.match(failedNotices(f)[0].title, /^届いていません/);
+    assert.equal((await f.service.list()).items.find((i) => i.id === r.id), undefined);
+    const gone = f.store.get(r.id);
+    assert.equal(gone.delivery.state, 'gone'); assert.equal(gone.delivery.error, failure);
+    assert(!('waiting' in gone.delivery));
+    assert.equal(failedNotices(f).length, 0);
     assert.equal(f.sent.length, 0);
   }
   // Paseo restarting is tolerated for five minutes; stopped for longer is a failure.
@@ -512,4 +534,57 @@ test('waiting: survives a Bridge restart, and an answer an earlier Bridge filed 
   assert.deepEqual(f.sent.map((m) => `${m.id} ${m.messageId}`).sort(), [`agent-1 ${r.id}:answer:1`, `agent-2 ${old.id}:answer:1`].sort());
   assert.equal(store.get(r.id).delivery.state, 'delivered'); assert.equal(store.get(old.id).delivery.state, 'delivered');
   assert.equal(notices.filter((e) => e.kind === 'decision.failed' && e.dedupeKey.startsWith(r.id)).length, 0);
+});
+
+test('gone: an asker that is archived, deleted or past its deadline leaves the board, and its answer is never resent', async (t) => {
+  const agents = { 'agent-1': { archivedAt: null }, 'agent-2': { archivedAt: '2026-11-08T00:00:00Z' } };
+  const daemon = {
+    status: async (id) => {
+      if (id === 'agent-down') throw new BridgeError(503, 'paseo_unavailable', 'down');
+      if (!agents[id]) throw new BridgeError(404, 'not_found', 'Paseo agent not found');
+      return { daemonStatus: 'idle', activeTurn: false, pending: [], updatedAt: new Date(0).toISOString(), ...agents[id] };
+    },
+    send: async () => { throw new BridgeError(404, 'not_found', 'Paseo agent not found'); },
+  };
+  const f = fixture(t, { daemon });
+  const kept = f.service.add(request({ requestId: 'kept' })).decision;
+  const archived = f.service.add(request({ requestId: 'archived', source: { paseoAgentId: 'agent-2' } })).decision;
+  const deleted = f.service.add(request({ requestId: 'deleted', source: { paseoAgentId: 'agent-9' } })).decision;
+  const unreachable = f.service.add(request({ requestId: 'unreachable', source: { paseoAgentId: 'agent-down' } })).decision;
+  const expired = f.service.add(request({ requestId: 'expired', deadline: '2026-11-08T12:00:00Z' })).decision;
+  // Answered while its conversation was already gone: the delivery failed with not_found.
+  const lost = f.service.add(request({ requestId: 'lost', source: { paseoAgentId: 'agent-7' } })).decision;
+  const answered = await f.service.answer({ id: lost.id, deviceId: 'phone', body: { requestId: 'a1', optionIndex: 0 } });
+  // Retired at once: not 届いていません, not 届け直す.
+  assert.equal(answered.decision.delivery.state, 'gone');
+  assert.equal(answered.decision.delivery.error, 'not_found');
+  f.advance(86_400_000);
+  const ids = (await f.service.list()).items.map((r) => r.id);
+  // Paseo being unreachable is not proof the conversation is gone.
+  assert.deepEqual(ids.sort(), [kept.id, unreachable.id].sort());
+  assert.equal(f.store.get(archived.id).status, 'withdrawn');
+  assert.equal(f.store.get(deleted.id).status, 'withdrawn');
+  assert.equal(f.store.get(expired.id).status, 'withdrawn');
+  const gone = f.store.get(lost.id);
+  assert.equal(gone.status, 'answered');
+  assert.equal(gone.delivery.state, 'gone');
+  assert.equal(gone.delivery.error, 'not_found');
+  assert.equal(gone.answer.label, '来週');
+  // The board's 届け直す has nothing to send to: the retry is refused, nothing is sent.
+  await assert.rejects(f.service.answer({ id: lost.id, deviceId: 'phone', body: { requestId: 'r1' }, retry: true }), code('decision_closed'));
+  // The record still reads back (detail, history) and survives a reload.
+  assert.equal(createDecisionStore({ dir: f.dir, now: f.now }).get(lost.id).delivery.state, 'gone');
+});
+
+test('add: a short Paseo id resolves to the one full id it names', (t) => {
+  const sessionStore = { all: () => [
+    { id: 'ses_aaaaaaaaaaaaaaaa', delegate: { sessionId: 'c0e83149-0f40-4f25-b29b-64f3bcf126d6' } },
+    { id: 'ses_bbbbbbbbbbbbbbbb', delegate: { sessionId: 'd1111111-0000-4000-8000-000000000001' } },
+    { id: 'ses_cccccccccccccccc', delegate: { sessionId: 'd1111111-0000-4000-8000-000000000002' } },
+  ] };
+  const f = fixture(t, { sessionStore });
+  assert.equal(f.service.add(request({ requestId: 's1', source: { paseoAgentId: 'c0e83149' } })).decision.source.paseoAgentId, 'c0e83149-0f40-4f25-b29b-64f3bcf126d6');
+  // Ambiguous or unknown prefixes are kept as given.
+  assert.equal(f.service.add(request({ requestId: 's2', source: { paseoAgentId: 'd1111111' } })).decision.source.paseoAgentId, 'd1111111');
+  assert.equal(f.service.add(request({ requestId: 's3', source: { paseoAgentId: 'e2222222' } })).decision.source.paseoAgentId, 'e2222222');
 });

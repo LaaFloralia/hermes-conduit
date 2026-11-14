@@ -39,8 +39,34 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     })().finally(() => { syncing = null; });
     return syncing;
   }
+  // A decision whose asker is gone (archived or deleted conversation, a past
+  // deadline) leaves the board instead of asking the owner to resend into
+  // nothing (owner, 2026-11-14). Paseo being unreachable is not "gone".
+  const GONE = ['agent_archived', 'not_found'];
+  async function askerGone(agent) {
+    if (!agent || !daemon) return null;
+    try {
+      const status = await daemon.status(agent);
+      return status.archivedAt ? 'agent_archived' : null;
+    } catch (e) {
+      const code = failure(e);
+      return GONE.includes(code) ? code : null;
+    }
+  }
+  async function reconcile() {
+    for (const r of store.all()) {
+      if (r.status === 'open') {
+        if (r.deadline && Date.parse(r.deadline) < now()) { store.withdraw(r.id, 'deadline_passed'); continue; }
+        if (await askerGone(r.source.paseoAgentId)) store.withdraw(r.id, 'source_gone');
+      } else if (r.status === 'answered' && r.delivery?.state === 'failed') {
+        const reason = GONE.includes(r.delivery.error) ? r.delivery.error : await askerGone(r.source.paseoAgentId);
+        if (reason) store.retire(r.id, reason);
+      }
+    }
+  }
   async function list() {
     await sessions?.syncDaemon();
+    await reconcile();
     await sync();
     const items = store.all().filter((r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)).map((r) => ({ kind: 'board', ...view(r) }));
     for (const r of sessions ? sessionStore?.all() ?? [] : []) {
@@ -81,7 +107,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     // accepted anything: the answer waits and the Bridge delivers it when that
     // turn ends, instead of asking the owner to resend (2026-11-13).
     if (error === 'session_busy' && (record.delivery.holds ?? 0) < limits.maxHolds) return store.hold(record.id, record.delivery.messageId);
-    const updated = store.settle(record.id, record.delivery.messageId, error ? 'failed' : 'delivered', error === 'session_busy' ? 'delivery_wait_expired' : error);
+    let updated = store.settle(record.id, record.delivery.messageId, error ? 'failed' : 'delivered', error === 'session_busy' ? 'delivery_wait_expired' : error);
+    if (GONE.includes(error)) updated = store.retire(record.id, error);
     await sync();
     return updated;
   }
@@ -98,7 +125,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       let settled = false;
       for (const r of waiting) {
         const key = r.delivery.messageId, waited = now() - Date.parse(r.delivery.waitingSince);
-        const fail = (error) => { const claimed = store.release(r.id, key); if (claimed) { store.settle(r.id, key, 'failed', error); settled = true; } };
+        const fail = (error) => { const claimed = store.release(r.id, key); if (claimed) { store.settle(r.id, key, 'failed', error); if (GONE.includes(error)) store.retire(r.id, error); settled = true; } };
         if (waited > limits.maxMs) { fail('delivery_wait_expired'); continue; }
         if (now() < (nextCheck.get(key) ?? 0)) continue;
         nextCheck.set(key, now() + (waited < limits.fastForMs ? limits.fastMs : limits.slowMs));
@@ -132,7 +159,13 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     view, hasOpen, sync, list, deliverWaiting,
     get: (id) => view(store.get(id)),
     add(body) {
-      const agent = body.source?.paseoAgentId ?? null;
+      let agent = body.source?.paseoAgentId ?? null;
+      // A short id (the first 8 characters Paseo prints) is resolved to the
+      // single full id it names, or delivery later finds no conversation.
+      if (agent && /^[0-9a-f]{6,12}$/i.test(agent)) {
+        const matches = (sessionStore?.all() ?? []).map((r) => r.delegate?.sessionId).filter((id) => id?.toLowerCase().startsWith(agent.toLowerCase()));
+        if (new Set(matches).size === 1) agent = matches[0];
+      }
       const session = agent && sessionStore?.all().find((r) => r.delegate?.sessionId === agent);
       return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } });
     },

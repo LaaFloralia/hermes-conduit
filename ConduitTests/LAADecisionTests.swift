@@ -201,6 +201,27 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertEqual(board.records[old.id]?.answer, delivered.answer)
     }
 
+    /// An asker that is gone (owner, 2026-11-14): the Bridge retires the
+    /// answer, the row leaves the board and offers nothing to resend.
+    func testAnswerWhoseAskerIsGoneLeavesTheBoard() async throws {
+        let json = #"{"kind":"board","id":"dec_7eb15a42de31c331","status":"answered","title":"公開日を決める","summary":"","options":[{"label":"来週","recommended":true}],"source":{"paseoAgentId":"a","sessionId":null,"name":"HP｜公開"},"answer":{"optionIndex":0,"label":"来週","note":null,"answeredAt":"2026-11-14T05:30:00Z"},"delivery":{"state":"gone","attempts":1,"messageId":"dec_7eb15a42de31c331:answer:1","deliveredAt":null,"error":"not_found"}}"#
+        let gone = try JSONDecoder().decode(LAADecision.self, from: Data(json.utf8))
+        XCTAssertTrue(gone.isGone)
+        XCTAssertFalse(gone.deliveryFailed)
+        XCTAssertFalse(LAADecisionBoardView.needsAttention(gone))
+        let open = LAADecision(id: "dec_0000000000000c01", title: "残る判断", summary: "",
+                               options: [.init(label: "進める", recommended: true)])
+        let board = LAADecisionBoard()
+        board.setForTesting([gone, open])
+        let outcome = await board.answer(gone, optionIndex: 0, note: nil,
+                                         bridge: LAABridgeSession(statusForTesting: .unpaired))
+        XCTAssertEqual(outcome, .gone(LAADecisionCopy.gone(gone)))
+        XCTAssertEqual(board.items.map(\.id), [open.id])
+        let withdrawn = LAADecision(id: "dec_0000000000000c02", status: "withdrawn", title: "取り下げ", summary: "")
+        XCTAssertTrue(withdrawn.isGone)
+        XCTAssertNotEqual(LAADecisionCopy.gone(withdrawn), LAADecisionCopy.gone(gone))
+    }
+
     func testBoardCacheRetainsNativeQuestionsAndFailedDelivery() throws {
         let values = [
             LAADecision(kind: .session, id: "ses_native", title: "判断", summary: "どちら", sessionId: "ses_native"),

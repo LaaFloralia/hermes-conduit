@@ -108,6 +108,9 @@ struct LAADecision: Codable, Identifiable, Equatable {
 
     var recommended: Option? { options.first(where: \.recommended) }
     var deliveryFailed: Bool { delivery?.state == "failed" }
+    /// The asker is gone (archived, deleted, past its deadline) or the
+    /// decision was withdrawn: it no longer belongs on the board.
+    var isGone: Bool { status == "withdrawn" || delivery?.state == "gone" }
     /// Answered, and the Bridge delivers it by itself once the conversation is free.
     var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's
@@ -177,6 +180,11 @@ enum LAADecisionCopy {
     static let recommended = "推奨"
     static let otherTitle = "選択肢以外で答える"
     static let notDelivered = "届いていません"
+    /// Why a decision left the board on its own.
+    static func gone(_ item: LAADecision) -> String {
+        item.status == "withdrawn" ? "この判断は取り下げられたため、一覧から外しました。"
+            : "依頼元の会話がもうないため、この判断は一覧から外しました。回答は記録に残っています。"
+    }
     /// An answer held for a busy conversation; nothing for the owner to do.
     static let waiting = "会話が空き次第、自動で届けます"
     static let waitingDetail = "回答は保存済みです。依頼元の会話が処理中のため、届け直す必要はありません。"

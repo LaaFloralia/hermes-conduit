@@ -360,6 +360,9 @@ struct LAADecisionBoardView: View {
             remember(board.records[item.id] ?? Self.delivered(item))
         case .notDelivered(let reason), .failed(let reason):
             retryFailure[item.id] = reason
+        case .gone:
+            // The row already left the board; nothing is left to retry.
+            retryFailure[item.id] = nil
         }
     }
 

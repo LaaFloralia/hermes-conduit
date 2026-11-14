@@ -13,6 +13,9 @@ import SwiftUI
         case notDelivered(String)
         /// Nothing was recorded, or the result is unknown; the same request can be sent again.
         case failed(String)
+        /// The conversation that asked no longer exists (or the decision was
+        /// withdrawn): the row left the board and nothing can be resent.
+        case gone(String)
     }
 
     @Published private(set) var items: [LAADecision] = []
@@ -186,12 +189,17 @@ import SwiftUI
               !Task.isCancelled, bridge.revision == revision,
               writeRevisions[id, default: 0] == writeRevision else { return nil }
         records[id] = record
-        if let index = items.firstIndex(where: { $0.id == id }) { items[index] = record }
+        if record.isGone { items.removeAll { $0.id == id } }
+        else if let index = items.firstIndex(where: { $0.id == id }) { items[index] = record }
         return record
     }
 
     private static func outcome(of decision: LAADecision, replacing item: LAADecision, in board: LAADecisionBoard) -> Outcome {
         board.records[decision.id] = decision
+        if decision.isGone {
+            board.items.removeAll { $0.id == item.id }
+            return .gone(LAADecisionCopy.gone(decision))
+        }
         switch decision.delivery?.state {
         case "failed", "pending":
             // Keep the row with its new delivery state; it stays on the board.
