@@ -4618,3 +4618,36 @@ An agent that finds the owner's iPhone open (in use) asks in the Dynamic Island 
 - iOS may hold back a background push (Low Power Mode, an app the owner force-quit): then an ended activity stays until the app next runs, Stop is tapped, or the session limit passes. Checked on the owner's iPhone (BUS-325).
 
 **Checked:** 2026-11-12, laa/phone-use-permission, baseline 0d2fe78a (Bridge phone-use tests, laa-phone tests, simulator UI tests).
+
+## LAA weekly habits and avoid-habits
+
+The owner's weekly habits (things to keep doing) and avoid-habits (things to do less), in the
+Today tab's fourth segment, "Habits". The Bridge owns the record; Google Calendar, Linear and
+Brain never see it.
+
+**Siblings:** Today's Habits segment on iPhone · the same list beside its history on Mac ·
+the add/edit sheet · the history sheet (past weeks, stopped habits, change log) · the Bridge
+HTTP endpoints · the agents' CLI (`laa-bridge habits`) · Monet's `owner-manager` skill in HQ ·
+the contract (`bridge/docs/habits.md`) · the upstream App Store build (has no Habits segment)
+
+**Code**
+- Model, week dates, cache and requests: `Conduit/LAA/Today/LAAHabits.swift`
+- Week list, day marks, history: `Conduit/LAA/Today/LAAHabitsView.swift`
+- Add/edit sheet: `Conduit/LAA/Today/LAAHabitEditor.swift`
+- The segment and its toolbar action: `Conduit/LAA/Today/LAACalendarModes.swift`, `Conduit/LAA/Today/LAATodayView.swift`, `Conduit/LAA/Today/LAATodayDesktop.swift`, `Conduit/LAA/Today/LAATodayCalendar.swift`, `Conduit/LAA/LAACopy.swift`
+- Bridge store, service, routes and CLI: `bridge/src/habits/store.mjs`, `bridge/src/habits/service.mjs`, `bridge/src/habits/dates.mjs`, `bridge/src/routes/habits.mjs`, `bridge/src/cli-habits.mjs`, `bridge/docs/habits.md`
+- Tests: `ConduitTests/LAAHabitsTests.swift`, `ConduitUITests/LAAHabitsUITests.swift`, `bridge/test/habits-service.test.mjs`, `bridge/test/habits-api.test.mjs`, `bridge/test/habits-cli.test.mjs`, `bridge/test/habits-ui-fixture.mjs`
+
+**Rulings**
+- A week runs Monday to Sunday in Tokyo; a habit is checked at most once a day; the weekly target is a number of days (the parent session's decision, 2026-11-14; the owner can change it).
+- No deadlines, notifications, reminders, streaks, scores or warnings. An avoid-habit over its limit shows its count and nothing else.
+- Habits never read or write Google Calendar and work when Calendar is disconnected. The Habits segment starts no Calendar request.
+- Nothing creates a habit but the owner, or an agent the owner asked. Agents write only through the CLI with a name and a reason, which the history shows.
+- The owner sets each habit's support level (off, ask, plan) in the app; agents cannot read or change an `off` habit and cannot change the level.
+- Stopping a habit archives it; the history restores it. There is no deletion.
+
+**Open gaps**
+- Checks and edits need the Mac: offline, the last loaded week shows with a failure line and nothing queues.
+- The Mac layout was built for Catalyst but not yet opened on a Mac; the owner's iPhone has not run it.
+
+**Checked:** 2026-11-14, wt-habits-20261114, baseline 38a21578 (Bridge 903 tests, LAA habits unit, snapshot and UI tests, LAA/Catalyst/default builds).

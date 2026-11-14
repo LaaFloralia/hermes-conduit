@@ -27,6 +27,7 @@ import { createLinearOwnerTaskSource } from '../tasks/linear-owner.mjs';
 import { createTaskRunStore, createTaskDispatchService, taskCleanup } from '../tasks/dispatch.mjs';
 import { skillRoutes } from './skills.mjs';
 import { ownerTaskRoutes } from './owner-tasks.mjs';
+import { habitRoutes } from './habits.mjs';
 import { createOwnerTaskStore } from '../tasks/owner-store.mjs';
 import { createOwnerTaskService } from '../tasks/owner-service.mjs';
 import { brainRoutes } from './brain.mjs';
@@ -168,6 +169,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
     ...skillRoutes({ ...(options.skills ?? {}), refs }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
+    ...habitRoutes({ dir: store.dir, now, ...options.habits }),
     ...brainRoutes({ store, now, options: options.brain ?? {} }),
     ...createProjectRoutes({ projects: projectStore, now, refs, choices: sessionChoices }),
     ...createWorkspaceRoutes({

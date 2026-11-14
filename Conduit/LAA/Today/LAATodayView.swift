@@ -6,6 +6,8 @@ struct LAATodayView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaDesktop) private var laaDesktop
     @StateObject private var calendar: LAATodayCalendar
+    @StateObject private var habits = LAAHabitsModel()
+    @State private var showNewHabit = false
     @State private var showPairing = false
     @State private var showNewEvent = false
     @State private var selectedEvent: LAACalendarEvent?
@@ -36,9 +38,9 @@ struct LAATodayView: View {
         .background(LAAColor.background)
         .environment(\.locale, LAADateText.locale)
         .toolbar {
-            LAAScreenToolbar(createLabel: "予定を追加", createIdentifier: "laa.calendar.create",
-                             canCreate: calendar.calendars.contains(where: \.writable),
-                             create: { showNewEvent = true }, settings: onRequestSettings)
+            LAAScreenToolbar(createLabel: calendar.mode == .habits ? "習慣を追加" : "予定を追加", createIdentifier: calendar.mode == .habits ? "laa.habits.create" : "laa.calendar.create",
+                             canCreate: calendar.mode == .habits ? bridge.status == .paired : calendar.calendars.contains(where: \.writable),
+                             create: { if calendar.mode == .habits { showNewHabit = true } else { showNewEvent = true } }, settings: onRequestSettings)
         }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .sheet(isPresented: $showNewEvent) {
@@ -56,19 +58,22 @@ struct LAATodayView: View {
             if mode == .list { calendar.selectedDate = Date() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, !calendar.updateToday() { Task { await refresh() } }
+            if phase == .active { calendar.updateToday(); Task { await refresh() } }
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             calendar.updateToday()
+            if calendar.mode == .habits { Task { await refresh() } }
         }
         .task(id: scenePhase) {
             guard automaticallyRefresh, scenePhase == .active else { return }
             calendar.updateToday()
             while !Task.isCancelled {
                 let now = Date()
-                let midnight = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!
+                let dayCalendar = calendar.mode == .habits ? LAAHabitDates.calendar : Calendar.current
+                let midnight = dayCalendar.date(byAdding: .day, value: 1, to: dayCalendar.startOfDay(for: now))!
                 do { try await Task.sleep(for: .seconds(max(1, midnight.timeIntervalSince(now)))) } catch { return }
                 calendar.updateToday()
+                await refresh()
             }
         }
     }
@@ -77,9 +82,12 @@ struct LAATodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.section) {
                 LAATabHeading(title: "Today", identifier: "laa.today.title")
-                LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title)
+                LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title, identifier: { "laa.calendar.mode." + $0.rawValue })
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("laa.calendar.mode")
+                if calendar.mode == .habits {
+                    LAAHabitsView(model: habits, showCreate: $showNewHabit, connect: { showPairing = true })
+                } else {
                 if calendar.mode != .list {
                     dateNavigation
                 }
@@ -98,13 +106,20 @@ struct LAATodayView: View {
                         day(date, showsCalendarMenu: date == days.first)
                     }
                 }
+                }
             }.laaPageWidth()
                 .padding(LAASpacing.horizontal)
         }
     }
 
     @ViewBuilder private var desktopBody: some View {
-        if bridge.status != .paired {
+        if calendar.mode == .habits {
+            VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                LAAScreenHeader(title: "Today", identifier: "laa.today.title")
+                LAASegmentedControl(values: LAACalendarMode.visibleModes, selection: $calendar.mode, title: \.title, identifier: { "laa.calendar.mode." + $0.rawValue })
+                LAAHabitsView(model: habits, showCreate: $showNewHabit, connect: { showPairing = true })
+            }
+        } else if bridge.status != .paired {
             VStack(spacing: LAASpacing.x4) {
                 Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: "Macに未接続").fontWeight(.semibold)
@@ -135,7 +150,13 @@ struct LAATodayView: View {
             selectedEvent = try response.data.value(); selectedEventID = selectedEvent?.id; deepLinkError = nil
         } catch { deepLinkError = LAATodayCalendar.message(for: error) }
     }
-    private func refresh() async { if automaticallyRefresh { await calendar.refresh(bridge: bridge) } }
+    private func refresh() async {
+        guard automaticallyRefresh else { return }
+        if calendar.mode == .habits {
+            await habits.refresh(bridge)
+            if laaDesktop { await habits.loadHistory(bridge) }
+        } else { await calendar.refresh(bridge: bridge) }
+    }
     private func move(_ direction: Int) {
         let component: Calendar.Component = calendar.mode == .month ? .month : .day
         let step = calendar.mode == .week || calendar.mode == .list ? 7 : 1

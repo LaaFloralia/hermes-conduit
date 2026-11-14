@@ -54,7 +54,7 @@ final class LAATodayUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Docを開く"].exists)
         let modes = app.otherElements["laa.calendar.mode"]
         XCTAssertTrue(modes.waitForExistence(timeout: 5))
-        XCTAssertEqual(modes.buttons.count, 3)
+        XCTAssertEqual(modes.buttons.count, 4)
         XCTAssertFalse(app.activityIndicators.firstMatch.exists)
     }
 }

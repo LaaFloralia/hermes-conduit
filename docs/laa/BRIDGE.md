@@ -7,7 +7,7 @@
 - Mac mini上のユーザー権限の**単一Bridgeプロセス**を専用launchd LaunchAgentで管理する案。HTTPは127.0.0.1の専用ポートのみで待受け、Tailscale Serveの専用HTTPSポートから転送する。番号は空きと競合を実測後に決定。Funnel・LAN直公開は禁止。Tailscale未接続・Mac未ログイン時の利用は保証しない。
 - 既存8444→9119はHermes dashboard／Conduit、8443はUsage等のServe。両設定を変更・共有せず、BridgeのServeだけを追加・停止する。HTTPS証明書・経路は既存Tailscale方式を再利用し、tailnet到達性と端末認証を別に判定する。ループバックの別プロセスを信頼境界と誤認しない。
 - 会話・通話・通知は現行Conduit pluginの経路を維持。Macの実体は0.69.1で、上流0.116.0のAPIを使用可能と仮定しない。Sessionの委譲は `laa-personal-agent` のcreate/status/wait/list/send/reply/stopとPaseo daemonを利用し、provider・model・effort・認証経路・停止状態を維持する。Paseo CLIにもlist/run/logs/stop/send等があるが、同等性は未実証。
-- TaskはLinearが正本、習慣はBrain daily。Drive・Photosは既存のMac側正規Google認可のみ、Usageは既存dashboard analytics／CodexBar proxy／Console collectorの選定済み出力を読む。現状CPU・メモリ収集は未確認、欠測で返す。Archiveは整合snapshotとDrive保管のアダプターで、稼働中SQLiteの双方向同期はしない。
+- TaskはLinearが正本、週単位の習慣・禁止習慣はBridgeの `habits.json`（`bridge/docs/habits.md`。Google Calendar・Linear・Brainと分離）。Drive・Photosは既存のMac側正規Google認可のみ、Usageは既存dashboard analytics／CodexBar proxy／Console collectorの選定済み出力を読む。現状CPU・メモリ収集は未確認、欠測で返す。Archiveは整合snapshotとDrive保管のアダプターで、稼働中SQLiteの双方向同期はしない。
 - 起動・停止は既存 `laa-agent-control` のゲートと監督を通し、pause・停止未確認・監査不整合を迂回しない。agent-controlのsame-UID監督は全直起動・外部操作を強制遮断する境界ではない。Bridge停止は既存の停止制御や予定を変更しない。
 
 ## 2. 脅威と端末認証
@@ -66,6 +66,7 @@ JSONはUTF-8、時刻はUTC ISO 8601。成功は `{"data":...,"requestId":"..."}
 | `GET /v1/tasks`; `GET /v1/tasks/{id}` | `{title,owner,executor,status,dependencies,sourceId,version}` → task、Linear。読取専用 | 版競合・担当変更で自動起動しない・Linearに読戻し |
 | `GET/POST /v1/linear-owner-tasks`; `GET/PATCH /v1/linear-owner-tasks/{id}`; `POST /{id}/archive`・`/restore`・`/complete` | `{id,title,description,dueDate,priority,assignee?,profile?}` → 社長本人のLinear課題＋`run`。PATCH・archive/restore・completeは `If-Match` 必須 | AI担当は社長がこのAPIで作った課題だけ起動し、作成と完了に `sessions:write` も要る。指示は作成時の本文で固定。完了は判断取下げ・会話アーカイブ・Done・記録保管。`?archived=only` でアーカイブ一覧。一覧・詳細の各itemは設定がある時だけ `project:{id,name}`・`labels:[{id,name,color}]` を持つ（2026-11-11、Workのジャンル分け） |
 | `GET /v1/calendar/events?start=&end=` | RFC3339の42日以内、任意の複数calendarId → `{items:[予定詳細],source,start,end}`、Google Calendar | `calendar:read` 必須。設定・認可・API失敗は503で、空の予定にしない |
+| `GET/POST /v1/habits`; `PATCH /v1/habits/{id}`; `PUT /v1/habits/{id}/checkins/{date}`; `GET /v1/habits/history`・`/archived`・`/events` | 週（月曜〜日曜、東京）ごとの習慣・禁止習慣と1日1回の記録 → `{week,today,items,archivedCount}`、Bridgeの `habits.json`。契約は `bridge/docs/habits.md` | 読取りは `tasks:read`、書込みは `tasks:write` と `tasks:read` の両方。作成は `Idempotency-Key`、変更は `If-Match`。Google Calendarを呼ばない。通知・期限なし。AIはCLI `laa-bridge habits`（`--by`・`--reason` 必須、`support: off` は読めず変えられない） |
 | `GET /v1/skills` | → `{items:[{id,name,description,source}]}`、Macのスキル定義 | frontmatterの2項目だけ。本文は返さない。読取失敗は503で、空一覧にしない |
 | `GET /v1/routines` | Console `jobs` の名前、予定、直近実行と結果を読み取り専用で返す | 未観測はnull、読取失敗は503。既存 `sessions:read` を使用 |
 | `GET /v1/brain/files`; `GET /v1/brain/files/{id}`; `GET /v1/brain/search?q=...` | → `{id,content,contentHash,version}` または一覧、Brain | 許可領域・未知Markdown・画像参照保持、path traversal拒否 |

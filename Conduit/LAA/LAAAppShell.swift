@@ -188,7 +188,9 @@ struct LAAAppShell: View {
     @ViewBuilder
     private var bar: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PAIR_ALL") {
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1", ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_HABITS") {
+            LAAHabitsUITestScreen()
+        } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PAIR_ALL") {
             LAANotificationPairAllFixtureScreen()
         } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BACKGROUND") {
             LAABackgroundUITestFixtureScreen()

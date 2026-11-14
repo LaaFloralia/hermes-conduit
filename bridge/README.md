@@ -4,7 +4,7 @@
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
-- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録、`owner-tasks.json`＝社長タスクと操作台帳・取込み対応表、`task-runs.json`＝Linearタスクの担当・実行・完了手順の記録。いずれも0600）
+- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録、`owner-tasks.json`＝社長タスクと操作台帳・取込み対応表、`task-runs.json`＝Linearタスクの担当・実行・完了手順の記録、`habits.json`＝週単位の習慣・禁止習慣と変更の記録。いずれも0600）
 - 依存: Node.js 20.11+ の標準モジュールのみ（npm install 不要）。`laa-personal-agent`（`hq/harness/personal_agent_bridge.mjs`）と同じ ESM/Node 系に合わせ、外部依存を持たない
 
 ## 設計上の決定
@@ -383,6 +383,21 @@ laa-bridge tasks restore --from <snapshot> --to <dir>
 日次バックアップの launchd 追加、Mac 外の保存先の採否、実アカウントでの dry-run と取込み承認、`docs/laa/BRIDGE.md`・`FEATURE_MAP.md` への追記、Bridge の再起動は親の作業（契約 §13）。バックアップは `tasks backup` が14世代を既定で残し、`tasks restore` で別ディレクトリへ戻して件数・最大 revision・最新 updatedAt を読み戻す。
 
 検証: `test/owner-tasks-{store,api,cli,backup,import}.test.mjs`（67 tests）。実 Linear・実データ・資格情報・シミュレーターは使わず、loopback の模擬 GraphQL と fixture だけで、送る文書が `query` のみであることも検査する。復元試験は別ディレクトリへ戻して全タスクと台帳の一致を確かめる。
+
+## 習慣・禁止習慣（`/v1/habits`）
+
+週単位（月曜〜日曜、東京）の習慣・禁止習慣と1日1回の記録。正本は `<stateDir>/habits.json`（0600。その日最初の書込み前に `habits-backups/` へ複製、30世代）。Google Calendar・Linear・Brainを読まず、通知・期限・定期処理を持たない。契約（端点・JSON・エラー・CLI・支援の範囲）は [docs/habits.md](docs/habits.md)。
+
+| 端点 | scope | 内容 |
+|---|---|---|
+| `GET /v1/habits?week=`・`/history?weeks=`・`/archived`・`/events?limit=&cursor=` | `tasks:read` | その週の習慣と記録／過去の週／保管済み／変更の記録 |
+| `POST /v1/habits` | `tasks:write` + `tasks:read` + `Idempotency-Key` | 201 + 習慣 + `ETag`。同じ鍵の再送は200で同じ習慣 |
+| `PATCH /v1/habits/{id}` | `tasks:write` + `tasks:read` + `If-Match` | 項目の変更、`archived` で保管・復帰。欠落428、不一致412 |
+| `PUT /v1/habits/{id}/checkins/{date}` | `tasks:write` + `tasks:read` | `{done}`。未来日・作成週より前・保管中は拒否 |
+
+AIの経路は `laa-bridge habits <week|history|events|add|update|archive|restore|check|uncheck>`。書込みは `--by`・`--reason` 必須で、変更の記録に `actor: agent` として残る。`support: off` の習慣は読めず変えられず、`support` はアプリ（社長）だけが変えられる。戻す時は `habits-backups/` の該当日を、Bridgeを止めてから `habits.json` へ複製する。
+
+検証: `test/habits-{service,api,cli}.test.mjs`。
 
 ## Session（`/v1/sessions`）
 
