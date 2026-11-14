@@ -5,12 +5,18 @@ struct LAAWorkProjectChanges: Codable {
     let name: String
     let instructions: String?
     let clearInstructionRef: Bool
-    enum CodingKeys: String, CodingKey { case name, instructions, instructionRef }
-    init(name: String, instructions: String?, clearInstructionRef: Bool = false) {
+    let defaultProfile: String?
+    let changesDefaultProfile: Bool
+    enum CodingKeys: String, CodingKey { case name, instructions, instructionRef, defaultProfile }
+    init(name: String, instructions: String?, clearInstructionRef: Bool = false,
+         defaultProfile: String? = nil, changesDefaultProfile: Bool = false) {
         self.name = name; self.instructions = instructions; self.clearInstructionRef = clearInstructionRef
+        self.defaultProfile = defaultProfile; self.changesDefaultProfile = changesDefaultProfile
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
+        defaultProfile = try box.decodeIfPresent(String.self, forKey: .defaultProfile)
+        changesDefaultProfile = box.contains(.defaultProfile)
         name = try box.decode(String.self, forKey: .name)
         instructions = try box.decodeIfPresent(String.self, forKey: .instructions)
         if box.contains(.instructionRef) { clearInstructionRef = try box.decodeNil(forKey: .instructionRef) }
@@ -21,6 +27,10 @@ struct LAAWorkProjectChanges: Codable {
         try box.encode(name, forKey: .name)
         try box.encodeIfPresent(instructions, forKey: .instructions)
         if clearInstructionRef { try box.encodeNil(forKey: .instructionRef) }
+        if changesDefaultProfile {
+            if let defaultProfile { try box.encode(defaultProfile, forKey: .defaultProfile) }
+            else { try box.encodeNil(forKey: .defaultProfile) }
+        }
     }
 }
 
@@ -32,6 +42,8 @@ struct LAAWorkProjectEditor: View {
     @ObservedObject var drafts: ComposerDraftStore
     let canEditInstructions: Bool
     private let clearLegacyRefInitially: Bool
+    @State private var options: LAAWorkSessionOptions?
+    @State private var defaultProfile: String
     @State private var current: LAAWorkProject?
     @State private var name: String
     @State private var instructions: String
@@ -46,6 +58,7 @@ struct LAAWorkProjectEditor: View {
          clearLegacyRefInitially: Bool = false) {
         self.canEditInstructions = canEditInstructions; self.drafts = drafts
         self.clearLegacyRefInitially = clearLegacyRefInitially
+        _defaultProfile = State(initialValue: project?.defaultProfile ?? "")
         _current = State(initialValue: project)
         _name = State(initialValue: project?.name ?? "")
         _instructions = State(initialValue: project?.instructions ?? "")
@@ -65,11 +78,13 @@ struct LAAWorkProjectEditor: View {
                     Section(LAAWorkPresentation.japanese("現在の版とあなたの変更")) {
                         Text(verbatim: "現在の版 \(remote.version.map(String.init) ?? "未確認")")
                         Text(verbatim: "現在の名前: \(remote.name)")
+                        Text(verbatim: "現在の既定モデル: " + profileLabel(remote.defaultProfile))
                         Text(verbatim: "現在の指示:").laaTextStyle(.body).fontWeight(.semibold)
                         Text(verbatim: remote.instructionError != nil ? "（読み取れません）" : (remote.instructions ?? "（なし）")).textSelection(.enabled)
                         Text(verbatim: "あなたの変更:").laaTextStyle(.body).fontWeight(.semibold)
                         if let mine = draftBody(pending) {
                             Text(verbatim: "名前: " + mine.name).textSelection(.enabled)
+                            if mine.changesDefaultProfile { Text(verbatim: "既定モデル: " + profileLabel(mine.defaultProfile)) }
                             Text(verbatim: mine.instructions ?? "（指示は変更しない）").textSelection(.enabled)
                             if mine.clearInstructionRef { Text(verbatim: "旧形式の参照を消去") }
                         }
@@ -95,6 +110,7 @@ struct LAAWorkProjectEditor: View {
                     }
                 }
                 Section(LAAWorkPresentation.japanese("名前")) { TextField(LAACopy.WorkTab.projectName, text: $name).disabled(pending != nil) }
+                defaultModelSection
                 Section(LAAWorkPresentation.japanese("共通指示")) {
                     if current?.instructionRef != nil {
                         Text(verbatim: "旧形式の参照・未適用").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -123,9 +139,11 @@ struct LAAWorkProjectEditor: View {
             .tint(LAAColor.link)
             .onChange(of: name) { _, _ in saveDraft() }
             .onChange(of: instructions) { _, _ in saveDraft() }
+            .onChange(of: defaultProfile) { _, _ in saveDraft() }
             .onChange(of: clearLegacyRef) { _, _ in saveDraft() }
             .task {
                 restoreDraft()
+                options = try? await bridge.read("/v1/session-options")
                 if clearLegacyRefInitially && current?.instructionRef != nil && pending == nil {
                     clearLegacyRef = true
                     saveDraft()
@@ -139,6 +157,41 @@ struct LAAWorkProjectEditor: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
         }
     }
+    private func profileLabel(_ id: String?) -> String {
+        guard let id else { return "共通の既定値" }
+        return options?.profiles.first { $0.id == id }?.label ?? id
+    }
+    private var defaultModelSection: some View {
+        Section(LAAWorkPresentation.japanese("新しい会話の既定モデル")) {
+            let choices = options?.switchingOptions
+            let selected = choices?.profiles.first { $0.id == defaultProfile }
+            let model = LAAWorkModelSelection.model(of: defaultProfile, in: choices)
+            LAAModelEffortPickers(model: selected?.model, provider: selected?.provider, effort: selected?.effort,
+                                 name: model?.label ?? (defaultProfile.isEmpty ? "共通の既定値" : "現在は選べないモデル"),
+                                 identifier: "work.project.default") {
+                Button { defaultProfile = "" } label: { Text(verbatim: "共通の既定値") }
+                ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(choices)), id: \.name) { group in
+                    Section(group.name) {
+                        ForEach(group.models) { choice in
+                            Button {
+                                if let next = LAAWorkModelSelection.profile(switchingTo: choice, from: selected) { defaultProfile = next.id }
+                            } label: { LAAModelMenu.Name(label: choice.label, model: choice.model) }
+                        }
+                    }
+                }
+            } effortMenu: {
+                ForEach(model?.efforts ?? [], id: \.self) { effort in
+                    LAAEffortMenu.Row(effort: effort, selected: effort == selected?.effort) {
+                        if let next = LAAWorkModelSelection.profile(effort: effort, of: defaultProfile, in: choices) { defaultProfile = next.id }
+                    }
+                }
+            }
+            .disabled(pending != nil || options == nil || (current != nil && current?.hasDefaultProfile != true))
+            if current != nil && current?.hasDefaultProfile != true {
+                Text(verbatim: "MacのLAAアプリの更新後に変更できます。").laaTextStyle(.secondary)
+            }
+        }
+    }
     private func draftBody(_ item: ComposerDraftStore.Submission) -> ChangeSet? {
         guard let (bytes, _) = LAAWorkDrafts.request(item) else { return nil }
         return try? JSONDecoder().decode(ChangeSet.self, from: bytes)
@@ -147,7 +200,10 @@ struct LAAWorkProjectEditor: View {
         guard let key, pending == nil else { return }
         let edited = canEditInstructions && (current == nil || instructions != (current?.instructions ?? ""))
         let body = ChangeSet(name: name, instructions: edited ? instructions : nil,
-                        clearInstructionRef: canEditInstructions && clearLegacyRef && current?.instructionRef != nil)
+                        clearInstructionRef: canEditInstructions && clearLegacyRef && current?.instructionRef != nil,
+                        defaultProfile: defaultProfile.isEmpty ? nil : defaultProfile,
+                        changesDefaultProfile: (current == nil || current?.hasDefaultProfile == true)
+                            && defaultProfile != (current?.defaultProfile ?? ""))
         let snapshot = Draft(body: body, baseETag: draftETag)
         guard let bytes = try? JSONEncoder().encode(snapshot), let text = String(data: bytes, encoding: .utf8),
               drafts.save(ComposerDraft(text: text, attachments: []), for: key) else {
@@ -160,6 +216,7 @@ struct LAAWorkProjectEditor: View {
               let snapshot = try? JSONDecoder().decode(Draft.self, from: bytes) else { return }
         draftETag = snapshot.baseETag
         name = snapshot.body.name
+        if snapshot.body.changesDefaultProfile { defaultProfile = snapshot.body.defaultProfile ?? "" }
         instructions = snapshot.body.instructions ?? current?.instructions ?? ""
         clearLegacyRef = canEditInstructions && snapshot.body.clearInstructionRef && current?.instructionRef != nil
     }
@@ -168,7 +225,10 @@ struct LAAWorkProjectEditor: View {
         guard current == nil || draftETag != nil else { error = "プロジェクトの版を取得してから保存してください。"; return }
         let edited = canEditInstructions && (current == nil || instructions != (current?.instructions ?? ""))
         let body = ChangeSet(name: name, instructions: edited ? instructions : nil,
-                        clearInstructionRef: canEditInstructions && clearLegacyRef && current?.instructionRef != nil)
+                        clearInstructionRef: canEditInstructions && clearLegacyRef && current?.instructionRef != nil,
+                        defaultProfile: defaultProfile.isEmpty ? nil : defaultProfile,
+                        changesDefaultProfile: (current == nil || current?.hasDefaultProfile == true)
+                            && defaultProfile != (current?.defaultProfile ?? ""))
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         guard let bytes = try? encoder.encode(body), let draft = try? encoder.encode(Draft(body: body, baseETag: draftETag)),
               let item = LAAWorkDrafts.reserve(drafts, key: key, text: String(decoding: draft, as: UTF8.self), body: bytes,
@@ -215,6 +275,7 @@ struct LAAWorkProjectEditor: View {
         guard drafts.finishSubmission(pending.id, restoring: false) else { error = "選択を保存できませんでした。"; return }
         LAAWorkConflictJournal.clear(pending.id)
         current = remote; draftETag = remote.etag; name = remote.name; instructions = remote.instructions ?? ""
+        defaultProfile = remote.defaultProfile ?? ""
         clearLegacyRef = false
         confirmedConflict = false; self.remote = nil
     }
@@ -226,6 +287,7 @@ struct LAAWorkProjectEditor: View {
         guard drafts.finishSubmission(pending.id, restoring: true) else { error = "選択を保存できませんでした。"; return }
         LAAWorkConflictJournal.clear(pending.id)
         current = remote; draftETag = remote.etag; name = body.name; instructions = body.instructions ?? remote.instructions ?? ""
+        defaultProfile = body.changesDefaultProfile ? (body.defaultProfile ?? "") : (remote.defaultProfile ?? "")
         clearLegacyRef = body.clearInstructionRef && remote.instructionRef != nil
         confirmedConflict = false; self.remote = nil
         save()

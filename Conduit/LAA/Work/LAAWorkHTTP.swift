@@ -82,6 +82,12 @@ enum LAAWorkHTTP {
         case "idempotency_outcome_unknown", "creation_outcome_unknown", "send_outcome_unknown":
             return "前の要求の結果を確認できません。同じIDの状態を確認してください。"
         case "profile_unsupported": return "このAI社員は利用できません。名前を確認してください。"
+        case "model_switch_busy": return "実行中のため、完了してからモデルを変更できます。"
+        case "model_switch_children_busy": return "子の会話が実行中または判断待ちです。完了してから変更できます。"
+        case "model_switch_pending": return "モデルの引継ぎを確認中です。少し待って状態を読み直してください。"
+        case "model_switch_workspace": return "元の作業先を確認できないため引き継げません。"
+        case "model_switch_failed": return "新しいモデルの応答を確認できませんでした。元の会話の状態を読み直してください。"
+        case "model_choice_invalid", "project_default_unavailable": return "このモデル・推論は選べません。モデル一覧を読み直してください。"
         case "effort_unsupported": return "このMacでは推論設定を開始後に変更できません。"
         case "effort_rejected": return "推論設定を変更できませんでした。Workの状態を確認してください。"
         case "effort_not_applied": return "推論設定の変更を確認できませんでした。現在値を読み直してください。"

@@ -125,6 +125,17 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
     };
     return workspaceCache.titles;
   }
+  async function assertChildrenIdle(c, ids) {
+    const agents = await directory(c);
+    const tree = new Set(ids);
+    for (let pass = 0, size = -1; size !== tree.size && pass < agents.length; pass += 1) {
+      size = tree.size;
+      for (const row of agents) if (tree.has(row.labels?.[PARENT_LABEL])) tree.add(row.id);
+    }
+    if (agents.some((row) => !ids.includes(row.id) && tree.has(row.id) && !row.archivedAt && isBusy(row))) {
+      throw conflict('model_switch_children_busy', 'wait for the child sessions and their decisions to finish');
+    }
+  }
   async function statusOf(client, a) {
     const title = await workspaceTitles(client)
       .then((titles) => titles.get(a.workspaceId) ?? null)
@@ -252,6 +263,56 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       await c.refreshAgent(id);
     }),
     status: (id) => call(async (c) => statusOf(c, await agent(c, id))),
+    continuationSource: (id, { requireWorkspace = true, relatedIds = [] } = {}) => call(async (c) => {
+      const source = await agent(c, id);
+      if (requireWorkspace && (!source.workspaceId || !source.cwd)) throw conflict('model_switch_workspace', 'the original workspace is unavailable');
+      if (source.archivedAt) throw conflict('session_stopped', 'restore the session before switching provider');
+      if (source.pendingPermissions?.length) throw conflict('model_switch_pending', 'answer the pending decision before switching provider');
+      if (isBusy(source)) throw conflict('model_switch_busy', 'wait for the current turn to finish');
+      await assertChildrenIdle(c, [id, ...relatedIds]);
+      return { id, workspaceId: source.workspaceId, cwd: source.cwd, title: source.title,
+        parentAgentId: source.labels?.[PARENT_LABEL] ?? null, relatedIds };
+    }),
+    startContinuation: ({ source, id, target, prompt }) => call(async (c) => {
+      const before = await agent(c, source.id);
+      if (isBusy(before) || before.archivedAt || before.workspaceId !== source.workspaceId
+        || (before.labels?.[PARENT_LABEL] ?? null) !== source.parentAgentId) {
+        throw conflict('model_switch_busy', 'the source changed while preparing the switch');
+      }
+      await assertChildrenIdle(c, [source.id, ...(source.relatedIds ?? [])]);
+      const modeId = target.provider === 'claude' ? 'bypassPermissions'
+        : target.provider === 'codex' ? 'full-access' : target.provider === 'hermes-claude-api' ? 'dont_ask' : null;
+      const featureValues = target.provider === 'claude' ? { fast_mode: false }
+        : target.provider === 'codex' ? { service_tier: 'default' } : { auto_accept: true };
+      const created = await c.createAgent({ agentId: id, provider: target.provider, model: target.model,
+        thinkingOptionId: target.effort, cwd: source.cwd, workspaceId: source.workspaceId,
+        ...(source.parentAgentId ? { callerAgentId: source.parentAgentId } : {}),
+        ...(modeId ? { modeId } : {}), featureValues, title: source.title,
+        initialPrompt: prompt, idempotencyKey: `bridge-model-${id}`,
+        labels: { ...(source.parentAgentId ? { [PARENT_LABEL]: source.parentAgentId } : {}),
+          'laa.bridge.model-continuation': source.id } });
+      const after = await agent(c, created.id ?? id);
+      if (after.id !== id || after.workspaceId !== source.workspaceId || after.cwd !== source.cwd
+        || (after.labels?.[PARENT_LABEL] ?? null) !== source.parentAgentId) {
+        throw conflict('model_switch_failed', 'the continuation did not retain the workspace and parent');
+      }
+      return statusOf(c, after);
+    }),
+    // Switching an execution agent never archives its idle children or workspace.
+    archiveDelegate: (id, { missingOK = false } = {}) => call(async (c) => {
+      let row;
+      try { row = await agent(c, id); } catch (error) { if (missingOK && error.status === 404) return; throw error; }
+      if (row.archivedAt) return;
+      if (isBusy(row)) throw conflict('model_switch_pending', 'the continuation has not finished settling');
+      await c.archiveAgent(id);
+      if (!(await agent(c, id)).archivedAt) throw conflict('model_switch_failed', 'the agent archive could not be verified');
+    }),
+    restoreDelegate: (id) => call(async (c) => {
+      const row = await agent(c, id);
+      if (!row.archivedAt) return;
+      await c.refreshAgent(id);
+      if ((await agent(c, id)).archivedAt) throw conflict('model_switch_failed', 'the source could not be restored');
+    }),
     /// Change the reasoning effort of a running session. The daemon applies the
     /// provider's thinking option; the read-back is the only proof it did.
     setThinking: (id, effort) => call(async (c) => {

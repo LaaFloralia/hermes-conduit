@@ -222,6 +222,7 @@ test('updates require If-Match and a stale version returns the current side', as
     instructionHash: sha('Answer in Japanese only.'),
     instructionRef: null,
     instructions: 'Answer in Japanese only.',
+    defaultProfile: null,
   });
 
   const replay = await api.request(`/v1/projects/${project.id}`, {

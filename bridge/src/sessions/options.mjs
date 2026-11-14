@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeError } from '../errors.mjs';
+import { entranceProfiles } from './entrance-profiles.mjs';
 
 const DEFAULT_PROFILE = 'opus-high';
 
@@ -57,13 +58,15 @@ export function sessionOptionsFrom(table) {
         id,
         label: (model.label ?? profile.model) + (profile.harness === 'hermes-claude-api' ? '（API）' : ''),
         provider: profile.harness,
-        model: (profile.harness === 'hermes-claude-api' ? 'anthropic:' : '') + (model.modelId ?? profile.model),
+        model: profile.harness === 'dsh' ? JSON.stringify(['opencode-go', model.modelId ?? profile.model])
+          : (profile.harness === 'hermes-claude-api' ? 'anthropic:' : '') + (model.modelId ?? profile.model),
         effort: profile.effort,
         fast: fastSupported(profile.harness, model.modelId),
       };
     });
   return {
     profiles,
+    switchProfiles: entranceProfiles(table, profiles),
     defaultProfile: automaticIds.includes(DEFAULT_PROFILE) ? DEFAULT_PROFILE : (automaticIds[0] ?? null),
     defaultMode: 'bypass',
   };

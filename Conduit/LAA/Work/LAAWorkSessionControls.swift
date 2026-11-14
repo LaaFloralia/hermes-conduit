@@ -64,17 +64,19 @@ struct LAAWorkSessionControls: View {
         let listed = LAAWorkSessionStyle.effortChoices(session, options: options)
         return listed.isEmpty ? (currentEffort.map { [$0] } ?? []) : listed
     }
-    private var models: [LAAWorkSessionStyle.ModelChoice] { LAAWorkSessionStyle.modelChoices(session, options: options) }
+    private var models: [LAAWorkModelSelection.Model] { LAAWorkModelSelection.models(options?.switchingOptions).filter {
+        session.capabilities?.providerSwitch == true || $0.provider == session.observed?.provider
+    } }
     /// False when the last read could not reach Paseo. The value we hold is then
     /// the last confirmed one, not the current setting.
     private var observing: Bool { session.observation?.available != false }
     private var modelText: String? { applied.map { observing ? $0 : "最終確認 " + $0 } }
     private var stopped: Bool { ["stopped", "stop_unconfirmed"].contains(session.phase) }
     private var canChangeEffort: Bool {
-        observing && !stopped && session.capabilities?.effort == true && !changing && choices.count > 1
+        sharedLock == nil && session.capabilities?.effort == true && choices.count > 1
     }
     private var canChangeModel: Bool {
-        observing && !stopped && session.capabilities?.model == true && !changing && models.count > 1
+        sharedLock == nil && (session.capabilities?.model == true || session.capabilities?.providerSwitch == true) && models.count > 1
     }
     private var fast: LAAWorkFastControl.Display? {
         LAAWorkFastControl.display(observing: observing, observed: session.observedFast,
@@ -95,12 +97,14 @@ struct LAAWorkSessionControls: View {
     private var sharedLock: String? {
         if !observing { return "最後に確認した値です。現在値は未確認です。" }
         if stopped { return "停止したセッションは変更できません。" }
-        if changing { return "変更中です。" }
+        if changing || session.modelSwitch != nil { return "モデルを引き継ぎ中です。" }
+        if session.needsDecision { return "判断に回答してから変更できます。" }
+        if ["running", "starting"].contains(session.phase) { return "実行が終わってから変更できます。" }
         return nil
     }
     private var modelLock: String? {
         if let sharedLock { return sharedLock }
-        if session.capabilities?.model != true { return "このセッションではモデルを変更できません。" }
+        if session.capabilities?.model != true && session.capabilities?.providerSwitch != true { return "このセッションではモデルを変更できません。" }
         if models.count < 2 { return "切り替えられるモデルがありません。" }
         return nil
     }
@@ -119,7 +123,7 @@ struct LAAWorkSessionControls: View {
     private func pickers(_ modelText: String, name: String, effort: String) -> some View {
         LAAModelEffortPickers(
             model: currentModel, provider: session.observed?.provider, effort: effort, name: name,
-            current: observing, attention: mismatch != nil, changingModel: changing && changingWhat == .model,
+            current: observing, attention: mismatch != nil, changingModel: (changing && changingWhat == .model) || session.modelSwitch != nil,
             changingEffort: changing && changingWhat != .model, identifier: "work.session",
             modelValueSuffix: mismatch.map { "、依頼 " + $0.requested },
             modelHint: modelLock ?? "モデルを変更", effortHint: effortLock ?? "推論の強さを変更"
@@ -134,17 +138,20 @@ struct LAAWorkSessionControls: View {
                 }
             }
             if let modelLock { LAAMenuReason(text: modelLock) }
-            Section {
-                ForEach(models, id: \.self) { choice in
-                    Button { changeModel(choice.model) } label: {
-                        if choice.model == currentModel {
-                            Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
-                        } else {
-                            LAAModelMenu.Name(label: choice.label, model: choice.model)
+            ForEach(LAAWorkModelSelection.providers(models), id: \.name) { group in
+                Section(group.name) {
+                    ForEach(group.models) { choice in
+                        let selected = choice.model == currentModel && choice.provider == session.observed?.provider
+                        Button { changeModel(choice) } label: {
+                            if selected {
+                                Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
+                            } else {
+                                LAAModelMenu.Name(label: choice.label, model: choice.model)
+                            }
                         }
+                        .disabled(!canChangeModel || selected || targetProfile(choice) == nil)
+                        .accessibilityIdentifier("work.session.model.\(choice.provider).\(choice.model)")
                     }
-                    .disabled(!canChangeModel || choice.model == currentModel)
-                    .accessibilityIdentifier("work.session.model.\(choice.model)")
                 }
             }
         } effortMenu: {
@@ -164,18 +171,27 @@ struct LAAWorkSessionControls: View {
         LAAWorkSessionStyle.offeredEfforts(provider: session.observed?.provider, model: currentModel, options: options).contains(effort)
     }
 
-    private func changeModel(_ model: String) {
-        guard !changing, model != currentModel else { return }
+    private func targetProfile(_ model: LAAWorkModelSelection.Model) -> LAAWorkSessionOptions.Profile? {
+        let offered = model.profiles.filter {
+            (model.provider == session.observed?.provider && session.capabilities?.model == true)
+                || (model.provider != session.observed?.provider && session.capabilities?.providerSwitch == true
+                    && ["high", "xhigh", "max", "ultra"].contains($0.effort))
+        }
+        return offered.first { $0.effort == currentEffort } ?? offered.first { $0.effort == "high" } ?? offered.first
+    }
+
+    private func changeModel(_ model: LAAWorkModelSelection.Model) {
+        guard canChangeModel, let target = targetProfile(model) else { return }
         changingWhat = .model
         changing = true
         notice = nil
         Task { @MainActor in
             defer { changing = false }
-            struct Change: Encodable { let model: String }
+            struct Change: Encodable { let provider: String; let model: String; let effort: String }
             do {
                 let _: LAAWorkSession = try await LAAWorkHTTP.write(
                     bridge, path: "/v1/sessions/\(session.id)",
-                    body: JSONEncoder().encode(Change(model: model)),
+                    body: JSONEncoder().encode(Change(provider: target.provider, model: target.model, effort: target.effort)),
                     key: LAABridgeIdempotencyKey(), method: "PATCH")
                 await refresh()
             } catch let error as LAABridgeHTTPError {
