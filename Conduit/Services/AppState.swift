@@ -2130,6 +2130,15 @@ final class AppState: ObservableObject {
         if let effort { runtime.reasoningEffort = effort == "none" ? "" : effort }
         laaChatRuntime.apply(sessionID: sessionID, model: model, provider: provider, effort: effort)
     }
+
+    /// The speed Hermes accepted for a chat (a successful session-scoped
+    /// `/fast`): the runtime and the Fast capsule take it.
+    func laaApplyChatSpeed(sessionID: String, speed: ModelSpeed) {
+        guard sessionID == activeSessionId else { return }
+        runtime.fast = speed != .normal
+        runtime.serviceTier = speed.serviceTier
+        laaChatRuntime.applySpeed(sessionID: sessionID, fast: speed != .normal, serviceTier: speed.serviceTier)
+    }
 #endif
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
@@ -18449,6 +18458,7 @@ final class AppState: ObservableObject {
             ?? activeSessionId
         laaChatRuntime.apply(sessionID: reportedFor, model: snapshot.model, provider: snapshot.provider,
                              effort: snapshot.reasoningEffort)
+        laaChatRuntime.applySpeed(sessionID: reportedFor, fast: snapshot.fast, serviceTier: snapshot.serviceTier)
 #endif
         if let fast = snapshot.fast { runtime.fast = fast }
         // A gateway that reports `fast` without the tier leaves no stale

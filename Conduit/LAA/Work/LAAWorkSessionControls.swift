@@ -225,19 +225,7 @@ struct LAAWorkSessionControls: View {
     }
 
     private func fastLabel(_ display: LAAWorkFastControl.Display, pressable: Bool) -> some View {
-        HStack(spacing: LAASpacing.x1) {
-            if changingFast { Text(verbatim: "変更中").font(.caption) }
-            Image(systemName: display.value ? "bolt.fill" : "bolt")
-                .font(.system(size: 13, weight: .semibold))
-            Text(verbatim: "Fast")
-        }
-        .laaTextStyle(.secondary)
-        .foregroundStyle(display.value ? LAAColor.link : LAAColor.secondaryText)
-        .padding(.horizontal, LAASpacing.x3).frame(minHeight: 36)
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-        .conduitGlassControl(cornerRadius: 18, tint: pressable ? LAAColor.link.opacity(0.06) : .clear,
-                             interactive: pressable)
+        LAAFastCapsuleLabel(on: display.value, changing: changingFast, pressable: pressable)
     }
 
     private func change(_ effort: String) {
