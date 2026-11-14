@@ -280,24 +280,35 @@ enum LAAChatReadReceipt {
         }
     }
 }
+/// 既読 under the owner's newest message. Reads the rows' state rather than
+/// observing AppState: a bubble drawn without the chat's AppState (a test
+/// host, a preview) has no environment object, and reading one there traps.
 struct LAAChatDelivery: View {
     let message: ChatMessage
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
     var body: some View {
-        if appState.messages.last(where: { $0.role == .user && !$0.isSteer })?.id == message.id {
-            LAAChatLiveDelivery(message: message, messages: appState.messages, projection: appState.liveTurn)
+        if rowState.latestOwnerMessageID == message.id {
+            if rowState.latestOwnerMessageAnswered {
+                LAAChatReadMark()
+            } else if let projection = rowActions?.appState.liveTurn {
+                LAAChatLiveDelivery(projection: projection)
+            }
         }
     }
 }
+private struct LAAChatReadMark: View {
+    var body: some View {
+        Text(verbatim: "既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
+            .accessibilityIdentifier("chat.delivery.read")
+    }
+}
+/// Before the reply lands: read once Hermes starts streaming or thinking.
 private struct LAAChatLiveDelivery: View {
-    let message: ChatMessage
-    let messages: [ChatMessage]
     @ObservedObject var projection: LiveTurnProjection
     var body: some View {
-        if LAAChatReadReceipt.wasRead(message.id, messages: messages,
-            hasLiveResponse: !projection.streamingText.isEmpty || projection.reasoningSegment != nil) {
-            Text(verbatim: "既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
-                .accessibilityIdentifier("chat.delivery.read")
+        if !projection.streamingText.isEmpty || projection.reasoningSegment != nil {
+            LAAChatReadMark()
         }
     }
 }

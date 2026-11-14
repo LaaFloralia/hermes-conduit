@@ -24,6 +24,13 @@ struct ChatRowState: Equatable {
     /// own part.
     var reactionsAvailable = false
     var latestAssistantMessageID: String?
+#if LAA_BUILD
+    /// The owner's newest message, the only one that shows 既読, and whether
+    /// a reply to it has landed (a reply still streaming is watched by the
+    /// row itself, `LAAChatDelivery`).
+    var latestOwnerMessageID: String?
+    var latestOwnerMessageAnswered = false
+#endif
     var readAloudUnavailable = false
     var displayPreferences = ProfileDisplayPreferences()
     /// A call card finds its call through AppState; this redraws it when
@@ -65,6 +72,10 @@ struct ChatRowState: Equatable {
         canQuoteIntoComposer = appState.canQuoteIntoComposer()
         reactionsAvailable = appState.reactionsAvailable
         latestAssistantMessageID = appState.messages.last(where: { $0.role == .assistant })?.id
+#if LAA_BUILD
+        latestOwnerMessageID = appState.messages.last(where: { $0.role == .user && !$0.isSteer })?.id
+        latestOwnerMessageAnswered = latestOwnerMessageID.map { LAAChatReadReceipt.wasRead($0, messages: appState.messages) } ?? false
+#endif
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
