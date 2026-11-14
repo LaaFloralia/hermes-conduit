@@ -172,7 +172,11 @@ struct ChatView: View {
         guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
               let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
         let name = BotTeammateMessages.displayName(for: key, in: appState.botRoster)
+        #if LAA_BUILD
+        return "Messaging \(name)…"
+#else
         return AppLocalization.string("Messaging \(name)…")
+#endif
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
@@ -3199,7 +3203,13 @@ struct SettledThinkingCardContent: View, Equatable {
                 HStack(spacing: 11) {
                     ChatStepIcon(symbol: ChatStepStyle.thinking.symbol, tint: ChatStepStyle.thinking.tint)
                     AdaptiveStack(spacing: 6) {
-                        Text(AppLocalization.string("Thinking"))
+                        Text(AppLocalization.string("Thinking", language: {
+#if LAA_BUILD
+                            return .source
+#else
+                            return nil
+#endif
+                        }()))
                             .font(.body)
                             .foregroundStyle(.secondary)
                         ChatStepTimeLabel(timestamp: message.timestamp, duration: message.stepDuration, grouped: grouped)
@@ -3411,9 +3421,13 @@ private struct SettledToolCardContent: View, Equatable {
     ) -> String {
         guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
+#if LAA_BUILD
+        return running ? "Messaging \(name)…" : "Messaged \(name)"
+#else
         return running
             ? AppLocalization.string("Messaging \(name)…")
             : AppLocalization.string("Messaged \(name)")
+#endif
     }
 
     /// The readable part of a finished call's result, if Conduit has one.

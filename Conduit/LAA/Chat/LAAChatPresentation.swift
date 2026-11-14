@@ -260,7 +260,7 @@ struct LAATypingDots: View {
                         if records.isEmpty { Text(verbatim: "記録はありません").foregroundStyle(LAAColor.secondaryText) }
                         ForEach(records) { record in
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(verbatim: record.role == .reasoning ? "Thinking" : "道具の実行").font(.caption).foregroundStyle(LAAColor.secondaryText)
+                                Text(verbatim: record.role == .reasoning ? "Thinking" : "Running tool").font(.caption).foregroundStyle(LAAColor.secondaryText)
                                 Text(verbatim: record.content).font(.body).textSelection(.enabled)
                             }
                         }
@@ -332,7 +332,7 @@ struct LAAChatTypingRow: View {
         if let currentToolName {
             return ChatStepLabel(toolName: currentToolName, input: currentToolInput, catalog: rowState.toolCatalog).runningTitle
         }
-        return AppLocalization.string("Thinking")
+        return "Thinking"
     }
     private var records: [ChatMessage] {
         var result = appState.messages.filter { $0.role == .tool || $0.role == .reasoning }

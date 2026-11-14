@@ -188,23 +188,31 @@ struct ChatStepLabel: Equatable {
         }
     }
 
+    private func activityString(_ value: String.LocalizationValue) -> String {
+#if LAA_BUILD
+        return AppLocalization.string(value, language: .source)
+#else
+        return AppLocalization.string(value)
+#endif
+    }
+
     /// The live line while this step runs ("Using Spotify").
     var runningTitle: String {
         switch kind {
-        case .category(let category): AppLocalization.string(String.LocalizationValue(HermesTurnCopy.toolKey(category)))
-        case .named(let name): AppLocalization.string("Using \(name)")
-        case .toolSearch: AppLocalization.string("Looking for tools")
-        case .toolDescribe: AppLocalization.string("Reading tool details")
+        case .category(let category): activityString(String.LocalizationValue(HermesTurnCopy.toolKey(category)))
+        case .named(let name): activityString("Using \(name)")
+        case .toolSearch: activityString("Looking for tools")
+        case .toolDescribe: activityString("Reading tool details")
         }
     }
 
     /// The row once the step finished ("Used Spotify").
     var doneTitle: String {
         switch kind {
-        case .category(let category): AppLocalization.string(ChatStepStyle.doneKey(category))
-        case .named(let name): AppLocalization.string("Used \(name)")
-        case .toolSearch: AppLocalization.string("Looked for tools")
-        case .toolDescribe: AppLocalization.string("Read tool details")
+        case .category(let category): activityString(ChatStepStyle.doneKey(category))
+        case .named(let name): activityString("Used \(name)")
+        case .toolSearch: activityString("Looked for tools")
+        case .toolDescribe: activityString("Read tool details")
         }
     }
 
@@ -1007,7 +1015,11 @@ struct ChatThinkingReveal {
     }
 
     var title: String {
+#if LAA_BUILD
+        shown ? "Hide thinking" : "Show thinking"
+#else
         shown ? AppLocalization.string("Hide thinking") : AppLocalization.string("Show thinking")
+#endif
     }
 }
 
