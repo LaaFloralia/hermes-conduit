@@ -31,7 +31,8 @@ import { sessionImageStore } from './images.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
-import { readConversation } from './history.mjs';
+import { ownerText, readConversation } from './history.mjs';
+import { readFirstPrompt } from './first-prompt.mjs';
 import { settleLocalImages } from './local-images.mjs';
 import { daemonSessionID, snapshot } from './daemon.mjs';
 import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
@@ -80,6 +81,7 @@ export function createSessionService({
   notify = notifyOwner,
   decisions = null,
   history = readConversation,
+  firstPrompt = readFirstPrompt,
   images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
   choices = sessionOptionsReader(),
   modelSwitchOptions = {},
@@ -438,7 +440,7 @@ export function createSessionService({
         const createdAt = Date.parse(row.createdAt);
         if (storedById.get(row.id)?.initialInstruction || createdAt < startedAt || now() - createdAt > 600000) continue;
         try {
-          await initialInstruction(row.id);
+          await initialInstruction(row.id, { fromHistory: false });
         } catch { /* Recording must never prevent a conversation from continuing. */ }
       }
       await markDeletedAgents(agents);
@@ -535,9 +537,16 @@ export function createSessionService({
     };
   }
 
-  async function initialInstruction(id) {
+  // Values known to be the conversation's real first instruction: the prompt
+  // the Bridge started it with, Work's first-turn receipt, or the provider's
+  // transcript. One taken from the daemon's timeline ("Work / recovered
+  // history") may be a later follow-up and is corrected when a better source
+  // is readable.
+  const TRUSTED_INITIAL = new Set(['Bridge', 'Work', 'Work / transcript']);
+
+  async function initialInstruction(id, { fromHistory = true } = {}) {
     const record = requireSession(id);
-    if (record.initialInstruction) return record.initialInstruction;
+    if (record.initialInstruction && TRUSTED_INITIAL.has(record.initialInstruction.source)) return record.initialInstruction;
     let initial = null;
     // ACP can omit the initial user entry from its timeline. Its first-turn
     // local receipt is copied into the Bridge record once, before any switch.
@@ -548,22 +557,36 @@ export function createSessionService({
         const receipt = JSON.parse(await readFile(join(directory, 'instructions', `${agentId}.json`), 'utf8'));
         if (typeof receipt.text === 'string' && receipt.text.trim()) initial = { text: receipt.text, createdAt: record.createdAt, source: 'Work' };
       } catch { /* history remains available for other providers */ }
+      if (!initial) {
+        try {
+          const found = await firstPrompt(agentId);
+          const text = found && ownerText(found.text);
+          if (text?.trim()) initial = { text, createdAt: found.createdAt ?? record.createdAt, source: 'Work / transcript' };
+        } catch { /* the transcript is optional */ }
+      }
     }
-    if (!initial) {
-      try {
-        const { items } = await joinedHistory(record, history, sessionStore.file);
-        // joinedHistory retains handoff snapshots and prefixes later delegates'
-        // IDs. A surviving follow-up must not replace a missing first request.
-        const laterPrefixes = record.delegateHistory?.length
-          ? [...record.delegateHistory.slice(1), record.delegate].map((entry) => `${entry.sessionId}:`) : [];
-        const first = items.find((item) => item.role === 'user' && typeof item.text === 'string' && item.text.trim()
-          && !laterPrefixes.some((prefix) => item.id.startsWith(prefix)));
-        if (first) initial = { text: first.text, createdAt: first.timestamp ?? record.createdAt, source: 'Work / recovered history' };
-      } catch { /* no historical record */ }
+    if (initial) {
+      sessionStore.update(id, (row) => {
+        if (!row.initialInstruction || !TRUSTED_INITIAL.has(row.initialInstruction.source)) row.initialInstruction = initial;
+        return [];
+      });
+      return sessionStore.get(id).initialInstruction;
     }
-    if (!initial) return null;
-    sessionStore.update(id, (row) => { row.initialInstruction ??= initial; return []; });
-    return sessionStore.get(id).initialInstruction;
+    // Nothing better than a value saved from the timeline before.
+    if (record.initialInstruction) return record.initialInstruction;
+    if (!fromHistory) return null;
+    try {
+      const { items } = await joinedHistory(record, history, sessionStore.file);
+      // joinedHistory retains handoff snapshots and prefixes later delegates'
+      // IDs. A surviving follow-up must not replace a missing first request.
+      const laterPrefixes = record.delegateHistory?.length
+        ? [...record.delegateHistory.slice(1), record.delegate].map((entry) => `${entry.sessionId}:`) : [];
+      const first = items.find((item) => item.role === 'user' && typeof item.text === 'string' && item.text.trim()
+        && !laterPrefixes.some((prefix) => item.id.startsWith(prefix)));
+      // Shown, never saved: the timeline may start after the first turn.
+      if (first) return { text: first.text, createdAt: first.timestamp ?? record.createdAt, source: 'Work / recovered history' };
+    } catch { /* no historical record */ }
+    return null;
   }
 
   async function conversation(id) {
