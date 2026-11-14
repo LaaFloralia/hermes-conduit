@@ -120,6 +120,32 @@ struct MetricKitReportStore {
         }
     }
 
+#if LAA_BUILD
+    /// Diagnostics already handed to the paired Mac, one file name a line,
+    /// beside the reports (not a report: `entry(for:)` reads only .json).
+    static let sentListName = "bridge-sent.txt"
+
+    func sentDiagnosticNames() -> Set<String> {
+        guard let text = try? String(contentsOf: directory.appendingPathComponent(Self.sentListName), encoding: .utf8) else { return [] }
+        return Set(text.split(separator: "\n").map(String.init))
+    }
+
+    /// Records names as sent, dropping those whose report was pruned.
+    func markDiagnosticsSent(_ names: [String]) {
+        guard !names.isEmpty else { return }
+        let present = Set(entries(.diagnostics).map(\.url.lastPathComponent))
+        let kept = sentDiagnosticNames().union(names).intersection(present)
+        do {
+            try prepareDirectory()
+            try Data(kept.sorted().joined(separator: "\n").utf8)
+                .write(to: directory.appendingPathComponent(Self.sentListName),
+                       options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            metricKitLog.error("Couldn't record sent diagnostics: \(Self.logged(error), privacy: .public)")
+        }
+    }
+#endif
+
     /// The reports folder could be read: what it lists is what is stored.
     var canReadReports: Bool { reportFiles() != nil }
 
@@ -557,6 +583,44 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
         queue.async { [self] in receive(metrics: [], diagnostics: payloads) }
     }
 
+#if LAA_BUILD
+    /// Hands each stored diagnostic to the paired Mac once
+    /// (`LAADeviceReportUpload`): a crash report reaches the Mac on the next
+    /// launch without the owner sharing anything. Only touched on `queue`.
+    private var sender: (@Sendable (_ name: String, _ json: Data) async -> Bool)?
+    private var sending = false
+
+    func sendDiagnostics(with sender: @escaping @Sendable (_ name: String, _ json: Data) async -> Bool) {
+        queue.async { [self] in
+            self.sender = sender
+            sendPendingDiagnostics()
+        }
+    }
+
+    /// Oldest first; stops at the first that doesn't go (offline), so the
+    /// rest wait for the next launch or return to the app.
+    private func sendPendingDiagnostics() {
+        guard let sender, !sending else { return }
+        let sent = store.sentDiagnosticNames()
+        let items: [(String, Data)] = store.entries(.diagnostics)
+            .filter { !sent.contains($0.url.lastPathComponent) }
+            .compactMap { entry in (try? Data(contentsOf: entry.url)).map { (entry.url.lastPathComponent, $0) } }
+        guard !items.isEmpty else { return }
+        sending = true
+        Task.detached(priority: .utility) { [self] in
+            var delivered: [String] = []
+            for (name, json) in items {
+                guard await sender(name, json) else { break }
+                delivered.append(name)
+            }
+            queue.async { [self] in
+                store.markDiagnosticsSent(delivered)
+                sending = false
+            }
+        }
+    }
+#endif
+
     private func receive(metrics: [MXMetricPayload], diagnostics: [MXDiagnosticPayload]) {
         for payload in metrics {
             store.save(payload.jsonRepresentation(), kind: .metrics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
@@ -564,5 +628,8 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
         for payload in diagnostics {
             store.save(payload.jsonRepresentation(), kind: .diagnostics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
         }
+#if LAA_BUILD
+        if !diagnostics.isEmpty { sendPendingDiagnostics() }
+#endif
     }
 }

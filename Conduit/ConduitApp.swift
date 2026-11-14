@@ -100,6 +100,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // iOS's daily usage and hang reports, kept on this device for
         // Diagnostics & logs. Subscribes on its own background queue.
         MetricKitReports.shared.start()
+        #if LAA_BUILD
+        // Crash and hang diagnostics also go to the paired Mac once each.
+        LAADeviceReportUpload.start()
+        #endif
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Task { @MainActor in
                 PushNotificationService.shared.receiveNotificationPayload(payload)

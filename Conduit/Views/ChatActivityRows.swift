@@ -1016,7 +1016,8 @@ struct ChatThinkingReveal {
 
     var title: String {
 #if LAA_BUILD
-        shown ? "Hide thinking" : "Show thinking"
+        shown ? AppLocalization.string("Hide thinking", language: .source)
+            : AppLocalization.string("Show thinking", language: .source)
 #else
         shown ? AppLocalization.string("Hide thinking") : AppLocalization.string("Show thinking")
 #endif
