@@ -13,7 +13,7 @@ final class LAATodayCalendarTests: XCTestCase {
                                      end: future.addingTimeInterval(3600), allDay: false, location: nil)
         XCTAssertEqual(LAACalendarMode.agendaDays(events: [event], now: today, calendar: calendar), [today, future])
         XCTAssertEqual(LAACalendarMode.agendaDays(events: [], now: today, calendar: calendar), [today])
-        XCTAssertEqual(LAACalendarMode.visibleModes, [.list, .week, .month])
+        XCTAssertEqual(LAACalendarMode.visibleModes, [.list, .week, .month, .habits])
     }
 
     @MainActor func testTodayOpensOnTheMonth() {

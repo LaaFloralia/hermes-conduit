@@ -8,7 +8,7 @@ import test from 'node:test';
 
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
 
-const commands = [[], ['pair'], ['serve'], ['revoke'], ['grant'], ['grant-studio'], ['grant-instructions'], ['tasks'], ['tasks', 'restore'], ['tasks', 'import-linear'], ['devices'], ['status'], ['version'], ['ref'], ['refs']];
+const commands = [[], ['pair'], ['serve'], ['revoke'], ['grant'], ['grant-studio'], ['grant-instructions'], ['tasks'], ['tasks', 'restore'], ['tasks', 'import-linear'], ['habits'], ['habits', 'add'], ['devices'], ['status'], ['version'], ['ref'], ['refs']];
 for (const args of commands) {
   for (const flag of ['--help', '-h']) {
   test(`${[...args, flag].join(' ')} prints usage without touching state or starting work`, () => {

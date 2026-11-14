@@ -108,6 +108,7 @@ struct LAACalendarResponse: Codable {
     }
 
     func refresh(bridge: LAABridgeSession, now: Date = Date()) async {
+        guard mode != .habits else { return }
         guard bridge.status == .paired, let deviceID = bridge.deviceID else {
             cacheKey = nil; calendars = []; selectedCalendarIDs = []
             await refresh(isPaired: false) { LAACalendarResponse(items: []) }; return

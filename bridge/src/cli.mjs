@@ -21,6 +21,7 @@ import {
 import { createStore } from './store.mjs';
 import { grantInstructions, grantScopes, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
+import { HABITS_USAGE, habitsCommand } from './cli-habits.mjs';
 import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
 import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
@@ -45,10 +46,13 @@ Usage:
   laa-bridge status [--json]               local health check of the running service
   laa-bridge tasks <add|list|get|update|status|report|import-linear|backup|restore>
                                            owner tasks (same store as the app; see below)
+  laa-bridge habits <week|history|events|add|update|archive|restore|check|uncheck>
+                                           weekly habits (same store as the app; see below)
   ${REFS_USAGE}
   laa-bridge version
 
 ${TASKS_USAGE}
+${HABITS_USAGE}
 ${DECISIONS_USAGE}
 ${PHONE_USE_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
@@ -56,6 +60,9 @@ Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
 
 function fail(message, code = 1) {
+  if (code === 2 && process.argv[2] === 'habits' && process.argv.includes('--json')) {
+    process.stdout.write(`${JSON.stringify({ ok: false, error: { code: 'usage_error', message } })}\n`);
+  }
   process.stderr.write(`laa-bridge: ${message}\n`);
   process.exit(code);
 }
@@ -63,7 +70,7 @@ function fail(message, code = 1) {
 // Flags that take no value, and flags that may repeat (each occurrence is
 // appended). Everything else takes exactly one value; a missing value is a usage
 // error rather than a silent `true`.
-const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'force', 'allow-live', 'help', 'no-other']);
+const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'clear-minutes', 'clear-minimum', 'force', 'allow-live', 'help', 'no-other']);
 const REPEATED_FLAGS = new Set(['link', 'option']);
 
 function parseArgs(argv) {
@@ -286,6 +293,9 @@ if (flags.help) {
     break;
   case 'tasks':
     process.exitCode = await tasksCommand(positional, flags);
+    break;
+  case 'habits':
+    process.exitCode = habitsCommand(positional, flags);
     break;
   case 'ref':
     process.exitCode = refsCommand(['ref', ...positional], flags);

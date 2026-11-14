@@ -25,6 +25,8 @@ enum LAACopy {
     static let brand = "LAA"
     static let agent = "Monet"
     static let settings = "Settings"
+    /// The Today tab's fourth segment. English like the tab names; not an upstream catalog key.
+    static let habitsMode = "Habits"
     static let loginMacAddress = "Macのアドレス"
     static let loginMacSubtitle = "Macに接続します"
     static let plugin = "接続の状態"
