@@ -764,6 +764,17 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAModelCapsule.unknown, "不明")
     }
 
+    func testClaudeAPIHasItsOwnModelGroupAndProfile() throws {
+        let json = #"{"profiles":[{"id":"fable-high","label":"Claude Fable 5.2","provider":"claude","model":"claude-fable-5-2","effort":"high","fast":false},{"id":"fable-api-high","label":"Claude Fable 5.2（API）","provider":"hermes-claude-api","model":"anthropic:claude-fable-5-2","effort":"high","fast":false}]}"#
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(json.utf8))
+        let models = LAAWorkModelSelection.models(options)
+        let groups = LAAWorkModelSelection.providers(models)
+        XCTAssertEqual(groups.map(\.name), ["Claude", "Claude API"])
+        XCTAssertEqual(Set(models.map(\.id)).count, 2)
+        XCTAssertEqual(LAAWorkModelSelection.model(of: "fable-api-high", in: options)?.provider, "hermes-claude-api")
+        XCTAssertEqual(LAAWorkModelSelection.model(of: "fable-api-high", in: options)?.model, "anthropic:claude-fable-5-2")
+    }
+
     /// A held follow-up stays in the transcript until the history has it.
     func testSentEchoLeavesOnceTheHistoryHasTheMessage() {
         let before = [LAAWorkConversationMessage(id: "u1", role: "user", text: "最初", timestamp: nil)]
