@@ -545,7 +545,12 @@ export function createSessionService({
     if (!initial) {
       try {
         const { items } = await joinedHistory(record, history, sessionStore.file);
-        const first = items.find((item) => item.role === 'user' && typeof item.text === 'string' && item.text.trim());
+        // joinedHistory retains handoff snapshots and prefixes later delegates'
+        // IDs. A surviving follow-up must not replace a missing first request.
+        const laterPrefixes = record.delegateHistory?.length
+          ? [...record.delegateHistory.slice(1), record.delegate].map((entry) => `${entry.sessionId}:`) : [];
+        const first = items.find((item) => item.role === 'user' && typeof item.text === 'string' && item.text.trim()
+          && !laterPrefixes.some((prefix) => item.id.startsWith(prefix)));
         if (first) initial = { text: first.text, createdAt: first.timestamp ?? record.createdAt, source: 'Work / recovered history' };
       } catch { /* no historical record */ }
     }

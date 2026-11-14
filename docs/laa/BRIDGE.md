@@ -163,6 +163,7 @@ Paseoセッションのアプリ置換（2026-11-02）:
 
 - 実稼働起動はdaemonの全メタデータを取り込み、Bridge由来でない会話にも安定したses IDを付ける。`delegateSessionId`はPaseoのagent IDを保持する。アプリは`scope=all`でアーカイブを含めてリンク先を解決する。
 - 会話は要求時だけprojected timelineから取得する。reasoning・ツール入出力は返さず、ツール名と実行状態を要約する。
+- `GET /v1/sessions/{id}/initial-instruction`（`sessions:read`）は保存した初回指示・日時・経路を返す。Bridge作成時の全文を保持し、Work経由は履歴かローカルの初回控えから一度回収する。提供元切替前にも保存し、一覧・イベントに本文を含めない。取得不能は`instruction: null`。
 - `POST /v1/sessions/{id}/interrupt`は現在の手番を中断し、同じ会話への追加指示を許す。従来の`stop`の契約は保つ。`GET .../decision`が発行した5分ticketとpending hashを`POST .../reply`で照合し、回答の消化を再読取する。
 - 追加指示は安定したmessage IDとsteerを使う。画像は最大4枚・合計4 MiBをstate内の0600ファイルへ保存する。既存Paseo画像の参照は公開履歴にないため、表示はLAAから送った分に限る。
 - `notifyOwner`は既存Hermesプラグインの暗号化配送を使う。未達は永続化して30秒ごとに再試行し、同時配送は2件までとする。実通知・実会話書込・実機性能は親が最終確認する。

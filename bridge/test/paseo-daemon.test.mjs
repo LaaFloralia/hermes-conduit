@@ -824,3 +824,15 @@ test('an ACP first-turn receipt is saved once even when its provider has no user
   assert.deepEqual(await service.initialInstruction(id),first);
   assert.deepEqual(store.get(id).initialInstruction,first);
 });
+
+test('a proper agent name wins over the old workspace prompt in both list and detail', async (t) => {
+  const dir=mkdtempSync(join(tmpdir(),'named-workspace-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const f=fixture({workspaceId:'ws-title',workspaceTitle:'会話を始める最初の長い依頼文'});
+  f.rows[0].title='Journal｜手法の図解';
+  const store=createSessionStore({file:join(dir,'sessions.json')});
+  const service=createSessionService({sessionStore:store,daemon:f.daemon,adapter:{},findWorkspace:async()=>null,notify:async()=>{}});
+  const listed=await service.listSessions();
+  assert.equal(listed.items.find(row=>row.id===daemonSessionID('parent')).name,'Journal｜手法の図解');
+  const detail=await service.getSession(daemonSessionID('parent'));
+  assert.equal(detail.session.name,'Journal｜手法の図解');
+});

@@ -81,6 +81,7 @@ struct LAAWorkSessionDetail: View {
     let id: String
     let projects: [LAAWorkProject]
     let workspaces: [LAAWorkWorkspace]
+    @State private var showingInitialInstruction = false
     @State private var session: LAAWorkSession?
     @State private var events: [LAAWorkEvent] = []
     @State private var messages: [LAAWorkConversationMessage] = []
@@ -187,12 +188,19 @@ struct LAAWorkSessionDetail: View {
             // pill would read twice there.
             if let session, !laaDesktop {
                 ToolbarItem(placement: .principal) {
-                    LAAWorkSessionHeaderPill(session: session)
+                    Button { showingInitialInstruction = true } label: {
+                        LAAWorkSessionHeaderPill(session: session)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(verbatim: session.name + "、" + LAAWorkPresentation.phase(session.phase)))
+                    .accessibilityHint("最初の指示を表示")
+                    .accessibilityIdentifier("work.session.detail.title")
                         .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                         .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
                 }
             }
         }
+        .sheet(isPresented: $showingInitialInstruction) { LAAWorkInitialInstruction(sessionID: id) }
         .onChange(of: session?.needsDecision) { _, waiting in
             guard waiting == true else { parkedOnDecision = false; return }
             guard didInitialScroll, !userDragged else { return }
