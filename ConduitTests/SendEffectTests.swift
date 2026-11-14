@@ -37,6 +37,7 @@ final class SendEffectTests: XCTestCase {
             let button = UIButton(type: .system)
             button.frame = CGRect(x: 366, y: 150, width: 36, height: 36)
             button.setImage(UIImage(systemName: "arrow.up"), for: .normal)
+            button.tintColor = UIColor(red: dark ? 117/255 : 0, green: dark ? 195/255 : 88/255, blue: dark ? 195/255 : 94/255, alpha: 1)
             host.view.addSubview(button)
             let view = LAASendEffectView()
             view.frame = CGRect(x: 304, y: 88, width: 160, height: 160)
