@@ -35,6 +35,9 @@ enum LAAParticleOrb {
         let light = (0.82, 0.89, 1.0)                        // blue-white
         let breath = 1 + 0.20 * sin(wave) + 0.02 * sin(beat) + 0.25 * level
         let activity = 0.55 + 0.45 * thinking                // how many particles are lit
+        // Quiet (thinking 0, e.g. replying on another device): the light dims to about 57% and the outer
+        // streams and lumps draw in toward the heart and fade. At thinking 1 none of this applies.
+        let idle = 1 - max(0, min(1, thinking))
         func color(_ t: (Double, Double, Double), _ a: Double) -> Color {
             Color(red: t.0, green: t.1, blue: t.2).opacity(max(0, min(1, a)))
         }
@@ -51,12 +54,9 @@ enum LAAParticleOrb {
             ctx.fill(disc(R * 1.02), with: .color(Color(red: 0.059, green: 0.106, blue: 0.110)))
         }
         if ground == .paperBead {
-            // Lighter than a hole in the paper: the dark glass, wash #243638 to surface #172627, a thin rim lit from above.
+            // Lighter than a hole in the paper: an ink bead (text #213536, one flat colour), a thin rim lit from above.
             let b = R * 1.05
-            ctx.fill(disc(b), with: .radialGradient(Gradient(stops: [
-                .init(color: Color(red: 0.141, green: 0.212, blue: 0.220), location: 0),
-                .init(color: Color(red: 0.090, green: 0.149, blue: 0.153), location: 1),
-            ]), center: CGPoint(x: c.x, y: c.y - 0.3 * b), startRadius: 0, endRadius: b * 1.3))
+            ctx.fill(disc(b), with: .color(Color(red: 0.129, green: 0.208, blue: 0.212)))
             ctx.stroke(disc(b - 0.5 * px), with: .linearGradient(Gradient(colors: [
                 Color.white.opacity(0.45), Color.white.opacity(0.12), Color.white.opacity(0.22)]),
                 startPoint: CGPoint(x: c.x, y: c.y - b), endPoint: CGPoint(x: c.x, y: c.y + b)),
@@ -69,6 +69,7 @@ enum LAAParticleOrb {
                 lineWidth: max(px, 0.008 * R))
         }
 
+        if idle > 0 { ctx.opacity = 1 - 0.35 * idle }
         ctx.blendMode = .plusLighter
         // Glow on the dark ground only, gone by 1.3 R. Inside, a haze that falls smoothly from the
         // centre to the edge (no dark moat before the shell), and a soft heart: a cloud, not a dot.
@@ -190,7 +191,7 @@ enum LAAParticleOrb {
                 w = 0.004 * R
                 peak = 0.4; speed = 0.15 + 0.15 * thinking; env0 = pow(sin(.pi * u), 1.0)
             default:
-                // big bright lumps: most gather in six clusters in the upper half, drifting slowly
+                // big bright lumps: most gather in four clusters in the upper half, drifting slowly
                 if hash(s, 15) < 0.65 {
                     let j = Int(hash(UInt64(i), 16) * 6)
                     let ca = [-2.65, -2.15, -1.7, -1.25, -0.8, -0.4][j] + 0.08 * sin(beat + Double(j))
@@ -209,6 +210,10 @@ enum LAAParticleOrb {
             }
             if kind != 0 && hash(s, 30) < 0.5 { speed = -speed }
             rho = rho * sxy + speed * (u - 0.5) * life * sxy
+            var gather = 1.0                                // quiet: outer streams and lumps draw in and fade
+            if idle > 0 && (kind == 2 || kind == 3 || kind == 4 || kind == 5) {
+                rho *= 1 - 0.35 * idle; gather = 1 - 0.5 * idle
+            }
             if kind != 0 {
                 let vt = (hash(s, 31) - 0.5) * 0.36 * (0.7 + 0.3 * thinking)
                 let dphi = vt * (u - 0.5) * life / max(rho, 0.15)
@@ -217,7 +222,7 @@ enum LAAParticleOrb {
             }
             let up = -uy * rho                              // screen y grows downward
             let depth = 0.82 + 0.18 * dz                    // the far side a little dimmer
-            let env = env0 * peak * (0.65 + 0.35 * hash(s, 8)) * breath * (1 + upW * up) * depth * shade
+            let env = env0 * peak * (0.65 + 0.35 * hash(s, 8)) * breath * (1 + upW * up) * depth * shade * gather
             // seen length: the outward motion foreshortened (a dot when it moves toward the viewer)
             let seen = max(len * sxy * R, 1.6 * w)
             let p = lens(c.x + ux * rho * R, c.y + uy * rho * R, ux, uy, seen, w)
@@ -268,6 +273,7 @@ enum LAAParticleOrb {
             l.fill(haloP, with: .color(color((0.66, 0.79, 1.0), 0.30)))
         }
         ctx.blendMode = .normal
+        if idle > 0 { ctx.opacity = 1 }
     }
 
     /// A stable pseudo-random number in 0..<1 for a particle and a field.
