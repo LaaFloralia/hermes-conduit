@@ -121946,7 +121946,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "なし（思考オフ）"
+            "value": "なし（Thinkingオフ）"
           }
         },
         "ko": {
@@ -145664,7 +145664,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "思考を表示"
+            "value": "Thinkingを表示"
           }
         },
         "ko": {
@@ -158006,7 +158006,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "思考"
+            "value": "Thinking"
           }
         },
         "ko": {
@@ -158088,7 +158088,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "思考中…"
+            "value": "Thinking…"
           }
         },
         "ko": {
@@ -348340,7 +348340,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "思考を隠す"
+            "value": "Thinkingを隠す"
           }
         },
         "ko": {

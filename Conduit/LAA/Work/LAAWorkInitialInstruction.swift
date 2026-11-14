@@ -37,12 +37,12 @@ struct LAAWorkInitialInstruction: View {
                             Label(copied ? String(localized: "Copied") : String(localized: "Copy"), systemImage: "doc.on.doc")
                         }
                         .frame(minHeight: LAASpacing.minimumTouchTarget)
-                        .accessibilityLabel(copied ? "コピーしました" : "最初の指示をコピー")
+                        .accessibilityLabel(Text(verbatim: copied ? "コピーしました" : "最初の指示をコピー"))
                         .accessibilityIdentifier("work.initialInstruction.copy")
                     } else if response != nil {
-                        Text("記録なし").laaTextStyle(.body)
+                        Text(verbatim: "記録なし").laaTextStyle(.body)
                     } else if failed {
-                        Text("最初の指示を取得できませんでした。").laaTextStyle(.body)
+                        Text(verbatim: "最初の指示を取得できませんでした。").laaTextStyle(.body)
                         Button("Retry") { Task { await load() } }
                     } else {
                         ProgressView()

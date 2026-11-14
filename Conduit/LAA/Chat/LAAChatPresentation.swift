@@ -260,7 +260,7 @@ struct LAATypingDots: View {
                         if records.isEmpty { Text(verbatim: "記録はありません").foregroundStyle(LAAColor.secondaryText) }
                         ForEach(records) { record in
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(verbatim: record.role == .reasoning ? "思考" : "道具の実行").font(.caption).foregroundStyle(LAAColor.secondaryText)
+                                Text(verbatim: record.role == .reasoning ? "Thinking" : "道具の実行").font(.caption).foregroundStyle(LAAColor.secondaryText)
                                 Text(verbatim: record.content).font(.body).textSelection(.enabled)
                             }
                         }
