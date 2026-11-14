@@ -124,7 +124,10 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Opus 4.8")).count, 2,
                                     "every progress note names its model")
         let mismatch = any("work.session.modelMismatch", app)
-        XCTAssertTrue(mismatch.exists)
+        // The line leads the conversation; a composer whose capsules take a
+        // line of their own can leave it just above the opened view.
+        if !mismatch.exists { app.scrollViews.firstMatch.swipeDown(); Thread.sleep(forTimeInterval: 0.5) }
+        XCTAssertTrue(mismatch.waitForExistence(timeout: 5))
         XCTAssertTrue(mismatch.label.contains("Fable 5.2") && mismatch.label.contains("Opus 4.8"), mismatch.label)
         XCTAssertTrue(mismatch.label.contains("切替を確認"), "the Bridge saw the switch: say when")
         XCTAssertTrue(any("work.session.progress.thinking", app).waitForExistence(timeout: 10))
@@ -143,7 +146,8 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         // The owner's sent picture opens over the whole screen.
         let sent = any("work.session.image", app)
         XCTAssertTrue(sent.waitForExistence(timeout: 20), "the owner's picture did not load")
-        sent.tap()
+        // Its upper part: the composer can cover the lower half.
+        sent.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
         XCTAssertTrue(any("work.image.preview", app).waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.6)
         capture(app, "conversation-image-preview-\(theme)")

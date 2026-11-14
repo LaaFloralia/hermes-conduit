@@ -67,15 +67,26 @@ struct LAAWorkMessageForm: View {
     /// The follow-up row, in the order the owner reads it: the picture, the
     /// model and Fast, then the stop and Send at the trailing edge. Everything
     /// is 36pt on the same glass; only the model name gives way when narrow.
-    private var actionRow: some View {
-        HStack(spacing: LAASpacing.x2) {
-            photoButton
-            // Before the spacer, so the model's name shows whenever the row
-            // has room for it; only a row too narrow drops it.
-            if let settingsRow { settingsRow.layoutPriority(1) }
-            Spacer(minLength: LAASpacing.x2)
-            if let interrupt { interrupt }
-            sendButton
+    @ViewBuilder private var actionRow: some View {
+        if let settingsRow {
+            // The model's whole name never folds inside its capsule: when the
+            // row is too narrow, the capsules and Fast take their own line
+            // above the picture, stop and Send, as in Chat's composer.
+            LAAComposerControlsRow(spacing: LAASpacing.x2) {
+                photoButton
+                settingsRow
+                HStack(spacing: LAASpacing.x2) {
+                    if let interrupt { interrupt }
+                    sendButton
+                }
+            }
+        } else {
+            HStack(spacing: LAASpacing.x2) {
+                photoButton
+                Spacer(minLength: LAASpacing.x2)
+                if let interrupt { interrupt }
+                sendButton
+            }
         }
     }
 
