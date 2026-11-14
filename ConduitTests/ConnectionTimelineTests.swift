@@ -10,6 +10,30 @@ import XCTest
 @testable import Conduit
 
 extension ConnectionFailureTests {
+    func testTimelinePersistenceOverwritesOneBoundedRedactedSnapshot() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let saved = expectation(description: "snapshots written")
+        var first = ConnectionTimeline(trigger: "cold launch")
+        first.record("Connecting")
+        first.persist(to: directory, route: "offline")
+        var last = ConnectionTimeline(trigger: "reconnect")
+        last.record("Ticket", error: DashboardTicketBridgeError.http(status: 503, detail: "secret.example token"))
+        last.record(String(repeating: "x", count: 30_000))
+        last.persist(to: directory, route: "metered", completion: { saved.fulfill() })
+        await fulfillment(of: [saved], timeout: 10)
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        XCTAssertEqual(files, ["latest.txt"])
+        let data = try Data(contentsOf: directory.appendingPathComponent("latest.txt"))
+        XCTAssertLessThanOrEqual(data.count, 16_384)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("Path: metered"))
+        XCTAssertTrue(text.contains("reconnect"))
+        XCTAssertTrue(text.contains("HTTP 503"))
+        XCTAssertFalse(text.contains("secret.example"))
+        XCTAssertFalse(text.contains("cold launch"))
+    }
+
     func testTimelineRecordsStepDurationsAndOffsets() {
         let start = Date(timeIntervalSinceReferenceDate: 1_000)
         var timeline = ConnectionTimeline(trigger: "cold launch, password sign-in", startedAt: start)

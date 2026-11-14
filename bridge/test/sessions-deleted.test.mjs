@@ -180,3 +180,27 @@ test('an unlisted agent Paseo still holds is not re-read for ten minutes', async
   await ctx.service.syncDaemon();
   assert.equal(reads(), 2);
 });
+
+// Each store read parses the whole sessions file (megabytes on a long-lived
+// Mac), so a sync must not read it once per Paseo agent (2026-11-14: 200
+// agents made the session list and the decision board take 11 to 15 s).
+test('a sync reads the session file the same number of times for one agent or forty', async (t) => {
+  const ctx = await makeService(t);
+  const reads = { n: 0 };
+  for (const name of ['get', 'all']) {
+    const original = ctx.store[name].bind(ctx.store);
+    ctx.store[name] = (...args) => { reads.n += 1; return original(...args); };
+  }
+  await ctx.service.syncDaemon();
+  reads.n = 0;
+  await ctx.service.syncDaemon();
+  const one = reads.n;
+  for (let i = 0; i < 39; i += 1) {
+    ctx.f.rows.push({ ...ctx.f.rows[0], id: `more-${i}`, title: `会話${i}` });
+  }
+  await ctx.service.syncDaemon();
+  reads.n = 0;
+  await ctx.service.syncDaemon();
+  assert.equal(reads.n, one);
+  assert.equal((await ctx.service.listSessions()).items.length, 40);
+});

@@ -74,7 +74,13 @@ extension AppState {
     var composerWaitsForChat: Bool {
         // A Hermes too old to recover turns safely can't take it: the
         // composer stays locked and says why.
-        guard isConnected || isRecoveringConnection, turnState != .unsupportedGateway else { return false }
+        // Status wording stops saying "connecting" after three failures or
+        // while the path is down. Recovery still owns this conversation:
+        // keep its durable pending-send path available during that wait.
+        let waitingForTransport = connection != nil && !showLogin
+            && lastConnectionFailure != .loginRequired && turnState == .reconnecting
+        guard isConnected || isRecoveringConnection || waitingForTransport,
+              turnState != .unsupportedGateway else { return false }
         switch composerChatOnScreen {
         case .none:
             return false

@@ -161,11 +161,12 @@ test('concurrent answers cannot send twice; interrupted pending delivery becomes
   assert.equal(f.store.get(other.id).delivery.error, 'delivery_unconfirmed');
 });
 
-test('list: failures first, deadlines then newest, native questions merged, archived excluded, dynamic refs', async (t) => {
+test('list: failures first, deadlines then newest, native questions merged, archived and deleted excluded, dynamic refs', async (t) => {
   const sessionStore = { all: () => [
     { id: 'ses_1111111111111111', name: 'Native question', phase: 'awaiting_decision', pending: { kinds: ['question'] }, createdAt: '2026-11-06T00:00:00Z' },
     { id: 'ses_2222222222222222', phase: 'awaiting_decision', archivedAt: '2026-11-08' },
     { id: 'ses_3333333333333333', phase: 'awaiting_decision', daemonArchivedAt: '2026-11-08' },
+    { id: 'ses_4444444444444444', phase: 'awaiting_decision', daemonDeletedAt: '2026-11-08' },
   ] };
   const sessions = { syncDaemon: async () => {}, decision: async () => ({ requests: [{ questions: [{ question: '選んでください' }] }] }) };
   const f = fixture(t, { sessionStore, sessions, refs: (kind) => kind === 'session' ? 'S3' : 'J1' });

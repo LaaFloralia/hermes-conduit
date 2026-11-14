@@ -44,7 +44,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     await sync();
     const items = store.all().filter((r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)).map((r) => ({ kind: 'board', ...view(r) }));
     for (const r of sessions ? sessionStore?.all() ?? [] : []) {
-      if (r.phase !== 'awaiting_decision' || r.archivedAt || r.daemonArchivedAt) continue;
+      // A conversation Paseo no longer holds has nobody left to answer.
+      if (r.phase !== 'awaiting_decision' || r.archivedAt || r.daemonArchivedAt || r.daemonDeletedAt) continue;
       // Use the existing ticket/read path. Failure is surfaced, never converted
       // to a misleading empty board while Paseo is unavailable.
       const detail = await sessions.decision(r.id);

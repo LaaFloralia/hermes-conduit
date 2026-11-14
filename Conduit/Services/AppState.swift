@@ -19002,6 +19002,7 @@ final class AppState: ObservableObject {
     /// a reconnect begins; every step after it lands in this one.
     private func beginConnectionTimeline(_ trigger: String) {
         connectionTimeline = ConnectionTimeline(trigger: trigger)
+        persistConnectionTimeline()
         // A call from Hermes races these (#449).
         HermesCallTrace.shared.note("Connection: \(trigger)")
     }
@@ -19016,8 +19017,15 @@ final class AppState: ObservableObject {
 
     /// Records one step. Purely observational: nothing reads the timeline
     /// back except Gateway Diagnostics.
+    private func persistConnectionTimeline() {
+        let conditions = deviceConditions()
+        connectionTimeline?.persist(route: !conditions.pathSatisfied ? "offline"
+            : conditions.expensivePath ? "metered" : "unmetered")
+    }
+
     private func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
         connectionTimeline?.record(label, since: startedAt, error: error)
+        persistConnectionTimeline()
         HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
     }
 

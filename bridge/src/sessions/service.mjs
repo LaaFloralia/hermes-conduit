@@ -377,7 +377,11 @@ export function createSessionService({
       const parents = new Map();
       for (const a of agents) if (!a.labels?.['paseo.parent-agent-id']) parents.set(a.workspaceId, (parents.get(a.workspaceId) ?? 0) + 1);
       const routines = routineAgents(agents);
-      const known = new Map(sessionStore.all().flatMap((r) =>
+      // One read for the whole pass: each store read parses the full file, so
+      // a read per agent made a sync cost seconds once the file grew.
+      const stored = sessionStore.all();
+      const storedById = new Map(stored.map((r) => [r.id, r]));
+      const known = new Map(stored.flatMap((r) =>
         [...(r.delegateHistory ?? []), r.delegate, ...(r.modelSwitch ? [{ sessionId: r.modelSwitch.nextId }] : [])]
           .filter(Boolean).map((entry) => [entry.sessionId, r])));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
@@ -421,7 +425,7 @@ export function createSessionService({
           observedAt: new Date(now()).toISOString(), attentionTimestamp: a.attentionTimestamp ?? a.updatedAt, attentionReason: a.attentionReason, requiresAttention: a.requiresAttention };
       });
       const transitions = sessionStore.importDirectory(rows.filter((row) => {
-        const current = sessionStore.get(row.id);
+        const current = storedById.get(row.id);
         return !switcher.isBusy(row.id) && (!current || current.delegate?.sessionId === row.delegate?.sessionId);
       }));
       await markDeletedAgents(agents);
