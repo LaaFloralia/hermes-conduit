@@ -502,12 +502,13 @@ const api = http.createServer(async (req, res) => {
     session.queue = { count: (session.queue?.count ?? 0) + 1, items: [] };
     return send(res, 200, session);
   }
-  const sessionMatch = path.match(/^\/v1\/sessions\/(ses_[0-9a-f]{16})(?:\/(conversation|events|decision|images\/[a-f0-9]{64}))?$/);
+  const sessionMatch = path.match(/^\/v1\/sessions\/(ses_[0-9a-f]{16})(?:\/(initial-instruction|conversation|events|decision|images\/[a-f0-9]{64}))?$/);
   if (sessionMatch) {
     const session = sessionFor(sessionMatch[1]);
     if (!session) { res.writeHead(404); return res.end(); }
     const leaf = sessionMatch[2] ?? '';
     if (leaf === '' && req.method === 'GET') return send(res, 200, session);
+    if (leaf === 'initial-instruction') return send(res, 200, { instruction: { text: 'LAAアプリの会話名を整理してください。\n最初の指示の全文です。', createdAt: '2026-11-14T07:00:00Z', source: 'Bridge' } });
     if (leaf === 'conversation') {
       // A request left over from the previous /reset must not update the new
       // test's delivery count when it finally lands.

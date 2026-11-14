@@ -175,6 +175,15 @@ final class LAABackgroundFixture: ObservableObject {
                             timestamp: String(now - Double(240 - index)), rowId: index)
             }
         }
+        if chatFixture == "long120" {
+            // Many screens of rows of uneven height: where the chat opens is
+            // decided before most of them have been measured.
+            app.messages = (1...120).map { index in
+                ChatMessage(id: "long-\(index)", role: index.isMultiple(of: 2) ? .assistant : .user,
+                            content: "長い会話の\(index)件目。" + String(repeating: "予定と資料の確認を続けています。", count: 1 + index % 6),
+                            timestamp: String(now - Double(1200 - index)), rowId: index)
+            }
+        }
         if args.contains("-LAA_FIXTURE_PREVIEW_FAILED"), let dashboardID = app.activeDashboardID {
             let link = WidgetLaunchLink(action: .employeeChat, workspace: .init(dashboardID: dashboardID, profile: employee), reference: nil)!
             app.widgetLaunchPendingLinkChanged(link)
@@ -431,7 +440,8 @@ private final class LAAChatModelFixture {
                 self.model = model; self.provider = provider
                 return ModelSwitchOutcome(model: model)
             },
-            setReasoning: { _, _ in })
+            setReasoning: { _, _ in },
+            setSpeed: { _, _ in })
     }
 }
 #endif

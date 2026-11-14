@@ -115,7 +115,7 @@ struct LAAEmployeeChatOpeningView: View {
                             Image(systemName: "arrow.up").frame(width: ComposerShared.rowControlSize, height: ComposerShared.rowControlSize)
                         }.buttonStyle(.plain)
                             .disabled(appState.laaOpeningEmployeeChat != nil)
-                            .accessibilityLabel(appState.laaOpeningEmployeeChat == nil ? "入力を確定してチャットへ" : "接続後に送信できます")
+                            .accessibilityLabel(Text(verbatim: appState.laaOpeningEmployeeChat == nil ? "入力を確定してチャットへ" : "接続後に送信できます"))
                             .accessibilityIdentifier("laa.chats.preview.send")
                     }
                 }.fixedSize(horizontal: false, vertical: true).padding(.horizontal, 20).padding(.vertical, 8)

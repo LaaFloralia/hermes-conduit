@@ -24,3 +24,7 @@
 - Upstream `Conduit` plugin updates are decided by the daily HQ routine in `hq/tools/APP-UPDATE.md`. The LAA build shows no plugin update notices.
 - Publish `focusedSceneValue` only on Mac. On iPhone every `TabView` tab stays resident, so all tabs write the value at once and the app froze after closing Settings in Chat (TestFlight 2611091726, fixed in 2611092009).
 - Design: Georgia is for Latin text only; Work's sub-pages sit in the sidebar's second level; the tab name "Chat" is intentional, and Mac uses the same name.
+- Bridge stores parse their whole file on every `get` and `all`. Read once per pass and index in memory; a `get` per row inside a loop made one daemon sync cost seconds (2026-11-14).
+- After a provider change the daemon returns the archived agent's timeline empty. The turns before the change come from the snapshot written at the change (`session-handoffs/<session>/<new agent>.json`), never from re-reading the old agent.
+- Work has two session lists, the phone's (`LAAWorkSessionsSection`) and the Mac's (`LAAWorkDesktopSessionsView`). A change to what a list shows or when it re-reads is checked on both: the Mac's had no periodic re-read while the phone's ran every five seconds.
+- Check session behavior against the real Bridge in the running app with one disposable conversation, archived afterwards. An isolated Bridge cannot create a session: the delegation entry refuses a session an agent starts, and that control is not worked around.

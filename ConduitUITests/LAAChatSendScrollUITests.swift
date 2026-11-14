@@ -5,9 +5,9 @@ import XCTest
 /// scrolled (owner, 2026-11-12): with the keyboard up, and from the full
 /// editor.
 final class LAAChatSendScrollUITests: XCTestCase {
-    private func launch() -> XCUIApplication {
+    private func launch(fixture: String = "long") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "long",
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", fixture,
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper",
                                "-LAA_FIXTURE_PUSH_CHAT"]
         app.launch()
@@ -100,9 +100,10 @@ final class LAAChatSendScrollUITests: XCTestCase {
 
     /// The first fixture row wholly on screen in the transcript's upper
     /// half, and where it sits.
-    private func anchor(_ app: XCUIApplication, above field: XCUIElement) -> (index: Int, minY: CGFloat)? {
+    private func anchor(_ app: XCUIApplication, above field: XCUIElement,
+                        among rows: ClosedRange<Int> = 1...24) -> (index: Int, minY: CGFloat)? {
         let middle = transcript(app).frame.midY
-        for index in 1...24 {
+        for index in rows {
             let element = row(app, "長い会話の\(index)件目")
             if isOnScreen(element, in: app, above: field), element.frame.maxY < middle {
                 return (index, element.frame.minY)
@@ -147,6 +148,21 @@ final class LAAChatSendScrollUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         assertOnScreen(row(app, "長い会話の24件目"), in: app, above: field, "the latest message stays above the keyboard")
         capture(app, "scroll-rule-following-after-focus")
+    }
+
+    /// A chat many screens long opens on its latest message, and a reader who
+    /// scrolls up from there stays where they stopped.
+    func testAChatManyScreensLongOpensOnItsLatestMessage() throws {
+        let app = launch(fixture: "long120")
+        let field = app.textViews["composer.field"]
+        assertOnScreen(row(app, "長い会話の120件目"), in: app, above: field, "a long chat opens at its end")
+        capture(app, "scroll-rule-open-120-rows")
+        scrollUp(app, times: 3)
+        let place = try XCTUnwrap(anchor(app, above: field, among: 60...119), "a row to watch in the upper half")
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertEqual(row(app, "長い会話の\(place.index)件目").frame.minY, place.minY, accuracy: 2,
+                       "row \(place.index) moved while the reader rested")
+        XCTAssertFalse(isOnScreen(row(app, "長い会話の120件目"), in: app, above: field), "the reader was not taken back to the end")
     }
 
     /// Hiding the keyboard resizes the viewport without moving a reader's row.

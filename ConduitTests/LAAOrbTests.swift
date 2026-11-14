@@ -62,7 +62,7 @@ final class LAAOrbTests: XCTestCase {
     func testTheGroundFollowsTheAppearanceAndTheSize() {
         XCTAssertEqual(LAAOrbView.ground(dark: true, diameter: 24), .dark)
         XCTAssertEqual(LAAOrbView.ground(dark: true, diameter: 120), .darkRim, "a large orb gets its outline")
-        XCTAssertEqual(LAAOrbView.ground(dark: false, diameter: 24), .paperBead, "on paper the light sits in the bead")
+        XCTAssertEqual(LAAOrbView.ground(dark: false, diameter: 24), .paperBead, "on paper the particles stand in ink, with no bead")
         XCTAssertEqual(LAAOrbView.ground(dark: false, diameter: 120), .paperBead)
     }
 

@@ -19,7 +19,7 @@ enum LAAOrbState: Equatable {
 /// glow spills a little past the frame, so lay it out with the diameter.
 ///
 /// Drawn by `LAAParticleOrb.draw`, the one file LAA Voice shares. On paper the
-/// light sits inside a deep teal bead, since white light has no ground there.
+/// light turns to ink: ink and teal particles alone, with no bead behind them.
 struct LAAOrbView: View {
     var state: LAAOrbState
     /// 0...1, the loudness of the voice. Read in `.speaking` only.

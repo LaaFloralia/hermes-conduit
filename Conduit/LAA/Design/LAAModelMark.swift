@@ -78,7 +78,7 @@ struct LAAModelMark: View {
         .accessibilityHidden(true)
     }
 
-    /// Claude: Anthropic's Spark in Clay (#D97757), as issued
+    /// Claude: Anthropic's Spark in its own Clay, as issued
     /// (`LAAClaudeMark`, original rendering), on a paper disc with a fifth of
     /// the disc clear on every side.
     private var claude: some View {
@@ -161,7 +161,7 @@ enum LAAModelInk {
     static let terra = Color(red: 0.36, green: 0.78, blue: 0.62)
     static let luna = Color(red: 0.86, green: 0.88, blue: 0.95)
     static let astra = Color(red: 0.62, green: 0.70, blue: 1.0)
-    /// DeepSeek's blue, #4D6BFE.
+    /// DeepSeek's own blue, as its header draws it.
     static let deepSeek = Color(red: 0x4D / 255, green: 0x6B / 255, blue: 0xFE / 255)
     static let deepSeekDisc = Color(red: 0.97, green: 0.975, blue: 1.0)
     static let gemini = Color(red: 0.36, green: 0.52, blue: 0.97)
