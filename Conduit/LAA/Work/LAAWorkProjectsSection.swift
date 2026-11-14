@@ -334,7 +334,7 @@ struct LAAWorkProjectHome: View {
         } catch {
             self.error = "プロジェクトを読み取れませんでした。"
         }
-        if options == nil { options = try? await bridge.read("/v1/session-options") }
+        if options == nil { options = try? await LAAWorkOptionsStore.read(bridge) }
     }
 
     @MainActor private func upload(_ result: Result<[URL], Error>) async {

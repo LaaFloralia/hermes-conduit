@@ -39,7 +39,12 @@ export async function phoneUseCommand(argv, flags, io = {}) {
       if (typeof flags.who !== 'string' || typeof flags.purpose !== 'string') usage('--who and --purpose are required');
       const asked = await service.ask({ who: flags.who, purpose: flags.purpose,
         timeoutMs: secondsFlag('timeout', 90_000), limitMs: secondsFlag('limit', 1800_000) });
-      result = asked.ok ? { ok: true, request: await service.waitForAnswer(asked.request.id) } : asked;
+      if (asked.ok) {
+        const request = await service.waitForAnswer(asked.request.id);
+        result = request.reason === 'delivery_unconfirmed'
+          ? { ok: false, error: 'delivery_unconfirmed', request }
+          : { ok: true, request };
+      } else result = asked;
     } else if (sub === 'begin') {
       if (typeof flags.who !== 'string' || typeof flags.purpose !== 'string') usage('--who and --purpose are required');
       result = await service.begin({ who: flags.who, purpose: flags.purpose, limitMs: secondsFlag('limit', 1800_000) });

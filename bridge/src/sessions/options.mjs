@@ -29,25 +29,28 @@ function expandModelId(table, value) {
     (typeof table.models?.[key]?.modelId === 'string' ? table.models[key].modelId : written));
 }
 
-// Manual profiles are offered only when HQ also names the exact provider,
-// model and effort as a manual Work entrance. This is a user choice, not an
-// automatic dispatch default.
+// Manual paid routes require an exact manual Work entrance. Other manual
+// profiles may also be named by HQ dispatch.manual_profiles; neither changes
+// the automatic default.
 function manualEntranceExists(table, profile) {
   const modelId = table.models?.[profile.model]?.modelId;
-  const wireModel = profile.harness === 'hermes-claude-api' ? `anthropic:${modelId}` : modelId;
+  const wireModel = profile.harness === 'hermes-claude-api' ? `anthropic:${modelId}`
+    : profile.harness === 'dsh-venice' ? JSON.stringify(['venice', modelId]) : modelId;
   return typeof modelId === 'string' && (table.entrances ?? []).some((entry) =>
     entry.kind === 'paseo' && entry.status === 'manual' &&
     entry.paseo?.provider === profile.harness && expandModelId(table, entry.paseo?.model) === wireModel &&
-    entry.paseo?.thinking === profile.effort);
+    (entry.paseo?.thinking === profile.effort || (profile.harness === 'dsh-venice' && entry.paseo?.thinking == null)));
 }
 
 export function sessionOptionsFrom(table) {
   const aliases = table?.aliases ?? {};
+  const manualProfiles = new Set(table?.dispatch?.manual_profiles ?? []);
+  const paidRoute = (profile) => ['hermes-claude-api', 'dsh-venice'].includes(profile.harness);
   const choices = Object.entries(table?.profiles ?? {})
     .filter(([id, profile]) => profile && !Object.hasOwn(aliases, id) &&
-      (profile.manual !== true || manualEntranceExists(table, profile)))
-    .filter(([, profile]) => ['claude', 'codex', 'dsh', 'hermes-claude-api'].includes(profile.harness) &&
-      (profile.harness !== 'hermes-claude-api' || profile.manual === true) && typeof profile.effort === 'string');
+      (profile.manual !== true || (!paidRoute(profile) && manualProfiles.has(id)) || manualEntranceExists(table, profile)))
+    .filter(([, profile]) => ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api'].includes(profile.harness) &&
+      (!paidRoute(profile) || profile.manual === true) && typeof profile.effort === 'string');
   const automaticIds = choices.filter(([, profile]) => profile.manual !== true).map(([id]) => id);
   // Existing clients fall back to the first item when defaultProfile is null.
   // Fail closed if HQ has no automatic choice, rather than selecting a manual one.
@@ -56,9 +59,9 @@ export function sessionOptionsFrom(table) {
       const model = table.models?.[profile.model] ?? {};
       return {
         id,
-        label: (model.label ?? profile.model) + (profile.harness === 'hermes-claude-api' ? '（API）' : ''),
+        label: (model.label ?? profile.model) + (profile.harness === 'hermes-claude-api' ? '（API）' : profile.harness === 'dsh-venice' ? '（Venice）' : ''),
         provider: profile.harness,
-        model: profile.harness === 'dsh' ? JSON.stringify(['opencode-go', model.modelId ?? profile.model])
+        model: ['dsh', 'dsh-venice'].includes(profile.harness) ? JSON.stringify([profile.harness === 'dsh' ? 'opencode-go' : 'venice', model.modelId ?? profile.model])
           : (profile.harness === 'hermes-claude-api' ? 'anthropic:' : '') + (model.modelId ?? profile.model),
         effort: profile.effort,
         fast: fastSupported(profile.harness, model.modelId),

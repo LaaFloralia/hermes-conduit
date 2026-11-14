@@ -23,6 +23,9 @@ enum BiometricAuth {
     }
 
     static var status: Status {
+        guard AppLockPolicy.current.isEnabled else {
+            return Status(kind: nil, isAvailable: false)
+        }
         let context = LAContext()
         let canEvaluate = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
         let kind = kind(for: context.biometryType)
@@ -43,6 +46,7 @@ enum BiometricAuth {
     /// or Touch ID cannot authenticate, rather than turning a transient
     /// biometric failure into a permanent app lockout.
     static func authenticate(reason: String) async -> Bool {
+        guard AppLockPolicy.current.isEnabled else { return false }
         let context = LAContext()
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else {
             return false

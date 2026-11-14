@@ -7,10 +7,10 @@ import UIKit
 enum LAAEffort {
     static let order = ["low", "medium", "high", "xhigh", "max"]
 
-    static func rank(_ value: String) -> Int { order.firstIndex(of: value) ?? 9 }
+    static func rank(_ value: String) -> Int { value == "ultracode" ? 5 : order.firstIndex(of: value) ?? 9 }
 
     /// XHigh and Max: the two settings that think longest.
-    static func isDeep(_ value: String?) -> Bool { value == "xhigh" || value == "max" }
+    static func isDeep(_ value: String?) -> Bool { value == "xhigh" || value == "max" || value == "ultracode" }
 
     /// The effort kept when the model changes: the same one if the new model
     /// has it, else High, else the nearest by rank (the lower on a tie). Nil
@@ -32,19 +32,19 @@ enum LAAEffort {
         case "high": return "High"
         case "xhigh": return "XHigh"
         case "max": return "Max"
+        case "ultracode": return "Ultra Code"
         case let value?: return value.isEmpty ? nil : value
         case nil: return nil
         }
     }
 }
 
-/// The effort's standing: XHigh carries one metal line on its control's rim,
-/// Max two (LAAFinish); Low to High the bare glass.
+/// XHigh tints the glass; Max and Ultra Code deepen it.
 extension LAAEffort {
     static func finish(_ value: String?) -> LAAFinish {
         switch value {
-        case "xhigh": .line
-        case "max": .double
+        case "xhigh": .tinted
+        case "max", "ultracode": .intense
         default: .plain
         }
     }
@@ -60,7 +60,7 @@ struct LAAEffortLook {
     var current = true
     var elapsed: Double? = nil
 
-    var level: Int { LAAEffort.order.firstIndex(of: effort).map { $0 + 1 } ?? 0 }
+    var level: Int { effort == "ultracode" ? 5 : LAAEffort.order.firstIndex(of: effort).map { $0 + 1 } ?? 0 }
 
     private var live: Bool {
         guard current, let elapsed else { return false }
@@ -81,12 +81,8 @@ struct LAAEffortLook {
         return 0.2 + 0.8 * CGFloat(LAACeremony.state(p))
     }
 
-    /// The rim of the effort's control at this moment.
-    var rim: LAARimLook {
-        LAARimLook(finish: current ? LAAEffort.finish(effort) : .plain,
-                   motion: LAACeremony.motion(effort: effort) ?? .pass(turn: 1),
-                   elapsed: current ? elapsed : nil)
-    }
+    var finish: LAAFinish { current ? LAAEffort.finish(effort) : .plain }
+
 }
 
 /// How hard the model thinks, drawn from the value itself: five rising ticks,
@@ -139,7 +135,7 @@ struct LAAEffortLabel: View {
 enum LAAEffortMenu {
     @MainActor
     static func icon(_ effort: String, scheme: ColorScheme, scale: CGFloat) -> Image? {
-        guard LAAEffort.order.contains(effort) else { return nil }
+        guard LAAEffort.order.contains(effort) || effort == "ultracode" else { return nil }
         let renderer = ImageRenderer(content: LAAEffortMeter(effort: effort, height: 14)
             .padding(1)
             .environment(\.colorScheme, scheme))
@@ -153,6 +149,7 @@ enum LAAEffortMenu {
         switch effort {
         case "xhigh": "より深く考える"
         case "max": "最も深く考える"
+        case "ultracode": "複数のエージェントで取り組む"
         default: nil
         }
     }

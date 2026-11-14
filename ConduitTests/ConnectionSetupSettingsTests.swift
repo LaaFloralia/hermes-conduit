@@ -378,9 +378,15 @@ final class ConnectionSetupSettingsTests: XCTestCase {
         let faceID = DashboardCredentials(
             baseURL: currentURL, username: "eric", password: "fixture", requiresFaceID: true
         )
-        let protected = ConnectionSetupSeeding.wizardCredentials(for: currentURL, saved: faceID)
+        let protected = ConnectionSetupSeeding.wizardCredentials(for: currentURL, saved: faceID, appLockPolicy: AppLockPolicy(isEnabled: true))
         XCTAssertEqual(protected?.username, "eric")
         XCTAssertEqual(protected?.password, "", "A Face ID-protected record keeps its password back")
+
+        let suspended = ConnectionSetupSeeding.wizardCredentials(
+            for: currentURL, saved: faceID, appLockPolicy: AppLockPolicy(isEnabled: false)
+        )
+        XCTAssertEqual(suspended?.password, "fixture")
+        XCTAssertTrue(faceID.requiresFaceID, "Suspending the lock preserves its saved preference")
 
         let foreign = DashboardCredentials(
             baseURL: "https://other.example", username: "eric", password: "fixture", requiresFaceID: false

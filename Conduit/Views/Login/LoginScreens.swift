@@ -515,7 +515,7 @@ struct LoginSignInOptionsCard: View {
             )
             // Face ID and Touch ID share this setting; the wording follows
             // the phone's sensor. A phone without one shows no row.
-            if flow.biometrics.isAvailable {
+            if AppLockPolicy.current.isEnabled, flow.biometrics.isAvailable {
                 LoginSwitchRow(
                     title: flow.biometrics.kind == .touchID
                         ? AppLocalization.string("Use Touch ID")

@@ -1093,6 +1093,7 @@ final class OfflineChatCacheTests: XCTestCase {
             dashboardID: dashboard
         )
         var unlocks = 0
+        appState.appLockPolicy = AppLockPolicy(isEnabled: true)
         appState.unlockWithFaceID = {
             unlocks += 1
             return true

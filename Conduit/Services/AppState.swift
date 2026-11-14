@@ -13476,13 +13476,13 @@ final class AppState: ObservableObject {
             }
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
             beginConnectionTimeline(
-                credentials.requiresFaceID
+                appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID)
                     ? "\(trigger), password sign-in with Face ID"
                     : "\(trigger), password sign-in"
             )
-            // A Face ID-protected dashboard reveals its saved copy only after
-            // this launch's Face ID succeeds (restoreSavedCredentials).
-            if !credentials.requiresFaceID {
+            // With the app lock enabled, a protected dashboard reveals its
+            // saved copy after this launch's unlock (restoreSavedCredentials).
+            if !appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID) {
                 presentOfflineChatIfAvailable(dashboardID: activeID)
                 if offlineChatPresentation != nil {
                     showLogin = false
@@ -14459,7 +14459,7 @@ final class AppState: ObservableObject {
     /// screen's list. Reads the Keychain: call it off the render path.
     func savedSignIn(for id: UUID) -> SavedSignInKind {
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
-            return credentials.requiresFaceID ? .biometric : .password
+            return appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID) ? .biometric : .password
         }
         if KeychainHelper.loadConnection(dashboardID: id) != nil
             || KeychainHelper.loadNativeOAuthTokens(dashboardID: id) != nil {
@@ -14556,7 +14556,7 @@ final class AppState: ObservableObject {
             return
         }
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
-            if !credentials.requiresFaceID {
+            if !appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID) {
                 presentOfflineChatIfAvailable(dashboardID: id)
                 if offlineChatPresentation != nil {
                     showLogin = false
@@ -14877,7 +14877,7 @@ final class AppState: ObservableObject {
         let faceIDUnlockHeld = scopedDashboardID.map {
             faceIDUnlockedDashboards[$0] == Self.faceIDUnlockFingerprint(credentials)
         } ?? false
-        if credentials.requiresFaceID, faceIDUnlockHeld {
+        if appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID), faceIDUnlockHeld {
             if let scopedDashboardID {
                 // A retry keeps the copy already on screen.
                 if offlineChatPresentation == nil {
@@ -14888,7 +14888,7 @@ final class AppState: ObservableObject {
                     isConnecting = true
                 }
             }
-        } else if credentials.requiresFaceID {
+        } else if appLockPolicy.requiresUnlock(savedRequiresFaceID: credentials.requiresFaceID) {
             guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
                 guard restoreOwnsFlow(switchGeneration) else { return }
@@ -14991,6 +14991,9 @@ final class AppState: ObservableObject {
     private static func faceIDUnlockFingerprint(_ credentials: DashboardCredentials) -> SHA256.Digest {
         SHA256.hash(data: Data([credentials.baseURL, credentials.username, credentials.password].joined(separator: "\u{1f}").utf8))
     }
+
+    /// Build policy; injectable so the retained lock can also be tested enabled.
+    var appLockPolicy = AppLockPolicy.current
 
     /// Face ID or Touch ID for a saved password. Test seam.
     var unlockWithFaceID: @MainActor () async -> Bool = {

@@ -184,13 +184,14 @@ extension ConnectionSetupApplication {
 /// Picks the saved credentials that may seed the Settings wizard for a
 /// dashboard address. Only a record saved for exactly this normalized URL
 /// qualifies — credentials for another server never leak into the draft — and
-/// a Face ID-protected record surrenders its username only: reusing the saved
-/// password must never bypass the biometric gate that saved it, so the wizard
-/// asks for that password again.
+/// when the app lock is enabled, a Face ID-protected record supplies only its
+/// username. The LAA build suspends this app-owned gate without changing the
+/// saved preference or the OS Keychain access controls.
 enum ConnectionSetupSeeding {
     static func wizardCredentials(
         for dashboardURL: String,
-        saved: DashboardCredentials?
+        saved: DashboardCredentials?,
+        appLockPolicy: AppLockPolicy = .current
     ) -> (username: String, password: String)? {
         guard let saved else { return nil }
         // Both sides compare policy-normalized, so a trailing-slash or
@@ -201,6 +202,6 @@ enum ConnectionSetupSeeding {
         let stored = (try? ConnectionURLPolicy.normalizedBaseURL(saved.baseURL))
             ?? saved.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard stored == wanted else { return nil }
-        return (saved.username, saved.requiresFaceID ? "" : saved.password)
+        return (saved.username, appLockPolicy.requiresUnlock(savedRequiresFaceID: saved.requiresFaceID) ? "" : saved.password)
     }
 }

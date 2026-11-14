@@ -5,8 +5,8 @@ import XCTest
 @testable import Conduit
 
 /// 440 × 956 pt light and dark captures of the model and effort pickers
-/// (owner, 2026-11-12): every state of the two capsules, each finish (no
-/// line, one, two), the new-session sheet and the task form. Attachments are
+/// (owner, 2026-11-14): every state of the two capsules, purple rank
+/// finishes, the new-session sheet and the task form. Attachments are
 /// exported from the result bundle.
 @MainActor
 final class LAAModelEffortSnapshotTests: XCTestCase {
@@ -25,7 +25,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     }
 
     /// The one movement, held at moments 0 to 420 ms (owner, 2026-11-14): the
-    /// light runs round the rim from the leading end and leaves the tan lines.
+    /// light runs round the rim from the leading end and settles into its finish.
     /// Two blocks, so every capsule fits the 440 pt width.
     func testCeremonyMomentsLightAndDark() throws {
         let moments: [Double] = [0, 0.07, 0.14, 0.21, 0.28, 0.35, 0.42]
@@ -61,7 +61,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
 
     /// The same movement frame by frame at 30 a second, on the real glass, for
     /// a short recording put together from the attachments: each model
-    /// standing and each effort, then the lines at rest.
+    /// standing and each effort, then their finishes at rest.
     func testCeremonyFramesLightAndDark() throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for frame in 0...18 {
@@ -148,11 +148,11 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     private var gallery: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
-                // Standing is the number of tan lines on the rim (owner, 2026-11-14): none, one, two.
-                row("Mythos 5.2 · Max（2本・2本）", pickers("claude-mythos-5-2", "claude", "max"))
-                row("Fable 5.2 · XHigh（1本・1本）", pickers("claude-fable-5-2", "claude", "xhigh"))
-                row("GPT 6 Astra · High（1本・なし）", pickers("gpt-6-astra", "codex", "high"))
-                row("Opus 5.5 · Medium", pickers("claude-opus-5-5", "claude", "medium"))
+                // Rank uses purple finishes; menu rows have no ring ornaments.
+                row("Mythos 5.2 · Max", pickers("claude-mythos-5-2", "claude", "max"))
+                row("Fable 5.2 · XHigh", pickers("claude-fable-5-2", "claude", "xhigh"))
+                row("GPT 6 Astra · High", pickers("gpt-6-astra", "codex", "high"))
+                row("Mythos 5.2 · Ultra Code", pickers("claude-mythos-5-2", "claude", "ultracode"))
                 row("GPT 6.1 Sol · Max", pickers("gpt-6.1-sol", "codex", "max"))
                 row("DeepSeek · Low", pickers(#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"))
                 row("不明 · 不明", pickers(nil, nil, nil))
