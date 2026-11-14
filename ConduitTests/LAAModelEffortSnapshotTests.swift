@@ -94,6 +94,30 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         }
     }
 
+    /// Every effort on each provider's model (owner, 2026-11-14: Mythos, Opus,
+    /// GPT and DeepSeek at each effort), then the other faces at High.
+    func testEveryModelAndEffortLightAndDark() throws {
+        let models: [(String, String)] = [("claude-mythos-5-2", "claude"), ("claude-opus-5-5", "claude"),
+                                          ("gpt-6.1-sol", "codex"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh")]
+        let efforts = ["low", "medium", "high", "xhigh", "max"]
+        let others: [(String, String)] = [("claude-fable-5-2", "claude"), ("gpt-6-astra", "codex"), ("claude-sonnet-5-5", "claude"),
+                                          ("gpt-6.1-terra", "codex"), ("claude-haiku-5-5", "claude")]
+        func page(_ rows: [(String, String, String)]) -> some View {
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in pickers(row.0, row.1, row.2) }
+            }
+            .padding(LAASpacing.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(LAAColor.background.ignoresSafeArea())
+        }
+        let grid = models.flatMap { model in efforts.map { (model.0, model.1, $0) } }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            try capture(page(grid), style: style, settle: 1.6, name: "pickers-grid-\(suffix)")
+            try capture(page(others.map { ($0.0, $0.1, "high") }), style: style, settle: 1.6, name: "pickers-others-\(suffix)")
+        }
+    }
+
     func testLauncherAndTaskFormLightAndDark() throws {
         UserDefaults.standard.removeObject(forKey: LAAWorkModelPreferences.lastKey)
         for style in [UIUserInterfaceStyle.light, .dark] {
