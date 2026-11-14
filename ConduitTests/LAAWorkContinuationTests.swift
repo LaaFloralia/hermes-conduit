@@ -14,7 +14,7 @@ final class LAAWorkContinuationTests: XCTestCase {
     }
 
     func testOwnerProviderChoiceIsComparedWithTheRuntimeRatherThanTheOriginalProvider() throws {
-        let json = #"{"id":"s","name":"same","requestId":"r","profile":"opus-high","phase":"awaiting_review","requested":{"provider":"claude","model":"opus","effort":"high"},"observed":{"provider":"codex","model":"sol","effort":"high"},"ownerChanged":{"provider":"codex","model":"sol","effort":"high"},"capabilities":{"model":true,"providerSwitch":true}}"#
+        let json = #"{"id":"s","name":"same","requestId":"r","workspaceId":"w","profile":"opus-high","phase":"awaiting_review","createdAt":"2026-11-14T00:00:00Z","updatedAt":"2026-11-14T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"},"requested":{"provider":"claude","model":"opus","effort":"high"},"observed":{"provider":"codex","model":"sol","effort":"high"},"ownerChanged":{"provider":"codex","model":"sol","effort":"high"},"capabilities":{"model":true,"providerSwitch":true}}"#
         let row = try JSONDecoder().decode(LAAWorkSession.self, from: Data(json.utf8))
         XCTAssertFalse(row.modelMismatch)
         XCTAssertEqual(row.capabilities?.providerSwitch, true)
