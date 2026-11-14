@@ -244,8 +244,8 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         let opus = app.buttons["Opus 5.5"].firstMatch
         XCTAssertTrue(opus.waitForExistence(timeout: 5))
         XCTAssertFalse(menuRow("XHigh", app).exists, "the model menu lists models only")
-        if (models.value as? String) != "Opus 5.5" { opus.tap() } else { dismissMenu(app) }
-        expectation(for: NSPredicate(format: "value == %@", "Opus 5.5"), evaluatedWith: models)
+        if (models.value as? String) != "Claude Opus 5.5" { opus.tap() } else { dismissMenu(app) }
+        expectation(for: NSPredicate(format: "value == %@", "Claude Opus 5.5"), evaluatedWith: models)
         waitForExpectations(timeout: 5)
         launchEffort.tap()
         let xhighRow = menuRow("XHigh", app)
@@ -266,7 +266,7 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         let sonnet = app.buttons["Sonnet 5.5"].firstMatch
         XCTAssertTrue(sonnet.waitForExistence(timeout: 5))
         sonnet.tap()
-        expectation(for: NSPredicate(format: "value == %@", "Sonnet 5.5"), evaluatedWith: models)
+        expectation(for: NSPredicate(format: "value == %@", "Claude Sonnet 5.5"), evaluatedWith: models)
         waitForExpectations(timeout: 5)
         XCTAssertEqual(launchEffort.value as? String, "High", "else High")
         capture(app, "launcher-sonnet-\(theme)")
