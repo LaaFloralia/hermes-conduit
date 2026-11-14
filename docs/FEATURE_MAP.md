@@ -4591,12 +4591,14 @@ An agent that finds the owner's iPhone open (in use) asks in the Dynamic Island 
 - Attributes, phases and the answer intent (app and widget): `Shared/Widgets/LAAPhoneUseActivity.swift`
 - Dynamic Island and Lock Screen: `ConduitWidgets/LAA/LAAPhoneUseLiveActivity.swift`, `ConduitWidgets/LauncherWidgets.swift`, copy in `Conduit/LAA/LAACopy.swift`
 - Token registration and answers: `Conduit/LAA/PhoneUse/LAAPhoneUseService.swift`, started in `Conduit/ConduitApp.swift`
+- Foreground token reconciliation and serialized registration: `ConduitTests/LAAPhoneUseTokenTests.swift`
 - Bridge requests, routes, APNs push-to-start and the CLI: `bridge/src/phone-use/`, `bridge/src/cli-phone-use.mjs`, `bridge/test/phone-use.test.mjs`
 
 **Rulings**
 - A locked iPhone is unlocked, operated and locked again without asking. An open one is never pressed before the owner allows it; Allow leaves it unlocked at the end (2026-11-12, the owner).
 - The Bridge starts the activity by push-to-start; the owner's answer is the only way an open iPhone is operated. Don't Allow, no answer within 90 s, or no way to ask returns `in_use`. While operating, the activity stays with Stop; Stop, `lock` or the idle/limit guard ends it.
 - Answers are accepted only from the device that registered the push-to-start token.
+- On launch, foreground entry and a background wake, the app reads ActivityKit's current push-to-start token and registers it again; the token-update stream remains active. Registration writes are serialized so an older request cannot overwrite a newer token. APNs start pushes expire with the answer/session deadline. APNs acceptance and activity-token registration have separate timestamps; an expired request without an activity token reports `delivery_unconfirmed`, never permission to operate or proof that the owner saw it.
 
 - The end push needs the activity's update token, which iOS may never hand over for an activity a push started (seen on the simulator). Without it, `end` wakes the app with a background push (`laa_phone_use`) to the app's own push token, registered with the start token; the app reads each activity's request (`GET /v1/phone-use/requests/{id}`) whenever it runs and ends one whose request closed. Stop on a closed request ends it too.
 

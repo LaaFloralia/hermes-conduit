@@ -26,6 +26,17 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     private var pendingStartToken: String?
     private var startToken: String?
     private var wakeToken: String?
+    private var registeringStartToken = false
+    private let currentStartToken: () -> Data?
+    private let sendStartToken: ((String, String?) async -> Bool)?
+
+    init(currentStartToken: @escaping () -> Data? = {
+        if #available(iOS 17.2, *) { return Activity<LAAPhoneUseAttributes>.pushToStartToken }
+        return nil
+    }, sendStartToken: ((String, String?) async -> Bool)? = nil) {
+        self.currentStartToken = currentStartToken
+        self.sendStartToken = sendStartToken
+    }
 
     /// Debug builds talk to the APNs sandbox, TestFlight to production.
     static var environment: String {
@@ -59,8 +70,6 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in
                 await LAAPhoneUseService.shared.refresh()
-                guard let token = LAAPhoneUseService.shared.pendingStartToken else { return }
-                await LAAPhoneUseService.shared.registerStart(token: token)
             }
         }
     }
@@ -72,6 +81,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     /// activity a push started, so the Mac's end push may never reach it: an
     /// activity whose request closed, or whose answer time passed, ends here.
     func refresh() async {
+        await refreshStartToken()
         for activity in Activity<LAAPhoneUseAttributes>.activities {
             observe(activity)
             let requestID = activity.attributes.requestID
@@ -109,8 +119,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
         guard token != wakeToken else { return }
         phoneUseLog.info("app push token received")
         wakeToken = token
-        guard let start = pendingStartToken ?? startToken else { return }
-        Task { await registerStart(token: start) }
+        Task { await refreshStartToken() }
     }
 
     func wakeTokenFailed(_ error: Error) {
@@ -121,17 +130,42 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     /// could not end by push. True when the push was this kind.
     static func handlesWake(_ userInfo: [AnyHashable: Any]) -> Bool { userInfo["laa_phone_use"] != nil }
 
+    /// Reconcile the current ActivityKit token whenever the app runs again,
+    /// even if the earlier registration succeeded and no update was observed.
+    func refreshStartToken() async {
+        let token = currentStartToken().map(Self.hex) ?? pendingStartToken ?? startToken
+        if let token { await registerStart(token: token) }
+    }
+
     private func registerStart(token: String) async {
         pendingStartToken = token
         startToken = token
-        guard let credentials = credentials() else { return }
+        // Foreground refresh, token updates and the app's push token can arrive
+        // together. Complete older writes before registering the newest pair.
+        guard !registeringStartToken else { return }
+        registeringStartToken = true
+        defer { registeringStartToken = false }
+        while let pending = pendingStartToken {
+            let wake = wakeToken
+            let registered = await writeStartToken(token: pending, wakeToken: wake)
+            if pendingStartToken == pending && wakeToken == wake {
+                if registered { pendingStartToken = nil }
+                return
+            }
+        }
+    }
+
+    private func writeStartToken(token: String, wakeToken: String?) async -> Bool {
+        if let sendStartToken { return await sendStartToken(token, wakeToken) }
+        guard let credentials = credentials() else { return false }
         do {
             let body = try JSONEncoder().encode(TokenBody(token: token, environment: Self.environment, wakeToken: wakeToken))
-            let _: LAABridgeResponse<Registered> = try await client.request(
+            let response: LAABridgeResponse<Registered> = try await client.request(
                 method: "PUT", path: "/v1/phone-use/start-token", jsonBody: body, credentials: credentials)
-            if pendingStartToken == token { pendingStartToken = nil }
+            return response.data.registered
         } catch {
             phoneUseLog.error("start token not registered: \(String(describing: error), privacy: .public)")
+            return false
         }
     }
 
