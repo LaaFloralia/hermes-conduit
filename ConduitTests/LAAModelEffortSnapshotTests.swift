@@ -5,8 +5,8 @@ import XCTest
 @testable import Conduit
 
 /// 440 × 956 pt light and dark captures of the model and effort pickers
-/// (owner, 2026-11-14): every state of the two capsules, purple rank
-/// finishes, the new-session sheet and the task form. Attachments are
+/// (owner, 2026-11-14): every state of the two capsules, the light each
+/// standing holds, the new-session sheet and the task form. Attachments are
 /// exported from the result bundle.
 @MainActor
 final class LAAModelEffortSnapshotTests: XCTestCase {
@@ -24,8 +24,9 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         }
     }
 
-    /// The one movement, held at moments 0 to 420 ms (owner, 2026-11-14): the
-    /// light runs round the rim from the leading end and settles into its finish.
+    /// The one movement, held at moments 0 to 420 ms (owner, 2026-11-14): a
+    /// pass of light crosses the glass from the leading end and the standing
+    /// light settles behind it.
     /// Two blocks, so every capsule fits the 440 pt width.
     func testCeremonyMomentsLightAndDark() throws {
         let moments: [Double] = [0, 0.07, 0.14, 0.21, 0.28, 0.35, 0.42]
@@ -118,6 +119,108 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: Before and after a choice, for comparing one version with another
+
+    /// The four models the owner compares, and every effort including Ultra Code.
+    private static let compareModels: [(model: String, provider: String, slug: String)] = [
+        ("claude-mythos-5-2", "claude", "mythos"), ("claude-opus-5-5", "claude", "opus"),
+        ("gpt-6.1-sol", "codex", "gpt"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "dsh"),
+    ]
+    private static let compareEfforts = ["low", "medium", "high", "xhigh", "max", "ultracode"]
+    /// What the capsules showed before the choice: the house default, or one
+    /// step down when the default itself is the choice.
+    private static func previous(_ model: String, _ effort: String) -> (String, String, String) {
+        model == "claude-opus-5-5" && effort == "high"
+            ? ("claude-opus-5-5", "claude", "medium") : ("claude-opus-5-5", "claude", "high")
+    }
+
+    /// One pair of capsules for a target, `phase` "before" (the previous value
+    /// at rest), "moment" (`fraction` of each moving capsule's own movement)
+    /// or "after" (at rest). Only a capsule whose value changed moves.
+    @ViewBuilder
+    private func comparePair(_ model: String, _ provider: String, _ effort: String,
+                             phase: String, fraction: Double) -> some View {
+        let before = Self.previous(model, effort)
+        let shown = phase == "before" ? before : (model, provider, effort)
+        let modelMoves = phase == "moment" && before.0 != model
+        let effortMoves = phase == "moment" && before.2 != effort
+        HStack(spacing: LAASpacing.x2) {
+            LAAModelCapsule(model: shown.0, provider: shown.1)
+                .face(elapsed: modelMoves ? fraction * LAACeremony.duration(rank: LAAModelRank.of(model)) : nil)
+                .fixedSize()
+            LAAEffortCapsule(effort: shown.2)
+                .capsule(elapsed: effortMoves ? fraction * LAACeremony.duration(effort: effort) : nil)
+        }
+        .frame(height: 48, alignment: .leading)
+    }
+
+    /// A 440 pt page per model, scheme and phase: six rows of 48 pt from
+    /// y = 24, one per effort, so the boards can be cut and set side by side.
+    func testCompareBoardsLightAndDark() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            for entry in Self.compareModels {
+                for phase in ["before", "moment", "after"] {
+                    let page = VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Self.compareEfforts, id: \.self) { effort in
+                            self.comparePair(entry.model, entry.provider, effort, phase: phase, fraction: 0.45)
+                        }
+                    }
+                    .padding(.top, 24).padding(.horizontal, LAASpacing.horizontal)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(LAAColor.background.ignoresSafeArea())
+                    try capture(page, style: style, settle: 0.6, scale: 2, name: "compare-\(suffix)-\(entry.slug)-\(phase)")
+                }
+            }
+        }
+    }
+
+    /// The movement at 120 frames a second from the moment the value arrives
+    /// to 500 ms, after the previous values at rest: frame "pre", then 000 to
+    /// 060. Five choices: Mythos Max, Opus XHigh, GPT Medium, DeepSeek Low,
+    /// Mythos Ultra Code.
+    func testCompareMotionFramesLightAndDark() throws {
+        let rows: [(String, String, String)] = [
+            ("claude-mythos-5-2", "claude", "max"), ("claude-opus-5-5", "claude", "xhigh"),
+            ("gpt-6.1-sol", "codex", "medium"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"),
+            ("claude-mythos-5-2", "claude", "ultracode"),
+        ]
+        func board(phase: String, seconds: Double) -> some View {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    self.motionPair(row.0, row.1, row.2, phase: phase, seconds: seconds)
+                }
+            }
+            .padding(.top, 24).padding(.horizontal, LAASpacing.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(LAAColor.background.ignoresSafeArea())
+        }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            try capture(board(phase: "before", seconds: 0), style: style, settle: 0.4, scale: 2, name: "motion-\(suffix)-pre")
+            for frame in 0...60 {
+                try capture(board(phase: "moment", seconds: Double(frame) / 120), style: style, settle: 0.15, scale: 2,
+                            name: String(format: "motion-%@-%03d", suffix, frame))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func motionPair(_ model: String, _ provider: String, _ effort: String,
+                            phase: String, seconds: Double) -> some View {
+        let before = Self.previous(model, effort)
+        let shown = phase == "before" ? before : (model, provider, effort)
+        let moving = phase == "moment"
+        HStack(spacing: LAASpacing.x2) {
+            LAAModelCapsule(model: shown.0, provider: shown.1)
+                .face(elapsed: moving && before.0 != model ? seconds : nil)
+                .fixedSize()
+            LAAEffortCapsule(effort: shown.2)
+                .capsule(elapsed: moving && before.2 != effort ? seconds : nil)
+        }
+        .frame(height: 48, alignment: .leading)
+    }
+
     func testLauncherAndTaskFormLightAndDark() throws {
         UserDefaults.standard.removeObject(forKey: LAAWorkModelPreferences.lastKey)
         for style in [UIUserInterfaceStyle.light, .dark] {
@@ -148,7 +251,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     private var gallery: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
-                // Rank uses purple finishes; menu rows have no ring ornaments.
+                // Standing is light in the glass; menu rows have no ring ornaments.
                 row("Mythos 5.2 · Max", pickers("claude-mythos-5-2", "claude", "max"))
                 row("Fable 5.2 · XHigh", pickers("claude-fable-5-2", "claude", "xhigh"))
                 row("GPT 6 Astra · High", pickers("gpt-6-astra", "codex", "high"))
@@ -174,7 +277,8 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         FileManager.default.temporaryDirectory.appendingPathComponent("laa-picker-snapshot-\(UUID().uuidString).json")
     }
 
-    private func capture<V: View>(_ view: V, style: UIUserInterfaceStyle, settle: TimeInterval = 0.8, name: String) throws {
+    private func capture<V: View>(_ view: V, style: UIUserInterfaceStyle, settle: TimeInterval = 0.8, scale: CGFloat = 1,
+                                  name: String) throws {
         let bridge = LAABridgeSession(statusForTesting: .paired)
         let screen = view.environmentObject(bridge)
             .environment(\.locale, Locale(identifier: "ja_JP"))
@@ -193,12 +297,12 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(settle))
-        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+        let format = UIGraphicsImageRendererFormat(); format.scale = scale; format.opaque = true
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
         }
-        XCTAssertEqual(image.cgImage?.width, 440)
-        XCTAssertEqual(image.cgImage?.height, 956)
+        XCTAssertEqual(image.cgImage?.width, Int(440 * scale))
+        XCTAssertEqual(image.cgImage?.height, Int(956 * scale))
         let attachment = XCTAttachment(image: image)
         attachment.name = name
         attachment.lifetime = .keepAlways

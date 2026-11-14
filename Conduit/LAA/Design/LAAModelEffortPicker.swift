@@ -8,9 +8,10 @@ import SwiftUI
 /// and Chat's composer all use it, so the four read and press alike.
 ///
 /// The model name gives way whole when the row is narrow (the face stays,
-/// never "M…"); the effort never does. A violet tint settles inside the
-/// glass: Mythos strongest, Fable and Astra next, XHigh and Max in two steps.
-/// Applied changes spread the colour once. Unknown and stale values stay plain.
+/// never "M…"); the effort never does. Standing is light held inside the
+/// glass, never a colour: Mythos, Max and Ultra Code crystal, Fable, Astra
+/// and XHigh polished (LAAFinish). An applied change sends one pass of light
+/// through the glass. Unknown and stale values stay plain.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
 ///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
@@ -141,7 +142,7 @@ struct LAAModelCapsule: View {
     }
 
     /// The capsule at rest (`elapsed` nil) or that far into its movement: the
-    /// glass with its internal colour, spreading once after a choice.
+    /// glass with the light it holds, crossed once by a pass after a choice.
     /// Internal so a capture can hold a moment of it.
     func face(elapsed: Double?) -> some View {
         row
@@ -150,8 +151,9 @@ struct LAAModelCapsule: View {
             .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
             .contentShape(Capsule())
-            .laaLiquidSelection(finish: rank.finish, elapsed: elapsed,
-                                cornerRadius: LAAPickerMetrics.radius)
+            .laaGlassSelection(finish: rank.finish, elapsed: elapsed,
+                               duration: LAACeremony.duration(rank: rank),
+                               cornerRadius: LAAPickerMetrics.radius)
     }
 
     private var row: some View {
@@ -212,9 +214,9 @@ struct LAAModelCapsule: View {
 }
 
 /// The effort capsule: the meter and its name, or 「不明」, and the chevron.
-/// XHigh and Max carry colour inside the glass; after a requested change,
-/// the meter rises and the colour spreads once
-/// (LAAEffortLook).
+/// XHigh and Max hold light inside the glass; after a requested change,
+/// the meter rises and one pass of light crosses the glass
+/// (LAAEffortLook, LAAGlassLook).
 struct LAAEffortCapsule: View {
     let effort: String?
     var current = true
@@ -254,8 +256,10 @@ struct LAAEffortCapsule: View {
         .padding(.leading, LAASpacing.x3).padding(.trailing, LAASpacing.x3)
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
-        .laaLiquidSelection(finish: current ? LAAEffort.finish(ranked) : .plain,
-                            elapsed: current ? elapsed : nil, cornerRadius: LAAPickerMetrics.radius)
+        .laaGlassSelection(finish: current ? LAAEffort.finish(ranked) : .plain,
+                           elapsed: current ? elapsed : nil,
+                           duration: ranked.map { LAACeremony.duration(effort: $0) } ?? LAACeremony.slow,
+                           cornerRadius: LAAPickerMetrics.radius)
     }
 }
 
