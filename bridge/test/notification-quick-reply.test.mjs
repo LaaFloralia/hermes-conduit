@@ -163,7 +163,8 @@ test('quick session: an approval that cannot be shown whole has no allow', async
   assert.equal(approvalSummary({ kind: 'tool', name: 'sh\u200bell', detail: '{}' }), null);
   for (const input of [{ command: '文'.repeat(200) }, { command: 'curl -H "Authorization: x" https://example.com' },
     { command: 'export K=sk-abcdefgh' }, { env: 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6' }, { command: 'echo \u202eabc' },
-    ...['\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\ufeff', '\u061c', '\u180e', '\u2060', '\u2028', '\u2029', '\ue000', '\u0378'].map((c) => ({ command: `rm -rf ./tmp${c}x` }))]) {
+    ...['\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\ufeff', '\u061c', '\u180e', '\u2060', '\u2028', '\u2029', '\ue000', '\u0378',
+      '\u0301', '\u20dd', '\u3099', '\u302a', '\u115f', '\u1160', '\u3164', '\uffa0', '\u2800', '\u00a0', '\u2009', '\u205f', 'é', 'Я', '😀'].map((c) => ({ command: `rm -rf ./tmp${c}x` }))]) {
     assert.equal(approvalSummary(tool(input)), null, JSON.stringify(input));
   }
   assert.equal(approvalSummary({ kind: 'question', name: 'AskUserQuestion' }), null);

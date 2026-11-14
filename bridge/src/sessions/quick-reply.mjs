@@ -14,11 +14,13 @@ export function quickQuestion(requests) {
 // push service.
 const APPROVAL_SUMMARY_MAX = 140;
 const SECRET_SHAPED = /(?:pass(?:word|wd|phrase)?|secret|token|api[_-]?key|authorization|bearer|credential|private[_-]?key|cookie|-----BEGIN|\b(?:sk|pk|rk)[-_][A-Za-z0-9]|\bgh[pousr]_|\bxox[abprs]-|\bAKIA[0-9A-Z]{8}|\beyJ[A-Za-z0-9_-]{8}|[A-Za-z0-9+_=-]{32,})/i;
-// Characters that show nothing, or change how the rest reads, so the owner
-// could see one request and allow another: controls, format characters (zero
-// width, bidirectional marks, U+FEFF), line and paragraph separators, private
-// use, surrogates and unassigned code points.
-const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+// The only characters an approval summary may show: printable ASCII and the
+// Japanese that reads plainly (kana without combining marks, kanji, CJK
+// punctuation, full-width ASCII). Anything else (combining or zero-width
+// marks, direction changes, blank letters, other spaces, unassigned code
+// points) could make the owner read one request and allow another, so such a
+// request is read and answered in the conversation instead.
+const SHOWN_CHARACTERS = /^[\x20-\x7e\u3000-\u3029\u3030-\u303f\u3041-\u3096\u309b-\u309f\u30a0-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff01-\uff5e]*$/u;
 export function approvalSummary(request) {
   if (request?.kind !== 'tool' || typeof request.name !== 'string' || !request.name.trim()) return null;
   let input = '';
@@ -26,7 +28,7 @@ export function approvalSummary(request) {
     try { input = JSON.stringify(JSON.parse(request.detail)); } catch { input = JSON.stringify(request.detail); }
   }
   const text = `承認: ${request.name.trim()}${input && input !== '{}' ? ` ${input}` : ''}`;
-  if (Array.from(text).length > APPROVAL_SUMMARY_MAX || HIDDEN_CHARACTERS.test(text) || SECRET_SHAPED.test(text)) return null;
+  if (Array.from(text).length > APPROVAL_SUMMARY_MAX || !SHOWN_CHARACTERS.test(text) || SECRET_SHAPED.test(text)) return null;
   return text;
 }
 export function sessionNotificationMeta(sid, kind, detail) {
