@@ -37,6 +37,7 @@ import { daemonSessionID, snapshot } from './daemon.mjs';
 import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
 import { fastAvailable, fastValue } from './features.mjs';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
+import { quickReply, sessionNotificationMeta } from './quick-reply.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 import { createModelSwitcher, joinedHistory } from './model-switch.mjs';
 import { sessionOptionsReader } from './options.mjs';
@@ -446,8 +447,14 @@ export function createSessionService({
         const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
           : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
         if (kind && !current.archivedAt && !current.daemonArchivedAt && !current.routine && !(kind === 'finished' && decisions?.hasOpen(current))) {
-          void notify({ kind: `session.${kind}`, title: current.name,
-            body: { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
+          let detail;
+          if (kind === 'question' || kind === 'approval') {
+            try { detail = await decision(current.id); } catch { /* Delivery survives an unavailable daemon. */ }
+          }
+          const meta = sessionNotificationMeta(current.id, kind, detail);
+          const approvalBody = meta.a === 1 ? Array.from(`承認: ${detail.requests[0].name} ${detail.requests[0].detail ?? ''}`.replace(/[\x00-\x1f\x7f-\x9f]/g, '')).slice(0, 140).join('') : null;
+          void notify({ meta, kind: `session.${kind}`, title: current.name,
+            body: approvalBody ?? { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
         }
       }
@@ -1379,6 +1386,7 @@ export function createSessionService({
     syncDaemon,
     decision,
     reply,
+    quickReply: ({ id, body }) => quickReply({ id, body, decision, reply }),
     listSessions,
     visibleRecords,
     getSession,

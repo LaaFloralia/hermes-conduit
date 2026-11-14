@@ -54,7 +54,11 @@ final class NotificationService: UNNotificationServiceExtension {
             keysProvisioned: NotificationSharedSettings.keysProvisioned
         ) {
         case .legacy:
+            #if LAA_BUILD
+            decorated(content, sessionID: NotificationE2E.routingStub(userInfo)?["session_id"] as? String)
+            #else
             deliver(content)
+            #endif
         case .untrusted(let type):
             deliver(Self.generic(content, type: type))
         case .verified(let verified):
@@ -76,9 +80,22 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let title = names.title { content.title = title }
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
+            #if LAA_BUILD
+            decorated(content, sessionID: verified.content["session_id"] as? String)
+            #else
             deliver(content)
+            #endif
         }
     }
+
+    #if LAA_BUILD
+    /// An LAA Bridge notification gets its answer buttons and quiet delivery
+    /// from the session id it was sealed with (LAANotificationMeta); every
+    /// other notification is delivered as it is.
+    private func decorated(_ content: UNMutableNotificationContent, sessionID: String?) {
+        LAANotificationActions.decorate(content, sessionID: sessionID) { [weak self] in self?.deliver(content) }
+    }
+    #endif
 
     override func serviceExtensionTimeWillExpire() {
         if let fallback = lock.withLock({ fallback }) { deliver(fallback) }

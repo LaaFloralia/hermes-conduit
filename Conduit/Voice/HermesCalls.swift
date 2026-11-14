@@ -1082,9 +1082,16 @@ enum HermesCallNotifications {
     /// button reads in it.
     static func registerCategory(center: UNUserNotificationCenter = .current()) {
         let talk = UNNotificationAction(identifier: talkActionIdentifier, title: HermesCallCopy.talkAction, options: [.foreground])
-        center.setNotificationCategories([
+        let own: Set<UNNotificationCategory> = [
             UNNotificationCategory(identifier: categoryIdentifier, actions: [talk], intentIdentifiers: [], options: [])
-        ])
+        ]
+        #if LAA_BUILD
+        // Setting the categories replaces them all: keep the answer buttons
+        // the notification extension registered for delivered notifications.
+        LAANotificationActions.registering(own, center: center)
+        #else
+        center.setNotificationCategories(own)
+        #endif
     }
 
     /// The local notification for `target`, routed like a call push.

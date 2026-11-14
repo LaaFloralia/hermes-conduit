@@ -108,13 +108,53 @@ answers; another answer after closure is `409 decision_closed`.
 |---|---|---|
 | `GET /v1/decisions` | `sessions:read` | `{items,fetchedAt}`; board open/failed/waiting plus native pending sessions, failed first, then deadline, then newest |
 | `GET /v1/decisions/{dec_id}` | `sessions:read` | One record, any status; omits posting `requestId` |
-| `POST /v1/decisions/{dec_id}/answer` | `sessions:write` | `{optionIndex,note?,requestId}` → `{decision}` after delivery; null index requires a free answer and `allowOther` |
+| `POST /v1/decisions/{dec_id}/answer` | `sessions:write` | `{optionIndex,note?,requestId,quick?}` → `{decision}` after delivery; null index requires a free answer and `allowOther` |
 | `POST /v1/decisions/{dec_id}/retry` | `sessions:write` | `{requestId}` → `{decision}`; only failed delivery |
 
 Both POST routes require the existing `Idempotency-Key` header. Native items
-continue to use `/v1/sessions/{id}/decision` and `/reply`; no parallel reply or
-Paseo client is introduced. CLI exits follow `tasks`: 0 success/replay, 2 usage,
+continue to use `/v1/sessions/{id}/decision` and `/reply`. Optional boolean
+`quick:true` rejects a past non-null deadline with `409 decision_expired`, without
+changing the record; closed decisions remain `decision_closed`. Device/request-ID
+replays are checked before expiry and ignore `quick` in the answer digest.
+
+`POST /v1/sessions/{id}/quick-reply` (`sessions:write`, `Idempotency-Key`) accepts
+`{requestHash,choice}` with a 64-hex hash and `choice: "allow" | "deny" |
+{optionIndex}`. It reads a fresh decision ticket, verifies the hash and exactly
+one pending request, then uses the existing reply and confirmation path, returning
+`{session}`. Allow requires a tool; indexed answers require a supported question
+(`request_user_input_async` or `AskUserQuestion`), exactly one question and 2–6
+options. Deny accepts either kind. Changed pending requests return
+`pending_request_changed`, unsupported formats `quick_reply_unsupported` (409),
+and invalid indices `decision_invalid` (400). A consumed request cannot be
+answered again; a saved HTTP idempotency response can be replayed. CLI exits follow `tasks`: 0 success/replay, 2 usage,
 3 missing, 4 conflict, 5 rejected input, 6 unavailable store.
+
+
+### Owner notifications
+
+Every kind uses `response.ready` with `session_id` equal to
+`laa-bridge:<deepLink>#<base64url(JSON)>`; JSON carries `v:1` and `k:<kind>`.
+`decision.new` adds `id`, saved-order option labels `o` and optional epoch-second
+`d`; `decision.failed` adds `id`. Session kinds add `sid`; a supported single
+question adds `h` (the exact decision `requestHash`) and `o`, and a single tool
+approval adds `h` and `a:1`. Tool approval bodies summarize name and input in at
+most 140 characters without control characters. If the daemon read fails, the
+ordinary notification still goes out with `sid`. Task/calendar add no fields.
+The UTF-8 limit is 512 bytes: shorten all option labels evenly with `…`, then
+remove `o`, then fall back to the legacy link if necessary. Stored retries keep
+the exact same encoded value. A link that exceeds 512 bytes even without metadata
+is rejected as `invalid_notification`, preserving the plugin limit.
+
+`GET /v1/notifications/preferences` (`sessions:read`) returns
+`{kinds:{decision,question,approval,error,finished,task,calendar},updatedAt}`.
+`PUT` on that path (`sessions:write`, `Idempotency-Key`) partially merges
+`{kinds:{key:value}}`. Values are `alert`, `quiet` or `off`; unknown keys/values
+and `off` for decision/question/approval return 400
+`notification_preferences_invalid`. Defaults are alert except finished=quiet;
+`updatedAt` is ISO or null. Preferences use locked atomic 0600
+`notification-preferences.json`. Quiet adds `lv:"p"` for silent notification-center
+delivery. Off returns `{delivered:false,reason:"muted"}` without sending or queuing;
+callers mark it processed. Unknown notification kinds use alert.
 
 | method / path | 認証 | 応答 |
 |---|---|---|

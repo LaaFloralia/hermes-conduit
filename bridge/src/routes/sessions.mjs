@@ -182,6 +182,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/images\/([0-9a-f]{64})$/, auth: true, scope: 'sessions:read', handler: async ({ params }) => ({ status: 200, data: sessions.image(params[0], params[1]) }) },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/decision$/, auth: true, scope: 'sessions:read', handler: decision },
     { method: 'POST', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/reply$/, auth: true, scope: 'sessions:write', idempotent: true, handler: reply },
+    { method: 'POST', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/quick-reply$/, auth: true, scope: 'sessions:write', idempotent: true, handler: async ({ params, rawBody }) => ({ status: 200, data: await sessions.quickReply({ id: params[0], body: parseObjectBody(rawBody) }) }) },
     { method: 'GET', path: '/v1/sessions', auth: true, scope: 'sessions:read', handler: list },
     // The delegation path could not be started at all (wrapper missing, spawn
     // refused, or its caller check timed out before any write), so nothing

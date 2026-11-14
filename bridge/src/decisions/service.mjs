@@ -32,6 +32,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
         const failed = key.startsWith('failed:');
         const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}${refs?.('decision', r.id) ? ` ${refs('decision', r.id)}` : ''}: ${r.title}`,
           body: failed ? '回答を保存しました。判断ボードから再送してください。' : r.options.find((o) => o.recommended) ? `推奨: ${r.options.find((o) => o.recommended).label}` : r.summary.slice(0, 160),
+          meta: failed ? { id: r.id } : { id: r.id, o: r.options.map((o) => o.label), ...(r.deadline ? { d: Math.floor(Date.parse(r.deadline) / 1000) } : {}) },
           deepLink: `laa://work/decisions/${r.id}`, dedupeKey: `${r.id}:${key}` });
         // The existing notifier owns queued retries and durable deduplication.
         if (result?.reason !== 'invalid_notification') store.markNotification(r.id, key);

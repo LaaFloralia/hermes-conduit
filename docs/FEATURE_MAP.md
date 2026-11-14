@@ -1104,6 +1104,90 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 **Checked:** 2026-11-13, 8ab12bb9 and f4908ecf (laa/chat-ui-layout): busy conversations hold the answer and the Bridge delivers it after the turn (bridge decisions tests 25, production record J13 delivered by the Bridge after three failed sends); the app's waiting line and copy (LAADecisionTests); 2026-11-11, worktree-agent-aa67fa8ebdbcc3c60: the board as Work's second section with its count on the segment, Sessions first, the decision link selecting it; UI tests reach it by `work.section.decisions`. 2026-11-09, laa/tasks-ui: the free answer is visible without a tap on a 600-character decision and sends `optionIndex: null` with the note; `LAADecisionTests` 9/9, `LAADecisionSnapshotTests` 2/2, `LAADecisionUITests` 5/5 and `testFreeAnswerOnALongDecision` in `ConduitUITests/LAATaskRunUITests.swift` pass; light/dark captures compared. 2026-11-08, daae3647 (laa/decisions-app-1108 base): LAADecisionTests 8, LAADecisionSnapshotTests 2, LAAWorkTests 31 and LAADecisionUITests 5 passed (46/46) against the Work fixture; personal Release built for generic iOS. The Bridge files are on laa/decisions-bridge-1108 and resolve after both merge.
 
+## LAA answers from a notification, and which Mac notifications arrive
+
+A decision on the board, a Work conversation's one question, and a Work conversation's one tool approval can be
+answered from the notification's own buttons: on the iPhone, on the Mac, and on the Apple Watch, which mirrors the
+iPhone's notification and hands the tap back to the iPhone app. The answer goes to the same decision, or to the same
+pending request of the same conversation, which then continues. The board stays as it is. Settings > Notifications >
+Work chooses, kind by kind, which of the Mac's notifications arrive, arrive quietly, or do not arrive.
+
+**Siblings:** the Bridge's notification egress, metadata and preferences · the board's answer route (`quick`) and
+the session `quick-reply` route · the notification service extension (buttons, quiet delivery) · the app's
+notification delegate (the tap, the notices, the retry) · the call category's registration, which must keep the
+answer categories · Settings > Notifications > Work · the Apple Watch (mirrored; no Watch code) · Mac Catalyst (the
+same extension and delegate) · the decision board and the session reply card (unchanged) · calls from an employee
+(when asked only; `scripts/laa/check-call-policy.py`)
+
+**Code**
+- Shared: `Shared/LAANotificationMeta.swift` (LAANotificationMeta, LAANotificationActions)
+- Extension: `ConduitNotificationService/NotificationService.swift` (decorated)
+- App: `Conduit/LAA/Work/Decisions/LAAQuickAnswer.swift` (LAAQuickAnswerCenter, LAAQuickAnswerStore,
+  LAAQuickAnswerNotifications), `Conduit/ConduitApp.swift` (didReceive, willPresent, the retries),
+  `Conduit/Services/PushNotificationService.swift` (laaBridgeNotification), `Conduit/Voice/HermesCalls.swift`
+  (registerCategory), `Conduit/LAA/NotificationPairing/LAAWorkNotificationSettings.swift`,
+  `Conduit/Views/AuxiliaryViews.swift` (the section's place)
+- Bridge: `bridge/src/notify/index.mjs` (encodeNotificationSessionId), `bridge/src/notify/preferences.mjs`,
+  `bridge/src/routes/notifications.mjs`, `bridge/src/sessions/quick-reply.mjs`, `bridge/src/sessions/service.mjs`,
+  `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`; contract: `bridge/README.md`,
+  `docs/laa/BRIDGE.md`
+- Call policy: `scripts/laa/check-call-policy.py`
+- Tests: `ConduitTests/LAAQuickAnswerTests.swift`, `ConduitTests/LAACallPolicyTests.swift`,
+  `ConduitTests/LAAWorkNotificationSettingsSnapshotTests.swift`, `bridge/test/notification-quick-reply.test.mjs`,
+  `scripts/tests/test_laa_check_call_policy.py`
+
+**Rulings**
+- The Bridge's own facts ride in the push's `session_id` as `laa-bridge:<link>#<base64url JSON>`, within the
+  notifier's 512 bytes: the notifier seals a fixed set of fields, and the plugin is not changed. The link is
+  unchanged and the metadata is a fragment, so an app from before this still opens it. Only option labels are ever
+  shortened to fit; the answer is an index, so a shortened label changes nothing but the button's text.
+- The buttons act only on what the sealed push says. The app verifies the envelope again when a button is tapped and
+  reads the decision or conversation from that, never from the notification's visible fields, its category, or
+  anything the extension wrote. A push that does not verify gets no answer and a notice saying so.
+- The same question, or nothing: a board answer names its decision id, which the link must also name; a
+  conversation's answer carries the hash of the pending request it was asked with, and the Bridge refuses it
+  (`pending_request_changed`) once that request is no longer the one waiting.
+- One answer per notification. The request id and Idempotency-Key come from the sealed message's id, so the same tap
+  repeated, on the Watch and then the iPhone, is a replay, and a second, different choice from the same notification
+  is refused on the device.
+- Nothing after the deadline: the extension leaves the buttons off a decision already past it, the app sends nothing
+  past it, and the Bridge refuses a `quick` answer past it (`decision_expired`). The board itself still takes an
+  answer after the deadline, as before.
+- Out of reach of the Mac, the answer is kept in a file on the device and sent again with the same request when the
+  app is next in front or a push wakes it, for at most a day and never past the deadline; then it is dropped and the
+  owner told. The owner is told once that it is waiting, not at each attempt.
+- Every answer button needs the device unlocked (`authenticationRequired`): a locked iPhone asks for the owner, a
+  Watch on the wrist already has. No answer button brings the app forward.
+- What became of an answer is a local notification: quiet when it arrived, with sound when the owner has to look
+  (refused, saved but not delivered, waiting for the Mac, given up). Tapping it opens the decision or conversation.
+- An approval's notification says what is asked, the tool's name and the start of its input, in 140 characters.
+  More than one pending request, more than one question, or a question with no listed choices gets no buttons: it
+  opens the app.
+- Kinds and defaults (owner's choice in Settings; the recommendation shipped 2026-11-14): decision, question,
+  approval, error, task and calendar alert; a finished turn arrives quietly (Notification Center, no sound, no tap on
+  the wrist). Decision, question and approval cannot be turned off. The setting is one set on the Bridge for every
+  device. Employee chat notifications keep their own switches under "Notify me when".
+- An employee calls the owner when asked (`when_asked`). Calling on its own judgment (`decides`) and about approvals
+  and failures (`alerts`) stay off unless the owner turns them on; `scripts/laa/check-call-policy.py` reads every
+  employee profile and fails when one has either on. It changes nothing.
+
+**Owner check on the device**
+- On the Apple Watch, with the iPhone locked: a decision's notification shows its choices; choosing one is followed by
+  「回答を届けました」 and the asking conversation continues.
+- With the iPhone off the tailnet: the same tap is followed by 「未送信です」, and by the delivered notice after the
+  app is next opened on the tailnet.
+- A finished turn arrives without a tap on the wrist.
+
+**Open gaps**
+- The Watch has no list of waiting decisions of its own; it answers from notifications.
+- The answer buttons' category is registered by the extension as the push arrives. Two pushes arriving in the same
+  instant can leave the earlier one without buttons; it still opens the board.
+- A push shown while LAA is in front on the same device has no banner, as for every other push.
+- Physical delivery, the Watch's mirroring and the locked-device prompt need the installed build.
+
+**Checked:** 2026-11-14, LAA wt-watch-calls-20261114 (Bridge 858 tests; unit tests and snapshots on LAA 16 Pro Max;
+paired iPhone and Watch acceptance pending).
+
 ## Voice beside the tabs
 
 The gold button beside the tab bar, and where voice goes when it is swapped

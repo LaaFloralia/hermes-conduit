@@ -23,7 +23,7 @@ export function createOwnerTaskNotificationPoller({ source, notify = notifyOwner
           if (seen.has(key)) continue;
           const result = await notify({ kind: 'task', title: item.title || 'Linearの通知',
             body: item.issue.title, deepLink: `laa://work/tasks/${encodeURIComponent(item.issue.id)}`, dedupeKey: key });
-          if (result?.delivered === true) { seen.add(key); delivered++; }
+          if (result?.delivered === true || result?.reason === 'muted') { seen.add(key); if (result?.delivered) delivered++; }
         }
         cursor = page.nextCursor;
         pages++;
