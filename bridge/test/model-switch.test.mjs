@@ -85,6 +85,26 @@ test('verified owner switch keeps the logical row, metadata, old message IDs and
   assert.match(joined.items[1].id, /:a1$/);
 });
 
+test('the turns before a provider change stay in the conversation when the archived agent reads back empty', async (t) => {
+  const f = fixture(t);
+  f.pages.get('old').items.push({ id: 'a0', role: 'assistant', text: '帆を確認する。', timestamp: iso });
+  const first = await f.switcher.switchProvider(f.record.id, profiles[1]);
+  // The daemon drops an archived agent's timeline: the old id now reads empty.
+  f.pages.delete('old');
+  const service = createSessionService({ sessionStore: f.store, adapter: {}, daemon: f.daemon, history: f.history, choices, notify: async () => {} });
+  const shown = (await service.conversation(f.record.id)).items;
+  assert.deepEqual(shown.map((item) => item.id), ['u1', 'a0', `${first.delegate.sessionId}:a1`]);
+  assert.equal(shown[0].text, '目的は青い舟。残件は帆の確認。');
+  assert.equal((await joinedHistory(first, f.history)).items.length, 1, 'reading the daemon alone loses the earlier turns');
+  // A second change carries the first snapshot forward, so nothing before it is lost either.
+  f.daemon.status = async () => ({ phase: 'awaiting_review', daemonStatus: 'idle', modelCheck: { observed: profiles[2], runtimeVerified: true } });
+  const second = await f.switcher.switchProvider(f.record.id, profiles[2]);
+  f.pages.delete(first.delegate.sessionId);
+  const after = (await service.conversation(f.record.id)).items;
+  assert.deepEqual(after.map((item) => item.id),
+    ['u1', 'a0', `${first.delegate.sessionId}:a1`, `${second.delegate.sessionId}:a1`]);
+});
+
 for (const reason of ['wrong model', 'unverified runtime', 'no first reply', 'startup failure']) {
   test(`${reason}: source stays selected and candidate is archived`, async (t) => {
     const f = fixture(t);

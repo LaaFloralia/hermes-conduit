@@ -1,6 +1,6 @@
 // Owner-requested continuation across providers. Never a fallback path.
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { BridgeError, badRequest, conflict } from '../errors.mjs';
 import { foldModelLog, markOwnerChange } from './model-log.mjs';
@@ -27,10 +27,29 @@ export function handoffSections(items) {
   }).join('\n\n');
 }
 
-export async function joinedHistory(record, history) {
+const handoffFile = (storeFile, id, delegateId) => join(dirname(storeFile), 'session-handoffs', id, `${delegateId}.json`);
+
+// What the conversation held when the owner changed provider, as written
+// before the old agent was archived. Null when there is nothing usable.
+function handoffSnapshot(storeFile, record) {
+  if (!storeFile || !record.delegate?.handoff || !(record.delegateHistory ?? []).length) return null;
+  try {
+    const { items } = JSON.parse(readFileSync(handoffFile(storeFile, record.id, record.delegate.sessionId), 'utf8'));
+    const usable = Array.isArray(items) && items.length > 0
+      && items.every((item) => typeof item?.id === 'string' && typeof item.role === 'string' && typeof item.text === 'string');
+    return usable ? items : null;
+  } catch { return null; }
+}
+
+// The turns before a provider change come from the snapshot taken at the
+// change: the daemon can return an archived agent's timeline empty, which
+// showed the owner a conversation without its earlier messages. Without a
+// snapshot each earlier agent is read from the daemon as before.
+export async function joinedHistory(record, history, storeFile) {
   const chain = [...(record.delegateHistory ?? []), record.delegate];
-  const pages = [];
-  for (let index = 0; index < chain.length; index += 1) {
+  const earlier = handoffSnapshot(storeFile, record);
+  const pages = earlier ? [{ items: earlier }] : [];
+  for (let index = earlier ? chain.length - 1 : 0; index < chain.length; index += 1) {
     const entry = chain[index];
     const page = await history(entry.sessionId);
     pages.push({ ...page, items: page.items.filter((item) => !entry.handoff || !isHandoff(item))
@@ -88,11 +107,10 @@ export function createModelSwitcher({ store, daemon, history, choices, now, slee
       if (record.mode !== 'bypass') throw conflict('model_unsupported', 'a session that asks before acting cannot continue on another provider');
       // This reads the daemon, including descendants, rather than trusting a cached phase.
       const source = await daemon.continuationSource(record.delegate.sessionId, { relatedIds: (record.delegateHistory ?? []).map((entry) => entry.sessionId) });
-      const page = await joinedHistory(record, history);
+      const page = await joinedHistory(record, history, store.file);
       const nextId = randomUUID();
-      const handoffDir = join(dirname(store.file), 'session-handoffs', id);
-      mkdirSync(handoffDir, { recursive: true, mode: 0o700 });
-      const transcriptPath = join(handoffDir, `${nextId}.json`);
+      const transcriptPath = handoffFile(store.file, id, nextId);
+      mkdirSync(dirname(transcriptPath), { recursive: true, mode: 0o700 });
       writeFileSync(transcriptPath, JSON.stringify({ sessionId: id, delegateSessionId: record.delegate.sessionId,
         capturedAt: new Date(now()).toISOString(), items: page.items }, null, 2), { mode: 0o600, flag: 'wx' });
       const goal = page.items.find((item) => item.role === 'user')?.text ?? '元の会話の目的を記録から確認する。';
