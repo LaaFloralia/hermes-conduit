@@ -31,7 +31,8 @@ struct LAAHabitEditor: View {
                 Section {
                     Picker(selection: $kind) { Text(verbatim: "習慣").tag("do"); Text(verbatim: "禁止習慣").tag("avoid") } label: { Text(verbatim: "種類") }.disabled(habit != nil).accessibilityIdentifier("laa.habits.kind")
                     LabeledContent {
-                        TextField(text: $title, prompt: Text(verbatim: "")) { Text(verbatim: "名前") }
+                        // An empty prompt gives the field no width on Mac, where it then cannot be clicked.
+                        TextField(text: $title, prompt: Text(verbatim: "必須")) { Text(verbatim: "名前") }
                             .multilineTextAlignment(.trailing).accessibilityIdentifier("laa.habits.title")
                     } label: { Text(verbatim: "名前") }
                     Stepper(value: $target, in: (kind == "do" ? 1 : 0)...7) { Text(verbatim: kind == "do" ? "週\(target)日" : (target == 0 ? "しない" : "週\(target)日まで")) }.accessibilityIdentifier("laa.habits.target")
