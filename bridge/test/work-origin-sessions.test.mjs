@@ -42,3 +42,28 @@ test('a device request marks what the owner typed; dispatch does not', async (t)
   assert.equal(dispatched.ownerSignature, undefined);
   assert.equal(createHash('sha256').update(workOriginKey().publicKey).digest('hex').slice(0, 16), owned.ownerSignature.keyId);
 });
+
+test('only a message a device sent to this process is delivered with the owner mark', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'work-origin-send-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const sent = [];
+  const daemon = {
+    status: async () => ({ phase: 'awaiting_review', daemonStatus: 'idle', pending: [] }),
+    send: async (id, options) => { sent.push({ id, ...options }); },
+  };
+  const adapter = {
+    async create() { return { sessionId: 'agent-1', requested: { profile: 'dots-max', provider: 'dots', model: 'dots', effort: 'max' } }; },
+    async status() { return { phase: 'awaiting_review', daemonStatus: 'idle', pending: [] }; },
+  };
+  const choices = () => ({ profiles: [{ id: 'dots-max', label: 'Monet（Dots）', provider: 'dots', model: 'dots', effort: 'max', fast: false }],
+    switchProfiles: [], defaultProfile: 'dots-max', defaultMode: 'bypass' });
+  const sessions = createSessionService({ sessionStore: createSessionStore({ file: join(dir, 'sessions.json'), now: Date.now }), daemon, adapter,
+    notify: null, now: Date.now, homeCwd: '/Users/laa', findWorkspace: () => null, choices });
+  const { session } = await sessions.createSession({ deviceId: 'dev_1', owner: true, body: { requestId: 'req_send_00000001', profile: 'dots-max', prompt: '始めて' } });
+  await sessions.sendMessage({ id: session.id, body: { message: '社長の送信', messageId: 'm_owner' }, owner: true });
+  await sessions.sendMessage({ id: session.id, body: { message: '自動の送信', messageId: 'm_other' } });
+  const byId = Object.fromEntries(sent.map((row) => [row.messageId, row]));
+  assert.equal(byId.m_owner?.origin?.kind, 'laa-bridge');
+  assert.equal(byId.m_other?.origin ?? null, null);
+  assert.ok(byId.m_other, 'the unmarked message is still delivered');
+});

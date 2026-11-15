@@ -737,15 +737,26 @@ export function createSessionService({
     return ids.map((imageId) => images.read(id, imageId));
   }
 
-  // Every message here came from a paired device (sendMessage is a device route), so it carries
-  // the owner's mark (work-origin.mjs).
+  // Messages a paired device sent to this process, by id and text digest. Only these carry the
+  // owner's mark when delivered (work-origin.mjs); an entry read back from the state file after
+  // a restart, or one written there by anything else, goes unmarked.
+  const ownerMessages = new Map();
+  const OWNER_MESSAGES_MAX = 2000;
+  function rememberOwnerMessage(messageId, text) {
+    ownerMessages.delete(messageId);
+    ownerMessages.set(messageId, sha(text));
+    while (ownerMessages.size > OWNER_MESSAGES_MAX) ownerMessages.delete(ownerMessages.keys().next().value);
+  }
+
   async function deliver(record, entry) {
-    const origin = signWorkOrigin({ agentId: record.delegate.sessionId, messageId: entry.id, text: entry.text });
+    const owned = ownerMessages.get(entry.id) === sha(entry.text);
+    const origin = owned ? signWorkOrigin({ agentId: record.delegate.sessionId, messageId: entry.id, text: entry.text }) : null;
     if (daemon) {
       await daemon.send(record.delegate.sessionId, { text: entry.text, messageId: entry.id, images: stagedImages(record.id, entry.id), origin });
-      return;
+    } else {
+      await adapter.send({ requestId: record.delegate.requestId, messageId: entry.id, text: entry.text, ...(origin ? { ownerSignature: origin } : {}) });
     }
-    await adapter.send({ requestId: record.delegate.requestId, messageId: entry.id, text: entry.text, ownerSignature: origin });
+    ownerMessages.delete(entry.id);
   }
 
   // The owner's mark on a new session's first instruction (work-origin.mjs). It covers what the
@@ -841,7 +852,7 @@ export function createSessionService({
     if (queueTimer) clearInterval(queueTimer);
   }
 
-  async function sendMessage({ id, body = {}, key }) {
+  async function sendMessage({ id, body = {}, key, owner = false }) {
     switcher.assertUnlocked(id);
     const record = requireSession(id);
     if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') {
@@ -854,6 +865,7 @@ export function createSessionService({
 
     const attachments = parseImages(body.images);
     images.stage(id, messageId, attachments);
+    if (owner) rememberOwnerMessage(messageId, text);
 
     // A retried request carries the same message id: it is already held or
     // already sent, and must not become a second turn.

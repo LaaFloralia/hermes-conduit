@@ -77,6 +77,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
       id: params[0],
       body: parseObjectBody(rawBody),
       key: req.headers['idempotency-key'],
+      owner: true,
     });
     return { status: 202, data: decorate(sessions.view(result.session)) };
   }
