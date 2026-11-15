@@ -118,109 +118,77 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(C.efforts(current: nil), LAAEffort.order)
     }
 
-    func testStandingIsMarbleInTheGlassNeverColour() {
-        XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").finish, .crystal)
-        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").finish, .polished)
-        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").finish, .polished)
-        XCTAssertEqual(LAAModelRank.of("claude-opus-5-5").finish, .plain, "owner, 2026-11-14 22:00: Opus is plain glass")
-        XCTAssertEqual(LAAModelRank.of("gpt-6.1-sol").finish, .plain)
-        XCTAssertEqual(LAAModelRank.of("gpt-6.1-terra").finish, .plain)
-        XCTAssertEqual(LAAModelRank.of("deepseek-v4.1-flash").finish, .plain)
-        XCTAssertEqual(LAAModelRank.of(nil).finish, .plain)
-        XCTAssertEqual(LAAEffort.finish("medium"), .plain)
-        XCTAssertEqual(LAAEffort.finish("high"), .plain, "XHigh and above are veined")
-        XCTAssertEqual(LAAEffort.finish("xhigh"), .polished)
-        XCTAssertEqual(LAAEffort.finish("max"), .crystal)
+    func testStandingIsMarbleByStepWithMythosTheStrongest() {
+        XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").step, .model)
+        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").step, .model)
+        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").step, .model)
+        XCTAssertEqual(LAAModelRank.of("claude-opus-5-5").step, .plain, "owner, 2026-11-14 22:00: Opus is plain glass")
+        XCTAssertEqual(LAAModelRank.of("gpt-6.1-sol").step, .plain)
+        XCTAssertEqual(LAAModelRank.of("deepseek-v4.1-flash").step, .plain)
+        XCTAssertEqual(LAAModelRank.of(nil).step, .plain)
+        XCTAssertEqual(LAAEffort.step("medium"), .plain)
+        XCTAssertEqual(LAAEffort.step("high"), .plain, "High and below stay plain")
+        XCTAssertEqual(LAAEffort.step("xhigh"), .xhigh)
+        XCTAssertEqual(LAAEffort.step("max"), .max)
+        XCTAssertEqual(LAAEffort.step("ultracode"), .ultracode)
         XCTAssertEqual(LAAEffort.name("ultracode"), "Ultra Code")
-        // Each strong model wears its own colour (owner, 2026-11-15 09時); others the stone.
         XCTAssertEqual(LAAModelRank.mythos.tone, .mythos)
         XCTAssertEqual(LAAModelRank.astra.tone, .astra)
         XCTAssertEqual(LAAModelRank.fable.tone, .fable)
         XCTAssertEqual(LAAModelRank.none.tone, .stone)
+        // Mythos > Astra = Fable; XHigh < Max < Ultra Code (appSelection).
+        let mythos = LAASelectionStyle(tone: .mythos, step: .model)
+        let astra = LAASelectionStyle(tone: .astra, step: .model), fable = LAASelectionStyle(tone: .fable, step: .model)
+        XCTAssertGreaterThan(mythos.intensity, astra.intensity)
+        XCTAssertEqual(astra.intensity, fable.intensity)
+        let xhigh = LAASelectionStyle(tone: .stone, step: .xhigh), max = LAASelectionStyle(tone: .stone, step: .max)
+        let ultra = LAASelectionStyle(tone: .stone, step: .ultracode)
+        XCTAssertLessThan(xhigh.intensity, max.intensity)
+        XCTAssertLessThan(max.intensity, ultra.intensity)
+        XCTAssertLessThan(ultra.tileSize.width, max.tileSize.width, "the higher step is denser")
+        XCTAssertLessThanOrEqual(max.tileSize.width, xhigh.tileSize.width)
+        XCTAssertTrue(LAASelectionStyle(tone: .mythos, step: .plain).isPlain)
         for dark in [false, true] {
-            let plain = LAAMarbleLook(finish: .plain)
-            let polished = LAAMarbleLook(finish: .polished), crystal = LAAMarbleLook(finish: .crystal)
-            XCTAssertEqual(plain.veinOpacity(dark: dark), 0, "plain glass holds no vein")
-            XCTAssertEqual(plain.glowOpacity(dark: dark), 0)
-            XCTAssertGreaterThan(polished.veinOpacity(dark: dark), 0)
-            XCTAssertGreaterThan(crystal.veinOpacity(dark: dark), polished.veinOpacity(dark: dark), "Mythos and Max the most")
-            XCTAssertGreaterThan(crystal.glowOpacity(dark: dark), polished.glowOpacity(dark: dark), "and the brightest light")
-            XCTAssertLessThan(crystal.veinOpacity(dark: dark), 0.5, "fine cracks, not a pattern laid over the glass")
-            // White to pale grey; Mythos leans to violet (blue above red and green), never a strong colour.
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            LAAMarble.ink(.stone, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
-            XCTAssertLessThan(max(r, g, b) - min(r, g, b), 0.1, "the stone's veins are near neutral")
-            LAAMarble.ink(.mythos, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
-            XCTAssertGreaterThan(b, r); XCTAssertGreaterThan(b, g)
-            XCTAssertGreaterThan(r, g, "Mythos leans violet")
-            LAAMarble.ink(.astra, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
-            XCTAssertGreaterThan(b, r); XCTAssertGreaterThan(b, g); XCTAssertGreaterThan(g, r, "Astra leans blue")
-            LAAMarble.ink(.fable, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
-            XCTAssertGreaterThan(r, g); XCTAssertGreaterThan(g, b, "Fable leans orange")
-            // Only a strong model washes the glass with its colour, and faintly.
-            XCTAssertEqual(LAASelectionStyle.of(.stone).washOpacity(dark: dark), 0)
-            for tone in [LAAVeinTone.mythos, .astra, .fable] {
-                XCTAssertGreaterThan(LAASelectionStyle.of(tone).washOpacity(dark: dark), 0)
-                XCTAssertLessThanOrEqual(LAASelectionStyle.of(tone).washOpacity(dark: dark), 0.2, "a wash, not a painted face")
-            }
+            XCTAssertEqual(LAAMarbleLook(step: .plain).veinOpacity(dark: dark), 0, "plain glass holds no vein")
+            XCTAssertEqual(LAAMarbleLook(step: .plain).glowOpacity(dark: dark), 0)
+            XCTAssertGreaterThan(mythos.lightOpacity(dark: dark), astra.lightOpacity(dark: dark))
+            XCTAssertGreaterThan(ultra.hairOpacity(dark: dark), xhigh.hairOpacity(dark: dark))
+            XCTAssertLessThanOrEqual(ultra.veinOpacity(LAAAppSelectionTokens.mainOpacity, dark: dark), 1)
         }
     }
 
-    /// The veins (owner, 2026-11-15): none in plain glass, more and longer
-    /// branches at each step, laid once for the size and the same every time.
-    func testVeinsGrowWithTheStepAndAreLaidOnceForTheSize() {
-        let size = CGSize(width: 180, height: 36)
-        XCTAssertTrue(LAAMarble.veins(finish: .plain, size: size, seed: 1).isEmpty, "plain glass holds no vein")
-        func mains(_ veins: [LAAMarble.Vein]) -> Int { veins.filter { !$0.hairline }.count }
-        for seed: UInt64 in [0, 7, LAAMarble.seed("claude-mythos-5-2"), LAAMarble.seed("max")] {
-            let polished = LAAMarble.veins(finish: .polished, size: size, seed: seed)
-            let crystal = LAAMarble.veins(finish: .crystal, size: size, seed: seed)
-            XCTAssertGreaterThanOrEqual(mains(polished), 1)
-            XCTAssertGreaterThan(mains(crystal), mains(polished))
-            XCTAssertGreaterThan(crystal.count, polished.count)
-            XCTAssertLessThan(crystal.count, 16, "a few veins, not a pattern")
-            for vein in crystal {
-                XCTAssertEqual(vein.spine.count, vein.widths.count)
-                XCTAssertLessThanOrEqual(vein.widths.max() ?? 0, 1.2, "fine cracks: under a point and a fifth")
-                XCTAssertGreaterThan(vein.widths.min() ?? 0, 0)
-                // Every main vein starts inside the glass; all are clipped to it.
-                if !vein.hairline, let first = vein.spine.first {
-                    XCTAssert((0...size.width).contains(first.x) && (0...size.height).contains(first.y),
-                              "\(first) starts outside the glass")
-                }
-            }
-            XCTAssertEqual(crystal, LAAMarble.veins(finish: .crystal, size: size, seed: seed), "the same every time")
-        }
-        XCTAssertNotEqual(LAAMarble.veins(finish: .crystal, size: size, seed: 1),
-                          LAAMarble.veins(finish: .crystal, size: size, seed: 2), "capsules of one width differ")
-        XCTAssertFalse(LAAMarble.path(LAAMarble.veins(finish: .crystal, size: size, seed: 3)).isEmpty)
-        // The light only drifts, slowly, and at most 24 frames a second.
-        XCTAssertGreaterThanOrEqual(LAAMarble.deep.drift, 8)
-        XCTAssertGreaterThan(LAAMarble.veined.drift, LAAMarble.deep.drift)
+    /// The label band reaches the chevron and drops the vein under it
+    /// (design review 2026-11-15).
+    func testTheLabelBandCoversTheChevron() {
+        let band = LAAMarble.labelBand(width: 120)
+        XCTAssertEqual(band.locations.count, band.opacities.count)
+        XCTAssertEqual(band.locations, band.locations.sorted())
+        let chevron = Double((120 - 16) / 120.0)
+        let index = band.locations.lastIndex { $0 <= chevron } ?? 0
+        XCTAssertEqual(band.opacities[index], LAAAppSelectionTokens.labelBandChevron)
         XCTAssertLessThanOrEqual(LAAMarble.driftFrameRate, 24)
     }
 
     @MainActor
-    func testUltraCodeCapsuleKeepsItsRankedFinishOutsideTheFiveGeneralEfforts() {
+    func testUltraCodeCapsuleKeepsItsRankedStepOutsideTheFiveGeneralEfforts() {
         let capsule = LAAEffortCapsule(effort: "ultracode")
         XCTAssertEqual(capsule.ranked, "ultracode")
-        XCTAssertEqual(LAAEffort.finish(capsule.ranked), .crystal)
+        XCTAssertEqual(LAAEffort.step(capsule.ranked), .ultracode)
         XCTAssertFalse(LAAEffort.order.contains("ultracode"))
         XCTAssertNil(LAAEffortCapsule(effort: "unknown").ranked)
     }
 
     func testAnAppliedChangeSpreadsTheVeinsOnceFromTheLeadingEnd() {
-        let d = LAACeremony.slow
-        let start = LAAMarbleLook(finish: .crystal, elapsed: 0, duration: d)
-        let middle = LAAMarbleLook(finish: .crystal, elapsed: d * 0.4, duration: d)
-        let end = LAAMarbleLook(finish: .crystal, elapsed: d, duration: d)
+        let d = LAAAppSelectionTokens.selectionSeconds
+        let start = LAAMarbleLook(step: .max, elapsed: 0, duration: d)
+        let middle = LAAMarbleLook(step: .max, elapsed: d * 0.4, duration: d)
+        let end = LAAMarbleLook(step: .max, elapsed: d, duration: d)
         XCTAssertLessThan(start.front!, 0, "the veins spread from beyond the leading end")
         XCTAssertGreaterThan(middle.front!, start.front!)
         XCTAssertEqual(middle.lightAt, middle.front!, "the light rides the front")
-        XCTAssertGreaterThan(middle.glowOpacity(dark: true), end.glowOpacity(dark: true), "brightest under the front")
         XCTAssertNil(end.front, "once over, every vein shows")
         XCTAssertEqual(end.lightAt, LAAMarble.restLight, "and the light rests")
-        XCTAssertEqual(LAAMarbleLook(finish: .plain, elapsed: d * 0.4, duration: d).glowOpacity(dark: true), 0,
+        XCTAssertEqual(LAAMarbleLook(step: .plain, elapsed: d * 0.4, duration: d).glowOpacity(dark: true), 0,
                        "plain glass holds no light, not even in the front")
         XCTAssertGreaterThan(LAACeremony.duration(rank: .mythos), LAACeremony.duration(rank: .none), "Mythos takes the slow time")
         XCTAssertLessThanOrEqual(LAACeremony.duration(rank: .mythos), LAACeremony.slow)

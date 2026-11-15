@@ -38,13 +38,14 @@ enum LAAEffort {
     }
 }
 
-/// XHigh polishes the glass, Max and Ultra Code make it crystal (LAAFinish):
-/// the higher the effort, the more marble veins; High and below stay plain.
+/// XHigh, Max and Ultra Code wear the marble, each step denser and brighter
+/// (appSelection.steps); High and below stay plain.
 extension LAAEffort {
-    static func finish(_ value: String?) -> LAAFinish {
+    static func step(_ value: String?) -> LAASelectionStep {
         switch value {
-        case "xhigh": .polished
-        case "max", "ultracode": .crystal
+        case "xhigh": .xhigh
+        case "max": .max
+        case "ultracode": .ultracode
         default: .plain
         }
     }

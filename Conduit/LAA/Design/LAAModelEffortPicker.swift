@@ -9,10 +9,11 @@ import SwiftUI
 ///
 /// The model's name is always whole, beginning with its maker ("Claude Opus
 /// 5.5"), never cut or "…" (owner, 2026-11-14): when the row is too narrow
-/// the effort moves to the next line (LAAWrapRow). Standing is marble held
-/// inside the glass, never a colour: fine veins with a slow light along them,
-/// more at each step (LAAFinish). An applied change spreads the veins once
-/// from the leading end. Unknown and stale values stay plain.
+/// the effort moves to the next line (LAAWrapRow). A strong selection holds
+/// 「大理石の脈」 inside the glass: the model's colour, marble veins and a slow
+/// light, by step (LAASelectionStep, values from tokens.json appSelection).
+/// An applied change spreads the veins once from the leading end. Unknown
+/// and stale values stay plain.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
 ///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
@@ -154,8 +155,7 @@ struct LAAModelCapsule: View {
             .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
             .contentShape(Capsule())
-            .laaGlassSelection(finish: rank.finish, tone: rank.tone, seed: LAAMarble.seed(model), motion: motion,
-                               duration: LAACeremony.duration(rank: rank),
+            .laaGlassSelection(step: rank.step, tone: rank.tone, seed: LAAMarble.seed(model), motion: motion,
                                cornerRadius: LAAPickerMetrics.radius)
     }
 
@@ -237,7 +237,7 @@ struct LAAEffortCapsule: View {
     let effort: String?
     var current = true
     var changing = false
-    /// The model's colour, so the pair wears one look (LAASelectionStyle).
+    /// The model's colour and strength, so the pair wears one look (LAASelectionStyle).
     var tone: LAAVeinTone = .stone
     @State private var start: Date?
 
@@ -275,9 +275,8 @@ struct LAAEffortCapsule: View {
         .padding(.leading, LAASpacing.x3).padding(.trailing, LAASpacing.x3)
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
-        .laaGlassSelection(finish: current ? LAAEffort.finish(ranked) : .plain, tone: tone,
+        .laaGlassSelection(step: current ? LAAEffort.step(ranked) : .plain, tone: tone,
                            seed: LAAMarble.seed(ranked), motion: motion,
-                           duration: ranked.map { LAACeremony.duration(effort: $0) } ?? LAACeremony.slow,
                            cornerRadius: LAAPickerMetrics.radius)
     }
 }

@@ -3,12 +3,24 @@ import UIKit
 
 // The looks Studio hands over, each held in one place so new materials and
 // values change only these definitions (owner, 2026-11-15): the strong
-// selection's glass per model, and Send's burst. LAA_DESIGN.md and
-// FEATURE_MAP's rulings describe the current values.
+// selection's glass reads hq/design/tokens.json `appSelection` (generated
+// into LAAAppSelectionTokens.swift), and Send's burst its style below.
+// LAA_DESIGN.md and FEATURE_MAP's rulings describe the current values.
 
-/// Whose look a strong selection wears: the stone's near-white (a strong
-/// effort under any other model), or one model's own colour.
-enum LAAVeinTone: Equatable, CaseIterable { case stone, mythos, astra, fable }
+/// Whose look a strong selection wears: the stone (a strong effort under any
+/// other model), or one model's own colour.
+enum LAAVeinTone: Equatable, CaseIterable {
+    case stone, mythos, astra, fable
+
+    var tokens: LAAAppSelectionTokens.Model {
+        switch self {
+        case .stone: LAAAppSelectionTokens.stone
+        case .mythos: LAAAppSelectionTokens.mythos
+        case .astra: LAAAppSelectionTokens.astra
+        case .fable: LAAAppSelectionTokens.fable
+        }
+    }
+}
 
 extension LAAModelRank {
     var tone: LAAVeinTone {
@@ -21,12 +33,14 @@ extension LAAModelRank {
     }
 }
 
-/// The look of a strong selection, per model, held in this one place (owner,
-/// 2026-11-15 09時): colour, pattern and strength. Mythos leans violet, Astra
-/// blue, Fable orange; the stone stays near-white. These are interim values:
-/// the final materials come from Studio (through Monet) and replace the table
-/// below, nothing else. A still glass (Reduce Motion, Low Power Mode, off
-/// screen) shows the same look with the light at rest.
+extension LAAAppSelectionTokens.RGB {
+    var ui: UIColor { UIColor(red: r, green: g, blue: b, alpha: 1) }
+}
+
+/// The look of one capsule, worked out from `appSelection.formula`:
+/// I = models[tone].strength × steps[step].intensity, every layer's strength
+/// following I and capped at 1. Mythos is the strongest, Astra and Fable
+/// next; XHigh < Max < Ultra Code; High and below (and other models) plain.
 struct LAASelectionStyle: Equatable {
     struct RGB: Equatable {
         var r: Double, g: Double, b: Double
@@ -36,45 +50,38 @@ struct LAASelectionStyle: Equatable {
         var dark: RGB, light: RGB
         func ui(dark isDark: Bool) -> UIColor { (isDark ? dark : light).color }
     }
-    enum Pattern: Equatable {
-        /// The drawn marble veins (LAAMarble).
-        case veins
-        /// An image in the asset catalogue, filling the glass behind the
-        /// label in place of the veins (the veins again while it is missing).
-        case texture(String)
+
+    let tone: LAAVeinTone
+    let step: LAASelectionStep
+
+    var model: LAAAppSelectionTokens.Model { tone.tokens }
+    var intensity: Double { model.strength * step.tokens.intensity }
+    var isPlain: Bool { intensity <= 0 }
+    private var capped: Double { min(1, max(0, intensity)) }
+
+    /// glass.bodyOpacity × (0.55 + 0.45 × min(I, 1)) (formula.bodyOpacity).
+    func bodyOpacity(dark: Bool) -> Double {
+        isPlain ? 0 : LAAAppSelectionTokens.bodyOpacity.value(dark: dark) * (0.55 + 0.45 * capped)
     }
-
-    /// The pattern's colour, before opacity.
-    var ink: Pair
-    /// A faint wash of the model's colour through the glass, and how much.
-    var wash: Pair
-    var washDark: Double, washLight: Double
-    var pattern: Pattern = .veins
-    /// Scales the pattern's and the light's opacity (1 the tier's own).
-    var strength: Double = 1
-
-    func washOpacity(dark: Bool) -> Double { dark ? washDark : washLight }
-
-    static func of(_ tone: LAAVeinTone) -> LAASelectionStyle {
-        switch tone {
-        case .stone:
-            .init(ink: .init(dark: .init(r: 0.93, g: 0.91, b: 0.86), light: .init(r: 0.45, g: 0.47, b: 0.47)),
-                  wash: .init(dark: .init(r: 0.93, g: 0.91, b: 0.86), light: .init(r: 0.45, g: 0.47, b: 0.47)),
-                  washDark: 0, washLight: 0)
-        case .mythos:
-            .init(ink: .init(dark: .init(r: 0.87, g: 0.82, b: 0.97), light: .init(r: 0.50, g: 0.43, b: 0.63)),
-                  wash: .init(dark: .init(r: 0.56, g: 0.44, b: 0.88), light: .init(r: 0.55, g: 0.44, b: 0.85)),
-                  washDark: 0.12, washLight: 0.08)
-        case .astra:
-            .init(ink: .init(dark: .init(r: 0.80, g: 0.88, b: 0.98), light: .init(r: 0.33, g: 0.45, b: 0.62)),
-                  wash: .init(dark: .init(r: 0.36, g: 0.56, b: 0.94), light: .init(r: 0.34, g: 0.54, b: 0.90)),
-                  washDark: 0.12, washLight: 0.08)
-        case .fable:
-            .init(ink: .init(dark: .init(r: 0.99, g: 0.86, b: 0.73), light: .init(r: 0.62, g: 0.42, b: 0.28)),
-                  wash: .init(dark: .init(r: 0.95, g: 0.56, b: 0.27), light: .init(r: 0.93, g: 0.55, b: 0.28)),
-                  washDark: 0.12, washLight: 0.08)
-        }
+    /// pattern.opacity[layer] × I, capped at 1.
+    func veinOpacity(_ layer: LAAAppSelectionTokens.Pair, dark: Bool) -> Double {
+        min(1, layer.value(dark: dark) * max(0, intensity))
     }
+    /// The hairline layer, further scaled by the step's `hair`.
+    func hairOpacity(dark: Bool) -> Double {
+        min(1, LAAAppSelectionTokens.hairOpacity.value(dark: dark) * max(0, intensity) * step.tokens.hair)
+    }
+    /// light.peak × I.
+    func lightOpacity(dark: Bool) -> Double { min(1, LAAAppSelectionTokens.lightPeak.value(dark: dark) * max(0, intensity)) }
+    /// glass.glowOpacity × I.
+    func glowOpacity(dark: Bool) -> Double { min(1, LAAAppSelectionTokens.glowOpacity.value(dark: dark) * max(0, intensity)) }
+    /// pattern.tilePt × models.tileScale × steps.tileScale (smaller is denser).
+    var tileSize: CGSize {
+        let scale = model.tileScale * step.tokens.tileScale
+        return CGSize(width: LAAAppSelectionTokens.tilePt.width * scale, height: LAAAppSelectionTokens.tilePt.height * scale)
+    }
+    /// One crossing of the light: light.secondsPerCrossing × models.speed × steps.speed.
+    var crossingSeconds: Double { LAAAppSelectionTokens.secondsPerCrossing * model.speed * step.tokens.speed }
 }
 
 /// Send's burst (BUS-452). The owner's reference is the clip's 24–25.5 s
