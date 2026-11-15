@@ -496,16 +496,16 @@ enum MarkdownRenderCache {
         // supported values are tied to the accent and LAA surface flags —
         // whereas `String(describing:)` of a SwiftUI Color is not (its
         // description is undocumented and can drift for adaptive colors). The
-        // assert fails loudly in debug if a third style is ever introduced;
-        // promote it to an explicit key token then.
+        // other styles get their own key token below.
         var supportedStyle = usesAccentSurface ? foregroundStyle == .white : foregroundStyle == .primary
 #if LAA_BUILD
         if usesLAARichContentStyle && !usesAccentSurface && foregroundStyle == LAAColor.text { supportedStyle = true }
 #endif
-        assert(
-            supportedStyle,
-            "MarkdownRenderCache keys on usesAccentSurface, not foregroundStyle; a new style needs an explicit key token."
-        )
+        // Any other style (an LAA bubble's own text colour, the long-press
+        // preview of the owner's bubble) keys on its description instead of
+        // trapping: a rarer cache hit beats a debug crash or a reply drawn
+        // in another bubble's colour.
+        let styleToken = supportedStyle ? "std" : "style:" + String(describing: foregroundStyle)
 
         // Fonts resolve against the current Dynamic Type size AND the
         // selected chat text size (issue #85), so either change must miss the
@@ -518,6 +518,7 @@ enum MarkdownRenderCache {
             recognizesGatewayMedia ? "1" : "0",
             usesAccentSurface ? "1" : "0",
             usesLAARichContentStyle ? "laa" : "conduit",
+            styleToken,
             UIApplication.shared.preferredContentSizeCategory.rawValue,
             chatTextSize.cacheIdentity,
             // Hermes' @session links are titled with the chat's name once
