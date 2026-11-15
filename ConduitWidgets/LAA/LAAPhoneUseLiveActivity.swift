@@ -24,10 +24,11 @@ struct LAAPhoneUseLiveActivity: Widget {
                         .padding(.leading, 2)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    LAAPhoneUseClock(attributes: attributes, state: state)
+                    LAAPhoneUseTrailing(attributes: attributes, state: state)
                         .font(.headline.monospacedDigit().weight(.semibold))
                         .frame(minWidth: 52, maxWidth: 76, alignment: .trailing)
                         .padding(.trailing, 2)
+                        .environment(\.colorScheme, .dark)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     LAAPhoneUseHeadline(attributes: attributes, state: state)
@@ -35,10 +36,12 @@ struct LAAPhoneUseLiveActivity: Widget {
                         .environment(\.colorScheme, .dark)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    LAAPhoneUseButtons(attributes: attributes, phase: state.usePhase)
-                        .padding(.horizontal, 2)
-                        .padding(.top, 4)
-                        .environment(\.colorScheme, .dark)
+                    if state.usePhase == .ask {
+                        LAAPhoneUseButtons(attributes: attributes, phase: .ask)
+                            .padding(.horizontal, 2)
+                            .padding(.top, 4)
+                            .environment(\.colorScheme, .dark)
+                    }
                 }
             } compactLeading: {
                 LAAPhoneUseIcon(phase: state.usePhase)
@@ -105,11 +108,13 @@ private struct LAAPhoneUseLockScreenView: View {
                 LAAPhoneUseDisc(phase: state.usePhase, size: 40)
                 LAAPhoneUseHeadline(attributes: attributes, state: state)
                 Spacer(minLength: 0)
-                LAAPhoneUseClock(attributes: attributes, state: state)
+                LAAPhoneUseTrailing(attributes: attributes, state: state)
                     .font(.title3.monospacedDigit().weight(.semibold))
                     .frame(maxWidth: 88, alignment: .trailing)
             }
-            LAAPhoneUseButtons(attributes: attributes, phase: state.usePhase)
+            if state.usePhase == .ask {
+                LAAPhoneUseButtons(attributes: attributes, phase: .ask)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -145,6 +150,21 @@ private struct LAAPhoneUseHeadline: View {
                 .lineLimit(2)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Stop stays above the permission row so a repeated Allow tap cannot hit it.
+private struct LAAPhoneUseTrailing: View {
+    let attributes: LAAPhoneUseAttributes
+    let state: LAAPhoneUseAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            LAAPhoneUseClock(attributes: attributes, state: state)
+            if state.usePhase == .operating {
+                LAAPhoneUseButtons(attributes: attributes, phase: .operating)
+            }
+        }
     }
 }
 
