@@ -195,6 +195,13 @@ LAA版の `profileAvatarURL` は社員ならHermesの画像ではなく同梱の
 
 ## 社員マスコットの制作手順
 
+### アプリへの社員追加チェック
+
+- `LAAStaff` のID・名前・役割、Hermesの `laa-<id>` profile、一覧の社員情報を揃える。モデル固定・通話対応は社員ごとの仕様に従う。
+- 下記の4素材を `assets/staff/<id>/` へ同梱し、一覧・会話・紹介の明暗表示とアルファを検査する。
+- `WidgetLaunchLink` の `.employeeChat` 許可に新しいprofileを含める。一覧の選択もこのリンクを通る。チャット専用社員を、許可を得るためだけに `LAAWidgetEmployee`（ウィジェット・通話対象）へ足さない。
+- `LAAStaffCallTests.testEveryStaffProfileSupportsEmployeeChatAndURLRoundTrip` で、全 `LAAStaff.allCases` の直接初期化とURL往復を検査する。冷起動した実アプリでも一覧から新社員を開き、新規会話の送信と応答を照合する。
+
 ### 待機ループ
 
 動画は透過なので、1コマ目が表示されたら下の静止画を隠す（残すと2体が重なる）。採用した静止画を動画生成で動かし、背景を抜いて使う。
