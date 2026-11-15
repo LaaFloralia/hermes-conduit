@@ -354,6 +354,9 @@ extension AppState {
             }
             _ = self.takeComposerSubmissionOfUnknownDelivery(context)
             self.composerDraftStore.markSubmissionUnknown(submission.id)
+            #if LAA_BUILD
+            self.settleUnknownSubmissionsThatLanded()
+            #endif
         }
     }
 
