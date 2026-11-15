@@ -23,6 +23,53 @@ final class CompactResumeTranscriptTests: XCTestCase {
         }
     }
 
+    #if LAA_BUILD
+    func testDeliveryUnknownMarkedAfterHistoryHydrationSettlesWithoutAnotherReload() async throws {
+        try await checkDeliveryUnknownAfterHistoryHydration(durableEvidence: true)
+    }
+
+    func testDeliveryUnknownMarkedAfterHistoryHydrationKeepsUnprovenSubmission() async throws {
+        try await checkDeliveryUnknownAfterHistoryHydration(durableEvidence: false)
+    }
+
+    private func checkDeliveryUnknownAfterHistoryHydration(durableEvidence: Bool) async throws {
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://one.example")
+        let registry = SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        let text = "Check this request once."
+        var owner: [String: Any] = [
+            "role": "user", "content": text,
+            "timestamp": ISO8601DateFormatter().string(from: Date().addingTimeInterval(2))
+        ]
+        if durableEvidence { owner["id"] = 42 }
+        let payload: [String: Any] = ["session_id": "stored-a", "messages": [owner]]
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [],
+                                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in .payload(payload) },
+            dashboardRegistry: registry
+        )
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let key = ComposerDraftKey(profile: "default", sessionID: "stored-a", dashboardID: dashboard.id)
+        let submission = ComposerDraftStore.Submission(
+            id: UUID(), key: key, dashboardID: dashboard.id,
+            draft: ComposerDraft(text: text, attachments: []), pendingSendID: nil
+        )
+        let store = harness.appState.composerDraftStore
+        XCTAssertTrue(store.beginSubmission(submission, clearingDraft: true))
+        // Delivery recovery reads the saved row before the composer marks
+        // the lost acknowledgement unknown. No second hydration follows.
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        store.markSubmissionUnknown(submission.id)
+        XCTAssertEqual(store.unknownSubmissions.map(\.id), [submission.id])
+        harness.appState.settleUnknownSubmissionsThatLanded()
+        XCTAssertEqual(store.unknownSubmissions.isEmpty, durableEvidence)
+        XCTAssertFalse(store.hasDraft(for: key), "Unknown delivery must never auto-restore or resend")
+    }
+    #endif
+
     // MARK: - Transcript hydration
 
     func testCompactResumeHydratesPersistedTranscriptFromHistoryPayload() async throws {
@@ -1428,14 +1475,14 @@ final class CompactResumeTranscriptTests: XCTestCase {
     }
 
     func testPersistedHistoryRequestContractIsBoundedTailPaging() {
-        XCTAssertEqual(PersistedTranscriptPagination.pageSize, 120)
+        XCTAssertEqual(PersistedTranscriptPagination.pageSize, 40)
         XCTAssertEqual(
             PersistedTranscriptPagination.tailQuery(offset: 0),
-            "?limit=120&offset=0&order=latest&include_compacted=true&inline_images=false"
+            "?limit=40&offset=0&order=latest&include_compacted=true&inline_images=false"
         )
         XCTAssertEqual(
             PersistedTranscriptPagination.tailQuery(offset: 240),
-            "?limit=120&offset=240&order=latest&include_compacted=true&inline_images=false"
+            "?limit=40&offset=240&order=latest&include_compacted=true&inline_images=false"
         )
         XCTAssertEqual(PersistedTranscriptPagination.legacyQuery, "")
         XCTAssertEqual(
@@ -1444,7 +1491,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 profile: "default",
                 query: PersistedTranscriptPagination.tailQuery(offset: 0)
             ),
-            "/api/sessions/stored%20a/messages?limit=120&offset=0&order=latest&include_compacted=true&inline_images=false"
+            "/api/sessions/stored%20a/messages?limit=40&offset=0&order=latest&include_compacted=true&inline_images=false"
         )
         XCTAssertEqual(
             AppState.sessionMessagesPath(
@@ -1452,7 +1499,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 profile: "work",
                 query: PersistedTranscriptPagination.tailQuery(offset: 120)
             ),
-            "/api/sessions/stored-a/messages?limit=120&offset=120&order=latest&include_compacted=true&inline_images=false&profile=work"
+            "/api/sessions/stored-a/messages?limit=40&offset=120&order=latest&include_compacted=true&inline_images=false&profile=work"
         )
     }
 
@@ -2385,6 +2432,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
         openSession: @escaping @MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult,
         persistedTranscript: (@MainActor (String, String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
         loadEarlierTranscriptPage: (@MainActor (String, String, Int) async -> PersistedTranscriptFetchOutcome)? = nil,
+        dashboardRegistry: SavedDashboardRegistry? = nil,
         additionalOperations: (inout ChatResumeLifecycleOperations) -> Void = { _ in }
     ) throws -> (appState: AppState, coordinator: ChatResumeCoordinator, defaults: UserDefaults) {
         let suite = "CompactResumeTranscriptTests.\(UUID().uuidString)"
@@ -2410,6 +2458,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
             chatResumeCoordinator: coordinator,
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
+            dashboardRegistry: dashboardRegistry,
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: cacheDefaults)

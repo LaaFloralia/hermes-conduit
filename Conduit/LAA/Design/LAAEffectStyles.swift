@@ -77,54 +77,60 @@ struct LAASelectionStyle: Equatable {
     }
 }
 
-/// Send's burst (BUS-452; owner, 2026-11-15 10時: 「もう少し派手に…画面右下から
-/// 大きく」, the reference clip's 5.8–9.0 s). Every value the burst reads is
-/// here, so a new look is a change of these numbers only. Times are seconds
-/// from the tap; lengths are points; the origin is Send's center and y grows
-/// downward, so the field lies at negative x and y.
+/// Send's burst (BUS-452). The owner's reference is the clip's 24–25.5 s
+/// (owner, 2026-11-15 11時, replacing 5.8–9 s): Send lights in the clip's
+/// blue (#3487F8; 「参考元と同じく色は蒼にして」), and small blue squares with a
+/// soft light bleed up and to the left of it to about five times its size,
+/// then everything is gone within about half a second (「ちょっとでかくなり
+/// すぎたのでもう少し抑え目に」, after the 10時 「画面右下から大きく」). Every value
+/// the burst reads is here, so a new look is a change of these numbers only.
+/// Times are seconds from the tap; lengths are points; the origin is Send's
+/// center and y grows downward, so the field lies at negative x and y.
 struct LAASendEffectStyle {
     /// Where the burst starts, from Send's center.
     var originOffset = CGSize.zero
     /// How far up and to the left of Send the panes reach, before the window
     /// edge caps it.
-    var reach = CGSize(width: 400, height: 640)
+    var reach = CGSize(width: 190, height: 140)
     /// The fan they spread over, in degrees: 0 straight left, 90 straight up.
-    var fan: ClosedRange<Double> = -6...96
+    var fan: ClosedRange<Double> = -14...104
     /// The grid every pane lands on.
-    var grid: CGFloat = 12
+    var grid: CGFloat = 4
     /// Panes: how many, and in Low Power Mode.
-    var paneCount = 44
-    var lowPowerPaneCount = 14
+    var paneCount = 30
+    var lowPowerPaneCount = 10
     /// Pane sides, nearer panes taking the smaller ones.
-    var paneSides: [CGFloat] = [12, 24, 24, 36, 48]
-    var paneCorner: CGFloat = 6
+    var paneSides: [CGFloat] = [4, 8, 8, 12, 16]
+    var paneCorner: CGFloat = 2
     /// The accent's opacity in a pane at its nearest and farthest, light then
     /// dark; a far pane is fainter, as if out of focus.
-    var paneTint = (near: 0.56, far: 0.16)
-    var paneTintDark = (near: 0.62, far: 0.22)
+    var paneTint = (near: 0.85, far: 0.30)
+    var paneTintDark = (near: 0.90, far: 0.35)
     /// The 1 pt rim of the glass's rim light on every other pane.
     var paneRim: CGFloat = 1
     /// The soft light that spreads with the panes (a radial gradient, no blur).
-    var bloomRadius: CGFloat = 420
-    var bloomOpacity = 0.42
-    var bloomOpacityDark = 0.50
+    var bloomRadius: CGFloat = 120
+    var bloomOpacity = 0.45
+    var bloomOpacityDark = 0.55
     /// Send's own glass: the accent it takes, then the orb it turns into.
     var buttonSide: CGFloat = 36
-    var litOpacity = 0.85
-    var orbScale: CGFloat = 1.4
+    var litOpacity = 1
+    var orbScale: CGFloat = 1.25
     /// The colour; nil is the app's accent (LAAColor.link).
-    var color: LAASelectionStyle.Pair? = nil
+    var color: LAASelectionStyle.Pair? = .init(dark: Self.clipBlue, light: Self.clipBlue)
+    /// The clip's blue, #3487F8.
+    static let clipBlue = LAASelectionStyle.RGB(r: 52.0 / 255, g: 135.0 / 255, b: 248.0 / 255)
 
     /// Steps: Send takes the colour (`lit`), the panes leave Send (from
     /// `spreadStart`, each `travel` long, the farthest `stagger` later), Send
     /// becomes an orb (`orbStart`…`duration`) and everything is gone by
     /// `duration`, when the thinking row carries on.
-    var lit: CFTimeInterval = 0.12
-    var spreadStart: CFTimeInterval = 0.06
-    var travel: CFTimeInterval = 0.42
-    var stagger: CFTimeInterval = 0.16
-    var orbStart: CFTimeInterval = 0.42
-    var duration: CFTimeInterval = 0.96
+    var lit: CFTimeInterval = 0.08
+    var spreadStart: CFTimeInterval = 0.04
+    var travel: CFTimeInterval = 0.30
+    var stagger: CFTimeInterval = 0.08
+    var orbStart: CFTimeInterval = 0.24
+    var duration: CFTimeInterval = 0.56
     /// LAA's state curve, cubic-bezier(.25,.9,.3,1).
     var curve: [Float] = [0.25, 0.9, 0.3, 1]
 

@@ -838,3 +838,45 @@ test('a proper agent name wins over the old workspace prompt in both list and de
   const detail=await service.getSession(daemonSessionID('parent'));
   assert.equal(detail.session.name,'Journal｜手法の図解');
 });
+
+test('a "now" send interrupts the running turn and delivers once; "queue" and a missing field still wait', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-send-now-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture(), service = createSessionService({ sessionStore: createSessionStore({ file: join(dir, 'sessions.json') }), daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {}, outboxPollMs: 0 });
+  t.after(() => service.close());
+  await service.syncDaemon(); const id = daemonSessionID('parent');
+  const sends = () => f.calls.filter((c) => c[0] === 'send');
+
+  // Explicit queue, and an older client that sends no field: held, the turn untouched.
+  assert.equal((await service.sendMessage({ id, key: 'q1', body: { message: '後で', delivery: 'queue' } })).queued, true);
+  assert.equal((await service.sendMessage({ id, key: 'q2', body: { message: '後で2' } })).queued, true);
+  assert.equal(f.calls.filter((c) => c[0] === 'cancel').length, 0);
+  assert.equal(sends().length, 0);
+
+  // "now": the running turn is cancelled and the queue drains at once, oldest
+  // first, so nothing the owner wrote earlier is skipped or lost.
+  const now = await service.sendMessage({ id, key: 'n1', body: { message: '今すぐ', delivery: 'now' } });
+  assert.equal(f.calls.filter((c) => c[0] === 'cancel').length, 1);
+  assert.equal(now.queued, false);
+  assert.deepEqual(sends().map((c) => c[2]), ['後で', '後で2', '今すぐ']);
+
+  // A retry of the same request (unknown outcome on the phone) is not a second delivery.
+  f.rows[0].status = 'running';
+  const retried = await service.sendMessage({ id, key: 'n1', body: { message: '今すぐ', delivery: 'now' } });
+  assert.equal(retried.queued, false);
+  assert.equal(sends().filter((c) => c[2] === '今すぐ').length, 1);
+  assert.equal(f.calls.filter((c) => c[0] === 'cancel').length, 1);
+  await assert.rejects(service.sendMessage({ id, key: 'bad', body: { message: 'x', delivery: 'later' } }), { code: 'payload_invalid' });
+});
+
+test('a "now" send whose interruption is not confirmed stays held, never lost', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-send-now-held-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture();
+  f.client.cancelAgent = async (agentId) => { f.calls.push(['cancel', agentId]); };
+  const service = createSessionService({ sessionStore: createSessionStore({ file: join(dir, 'sessions.json') }), daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {}, outboxPollMs: 0 });
+  t.after(() => service.close());
+  await service.syncDaemon(); const id = daemonSessionID('parent');
+  const result = await service.sendMessage({ id, key: 'n1', body: { message: '今すぐ', delivery: 'now' } });
+  assert.equal(result.queued, true);
+  assert.equal(service.view(result.session).queue.count, 1);
+  assert.equal(f.calls.filter((c) => c[0] === 'send').length, 0);
+});

@@ -212,7 +212,7 @@ callers mark it processed. Unknown notification kinds use alert.
 | `GET /v1/sessions/{id}` | Bearer + `sessions:read` | session と `observation:{available,code}`。委譲先が落ちていても記録は 200 で返す |
 | `GET /v1/sessions/{id}/events?cursor=&afterSeq=&wait=&limit=` | Bearer + `sessions:read` | `{items,nextCursor,oldestSeq,headSeq,resyncRequired,resyncReason}`。`wait` は最大25秒の long-poll |
 | `GET /v1/sessions/{id}/artifacts` | Bearer + `sessions:read` | `{items}`。`log`（journal の JSONL）・`message`（最新の assistant 応答）・`decision`（承認待ち） |
-| `POST /v1/sessions/{id}/messages` | Bearer + `sessions:write` + `Idempotency-Key` | `{message,messageId?}` → 202。実行中・承認待ち・停止中は 409 |
+| `POST /v1/sessions/{id}/messages` | Bearer + `sessions:write` + `Idempotency-Key` | `{message,messageId?,images?,delivery?}` → 202。実行中は `delivery:"now"`（アプリの既定、2026-11-15）なら先に順番待ちへ保存してから手番を中断して即時に届け、`"queue"` または省略なら手番の終了後に届ける（中断を確認できなければ順番待ちのまま）。承認待ち・停止中は 409 |
 | `POST /v1/sessions/{id}/stop` | Bearer + `sessions:write` + `Idempotency-Key` | 停止を確認して `phase:"stopped"`。未確認は 409 `stop_unconfirmed` |
 | `POST /v1/sessions/{id}/resume` | Bearer + `sessions:write` + `Idempotency-Key` | `{message,profile?,requestId?}` → 201 後継 session（`resumedFrom`）。停止確認済みのみ |
 | `GET /v1/brain/files?area=&limit=&cursor=` | Bearer + `brain:read` | 許可領域の Markdown ノート一覧（`id,path,area,size,modifiedAt,contentHash,title,status,checked`）。`area` は既定外の領域を明示的に足す |

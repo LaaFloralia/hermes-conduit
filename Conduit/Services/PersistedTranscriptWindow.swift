@@ -5,11 +5,9 @@ import Foundation
 /// persisted transcript arrives as tail-anchored pages of
 /// `GET /api/sessions/{id}/messages` instead of one unbounded payload.
 enum PersistedTranscriptPagination {
-    /// Rows per persisted-history page. Matches Hermes Desktop's
-    /// `LATEST_SESSION_MESSAGES_LIMIT`: enough tail to fill the transcript
-    /// window a few times over, small enough that opening a hundred-thousand-
-    /// row session does not ship (and normalize) rows nobody scrolled to.
-    static let pageSize = 120
+    /// Small tail pages keep tool-heavy employee chats inexpensive to reopen.
+    /// Older rows stay available through explicit backfill.
+    static let pageSize = 40
 
     /// Query for one tail-anchored page. The backend measures `offset` back
     /// from the NEWEST persisted row and still returns the selected page in

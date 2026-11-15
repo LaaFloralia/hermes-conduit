@@ -1888,6 +1888,11 @@ struct ComposerBar: View, Equatable {
             guard didSubmit else {
                 _ = appState.takeComposerSubmissionOfUnknownDelivery(submissionContext)
                 draftStore.markSubmissionUnknown(submission.id)
+                #if LAA_BUILD
+                // Recovery may have hydrated the persisted row before the
+                // submission was marked unknown. Settle against that evidence now.
+                appState.settleUnknownSubmissionsThatLanded()
+                #endif
                 Haptics.error()
                 return
             }

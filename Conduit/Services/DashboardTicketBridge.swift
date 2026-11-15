@@ -1070,7 +1070,12 @@ final class DashboardTicketBridge: NSObject {
                 maxResponseBytes: maxResponseBytes
             )
         }
-        if !webViewCanRun() {
+        // A hidden dashboard may never finish loading even though its authenticated
+        // API is reachable. Reads use the existing cookie-authenticated transport
+        // while the page starts; its redirect and response-size checks still apply.
+        let readsWhilePageLoads = method.uppercased() == "GET" && !isReady
+            && !isInvalidated && !didLandOnLogin
+        if !webViewCanRun() || readsWhilePageLoads {
             return try await requestJSONWithoutPage(
                 path: path,
                 method: method,

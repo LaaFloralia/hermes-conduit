@@ -1179,7 +1179,7 @@ final class AppState: ObservableObject {
     /// delivery. When the chat's saved transcript already holds it, it was
     /// delivered: settle it, so the composer neither warns nor invites a
     /// second send (LAAUnknownDelivery).
-    private func settleUnknownSubmissionsThatLanded() {
+    func settleUnknownSubmissionsThatLanded() {
         guard !durablePersistedRowIDs.isEmpty, let dashboardID = activeDashboardID else { return }
         let onScreen = composerDraftKeyOnScreen
         var settled = 0, open = 0
