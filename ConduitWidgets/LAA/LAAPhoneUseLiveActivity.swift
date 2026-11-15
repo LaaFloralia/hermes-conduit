@@ -160,10 +160,10 @@ private struct LAAPhoneUseTrailing: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
-            LAAPhoneUseClock(attributes: attributes, state: state)
             if state.usePhase == .operating {
                 LAAPhoneUseButtons(attributes: attributes, phase: .operating)
             }
+            LAAPhoneUseClock(attributes: attributes, state: state)
         }
     }
 }
