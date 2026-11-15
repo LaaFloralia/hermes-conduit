@@ -177,21 +177,25 @@ enum LAACampaignCopy {
     static func approve(_ kind: LAACampaign.Kind) -> String {
         switch kind {
         case .site: "応募させる"
-        case .x: "自分で応募する"
-        case .grant: "下書きを頼む"
+        case .x: "応募した"
+        case .grant: "申請する"
         }
     }
 
     /// The quiet button on a declined row.
     static func reopen(_ kind: LAACampaign.Kind) -> String {
-        kind == .grant ? "下書きを頼む" : "応募に変える"
+        switch kind {
+        case .site: "応募に変える"
+        case .x: "応募したに変える"
+        case .grant: "申請に変える"
+        }
     }
 
     static func approvedNote(_ kind: LAACampaign.Kind) -> String {
         switch kind {
         case .site: "次の11:00の定期実行で応募します。"
-        case .x: "投稿を開いて、ご自身で応募してください。"
-        case .grant: "次の定期実行で申請の下書きを作ります。"
+        case .x: "応募済みとして記録しました。"
+        case .grant: "申請書の下書きをエージェントが作ります。提出とGビズIDの取得は社長が行います。"
         }
     }
 
@@ -207,13 +211,14 @@ enum LAACampaignCopy {
     /// when it is not a day (`通年`) or the row sits under 判断済み.
     static func meta(_ item: LAACampaign, showDeadline: Bool = true) -> String {
         [kind(item.kind), item.organizer, item.benefit, showDeadline ? item.deadline.map { "締切 \($0)" } : nil,
-         item.gbizid == true ? "GビズIDが必要" : nil]
+         item.gbizid == true ? "GビズID要" : nil]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// Why it waits: the reason, or for an X post its entry conditions.
+    /// Why it waits, then the entry conditions (an X post has only these).
     static func body(_ item: LAACampaign) -> String? {
-        item.reason ?? item.conditions
+        let parts = [item.reason, item.conditions.map { "条件: \($0)" }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
     /// `応募させる · 11月15日（日） 17:30`: what was chosen and when.
