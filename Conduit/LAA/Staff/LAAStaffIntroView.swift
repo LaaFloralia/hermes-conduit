@@ -18,6 +18,7 @@ extension LAACopy {
     static func staffMotto(_ staff: LAAStaff) -> String {
         switch staff {
         case .monet, .monetUncensored, .monetDots: return "社長の相談相手として、計画から実行までを支える"
+        case .soap: return "公開情報から制作し、Studioへ届ける"
         case .argus: return "条件とリスクから判断を支える"
         case .cfo: return "差異を説明できる数字を返す"
         case .cio: return "時点と比較条件の揃った市場材料を渡す"
@@ -31,6 +32,7 @@ extension LAACopy {
         switch staff {
         case .monet, .monetUncensored, .monetDots:
             return "予定・タスク、健康・習慣・学習、裁量トレードと事業、発信・デザインを支えます。社員と実作業をまとめる窓口です。"
+        case .soap: return "画像・短い動画・日本語ナレーション・3Dの下絵、公開情報の資料や小さなWebツール、信頼できる依頼の画面作業を代行します。成果物と版はStudioで管理します。秘密・非公開情報は扱いません。"
         case .argus: return "裁量トレードの環境認識・計画案・振り返りと、自動売買の研究の状況を伝えます。"
         case .cfo: return "LAAの会計・資金と、社長個人の取引損益を照合します。"
         case .cio: return "金利・ドル・指標・ニュースなど、チャートの外の材料を届けます。"

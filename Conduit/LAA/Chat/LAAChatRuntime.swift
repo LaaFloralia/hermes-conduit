@@ -309,7 +309,7 @@ struct LAAChatModelPickers: View {
 
     /// The Fast capsule: the fixed one, or what Hermes reported for this chat.
     private var fast: LAAChatFastControl.Display? {
-        if let fixed { return fixed.fast }
+        if let fixed { return fixed.model == "muse" ? nil : fixed.fast }
         return LAAChatFastControl.display(
             speed: shown.speed, capability: capability, sessionID: activeSessionID, connected: connected,
             writable: appState.laaChatModelOperations?.setSpeed != nil, writing: writingSpeed)
@@ -319,7 +319,16 @@ struct LAAChatModelPickers: View {
         // Model, effort and Fast wrap as whole capsules when the names are
         // long (LAAWrapRow); none is ever cut.
         LAAWrapRow {
-            if let fixed {
+            if let fixed, fixed.model == "muse" {
+                Menu { LAAMenuReason(text: fixed.reason) } label: {
+                    LAAModelCapsule(model: fixed.model, provider: fixed.provider, name: fixed.name)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: "モデル"))
+                .accessibilityHint(Text(verbatim: fixed.reason))
+                .accessibilityIdentifier("composer.runtime.model")
+            } else if let fixed {
                 // Nothing here is Hermes' to change: no menu rows, no writes.
                 LAAModelEffortPickers(
                     model: fixed.model, provider: fixed.provider, effort: fixed.effort, name: fixed.name,

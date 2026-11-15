@@ -14,6 +14,7 @@ const RETENTION = 30 * 86400_000;
 const BACKOFF = [60_000, 300_000, 900_000, 3600_000];
 const PHASES = ['owner', 'queued', 'started', 'failed', 'reported', 'completed'];
 const PARENT = 'paseo.parent-agent-id';
+// Soap (Muse), like Dots, is chat-only. Never dispatch private task context to its cloud runtime.
 export const TASK_STAFF = Object.freeze({
   monet: { role: 'Monet', name: 'Monet' }, argus: { role: 'Argus', name: 'Argus' },
   cfo: { role: 'CFO', name: 'Morgan' }, cio: { role: 'CIO', name: 'Sherlock' },

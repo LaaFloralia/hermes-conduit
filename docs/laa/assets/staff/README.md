@@ -21,3 +21,7 @@ Monet（無検閲）の動画は `verify_alpha.swift` でアルファ付き・�
 
 - 旧素材の `<id>-turn.heic` はKling 2.6の周回動画から作った。背面はAIの推定（MonetとTalosの裏の飾りも生成物）。Monet（無検閲）は2026-11-08採用素材。
 - 元の動画と採用画はStudio作品「LAAアプリ｜社員マスコット」（`cf51462f-250f-413b-9f6e-b41540841fec`）にある。
+
+## 薬用石鹸（soap）の受入れ待ち
+
+社員「薬用石鹸」はMuseの固定モデルで会話する。素材色は社長指定の温かいベージュ（#DCCAAA付近）。`staff/soap/` に `soap-turn.heic`・`soap-idle-512.mov`・`soap-avatar-512.png`・`soap-hero-1024.png` を置く。仮素材は含めない。既存の全社員素材テストはsoapも検査するため、素材受入れ前は配信しない。詳細と親への引継ぎは作業記録 `work/muse-20261115/staff/APP-HANDOFF.md`。

@@ -73,8 +73,15 @@ struct LAAChatFixedRuntime: Equatable {
     static let dots = LAAChatFixedRuntime(model: "gpt-6-astra", provider: "openai-codex", name: "GPT 6 Astra", effort: "ultracode",
                                           speed: .fast, reason: "Monet（Dots）はモデルと推論を選べません。")
 
+    static let muse = LAAChatFixedRuntime(model: "muse", provider: "custom:laa-muse", name: "Muse", effort: "",
+                                          speed: .normal, reason: "薬用石鹸はMuseで動きます。モデルは選べません。")
+
     static func of(profile: String) -> LAAChatFixedRuntime? {
-        LAAStaff(profile: profile) == .monetDots ? dots : nil
+        switch LAAStaff(profile: profile) {
+        case .monetDots: return dots
+        case .soap: return muse
+        default: return nil
+        }
     }
 
     var fast: LAAChatFastControl.Display { .init(speed: speed, choices: [], lock: reason) }

@@ -64,7 +64,7 @@ final class LAAStaffCallTests: XCTestCase {
         let expected: [String: String] = ["monet": "Monet", "argus": "Argus", "cfo": "Morgan",
                                           "cio": "Sherlock", "cos": "Merlin",
                                           "cso": "Talos", "cto": "Ada", "monet-uncensored": "Monet（無検閲）",
-                                          "monet-dots": "Monet（Dots）"]
+                                          "monet-dots": "Monet（Dots）", "soap": "薬用石鹸"]
         for (id, name) in expected {
             XCTAssertEqual(LAAStaff(profile: "laa-\(id)")?.name, name)
         }
@@ -474,6 +474,18 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").avatar)
         XCTAssertNotNil(resolver.resolve(profile: "default").defaultMark)
         XCTAssertEqual(resolver.resolve(profile: "unknown"), StaffAssets())
+    }
+
+    func testSoapAssetReferencesAndChatOnlyBoundary() {
+        let resolver = StaffAssetResolver(root: URL(fileURLWithPath: "/test-bundle"), exists: { _ in true })
+        let assets = resolver.resolve(profile: "laa-soap")
+        XCTAssertEqual(assets.avatar?.lastPathComponent, "soap-avatar-512.png")
+        XCTAssertEqual(assets.hero?.lastPathComponent, "soap-hero-1024.png")
+        XCTAssertEqual(assets.loop?.lastPathComponent, "soap-idle-512.mov")
+        XCTAssertEqual(assets.turn?.lastPathComponent, "soap-turn.heic")
+        XCTAssertFalse(LAAStaff.soap.supportsCalls)
+        XCTAssertFalse(LAATaskStaff.assignable.contains(.soap))
+        XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "laa-soap", savedVoice: "vale"))
     }
 
     func testAdoptedStaffAssetsAreInTheAppBundle() {

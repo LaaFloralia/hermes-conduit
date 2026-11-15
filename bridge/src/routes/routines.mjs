@@ -18,7 +18,7 @@ import { routineRefItem } from '../refs/items.mjs';
 const exec = promisify(execFile);
 
 const ROLE_NAMES = Object.freeze({ monet: 'Monet', cos: 'Merlin', cto: 'Ada', cfo: 'Morgan',
-  cio: 'Sherlock', cso: 'Talos', argus: 'Argus' });
+  cio: 'Sherlock', cso: 'Talos', argus: 'Argus', soap: '薬用石鹸' });
 const boundedString = (value) => typeof value === 'string' && value.length <= 500 ? value : null;
 
 export function routineState(job, reading) {

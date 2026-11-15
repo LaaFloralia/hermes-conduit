@@ -229,3 +229,12 @@ test('execution evidence crosses Console to LAA without private output', () => {
     if (['schedule_overdue', 'read_unavailable'].includes(reasonCode)) assert.equal(row.state, 'error');
   }
 });
+
+test('Soap is a readable chat destination without an automatic task assignee', async () => {
+  const { routineDestination } = await import('../src/routes/routines.mjs');
+  const { TASK_STAFF, taskAssignee } = await import('../src/tasks/dispatch.mjs');
+  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'soap' }), '薬用石鹸のチャット');
+  assert.equal(Object.hasOwn(TASK_STAFF, 'soap'), false);
+  assert.throws(() => taskAssignee({ assignee: { kind: 'staff', staff: 'soap' }, profile: 'laa-soap' },
+    { profiles: [{ id: 'laa-soap' }] }), { code: 'task_assignee_invalid' });
+});

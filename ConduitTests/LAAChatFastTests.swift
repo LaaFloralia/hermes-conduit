@@ -12,6 +12,14 @@ final class LAAChatFastTests: XCTestCase {
                                    sessionID: session, connected: connected, writable: writable, writing: writing)
     }
 
+    func testMuseRuntimeIsFixed() {
+        let runtime = LAAChatFixedRuntime.of(profile: "laa-soap")
+        XCTAssertEqual(runtime?.name, "Muse")
+        XCTAssertEqual(runtime?.provider, "custom:laa-muse")
+        XCTAssertEqual(runtime?.fast.choices, [])
+        XCTAssertFalse(LAAStaff.soap.supportsCalls)
+    }
+
     func testSpeedIsKeptAgainstTheChatItWasReportedFor() {
         var runtime = LAAChatRuntime()
         XCTAssertNil(runtime.shown(for: ["monet"]).speed)

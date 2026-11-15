@@ -3,7 +3,7 @@ import Foundation
 
 /// Profile IDs are stable; display names can be changed on the host.
 enum LAAStaff: String, CaseIterable {
-    case monet, monetUncensored = "monet-uncensored", monetDots = "monet-dots", argus, cfo, cio, cos, cso, cto
+    case monet, monetUncensored = "monet-uncensored", monetDots = "monet-dots", argus, cfo, cio, cos, cso, cto, soap
 
     init?(profile: String) {
         let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -13,7 +13,7 @@ enum LAAStaff: String, CaseIterable {
 
     /// In-app calls (GPT Live). Dots replies through its text bridge; its
     /// phone hands the call to the owner's own ChatGPT dot (`dotCallURL`).
-    var supportsCalls: Bool { self != .monetUncensored && self != .monetDots }
+    var supportsCalls: Bool { self != .monetUncensored && self != .monetDots && self != .soap }
 
     /// Where Dots' phone goes (owner, 2026-11-09).
     var dotCallURL: URL? {
@@ -68,6 +68,7 @@ enum LAAStaff: String, CaseIterable {
         case .cos: return "Merlin"
         case .cso: return "Talos"
         case .cto: return "Ada"
+        case .soap: return "薬用石鹸"
         }
     }
 
@@ -81,6 +82,7 @@ enum LAAStaff: String, CaseIterable {
         case .cos: return "COS"
         case .cso: return "CSO"
         case .cto: return "CTO"
+        case .soap: return "制作と作業の代行（Muse）"
         }
     }
 }
