@@ -34,30 +34,49 @@ final class LAAChatDesignTests: XCTestCase {
         XCTAssertTrue(LAAChatReadReceipt.wasRead("two", messages: [first, reply, next], hasLiveResponse: true))
     }
 
+    /// A hold on a message's text selects the word under the finger, with
+    /// handles and the system's Copy, as in Safari (owner, 2026-11-16): the
+    /// text view keeps every gesture of its own, the host adds none, and a
+    /// drawn host mounts that same text view for the touch.
     @MainActor
-    func testBubbleMenuOwnsHoldWhileKeepingLinkTapsAvailable() {
+    func testHoldOnAMessageBelongsToTheTextsOwnSelection() throws {
         let text = SelectableTextView.makeTextView()
         let hold = UILongPressGestureRecognizer()
-        let tap = UITapGestureRecognizer()
         text.addGestureRecognizer(hold)
-        text.addGestureRecognizer(tap)
         let host = SelectableTextViewHostView(textView: text)
-        host.usesMessageMenu = true
-        // The Mac keeps the text's hold: its menu is the right click.
-        XCTAssertEqual(hold.isEnabled, ProcessInfo.processInfo.isMacCatalystApp)
-        XCTAssertTrue(tap.isEnabled)
-        XCTAssertTrue(text.isSelectable)
-        host.usesMessageMenu = false
         XCTAssertTrue(hold.isEnabled)
+        XCTAssertTrue(text.isSelectable)
+        XCTAssertFalse(text.isEditable)
+        XCTAssertFalse(text.isScrollEnabled)
+        XCTAssertTrue((host.gestureRecognizers ?? []).isEmpty, "the host takes no hold of its own")
+
+        // The bubble as the chat draws it: drawn until touched, then a real,
+        // selectable text view whose own holds are all on.
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
+        let controller = UIHostingController(rootView:
+            MarkdownText(source: "午前は予定を確認し、午後は資料を仕上げましょう。")
+                .environment(\.selectableTextDrawsUntilTouched, true)
+                .environment(\.markdownJoinsProseRuns, true)
+                .frame(width: 360))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let hosts = Self.views(of: SelectableTextViewHostView.self, in: controller.view)
+        let drawn = try XCTUnwrap(hosts.first)
+        let mounted = drawn.mountTextViewForTouch()
+        XCTAssertTrue(mounted.isSelectable)
+        XCTAssertFalse(mounted.isEditable)
+        XCTAssertTrue((drawn.gestureRecognizers ?? []).isEmpty)
+        for gesture in mounted.gestureRecognizers ?? [] where gesture is UILongPressGestureRecognizer {
+            XCTAssertTrue(gesture.isEnabled, "\(gesture) is off")
+        }
+        XCTAssertTrue(mounted.text.contains("午後は資料"))
     }
 
-    /// iPhone: the hold opens the message's menu (テキストを選択 is in it).
-    /// Mac: the pointer selects part of a message in place (owner, 2026-11-16).
-    func testOnlyIPhoneGivesTheHoldToTheMessageMenu() {
-        XCTAssertTrue(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: true, onMac: false))
-        XCTAssertFalse(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: true, onMac: true))
-        XCTAssertFalse(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: false, onMac: false))
-        XCTAssertFalse(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: false, onMac: true))
+    private static func views<T: UIView>(of type: T.Type, in root: UIView) -> [T] {
+        ((root as? T).map { [$0] } ?? []) + root.subviews.flatMap { views(of: type, in: $0) }
     }
 
     /// The message's text view copies the part chosen, not the whole message.

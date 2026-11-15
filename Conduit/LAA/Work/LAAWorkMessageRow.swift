@@ -119,8 +119,6 @@ struct LAAWorkMessageRow: View {
         .background(isOwner ? LAAColor.ownBubble : LAAColor.surface,
                     in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
-        .modifier(LAAWorkMessageMenu(text: message.text, sessionID: sessionID, messageID: message.id,
-                                     isOwner: isOwner, onQuote: onQuote))
         .modifier(LAAWorkFileLinkOpener(sessionID: sessionID))
     }
 }

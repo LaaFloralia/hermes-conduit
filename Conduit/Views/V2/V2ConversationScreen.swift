@@ -51,7 +51,6 @@ struct V2ConversationScreen: View {
     @EnvironmentObject private var laaBridge: LAABridgeSession
     @Environment(\.dismiss) private var dismiss
     @Environment(\.laaDesktop) private var laaDesktop
-    @State private var messageMenu: LAAChatMenuSelection?
     private var usesLAAChatBack: Bool { shell.isRootCovered && !shell.isSplit && !laaDesktop }
     #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -155,12 +154,6 @@ struct V2ConversationScreen: View {
         // Hiding the system Back for LAA's also turns off the edge swipe;
         // the chat keeps it (owner, 2026-11-12).
         .laaEdgeSwipeBack(usesLAAChatBack)
-        .environment(\.laaPresentChatMenu, laaDesktop ? nil : { messageMenu = $0 })
-        .overlay {
-            if let messageMenu {
-                LAAChatMenuOverlay(selection: messageMenu) { self.messageMenu = nil }
-            }
-        }
 #endif
         .laaConversationFeatures()
         .sheet(item: $artifactSessionIDs) { sheet in

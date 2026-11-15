@@ -1413,12 +1413,12 @@ struct UserBubble: View {
         // The owner's picture, name and role, as in groups and Work.
         LAAOwnerMessageRow(continues: continuesRun, timestamp: message.timestamp) {
             let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
-            stack.accessibilityIdentifier("chat.message.user").laaMessageMenu(text: text, isMine: true,
-                reply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
+            // A hold on the text selects it; the actions are the row below.
+            stack.accessibilityIdentifier("chat.message.user")
             HStack(spacing: 2) {
                 LAAChatDelivery(message: message)
-                LAAMessageActionBar(text: text,
-                                    onQuote: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
+                LAAMessageActionBar(text: text, onQuote: nil,
+                                    onReply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
                     .padding(.trailing, -8)
             }
         }.laaChatColumn(.trailing)
@@ -2767,19 +2767,20 @@ struct AssistantBubble: View {
         } content: {
             let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
             VStack(alignment: .leading, spacing: 0) {
-                reply.accessibilityIdentifier("chat.message.assistant").laaMessageMenu(text: text,
-                    reply: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
-                    react: rowState.canReact(to: message) ? { emoji in Task { await appState.react(to: message.id, with: emoji) } } : nil,
-                    read: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
-                // Copy, quote and good in sight, not only in the long press
-                // (owner, 2026-11-11). Good is the 👍 reaction Hermes keeps.
+                // A hold on the text selects it, as in Safari (owner,
+                // 2026-11-16); copy, reply, reactions, good and read aloud
+                // are the row below. Good is the 👍 reaction Hermes keeps.
+                reply.accessibilityIdentifier("chat.message.assistant")
                 if message.role == .assistant {
                     LAAMessageActionBar(
                         text: text,
-                        onQuote: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
+                        onQuote: nil,
+                        onReply: rowState.isOffline ? nil : { appState.replyInComposer(to: message) },
+                        onReact: rowState.canReact(to: message) ? { emoji in Task { await appState.react(to: message.id, with: emoji) } } : nil,
                         liked: rowState.canReact(to: message)
                             ? message.reactions.contains { $0.isFromUser && $0.emoji == "👍" } : nil,
-                        onLike: { Task { await appState.react(to: message.id, with: "👍") } })
+                        onLike: { Task { await appState.react(to: message.id, with: "👍") } },
+                        onRead: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
                     .padding(.leading, -8)
                 }
             }
