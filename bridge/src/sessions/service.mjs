@@ -29,6 +29,7 @@ import { homedir } from 'node:os';
 import { signWorkOrigin } from './work-origin.mjs';
 import { dirname, join } from 'node:path';
 import { sessionImageStore } from './images.mjs';
+import { readOwnerFile } from './owner-files.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
@@ -84,6 +85,7 @@ export function createSessionService({
   history = readConversation,
   firstPrompt = readFirstPrompt,
   images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
+  readOwner = readOwnerFile,
   choices = sessionOptionsReader(),
   modelSwitchOptions = {},
   findWorkspace,
@@ -1482,6 +1484,24 @@ export function createSessionService({
     conversation,
     initialInstruction,
     image: (id, imageID) => { requireSession(id); return images.read(id, imageID); },
+    // A file this session's own conversation names on this Mac, inside the
+    // owner-file boundary (owner-files.mjs). A path the conversation never
+    // wrote, or one outside the boundary, reads as not found: the route is
+    // for opening what a reply showed, not for browsing the Mac.
+    file: async (id, path) => {
+      const record = requireSession(id);
+      if (typeof path !== 'string' || path.length < 2 || !path.startsWith('/')) throw notFound('file not found');
+      const { items } = await joinedHistory(record, history, sessionStore.file);
+      const forms = [path, encodeURI(path)];
+      const named = items.some((item) => {
+        const texts = [item?.text, ...(Array.isArray(item?.localImages) ? item.localImages : [])];
+        return texts.some((text) => typeof text === 'string' && forms.some((form) => text.includes(form)));
+      });
+      if (!named) throw notFound('file not found');
+      const file = readOwner(path);
+      if (!file) throw notFound('file not found');
+      return { name: file.name, mimeType: file.mimeType, size: file.size, data: file.data.toString('base64') };
+    },
     sendMessage,
     updateSession,
     stopSession,

@@ -40,6 +40,7 @@ enum LAAWorkSpeaker {
 /// One Work message in the chat's form: the owner's bubble trailing with the
 /// owner's picture, name and role; the AI's leading with its name.
 struct LAAWorkMessageRow: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
     let message: LAAWorkConversationMessage
     let sessionID: String
     let agentName: String
@@ -97,9 +98,15 @@ struct LAAWorkMessageRow: View {
                 HugsIdealWidth {
                     // The render cache knows two inks: white on the accent
                     // bubble (as the chat's own messages) and LAA text.
-                    MarkdownText(source: message.text,
+                    // Mac paths become links a tap opens; the AI's
+                    // `MEDIA:` files and `::preview` pages are read from the
+                    // Mac through the Bridge (`LAAWorkFiles`), not from Hermes.
+                    MarkdownText(source: LAAWorkFiles.linkified(message.text),
                                  foregroundStyle: isOwner ? .white : LAAColor.text,
-                                 usesAccentSurface: isOwner)
+                                 usesAccentSurface: isOwner,
+                                 gatewayMediaDataURL: isOwner ? nil : { [bridge, sessionID] path in
+                                     await LAAWorkFiles.dataURL(bridge: bridge, sessionID: sessionID, path: path)
+                                 })
                 }
                 .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
             }
@@ -114,6 +121,7 @@ struct LAAWorkMessageRow: View {
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
         .modifier(LAAWorkMessageMenu(text: message.text, sessionID: sessionID, messageID: message.id,
                                      isOwner: isOwner, onQuote: onQuote))
+        .modifier(LAAWorkFileLinkOpener(sessionID: sessionID))
     }
 }
 #endif

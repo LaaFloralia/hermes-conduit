@@ -5,8 +5,10 @@
 // conversation and (b) passes every check here.
 //
 // This is deliberately not a file reader: the resolved file must sit directly
-// in a Paseo attachment directory under the real temporary directory, must not
-// be a symlink, and its extension and magic bytes must agree.
+// in a Paseo attachment directory under the real temporary directory, or be a
+// picture under the owner's home that owner-files.mjs allows (an agent's
+// `![候補](/Users/laa/work/…/a.png)`), must not be a symlink, and its
+// extension and magic bytes must agree.
 //
 // The checks and the bytes come from one open file descriptor. Opening the path
 // again after checking it would leave a window where the name is replaced by a
@@ -14,8 +16,9 @@
 // match closes that window, and the read itself uses the same descriptor.
 import { closeSync, constants as fsConstants, fstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, extname } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { ownerFileAllowed } from './owner-files.mjs';
 
 export const MAX_LOCAL_IMAGE_BYTES = 8 * 1024 * 1024;
 const ATTACHMENT_DIRECTORY = /^paseo-attachments-[A-Za-z0-9]{1,32}$/;
@@ -46,9 +49,11 @@ function magicMatches(mimeType, head) {
 /// Open `rawPath` without following a final symlink and prove the descriptor is
 /// the path that was checked: the fstat identity must match a fresh stat of the
 /// resolved path, and that path must be a direct child of a Paseo attachment
-/// directory under the real temp root. Returns `{ fd, real, entry, mimeType }`
-/// or null; the caller owns `fd`.
-function openChecked(rawPath, { tempRoot = realpathSync(tmpdir()), maxBytes = MAX_LOCAL_IMAGE_BYTES } = {}) {
+/// directory under the real temp root, or a file under the owner's home that
+/// the owner-file boundary allows (owner-files.mjs: no secret folders, no
+/// symlink out of home). Returns `{ fd, real, entry, mimeType }` or null; the
+/// caller owns `fd`.
+function openChecked(rawPath, { tempRoot = realpathSync(tmpdir()), home = homedir(), maxBytes = MAX_LOCAL_IMAGE_BYTES } = {}) {
   if (typeof rawPath !== 'string' || rawPath === '' || rawPath.length > 4096 || rawPath.includes('\0')) return null;
   if (!rawPath.startsWith('/')) return null;
   let fd;
@@ -66,7 +71,8 @@ function openChecked(rawPath, { tempRoot = realpathSync(tmpdir()), maxBytes = MA
     }
     const real = realpathSync(rawPath);
     const directory = dirname(real);
-    if (dirname(directory) !== tempRoot || !ATTACHMENT_DIRECTORY.test(basename(directory))) {
+    const attachment = dirname(directory) === tempRoot && ATTACHMENT_DIRECTORY.test(basename(directory));
+    if (!attachment && !ownerFileAllowed(rawPath, real, { home })) {
       closeSync(fd); return null;
     }
     // The descriptor and the name still have to be the same file: a parent
@@ -136,27 +142,66 @@ export function readLocalImage(rawPath, options = {}) {
   }
 }
 
-/// Assistant text carries the picture as markdown. Replace each local image
-/// reference with an internal marker so the caller can either drop it (served)
-/// or leave a visible fallback (not servable) without losing its position.
+const LOCAL_IMAGE = /!\[([^\]]*)\]\(\s*(?:<([^>\n]+)>|(file:\/\/[^)\s]+|\/[^)\s]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
+const PREVIEW = /(^|\s)::preview\{([^{}\n]{0,1024})\}/g;
+const PREVIEW_FILE = /(?:^|\s)file=(?:"([^"]*)"|'([^']*)')/i;
+const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp)$/i;
+
+/// The local path a Markdown destination names, or null for anything else (a
+/// web address is the app's to load).
+function localPath(destination) {
+  if (typeof destination !== 'string') return null;
+  const value = destination.trim();
+  if (value.startsWith('file://')) {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'file:' ? fileURLToPath(parsed) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (!value.startsWith('/') || value.startsWith('//')) return null;
+  try { return value.includes('%') ? decodeURI(value) : value; } catch { return value; }
+}
+
+/// Assistant text carries the picture as markdown (`![x](file:///…)`,
+/// `![x](/Users/laa/…)`) or as a preview directive of a picture
+/// (`::preview{file="/Users/laa/….jpg"}`). Replace each local picture with an
+/// internal marker so the caller can either drop it (served) or leave a
+/// visible fallback (not servable) without losing its position. Fenced code
+/// and quoted lines are examples and stay as written; a preview of any other
+/// file (HTML, PDF) stays for the app, which reads it through the file route.
 export function splitLocalImages(text) {
-  if (typeof text !== 'string' || !text.includes('file://')) return { text, paths: [] };
+  if (typeof text !== 'string' || !(text.includes('](') || text.includes('::preview{'))) return { text, paths: [] };
   const paths = [];
-  const marked = text.replace(
-    /!\[([^\]]*)\]\(\s*(file:\/\/[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g,
-    (match, _alt, url) => {
-      try {
-        const parsed = new URL(url);
-        if (parsed.protocol !== 'file:') return match;
-        const path = fileURLToPath(parsed);
+  let fence = null;
+  const lines = text.split('\n').map((line) => {
+    const trimmed = line.trim();
+    const opening = trimmed.match(/^(`{3,}|~{3,})/);
+    if (fence) {
+      if (opening && opening[1][0] === fence[0] && opening[1].length >= fence.length && trimmed === opening[1]) fence = null;
+      return line;
+    }
+    if (opening) { fence = opening[1]; return line; }
+    if (trimmed.startsWith('>')) return line;
+    let marked = line.replace(LOCAL_IMAGE, (match, _alt, bracketed, plain) => {
+      const path = localPath(bracketed ?? plain);
+      if (!path) return match;
+      const index = paths.push(path) - 1;
+      return `\u0000LAAIMG${index}\u0000`;
+    });
+    if (marked.includes('::preview{')) {
+      marked = marked.replace(PREVIEW, (match, lead, body) => {
+        const found = body.match(PREVIEW_FILE);
+        const path = localPath((found?.[1] ?? found?.[2] ?? '').trim());
+        if (!path || !IMAGE_FILE.test(path)) return match;
         const index = paths.push(path) - 1;
-        return `\u0000LAAIMG${index}\u0000`;
-      } catch {
-        return match;
-      }
-    },
-  );
-  return { text: marked, paths };
+        return `${lead}\u0000LAAIMG${index}\u0000`;
+      });
+    }
+    return marked;
+  });
+  return paths.length > 0 ? { text: lines.join('\n'), paths } : { text, paths };
 }
 
 /// Put a served image's marker away, and keep a visible line where one cannot
