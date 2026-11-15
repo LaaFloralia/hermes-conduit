@@ -42,9 +42,8 @@ final class LAABubbleGlassUITests: XCTestCase {
         app.navigationBars["背景"].buttons["完了"].tap()
 
         // The glass reply still opens its long-press menu, and the choice
-        // is still there when the sheet opens again. (A long press on the
-        // owner's bubble ends the app at 7f19300e with the standard bubbles
-        // too, so it is left to that fix.)
+        // is still there when the sheet opens again. (The owner's bubble is
+        // covered by LAAChatSteerSendUITests.)
         let reply = bubble(app, "assistant")
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
         reply.press(forDuration: 0.8)
