@@ -12,6 +12,15 @@
 // kinds asks without `kind=all` and receives only `site`, the one it labels
 // correctly.
 //
+// Each row also names its category, the owner's grouping on screen: prize,
+// signup, grant, unlock (a feature that opens once a condition is met) or perk
+// (a free or discounted offer of a service already in use). Kinds and
+// categories beyond these pass through with the action the ledger names, so
+// the skill can add one without a Bridge release; a row without a category
+// reads as prize, or grant for a grant. Version 3 adds the category's label,
+// a genre (AI・開発, 通信, 食品…), a perk's service and when the row was first
+// listed; the ledger also leaves out rows whose deadline day has passed.
+//
 // Decisions run one at a time, because each appends a line to the same file.
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -22,7 +31,8 @@ import { parseObjectBody } from './state-file.mjs';
 
 const exec = promisify(execFile);
 const KEY = /^[0-9a-f]{16}$/;
-const KINDS = new Set(['site', 'x', 'grant']);
+const KIND = /^[a-z][a-z0-9_]{0,23}$/;
+const CATEGORY = /^[a-z][a-z0-9_]{0,23}$/;
 const ACTIONS = { site: 'agent_apply', x: 'self', grant: 'draft' };
 const WAITING = new Set(['needs_owner', 'candidate']);
 const DECIDED = new Set(['approved', 'declined', 'drafted']);
@@ -49,12 +59,15 @@ export function campaignItem(raw) {
   if (!raw || typeof raw !== 'object' || !KEY.test(raw.key ?? '')) return null;
   // Version 1 of the ledger's output had no kind: every row was a site entry.
   const kind = raw.kind ?? 'site';
-  if (!KINDS.has(kind) || !(WAITING.has(raw.status) || DECIDED.has(raw.status))) return null;
+  if (typeof kind !== 'string' || !KIND.test(kind) || !(WAITING.has(raw.status) || DECIDED.has(raw.status))) return null;
   const title = text(raw.title);
   const url = webURL(raw.url);
   if (!title || !url) return null;
   const item = {
-    key: raw.key, kind, action: ACTIONS[kind], status: raw.status, waiting: WAITING.has(raw.status), url,
+    key: raw.key, kind, action: KIND.test(raw.action ?? '') ? raw.action : ACTIONS[kind] ?? null,
+    category: CATEGORY.test(raw.category ?? '') ? raw.category : kind === 'grant' ? 'grant' : 'prize',
+    categoryLabel: text(raw.category_label), genre: text(raw.genre), service: text(raw.service),
+    addedAt: text(raw.added_at) ?? text(raw.at), status: raw.status, waiting: WAITING.has(raw.status), url,
     benefit: text(raw.benefit) ?? text(raw.prize), nextStep: text(raw.next_step),
     gbizid: typeof raw.gbizid === 'boolean' ? raw.gbizid : null,
     at: text(raw.at), decidedAt: text(raw.decided_at),
@@ -83,7 +96,7 @@ export function campaignRoutes({ command = defaultCampaignCommand(), run = exec,
 
   async function list({ req }) {
     const wanted = new URL(req.url, 'http://bridge').searchParams.get('kind');
-    if (wanted !== null && wanted !== 'all' && !KINDS.has(wanted)) throw badRequest('kind_invalid', 'kind must be all, site, x or grant');
+    if (wanted !== null && wanted !== 'all' && !KIND.test(wanted)) throw badRequest('kind_invalid', 'kind must be all or a kind name');
     const result = await ledger(['pending', '--all']);
     if (!Array.isArray(result?.items)) throw unavailable('the campaign ledger returned unreadable output');
     const items = result.items.map(campaignItem).filter(Boolean)
@@ -95,7 +108,7 @@ export function campaignRoutes({ command = defaultCampaignCommand(), run = exec,
     const body = parseObjectBody(rawBody);
     if (Object.keys(body).some((key) => key !== 'choice' && key !== 'kind')) throw badRequest('payload_invalid', 'only choice and kind are accepted');
     if (!CHOICES.has(body.choice)) throw badRequest('payload_invalid', 'choice must be approve or decline');
-    if (body.kind !== undefined && !KINDS.has(body.kind)) throw badRequest('payload_invalid', 'kind must be site, x or grant');
+    if (body.kind !== undefined && (typeof body.kind !== 'string' || !KIND.test(body.kind))) throw badRequest('payload_invalid', 'kind must be a kind name');
     const args = ['decide', params[0], body.choice, ...(body.kind ? ['--kind', body.kind] : [])];
     const step = queue.then(() => ledger(args));
     queue = step.catch(() => {});

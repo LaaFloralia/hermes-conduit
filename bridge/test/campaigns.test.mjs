@@ -75,7 +75,7 @@ test('campaigns: lists waiting and decided entries by kind, then records a choic
   assert.deepEqual([grant.action, grant.waiting, grant.gbizid, grant.nextStep, grant.benefit], ['draft', true, true, 'GビズIDを取る', '上限100万円']);
   assert.equal(all.body.data.items.find((item) => item.kind === 'x').action, 'self');
   assert.equal((await api.request('/v1/campaigns?kind=x', { token })).body.data.items.length, 1);
-  assert.equal((await api.request('/v1/campaigns?kind=other', { token })).status, 400);
+  assert.equal((await api.request('/v1/campaigns?kind=Other!', { token })).status, 400);
 
   const decided = await api.request('/v1/campaigns/aaaaaaaaaaaaaaaa/decide', { method: 'POST', token, key: 'k1', body: { choice: 'approve', kind: 'site' } });
   assert.equal(decided.status, 200);
@@ -109,7 +109,7 @@ test('campaigns: refusals', async (t) => {
   assert.equal((await decide('ffffffffffffffff', { choice: 'approve' }, token, 'k-both')).body.error.code, 'campaign_kind_required');
   assert.equal((await decide('ffffffffffffffff', { choice: 'approve', kind: 'grant' }, token, 'k-grant')).body.data.kind, 'grant');
   assert.equal((await decide('cccccccccccccccc', { choice: 'maybe' }, token, 'k-choice')).status, 400);
-  assert.equal((await decide('cccccccccccccccc', { choice: 'approve', kind: 'mail' }, token, 'k-kind')).status, 400);
+  assert.equal((await decide('cccccccccccccccc', { choice: 'approve', kind: 'Mail!' }, token, 'k-kind')).status, 400);
   assert.equal((await decide('cccccccccccccccc', { choice: 'approve', extra: 1 }, token, 'k-extra')).status, 400);
   assert.equal((await api.request('/v1/campaigns/CCCC/decide', { method: 'POST', token, key: 'k-bad', body: { choice: 'approve' } })).status, 404);
   const rows = JSON.parse(readFileSync(ledger.file, 'utf8'));
@@ -126,13 +126,20 @@ test('campaigns: an unreadable ledger is a retryable 503', async (t) => {
   assert.equal(result.body.error.retryable, true);
 });
 
-test('campaigns: rows without a key, title, web address or known kind are dropped; version 1 rows read as site', () => {
+test('campaigns: rows without a key, title, web address or usable kind are dropped; version 1 rows read as site', () => {
   assert.equal(campaignItem(row('short', 'needs_owner')), null);
   assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'needs_owner', { title: ' ' })), null);
   assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'needs_owner', { url: 'javascript:alert(1)' })), null);
   assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'applied')), null);
   assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'won', { kind: 'win' })), null);
+  assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'needs_owner', { kind: 'Bad Kind' })), null);
+  const perk = campaignItem(row('aaaaaaaaaaaaaaaa', 'candidate', { kind: 'perk', action: 'agent_apply', category: 'perk',
+    category_label: '利用者特典', genre: '通信', service: 'SoftBank', added_at: '2026-11-15T20:00:00+09:00' }));
+  assert.deepEqual([perk.kind, perk.action, perk.category, perk.categoryLabel, perk.genre, perk.service, perk.addedAt],
+    ['perk', 'agent_apply', 'perk', '利用者特典', '通信', 'SoftBank', '2026-11-15T20:00:00+09:00']);
+  assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'needs_owner', { kind: 'unlock', action: undefined })).action, null);
   const v1 = campaignItem({ key: 'aaaaaaaaaaaaaaaa', status: 'needs_owner', title: 't', url: 'https://example.com/a', prize: '豆' });
-  assert.deepEqual([v1.kind, v1.action, v1.benefit, v1.waiting], ['site', 'agent_apply', '豆', true]);
-  assert.equal(campaignItem(row('aaaaaaaaaaaaaaaa', 'drafted', { kind: 'grant' })).waiting, false);
+  assert.deepEqual([v1.kind, v1.action, v1.category, v1.benefit, v1.waiting], ['site', 'agent_apply', 'prize', '豆', true]);
+  const grant = campaignItem(row('aaaaaaaaaaaaaaaa', 'drafted', { kind: 'grant', action: 'draft' }));
+  assert.deepEqual([grant.waiting, grant.category], [false, 'grant']);
 });
