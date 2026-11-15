@@ -561,7 +561,7 @@ final class LAAWorkTests: XCTestCase {
     /// The board is a section beside Sessions, not a card above them; Sessions
     /// stays first, so the hub still opens on it (owner, 2026-11-11).
     func testWorkSectionsInTheReadingOrder() {
-        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue), ["sessions", "decisions", "tasks", "routines"])
+        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue), ["sessions", "decisions", "campaigns", "tasks", "routines"])
         XCTAssertEqual(LAAWorkHub.Section.allCases.first, .sessions)
         XCTAssertFalse(LAAWorkHub.Section.decisions.searchable)
     }

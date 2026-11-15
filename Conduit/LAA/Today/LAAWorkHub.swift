@@ -10,6 +10,7 @@ struct LAAWorkHub: View {
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
     @StateObject private var usageState = LAAUsageState()
     @StateObject private var decisions = LAADecisionBoard()
+    @StateObject private var campaigns = LAACampaignBoard()
     @State private var section: Section = .sessions
     @State private var showPairing = false
     @State private var showUsage = false
@@ -24,22 +25,27 @@ struct LAAWorkHub: View {
     /// for the owner is one tap away without pushing the lists down (owner,
     /// 2026-11-11).
     enum Section: String, CaseIterable, Identifiable {
-        case sessions, decisions, tasks, routines
+        case sessions, decisions, campaigns, tasks, routines
         var id: String { rawValue }
         var title: String {
             switch self {
             case .sessions: String("Sessions")
             case .decisions: String("Decisions")
+            case .campaigns: LAACampaignCopy.section
             case .tasks: String("Tasks")
             case .routines: String("Routines")
             }
         }
         /// The board keeps its own list and pull to refresh; nothing to search.
-        var searchable: Bool { self != .decisions }
+        var searchable: Bool { self != .decisions && self != .campaigns }
     }
 
     private func segmentTitle(_ value: Section) -> String {
-        value == .decisions && decisions.count > 0 ? "\(value.title) \(decisions.count)" : value.title
+        switch value {
+        case .decisions where decisions.count > 0: "\(value.title) \(decisions.count)"
+        case .campaigns where campaigns.count > 0: "\(value.title) \(campaigns.count)"
+        default: value.title
+        }
     }
 
     var body: some View {
@@ -85,7 +91,7 @@ struct LAAWorkHub: View {
                     } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .accessibilityLabel("作成").accessibilityIdentifier("work.create")
                     .disabled(bridge.status != .paired)
-                } else if section != .decisions {
+                } else if section != .decisions && section != .campaigns {
                     Button { if section == .routines { section = .tasks }; createID += 1 } label: {
                         Image(systemName: "plus").frame(width: 44, height: 44)
                     }
@@ -108,15 +114,17 @@ struct LAAWorkHub: View {
             }
         }
         .task(id: "\(bridge.revision)-\(scenePhase == .active)") {
-            if decisionDevice != bridge.deviceID { decisions.reset(); decisionDevice = bridge.deviceID }
+            if decisionDevice != bridge.deviceID { decisions.reset(); campaigns.reset(); decisionDevice = bridge.deviceID }
             if let cached = LAAWorkSessionCache.read([LAADecision].self, store: drafts, device: bridge.deviceID, target: "decisions") {
                 decisions.restoreIfNeeded(cached)
             }
             await decisions.refreshIfStale(bridge)
+            await campaigns.refreshIfStale(bridge)
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(15)) } catch { return }
                 await decisions.refreshIfStale(bridge)
+                await campaigns.refreshIfStale(bridge)
             }
         }
         // The gauge reads Usage's last readings; opening Work refreshes them at
@@ -149,6 +157,7 @@ struct LAAWorkHub: View {
                 }.refreshable { refreshID += 1; await decisions.load(bridge) }
             }
         case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
+        case .campaigns: LAACampaignBoardView(board: campaigns)
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
         case .routines:
             if laaDesktop { LAAWorkDesktopCatalogView(kind: .routines) }

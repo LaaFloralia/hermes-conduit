@@ -1122,6 +1122,34 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 **Checked:** 2026-11-14, 6cf44994 (laa/app-final): a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
 
+## LAA campaign decisions
+
+Work's section `Campaigns` (after Decisions) lists the campaign-hunt entries the daily routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Each row shows the title, organizer, prize, deadline, the reason it waits and `ページを開く` (the site in the default browser), with `応募させる` and `見送る` in place. The segment reads `Campaigns 1` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next 11:00 run, which applies the approved ones.
+
+**Siblings:** the campaign-hunt skill's ledger and its `pending`/`decide` commands (owned by the skill, outside this
+repo) · the Bridge routes · the Work hub segment count · the Mac Work section (same view)
+
+**Code**
+- App: `Conduit/LAA/Work/Campaigns/LAACampaignBoard.swift`; hub section and count: `Conduit/LAA/Today/LAAWorkHub.swift`
+- Bridge: `bridge/src/routes/campaigns.mjs`, registered in `bridge/src/routes/index.mjs`; contract: `bridge/README.md`
+- Tests: `ConduitTests/LAACampaignBoardTests.swift`, `bridge/test/campaigns.test.mjs`
+
+**Rulings**
+- The Bridge never opens the ledger file. It runs `ledger.py pending --all` and `ledger.py decide <key> approve|decline`
+  (`/usr/bin/python3`, overridable with `LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`) and passes their JSON on in
+  camelCase, without the ledger's path. Decisions run one at a time.
+- Read with `sessions:read`, decide with `sessions:write` and `Idempotency-Key`, the decision board's scopes; no new
+  scope. Choosing twice records the same state, so a failed attempt frees its key.
+- No confirmation dialog: the choice stays changeable until the run reads it.
+
+**Owner check on the device**
+- Open Work › Campaigns, open a row's page, and choose 応募させる or 見送る; the row should move under 判断済み.
+
+**Open gaps**
+- No notification or link opens the section yet; the count refreshes with the hub every 15 seconds.
+
+**Checked:** 2026-11-15, 3ddb8668 (laa/campaign-decisions): bridge campaigns tests 4, LAACampaignBoardTests, the real ledger read through the route.
+
 ## LAA answers from a notification, and which Mac notifications arrive
 
 A decision on the board, a Work conversation's one question, and a Work conversation's one tool approval can be
