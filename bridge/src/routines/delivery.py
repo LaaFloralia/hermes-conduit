@@ -115,9 +115,14 @@ def show(job, content, profile, *, for_failure=False):
     """Plugin entry: fail visibly rather than fall back into a personal chat."""
     try:
         from gateway import hosted_rooms as rooms
-        from hermes_constants import get_hermes_home
-        from conduit_push import client, cron_runs, cron_bot_chat
-        from conduit_push.cron_store import CronStore
+        # Directory plugins live under hermes_plugins.<slug> in the gateway.
+        # Only standalone Work/Dots/Muse processes use the bare package path.
+        if __package__:
+            from . import client, cron_runs, cron_bot_chat
+            from .cron_store import CronStore
+        else:
+            from conduit_push import client, cron_runs, cron_bot_chat
+            from conduit_push.cron_store import CronStore
         home = cron_bot_chat._target_home(profile)
         if cron_runs.is_silent(content) or str(content).strip() == "NO_REPORT":
             job['_notification_all_targets_suppressed'] = True

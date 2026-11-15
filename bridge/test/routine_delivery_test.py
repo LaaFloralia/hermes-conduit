@@ -4,6 +4,9 @@ import importlib.util
 import json
 from pathlib import Path
 import sqlite3
+import sys
+import types
+import builtins
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -85,6 +88,37 @@ class RoutineDeliveryTests(unittest.TestCase):
         self.assertEqual(self.report()['notification_status'], 'muted')
         self.assertEqual(self.sent, [])
         self.assertTrue((self.root / 'shared-state.db').exists())
+
+    def test_gateway_plugin_namespace_does_not_require_bare_package_import(self):
+        # Hermes loads directory plugins under hermes_plugins.<slug>, not
+        # importable as bare conduit_push. The CLI bootstrap masks this gap.
+        namespace = 'hermes_plugins.routine_delivery_probe'
+        parent = sys.modules.setdefault('hermes_plugins', types.ModuleType('hermes_plugins'))
+        if not hasattr(parent, '__path__'): parent.__path__ = []
+        package = types.ModuleType(namespace)
+        package.__path__ = [str(Path.home() / '.hermes/plugins/conduit_push')]
+        package.__package__ = namespace
+        sys.modules[namespace] = package
+        spec = importlib.util.spec_from_file_location(namespace + '.routine_delivery', Path(delivery.__file__))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        store_module = importlib.import_module(namespace + '.cron_store')
+        real_import = builtins.__import__
+        def gateway_import(name, *args, **kwargs):
+            if name == 'conduit_push' or name.startswith('conduit_push.'):
+                raise ModuleNotFoundError("No module named 'conduit_push'", name='conduit_push')
+            return real_import(name, *args, **kwargs)
+        with patch('builtins.__import__', side_effect=gateway_import), \
+             patch.object(module, 'store_report') as store, \
+             patch.object(store_module, 'CronStore'):
+            error = module.show({'id': 'namespace-test', 'execution_id': 'run-a', 'model': 'model-test'},
+                                'Gateway report', 'laa-monet')
+            self.assertIsNone(error)
+            store.assert_called_once()
+        for name in list(sys.modules):
+            if name == namespace or name.startswith(namespace + '.'):
+                sys.modules.pop(name, None)
 
     def test_work_retry_freezes_run_identity_and_catches_autoarchived_run_once(self):
         jobs = self.root / 'jobs.json'
