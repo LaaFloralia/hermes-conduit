@@ -163,11 +163,7 @@ private struct LAAChatMessageMenu: ViewModifier {
     func body(content: Content) -> some View {
         surface(content.environment(\.laaUsesMessageMenu, true))
         .sheet(isPresented: $selecting) {
-            NavigationStack {
-                LAASelectableMessageText(text: text)
-                    .navigationTitle(String("テキストを選択")).navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { selecting = false } } }
-            }.laaSheetSize(.page)
+            LAAMessageSelectionSheet(text: text) { selecting = false }
         }
         .alert(String("スタンプを追加"), isPresented: $moreReactions) {
             TextField(String("絵文字"), text: $customReaction)
@@ -494,22 +490,37 @@ struct LAAGroupDelivery: View {
 #endif
 
 #if LAA_BUILD
-private struct LAASelectableMessageText: UIViewRepresentable {
+/// テキストを選択: the message drawn as in the bubble, by the chat's own
+/// Markdown renderer, whose text views select any range (hold, drag the
+/// handles, double tap a word) and copy only that (owner, 2026-11-16). The
+/// bubble's hold belongs to its menu on iPhone, so this is where a part is
+/// chosen there; on the Mac the bubble's text also selects in place.
+/// Chat and Work open the same sheet, for both sides of the conversation.
+struct LAAMessageSelectionSheet: View {
     let text: String
-    func makeUIView(context: Context) -> UITextView {
-        let view = UITextView()
-        view.isEditable = false
-        view.isSelectable = true
-        view.backgroundColor = .clear
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
-        view.textContainerInset = UIEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        view.tintColor = UIColor(LAAColor.link)
-        view.accessibilityIdentifier = "chat.message.selection"
-        return view
-    }
-    func updateUIView(_ view: UITextView, context: Context) {
-        if view.text != text { view.text = text }
+    var identifier = "chat.message.selection"
+    let done: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                MarkdownText(source: text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier(identifier)
+            }
+            // The text owns its hold here, and its menu is the system's
+            // Copy: no bubble menu, quote or pin reaches into the sheet.
+            .environment(\.laaUsesMessageMenu, false)
+            .environment(\.laaOpenMessageMenu, nil)
+            .environment(\.selectableTextDrawsUntilTouched, false)
+            .environment(\.markdownJoinsProseRuns, true)
+            .environment(\.chatQuoteAction, nil)
+            .environment(\.chatPinReplyAction, nil)
+            .navigationTitle(String("テキストを選択")).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了"), action: done) } }
+        }.laaSheetSize(.page)
     }
 }
 #endif

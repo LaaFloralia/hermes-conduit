@@ -207,6 +207,30 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(header(app).waitForExistence(timeout: 5))
     }
 
+    /// A long press on a message offers テキストを選択, which opens the
+    /// message where any part of it can be selected (owner, 2026-11-16).
+    func testMessageMenuOpensTheMessageForSelection() throws {
+        let app = try launchFixture()
+        open(longID, app)
+        let last = lastTurn(app)
+        XCTAssertTrue(last.waitForExistence(timeout: 20))
+        XCTAssertTrue(wait(last, hittable: true, timeout: 10))
+        last.press(forDuration: 1.0)
+        let select = app.buttons["テキストを選択"]
+        XCTAssertTrue(select.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["コピー"].exists)
+        select.tap()
+        let sheet = app.descendants(matching: .any)["work.message.selection"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        let text = sheet.textViews.matching(NSPredicate(format: "value CONTAINS %@", lastTurn)).firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "work-message-selection"; shot.lifetime = .keepAlways
+        add(shot)
+        app.navigationBars["テキストを選択"].buttons["完了"].tap()
+        XCTAssertTrue(header(app).waitForExistence(timeout: 5))
+    }
+
     func testEmptyConversationOpensAtTheComposer() throws {
         let app = try launchFixture()
         open(emptyID, app)

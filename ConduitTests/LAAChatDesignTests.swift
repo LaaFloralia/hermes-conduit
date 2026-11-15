@@ -43,11 +43,35 @@ final class LAAChatDesignTests: XCTestCase {
         text.addGestureRecognizer(tap)
         let host = SelectableTextViewHostView(textView: text)
         host.usesMessageMenu = true
-        XCTAssertFalse(hold.isEnabled)
+        // The Mac keeps the text's hold: its menu is the right click.
+        XCTAssertEqual(hold.isEnabled, ProcessInfo.processInfo.isMacCatalystApp)
         XCTAssertTrue(tap.isEnabled)
         XCTAssertTrue(text.isSelectable)
         host.usesMessageMenu = false
         XCTAssertTrue(hold.isEnabled)
+    }
+
+    /// iPhone: the hold opens the message's menu (テキストを選択 is in it).
+    /// Mac: the pointer selects part of a message in place (owner, 2026-11-16).
+    func testOnlyIPhoneGivesTheHoldToTheMessageMenu() {
+        XCTAssertTrue(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: true, onMac: false))
+        XCTAssertFalse(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: true, onMac: true))
+        XCTAssertFalse(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: false, onMac: false))
+        XCTAssertFalse(SelectableTextViewHostView.menuOwnsHold(usesMessageMenu: false, onMac: true))
+    }
+
+    /// The message's text view copies the part chosen, not the whole message.
+    @MainActor
+    func testSelectedPartOfAMessageCopiesOnlyThatPart() {
+        let text = SelectableTextView.makeTextView()
+        text.text = "社長の指示はこの部分だけ写す"
+        XCTAssertFalse(text.isEditable)
+        XCTAssertTrue(text.isSelectable)
+        let saved = UIPasteboard.general.items
+        defer { UIPasteboard.general.items = saved }
+        text.selectedRange = NSRange(location: 6, length: 4)
+        text.copy(nil)
+        XCTAssertEqual(UIPasteboard.general.string, "この部分")
     }
 
     func testConversationActionsUseJapaneseWithoutExposingInternalNames() {

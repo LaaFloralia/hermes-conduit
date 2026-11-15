@@ -133,7 +133,10 @@ struct LAAWorkMessageActions: View {
     }
 }
 
-/// The same three actions on a long press or, on the Mac, a right click.
+/// The same three actions on a long press or, on the Mac, a right click,
+/// with テキストを選択 after コピー, as in Chat: it opens the message where
+/// any part of it can be selected and copied. The hold on the text belongs to
+/// this menu on iPhone, as in Chat; the Mac keeps selecting in place.
 struct LAAWorkMessageMenu: ViewModifier {
     let text: String
     let sessionID: String
@@ -141,13 +144,15 @@ struct LAAWorkMessageMenu: ViewModifier {
     let isOwner: Bool
     let onQuote: ((String) -> Void)?
     @AppStorage(LAAWorkLikes.storageKey) private var likes = ""
+    @State private var selecting = false
 
     private var likeKey: String { LAAWorkLikes.key(session: sessionID, message: messageID) }
 
     func body(content: Content) -> some View {
-        content.contextMenu {
+        content.environment(\.laaUsesMessageMenu, true).contextMenu {
             if !text.isEmpty {
                 Button { UIPasteboard.general.string = text } label: { Label { Text(verbatim: "コピー") } icon: { Image(systemName: "doc.on.doc") } }
+                Button { selecting = true } label: { Label { Text(verbatim: "テキストを選択") } icon: { Image(systemName: "text.cursor") } }
                 if let onQuote {
                     Button { onQuote(text) } label: { Label { Text(verbatim: "引用") } icon: { Image(systemName: "text.quote") } }
                 }
@@ -159,6 +164,9 @@ struct LAAWorkMessageMenu: ViewModifier {
                         icon: { Image(systemName: liked ? "hand.thumbsup.fill" : "hand.thumbsup") }
                 }
             }
+        }
+        .sheet(isPresented: $selecting) {
+            LAAMessageSelectionSheet(text: text, identifier: "work.message.selection") { selecting = false }
         }
     }
 }
