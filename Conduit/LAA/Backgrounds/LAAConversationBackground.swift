@@ -130,6 +130,34 @@ struct LAAConversationMenuItems: View {
     }
 }
 
+/// The background entry in the chat's bar, beside the call button. The bar
+/// held it in the conversation menu until the 2026-11-11 header left only the
+/// mascot's introduction to reach it; it is back on the bar, presenting
+/// through the screen's `LAAConversationFeatures` as it did (owner, 2026-11-15).
+@MainActor
+struct LAAConversationBackgroundButton: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var features: LAAConversationFeatures
+
+    var body: some View {
+        let key = LAAConversationScope.current(appState)
+        Button {
+            if let key { features.sheet = .background(key) }
+        } label: {
+            Image(systemName: "photo.on.rectangle")
+                .font(.system(size: 20))
+                .foregroundStyle(LAAColor.link)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .laaComposerGlass(in: Circle())
+        .disabled(key == nil)
+        .accessibilityLabel(Text(verbatim: LAACopy.chatBackground))
+        .accessibilityIdentifier("laa.employee.background")
+    }
+}
+
 private struct LAABackgroundKindKey: EnvironmentKey {
     static let defaultValue = LAABackground.Kind.paper
 }

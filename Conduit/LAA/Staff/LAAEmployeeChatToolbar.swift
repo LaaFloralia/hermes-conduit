@@ -37,6 +37,11 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                 ToolbarItem(placement: .topBarTrailing) { callButton }
             }
         }
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarTrailing) { LAAConversationBackgroundButton() }.sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) { LAAConversationBackgroundButton() }
+        }
     }
 }
 
