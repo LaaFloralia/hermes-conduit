@@ -30,7 +30,7 @@ export function encodeNotificationSessionId(deepLink, kind, meta) {
   return legacy;
 }
 
-function pythonPath() {
+export function pythonPath() {
   try {
     const launcher = readFileSync(join(homedir(), '.local/share/hermes-agent/.hermes/bin/hermes'), 'utf8');
     return launcher.match(/^exec (\/\S+) -I /m)?.[1];

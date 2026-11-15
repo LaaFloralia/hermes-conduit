@@ -253,6 +253,9 @@ struct GroupChatView: View {
                     withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
                 }
             }
+            .onChange(of: appState.roomNotificationFocusEventID) { _, eventID in
+                if let eventID { landAtTop(of: eventID, proxy) }
+            }
             .onChange(of: respondingMember?.identityKey) { _, _ in
                 guard followFlag.isFollowing else { return }
                 withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
@@ -268,8 +271,12 @@ struct GroupChatView: View {
             }
             .onAppear {
                 lastSeenEventID = visibleEvents.last?.id
-                followLatest()
-                scrollToBottom(proxy)
+                if let eventID = appState.roomNotificationFocusEventID {
+                    landAtTop(of: eventID, proxy)
+                } else {
+                    followLatest()
+                    scrollToBottom(proxy)
+                }
                 followFlag.lastRowID = { [weak appState = appState] in
                     guard let appState else { return nil }
                     if appState.activeRoomResponder != nil { return "responding-row" }

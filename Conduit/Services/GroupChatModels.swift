@@ -1,6 +1,24 @@
 import CryptoKit
 import Foundation
 
+/// Stable identity carried by a scheduled report push; never a personal chat alias.
+struct RoutineRoomNotification: Equatable {
+    static let prefix = "laa-routine:"
+    let roomID: String
+    let seq: Int
+    let eventID: String
+
+    static func parse(_ sessionID: String) -> Self? {
+        guard sessionID.hasPrefix(prefix) else { return nil }
+        let parts = sessionID.dropFirst(prefix.count).split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3, parts[0] == "laa-routines",
+              let seq = Int(parts[1]), seq > 0,
+              parts[2].hasPrefix("routine:"), parts[2].count == 72,
+              parts[2].dropFirst(8).allSatisfy({ $0.isHexDigit && $0.isASCII }) else { return nil }
+        return Self(roomID: String(parts[0]), seq: seq, eventID: String(parts[2]))
+    }
+}
+
 /// Wire models for the hosted Group Chat JSON-RPC contract
 /// (`tui_gateway/methods_groups.py`; shapes from
 /// `tui_gateway/contracts/groups_bot_relay.py` / `gateway/hosted_rooms.py`,
@@ -433,7 +451,8 @@ struct GroupRoomReplay: Equatable {
 
     /// Adopt one incremental page. An empty page (fresh room, or nothing
     /// new) is a no-op.
-    mutating func adopt(page: GroupLogPage) {
+    mutating func adopt(page: GroupLogPage, preserving eventID: String? = nil) {
+        let preserved = eventID.flatMap { id in events.first { $0.eventID == id } }
         let incoming = page.events
             .filter { $0.roomID == roomID && $0.seq > cursor }
             .sorted { $0.seq < $1.seq }
@@ -447,6 +466,9 @@ struct GroupRoomReplay: Equatable {
         }
         if events.count > Self.retainedLimit {
             events.removeFirst(events.count - Self.tailWindow)
+            if let preserved, !events.contains(where: { $0.eventID == preserved.eventID }) {
+                events.insert(preserved, at: 0)
+            }
         }
         if !page.authorityGatewayID.isEmpty {
             authorityGatewayID = page.authorityGatewayID

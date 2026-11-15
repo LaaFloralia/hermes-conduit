@@ -32,6 +32,7 @@ export function routineState(job, reading) {
 
 export function routineDestination(job) {
   if (job.notificationMode !== 'chat') return null;
+  if (job.triggerKind === 'scheduled' || ['hermes', 'hermes-shared', 'work', 'paseo'].includes(job.reading?.source)) return '定期実行';
   const rawRole = job.receiverRole ?? job.ownerRole;
   const role = typeof rawRole === 'string' ? rawRole.toLowerCase() : null;
   const name = Object.hasOwn(ROLE_NAMES, role) ? ROLE_NAMES[role] : null;

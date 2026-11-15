@@ -16,6 +16,7 @@ import {
 import { createStore } from './store.mjs';
 import { createBridge } from './http.mjs';
 import { createVoiceWorker } from './voice/worker.mjs';
+import { startWorkReports } from './routines/work-reports.mjs';
 
 const port = resolvePort();
 const stateDir = resolveStateDir();
@@ -62,12 +63,15 @@ try {
   process.exit(1);
 }
 
+const stopWorkReports = startWorkReports({ stateDir, log: (event) => process.stderr.write(JSON.stringify({ event }) + '\n') });
+
 let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   process.stdout.write(`${JSON.stringify({ event: 'shutdown', signal })}\n`);
   try {
+    stopWorkReports();
     await bridge.close();
     await voiceWorker?.stop();
   } finally {

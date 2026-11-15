@@ -11656,6 +11656,7 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
+    @Published private(set) var roomNotificationFocusEventID: String?
 
     /// Where the user's answer to each of the open room's pending approvals
     /// stands, keyed by `GroupPendingApproval.id`. A sent answer stays for
@@ -12195,7 +12196,7 @@ final class AppState: ObservableObject {
     /// bounded tail of the log, and starts incremental polling. The CURRENT
     /// session selection is left untouched: opening a room takes the
     /// viewport, and the next session open takes it back.
-    func openGroupRoom(_ room: GroupRoom) async {
+    func openGroupRoom(_ room: GroupRoom, report: RoutineRoomNotification? = nil) async {
         guard let client, isConnected else {
             errorMessage = AppLocalization.string("Connect to Hermes to open group chats.")
             return
@@ -12224,6 +12225,7 @@ final class AppState: ObservableObject {
             roomQuoteRequest = nil
             roomDropRequest = nil
         }
+        roomNotificationFocusEventID = nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = keptRoomReplays[Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)]
             ?? GroupRoomReplay(roomID: room.roomID)
@@ -12260,7 +12262,7 @@ final class AppState: ObservableObject {
             activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: state)
             activeRoomDriverStatus = driver
             let latest = state.latestSeq ?? 0
-            let start = max(0, latest - window)
+            let start = report.map { max(0, $0.seq - 1) } ?? max(0, latest - window)
             let page = try await groupsLog(
                 client,
                 roomID: room.roomID,
@@ -12271,6 +12273,9 @@ final class AppState: ObservableObject {
             var replay = GroupRoomReplay(roomID: room.roomID)
             replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
+            if let report, replay.events.contains(where: { $0.eventID == report.eventID && $0.seq == report.seq }) {
+                roomNotificationFocusEventID = report.eventID
+            }
             settlePendingRoomSend(from: replay.events)
             startRoomPolling()
         } catch is CancellationError {
@@ -12335,7 +12340,7 @@ final class AppState: ObservableObject {
                 return
             }
             if !fresh.isEmpty {
-                activeRoomReplay.adopt(page: page)
+                activeRoomReplay.adopt(page: page, preserving: roomNotificationFocusEventID)
                 settlePendingRoomSend(from: fresh)
             }
             // Driver status tracks the DRIVER, not the log: refresh even on
@@ -24263,6 +24268,28 @@ final class AppState: ObservableObject {
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else { return .retry }
+        // A scheduled report belongs to the durable room, irrespective of its worker profile.
+        // Resolve after the dashboard gate and before any personal-chat/profile routing.
+        if target.sessionId.hasPrefix(RoutineRoomNotification.prefix) {
+            guard let report = RoutineRoomNotification.parse(target.sessionId) else { return .failed }
+            guard isConnected, let client else { return .retry }
+            traceStage = "routine room"
+            _ = await refreshGroupChatSupport()
+            guard notificationOpenAttemptIsCurrent(id: notificationAttemptID,
+                transitionGeneration: transitionGeneration), groupCapabilities?.foundationSupported == true else { return .retry }
+            do {
+                let (room, _) = try await groupsState(client, roomID: report.roomID)
+                guard notificationOpenAttemptIsCurrent(id: notificationAttemptID,
+                    transitionGeneration: transitionGeneration) else { return .retry }
+                await openGroupRoom(room, report: report)
+                guard activeRoomSurface?.room.roomID == report.roomID,
+                      roomNotificationFocusEventID == report.eventID else { return .retry }
+                showSidebar = false
+                return .opened
+            } catch {
+                return .retry
+            }
+        }
         // A push is a Bot Chat decision when its CONVERSATION is a bot's
         // canonical chat, never because of the profile it names. Every Hermes
         // profile is listed by `profiles.list` (the Bots roster), and the
