@@ -1124,7 +1124,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 ## LAA campaign decisions
 
-Work's section `Campaigns` (after Decisions) lists what the campaign-hunt routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Waiting rows of every kind are grouped by deadline day, soonest first, then 締切なし・要確認 and 締切を過ぎた物 (owner, 2026-11-15 17:17: a calendar in words of what can be had and by when). Each row carries its kind (サイト, X, 助成金), the title, organizer, prize or ceiling, why it waits (an X post's entry conditions), a grant's preparation, `ページを開く` (the default browser) and the kind's own yes beside `見送る`: `応募させる` (the routine applies at its next 11:00 run), `応募した` (the owner applied from the post), `申請する` (the routine drafts the application; filing and GビズID stay with the owner). The segment reads `Campaigns 37` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next run, except a grant already drafted.
+Work's section `Campaigns` (after Decisions) lists what the campaign-hunt routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Waiting rows of every kind are grouped by category, then genre (懸賞 · 食品, 利用者特典 · 通信; owner, 2026-11-15 via the ledger's version 3); the order menu can instead group them by deadline day, soonest first, then 締切なし・要確認 (owner, 17:17: a calendar in words of what can be had and by when), or list the newest additions first. A row whose deadline day has passed (Asia/Tokyo) leaves the list on its own (owner, 19:05). Above the list, toggles show or hide each category — 懸賞, 登録特典, 助成金・補助金, 機能追加, 利用者特典 (the ledger's names), then any other it sends — and a menu at their right end orders the list 種類・ジャンル順, 期限順 or 追加が新しい順; both are remembered (owner, 19:05). Each row carries the title, its category (and X for an X post), organizer, a perk's service, prize or ceiling, deadline, the day it was added, why it waits (an X post's entry conditions), a grant's preparation, `ページを開く` (the default browser) and the action's own yes beside `見送る`: `応募させる` (the routine applies at its next 11:00 run), `応募した` (the owner applied from the post), `申請する` (the routine drafts the application; filing and GビズID stay with the owner), and `進める` for an action the app does not know. The segment reads `Campaigns 37` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next run, except a grant already drafted.
 
 **Siblings:** the campaign-hunt skill's ledger and its `pending`/`decide` commands (owned by the skill, outside this
 repo) · the Bridge routes · the Work hub segment count · the Mac Work section (same view)
@@ -1144,6 +1144,9 @@ repo) · the Bridge routes · the Work hub segment count · the Mac Work section
 - Read with `sessions:read`, decide with `sessions:write` and `Idempotency-Key`, the decision board's scopes; no new
   scope. Choosing twice records the same state, so a failed attempt frees its key.
 - No confirmation dialog: the choice stays changeable until the run reads it.
+- Kinds, actions and categories are open strings: the ledger can add a kind without a Bridge or app release. A row
+  without `category` reads as `grant` for a grant and `prize` otherwise; a row without `action` takes its kind's.
+- Expired rows are hidden by the app, not dropped by the Bridge, so the count and the list agree on one clock.
 
 **Owner check on the device**
 - Open Work › Campaigns, open a row's page, and choose a row's yes or 見送る; the row should move under 判断済み.
@@ -1151,7 +1154,7 @@ repo) · the Bridge routes · the Work hub segment count · the Mac Work section
 **Open gaps**
 - No notification or link opens the section yet; the count refreshes with the hub every 15 seconds.
 
-**Checked:** 2026-11-15, 8018d90b (laa/campaign-decisions-v2): bridge campaigns tests 4, LAACampaignBoardTests, the real ledger (version 2) read through the route; the deadline grouping was built without new test runs (owner, 17:17).
+**Checked:** 2026-11-15, df169956 (laa/campaign-categories): bridge campaigns tests 4, LAACampaignBoardTests and LAAWorkTests on LAA 16 Pro Max; category toggles, the order menu and hiding expired rows (owner, 19:05).
 
 ## LAA answers from a notification, and which Mac notifications arrive
 
