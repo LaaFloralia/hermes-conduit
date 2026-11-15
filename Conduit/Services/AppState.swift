@@ -968,6 +968,9 @@ final class AppState: ObservableObject {
     /// it, shown for a moment with Hermes' reason (#555).
     @Published private(set) var pinSyncNotice: PinSyncNotice?
     #if LAA_BUILD
+    private var archivedUnknownChecksInFlight: Set<UUID> = []
+    private var archivedUnknownLastCheckedAt: [UUID: Date] = [:]
+
     @Published var laaWidgetUsagePending = false
     #endif
     /// The refusal `showCallRefusal` left on the drawer shell's error line (V2 off).
@@ -1180,7 +1183,9 @@ final class AppState: ObservableObject {
     /// delivered: settle it, so the composer neither warns nor invites a
     /// second send (LAAUnknownDelivery).
     func settleUnknownSubmissionsThatLanded() {
-        guard !durablePersistedRowIDs.isEmpty, let dashboardID = activeDashboardID else { return }
+        guard let dashboardID = activeDashboardID else { return }
+        defer { checkArchivedUnknownSubmissions() }
+        guard !durablePersistedRowIDs.isEmpty else { return }
         let onScreen = composerDraftKeyOnScreen
         var settled = 0, open = 0
         for submission in composerDraftStore.unknownSubmissions
@@ -1208,6 +1213,63 @@ final class AppState: ObservableObject {
         guard settled + open > 0 else { return }
         sessionCatalogLog.info("unknown delivery: settled \(settled, privacy: .public), still open \(open, privacy: .public), rows \(self.messages.count, privacy: .public)")
         if settled > 0 { schedulePendingComposerSendCheck() }
+    }
+
+    /// A window can hide an old delivered row from the 40-row transcript.
+    /// Query only that archive's delivery index, never hydrate the whole chat.
+    private func checkArchivedUnknownSubmissions() {
+        guard isConnected, let dashboardID = activeDashboardID,
+              let bridge = dashboardTicketBridge,
+              archivedUnknownChecksInFlight.isEmpty else { return }
+        let onScreen = durableComposerDraftKeyOnScreen
+        guard !onScreen.isNewConversation else { return }
+        let unknown = composerDraftStore.unknownSubmissions
+        let liveIDs = Set(unknown.map(\.id))
+        archivedUnknownLastCheckedAt = archivedUnknownLastCheckedAt.filter { liveIDs.contains($0.key) }
+        for submission in unknown where submission.dashboardID == dashboardID
+            && submission.groupEventID == nil && submission.screenshotID == nil
+            && submission.draft.attachments.isEmpty && submission.draft.replyReference == nil
+            && composerDraftKeysAreSameChat(submission.key, onScreen) {
+            guard let reservedAt = submission.reservedAt,
+                  !archivedUnknownChecksInFlight.contains(submission.id),
+                  Date().timeIntervalSince(archivedUnknownLastCheckedAt[submission.id] ?? .distantPast) >= 60,
+                  let path = LAAArchivedUnknownDelivery.path(sessionID: onScreen.sessionID,
+                                                            profile: onScreen.profile,
+                                                            text: submission.draft.text,
+                                                            reservedAt: reservedAt) else { continue }
+            archivedUnknownChecksInFlight.insert(submission.id)
+            archivedUnknownLastCheckedAt[submission.id] = Date()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    self.archivedUnknownChecksInFlight.remove(submission.id)
+                    self.checkArchivedUnknownSubmissions()
+                }
+                do {
+                    let payload = try await bridge.requestJSON(path: path, timeoutMilliseconds: 12_000,
+                                                               maxResponseBytes: 32 * 1024)
+                    guard self.activeDashboardID == dashboardID,
+                          self.activeProfile == onScreen.profile,
+                          self.composerDraftKeysAreSameChat(onScreen, self.durableComposerDraftKeyOnScreen),
+                          let current = self.composerDraftStore.unknownSubmissions.first(where: { $0.id == submission.id }),
+                          current.key == submission.key, current.draft == submission.draft,
+                          current.reservedAt == reservedAt,
+                          LAAArchivedUnknownDelivery.landed(payload, sessionID: onScreen.sessionID,
+                                                            profile: onScreen.profile,
+                                                            text: submission.draft.text,
+                                                            reservedAt: reservedAt) else { return }
+                    if let pendingID = current.pendingSendID,
+                       !self.removePendingComposerSendFile(id: pendingID, dashboardID: dashboardID,
+                                                           profile: onScreen.profile) { return }
+                    guard self.composerDraftStore.finishSubmission(current.id, restoring: false) else { return }
+                    self.schedulePendingComposerSendCheck()
+                } catch {
+                    // Older servers, disconnects and unavailable archives leave the
+                    // durable reservation intact. Nothing is restored or resent.
+                }
+            }
+            return // One bounded archive read at a time, including after reconnect.
+        }
     }
     #endif
     @Published private(set) var isChatRefreshing = false
