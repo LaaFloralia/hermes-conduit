@@ -164,11 +164,6 @@ export function resolveWorkspaceRoots(env = process.env) {
   return values.map((value) => resolve(value));
 }
 
-// The SDK and workspace CLI must select the same local engine instance.
-export function resolveWorkHome(env = process.env) {
-  return resolve(env.LAA_BRIDGE_WORK_HOME || join(homedir(), '.paseo'));
-}
-
 // The LAA Work engine's client routes each session to the engine that owns it (the LAA Work
 // engine, or Paseo for a conversation started there before the move) with Paseo's method
 // names, so the Bridge reads both through one connection.
