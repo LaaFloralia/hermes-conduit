@@ -1124,7 +1124,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 ## LAA campaign decisions
 
-Work's section `Campaigns` (after Decisions) lists what the campaign-hunt routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Waiting rows are grouped by kind — サイトの応募, Xのプレゼント, 助成金・補助金 — each with the title, organizer, prize or ceiling, deadline, why it waits (an X post's entry conditions), a grant's preparation, `ページを開く` (the default browser) and the kind's own yes beside `見送る`: `応募させる` (the routine applies at its next 11:00 run), `自分で応募する` (the owner applies from the post), `下書きを頼む` (the routine drafts the application). The segment reads `Campaigns 37` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next run, except a grant already drafted.
+Work's section `Campaigns` (after Decisions) lists what the campaign-hunt routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Waiting rows of every kind are grouped by deadline day, soonest first, then 締切なし・要確認 and 締切を過ぎた物 (owner, 2026-11-15 17:17: a calendar in words of what can be had and by when). Each row carries its kind (サイト, X, 助成金), the title, organizer, prize or ceiling, why it waits (an X post's entry conditions), a grant's preparation, `ページを開く` (the default browser) and the kind's own yes beside `見送る`: `応募させる` (the routine applies at its next 11:00 run), `自分で応募する` (the owner applies from the post), `下書きを頼む` (the routine drafts the application). The segment reads `Campaigns 37` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next run, except a grant already drafted.
 
 **Siblings:** the campaign-hunt skill's ledger and its `pending`/`decide` commands (owned by the skill, outside this
 repo) · the Bridge routes · the Work hub segment count · the Mac Work section (same view)
@@ -1151,7 +1151,7 @@ repo) · the Bridge routes · the Work hub segment count · the Mac Work section
 **Open gaps**
 - No notification or link opens the section yet; the count refreshes with the hub every 15 seconds.
 
-**Checked:** 2026-11-15, 75f25177 (laa/campaign-decisions-v2): bridge campaigns tests 4, LAACampaignBoardTests, the real ledger (version 2) read through the route.
+**Checked:** 2026-11-15, 8018d90b (laa/campaign-decisions-v2): bridge campaigns tests 4, LAACampaignBoardTests, the real ledger (version 2) read through the route; the deadline grouping was built without new test runs (owner, 17:17).
 
 ## LAA answers from a notification, and which Mac notifications arrive
 

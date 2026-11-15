@@ -39,9 +39,9 @@ final class LAACampaignBoardTests: XCTestCase {
 
     func testRowTextLeavesOutWhatTheLedgerDoesNotKnow() throws {
         let rows = try items()
-        XCTAssertEqual(LAACampaignCopy.meta(rows[0]), "日本浴用剤工業会 · 入浴剤セット · 締切 11月30日 23:59")
-        XCTAssertEqual(LAACampaignCopy.meta(rows[2]), "東京都 · 上限25,000,000円 · 締切 2026-04-17 · GビズIDが必要")
-        XCTAssertEqual(LAACampaignCopy.meta(rows[3]), "")
+        XCTAssertEqual(LAACampaignCopy.meta(rows[0]), "サイト · 日本浴用剤工業会 · 入浴剤セット · 締切 11月30日 23:59")
+        XCTAssertEqual(LAACampaignCopy.meta(rows[2]), "助成金 · 東京都 · 上限25,000,000円 · 締切 2026-04-17 · GビズIDが必要")
+        XCTAssertEqual(LAACampaignCopy.meta(rows[3]), "サイト")
         XCTAssertEqual(LAACampaignCopy.body(rows[1]), "フォロー＋リポスト。23:59まで")
         XCTAssertTrue(LAACampaignCopy.decision(rows[4]).hasPrefix("応募させる · "))
         XCTAssertTrue(LAACampaignCopy.decision(rows[3]).hasPrefix("見送る · "))
@@ -58,6 +58,14 @@ final class LAACampaignBoardTests: XCTestCase {
         XCTAssertEqual(row.kind, .site)
         XCTAssertEqual(row.benefit, "豆")
         XCTAssertTrue(row.waiting)
+    }
+
+    func testWaitingRowsGroupByDeadlineDay() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-15T09:00:00Z"))
+        let groups = LAACampaignSchedule.groups(try items().filter(\.waiting), now: now)
+        XCTAssertEqual(groups.map(\.title), ["11月15日（日） 今日まで", "11月30日（月）まで", "締切を過ぎた物"])
+        XCTAssertTrue(groups[0].urgent)
+        XCTAssertNil(LAACampaignSchedule.day("通年"))
     }
 
     func testCampaignsIsAWorkSectionWithItsCount() {

@@ -92,6 +92,66 @@ struct LAACampaignDecision: Decodable, Sendable {
     let decidedAt: String?
 }
 
+/// The list is a calendar in words (owner, 2026-11-15 17:17): waiting rows
+/// grouped by deadline day, soonest first, then the ones without a date and
+/// the ones already past.
+enum LAACampaignSchedule {
+    struct Group: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let urgent: Bool
+        let items: [LAACampaign]
+    }
+
+    private static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+        return calendar
+    }
+
+    /// `2026-11-30`, `2026-11-30 23:59` or `11月30日` → that day; anything else
+    /// (`通年`, `投稿で確認`) has no day.
+    static func day(_ deadline: String?, now: Date = Date()) -> Date? {
+        guard let deadline else { return nil }
+        let calendar = calendar
+        let digits = deadline.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+        if deadline.range(of: #"^\d{4}-\d{1,2}-\d{1,2}"#, options: .regularExpression) != nil, digits.count >= 3 {
+            return calendar.date(from: DateComponents(year: digits[0], month: digits[1], day: digits[2]))
+        }
+        if deadline.range(of: #"^\d{1,2}月\d{1,2}日"#, options: .regularExpression) != nil, digits.count >= 2 {
+            let year = calendar.component(.year, from: now)
+            return calendar.date(from: DateComponents(year: year, month: digits[0], day: digits[1]))
+        }
+        return nil
+    }
+
+    static func groups(_ waiting: [LAACampaign], now: Date = Date()) -> [Group] {
+        let calendar = calendar
+        let today = calendar.startOfDay(for: now)
+        var dated: [Date: [LAACampaign]] = [:]
+        var undated: [LAACampaign] = []
+        var past: [LAACampaign] = []
+        for item in waiting {
+            guard let day = day(item.deadline, now: now) else { undated.append(item); continue }
+            // Comparing with `<` only (PROJECT-RULES: no Date <= or >=).
+            if day < today { past.append(item) } else { dated[day, default: []].append(item) }
+        }
+        let format = DateFormatter()
+        format.calendar = calendar; format.timeZone = calendar.timeZone
+        format.locale = Locale(identifier: "ja_JP"); format.dateFormat = "M月d日（E）"
+        var out = dated.keys.sorted().map { day -> Group in
+            let isToday = day == today
+            let isTomorrow = calendar.date(byAdding: .day, value: 1, to: today) == day
+            let suffix = isToday ? " 今日まで" : isTomorrow ? " 明日まで" : "まで"
+            return Group(id: "day-\(Int(day.timeIntervalSince1970))", title: format.string(from: day) + suffix,
+                         urgent: isToday || isTomorrow, items: dated[day] ?? [])
+        }
+        if !undated.isEmpty { out.append(Group(id: "undated", title: "締切なし・要確認", urgent: false, items: undated)) }
+        if !past.isEmpty { out.append(Group(id: "past", title: "締切を過ぎた物", urgent: false, items: past)) }
+        return out
+    }
+}
+
 enum LAACampaignCopy {
     static let section = "Campaigns"
     static let heading = "応募の判断"
@@ -135,8 +195,19 @@ enum LAACampaignCopy {
         }
     }
 
-    static func meta(_ item: LAACampaign) -> String {
-        [item.organizer, item.benefit, item.deadline.map { "締切 \($0)" }, item.gbizid == true ? "GビズIDが必要" : nil]
+    static func kind(_ kind: LAACampaign.Kind) -> String {
+        switch kind {
+        case .site: "サイト"
+        case .x: "X"
+        case .grant: "助成金"
+        }
+    }
+
+    /// The deadline already heads a dated group, so a row repeats it only
+    /// when it is not a day (`通年`) or the row sits under 判断済み.
+    static func meta(_ item: LAACampaign, showDeadline: Bool = true) -> String {
+        [kind(item.kind), item.organizer, item.benefit, showDeadline ? item.deadline.map { "締切 \($0)" } : nil,
+         item.gbizid == true ? "GビズIDが必要" : nil]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -300,14 +371,12 @@ struct LAACampaignBoardView: View {
                         .padding(.vertical, LAASpacing.x4)
                         .accessibilityIdentifier("work.campaigns.none-waiting")
                 }
-                ForEach(LAACampaign.Kind.allCases, id: \.self) { kind in
-                    let rows = board.waiting(kind)
-                    if !rows.isEmpty {
-                        sectionTitle(LAACampaignCopy.group(kind), count: rows.count)
-                            .padding(.top, kind == firstWaitingKind ? 0 : LAASpacing.x6)
-                            .accessibilityIdentifier("work.campaigns.group.\(kind.rawValue)")
-                        ForEach(rows) { row($0) }
-                    }
+                let groups = LAACampaignSchedule.groups(board.waiting)
+                ForEach(groups) { group in
+                    sectionTitle(group.title, count: group.items.count, urgent: group.urgent)
+                        .padding(.top, group.id == groups.first?.id ? 0 : LAASpacing.x6)
+                        .accessibilityIdentifier("work.campaigns.group.\(group.id)")
+                    ForEach(group.items) { row($0, dated: group.id.hasPrefix("day-")) }
                 }
                 if !board.decided.isEmpty {
                     sectionTitle(LAACampaignCopy.decided).padding(.top, LAASpacing.x6)
@@ -323,25 +392,21 @@ struct LAACampaignBoardView: View {
         .refreshable { await board.load(bridge) }
     }
 
-    private var firstWaitingKind: LAACampaign.Kind? {
-        LAACampaign.Kind.allCases.first { !board.waiting($0).isEmpty }
-    }
-
-    private func sectionTitle(_ title: String, count: Int? = nil) -> some View {
+    private func sectionTitle(_ title: String, count: Int? = nil, urgent: Bool = false) -> some View {
         Text(verbatim: count.map { "\(title) \($0)" } ?? title)
             .laaTextStyle(.section).fontWeight(.semibold).monospacedDigit()
-            .foregroundStyle(LAAColor.secondaryText)
+            .foregroundStyle(urgent ? LAAColor.attention : LAAColor.secondaryText)
             .padding(.bottom, LAASpacing.x1)
             .accessibilityAddTraits(.isHeader)
     }
 
-    private func row(_ item: LAACampaign) -> some View {
+    private func row(_ item: LAACampaign, dated: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: item.title)
                 .laaTextStyle(.body).fontWeight(.semibold)
                 .foregroundStyle(item.waiting ? LAAColor.text : LAAColor.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-            let meta = LAACampaignCopy.meta(item)
+            let meta = LAACampaignCopy.meta(item, showDeadline: !dated)
             if !meta.isEmpty {
                 Text(verbatim: meta).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
