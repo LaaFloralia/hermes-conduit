@@ -10,7 +10,8 @@ final class LAAChatSteerSendUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "typing",
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper",
-                               "-LAA_FIXTURE_PUSH_CHAT"] + (dark ? ["-LAA_V2_DARK"] : [])
+                               "-LAA_FIXTURE_PUSH_CHAT", "-LAA_FIXTURE_PROFILE", "laa-monet",
+                               "-LAA_FIXTURE_CONNECTED"] + (dark ? ["-LAA_V2_DARK"] : [])
         app.launch()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 15))
@@ -47,6 +48,29 @@ final class LAAChatSteerSendUITests: XCTestCase {
         own.press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["コピー"].waitForExistence(timeout: 5), "the menu opens")
         XCTAssertEqual(app.state, .runningForeground, "the app is still running after the long press")
+    }
+
+    /// Three follow-ups in a row into the running turn (owner, 2026-11-16:
+    /// the app froze after a steer and had to be ended).
+    func testSteeringThreeTimesInARowKeepsTheAppResponsive() {
+        let app = launch(dark: false)
+        let field = app.textViews["composer.field"]
+        for index in 1...3 {
+            field.tap()
+            field.typeText("追い送り\(index)回目")
+            app.buttons["composer.action"].tap()
+            let row = app.descendants(matching: .any).matching(identifier: "chat.transcript").firstMatch
+                .descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@",
+                                      "追い送り\(index)回目", "追い送り\(index)回目")).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "follow-up \(index) shows in the chat")
+        }
+        // Still answering touches: the field takes focus and text again.
+        field.tap()
+        field.typeText("応答確認")
+        XCTAssertTrue((field.value as? String)?.contains("応答確認") == true, "the composer still takes text")
+        XCTAssertFalse(app.staticTexts["composer.unknown-delivery"].exists, "each follow-up was accepted")
+        XCTAssertEqual(app.state, .runningForeground)
     }
 
     func testSendingWhileTheTurnRunsKeepsTheAppUp() { sendWhileBusy(dark: false) }

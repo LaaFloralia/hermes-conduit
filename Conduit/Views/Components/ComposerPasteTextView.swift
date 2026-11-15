@@ -238,11 +238,14 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         func textViewDidBeginEditing(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
-            parent.isFocused = true
+            // updateUIView's own becomeFirstResponder lands here mid-update:
+            // the binding already says so, and writing it again is a state
+            // change during a view update (BUS-464).
+            if !parent.isFocused { parent.isFocused = true }
         }
         func textViewDidEndEditing(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
-            parent.isFocused = false
+            if parent.isFocused { parent.isFocused = false }
             flushPendingProgrammaticIfCompositionEnded(textView)
             if let view = textView as? ImagePasteTextView { parent.updateTypography(view) }
         }

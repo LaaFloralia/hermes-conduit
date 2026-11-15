@@ -142,6 +142,19 @@ final class LAABackgroundFixture: ObservableObject {
         if let models = args.firstIndex(of: "-LAA_FIXTURE_CHAT_MODELS").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
             app.laaChatModelOperationsForTesting = LAAChatModelFixture(variant: models, session: conversationID, app: app).operations
         }
+        // A connected client whose gateway accepts every call (steer,
+        // prompt.submit…), for sending into a running turn without a server.
+        if args.contains("-LAA_FIXTURE_CONNECTED"), !args.contains("-LAA_FIXTURE_CLARIFY") {
+            let transport = LAAClarifyFixtureTransport()
+            let connection = HermesConnection(baseUrl: "https://fixture.invalid", ticket: "synthetic")
+            let client = HermesClient(connection: connection, profile: app.activeProfile, transportFactory: { transport }, keepaliveInterval: nil, monitorsPath: false)
+            app.connection = connection; app.client = client
+            client.onEvent = { [weak app] event in app?.handleStreamEvent(event) }
+            Task { @MainActor in
+                try? await client.connect()
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+            }
+        }
         if args.contains("-LAA_FIXTURE_CLARIFY") {
             let transport = LAAClarifyFixtureTransport()
             let connection = HermesConnection(baseUrl: "https://fixture.invalid", ticket: "synthetic")
