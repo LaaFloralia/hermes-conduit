@@ -54,6 +54,7 @@ test('Work paths do not fall back when the router or CLI is missing', () => {
   assert.equal(resolveWorkClient({ LAA_BRIDGE_WORK_CLIENT: '/custom/router.mjs' }, present), '/custom/router.mjs');
   assert.throws(() => resolveWorkClient({}, missing), /Work router not found/);
   assert.throws(() => resolveWorkClient({ LAA_BRIDGE_WORK_CLIENT: '/missing' }, missing), /Work router not found/);
-  assert.match(resolveWorkHome({}), /\/\.local\/share\/laa-work$/);
+  // The router still reaches Paseo's sessions through this home until Paseo is removed.
+  assert.match(resolveWorkHome({}), /\/\.paseo$/);
   assert.equal(resolveWorkHome({ LAA_BRIDGE_WORK_HOME: '/custom/home' }), '/custom/home');
 });
