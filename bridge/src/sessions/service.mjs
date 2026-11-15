@@ -29,6 +29,7 @@ import { homedir } from 'node:os';
 import { signWorkOrigin } from './work-origin.mjs';
 import { dirname, join } from 'node:path';
 import { sessionImageStore } from './images.mjs';
+import { readOwnerFile } from './owner-files.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
@@ -84,6 +85,7 @@ export function createSessionService({
   history = readConversation,
   firstPrompt = readFirstPrompt,
   images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
+  readOwner = readOwnerFile,
   choices = sessionOptionsReader(),
   modelSwitchOptions = {},
   findWorkspace,
@@ -1482,6 +1484,14 @@ export function createSessionService({
     conversation,
     initialInstruction,
     image: (id, imageID) => { requireSession(id); return images.read(id, imageID); },
+    // A file a reply names on this Mac, inside the owner-file boundary
+    // (owner-files.mjs); anything outside it reads as not found.
+    file: (id, path) => {
+      requireSession(id);
+      const file = readOwner(path);
+      if (!file) throw notFound('file not found');
+      return { name: file.name, mimeType: file.mimeType, size: file.size, data: file.data.toString('base64') };
+    },
     sendMessage,
     updateSession,
     stopSession,

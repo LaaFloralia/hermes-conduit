@@ -186,6 +186,8 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
   return [
     { method: "POST", pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/interrupt$/, auth: true, scope: "sessions:write", idempotent: true, handler: async ({ params }) => { const result = await sessions.interruptSession(params[0]); return { status: 200, data: sessions.view(result.session) }; } },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/images\/([0-9a-f]{64})$/, auth: true, scope: 'sessions:read', handler: async ({ params }) => ({ status: 200, data: sessions.image(params[0], params[1]) }) },
+    // `?path=` is a file a reply named; the service holds the boundary.
+    { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/files$/, auth: true, scope: 'sessions:read', handler: async ({ params, req }) => ({ status: 200, data: sessions.file(params[0], new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('path') ?? '') }) },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/decision$/, auth: true, scope: 'sessions:read', handler: decision },
     { method: 'POST', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/reply$/, auth: true, scope: 'sessions:write', idempotent: true, handler: reply },
     { method: 'POST', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/quick-reply$/, auth: true, scope: 'sessions:write', idempotent: true, handler: async ({ params, rawBody }) => ({ status: 200, data: await sessions.quickReply({ id: params[0], body: parseObjectBody(rawBody) }) }) },
