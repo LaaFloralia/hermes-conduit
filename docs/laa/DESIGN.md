@@ -180,7 +180,7 @@ Docの編集画面は表を実表として編集し、未対応の記法（front
 
 アイコン原本はStudioブランドの「配信用 — PWA 1024 / any」。`Conduit/Resources/AppIcon-LAA.icon` は青緑の地に螺旋・四分円・円弧の3層、iOS 26未満は `Conduit/Resources/Assets.xcassets/AppIcon-LAA.appiconset` を使う。LAA用署名overlayで `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA` を指定し、上流のアイコン設定は維持する。既存の `ictool`・`actool` 検証は実機表示の確認を意味しない。
 
-社員像は2026-11-08のMonet統合後の8体のマスコットを使う。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。周りに円・縁・白い下地を付けない（社長の指摘 2026-11-06）。チャット上部のマスコットは54ptで、名前のガラスの外に置く。
+社員像は2026-11-08のMonet統合後の8体に、2026-11-15採用の薬用石鹸を加えた9体を使う。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。周りに円・縁・白い下地を付けない（社長の指摘 2026-11-06）。チャット上部のマスコットは54ptで、名前のガラスの外に置く。
 
 | ファイル | 用途 |
 |---|---|
@@ -189,7 +189,7 @@ Docの編集画面は表を実表として編集し、未対応の記法（front
 | `<id>-avatar-512.png` | ループの1コマ目。一覧、処理中の行、静止時 |
 | `<id>-idle-512.mov` | HEVCアルファ付き、512²、約4秒、24fps。チャット上部と通話 |
 
-IDは `monet`（藤色の花）、`monet-uncensored`（無検閲版）、`argus`（孔雀）、`cfo`（Morgan）、`cio`（Sherlock）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。
+IDは `monet`（藤色の花）、`monet-uncensored`（無検閲版）、`argus`（孔雀）、`cfo`（Morgan）、`cio`（Sherlock）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）、`soap`（白いフェルト石鹸と泡）。Monet（Dots）はMonetの素材を共用する。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。
 
 LAA版の `profileAvatarURL` は社員ならHermesの画像ではなく同梱のマスコットを返す。処理中の行や一覧も同じ画像になる。
 
