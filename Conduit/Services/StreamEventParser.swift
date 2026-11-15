@@ -46,9 +46,12 @@ enum StreamEventParser {
                 ?? payload?["message"]?.objectValue?["id"]?.stringValue
                 ?? obj["message_id"]?.stringValue
                 ?? obj["id"]?.stringValue
-            let content = payload?["content"]?.stringValue
+            var content = payload?["content"]?.stringValue
                 ?? payload?["text"]?.stringValue
                 ?? payload?["rendered"]?.stringValue
+#if LAA_BUILD
+            if let text = content, let notice = LAAFailedTurnCopy.japanese(for: text) { content = notice }
+#endif
             let reasoning = payload?["reasoning"]?.stringValue
             let alreadyShown = payload?["response_previewed"]?.boolValue == true
                 || payload?["response_reused"]?.boolValue == true
@@ -317,3 +320,24 @@ enum StreamEventParser {
         )
     }
 }
+
+#if LAA_BUILD
+/// Hermes closes a turn that failed before any reply with a fixed English
+/// row (agent/turn_failure_copy.py). LAA shows the owner the same notice in
+/// Japanese, live and from the saved transcript. Exact text only, so a real
+/// reply quoting it stays as written.
+enum LAAFailedTurnCopy {
+    static let failed = "Your request was not processed. Send it again if you still want me to carry it out."
+    static let partial = "This turn did not complete. Some actions may already have run; verify their effects before resending."
+    static let failedJapanese = "この依頼は処理されませんでした。必要ならもう一度送ってください。"
+    static let partialJapanese = "この依頼は途中で止まりました。一部の操作は実行済みの可能性があります。結果を確かめてから送り直してください。"
+
+    static func japanese(for text: String) -> String? {
+        switch text.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case failed: return failedJapanese
+        case partial: return partialJapanese
+        default: return nil
+        }
+    }
+}
+#endif

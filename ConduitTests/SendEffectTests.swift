@@ -24,6 +24,71 @@ final class SendEffectTests: XCTestCase {
         XCTAssertNil(view.burst)
     }
 
+    /// One send plays one burst (owner, 2026-11-15: a send with the keyboard
+    /// up burst at Send's old place and again at its new one). Only the
+    /// first Send to hear a fresh send plays it; one that hears it again,
+    /// or late after a layout change, does not.
+    func testOneSendPlaysOnceAndOnlyWhileFresh() {
+        let request = LAASendEffect.Request(id: UUID(), at: 100)
+        XCTAssertTrue(LAASendEffectView.claim(request, now: 100.05))
+        XCTAssertFalse(LAASendEffectView.claim(request, now: 100.06), "A second Send never replays the same send")
+        let late = LAASendEffect.Request(id: UUID(), at: 100)
+        XCTAssertFalse(LAASendEffectView.claim(late, now: 100 + LAASendEffectView.freshness + 0.01),
+                       "A Send that appears after the keyboard closes does not play an earlier send")
+        let next = LAASendEffect.Request(id: UUID(), at: 200)
+        XCTAssertTrue(LAASendEffectView.claim(next, now: 200), "The next send plays again")
+        XCTAssertTrue(ComposerBar.sendEffectPlays(for: .send))
+        XCTAssertTrue(ComposerBar.sendEffectPlays(for: .interrupt), "Sending now into a running reply is a send")
+        XCTAssertFalse(ComposerBar.sendEffectPlays(for: .queue))
+        XCTAssertFalse(ComposerBar.sendEffectPlays(for: .steer))
+    }
+
+    /// The four ways a message goes out: keyboard up, keyboard down, sent
+    /// now into a running reply, and a long draft that made the field tall.
+    /// Each shows one burst, and it stays on Send as Send moves.
+    func testEachWayOfSendingShowsOneBurstThatStaysOnSend() {
+        struct Way { let name: String; let from: CGFloat; let to: CGFloat; let action: ComposerAction }
+        let ways = [
+            Way(name: "keyboard up, then closing", from: 520, to: 860, action: .send),
+            Way(name: "keyboard down", from: 860, to: 860, action: .send),
+            Way(name: "send now", from: 860, to: 860, action: .interrupt),
+            Way(name: "long draft, field shrinking", from: 640, to: 860, action: .send),
+        ]
+        for way in ways {
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
+            window.isHidden = false
+            let bar = UIView(frame: CGRect(x: 0, y: way.from, width: 440, height: 60))
+            window.addSubview(bar)
+            // Send in the bar at its two layouts, as SwiftUI may keep both.
+            let send = LAASendEffectView()
+            let other = LAASendEffectView()
+            send.frame = CGRect(x: 392, y: 12, width: 36, height: 36)
+            other.frame = send.frame
+            bar.addSubview(send)
+            bar.addSubview(other)
+            let request = LAASendEffect.Request()
+            XCTAssertTrue(ComposerBar.sendEffectPlays(for: way.action), way.name)
+            for view in [send, other] where LAASendEffectView.claim(request) {
+                view.play(color: .systemBlue, rim: .white, reduceMotion: false, lowPower: false)
+            }
+            // The layout settles after the send: Send moves with the bar.
+            bar.frame.origin.y = way.to
+            for view in [send, other] where LAASendEffectView.claim(request) {
+                view.play(color: .systemBlue, rim: .white, reduceMotion: false, lowPower: false)
+            }
+            send.followSend()
+            other.followSend()
+            let bursts = window.layer.sublayers?.filter { $0.name == LAASendEffectView.burstName } ?? []
+            XCTAssertEqual(bursts.count, 1, "\(way.name): one burst")
+            let center = send.convert(CGPoint(x: 18, y: 18), to: window)
+            XCTAssertEqual(bursts.first?.position.x ?? 0, center.x, accuracy: 0.5, way.name)
+            XCTAssertEqual(bursts.first?.position.y ?? 0, center.y, accuracy: 0.5, "\(way.name): on Send, not where it was")
+            send.removeFromSuperview()
+            other.removeFromSuperview()
+            XCTAssertFalse(window.layer.sublayers?.contains { $0.name == LAASendEffectView.burstName } ?? false)
+        }
+    }
+
     /// Every value is the style's (owner, 2026-11-15: changing the values
     /// alone changes the look); the panes land on the grid, outside Send's
     /// glass, up and to the left within the field and the window.

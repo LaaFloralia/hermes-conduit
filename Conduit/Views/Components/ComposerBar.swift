@@ -55,7 +55,10 @@ struct ComposerBar: View, Equatable {
     @EnvironmentObject private var laaBridge: LAABridgeSession
     #endif
     @State private var text = ""
-    @State private var sendEffectGeneration = 0
+#if LAA_BUILD
+    /// The send now playing its burst, by submission (LAASendEffect).
+    @State private var sendEffectRequest: LAASendEffect.Request?
+#endif
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
     /// A whole reply attached with its Quote button (#385); it rides along
@@ -1533,6 +1536,14 @@ struct ComposerBar: View, Equatable {
         return action == .unavailable && showsVoiceButton ? .voice : .action
     }
 
+#if LAA_BUILD
+    /// A message that goes out now plays the send burst once: Send, and
+    /// sending now into a running reply. Steer and Queue wait, so they don't.
+    static func sendEffectPlays(for action: ComposerAction) -> Bool {
+        action == .send || action == .interrupt
+    }
+#endif
+
     @ViewBuilder
     private func trailingSlot(size: CGFloat = ComposerShared.controlSize) -> some View {
 #if LAA_BUILD
@@ -1560,7 +1571,7 @@ struct ComposerBar: View, Equatable {
         case .action: composerActionButton(size: size)
 #if LAA_BUILD
             .overlay {
-                LAASendEffect(generation: sendEffectGeneration, color: .conduitAccent, rim: LAAColor.rimLight,
+                LAASendEffect(request: sendEffectRequest, color: .conduitAccent, rim: LAAColor.rimLight,
                               reduceMotion: reduceMotion)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -1862,10 +1873,13 @@ struct ComposerBar: View, Equatable {
         rotateAttachmentGeneration()
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
 
+#if LAA_BUILD
+        if Self.sendEffectPlays(for: submittedAction) {
+            sendEffectRequest = LAASendEffect.Request(id: submission.id)
+        }
+#endif
         switch submittedAction {
-        case .send:
-            sendEffectGeneration &+= 1
-            Haptics.medium()
+        case .send: Haptics.medium()
         case .steer, .queue: Haptics.light()
         case .interrupt: Haptics.warning()
         case .stop, .unavailable: break

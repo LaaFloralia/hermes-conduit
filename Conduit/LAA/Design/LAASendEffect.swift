@@ -9,9 +9,17 @@ import UIKit
 /// into a lit orb and everything is gone in under a second, where the
 /// thinking row carries on. The send itself never waits for it.
 /// Every value is `LAASendEffectStyle` (LAAEffectStyles.swift). Plain Core
-/// Animation layers: no Canvas, display link, blur or offscreen surface.
+/// Animation layers: no Canvas, blur or offscreen surface; a display link
+/// lives only while a burst plays, to keep it on Send as Send moves.
 struct LAASendEffect: UIViewRepresentable {
-    var generation: Int
+    /// One send's request to play. A send plays once, at the Send it was
+    /// pressed on (owner, 2026-11-15: two bursts for one send).
+    struct Request: Equatable {
+        let id: UUID
+        let at: CFTimeInterval
+        init(id: UUID = UUID(), at: CFTimeInterval = CACurrentMediaTime()) { self.id = id; self.at = at }
+    }
+    var request: Request?
     var color: Color
     /// The glass's rim light (tan on the paper, the light glass in the dark).
     var rim: Color
@@ -20,19 +28,39 @@ struct LAASendEffect: UIViewRepresentable {
 
     func makeUIView(context: Context) -> LAASendEffectView {
         let view = LAASendEffectView()
-        view.generation = generation
+        // A Send that appears after the send (the keyboard closing, a taller
+        // field) only learns of it: it never plays an earlier request.
+        view.seenRequest = request?.id
         return view
     }
     func updateUIView(_ view: LAASendEffectView, context: Context) {
-        guard view.generation != generation else { return }
-        view.generation = generation
-        guard generation > 0 else { return }
+        guard let request, view.seenRequest != request.id else { return }
+        view.seenRequest = request.id
+        guard LAASendEffectView.claim(request) else { return }
         view.play(color: UIColor(color), rim: UIColor(rim), reduceMotion: reduceMotion, style: style)
     }
 }
 
 final class LAASendEffectView: UIView, CAAnimationDelegate {
-    var generation = 0
+    /// The last send this view has heard of, played or not.
+    var seenRequest: UUID?
+    /// The sends already played, newest last, across every Send on screen.
+    private static var played: [UUID] = []
+    /// How long a request may wait for its Send: a layout pass, not the
+    /// keyboard's whole closing animation.
+    static let freshness: CFTimeInterval = 0.25
+    /// The one Send that plays a send. The first to hear it, while it is
+    /// fresh, plays; a second Send, or one that hears it later after a
+    /// layout change, does not.
+    static func claim(_ request: LAASendEffect.Request, now: CFTimeInterval = CACurrentMediaTime()) -> Bool {
+        guard now - request.at <= freshness, !played.contains(request.id) else { return false }
+        played.append(request.id)
+        if played.count > 16 { played.removeFirst(played.count - 16) }
+        return true
+    }
+    /// Keeps the burst on Send while the keyboard closes or the field
+    /// grows, for the burst's lifetime only.
+    private var follow: CADisplayLink?
     /// The burst playing now, if any.
     private(set) var burst: CALayer?
     /// When the burst playing now started, in media time.
@@ -62,23 +90,27 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
         let total = style.duration
         func at(_ time: CFTimeInterval) -> NSNumber { NSNumber(value: min(1, max(0, time / total))) }
 
-        let center = CGPoint(x: bounds.midX + style.originOffset.width, y: bounds.midY + style.originOffset.height)
+        originOffset = style.originOffset
         let host: CALayer
-        let origin: CGPoint
+        let origin = currentOrigin()
         var limit: CGSize? = nil
         if let window {
             host = window.layer
-            origin = convert(center, to: window)
             limit = CGSize(width: max(0, origin.x - 8), height: max(0, origin.y - window.safeAreaInsets.top))
         } else {
             host = layer
-            origin = center
         }
         let root = CALayer()
+        root.name = Self.burstName
         root.position = origin
         root.zPosition = 1000
         host.addSublayer(root)
         burst = root
+        if window != nil {
+            let link = CADisplayLink(target: LAASendEffectFollow(self), selector: #selector(LAASendEffectFollow.tick))
+            link.add(to: .main, forMode: .common)
+            follow = link
+        }
 
         // Send takes the accent: the only change Reduce Motion keeps.
         let side = style.buttonSide
@@ -219,11 +251,39 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
         root.add(lifetime, forKey: "lifetime")
     }
 
+    static let burstName = "laa.sendBurst"
+    private var originOffset: CGSize = .zero
+
+    /// Send's centre in the burst's host, as it is on screen now (the
+    /// presentation tree, so a moving Send is followed mid-animation).
+    func currentOrigin() -> CGPoint {
+        let center = CGPoint(x: bounds.midX + originOffset.width, y: bounds.midY + originOffset.height)
+        guard let window else { return center }
+        // Both in the presentation tree, or both in the model tree.
+        if let from = layer.presentation(), let to = window.layer.presentation() {
+            return from.convert(center, to: to)
+        }
+        return layer.convert(center, to: window.layer)
+    }
+
+    /// Moves the burst with Send, without implicit animation.
+    func followSend() {
+        guard let burst else { return }
+        let origin = currentOrigin()
+        guard burst.position != origin else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        burst.position = origin
+        CATransaction.commit()
+    }
+
     func animationDidStop(_ anim: CAAnimation, finished flag: Bool) {
         guard flag else { return }
         clearBurst()
     }
     private func clearBurst() {
+        follow?.invalidate()
+        follow = nil
         let previous = burst
         burst = nil
         previous?.removeAllAnimations()
@@ -232,6 +292,16 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil { clearBurst() }
+    }
+}
+
+/// The display link's target, so the link never retains the view.
+private final class LAASendEffectFollow: NSObject {
+    weak var view: LAASendEffectView?
+    init(_ view: LAASendEffectView) { self.view = view }
+    @objc func tick(_ link: CADisplayLink) {
+        guard let view else { link.invalidate(); return }
+        view.followSend()
     }
 }
 

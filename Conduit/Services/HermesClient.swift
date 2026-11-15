@@ -4223,6 +4223,11 @@ enum MessageNormalizer {
             if isSteerRow {
                 rawContent = steerText(fromMarker: rawContent)
             }
+#if LAA_BUILD
+            if role == .assistant, let notice = LAAFailedTurnCopy.japanese(for: rawContent) {
+                rawContent = notice
+            }
+#endif
             #if LAA_BUILD
             if !isToolResult, role == .user {
                 // The owner's own request, without Hermes's restatement header.
