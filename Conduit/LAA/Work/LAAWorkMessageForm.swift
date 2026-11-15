@@ -4,7 +4,11 @@ import PhotosUI
 
 struct LAAWorkMessageForm: View {
     enum Mode { case followUp, resume }
-    private struct Payload: Codable { let message: String; let requestId: String?; var images: [LAAWorkImagePayload]? = nil }
+    /// `delivery` is how a follow-up meets a running turn: "now" interrupts it
+    /// and delivers at once (the default, owner 2026-11-15), "queue" waits for
+    /// the turn to end and is chosen explicitly from Send's menu.
+    struct Payload: Codable { let message: String; let requestId: String?; var images: [LAAWorkImagePayload]? = nil; var delivery: String? = nil }
+    static func delivery(mode: Mode, queue: Bool) -> String? { mode == .followUp ? (queue ? "queue" : "now") : nil }
 
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
@@ -103,7 +107,15 @@ struct LAAWorkMessageForm: View {
     /// was typed (owner, 2026-11-12), and it is only disabled when it cannot send.
     private var sendButton: some View {
         LAAGlassActionButton(systemImage: "arrow.up", label: LAACopy.WorkTab.send, role: .send,
-                             enabled: canSubmit, identifier: "\(composerPrefix).send", action: submit)
+                             enabled: canSubmit, identifier: "\(composerPrefix).send", action: { submit() })
+            // Send delivers now; waiting for the turn is the explicit choice,
+            // the same long press on iPhone and iPad and secondary click on Mac.
+            .contextMenu {
+                if mode == .followUp && canSubmit {
+                    Button { submit(queue: true) } label: { Label(LAACopy.WorkTab.sendAfterTurn, systemImage: "clock") }
+                        .accessibilityIdentifier("\(composerPrefix).sendAfterTurn")
+                }
+            }
     }
 
     /// Attached pictures stay above the field as thumbnails (owner,
@@ -192,7 +204,7 @@ struct LAAWorkMessageForm: View {
             if mode == .followUp && !attachments.isEmpty { chips }
             LAAWorkComposer(text: $text, revision: $revision, placeholder: promptPlaceholder,
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
-                            onChange: saveDraft, onSubmit: submit,
+                            onChange: saveDraft, onSubmit: { submit() },
                             accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer",
                             onImage: mode == .followUp ? addImage : nil,
                             compact: mode == .followUp, focusRequest: focusRequest)
@@ -297,14 +309,15 @@ struct LAAWorkMessageForm: View {
         }
     }
 
-    private func submit() {
+    private func submit(queue: Bool = false) {
         guard let key = draftKey, pending == nil, canStart else { return }
         let message = text
         let images = attachments.compactMap { attachment -> LAAWorkImagePayload? in
             guard let value = attachment.uri.components(separatedBy: ",").last else { return nil }
             return LAAWorkImagePayload(data: value, mimeType: attachment.mimeType ?? "image/jpeg")
         }
-        let payload = Payload(message: message, requestId: mode == .resume ? UUID().uuidString.lowercased() : nil, images: images.isEmpty ? nil : images)
+        let payload = Payload(message: message, requestId: mode == .resume ? UUID().uuidString.lowercased() : nil, images: images.isEmpty ? nil : images,
+                              delivery: Self.delivery(mode: mode, queue: queue))
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(payload),

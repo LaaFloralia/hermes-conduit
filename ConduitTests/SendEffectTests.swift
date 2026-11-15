@@ -43,12 +43,19 @@ final class SendEffectTests: XCTestCase {
             XCTAssertGreaterThan(hypot(pane.end.x, pane.end.y), style.buttonSide, "Outside Send's glass")
             XCTAssertLessThanOrEqual(-pane.end.x, style.reach.width + style.grid)
             XCTAssertLessThanOrEqual(-pane.end.y, style.reach.height + style.grid)
-            XCTAssertLessThanOrEqual(pane.end.x, 0.12 * style.reach.width, "The field lies to the left of Send")
-            XCTAssertLessThanOrEqual(pane.end.y, 0.12 * style.reach.height, "and above it")
+            XCTAssertLessThanOrEqual(pane.end.x, 0.3 * style.reach.width, "The field lies mostly to the left of Send")
+            XCTAssertLessThanOrEqual(pane.end.y, 0.3 * style.reach.height, "and above it")
             XCTAssertGreaterThanOrEqual(pane.reach, reach, "Nearest first")
             reach = pane.reach
         }
-        XCTAssertGreaterThan(panes.map { -$0.end.y }.max() ?? 0, style.reach.height * 0.6, "The burst reaches far up the screen")
+        XCTAssertGreaterThan(panes.map { -$0.end.y }.max() ?? 0, style.reach.height * 0.5, "The burst spreads well above Send")
+        // Restrained (owner, 2026-11-15 11時): about five times Send, never most of the screen.
+        XCTAssertLessThanOrEqual(max(style.reach.width, style.reach.height), 6 * style.buttonSide)
+        XCTAssertLessThan(style.duration, 0.7, "About half a second, as in the reference")
+        let blue = style.color?.ui(dark: false)
+        var hue: CGFloat = 0
+        blue?.getHue(&hue, saturation: nil, brightness: nil, alpha: nil)
+        XCTAssertEqual(hue * 360, 214, accuracy: 3, "The reference's blue, #3487F8")
         for pane in style.panes(limit: CGSize(width: 200, height: 300)) {
             XCTAssertLessThanOrEqual(-pane.end.x, 200 + style.grid)
             XCTAssertLessThanOrEqual(-pane.end.y, 300 + style.grid)
@@ -99,7 +106,7 @@ final class SendEffectTests: XCTestCase {
             XCTAssertTrue(view.burst?.superlayer === window.layer, "Drawn on the window, clipped by nothing")
             // Each frame at its exact moment: the window's clock is held
             // there, so a slow capture does not skew the next one.
-            for moment in [0.06, 0.16, 0.28, 0.42, 0.56, 0.72, 0.88] {
+            for moment in [0.04, 0.10, 0.16, 0.22, 0.30, 0.40, 0.50] {
                 window.layer.speed = 0
                 window.layer.timeOffset = view.startedAt + moment
                 CATransaction.flush()

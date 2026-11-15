@@ -621,3 +621,19 @@ private final class DashboardDownloadURLProtocolStub: URLProtocol {
 
     override func stopLoading() {}
 }
+
+
+@MainActor
+extension DashboardTicketBridgeTests {
+    func testColdForegroundReadUsesAuthenticatedTransportWithoutWaitingForPage() async throws {
+        let held = HeldDashboardRequests(baseURL: "https://cold-read-\(UUID().uuidString.lowercased()).invalid")
+        held.bridge.webViewCanRun = { true }
+        defer { held.releaseAll(); held.bridge.invalidate() }
+        let read = Task { try await held.bridge.requestJSON(path: "/api/sessions/s/messages?limit=40") }
+        try await held.waitForRequests(1)
+        try await held.answer(["messages": [], "session_id": "s"])
+        let result = try await read.value
+        XCTAssertEqual(result["session_id"] as? String, "s")
+        XCTAssertEqual(held.sent.first?.method, "GET")
+    }
+}

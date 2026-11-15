@@ -785,5 +785,19 @@ final class LAAWorkTests: XCTestCase {
         let delivered = reply + [LAAWorkConversationMessage(id: "u2", role: "user", text: " この画像も ", timestamp: nil)]
         XCTAssertTrue(LAAWorkSentEcho.pending([echo], in: delivered).isEmpty)
     }
+
+    /// A follow-up interrupts a running turn unless the owner chose to wait
+    /// (owner 2026-11-15); a resume carries no delivery at all.
+    func testFollowUpDeliversNowByDefaultAndQueuesOnlyWhenChosen() throws {
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        func body(_ mode: LAAWorkMessageForm.Mode, queue: Bool) throws -> [String: Any] {
+            let payload = LAAWorkMessageForm.Payload(message: "次", requestId: nil,
+                                                      delivery: LAAWorkMessageForm.delivery(mode: mode, queue: queue))
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(payload)) as? [String: Any])
+        }
+        XCTAssertEqual(try body(.followUp, queue: false)["delivery"] as? String, "now")
+        XCTAssertEqual(try body(.followUp, queue: true)["delivery"] as? String, "queue")
+        XCTAssertNil(try body(.resume, queue: false)["delivery"])
+    }
 }
 #endif
