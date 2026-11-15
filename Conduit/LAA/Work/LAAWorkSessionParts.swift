@@ -88,9 +88,11 @@ struct LAAWorkSentEcho: Identifiable, Equatable {
     let id = UUID()
     let text: String
     let attachments: [Attachment]
-    /// How many messages the conversation had when this was sent: only an
-    /// owner's message after them can be this one.
-    let known: Int
+    /// The newest message the conversation showed when this was sent: only an
+    /// owner's message after it can be this one. An ID, not a count: the page
+    /// holds only the latest messages, so its length stays the same while the
+    /// conversation grows, and an older page loaded above changes it.
+    let after: String?
     let sentAt = Date()
 
     /// The echoes the conversation does not show yet. An owner's message newer
@@ -100,7 +102,10 @@ struct LAAWorkSentEcho: Identifiable, Equatable {
         var claimed = Set<String>()
         var matched = Set<UUID>()
         func candidates(_ echo: LAAWorkSentEcho) -> [LAAWorkConversationMessage] {
-            messages.dropFirst(min(echo.known, messages.count)).filter { $0.role == "user" && !claimed.contains($0.id) }
+            // A message the page no longer holds is older than everything on it.
+            let newer = echo.after.flatMap { id in messages.lastIndex { $0.id == id } }
+                .map { messages[($0 + 1)...] } ?? messages[...]
+            return newer.filter { $0.role == "user" && !claimed.contains($0.id) }
         }
         // Same text first, for every echo; only then the oldest leftover.
         for echo in echoes {

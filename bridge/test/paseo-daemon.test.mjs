@@ -4,7 +4,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { daemonAdapter, daemonSessionID, pendingHash } from '../src/sessions/daemon.mjs';
-import { createSessionService, fastValue } from '../src/sessions/service.mjs';
+import { conversationWindow, createSessionService, fastValue } from '../src/sessions/service.mjs';
 import { createSessionStore } from '../src/sessions/store.mjs';
 import { readConversation } from '../src/sessions/history.mjs';
 import { sessionImageStore } from '../src/sessions/images.mjs';
@@ -143,6 +143,32 @@ test('image attachments retain exact bytes and session isolation; malformed and 
   assert.throws(() => service.image(daemonSessionID('child'), imageID), { code: 'not_found' });
   await assert.rejects(service.sendMessage({ id, key: 'bad', body: { message: '画像', images: [{ data: 'YWJj', mimeType: 'text/html' }] } }), { status: 400 });
   assert.equal(f.calls.filter((x) => x[0] === 'send').length, 1);
+});
+
+test('conversation pages: no limit keeps the whole history; limit and before page back from the newest', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-pages-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture(), store = createSessionStore({ file: join(dir, 'sessions.json') });
+  const rows = Array.from({ length: 7 }, (_, index) => ({ id: `m${index}`, role: index % 2 ? 'assistant' : 'user', text: `t${index}` }));
+  const service = createSessionService({ sessionStore: store, daemon: f.daemon, adapter: {}, findWorkspace: async () => null,
+    history: async () => ({ items: rows, compacting: false }), notify: async () => {} });
+  await service.syncDaemon();
+  const id = daemonSessionID('parent');
+  const whole = await service.conversation(id);
+  assert.deepEqual(whole.items.map((m) => m.id), rows.map((m) => m.id));
+  assert.equal('hasOlder' in whole, false, 'an unpaged read looks as it did before paging');
+  const latest = await service.conversation(id, { limit: '3' });
+  assert.deepEqual(latest.items.map((m) => m.id), ['m4', 'm5', 'm6']);
+  assert.equal(latest.hasOlder, true);
+  const older = await service.conversation(id, { limit: '3', before: 'm4' });
+  assert.deepEqual(older.items.map((m) => m.id), ['m1', 'm2', 'm3']);
+  assert.equal(older.hasOlder, true);
+  const first = await service.conversation(id, { limit: '3', before: 'm1' });
+  assert.deepEqual(first.items.map((m) => m.id), ['m0']);
+  assert.equal(first.hasOlder, false);
+  await assert.rejects(service.conversation(id, { limit: '3', before: 'gone' }), { status: 410, code: 'cursor_expired' });
+  await assert.rejects(service.conversation(id, { limit: '0' }), { status: 400 });
+  await assert.rejects(service.conversation(id, { before: 'm4' }), { status: 400 });
+  assert.deepEqual(conversationWindow(rows, { limit: 10 }), { messages: rows, paged: true, hasOlder: false });
 });
 
 test('undelivered owner notifications survive restart and keep the complete calendar link', async (t) => {

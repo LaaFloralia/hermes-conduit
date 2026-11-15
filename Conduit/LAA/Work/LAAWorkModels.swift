@@ -52,6 +52,9 @@ struct LAAWorkConversationMessage: Codable, Identifiable {
 struct LAAWorkConversationPage: Decodable {
     let items: [LAAWorkConversationMessage]
     var compacting: Bool? = nil
+    /// Sent only for a paged read: older messages exist before `items`. An
+    /// older Bridge ignores the paging query and returns the whole history.
+    var hasOlder: Bool? = nil
 }
 
 struct LAAWorkRoutine: Codable, Identifiable {

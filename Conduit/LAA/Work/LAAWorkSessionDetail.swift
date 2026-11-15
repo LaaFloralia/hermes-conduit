@@ -28,7 +28,7 @@ private struct LAAWorkContentHeightKey: PreferenceKey {
 /// `ScrollPosition`; iOS 17 keeps the scroll-view proxy. Either way the decision
 /// is made here, from measured heights, not from a row count.
 private struct LAAWorkScrollRequest: Equatable {
-    enum Target: Equatable { case top, bottom, decision }
+    enum Target: Equatable { case top, bottom, decision, message(String) }
     var target: Target = .top
     var token = 0
     mutating func move(to target: Target) {
@@ -69,6 +69,7 @@ private struct LAAWorkPositionedScroll<Content: View>: View {
                 case .top: position.scrollTo(edge: .top)
                 case .bottom: position.scrollTo(edge: .bottom)
                 case .decision: position.scrollTo(id: "decision-start", anchor: .top)
+                case .message(let id): position.scrollTo(id: id, anchor: .top)
                 }
             }
     }
@@ -86,6 +87,10 @@ struct LAAWorkSessionDetail: View {
     @State private var events: [LAAWorkEvent] = []
     @State private var messages: [LAAWorkConversationMessage] = []
     @State private var historyReady = false
+    /// Older pages are offered above the newest one, as in Chat.
+    @State private var canLoadOlder = false
+    @State private var backfilled = false
+    @State private var loadingOlder = false
     /// The provider is compacting the conversation's context now.
     @State private var compacting = false
     /// Messages this device sent that the conversation does not show yet: a
@@ -245,6 +250,10 @@ struct LAAWorkSessionDetail: View {
                     } else if messages.isEmpty {
                         Text(verbatim: "会話はまだありません。").foregroundStyle(LAAColor.secondaryText)
                     }
+                    if canLoadOlder, !messages.isEmpty, !conversationUnavailable {
+                        TranscriptBackfillControl(isLoading: loadingOlder) { loadOlder() }
+                            .accessibilityIdentifier("work.session.loadOlder")
+                    }
                     let shown = messages
                     let speakers = shown.map(LAAWorkSpeaker.speaker)
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
@@ -256,6 +265,7 @@ struct LAAWorkSessionDetail: View {
                                           onQuote: { text in
                                               quote = LAAWorkQuoteRequest(text: text, token: (quote?.token ?? 0) &+ 1)
                                           })
+                        .id(message.id)
                     }
                     ForEach(sentEchoes) { echo in
                         LAAWorkSentEchoRow(echo: echo, queued: (session.queue?.count ?? 0) > 0)
@@ -304,7 +314,7 @@ struct LAAWorkSessionDetail: View {
             actionNotice: effortNotice,
             quote: quote,
             onSent: { text, attachments in
-                sentEchoes.append(LAAWorkSentEcho(text: text, attachments: attachments, known: messages.count))
+                sentEchoes.append(LAAWorkSentEcho(text: text, attachments: attachments, after: messages.last?.id))
                 returnToEnd()
             }
         ) { _ in
@@ -367,6 +377,8 @@ struct LAAWorkSessionDetail: View {
             DispatchQueue.main.async { scroll.scrollTo("bottom-end", anchor: .bottom) }
         case .decision:
             DispatchQueue.main.async { scroll.scrollTo("decision-start", anchor: .top) }
+        case .message(let id):
+            DispatchQueue.main.async { scroll.scrollTo(id, anchor: .top) }
         }
     }
 
@@ -456,7 +468,7 @@ struct LAAWorkSessionDetail: View {
     @discardableResult @MainActor private func refreshSnapshot() async -> Bool {
         do {
             async let detailRead: LAAWorkSession = bridge.read("/v1/sessions/\(id)")
-            async let historyRead: LAAWorkConversationPage = bridge.read("/v1/sessions/\(id)/conversation")
+            async let historyRead: LAAWorkConversationPage = bridge.read(LAAWorkTranscriptPages.latestPath(id))
             let detail = try await detailRead
             let detailData = try? snapshotData(detail)
             if detailData != lastDetailData {
@@ -471,8 +483,16 @@ struct LAAWorkSessionDetail: View {
                 let items = history.items.filter { $0.role != "tool" }
                 let data = try? snapshotData(items)
                 if data != lastHistoryData {
-                    messages = items; lastHistoryData = data
-                    LAAWorkSessionCache.save(messages, store: drafts, device: bridge.deviceID, target: id + ":messages")
+                    let shown = LAAWorkTranscriptPages.latest(items, hasOlder: history.hasOlder, onto: shownPages)
+                    messages = shown.messages; canLoadOlder = shown.canLoadOlder; backfilled = shown.backfilled
+                    lastHistoryData = data
+                    // Only the latest page is remembered, so a long session
+                    // reopens as fast as a short one.
+                    LAAWorkSessionCache.save(items, store: drafts, device: bridge.deviceID, target: id + ":messages")
+                } else if !backfilled {
+                    // The remembered page matches; only the Bridge knows
+                    // whether older pages exist.
+                    canLoadOlder = history.hasOlder ?? false
                 }
                 sentEchoes = LAAWorkSentEcho.pending(sentEchoes, in: messages)
                 historyReady = true
@@ -495,6 +515,40 @@ struct LAAWorkSessionDetail: View {
         return false
     }
 
+    private var shownPages: LAAWorkTranscriptPages.Shown {
+        LAAWorkTranscriptPages.Shown(messages: messages, canLoadOlder: canLoadOlder, backfilled: backfilled)
+    }
+
+    /// "Load earlier messages": the page before the oldest message shown lands
+    /// above it, and the page is held on that message, so what the owner was
+    /// reading stays where it was. Holding counts as the owner's own scroll:
+    /// nothing pulls the page back to the end until they return there.
+    private func loadOlder() {
+        guard !loadingOlder, let anchor = messages.first?.id else { return }
+        loadingOlder = true
+        userDragged = true; parkedOnDecision = false
+        Task { @MainActor in
+            defer { loadingOlder = false }
+            do {
+                // `request` keeps the HTTP status, so a cursor the Bridge no
+                // longer has (410) is told apart from a failed read.
+                let response: LAABridgeResponse<LAAWorkConversationPage> = try await bridge.request(
+                    method: "GET", path: LAAWorkTranscriptPages.olderPath(id, before: anchor))
+                let page = response.data
+                guard messages.first?.id == anchor else { return }
+                let older = page.items.filter { $0.role != "tool" }
+                let shown = LAAWorkTranscriptPages.prepend(older, hasOlder: page.hasOlder, onto: shownPages)
+                messages = shown.messages; canLoadOlder = shown.canLoadOlder; backfilled = shown.backfilled
+                scrollRequest.move(to: .message(anchor))
+            } catch let error as LAABridgeHTTPError where error.status == 410 {
+                // The history was rewritten under the page: start again from
+                // the latest page.
+                lastHistoryData = nil; backfilled = false
+                await refreshSnapshot()
+            } catch {}
+        }
+    }
+
     private func snapshotData<T: Encodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         return try encoder.encode(value)
@@ -503,7 +557,11 @@ struct LAAWorkSessionDetail: View {
     @MainActor private func observe() async {
         session = LAAWorkSessionCache.read(LAAWorkSession.self, store: drafts, device: bridge.deviceID, target: id)
         let cachedHistory = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages")
-        messages = (cachedHistory ?? []).filter { $0.role != "tool" }; historyReady = cachedHistory != nil
+        // A copy saved before paging may hold the whole history: open on its
+        // latest page, and let the first read say whether older ones exist.
+        messages = Array((cachedHistory ?? []).filter { $0.role != "tool" }.suffix(LAAWorkTranscriptPages.pageSize))
+        historyReady = cachedHistory != nil
+        canLoadOlder = false; backfilled = false; loadingOlder = false
         sentEchoes = []
         compacting = false
         lastDetailData = session.flatMap { try? snapshotData($0) }

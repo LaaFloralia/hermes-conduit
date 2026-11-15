@@ -175,8 +175,12 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     return { status: 200, data: { instruction: await sessions.initialInstruction(params[0]) } };
   }
 
-  async function conversation({ params }) {
-    return { status: 200, data: await sessions.conversation(params[0]) };
+  async function conversation({ req, params }) {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    return { status: 200, data: await sessions.conversation(params[0], {
+      limit: url.searchParams.get('limit'),
+      before: url.searchParams.get('before'),
+    }) };
   }
 
   return [
