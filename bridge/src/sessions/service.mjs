@@ -852,6 +852,25 @@ export function createSessionService({
     if (queueTimer) clearInterval(queueTimer);
   }
 
+  /// Send now into a running turn. The message is written to the queue first,
+  /// so a failed or unconfirmed interruption leaves it held, never lost; the
+  /// turn is then interrupted (the same confirmed cancel as the Stop button,
+  /// which leaves the session resumable) and the queue drains at once. The
+  /// stable message id keeps a retry from delivering it twice.
+  async function sendNow(id, { messageId, text }) {
+    let session = enqueue(id, { messageId, text, reason: 'interrupt' });
+    const record = requireSession(id);
+    if (record.source !== 'paseo' || !daemon) return { session, queued: true };
+    try {
+      await interruptSession(id);
+    } catch {
+      return { session: requireSession(id), queued: queuedEntries(requireSession(id)).some((row) => row.id === messageId) };
+    }
+    await flushQueue(id).catch(() => {});
+    session = requireSession(id);
+    return { session, queued: queuedEntries(session).some((row) => row.id === messageId) };
+  }
+
   async function sendMessage({ id, body = {}, key, owner = false }) {
     switcher.assertUnlocked(id);
     const record = requireSession(id);
@@ -863,6 +882,10 @@ export function createSessionService({
       ? `msg_${sha(`${id}|${key ?? ''}`).slice(0, 24)}`
       : asText(body.messageId, 'messageId', { max: 200 });
 
+    // "now" (the app's default since 2026-11-15) interrupts a running turn and
+    // delivers at once; anything else waits for the turn to end.
+    const delivery = body.delivery === undefined || body.delivery === null ? 'queue' : asText(body.delivery, 'delivery', { max: 10 });
+    if (delivery !== 'now' && delivery !== 'queue') throw badRequest('payload_invalid', 'delivery is now or queue');
     const attachments = parseImages(body.images);
     images.stage(id, messageId, attachments);
     if (owner) rememberOwnerMessage(messageId, text);
@@ -878,7 +901,10 @@ export function createSessionService({
     if (before.available) {
       const state = readiness(before.status);
       if (state === 'decision') throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
-      if (state === 'working') return { session: enqueue(id, { messageId, text }), queued: true };
+      if (state === 'working') {
+        if (delivery !== 'now') return { session: enqueue(id, { messageId, text }), queued: true };
+        return sendNow(id, { messageId, text });
+      }
     }
 
     try {

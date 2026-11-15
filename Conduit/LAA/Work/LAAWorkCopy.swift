@@ -33,6 +33,8 @@ extension LAACopy {
         static let textSize = "文字サイズ"
         static let fullEditor = "入力欄を広げる"
         static let send = "送信"
+        /// Send's explicit choice to wait for the running turn (owner 2026-11-15).
+        static let sendAfterTurn = "この手番の後に送る"
         static let checkSuccessor = "続きのセッションを確認"
         static let resolveSend = "送信状況を確認"
         static let confirmSent = "送信済みを確認"
