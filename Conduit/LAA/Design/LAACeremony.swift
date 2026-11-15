@@ -1,13 +1,14 @@
 #if LAA_BUILD
 import SwiftUI
+import UIKit
 
-/// How much light the glass holds (owner, 2026-11-14 21:45, narrowed at
-/// 22:00): a strong model or effort keeps the Liquid Glass, uncoloured, and
-/// carries the Thinking orb's fine particles inside it, more of them at the
-/// higher step. Standing is told by light, never by hue or an outline: plain
-/// glass holds none; polished glass slow particles, a soft top light and a
-/// short glint; crystal more and brighter particles, a long glint and the
-/// light caught a second time off its floor.
+/// How far the glass is veined (owner, 2026-11-15, replacing the particles of
+/// 11-14): a strong model or effort keeps the Liquid Glass, unpainted, with
+/// fine marble cracks inside it, more and brighter at the higher step, and a
+/// light drifting slowly along them. Plain glass holds none; polished glass a
+/// few veins (Fable, Astra, XHigh); crystal more veins and branches and a
+/// brighter light (Mythos, Max, Ultra Code). Never a coloured face, an
+/// outline or a pattern.
 enum LAAFinish: Int, Comparable {
     case plain = 0, polished = 1, crystal = 2
     static func < (lhs: LAAFinish, rhs: LAAFinish) -> Bool { lhs.rawValue < rhs.rawValue }
@@ -65,14 +66,15 @@ enum LAACeremony {
 }
 
 /// The glass at one moment: at rest (`elapsed` nil) or that many seconds into
-/// the movement that follows an applied change. `time` is the particles'
-/// clock in seconds; nil keeps the glass still (Reduce Motion, Low Power
-/// Mode): only its standing gloss shows, no particle.
-struct LAAGlassLook: Equatable {
+/// the movement that follows an applied change. `light` is where the slow
+/// light rests along the capsule (0 the leading end, 1 the trailing); a still
+/// glass (Reduce Motion, Low Power Mode) holds it at `LAAMarble.restLight`.
+struct LAAMarbleLook: Equatable {
     let finish: LAAFinish
+    var tone: LAAVeinTone = .stone
     var elapsed: Double? = nil
     var duration: Double = LAACeremony.slow
-    var time: Double? = nil
+    var light: Double = LAAMarble.restLight
 
     /// 0...1 through the movement, nil at rest or once it is over.
     var progress: Double? {
@@ -80,178 +82,208 @@ struct LAAGlassLook: Equatable {
         return min(1, max(0, elapsed / duration))
     }
 
-    /// How far the standing light has settled: it arrives behind the front.
-    var settled: Double { progress.map { LAACeremony.state($0) } ?? 1 }
-
-    /// The front of light across the capsule (0 the leading end, 1 the
-    /// trailing), entering and leaving outside the glass. The particles it
-    /// passes flare; it draws no band of its own.
+    /// The front the veins spread behind (0 the leading end, 1 the trailing),
+    /// entering and leaving outside the glass; nil at rest, when every vein shows.
     var front: Double? {
         guard let progress else { return nil }
-        return -0.2 + 1.4 * LAACeremony.state(progress)
+        return LAAMarble.frontFrom + (LAAMarble.frontTo - LAAMarble.frontFrom) * LAACeremony.state(progress)
     }
 
-    /// The front's strength: up quickly, gone over its last quarter, the
-    /// crystal's the strongest. Plain glass shows none.
-    var frontStrength: Double {
-        guard let progress else { return 0 }
-        let rise = min(1, progress / 0.12)
-        let fall = progress < 0.75 ? 1 : max(0, 1 - (progress - 0.75) / 0.25)
-        let level: Double = switch finish {
-        case .plain: 0.6
-        case .polished: 0.85
-        case .crystal: 1
-        }
-        return level * rise * fall
-    }
+    /// Where the light is now: riding the front during the movement.
+    var lightAt: Double { front ?? light }
 
-    /// The glass body: on the paper a touch of smoke, so the light in it can
-    /// show; on the dark a touch of lift.
-    func body(dark: Bool) -> Double {
-        let rest: Double = switch finish {
-        case .plain: 0
-        case .polished: dark ? 0.04 : 0.045
-        case .crystal: dark ? 0.07 : 0.085
-        }
-        return rest * settled
-    }
+    /// The veins themselves, before the light passes them.
+    func veinOpacity(dark: Bool) -> Double { LAAMarble.tier(finish)?.opacity(dark: dark) ?? 0 }
 
-    /// The soft light held along the top.
-    func topLight(dark: Bool) -> Double {
-        let rest: Double = switch finish {
-        case .plain: 0
-        case .polished: dark ? 0.10 : 0.7
-        case .crystal: dark ? 0.18 : 0.9
-        }
-        return rest * settled
-    }
-
-    /// The glint under the top edge: short on polished glass, long on crystal.
-    func glint(dark: Bool) -> Double {
-        let rest: Double = switch finish {
-        case .plain: 0
-        case .polished: dark ? 0.4 : 0.9
-        case .crystal: dark ? 0.6 : 1
-        }
-        return rest * settled
-    }
-
-    /// Glint length as a share of the capsule's width.
-    var glintLength: Double {
-        finish == .crystal ? 0.5 : 0.28
-    }
-
-    /// Crystal only: the light caught again off the inner floor.
-    func counterGlint(dark: Bool) -> Double { finish == .crystal ? (dark ? 0.35 : 0.8) * settled : 0 }
-
-    /// The particles at this moment, for a capsule of `size`.
-    func grains(in size: CGSize) -> [LAAGlassParticles.Grain] {
-        guard let time else { return [] }
-        return LAAGlassParticles.grains(finish: finish, size: size, time: time, front: front,
-                                        frontStrength: frontStrength, settled: settled)
+    /// The veins where the light lies: brightest under the front of an
+    /// applied change, then the resting share of it.
+    func glowOpacity(dark: Bool) -> Double {
+        guard let tier = LAAMarble.tier(finish) else { return 0 }
+        return tier.glow(dark: dark) * (front == nil ? LAAMarble.restGlowShare : 1)
     }
 }
 
-/// The fine light inside the glass, of the same kind as the Thinking orb's
-/// (LAAParticleOrb): short streaks that taper at both ends and round grains,
-/// each flaring and fading over a few seconds while it drifts slowly along the
-/// capsule, most of them near the rims so the label stays clear. Every grain
-/// is a pure function of the moment, so any instant can be drawn and captured.
-enum LAAGlassParticles {
-    struct Grain: Equatable {
-        /// Centre, in points from the capsule's top leading corner.
-        var x: Double
-        var y: Double
-        /// Along the grain's motion; a round grain has length 0.
-        var length: Double
-        var width: Double
-        /// 0...1, before the scheme's own strength.
-        var alpha: Double
-        /// One of the few brighter grains that carry a soft halo.
-        var sparkle: Bool
+/// Which white the veins carry: the stone's own, or Mythos's faint violet.
+enum LAAVeinTone: Equatable { case stone, mythos }
+
+extension LAAModelRank {
+    var tone: LAAVeinTone { self == .mythos ? .mythos : .stone }
+}
+
+/// Fine cracks inside the glass, as in a dark marble (owner, 2026-11-15):
+/// a few angular veins that taper at both ends, hairlines branching off them,
+/// laid once for the capsule's size and never redrawn per frame. A soft band
+/// of light drifts slowly along them; an applied change spreads them once
+/// from the leading end. Every vein is a pure function of the capsule, so any
+/// size draws the same and tests can read them.
+enum LAAMarble {
+    struct Tier: Equatable {
+        /// Main veins per 100 pt of capsule width, and the fewest.
+        var veinsPer100pt: Double
+        var minVeins: Int
+        var branchesPerVein: Int
+        /// The widest point of a main vein, pt.
+        var width: ClosedRange<Double>
+        var hairline: ClosedRange<Double>
+        var veinDark: Double, veinLight: Double
+        var glowDark: Double, glowLight: Double
+        /// Seconds for the light to cross the capsule once (it then comes back).
+        var drift: Double
+
+        func opacity(dark: Bool) -> Double { dark ? veinDark : veinLight }
+        func glow(dark: Bool) -> Double { dark ? glowDark : glowLight }
     }
 
-    /// Particles per 100 pt of capsule width at rest.
-    static func density(_ finish: LAAFinish) -> Double {
+    /// Fable, Astra and XHigh: a few veins, a soft light.
+    static let veined = Tier(veinsPer100pt: 1.3, minVeins: 1, branchesPerVein: 1,
+                             width: 0.45...0.75, hairline: 0.3...0.4,
+                             veinDark: 0.30, veinLight: 0.26, glowDark: 0.55, glowLight: 0.42, drift: 11)
+    /// Mythos, Max and Ultra Code: more veins and branches, a brighter light.
+    static let deep = Tier(veinsPer100pt: 2.2, minVeins: 2, branchesPerVein: 2,
+                           width: 0.55...0.95, hairline: 0.3...0.45,
+                           veinDark: 0.42, veinLight: 0.36, glowDark: 0.85, glowLight: 0.6, drift: 9)
+
+    static func tier(_ finish: LAAFinish) -> Tier? {
         switch finish {
-        case .plain: 0
-        case .polished: 12
-        case .crystal: 18
+        case .plain: nil
+        case .polished: veined
+        case .crystal: deep
         }
     }
 
-    /// How bright the particles burn at rest.
-    static func brightness(_ finish: LAAFinish) -> Double {
-        switch finish {
-        case .plain: 0
-        case .polished: 0.8
-        case .crystal: 1
+    /// Where the still light rests, and how much of its strength it keeps
+    /// once the front has passed.
+    static let restLight = 0.35
+    static let restGlowShare = 0.6
+    /// The drifting light's travel and width, as shares of the capsule's width.
+    static let lightFrom = 1.2, lightTo = -0.2
+    static let lightWidth = 0.6
+    /// The front of an applied change.
+    static let frontFrom = -0.2, frontTo = 1.2
+    static let frontWidth = 0.14
+    /// The veins thin out across the label's middle so the name stays clear.
+    static let labelShare = 0.4
+    /// The light's frame rate while it drifts: slow enough for 24 a second.
+    static let driftFrameRate: Float = 24
+
+    /// The veins' colours (white to pale grey; Mythos a faint violet), before opacity.
+    static func ink(_ tone: LAAVeinTone, dark: Bool) -> UIColor {
+        switch (tone, dark) {
+        case (.stone, true): UIColor(red: 0.93, green: 0.91, blue: 0.86, alpha: 1)   // #ECE7DC
+        case (.stone, false): UIColor(red: 0.45, green: 0.47, blue: 0.47, alpha: 1)  // pale grey on the paper glass
+        case (.mythos, true): UIColor(red: 0.87, green: 0.82, blue: 0.97, alpha: 1)
+        case (.mythos, false): UIColor(red: 0.50, green: 0.43, blue: 0.63, alpha: 1)
         }
     }
 
-    /// The short burst of grains the front carries across polished and crystal glass.
-    static let frontDensity: Double = 9
+    struct Vein: Equatable {
+        /// The crack's centre line, in points from the capsule's top leading corner.
+        var spine: [CGPoint]
+        /// Its width at each point of the spine.
+        var widths: [Double]
+        var hairline: Bool
+    }
 
-    static func grains(finish: LAAFinish, size: CGSize, time: Double, front: Double?,
-                       frontStrength: Double, settled: Double) -> [Grain] {
+    /// The veins for a capsule of `size`, `seed` telling capsules of one width apart.
+    static func veins(finish: LAAFinish, size: CGSize, seed: UInt64) -> [Vein] {
+        guard let tier = tier(finish) else { return [] }
         let w = Double(size.width), h = Double(size.height)
-        guard w > 1, h > 1 else { return [] }
-        let resting = Int((density(finish) * w / 100).rounded())
-        // Plain glass holds no particle, not even in the front (owner, 2026-11-14 22:00).
-        let burst = front == nil || finish == .plain ? 0 : Int((frontDensity * w / 100).rounded())
-        let shine = brightness(finish) * settled
-        var out: [Grain] = []
-        out.reserveCapacity(resting + burst)
-        for i in 0..<(resting + burst) {
-            let isBurst = i >= resting
-            let id = UInt64(i) &+ (isBurst ? 50_000 : 0)
-            // Each grain lives 3.2...5.6 s, then comes back elsewhere.
-            let life = 3.2 + 2.4 * hash(id, 0)
-            let clock = time / life + hash(id, 1)
-            let cycle = floor(clock), u = clock - cycle
-            let s = id &* 977 &+ UInt64(max(0, cycle)) &* 7919
-            // Drift slowly toward the trailing end, a little up or down.
-            let speed = 3 + 5 * hash(s, 3)
-            var x = hash(s, 2) * w + speed * (u - 0.5) * life
-            // The grains keep to the bands along the top and bottom rims,
-            // where the glass catches light, clear of the label between them.
-            let lane = hash(s, 4) < 0.55 ? 0.08 + 0.15 * hash(s, 5) : 0.77 + 0.15 * hash(s, 5)
-            let y = h * lane + 0.6 * sin(2 * .pi * (u + hash(s, 6)))
-            // Flare and fade (the orb's envelope), dimmer toward the ends.
-            var alpha = pow(sin(.pi * u), 0.8) * (0.55 + 0.45 * hash(s, 7))
-            if isBurst {
-                // The burst lives only around the front.
-                x = hash(s, 2) * w
-                alpha = 0.9 * (0.6 + 0.4 * hash(s, 7))
+        guard w > 4, h > 4 else { return [] }
+        let count = max(tier.minVeins, Int((tier.veinsPer100pt * w / 100).rounded()))
+        var out: [Vein] = []
+        for i in 0..<count {
+            let s = seed &+ UInt64(i) &* 0x9E37_79B9
+            // Spread the starts along the capsule so the veins do not bunch.
+            let slot = (Double(i) + 0.15 + 0.7 * hash(s, 0)) / Double(count)
+            let x0 = slot * 0.95 * w
+            let y0 = h * (0.1 + 0.8 * hash(s, 1))
+            // A shallow course toward the farther end, so each vein crosses the glass.
+            let tilt = (hash(s, 2) < 0.5 ? -1.0 : 1.0) * (4 + 12 * hash(s, 3)) * .pi / 180
+            let rise = slot > 0.5 ? Double.pi + tilt : tilt
+            let length = (0.5 + 0.55 * hash(s, 4)) * w
+            let peak = tier.width.lowerBound + (tier.width.upperBound - tier.width.lowerBound) * hash(s, 5)
+            let main = crack(from: CGPoint(x: x0, y: y0), angle: rise, length: length, peak: peak,
+                             step: 4.5, seed: s &+ 17, rootWidth: nil)
+            out.append(main)
+            for b in 0..<tier.branchesPerVein {
+                let bs = s &+ 1_000 &+ UInt64(b) &* 131
+                let at = Int(Double(main.spine.count - 1) * (0.25 + 0.5 * hash(bs, 0)))
+                let turn = (hash(bs, 1) < 0.5 ? -1.0 : 1.0) * (25 + 35 * hash(bs, 2)) * .pi / 180
+                let hair = tier.hairline.lowerBound + (tier.hairline.upperBound - tier.hairline.lowerBound) * hash(bs, 3)
+                out.append(crack(from: main.spine[at], angle: rise + turn, length: (0.12 + 0.2 * hash(bs, 4)) * w,
+                                 peak: hair, step: 3.5, seed: bs &+ 7, rootWidth: hair))
             }
-            let sparkle = hash(s, 8) < (isBurst ? 0.25 : 0.12)
-            let edge = min(x, w - x)
-            alpha *= min(1, max(0, edge / (h * 0.5)))
-            if let front {
-                let d = (x - front * w) / (0.14 * w)
-                let near = exp(-d * d)
-                alpha = isBurst ? alpha * frontStrength * near : alpha * shine * (1 + 2.2 * frontStrength * near)
-            } else {
-                alpha *= shine
-            }
-            guard alpha > 0.01 else { continue }
-            let round = hash(s, 9) < 0.45 || sparkle
-            out.append(Grain(x: x, y: y,
-                             length: round ? 0 : 1.2 + 1.4 * hash(s, 10),
-                             width: round ? (sparkle ? 0.8 : 0.5) + 0.25 * hash(s, 11) : 0.4 + 0.15 * hash(s, 11),
-                             alpha: min(1, alpha), sparkle: sparkle))
         }
         return out
     }
 
-    /// A stable pseudo-random number in 0..<1 (the orb's own hash).
-    @inline(__always) static func hash(_ a: UInt64, _ b: UInt64) -> Double { LAAParticleOrb.hash(a, b) }
+    /// One angular crack: short straight steps, each turning a little from the
+    /// last and pulled back to its course, tapering at both ends (a branch only
+    /// at its tip, starting from `rootWidth`).
+    private static func crack(from start: CGPoint, angle: Double, length: Double, peak: Double, step: Double,
+                              seed: UInt64, rootWidth: Double?) -> Vein {
+        let n = max(4, Int(length / step))
+        var points = [start], widths: [Double] = []
+        var heading = angle, p = start
+        for k in 1...n {
+            heading += (hash(seed, UInt64(k)) - 0.5) * 1.1
+            heading += (angle - heading) * 0.35
+            p = CGPoint(x: p.x + step * cos(heading), y: p.y + step * sin(heading))
+            points.append(p)
+        }
+        for k in 0...n {
+            let t = Double(k) / Double(n)
+            let shape = rootWidth == nil ? pow(sin(.pi * t), 0.6) : 1 - t
+            let grain = 0.75 + 0.5 * hash(seed &+ 991, UInt64(k))
+            widths.append(max(0.08, peak * shape * grain))
+        }
+        return Vein(spine: points, widths: widths, hairline: rootWidth != nil)
+    }
+
+    /// The veins as one filled outline: each spine offset by half its width
+    /// on both sides.
+    static func path(_ veins: [Vein]) -> CGPath {
+        let path = CGMutablePath()
+        for vein in veins where vein.spine.count > 1 {
+            let pts = vein.spine
+            var left: [CGPoint] = [], right: [CGPoint] = []
+            for k in pts.indices {
+                let a = pts[max(0, k - 1)], b = pts[min(pts.count - 1, k + 1)]
+                let dx = b.x - a.x, dy = b.y - a.y
+                let len = max(0.0001, sqrt(dx * dx + dy * dy))
+                let nx = -dy / len, ny = dx / len, half = vein.widths[k] / 2
+                left.append(CGPoint(x: pts[k].x + nx * half, y: pts[k].y + ny * half))
+                right.append(CGPoint(x: pts[k].x - nx * half, y: pts[k].y - ny * half))
+            }
+            path.addLines(between: left + right.reversed())
+            path.closeSubpath()
+        }
+        return path
+    }
+
+    /// A stable seed for a capsule's label, so two capsules of one width differ.
+    static func seed(_ text: String?) -> UInt64 {
+        var h: UInt64 = 0xCBF2_9CE4_8422_2325
+        for byte in (text ?? "").utf8 { h = (h ^ UInt64(byte)) &* 0x100_0000_01B3 }
+        return h
+    }
+
+    /// A stable pseudo-random number in 0..<1.
+    @inline(__always) static func hash(_ a: UInt64, _ b: UInt64) -> Double {
+        var z = a &+ b &* 0x9E37_79B9_7F4A_7C15 &+ 0x632B_E59B_D9B4_E019
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        z ^= z >> 31
+        return Double(z >> 11) / Double(UInt64(1) << 53)
+    }
 }
 
-/// The light is drawn inside the native glass and clipped to it, behind the
+/// The veins are drawn inside the native glass and clipped to it, behind the
 /// label: no outline, colour, shadow or movement outside the control.
 private struct LAAGlassSelection: ViewModifier {
     let finish: LAAFinish
+    let tone: LAAVeinTone
+    let seed: UInt64
     let motion: LAAGlassMotion
     let duration: Double
     let cornerRadius: CGFloat
@@ -264,163 +296,283 @@ private struct LAAGlassSelection: ViewModifier {
         if reduceTransparency {
             content.background {
                 shape.fill(LAAColor.surface)
-                    .overlay { light.clipShape(shape) }
+                    .overlay { veins.clipShape(shape) }
             }
         } else {
             content
-                .background { light.clipShape(shape).allowsHitTesting(false).accessibilityHidden(true) }
+                .background { veins.clipShape(shape).allowsHitTesting(false).accessibilityHidden(true) }
                 .conduitGlassControl(cornerRadius: cornerRadius, tint: .clear, interactive: true)
         }
     }
 
-    @ViewBuilder private var light: some View {
-        switch motion {
-        case .live(let start):
-            LAAGlassLive(finish: finish, start: start, duration: duration, dark: scheme == .dark)
-        case .frozen(let elapsed, let time):
-            LAAGlassLight(look: .init(finish: finish, elapsed: elapsed, duration: duration, time: time),
-                          dark: scheme == .dark)
+    @ViewBuilder private var veins: some View {
+        if finish != .plain {
+            switch motion {
+            case .live(let start):
+                LAAGlassLive(look: .init(finish: finish, tone: tone, duration: duration), seed: seed,
+                             start: start, dark: scheme == .dark)
+            case .frozen(let elapsed, let light):
+                LAAMarbleVeins(look: .init(finish: finish, tone: tone, elapsed: elapsed, duration: duration,
+                                           light: light ?? LAAMarble.restLight),
+                               seed: seed, dark: scheme == .dark, moves: false, start: nil)
+            }
         }
     }
 }
 
-/// What drives the glass: the running clock (`live`, with the start of the
-/// movement after an applied change), or one held moment for a capture.
+/// What drives the glass: the running light (`live`, with the start of the
+/// movement after an applied change), or one held moment for a capture
+/// (`light` nil: where the still light rests).
 enum LAAGlassMotion: Equatable {
     case live(Date?)
-    case frozen(elapsed: Double?, time: Double?)
+    case frozen(elapsed: Double?, light: Double?)
 }
 
-/// The running glass. Its clock ticks only while the particles can be seen
-/// and moving is allowed: 24 frames a second at rest, the display's rate for
-/// the short movement after a change. It stops off screen, in the
-/// background, with Reduce Motion and in Low Power Mode, where the glass
-/// keeps its still gloss and no particle.
+/// The running glass. The light drifts only while it can be seen and moving
+/// is allowed; off screen, in the background, with Reduce Motion and in Low
+/// Power Mode the veins stay still with the light at rest.
 private struct LAAGlassLive: View {
-    let finish: LAAFinish
+    let look: LAAMarbleLook
+    let seed: UInt64
     let start: Date?
-    let duration: Double
     let dark: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var onScreen = false
 
-    private var moves: Bool { !reduceMotion && !lowPower }
-    private var moving: Bool { moves && start != nil }
-
     var body: some View {
-        let paused = !moves || !onScreen || scenePhase == .background || finish == .plain
-        TimelineView(.animation(minimumInterval: moving ? nil : 1.0 / 24, paused: paused)) { context in
-            let clock = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 86_400)
-            LAAGlassLight(look: .init(finish: finish, elapsed: moving ? start.map { context.date.timeIntervalSince($0) } : nil,
-                                      duration: duration, time: moves ? clock : nil),
-                          dark: dark)
-        }
-        .onAppear { onScreen = true }
-        .onDisappear { onScreen = false }
-        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
-            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-        }
+        LAAMarbleVeins(look: look, seed: seed, dark: dark,
+                       moves: !reduceMotion && !lowPower && onScreen && scenePhase != .background,
+                       start: reduceMotion ? nil : start)
+            .onAppear { onScreen = true }
+            .onDisappear { onScreen = false }
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+                lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
     }
 }
 
-/// What the glass holds: its body, the soft top light and the glints, and the
-/// particles (LAAGlassParticles).
-private struct LAAGlassLight: View {
-    let look: LAAGlassLook
+/// The veins as Core Animation layers: the outline is built once per size,
+/// and the drift and the front are layer animations the render server runs,
+/// so a resting capsule costs the app's main thread nothing per frame.
+private struct LAAMarbleVeins: UIViewRepresentable {
+    let look: LAAMarbleLook
+    let seed: UInt64
     let dark: Bool
+    let moves: Bool
+    let start: Date?
 
-    /// The light: the light surface on the paper, the paper ink on the dark.
-    private var glassLight: Color { dark ? LAAColor.text : LAAColor.surface }
-    /// The glass's own shade: ink on the paper, the dark ground on the dark.
-    private var shade: Color { dark ? LAAColor.background : LAAColor.text }
-
-    var body: some View {
-        GeometryReader { proxy in
-            let size = proxy.size
-            ZStack(alignment: .topLeading) {
-                if look.finish != .plain {
-                    Rectangle().fill((dark ? glassLight : shade).opacity(look.body(dark: dark)))
-                    LinearGradient(stops: [.init(color: glassLight.opacity(look.topLight(dark: dark)), location: 0),
-                                           .init(color: glassLight.opacity(0), location: 0.5)],
-                                   startPoint: .top, endPoint: .bottom)
-                    glint(look.glint(dark: dark), from: 0.14, length: look.glintLength, y: 2.5, size: size)
-                }
-                if look.finish == .crystal {
-                    glint(look.counterGlint(dark: dark), from: 0.64, length: 0.2, y: size.height - 4, size: size)
-                }
-                if look.time != nil {
-                    LAAGlassGrains(grains: look.grains(in: size), dark: dark)
-                }
-            }
-            .frame(width: size.width, height: size.height, alignment: .topLeading)
-        }
+    func makeUIView(context: Context) -> LAAMarbleView {
+        let view = LAAMarbleView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
     }
 
-    /// A fine line of light that fades at both ends.
-    private func glint(_ strength: Double, from: Double, length: Double, y: CGFloat, size: CGSize) -> some View {
-        Capsule()
-            .fill(LinearGradient(stops: [.init(color: glassLight.opacity(0), location: 0),
-                                         .init(color: glassLight.opacity(strength), location: 0.4),
-                                         .init(color: glassLight.opacity(0), location: 1)],
-                                 startPoint: .leading, endPoint: .trailing))
-            .frame(width: size.width * length, height: 1.5)
-            .offset(x: size.width * from, y: y)
+    func updateUIView(_ view: LAAMarbleView, context: Context) {
+        view.apply(.init(look: look, seed: seed, dark: dark, moves: moves, start: start))
     }
 }
 
-/// The particles, drawn as the orb draws its own: on the dark, blue-white
-/// light that adds, with a soft bloom; on the paper, the orb's teal, crisp,
-/// with a faint teal bleed (ink read as dust on the light glass).
-private struct LAAGlassGrains: View {
-    let grains: [LAAGlassParticles.Grain]
-    let dark: Bool
-
-    /// The orb's light and bloom on the dark (LAAParticleOrb).
-    private static let light = Color(red: 0.82, green: 0.89, blue: 1.0)
-    private static let bloom = Color(red: 0.66, green: 0.79, blue: 1.0)
-
-    var body: some View {
-        Canvas { context, _ in
-            let ink = dark ? Self.light : LAAColor.ownBubble
-            let glow = dark ? Self.bloom : LAAColor.ownBubble
-            let strength = dark ? 0.95 : 0.6
-            context.blendMode = dark ? .plusLighter : .normal
-            context.drawLayer { layer in
-                layer.addFilter(.blur(radius: 1.2))
-                for g in grains where g.sparkle {
-                    let r = 2.2 * g.width + 0.6
-                    layer.fill(Path(ellipseIn: CGRect(x: g.x - r, y: g.y - r, width: 2 * r, height: 2 * r)),
-                               with: .color(glow.opacity((dark ? 0.45 : 0.12) * g.alpha)))
-                }
-            }
-            for g in grains {
-                context.fill(shape(g), with: .color(ink.opacity(strength * g.alpha)))
-            }
-        }
-        .allowsHitTesting(false)
+final class LAAMarbleView: UIView {
+    struct Config: Equatable {
+        var look: LAAMarbleLook
+        var seed: UInt64
+        var dark: Bool
+        var moves: Bool
+        var start: Date?
     }
 
-    /// A streak along the drift that tapers to nothing at both ends, or a round grain.
-    private func shape(_ g: LAAGlassParticles.Grain) -> Path {
-        guard g.length > 0 else {
-            return Path(ellipseIn: CGRect(x: g.x - g.width, y: g.y - g.width, width: 2 * g.width, height: 2 * g.width))
+    private var config: Config?
+    private var builtFor: (CGSize, LAAFinish, UInt64)?
+    private var playedStart: Date?
+    /// The width the drift was laid for; nil while the light is still.
+    private var driftWidth: CGFloat?
+    /// Thins the veins across the label's middle (static).
+    private let labelMask = CAGradientLayer()
+    /// Spreads the veins behind the front of an applied change.
+    private let spread = CALayer()
+    private let spreadMask = CAGradientLayer()
+    private let veins = CAShapeLayer()
+    /// The veins again, brighter, seen only through the drifting band.
+    private let glow = CALayer()
+    private let glowVeins = CAShapeLayer()
+    private let glowHalo = CAShapeLayer()
+    private let band = CAGradientLayer()
+
+    private static let driftKey = "laa.marble.drift"
+    private static let frontKeys = ["laa.marble.front", "laa.marble.frontLight", "laa.marble.frontGlow"]
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        let opaque = UIColor.black.cgColor, clear = UIColor.clear.cgColor
+        let thin = UIColor.black.withAlphaComponent(LAAMarble.labelShare).cgColor
+        labelMask.colors = [opaque, opaque, thin, opaque, opaque]
+        labelMask.locations = [0, 0.26, 0.5, 0.74, 1]
+        layer.mask = labelMask
+        spreadMask.startPoint = CGPoint(x: 0, y: 0.5); spreadMask.endPoint = CGPoint(x: 1, y: 0.5)
+        spreadMask.colors = [opaque, opaque, clear, clear]
+        band.startPoint = CGPoint(x: 0, y: 0.5); band.endPoint = CGPoint(x: 1, y: 0.5)
+        band.colors = [clear, opaque, clear]
+        band.locations = [0, 0.5, 1]
+        glowHalo.fillColor = nil
+        glowHalo.lineJoin = .round
+        layer.addSublayer(spread)
+        spread.addSublayer(veins)
+        spread.addSublayer(glow)
+        glow.addSublayer(glowHalo)
+        glow.addSublayer(glowVeins)
+        glow.mask = band
+        NotificationCenter.default.addObserver(self, selector: #selector(resume),
+                                               name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func apply(_ next: Config) {
+        let previous = config
+        config = next
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        if previous?.look.finish != next.look.finish || previous?.seed != next.seed { builtFor = nil }
+        layoutLayers()
+        paint(next)
+        place(next)
+        if previous?.moves != next.moves || previous?.look.finish != next.look.finish || driftWidth != bounds.width {
+            drift(next)
         }
-        let half = g.length / 2
-        var p = Path()
-        p.move(to: CGPoint(x: g.x - half, y: g.y))
-        p.addQuadCurve(to: CGPoint(x: g.x + half, y: g.y), control: CGPoint(x: g.x, y: g.y - g.width))
-        p.addQuadCurve(to: CGPoint(x: g.x - half, y: g.y), control: CGPoint(x: g.x, y: g.y + g.width))
-        p.closeSubpath()
-        return p
+        if next.moves, let start = next.start, start != playedStart {
+            playedStart = start
+            let elapsed = Date().timeIntervalSince(start)
+            if elapsed < next.look.duration { playFront(elapsed: max(0, elapsed), config: next) }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layoutLayers()
+        if let config { place(config) }
+        CATransaction.commit()
+        if let config, driftWidth != bounds.width { drift(config) }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { stop() } else if let config { drift(config) }
+    }
+
+    @objc private func resume() { if let config, window != nil { drift(config) } }
+
+    private func layoutLayers() {
+        let size = bounds.size
+        for l in [labelMask, spread, veins, glow, glowVeins, glowHalo] as [CALayer] { l.frame = bounds }
+        guard let config, size.width > 1, size.height > 1 else { return }
+        if let built = builtFor, built.0 == size, built.1 == config.look.finish, built.2 == config.seed { return }
+        builtFor = (size, config.look.finish, config.seed)
+        let path = LAAMarble.path(LAAMarble.veins(finish: config.look.finish, size: size, seed: config.seed))
+        veins.path = path
+        glowVeins.path = path
+        glowHalo.path = path
+    }
+
+    private func paint(_ config: Config) {
+        let ink = LAAMarble.ink(config.look.tone, dark: config.dark)
+        veins.fillColor = ink.withAlphaComponent(config.look.veinOpacity(dark: config.dark)).cgColor
+        let peak = LAAMarble.tier(config.look.finish)?.glow(dark: config.dark) ?? 0
+        glowVeins.fillColor = ink.withAlphaComponent(peak).cgColor
+        // On the dark the light also blooms a little round each vein; on the
+        // paper the vein only sharpens.
+        glowHalo.strokeColor = config.dark ? ink.withAlphaComponent(0.22 * peak).cgColor : nil
+        glowHalo.lineWidth = config.dark ? 1.6 : 0
+    }
+
+    /// The held state: the spread, the band and the light's strength for this moment.
+    private func place(_ config: Config) {
+        let w = bounds.width, h = bounds.height
+        guard w > 1 else { return }
+        let edge = LAAMarble.frontWidth / 2 / 4
+        spreadMask.locations = [0, NSNumber(value: 0.5 - edge), NSNumber(value: 0.5 + edge), 1]
+        spreadMask.bounds = CGRect(x: 0, y: 0, width: 4 * w, height: h)
+        if let front = config.look.front {
+            spreadMask.position = CGPoint(x: front * w, y: h / 2)
+            spread.mask = spreadMask
+        } else if spreadMask.animation(forKey: Self.frontKeys[0]) == nil {
+            // At rest every vein shows; a front still running keeps its mask.
+            spread.mask = nil
+        }
+        band.bounds = CGRect(x: 0, y: 0, width: LAAMarble.lightWidth * w, height: h)
+        band.position = CGPoint(x: config.look.lightAt * w, y: h / 2)
+        let peak = LAAMarble.tier(config.look.finish)?.glow(dark: config.dark) ?? 0
+        glow.opacity = Float(peak > 0 ? config.look.glowOpacity(dark: config.dark) / peak : 0)
+    }
+
+    /// The front of an applied change: the veins spread from the leading end
+    /// with the light riding at the front, the light then easing to its rest.
+    private func playFront(elapsed: Double, config: Config) {
+        let w = bounds.width, h = bounds.height
+        guard w > 1 else { return }
+        let curve = CAMediaTimingFunction(controlPoints: 0.25, 0.9, 0.3, 1)
+        let from = LAAMarble.frontFrom * w, to = LAAMarble.frontTo * w
+        func run(_ key: String, _ path: String, _ a: Any, _ b: Any, on target: CALayer) {
+            let anim = CABasicAnimation(keyPath: path)
+            anim.fromValue = a; anim.toValue = b
+            anim.duration = config.look.duration
+            anim.timingFunction = curve
+            anim.timeOffset = elapsed
+            target.add(anim, forKey: key)
+        }
+        spreadMask.bounds = CGRect(x: 0, y: 0, width: 4 * w, height: h)
+        spreadMask.position = CGPoint(x: 1.5 * w, y: h / 2)
+        spread.mask = spreadMask
+        run(Self.frontKeys[0], "position.x", from, to, on: spreadMask)
+        run(Self.frontKeys[1], "position.x", from, to, on: band)
+        run(Self.frontKeys[2], "opacity", 1.0, LAAMarble.restGlowShare, on: glow)
+        // The drift takes over where the front leaves the light.
+        drift(config, after: config.look.duration - elapsed)
+    }
+
+    /// The slow light: across the capsule and back, at 24 frames a second at
+    /// most, run by the render server. Removed while the glass is still.
+    private func drift(_ config: Config, after delay: Double = 0) {
+        band.removeAnimation(forKey: Self.driftKey)
+        driftWidth = nil
+        let w = bounds.width
+        guard config.moves, window != nil, w > 1, let tier = LAAMarble.tier(config.look.finish) else { return }
+        driftWidth = w
+        let anim = CABasicAnimation(keyPath: "position.x")
+        anim.fromValue = LAAMarble.lightFrom * w
+        anim.toValue = LAAMarble.lightTo * w
+        anim.duration = tier.drift
+        anim.autoreverses = true
+        anim.repeatCount = .infinity
+        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        anim.isRemovedOnCompletion = false
+        // No backward fill: until it begins, the front's own movement holds the band.
+        anim.beginTime = band.convertTime(CACurrentMediaTime(), from: nil) + max(0, delay)
+        anim.preferredFrameRateRange = CAFrameRateRange(minimum: 8, maximum: LAAMarble.driftFrameRate,
+                                                        preferred: LAAMarble.driftFrameRate)
+        band.add(anim, forKey: Self.driftKey)
+    }
+
+    private func stop() {
+        driftWidth = nil
+        band.removeAllAnimations()
+        spreadMask.removeAllAnimations()
+        glow.removeAllAnimations()
+        if let config { place(config) }
     }
 }
 
 extension View {
-    func laaGlassSelection(finish: LAAFinish, motion: LAAGlassMotion, duration: Double = LAACeremony.slow,
+    func laaGlassSelection(finish: LAAFinish, tone: LAAVeinTone = .stone, seed: UInt64 = 0,
+                           motion: LAAGlassMotion, duration: Double = LAACeremony.slow,
                            cornerRadius: CGFloat) -> some View {
-        modifier(LAAGlassSelection(finish: finish, motion: motion, duration: duration, cornerRadius: cornerRadius))
+        modifier(LAAGlassSelection(finish: finish, tone: tone, seed: seed, motion: motion,
+                                   duration: duration, cornerRadius: cornerRadius))
     }
 }
 
