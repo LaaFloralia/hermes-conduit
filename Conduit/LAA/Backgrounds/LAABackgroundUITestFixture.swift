@@ -128,6 +128,25 @@ final class LAABackgroundFixture: ObservableObject {
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
             }
         }
+        // A reply streamed a few seconds after the chat opens, for the glass
+        // bubbles' updates while the text grows: "-LAA_FIXTURE_STREAM".
+        if args.contains("-LAA_FIXTURE_STREAM") {
+            Task { @MainActor [weak app] in
+                try? await Task.sleep(for: .seconds(4))
+                guard let app else { return }
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+                app.handleStreamEvent(.messageStart(sessionId: conversationID))
+                for _ in 0..<6 {
+                    for word in ["午前は", "予定を", "確認し、", "午後は", "資料を", "仕上げましょう。"] {
+                        try? await Task.sleep(for: .milliseconds(120))
+                        app.handleStreamEvent(.messageDelta(sessionId: conversationID, text: word))
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(300))
+                app.handleStreamEvent(.messageComplete(sessionId: conversationID, messageId: "fixture-streamed", content: nil, reasoning: nil))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: false))
+            }
+        }
         // What Hermes reports for the chat's running agent: "model,provider,effort".
         if let runtime = args.firstIndex(of: "-LAA_FIXTURE_RUNTIME").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
             let parts = runtime.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
@@ -343,10 +362,11 @@ struct LAABackgroundUITestFixtureScreen: View {
                     } else {
                         try LAABackgroundStore.shared.save(LAABackground(kind: kind), for: key)
                     }
-                    // "-LAA_CAPTURE_BUBBLE glass"; otherwise the standard
-                    // bubbles, whatever an earlier launch saved.
+                    // "-LAA_CAPTURE_BUBBLE glass" or "standard" chooses the
+                    // bubbles; otherwise they follow the background, whatever
+                    // an earlier launch saved.
                     var saved = LAABackgroundStore.shared.setting(for: key)
-                    saved.bubble = argument("-LAA_CAPTURE_BUBBLE").flatMap(LAABackground.Bubble.init(rawValue:)) ?? .standard
+                    saved.bubbleChoice = argument("-LAA_CAPTURE_BUBBLE").flatMap(LAABackground.Bubble.init(rawValue:))
                     try LAABackgroundStore.shared.save(saved, for: key)
                     captureReady = true
                 } catch {

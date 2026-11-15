@@ -36,14 +36,15 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         XCTAssertEqual(reopened.setting(for: key(dashboard: UUID())).kind, .paper)
     }
 
-    func testBubbleChoiceIsScopedDefaultsToStandardAndSurvivesBackgroundChanges() throws {
+    func testBubblesFollowTheBackgroundUntilChosenAndTheChoiceIsScoped() throws {
         let store = LAABackgroundStore(directory: directory)
         XCTAssertEqual(store.setting(for: key()).bubble, .standard)
-        try store.save(LAABackground(kind: .paper, bubble: .glass), for: key())
+        XCTAssertNil(store.setting(for: key()).bubbleChoice)
+        try store.save(LAABackground(kind: .paper, bubbleChoice: .glass), for: key())
         XCTAssertEqual(LAABackgroundStore(directory: directory).setting(for: key()).bubble, .glass)
         XCTAssertEqual(store.setting(for: key("two")).bubble, .standard)
         XCTAssertEqual(store.setting(for: key(profile: "laa-cto")).bubble, .standard)
-        // A photo chosen afterwards keeps the bubbles, and so does its loss.
+        // A photo chosen afterwards keeps the choice, and so does its loss.
         let photo = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).image { context in
             UIColor.gray.setFill(); context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
         }.pngData()!
@@ -54,16 +55,45 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         try FileManager.default.removeItem(at: directory.appendingPathComponent(try XCTUnwrap(saved.photoID) + ".jpg"))
         XCTAssertEqual(store.setting(for: key()).kind, .paper)
         XCTAssertEqual(store.setting(for: key()).bubble, .glass)
+
+        // With no choice a picture brings the glass and paper takes it away;
+        // the owner's "いまの見た目" over a picture stays.
+        try store.savePhoto(photo, for: key("three"), dim: 0, blur: 0)
+        XCTAssertEqual(store.setting(for: key("three")).bubble, .glass)
+        try store.save(LAABackground(kind: .ink), for: key("three"))
+        XCTAssertEqual(store.setting(for: key("three")).bubble, .standard)
+        try store.save(LAABackground(kind: .paper, bubbleChoice: .standard), for: key("four"))
+        try store.savePhoto(photo, for: key("four"), dim: 0, blur: 0)
+        XCTAssertEqual(store.setting(for: key("four")).kind, .photo)
+        XCTAssertEqual(store.setting(for: key("four")).bubble, .standard)
     }
 
-    func testRecordsSavedBeforeTheBubbleChoiceDecodeAsStandard() throws {
+    func testRecordsSavedBeforeTheChoiceFollowTheBackground() throws {
         let old = #"{"kind":"tealNight","dim":0,"blur":0,"brightestComponent":1}"#
         XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: Data(old.utf8)),
                        LAABackground(kind: .tealNight))
-        let unknown = #"{"kind":"ink","dim":0,"blur":0,"brightestComponent":1,"bubble":"frosted"}"#
-        XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: Data(unknown.utf8)).bubble, .standard)
-        let glass = LAABackground(kind: .ink, bubble: .glass)
-        XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: JSONEncoder().encode(glass)), glass)
+        // 2611151632 wrote "bubble" on every save: its "standard" over a
+        // picture is not a choice and becomes glass, its "glass" stays.
+        let firstBuildPhoto = #"{"kind":"photo","dim":0,"blur":0,"brightestComponent":1,"bubble":"standard"}"#
+        let decoded = try JSONDecoder().decode(LAABackground.self, from: Data(firstBuildPhoto.utf8))
+        XCTAssertNil(decoded.bubbleChoice)
+        XCTAssertEqual(decoded.bubble, .glass)
+        let firstBuildGlass = #"{"kind":"paper","dim":0,"blur":0,"brightestComponent":1,"bubble":"glass"}"#
+        XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: Data(firstBuildGlass.utf8)).bubbleChoice, .glass)
+        let unknown = #"{"kind":"ink","dim":0,"blur":0,"brightestComponent":1,"bubbleChoice":"frosted"}"#
+        XCTAssertNil(try JSONDecoder().decode(LAABackground.self, from: Data(unknown.utf8)).bubbleChoice)
+        for choice in [LAABackground.Bubble.standard, .glass] {
+            let value = LAABackground(kind: .photo, bubbleChoice: choice)
+            XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: JSONEncoder().encode(value)), value)
+        }
+    }
+
+    /// The bubbles' glass lets the background through: light tints over
+    /// the dark backgrounds, denser ones on the paper (owner, 2026-11-16).
+    func testGlassTintsLetTheBackgroundThrough() {
+        XCTAssertLessThan(LAABubbleGlass.replyTintDark, 0.5)
+        XCTAssertLessThan(LAABubbleGlass.ownTintDark, 0.8)
+        XCTAssertLessThan(LAABubbleGlass.ownTintLight, 1)
     }
 
     func testPhotoIsDownscaledPersistsAndMissingFallsBackToPaper() throws {

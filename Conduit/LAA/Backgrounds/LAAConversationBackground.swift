@@ -313,7 +313,7 @@ struct LAABackgroundPicker: View {
     }
 
     private func select(_ bubble: LAABackground.Bubble) {
-        value.bubble = bubble
+        value.bubbleChoice = bubble
         persist()
     }
 
@@ -348,33 +348,32 @@ struct LAABackgroundPicker: View {
 }
 
 /// A message bubble: the opaque surface (the owner's teal, the reply's
-/// paper card), or Liquid Glass when the conversation's bubble choice is
-/// `glass`. The glass is regular, tinted with the design's glass face (or
-/// the owner's teal) so the text keeps its contrast over a photo, and has
-/// the glass's 1pt rim. Reduce Transparency and iOS 17–25 keep the opaque
-/// surface.
+/// paper card), or Liquid Glass when the conversation's bubbles are
+/// `glass` (by choice, or by default over a picture). The glass is clear,
+/// so the background shows through, tinted with the reply's night surface
+/// or the owner's teal: lightly over the dark backgrounds (every picture
+/// among them), densely on the paper, where the owner's light text needs
+/// the teal. The text keeps its colours; its contrast comes from the tint
+/// and the photo's own dimming (`LAABackground.safeDim`), never from an
+/// opaque layer. Each bubble's glass sits in its own container, so a
+/// streaming reply's growing text redraws one glass shape. Reduce
+/// Transparency and iOS 17–25 keep the opaque surface.
 private struct LAABubbleSurface: ViewModifier {
     let own: Bool
     @Environment(\.laaBubble) private var bubble
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous)
         let padded = content.padding(.horizontal, 14).padding(.vertical, 10)
             .modifier(LAAAssistantInk(applies: !own))
         if #available(iOS 26.0, *), bubble == .glass, !reduceTransparency {
-            #if targetEnvironment(macCatalyst)
-            // The Mac's glass drew no tint (a grey bubble under the owner's
-            // light text, 1.5:1), so the colour lies on the glass instead.
-            padded
-                .background(own ? LAABubbleGlass.macOwnFace : LAABubbleGlass.face, in: shape)
-                .glassEffect(.regular, in: shape)
-                .overlay { shape.strokeBorder(own ? LAABubbleGlass.ownRim : LAABubbleGlass.rim, lineWidth: 1) }
-            #else
-            padded
-                .glassEffect(.regular.tint(own ? LAABubbleGlass.ownTint : LAABubbleGlass.face), in: shape)
-                .overlay { shape.strokeBorder(own ? LAABubbleGlass.ownRim : LAABubbleGlass.rim, lineWidth: 1) }
-            #endif
+            let dark = colorScheme == .dark
+            GlassEffectContainer {
+                padded.glassEffect(LAABubbleGlass.glass(own: own, dark: dark), in: shape)
+            }
+            .overlay { shape.strokeBorder(LAABubbleGlass.rim(own: own, dark: dark), lineWidth: 1) }
         } else {
             padded.background(own ? LAAColor.ownBubble : LAAColor.surface, in: shape)
         }
@@ -388,26 +387,44 @@ private struct LAAAssistantInk: ViewModifier {
     }
 }
 
-/// The glass bubbles' colours, from the design's glass values for the
-/// operating layer (`laa-design show app`: face rgba(255,253,248,.72) and
-/// rim #D7D5CC; dark face rgba(36,54,56,.66) and rim rgba(236,231,220,.16)).
+/// The glass bubbles' values (owner, 2026-11-16 07:00: "背景が少し見える
+/// くらいの透明度", the owner's bubble too). Clear glass on both platforms:
+/// the Mac draws no tint on regular glass in the light appearance (a grey
+/// bubble under the owner's light text, 1.1:1), while clear glass takes it.
+/// Tints measured on the brightest picture the dimming allows (a white
+/// photo): reply 5.3:1, owner 5.1:1 on iPhone. Colours from
+/// `laa-design show app`: the night surface #172627, the owner's teal
+/// (`ownBubble`, light #00585E, dark #1E6B70), the paper's glass face
+/// #FFFDF8 and rims #D7D5CC / rgba(236,231,220,.16).
 enum LAABubbleGlass {
-    static let face = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 36 / 255, green: 54 / 255, blue: 56 / 255, alpha: 0.66)
-            : UIColor(red: 1, green: 253 / 255, blue: 248 / 255, alpha: 0.72)
-    })
-    static let rim = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 236 / 255, green: 231 / 255, blue: 220 / 255, alpha: 0.16)
-            : UIColor(red: 215 / 255, green: 213 / 255, blue: 204 / 255, alpha: 1)
-    })
-    /// The owner's teal (`ownBubble`) as the glass's tint.
-    static let ownTint = LAAColor.ownBubble
-    /// On the Mac the teal lies on the glass, dense enough to keep the
-    /// owner's light text at 4.5:1 over the palest glass.
-    static let macOwnFace = LAAColor.ownBubble.opacity(0.85)
-    static let ownRim = Color(uiColor: UIColor(red: 236 / 255, green: 231 / 255, blue: 220 / 255, alpha: 0.16))
+    /// Tint strength of the reply's glass over the dark backgrounds.
+    static let replyTintDark = 0.45
+    /// Tint strength of the owner's teal glass over the dark backgrounds.
+    static let ownTintDark = 0.65
+    /// On the paper: the reply's ivory face and the owner's teal.
+    static let replyTintLight = 0.55
+    static let ownTintLight = 0.92
+
+    @available(iOS 26.0, *)
+    static func glass(own: Bool, dark: Bool) -> Glass {
+        if dark {
+            return .clear.tint(own ? teal(dark: true).opacity(ownTintDark) : night.opacity(replyTintDark))
+        }
+        return .clear.tint(own ? teal(dark: false).opacity(ownTintLight) : ivory.opacity(replyTintLight))
+    }
+
+    static func rim(own: Bool, dark: Bool) -> Color {
+        dark || own ? darkRim : lightRim
+    }
+
+    static let night = Color(red: 0x17 / 255, green: 0x26 / 255, blue: 0x27 / 255)
+    static let ivory = Color(red: 1, green: 253 / 255, blue: 248 / 255)
+    static func teal(dark: Bool) -> Color {
+        dark ? Color(red: 0x1E / 255, green: 0x6B / 255, blue: 0x70 / 255)
+             : Color(red: 0, green: 0x58 / 255, blue: 0x5E / 255)
+    }
+    static let darkRim = Color(red: 236 / 255, green: 231 / 255, blue: 220 / 255).opacity(0.16)
+    static let lightRim = Color(red: 215 / 255, green: 213 / 255, blue: 204 / 255)
 }
 private struct LAAPhotoSupportingText: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
