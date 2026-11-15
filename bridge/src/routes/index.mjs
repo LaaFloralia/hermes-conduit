@@ -51,6 +51,7 @@ import { ownerProfileRoutes } from './owner-profile.mjs';
 import { createPhoneUse } from '../phone-use/service.mjs';
 import { phoneUseRoutes } from '../phone-use/routes.mjs';
 import { deviceReportRoutes } from './device-reports.mjs';
+import { campaignRoutes } from './campaigns.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -201,6 +202,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...refRoutes({ refs }),
     ...ownerProfileRoutes({ dir: store.dir }),
     ...deviceReportRoutes({ dir: store.dir, now }),
+    ...campaignRoutes(options.campaigns ?? {}),
     ...phoneUseRoutes({ service: options.phoneUse?.service ?? createPhoneUse({ dir: store.dir, now, devices: (id) => store.read().devices?.[id] ?? null }) }),
   ];
   // Start after every factory has registered its source: the first live pass

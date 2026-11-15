@@ -117,6 +117,18 @@ continue to use `/v1/sessions/{id}/decision` and `/reply`. Optional boolean
 changing the record; closed decisions remain `decision_closed`. Device/request-ID
 replays are checked before expiry and ignore `quick` in the answer digest.
 
+Campaign decisions (Work › Campaigns, 2026-11-15) pass through the
+campaign-hunt skill's ledger commands; the Bridge never opens the ledger file.
+It runs `ledger.py pending --all` and `ledger.py decide <key> approve|decline`
+(`/usr/bin/python3` and `~/.agents/skills/campaign-hunt/scripts/ledger.py`,
+overridable with `LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`), one decision
+at a time, and drops the ledger's path from the answer.
+
+| method / path | scope | response |
+|---|---|---|
+| `GET /v1/campaigns` | `sessions:read` | `{count,items[{key,status,title,organizer,prize,deadline,reason,conditions,url,at,decidedAt}]}`; `status` is `needs_owner`, `approved` or `declined`; `count` is the waiting ones. A row without a 16-hex key, title or http(s) URL is dropped. `503 campaigns_unavailable` (retryable) when the ledger cannot be read |
+| `POST /v1/campaigns/{key}/decide` | `sessions:write` + `Idempotency-Key` | `{choice:"approve"\|"decline"}` → `{key,status,decidedAt}`; `404 campaign_not_found`, `409 campaign_not_pending` (applied, failed, skipped). A decided entry may change until the next run; a failed attempt frees its key |
+
 `POST /v1/sessions/{id}/quick-reply` (`sessions:write`, `Idempotency-Key`) accepts
 `{requestHash,choice}` with a 64-hex hash and `choice: "allow" | "deny" |
 {optionIndex}`. It reads a fresh decision ticket, verifies the hash and exactly
