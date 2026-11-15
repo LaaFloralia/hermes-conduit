@@ -56,7 +56,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
   }
 
   async function create({ device, rawBody }) {
-    const result = await sessions.createSession({ deviceId: device.id, body: parseObjectBody(rawBody) });
+    const result = await sessions.createSession({ deviceId: device.id, body: parseObjectBody(rawBody), owner: true });
     assign(result.session);
     return { status: result.created ? 201 : 200, data: decorate(sessions.view(result.session)) };
   }
@@ -128,6 +128,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
       body: parseObjectBody(rawBody),
       key: req.headers['idempotency-key'],
       deviceId: device?.id,
+      owner: Boolean(device),
     });
     assign(result.session);
     return {

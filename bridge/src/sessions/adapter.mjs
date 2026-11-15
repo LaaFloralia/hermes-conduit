@@ -161,12 +161,13 @@ export function personalAgentAdapter({
     // names its own sessions so the daemon does not show "laa-bridge" as the
     // owner. The wrapper leaves it out of the request digest, so a title change
     // is not a different request.
-    create({ requestId, profile, cwd, task, title, mode, fast, plainPrompt }) {
+    create({ requestId, profile, cwd, task, title, mode, fast, plainPrompt, ownerSignature = null }) {
       return call('create', {
         requestId,
         profile,
         cwd,
         task,
+        ...(ownerSignature ? { ownerSignature } : {}),
         ...(title === undefined || title === null ? {} : { title }),
         ...(plainPrompt ? { plainPrompt } : {}),
         ...(mode === undefined ? {} : { mode }),
@@ -176,8 +177,8 @@ export function personalAgentAdapter({
     status({ requestId }) {
       return call('status', { requestId });
     },
-    send({ requestId, messageId, text }) {
-      return call('send', { requestId, messageId, text });
+    send({ requestId, messageId, text, ownerSignature = null }) {
+      return call('send', { requestId, messageId, text, ...(ownerSignature ? { ownerSignature } : {}) });
     },
     stop({ requestId }) {
       return call('stop', { requestId });

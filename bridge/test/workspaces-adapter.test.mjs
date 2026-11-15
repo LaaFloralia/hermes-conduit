@@ -45,5 +45,5 @@ test('an existing branch reported by paseo becomes a conflict, other failures st
 
 test('the paseo binary can be pinned by the operator', () => {
   assert.equal(resolvePaseoBin({ LAA_BRIDGE_PASEO_BIN: '/custom/paseo' }), '/custom/paseo');
-  assert.match(resolvePaseoBin({}), /(^paseo$|\/paseo$)/);
+  assert.match(resolvePaseoBin({}), /(^paseo$|\/paseo$|\/laa-work$)/);
 });

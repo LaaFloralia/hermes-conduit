@@ -118,12 +118,26 @@ function paseoRecord(paseoHome, agentId) {
   return null;
 }
 
+// The LAA Work engine keeps the first instruction verbatim in the session's record.
+function engineRecord(workState, agentId) {
+  try {
+    const file = join(workState, 'agents', `${agentId}.json`);
+    return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null;
+  } catch { return null; }
+}
+
 // `{ text, createdAt }` of the agent's first instruction, or null when its
 // transcript is not on this Mac.
 export async function readFirstPrompt(agentId, {
   paseoHome = process.env.PASEO_HOME ?? join(homedir(), '.paseo'), home = homedir(),
+  workState = process.env.LAA_WORK_STATE ?? join(homedir(), '.local', 'state', 'laa-work'),
 } = {}) {
   if (!UUID.test(agentId ?? '')) return null;
+  const own = engineRecord(workState, agentId);
+  if (own) {
+    const text = promptText(own.initialPrompt);
+    return text ? { text, createdAt: own.createdAt ?? null } : null;
+  }
   const agent = paseoRecord(paseoHome, agentId);
   const persistence = agent?.persistence ?? agent?.runtimeInfo;
   const sessionId = persistence?.sessionId ?? persistence?.nativeHandle;

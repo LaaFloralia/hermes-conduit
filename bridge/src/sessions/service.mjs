@@ -26,6 +26,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { signWorkOrigin } from './work-origin.mjs';
 import { dirname, join } from 'node:path';
 import { sessionImageStore } from './images.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
@@ -144,7 +145,9 @@ export function createSessionService({
     return resolved;
   }
 
-  async function createSession({ deviceId, body = {}, resumedFrom = null }) {
+  // `owner`: the request came from a paired device (a route), not from automation such as task
+  // dispatch; only then does the first instruction carry the owner's mark (work-origin.mjs).
+  async function createSession({ deviceId, body = {}, resumedFrom = null, owner = false }) {
     const requestId = parseRequestId(body.requestId);
     let profile;
     const prompt = asText(body.prompt, 'prompt');
@@ -239,6 +242,7 @@ export function createSessionService({
       cwd: workspace.path,
       task,
       title,
+      ...(owner ? { ownerSignature: ownerSignatureFor(profile, task.prompt, prompt) } : {}),
       ...(mode === 'bypass' ? { mode } : {}),
       ...(fast ? { fast } : {}),
       ...(plainPrompt ? { plainPrompt } : {}),
@@ -733,12 +737,29 @@ export function createSessionService({
     return ids.map((imageId) => images.read(id, imageId));
   }
 
+  // Every message here came from a paired device (sendMessage is a device route), so it carries
+  // the owner's mark (work-origin.mjs).
   async function deliver(record, entry) {
+    const origin = signWorkOrigin({ agentId: record.delegate.sessionId, messageId: entry.id, text: entry.text });
     if (daemon) {
-      await daemon.send(record.delegate.sessionId, { text: entry.text, messageId: entry.id, images: stagedImages(record.id, entry.id) });
+      await daemon.send(record.delegate.sessionId, { text: entry.text, messageId: entry.id, images: stagedImages(record.id, entry.id), origin });
       return;
     }
-    await adapter.send({ requestId: record.delegate.requestId, messageId: entry.id, text: entry.text });
+    await adapter.send({ requestId: record.delegate.requestId, messageId: entry.id, text: entry.text, ownerSignature: origin });
+  }
+
+  // The owner's mark on a new session's first instruction (work-origin.mjs). It covers what the
+  // owner typed (in its <user_request> block when project material comes first) as the tail
+  // of the prompt: the delegation wrapper puts its brief before it and starts every session in
+  // the home directory, with the wire provider and model of the profile.
+  function ownerSignatureFor(profile, composed, typed) {
+    const text = composed === typed ? typed : `<user_request>\n${typed}\n</user_request>`;
+    if (!composed.endsWith(text)) return null;
+    let offered = null;
+    try { offered = choices().profiles.find((item) => item.id === profile) ?? null; } catch { offered = null; }
+    if (!offered) return null;
+    return signWorkOrigin({ text, tail: text.length,
+      create: { provider: offered.provider, model: offered.model, cwd: homedir(), callerAgentId: null } });
   }
 
   /// Offer the oldest unsent message to its session. Returns without sending
@@ -1046,7 +1067,7 @@ export function createSessionService({
   // no resume operation, so a resume is a successor session through the same
   // create path: same profile, same workspace, linked by resumedFrom. Nothing
   // about a stopped agent is modified or restarted behind the wrapper's back.
-  async function resumeSession({ id, body = {}, key, deviceId }) {
+  async function resumeSession({ id, body = {}, key, deviceId, owner = false }) {
     switcher.assertUnlocked(id);
     const original = requireSession(id);
     if (original.phase === 'stop_unconfirmed') {
@@ -1071,6 +1092,7 @@ export function createSessionService({
 
     const result = await createSession({
       deviceId,
+      owner,
       resumedFrom: original.id,
       body: {
         requestId,

@@ -273,3 +273,18 @@ test('new sessions forward explicit Max, Ultra Code and Venice profile keys unch
   }
   assert.deepEqual(calls, Object.keys(requested));
 });
+
+test('Monet (Dots) is offered as a manual Work choice from a work entrance and never as the default', () => {
+  const withDots = {
+    ...table,
+    profiles: { ...table.profiles, 'dots-max': { model: 'dots', harness: 'dots', effort: 'max', manual: true } },
+    models: { ...table.models, dots: { label: 'Monet（Dots）', modelId: 'dots' } },
+    entrances: [...table.entrances, { kind: 'work', status: 'manual', work: { provider: 'dots', model: 'dots', thinking: 'max' } }],
+    dispatch: { manual_profiles: ['dots-max'] },
+  };
+  const options = sessionOptionsFrom(withDots);
+  const dots = options.profiles.find((item) => item.id === 'dots-max');
+  assert.deepEqual(dots, { id: 'dots-max', label: 'Monet（Dots）', provider: 'dots', model: 'dots', effort: 'max', fast: false });
+  assert.ok(options.switchProfiles.some((item) => item.id === 'dots-max'));
+  assert.notEqual(options.defaultProfile, 'dots-max');
+});

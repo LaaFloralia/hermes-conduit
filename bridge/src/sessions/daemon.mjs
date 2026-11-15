@@ -381,7 +381,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       if (fastValue(after.features) !== value) throw new BridgeError(409, 'fast_not_applied', 'Paseo did not apply the Fast change');
       return statusOf(c, after);
     }),
-    send: (id, { text, messageId, images }) => call(async (c) => {
+    send: (id, { text, messageId, images, origin = null }) => call(async (c) => {
       const a = await agent(c, id);
       if (a.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
       // One foreground turn per agent. A prompt handed to a working agent makes
@@ -392,7 +392,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       try {
         // Explicit steering preserves the currently running turn. The daemon
         // owns exactly-once message acceptance for this stable client message id.
-        await c.sendMessage(id, text, { messageId, activeTurnBehavior: 'steer', images });
+        await c.sendMessage(id, text, { messageId, activeTurnBehavior: 'steer', images, ...(origin ? { origin } : {}) });
       } catch (error) {
         if (error instanceof BridgeError) throw error;
         if (/already active|is busy|is running/i.test(String(error?.message ?? error))) {

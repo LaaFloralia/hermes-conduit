@@ -123,3 +123,12 @@ test('initial instruction: a follow-up saved from a partial timeline is replaced
   assert.equal(shown.source, 'Work / recovered history');
   assert.equal(store.get(unknown.id).initialInstruction, undefined);
 });
+
+test('first prompt: a LAA Work engine session answers from its own record', async (t) => {
+  const h = homes(t);
+  const workState = join(h.home, 'laa-work');
+  mkdirSync(join(workState, 'agents'), { recursive: true });
+  const id = '019a8c3e-1b21-8bc3-9248-22fe5b703977';
+  writeFileSync(join(workState, 'agents', `${id}.json`), JSON.stringify({ id, initialPrompt: FIRST, createdAt: '2026-11-15T01:00:00.000Z' }));
+  assert.deepEqual(await readFirstPrompt(id, { ...h, workState }), { text: FIRST, createdAt: '2026-11-15T01:00:00.000Z' });
+});

@@ -152,6 +152,7 @@ export function expandScopes(names) {
 // device cannot turn the Bridge into a filesystem browser.
 export const DEFAULT_WORKSPACE_ROOTS = Object.freeze([
   join(homedir(), 'dev'),
+  join(homedir(), '.local', 'share', 'laa-work', 'worktrees'),
   join(homedir(), '.paseo', 'worktrees'),
 ]);
 
@@ -168,16 +169,23 @@ export function resolveWorkHome(env = process.env) {
   return resolve(env.LAA_BRIDGE_WORK_HOME || join(homedir(), '.paseo'));
 }
 
+// The LAA Work engine's client routes each session to the engine that owns it (the LAA Work
+// engine, or Paseo for a conversation started there before the move) with Paseo's method
+// names, so the Bridge reads both through one connection.
+export const WORK_ROUTER = join(homedir(), '.local', 'share', 'laa-work', 'engine', 'current', 'client', 'router.mjs');
+
 export function resolveWorkClient(env = process.env) {
-  return resolve(env.LAA_BRIDGE_WORK_CLIENT || '/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js');
+  if (env.LAA_BRIDGE_WORK_CLIENT) return resolve(env.LAA_BRIDGE_WORK_CLIENT);
+  if (existsSync(WORK_ROUTER)) return WORK_ROUTER;
+  return '/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js';
 }
 
-// The Paseo CLI lives outside launchd's minimal PATH, and its shebang runs
-// `node` through env. Resolve the binary once and prepend the running Node's
+// The Work CLI (`laa-work`, Paseo's commands before the move) lives outside launchd's minimal
+// PATH, and its shebang runs `node`. Resolve the binary once and prepend the running Node's
 // bin directory when the adapter spawns it (see workspaces.mjs).
 export function resolvePaseoBin(env = process.env) {
   if (env.LAA_BRIDGE_PASEO_BIN) return env.LAA_BRIDGE_PASEO_BIN;
-  for (const candidate of ['/opt/homebrew/bin/paseo', '/usr/local/bin/paseo']) {
+  for (const candidate of [join(homedir(), '.local', 'bin', 'laa-work'), '/opt/homebrew/bin/paseo', '/usr/local/bin/paseo']) {
     if (existsSync(candidate)) return candidate;
   }
   return 'paseo';

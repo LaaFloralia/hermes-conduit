@@ -27,6 +27,7 @@ import {
   randomToken,
 } from './auth.mjs';
 import { IDEMPOTENCY_KEY_PATTERN, complete, release, requestFingerprint, reserve } from './idempotency.mjs';
+import { WORK_ORIGIN_KEY_PATH, workOriginKey } from './sessions/work-origin.mjs';
 import { createGoogleDrive } from './drive/google.mjs';
 import { driveRoutes } from './routes/drive.mjs';
 import { BridgeError, badRequest } from './errors.mjs';
@@ -283,6 +284,8 @@ export function createBridge({
 
   const ROUTES = [
     { method: 'GET', path: '/v1/health', auth: false, handler: health },
+    // The LAA Work engine reads this to check the Bridge's mark on the owner's messages.
+    { method: 'GET', path: WORK_ORIGIN_KEY_PATH, auth: false, handler: () => ({ status: 200, data: workOriginKey() }) },
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },

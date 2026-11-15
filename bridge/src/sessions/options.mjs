@@ -7,9 +7,12 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeError } from '../errors.mjs';
-import { entranceProfiles } from './entrance-profiles.mjs';
+import { entranceProfiles, workRoute } from './entrance-profiles.mjs';
 
 const DEFAULT_PROFILE = 'opus-high';
+// The harnesses a Work session can run on. Dots (Monet on ChatGPT) and Muse run only in the
+// LAA Work engine; a profile for them appears once HQ lists it (Muse after its contract).
+const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'dots', 'muse'];
 
 export function resolveModelsFile(env = process.env) {
   return env.LAA_BRIDGE_MODELS_FILE || join(homedir(), 'hq', 'harness', 'models.json');
@@ -36,10 +39,11 @@ function manualEntranceExists(table, profile) {
   const modelId = table.models?.[profile.model]?.modelId;
   const wireModel = profile.harness === 'hermes-claude-api' ? `anthropic:${modelId}`
     : profile.harness === 'dsh-venice' ? JSON.stringify(['venice', modelId]) : modelId;
-  return typeof modelId === 'string' && (table.entrances ?? []).some((entry) =>
-    entry.kind === 'paseo' && entry.status === 'manual' &&
-    entry.paseo?.provider === profile.harness && expandModelId(table, entry.paseo?.model) === wireModel &&
-    (entry.paseo?.thinking === profile.effort || (profile.harness === 'dsh-venice' && entry.paseo?.thinking == null)));
+  return typeof modelId === 'string' && (table.entrances ?? []).some((entry) => {
+    const route = workRoute(entry);
+    return entry.status === 'manual' && route?.provider === profile.harness && expandModelId(table, route.model) === wireModel &&
+      (route.thinking === profile.effort || (profile.harness === 'dsh-venice' && route.thinking == null));
+  });
 }
 
 export function sessionOptionsFrom(table) {
@@ -49,7 +53,7 @@ export function sessionOptionsFrom(table) {
   const choices = Object.entries(table?.profiles ?? {})
     .filter(([id, profile]) => profile && !Object.hasOwn(aliases, id) &&
       (profile.manual !== true || (!paidRoute(profile) && manualProfiles.has(id)) || manualEntranceExists(table, profile)))
-    .filter(([, profile]) => ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api'].includes(profile.harness) &&
+    .filter(([, profile]) => WORK_HARNESSES.includes(profile.harness) &&
       (!paidRoute(profile) || profile.manual === true) && typeof profile.effort === 'string');
   const automaticIds = choices.filter(([, profile]) => profile.manual !== true).map(([id]) => id);
   // Existing clients fall back to the first item when defaultProfile is null.
