@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { dirname } from 'node:path';
 import test from 'node:test';
-import { resolvePaseoBin } from '../src/config.mjs';
+import { resolvePaseoBin, resolveWorkClient, resolveWorkHome, WORK_ROUTER } from '../src/config.mjs';
 import { paseoWorktreeCreator } from '../src/routes/workspaces.mjs';
 
 test('the paseo creator builds a branch-off create with the repo as cwd', async () => {
@@ -43,7 +43,17 @@ test('an existing branch reported by paseo becomes a conflict, other failures st
   await assert.rejects(noPath({ repoPath: '/repo', branch: 'laa-w' }), /no worktreePath/);
 });
 
-test('the paseo binary can be pinned by the operator', () => {
-  assert.equal(resolvePaseoBin({ LAA_BRIDGE_PASEO_BIN: '/custom/paseo' }), '/custom/paseo');
-  assert.match(resolvePaseoBin({}), /(^paseo$|\/paseo$|\/laa-work$)/);
+test('Work paths do not fall back when the router or CLI is missing', () => {
+  const present = () => true;
+  const missing = () => false;
+  assert.equal(resolvePaseoBin({ LAA_BRIDGE_PASEO_BIN: '/custom/work' }, present), '/custom/work');
+  assert.match(resolvePaseoBin({}, present), /\/laa-work$/);
+  assert.throws(() => resolvePaseoBin({}, missing), /Work CLI not found/);
+  assert.throws(() => resolvePaseoBin({ LAA_BRIDGE_PASEO_BIN: '/missing' }, missing), /Work CLI not found/);
+  assert.equal(resolveWorkClient({}, present), WORK_ROUTER);
+  assert.equal(resolveWorkClient({ LAA_BRIDGE_WORK_CLIENT: '/custom/router.mjs' }, present), '/custom/router.mjs');
+  assert.throws(() => resolveWorkClient({}, missing), /Work router not found/);
+  assert.throws(() => resolveWorkClient({ LAA_BRIDGE_WORK_CLIENT: '/missing' }, missing), /Work router not found/);
+  assert.match(resolveWorkHome({}), /\/\.local\/share\/laa-work$/);
+  assert.equal(resolveWorkHome({ LAA_BRIDGE_WORK_HOME: '/custom/home' }), '/custom/home');
 });

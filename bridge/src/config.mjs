@@ -166,7 +166,7 @@ export function resolveWorkspaceRoots(env = process.env) {
 
 // The SDK and workspace CLI must select the same local engine instance.
 export function resolveWorkHome(env = process.env) {
-  return resolve(env.LAA_BRIDGE_WORK_HOME || join(homedir(), '.paseo'));
+  return resolve(env.LAA_BRIDGE_WORK_HOME || join(homedir(), '.local', 'share', 'laa-work'));
 }
 
 // The LAA Work engine's client routes each session to the engine that owns it (the LAA Work
@@ -174,21 +174,19 @@ export function resolveWorkHome(env = process.env) {
 // names, so the Bridge reads both through one connection.
 export const WORK_ROUTER = join(homedir(), '.local', 'share', 'laa-work', 'engine', 'current', 'client', 'router.mjs');
 
-export function resolveWorkClient(env = process.env) {
-  if (env.LAA_BRIDGE_WORK_CLIENT) return resolve(env.LAA_BRIDGE_WORK_CLIENT);
-  if (existsSync(WORK_ROUTER)) return WORK_ROUTER;
-  return '/opt/homebrew/lib/node_modules/@getpaseo/cli/dist/utils/client.js';
+export function resolveWorkClient(env = process.env, exists = existsSync) {
+  const client = env.LAA_BRIDGE_WORK_CLIENT ? resolve(env.LAA_BRIDGE_WORK_CLIENT) : WORK_ROUTER;
+  if (!exists(client)) throw new Error(`Work router not found: ${client}`);
+  return client;
 }
 
 // The Work CLI (`laa-work`, Paseo's commands before the move) lives outside launchd's minimal
 // PATH, and its shebang runs `node`. Resolve the binary once and prepend the running Node's
 // bin directory when the adapter spawns it (see workspaces.mjs).
-export function resolvePaseoBin(env = process.env) {
-  if (env.LAA_BRIDGE_PASEO_BIN) return env.LAA_BRIDGE_PASEO_BIN;
-  for (const candidate of [join(homedir(), '.local', 'bin', 'laa-work'), '/opt/homebrew/bin/paseo', '/usr/local/bin/paseo']) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return 'paseo';
+export function resolvePaseoBin(env = process.env, exists = existsSync) {
+  const bin = env.LAA_BRIDGE_PASEO_BIN || join(homedir(), '.local', 'bin', 'laa-work');
+  if (!exists(bin)) throw new Error(`Work CLI not found: ${bin}`);
+  return bin;
 }
 
 // --- Brain (ROADMAP 25, docs/laa/BRAIN-WRITE.md) ---------------------------
