@@ -187,7 +187,10 @@ final class ComposerDraftStore: ObservableObject {
     @discardableResult
     func moveDraftIfVacant(from source: ComposerDraftKey, to destination: ComposerDraftKey) -> Bool {
         guard source != destination, let draft = drafts[source], drafts[destination] == nil,
-              !submissions.contains(where: { $0.key == destination }) else { return false }
+              !submissions.contains(where: { $0.key == source || $0.key == destination }) else { return false }
+        // Keep the draft with its durable send reservation until delivery is
+        // resolved. Moving only the words would strand an unknown send on the
+        // old key and allow the same message to be sent from the new chat.
         let oldDrafts = drafts, oldOrder = order, oldGenerations = generations
         drafts.removeValue(forKey: source)
         generations.removeValue(forKey: source)
