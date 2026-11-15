@@ -85,6 +85,25 @@ final class LAAStaffCallTests: XCTestCase {
             workspace: WidgetWorkspaceID(dashboardID: workspace.dashboardID, profile: "laa-unknown"), reference: nil))
     }
 
+    func testEveryStaffProfileSupportsEmployeeChatAndURLRoundTrip() throws {
+        let dashboardID = UUID()
+        for staff in LAAStaff.allCases {
+            let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-\(staff.rawValue)")
+            let link = try XCTUnwrap(
+                WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil),
+                "Employee chat must allow \(workspace.profile)")
+            XCTAssertEqual(link.workspace, workspace)
+            XCTAssertEqual(link.action, .employeeChat)
+            XCTAssertEqual(WidgetLaunchLink(url: link.url), link, "URL must preserve \(workspace.profile)")
+        }
+        // Chat-only employees must not become voice/widget choices to obtain a chat route.
+        for profile in ["laa-monet-dots", "laa-soap"] {
+            XCTAssertNil(LAAWidgetEmployee.forProfile(profile))
+        }
+        XCTAssertNil(WidgetLaunchLink(action: .employeeChat,
+            workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-unknown"), reference: nil))
+    }
+
     func testCallKitPresentationUsesBundledIconAndStaffNames() throws {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "callkit-icon-template-120", withExtension: "png"))
         let configuration = LAACallKitPresentation.configuration()
