@@ -17,7 +17,7 @@ import { daemonAdapter } from '../sessions/daemon.mjs';
 import { personalAgentAdapter } from '../sessions/adapter.mjs';
 import { createSessionService } from '../sessions/service.mjs';
 import { createSessionStore } from '../sessions/store.mjs';
-import { resolveModelsFile, sessionOptionsReader } from '../sessions/options.mjs';
+import { resolveModelsFile, sessionOptionsReader, sharedProviderAvailability } from '../sessions/options.mjs';
 import { createProjectRoutes, createProjectStore } from './projects.mjs';
 import { createSessionRoutes } from './sessions.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOptions } from './workspaces.mjs';
@@ -76,7 +76,8 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     retentionMs: sessionOptions.eventRetentionMs,
   });
   const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
-  const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile() });
+  const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile(),
+    availability: sessionOptions.availability ?? (sessionOptions.live ? sharedProviderAvailability() : null) });
   let sessionService;
   const decisionsOptions = options.decisions ?? {};
   const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });

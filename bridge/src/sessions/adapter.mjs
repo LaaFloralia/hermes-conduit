@@ -64,6 +64,9 @@ const ERROR_MAP = new Map(Object.entries({
   operation_failed: [503, 'delegation_failed', true],
   unsupported_mode: [400, 'profile_unsupported'],
   fast_unsupported: [400, 'profile_unsupported'],
+  // The engine cannot run this provider now (a Dot whose contract ended, Muse before its
+  // contract); the model list carries the reason, so the app says to read it again.
+  provider_unavailable: [409, 'model_choice_invalid'],
   plain_prompt_invalid: [400, 'payload_invalid'],
 }));
 

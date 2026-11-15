@@ -6,13 +6,28 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { resolvePaseoBin } from '../config.mjs';
 import { BridgeError } from '../errors.mjs';
+import { providerAvailability, withAvailability } from './availability.mjs';
 import { entranceProfiles, workRoute } from './entrance-profiles.mjs';
 
 const DEFAULT_PROFILE = 'opus-high';
 // The harnesses a Work session can run on. Dots (Monet on ChatGPT) and Muse run only in the
-// LAA Work engine; a profile for them appears once HQ lists it (Muse after its contract).
+// LAA Work engine. HQ lists both; while one cannot run (Dots after its contract ends, Muse
+// before its contract) its label carries the engine's reason (availability.mjs).
 const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'dots', 'muse'];
+
+// One reader of the engine's provider states for the live Bridge.
+let shared = null;
+export function sharedProviderAvailability() {
+  if (shared === null) {
+    let bin = null;
+    try { bin = resolvePaseoBin(); } catch { bin = null; }
+    shared = providerAvailability({ bin });
+    void shared.refresh();
+  }
+  return shared;
+}
 
 export function resolveModelsFile(env = process.env) {
   return env.LAA_BRIDGE_MODELS_FILE || join(homedir(), 'hq', 'harness', 'models.json');
@@ -46,7 +61,7 @@ function manualEntranceExists(table, profile) {
   });
 }
 
-export function sessionOptionsFrom(table) {
+export function sessionOptionsFrom(table, availability = null) {
   const aliases = table?.aliases ?? {};
   const manualProfiles = new Set(table?.dispatch?.manual_profiles ?? []);
   const paidRoute = (profile) => ['hermes-claude-api', 'dsh-venice'].includes(profile.harness);
@@ -61,7 +76,7 @@ export function sessionOptionsFrom(table) {
   const profiles = (automaticIds.length ? choices : [])
     .map(([id, profile]) => {
       const model = table.models?.[profile.model] ?? {};
-      return {
+      return withAvailability({
         id,
         label: (model.label ?? profile.model) + (profile.harness === 'hermes-claude-api' ? '（API）' : profile.harness === 'dsh-venice' ? '（Venice）' : ''),
         provider: profile.harness,
@@ -69,7 +84,7 @@ export function sessionOptionsFrom(table) {
           : (profile.harness === 'hermes-claude-api' ? 'anthropic:' : '') + (model.modelId ?? profile.model),
         effort: profile.effort,
         fast: fastSupported(profile.harness, model.modelId),
-      };
+      }, availability?.(profile.harness) ?? null);
     });
   return {
     profiles,
@@ -79,7 +94,8 @@ export function sessionOptionsFrom(table) {
   };
 }
 
-export function sessionOptionsReader({ file = resolveModelsFile() } = {}) {
+// `availability` is the engine's provider states (sharedProviderAvailability) or null.
+export function sessionOptionsReader({ file = resolveModelsFile(), availability = null } = {}) {
   return () => {
     let table;
     try {
@@ -87,7 +103,7 @@ export function sessionOptionsReader({ file = resolveModelsFile() } = {}) {
     } catch {
       throw new BridgeError(503, 'options_unavailable', 'the model table cannot be read', { retryable: true });
     }
-    const options = sessionOptionsFrom(table);
+    const options = sessionOptionsFrom(table, availability ? (provider) => availability.get(provider) : null);
     if (options.profiles.length === 0) {
       throw new BridgeError(503, 'options_unavailable', 'the model table lists no usable profile', { retryable: true });
     }

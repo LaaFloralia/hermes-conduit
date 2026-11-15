@@ -288,3 +288,39 @@ test('Monet (Dots) is offered as a manual Work choice from a work entrance and n
   assert.ok(options.switchProfiles.some((item) => item.id === 'dots-max'));
   assert.notEqual(options.defaultProfile, 'dots-max');
 });
+
+test('a provider the engine cannot run now stays listed with its reason on the label', () => {
+  const engine = {
+    dsh: { id: 'dsh', available: false, reason: 'Dotが接続していません。', reasonShort: 'Dotsの契約切れか未接続' },
+    codex: { id: 'codex', available: false, reason: 'old engine wording' },
+    claude: { id: 'claude', available: true, reason: null },
+  };
+  const options = sessionOptionsFrom(table, (provider) => engine[provider] ?? null);
+  const byId = Object.fromEntries(options.profiles.map((p) => [p.id, p]));
+  assert.equal(byId['deepseek-flash-high'].label, 'DeepSeek V4.1-Flash-1017（Dotsの契約切れか未接続のため使えません）');
+  assert.equal(byId['deepseek-flash-high'].available, false);
+  assert.equal(byId['deepseek-flash-high'].unavailableReason, 'Dotが接続していません。');
+  // An engine that gives no short reason still says the choice cannot run.
+  assert.equal(byId['sol-high'].label, 'GPT-6.1 Terra（今は使えません）');
+  assert.equal(byId['opus-high'].label, 'Claude Opus 5.5');
+  assert.equal(byId['opus-high'].available, undefined);
+  assert.deepEqual(options.profiles.map((p) => p.id), sessionOptionsFrom(table).profiles.map((p) => p.id));
+});
+
+test('provider states come from the engine CLI, are kept a while and survive a failed read', async () => {
+  const { providerAvailability } = await import('../src/sessions/availability.mjs');
+  let clock = 0;
+  let calls = 0;
+  let answer = JSON.stringify([{ id: 'muse', available: false, reason: 'x', reasonShort: '未契約・未導入' }]);
+  const run = (bin, args, opts, done) => { calls += 1; assert.deepEqual(args, ['provider', 'ls', '--json']); setImmediate(() => done(answer ? null : new Error('down'), answer ?? '')); };
+  const states = providerAvailability({ bin: '/fake/laa-work', ttlMs: 1000, run, now: () => clock });
+  assert.equal(states.get('muse'), null);
+  await states.refresh();
+  assert.equal(states.get('muse').reasonShort, '未契約・未導入');
+  assert.equal(calls, 1);
+  clock = 2000; answer = null;
+  states.get('muse');
+  await states.refresh();
+  assert.equal(states.get('muse').reasonShort, '未契約・未導入');
+  assert.equal(providerAvailability({ bin: null }).get('muse'), null);
+});

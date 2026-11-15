@@ -70,6 +70,8 @@ export function createModelSwitcher({ store, daemon, history, choices, now, slee
       ?? matches.find((item) => item.effort === 'high')?.effort;
     const selected = matches.find((item) => item.effort === effort);
     if (!selected) throw badRequest('model_choice_invalid', 'choose a listed provider, model and effort');
+    // The engine cannot run it now (a Dot whose contract ended, Muse before its contract); its label says why.
+    if (selected.available === false) throw badRequest('model_choice_invalid', 'this provider cannot take a session now');
     return selected;
   }
   function assertUnlocked(id) {

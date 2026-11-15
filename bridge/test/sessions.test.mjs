@@ -1078,6 +1078,13 @@ test('delegation permission refusals preserve the explicit 403 reason', () => {
   }
 });
 
+test('a provider the engine cannot run now is a choice to read again, not a retry', () => {
+  const error = delegationError('provider_unavailable');
+  assert.equal(error.status, 409);
+  assert.equal(error.code, 'model_choice_invalid');
+  assert.equal(error.retryable, false);
+});
+
 test('a session in a worktree of either Work engine is a worktree session', () => {
   assert.equal(isWorktree({ cwd: '/Users/owner/.paseo/worktrees/repo/branch' }), true);
   assert.equal(isWorktree({ cwd: '/Users/owner/.local/share/laa-work/worktrees/repo/branch' }), true);
