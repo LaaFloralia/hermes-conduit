@@ -45,10 +45,12 @@ private struct LAAConversationBackgroundModifier: ViewModifier {
         let _ = store.revision
         if value.kind == .paper {
             content.environment(\.laaBackgroundKind, .paper)
+                .environment(\.laaBubble, value.bubble)
                 .background(LAAColor.background.ignoresSafeArea())
         } else {
             content
                 .environment(\.laaBackgroundKind, value.kind)
+                .environment(\.laaBubble, value.bubble)
                 .environment(\.colorScheme, .dark)
                 .background { LAABackgroundCanvas(value: value, image: key.flatMap { store.image(for: $0) }) }
         }
@@ -161,10 +163,18 @@ struct LAAConversationBackgroundButton: View {
 private struct LAABackgroundKindKey: EnvironmentKey {
     static let defaultValue = LAABackground.Kind.paper
 }
+private struct LAABubbleKey: EnvironmentKey {
+    static let defaultValue = LAABackground.Bubble.standard
+}
 extension EnvironmentValues {
     var laaBackgroundKind: LAABackground.Kind {
         get { self[LAABackgroundKindKey.self] }
         set { self[LAABackgroundKindKey.self] = newValue }
+    }
+    /// The conversation's bubble choice, beside its background.
+    var laaBubble: LAABackground.Bubble {
+        get { self[LAABubbleKey.self] }
+        set { self[LAABubbleKey.self] = newValue }
     }
 }
 
@@ -177,9 +187,11 @@ private struct LAAConversationFeaturesModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let _ = store.revision
-        let kind = LAAConversationScope.current(appState).map { store.setting(for: $0).kind } ?? .paper
+        let value = LAAConversationScope.current(appState).map { store.setting(for: $0) } ?? LAABackground()
+        let kind = value.kind
         content
             .environment(\.laaBackgroundKind, kind)
+            .environment(\.laaBubble, value.bubble)
             .environment(\.colorScheme, kind == .paper ? colorScheme : .dark)
             .environmentObject(features)
             .sheet(item: $features.sheet) { sheet in
@@ -200,6 +212,7 @@ struct LAABackgroundPicker: View {
     @State private var photo: PhotosPickerItem?
     @State private var error: String?
     @State private var loading = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         let photoSelected = value.kind == .photo
@@ -249,6 +262,29 @@ struct LAABackgroundPicker: View {
                         }
                     } header: { Text(verbatim: LAACopy.chatPhotoAdjustments) }
                 }
+                // Bubbles belong to an employee's chat; a group room's
+                // bubbles keep their own look.
+                if key.surface == .chat {
+                    Section {
+                        ForEach(LAABackground.Bubble.allCases, id: \.self) { bubble in
+                            Button { select(bubble) } label: {
+                                HStack {
+                                    Text(label(bubble))
+                                    Spacer()
+                                    if value.bubble == bubble { Image(systemName: "checkmark") }
+                                }
+                            }
+                            .accessibilityIdentifier("bubble.choice.\(bubble.rawValue)")
+                            .accessibilityValue(Text(verbatim: value.bubble == bubble ? LAACopy.chatSelected : ""))
+                        }
+                    } header: {
+                        Text("吹き出し")
+                    } footer: {
+                        if reduceTransparency && value.bubble == .glass {
+                            Text("「透明度を下げる」がオンの間は、不透明の吹き出しで表示します。")
+                        }
+                    }
+                }
                 if let error { Text(error).foregroundStyle(.red) }
             }
             .navigationTitle(Text(verbatim: LAACopy.chatBackground))
@@ -276,6 +312,18 @@ struct LAABackgroundPicker: View {
         persist()
     }
 
+    private func select(_ bubble: LAABackground.Bubble) {
+        value.bubble = bubble
+        persist()
+    }
+
+    private func label(_ bubble: LAABackground.Bubble) -> LocalizedStringKey {
+        switch bubble {
+        case .standard: return "いまの見た目"
+        case .glass: return "Liquid Glass"
+        }
+    }
+
     private func persist() {
         do { try store.save(value, for: key); error = nil }
         catch { self.error = "背景を保存できませんでした。" }
@@ -299,12 +347,67 @@ struct LAABackgroundPicker: View {
     #endif
 }
 
-private struct LAAAssistantSurface: ViewModifier {
-    func body(content: Content) -> some View {
-        content.padding(.horizontal, 14).padding(.vertical, 10)
-            .foregroundStyle(LAAColor.text)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+/// A message bubble: the opaque surface (the owner's teal, the reply's
+/// paper card), or Liquid Glass when the conversation's bubble choice is
+/// `glass`. The glass is regular, tinted with the design's glass face (or
+/// the owner's teal) so the text keeps its contrast over a photo, and has
+/// the glass's 1pt rim. Reduce Transparency and iOS 17–25 keep the opaque
+/// surface.
+private struct LAABubbleSurface: ViewModifier {
+    let own: Bool
+    @Environment(\.laaBubble) private var bubble
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous)
+        let padded = content.padding(.horizontal, 14).padding(.vertical, 10)
+            .modifier(LAAAssistantInk(applies: !own))
+        if #available(iOS 26.0, *), bubble == .glass, !reduceTransparency {
+            #if targetEnvironment(macCatalyst)
+            // The Mac's glass drew no tint (a grey bubble under the owner's
+            // light text, 1.5:1), so the colour lies on the glass instead.
+            padded
+                .background(own ? LAABubbleGlass.macOwnFace : LAABubbleGlass.face, in: shape)
+                .glassEffect(.regular, in: shape)
+                .overlay { shape.strokeBorder(own ? LAABubbleGlass.ownRim : LAABubbleGlass.rim, lineWidth: 1) }
+            #else
+            padded
+                .glassEffect(.regular.tint(own ? LAABubbleGlass.ownTint : LAABubbleGlass.face), in: shape)
+                .overlay { shape.strokeBorder(own ? LAABubbleGlass.ownRim : LAABubbleGlass.rim, lineWidth: 1) }
+            #endif
+        } else {
+            padded.background(own ? LAAColor.ownBubble : LAAColor.surface, in: shape)
+        }
     }
+}
+
+private struct LAAAssistantInk: ViewModifier {
+    let applies: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if applies { content.foregroundStyle(LAAColor.text) } else { content }
+    }
+}
+
+/// The glass bubbles' colours, from the design's glass values for the
+/// operating layer (`laa-design show app`: face rgba(255,253,248,.72) and
+/// rim #D7D5CC; dark face rgba(36,54,56,.66) and rim rgba(236,231,220,.16)).
+enum LAABubbleGlass {
+    static let face = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 36 / 255, green: 54 / 255, blue: 56 / 255, alpha: 0.66)
+            : UIColor(red: 1, green: 253 / 255, blue: 248 / 255, alpha: 0.72)
+    })
+    static let rim = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 236 / 255, green: 231 / 255, blue: 220 / 255, alpha: 0.16)
+            : UIColor(red: 215 / 255, green: 213 / 255, blue: 204 / 255, alpha: 1)
+    })
+    /// The owner's teal (`ownBubble`) as the glass's tint.
+    static let ownTint = LAAColor.ownBubble
+    /// On the Mac the teal lies on the glass, dense enough to keep the
+    /// owner's light text at 4.5:1 over the palest glass.
+    static let macOwnFace = LAAColor.ownBubble.opacity(0.85)
+    static let ownRim = Color(uiColor: UIColor(red: 236 / 255, green: 231 / 255, blue: 220 / 255, alpha: 0.16))
 }
 private struct LAAPhotoSupportingText: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
@@ -350,7 +453,8 @@ private struct LAAToolbarGlass: ViewModifier {
 extension View {
     func laaConversationBackground() -> some View { modifier(LAAConversationBackgroundModifier()) }
     func laaConversationFeatures() -> some View { modifier(LAAConversationFeaturesModifier()) }
-    func laaAssistantSurface() -> some View { modifier(LAAAssistantSurface()) }
+    func laaAssistantSurface() -> some View { modifier(LAABubbleSurface(own: false)) }
+    func laaOwnBubbleSurface() -> some View { modifier(LAABubbleSurface(own: true)) }
     func laaPhotoSupportingText() -> some View { modifier(LAAPhotoSupportingText()) }
     func laaGroupSurface() -> some View { modifier(LAAGroupSurface()) }
     func laaComposerGlassScope() -> some View { modifier(LAAPhotoGlassScope()) }

@@ -343,6 +343,11 @@ struct LAABackgroundUITestFixtureScreen: View {
                     } else {
                         try LAABackgroundStore.shared.save(LAABackground(kind: kind), for: key)
                     }
+                    // "-LAA_CAPTURE_BUBBLE glass"; otherwise the standard
+                    // bubbles, whatever an earlier launch saved.
+                    var saved = LAABackgroundStore.shared.setting(for: key)
+                    saved.bubble = argument("-LAA_CAPTURE_BUBBLE").flatMap(LAABackground.Bubble.init(rawValue:)) ?? .standard
+                    try LAABackgroundStore.shared.save(saved, for: key)
                     captureReady = true
                 } catch {
                     return

@@ -1856,8 +1856,7 @@ struct UserMessageContent: View, Equatable {
             }
         }
 #if LAA_BUILD
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+        .laaOwnBubbleSurface()
 #else
         .padding(.horizontal, 17)
         .padding(.vertical, 11)

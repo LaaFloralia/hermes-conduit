@@ -22,6 +22,10 @@ struct LAABackgroundKey: Codable, Hashable {
 
 struct LAABackground: Codable, Equatable {
     enum Kind: String, Codable, CaseIterable { case paper, tealNight, ink, photo }
+    /// How the conversation draws its message bubbles: the opaque surfaces
+    /// (`standard`, the default) or Liquid Glass (owner, 2026-11-16). Saved
+    /// with the background, per conversation.
+    enum Bubble: String, Codable, CaseIterable { case standard, glass }
     var kind: Kind = .paper
     var dim: Double = 0
     var blur: Double = 0
@@ -29,6 +33,27 @@ struct LAABackground: Codable, Equatable {
     /// conservative bound on every pixel, including bright coloured pixels.
     var brightestComponent: Double = 1
     var photoID: String? = nil
+    var bubble: Bubble = .standard
+
+    private enum CodingKeys: String, CodingKey { case kind, dim, blur, brightestComponent, photoID, bubble }
+
+    init(kind: Kind = .paper, dim: Double = 0, blur: Double = 0, brightestComponent: Double = 1,
+         photoID: String? = nil, bubble: Bubble = .standard) {
+        self.kind = kind; self.dim = dim; self.blur = blur
+        self.brightestComponent = brightestComponent; self.photoID = photoID; self.bubble = bubble
+    }
+
+    /// Records saved before the bubble choice have no `bubble` and keep the
+    /// standard bubbles; an unknown value does too.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        dim = try container.decode(Double.self, forKey: .dim)
+        blur = try container.decode(Double.self, forKey: .blur)
+        brightestComponent = try container.decode(Double.self, forKey: .brightestComponent)
+        photoID = try container.decodeIfPresent(String.self, forKey: .photoID)
+        bubble = (try? container.decodeIfPresent(Bubble.self, forKey: .bubble)) ?? .standard
+    }
 
     var safeDim: Double {
         kind == .photo ? max(dim.clamped(to: 0...0.6), Self.minimumDim(brightestComponent)) : 0
@@ -79,7 +104,7 @@ final class LAABackgroundStore: ObservableObject {
               record.key == key else { return LAABackground() }
         var value = record.background
         value.normalize()
-        if value.kind == .photo && image(named: value.photoID) == nil { return LAABackground() }
+        if value.kind == .photo && image(named: value.photoID) == nil { return LAABackground(bubble: value.bubble) }
         return value
     }
 
@@ -108,7 +133,8 @@ final class LAABackgroundStore: ObservableObject {
         let photoID = SHA256.hash(data: photo.data).map { String(format: "%02x", $0) }.joined()
         try photo.data.write(to: directory.appendingPathComponent(photoID + ".jpg"), options: .atomic)
         do {
-            try save(LAABackground(kind: .photo, dim: dim, blur: blur, brightestComponent: photo.maxComponent, photoID: photoID), for: key)
+            try save(LAABackground(kind: .photo, dim: dim, blur: blur, brightestComponent: photo.maxComponent, photoID: photoID,
+                                   bubble: setting(for: key).bubble), for: key)
         } catch {
             try? removeUnreferencedPhotos()
             throw error
