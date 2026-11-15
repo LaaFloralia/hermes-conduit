@@ -4408,13 +4408,14 @@ and rollback instructions · the upstream App Store build
 **Rulings**
 - Store a background locally by dashboard, profile, surface and conversation or room id; copy downscaled photos into the app, never upload them, and fall back to paper if the photo is missing. Dim bright photos to keep white body text at least 4.5:1; dim and blur remain adjustable.
 - In the LAA v2 design, replies use opaque cards on paper as well as night, ink and photo; a photo uses clear glass and a dim backing for the bar and controls. All other glass controls retain their regular default.
+- An employee chat's bar keeps a background button beside the call button (photo icon, the call button's 44-point clear glass): it opens the background picker, photo included, through the screen's `LAAConversationFeatures` sheet, as the bar's conversation menu did before the 2026-11-11 header left only the mascot's introduction › 会話の情報 to reach it. That row stays as a second entry (owner, 2026-11-15, laa/chat-background).
 - Create a hosted room from the seven named employee profiles actually available on the current gateway, with the existing 2–6 member contract and retry identity. Rename only when `groups.rename` is advertised.
 
 **Open gaps**
 - The current hosted-room API does not provide member addition or removal; the settings show these actions disabled with a reason.
 - Photo picker, Keychain, actual display contrast and glass effects need physical iPhone verification.
 
-**Checked:** 2026-10-30, based on 1b4bdba5 (LAA v2 Chats entry), c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
+**Checked:** 2026-11-15, laa/chat-background (the bar's background button restored beside the call button; the chosen photo draws behind ChatView through `laaConversationBackground` on the LAA route LAAConversationRoute › V2ConversationScreen; LAA iOS Simulator Debug build on the MacBook); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats entry), c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
 
 ## LAA Chats list
 
