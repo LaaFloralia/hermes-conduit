@@ -39,7 +39,7 @@ enum LAAEffort {
 }
 
 /// XHigh polishes the glass, Max and Ultra Code make it crystal (LAAFinish):
-/// the higher the effort, the more particles; High and below stay plain.
+/// the higher the effort, the more marble veins; High and below stay plain.
 extension LAAEffort {
     static func finish(_ value: String?) -> LAAFinish {
         switch value {

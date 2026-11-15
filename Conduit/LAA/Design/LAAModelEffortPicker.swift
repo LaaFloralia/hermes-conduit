@@ -9,10 +9,10 @@ import SwiftUI
 ///
 /// The model's name is always whole, beginning with its maker ("Claude Opus
 /// 5.5"), never cut or "…" (owner, 2026-11-14): when the row is too narrow
-/// the effort moves to the next line (LAAWrapRow). Standing is light held
-/// inside the glass, never a colour: the Thinking orb's particles drift in it,
-/// more at each step (LAAFinish). An applied change carries a front of light
-/// across it once. Unknown and stale values stay plain.
+/// the effort moves to the next line (LAAWrapRow). Standing is marble held
+/// inside the glass, never a colour: fine veins with a slow light along them,
+/// more at each step (LAAFinish). An applied change spreads the veins once
+/// from the leading end. Unknown and stale values stay plain.
 ///
 ///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
 ///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
@@ -140,10 +140,10 @@ struct LAAModelCapsule: View {
     }
 
     /// The capsule held at one moment for a capture: at rest (`elapsed` nil)
-    /// or that far into its movement, with the particles at `time` (nil:
-    /// still, as with Reduce Motion).
-    func face(elapsed: Double?, time: Double? = 0) -> some View {
-        content(motion: .frozen(elapsed: elapsed, time: time))
+    /// or that far into its movement, with the slow light at `light` (0 the
+    /// leading end, 1 the trailing; nil: where the still light rests).
+    func face(elapsed: Double?, light: Double? = nil) -> some View {
+        content(motion: .frozen(elapsed: elapsed, light: light))
     }
 
     private func content(motion: LAAGlassMotion) -> some View {
@@ -153,7 +153,7 @@ struct LAAModelCapsule: View {
             .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
             .contentShape(Capsule())
-            .laaGlassSelection(finish: rank.finish, motion: motion,
+            .laaGlassSelection(finish: rank.finish, tone: rank.tone, seed: LAAMarble.seed(model), motion: motion,
                                duration: LAACeremony.duration(rank: rank),
                                cornerRadius: LAAPickerMetrics.radius)
     }
@@ -229,9 +229,9 @@ struct LAAModelCapsule: View {
 }
 
 /// The effort capsule: its name, or 「不明」, and the chevron, with no meter
-/// beside it (owner, 2026-11-14). High and above hold particles inside the
-/// glass; after a requested change a front of light crosses it once
-/// (LAAGlassLook).
+/// beside it (owner, 2026-11-14). XHigh and above hold marble veins inside
+/// the glass; after a requested change they spread across it once
+/// (LAAMarbleLook).
 struct LAAEffortCapsule: View {
     let effort: String?
     var current = true
@@ -243,7 +243,7 @@ struct LAAEffortCapsule: View {
     var ranked: String? { known.flatMap { LAAEffort.order.contains($0) || $0 == "ultracode" ? $0 : nil } }
 
     var body: some View {
-        content(motion: current ? .live(start) : .frozen(elapsed: nil, time: nil))
+        content(motion: current ? .live(start) : .frozen(elapsed: nil, light: nil))
         .laaCeremonyTrigger(value: effort, changing: changing, enabled: current && ranked != nil, start: $start)
         .task(id: start) {
             guard let started = start, let ranked else { return }
@@ -253,8 +253,8 @@ struct LAAEffortCapsule: View {
     }
 
     /// The capsule held at one moment for a capture (LAAModelCapsule.face).
-    func capsule(elapsed: Double?, time: Double? = 0) -> some View {
-        content(motion: .frozen(elapsed: current ? elapsed : nil, time: time))
+    func capsule(elapsed: Double?, light: Double? = nil) -> some View {
+        content(motion: .frozen(elapsed: current ? elapsed : nil, light: light))
     }
 
     private func content(motion: LAAGlassMotion) -> some View {
@@ -273,7 +273,7 @@ struct LAAEffortCapsule: View {
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
         .laaGlassSelection(finish: current ? LAAEffort.finish(ranked) : .plain,
-                           motion: motion,
+                           seed: LAAMarble.seed(ranked), motion: motion,
                            duration: ranked.map { LAACeremony.duration(effort: $0) } ?? LAACeremony.slow,
                            cornerRadius: LAAPickerMetrics.radius)
     }
