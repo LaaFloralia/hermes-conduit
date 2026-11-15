@@ -132,9 +132,11 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(LAAEffort.finish("xhigh"), .polished)
         XCTAssertEqual(LAAEffort.finish("max"), .crystal)
         XCTAssertEqual(LAAEffort.name("ultracode"), "Ultra Code")
-        // Only Mythos's veins carry the faint violet (owner, 2026-11-15).
+        // Each strong model wears its own colour (owner, 2026-11-15 09時); others the stone.
         XCTAssertEqual(LAAModelRank.mythos.tone, .mythos)
-        for rank in [LAAModelRank.fable, .astra, .none] { XCTAssertEqual(rank.tone, .stone) }
+        XCTAssertEqual(LAAModelRank.astra.tone, .astra)
+        XCTAssertEqual(LAAModelRank.fable.tone, .fable)
+        XCTAssertEqual(LAAModelRank.none.tone, .stone)
         for dark in [false, true] {
             let plain = LAAMarbleLook(finish: .plain)
             let polished = LAAMarbleLook(finish: .polished), crystal = LAAMarbleLook(finish: .crystal)
@@ -150,7 +152,17 @@ final class LAAModelEffortSelectionTests: XCTestCase {
             XCTAssertLessThan(max(r, g, b) - min(r, g, b), 0.1, "the stone's veins are near neutral")
             LAAMarble.ink(.mythos, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
             XCTAssertGreaterThan(b, r); XCTAssertGreaterThan(b, g)
-            XCTAssertLessThan(max(r, g, b) - min(r, g, b), 0.22, "a faint violet only")
+            XCTAssertGreaterThan(r, g, "Mythos leans violet")
+            LAAMarble.ink(.astra, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
+            XCTAssertGreaterThan(b, r); XCTAssertGreaterThan(b, g); XCTAssertGreaterThan(g, r, "Astra leans blue")
+            LAAMarble.ink(.fable, dark: dark).getRed(&r, green: &g, blue: &b, alpha: &a)
+            XCTAssertGreaterThan(r, g); XCTAssertGreaterThan(g, b, "Fable leans orange")
+            // Only a strong model washes the glass with its colour, and faintly.
+            XCTAssertEqual(LAASelectionStyle.of(.stone).washOpacity(dark: dark), 0)
+            for tone in [LAAVeinTone.mythos, .astra, .fable] {
+                XCTAssertGreaterThan(LAASelectionStyle.of(tone).washOpacity(dark: dark), 0)
+                XCTAssertLessThanOrEqual(LAASelectionStyle.of(tone).washOpacity(dark: dark), 0.2, "a wash, not a painted face")
+            }
         }
     }
 

@@ -1562,7 +1562,6 @@ struct ComposerBar: View, Equatable {
             .overlay {
                 LAASendEffect(generation: sendEffectGeneration, color: .conduitAccent, rim: LAAColor.rimLight,
                               reduceMotion: reduceMotion)
-                    .frame(width: 160, height: 160)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }

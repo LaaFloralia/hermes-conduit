@@ -59,7 +59,10 @@ final class LAAChatSendScrollUITests: XCTestCase {
     private func scrollUp(_ app: XCUIApplication, times: Int) {
         let list = transcript(app)
         for _ in 0..<times {
-            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            // Below the heading, which the bar keeps for itself: with the
+            // keyboard up its 78 pt mascot and name reach 40 % of the
+            // transcript (2026-11-15).
+            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
                 .press(forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
         }
         Thread.sleep(forTimeInterval: 1)

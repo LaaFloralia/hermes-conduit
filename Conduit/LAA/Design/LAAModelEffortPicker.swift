@@ -69,7 +69,8 @@ struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
             .accessibilityIdentifier(identifier + ".model")
 
             Menu { effortMenu() } label: {
-                LAAEffortCapsule(effort: effort, current: current, changing: changingEffort)
+                LAAEffortCapsule(effort: effort, current: current, changing: changingEffort,
+                                 tone: LAAModelRank.of(model).tone)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -236,6 +237,8 @@ struct LAAEffortCapsule: View {
     let effort: String?
     var current = true
     var changing = false
+    /// The model's colour, so the pair wears one look (LAASelectionStyle).
+    var tone: LAAVeinTone = .stone
     @State private var start: Date?
 
     private var known: String? { effort.flatMap { LAAEffort.name($0) == nil ? nil : $0 } }
@@ -272,7 +275,7 @@ struct LAAEffortCapsule: View {
         .padding(.leading, LAASpacing.x3).padding(.trailing, LAASpacing.x3)
         .frame(minHeight: LAAPickerMetrics.height)
         .contentShape(Capsule())
-        .laaGlassSelection(finish: current ? LAAEffort.finish(ranked) : .plain,
+        .laaGlassSelection(finish: current ? LAAEffort.finish(ranked) : .plain, tone: tone,
                            seed: LAAMarble.seed(ranked), motion: motion,
                            duration: ranked.map { LAACeremony.duration(effort: $0) } ?? LAACeremony.slow,
                            cornerRadius: LAAPickerMetrics.radius)

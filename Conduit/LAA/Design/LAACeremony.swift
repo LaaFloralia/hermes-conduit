@@ -7,8 +7,8 @@ import UIKit
 /// fine marble cracks inside it, more and brighter at the higher step, and a
 /// light drifting slowly along them. Plain glass holds none; polished glass a
 /// few veins (Fable, Astra, XHigh); crystal more veins and branches and a
-/// brighter light (Mythos, Max, Ultra Code). Never a coloured face, an
-/// outline or a pattern.
+/// brighter light (Mythos, Max, Ultra Code). Each model's colour, pattern
+/// and strength sit in LAASelectionStyle; no outline.
 enum LAAFinish: Int, Comparable {
     case plain = 0, polished = 1, crystal = 2
     static func < (lhs: LAAFinish, rhs: LAAFinish) -> Bool { lhs.rawValue < rhs.rawValue }
@@ -93,21 +93,16 @@ struct LAAMarbleLook: Equatable {
     var lightAt: Double { front ?? light }
 
     /// The veins themselves, before the light passes them.
-    func veinOpacity(dark: Bool) -> Double { LAAMarble.tier(finish)?.opacity(dark: dark) ?? 0 }
+    func veinOpacity(dark: Bool) -> Double {
+        min(1, (LAAMarble.tier(finish)?.opacity(dark: dark) ?? 0) * LAASelectionStyle.of(tone).strength)
+    }
 
     /// The veins where the light lies: brightest under the front of an
     /// applied change, then the resting share of it.
     func glowOpacity(dark: Bool) -> Double {
         guard let tier = LAAMarble.tier(finish) else { return 0 }
-        return tier.glow(dark: dark) * (front == nil ? LAAMarble.restGlowShare : 1)
+        return min(1, tier.glow(dark: dark) * LAASelectionStyle.of(tone).strength) * (front == nil ? LAAMarble.restGlowShare : 1)
     }
-}
-
-/// Which white the veins carry: the stone's own, or Mythos's faint violet.
-enum LAAVeinTone: Equatable { case stone, mythos }
-
-extension LAAModelRank {
-    var tone: LAAVeinTone { self == .mythos ? .mythos : .stone }
 }
 
 /// Fine cracks inside the glass, as in a dark marble (owner, 2026-11-15):
@@ -166,15 +161,8 @@ enum LAAMarble {
     /// The light's frame rate while it drifts: slow enough for 24 a second.
     static let driftFrameRate: Float = 24
 
-    /// The veins' colours (white to pale grey; Mythos a faint violet), before opacity.
-    static func ink(_ tone: LAAVeinTone, dark: Bool) -> UIColor {
-        switch (tone, dark) {
-        case (.stone, true): UIColor(red: 0.93, green: 0.91, blue: 0.86, alpha: 1)   // #ECE7DC
-        case (.stone, false): UIColor(red: 0.45, green: 0.47, blue: 0.47, alpha: 1)  // pale grey on the paper glass
-        case (.mythos, true): UIColor(red: 0.87, green: 0.82, blue: 0.97, alpha: 1)
-        case (.mythos, false): UIColor(red: 0.50, green: 0.43, blue: 0.63, alpha: 1)
-        }
-    }
+    /// The pattern's colour before opacity (LAASelectionStyle).
+    static func ink(_ tone: LAAVeinTone, dark: Bool) -> UIColor { LAASelectionStyle.of(tone).ink.ui(dark: dark) }
 
     struct Vein: Equatable {
         /// The crack's centre line, in points from the capsule's top leading corner.
@@ -296,12 +284,23 @@ private struct LAAGlassSelection: ViewModifier {
         if reduceTransparency {
             content.background {
                 shape.fill(LAAColor.surface)
-                    .overlay { veins.clipShape(shape) }
+                    .overlay { inside.clipShape(shape) }
             }
         } else {
             content
-                .background { veins.clipShape(shape).allowsHitTesting(false).accessibilityHidden(true) }
+                .background { inside.clipShape(shape).allowsHitTesting(false).accessibilityHidden(true) }
                 .conduitGlassControl(cornerRadius: cornerRadius, tint: .clear, interactive: true)
+        }
+    }
+
+    /// The model's faint colour through the glass, under its pattern.
+    @ViewBuilder private var inside: some View {
+        if finish != .plain {
+            let style = LAASelectionStyle.of(tone), dark = scheme == .dark
+            ZStack {
+                shape.fill(Color(uiColor: style.wash.ui(dark: dark))).opacity(style.washOpacity(dark: dark))
+                veins
+            }
         }
     }
 
@@ -400,6 +399,9 @@ final class LAAMarbleView: UIView {
     private let glowVeins = CAShapeLayer()
     private let glowHalo = CAShapeLayer()
     private let band = CAGradientLayer()
+    /// The pattern as an image (LAASelectionStyle.Pattern.texture), and again under the light.
+    private let texture = CALayer()
+    private let glowTexture = CALayer()
 
     private static let driftKey = "laa.marble.drift"
     private static let frontKeys = ["laa.marble.front", "laa.marble.frontLight", "laa.marble.frontGlow"]
@@ -418,9 +420,15 @@ final class LAAMarbleView: UIView {
         band.locations = [0, 0.5, 1]
         glowHalo.fillColor = nil
         glowHalo.lineJoin = .round
+        for l in [texture, glowTexture] {
+            l.contentsGravity = .resizeAspectFill
+            l.masksToBounds = true
+        }
         layer.addSublayer(spread)
+        spread.addSublayer(texture)
         spread.addSublayer(veins)
         spread.addSublayer(glow)
+        glow.addSublayer(glowTexture)
         glow.addSublayer(glowHalo)
         glow.addSublayer(glowVeins)
         glow.mask = band
@@ -436,7 +444,8 @@ final class LAAMarbleView: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
-        if previous?.look.finish != next.look.finish || previous?.seed != next.seed { builtFor = nil }
+        if previous?.look.finish != next.look.finish || previous?.seed != next.seed
+            || previous?.look.tone != next.look.tone { builtFor = nil }
         layoutLayers()
         paint(next)
         place(next)
@@ -469,20 +478,32 @@ final class LAAMarbleView: UIView {
 
     private func layoutLayers() {
         let size = bounds.size
-        for l in [labelMask, spread, veins, glow, glowVeins, glowHalo] as [CALayer] { l.frame = bounds }
+        for l in [labelMask, spread, veins, glow, glowVeins, glowHalo, texture, glowTexture] as [CALayer] { l.frame = bounds }
         guard let config, size.width > 1, size.height > 1 else { return }
         if let built = builtFor, built.0 == size, built.1 == config.look.finish, built.2 == config.seed { return }
         builtFor = (size, config.look.finish, config.seed)
-        let path = LAAMarble.path(LAAMarble.veins(finish: config.look.finish, size: size, seed: config.seed))
+        let image = Self.textureImage(config.look.tone)
+        texture.contents = image?.cgImage
+        glowTexture.contents = image?.cgImage
+        // A texture takes the veins' place; without one the veins are drawn.
+        let path = image == nil ? LAAMarble.path(LAAMarble.veins(finish: config.look.finish, size: size, seed: config.seed)) : nil
         veins.path = path
         glowVeins.path = path
         glowHalo.path = path
     }
 
+    private static func textureImage(_ tone: LAAVeinTone) -> UIImage? {
+        guard case .texture(let name) = LAASelectionStyle.of(tone).pattern else { return nil }
+        return UIImage(named: name)
+    }
+
     private func paint(_ config: Config) {
         let ink = LAAMarble.ink(config.look.tone, dark: config.dark)
         veins.fillColor = ink.withAlphaComponent(config.look.veinOpacity(dark: config.dark)).cgColor
-        let peak = LAAMarble.tier(config.look.finish)?.glow(dark: config.dark) ?? 0
+        texture.opacity = Float(config.look.veinOpacity(dark: config.dark))
+        let peak = min(1, (LAAMarble.tier(config.look.finish)?.glow(dark: config.dark) ?? 0)
+                       * LAASelectionStyle.of(config.look.tone).strength)
+        glowTexture.opacity = Float(peak)
         glowVeins.fillColor = ink.withAlphaComponent(peak).cgColor
         // On the dark the light also blooms a little round each vein; on the
         // paper the vein only sharpens.
@@ -506,7 +527,8 @@ final class LAAMarbleView: UIView {
         }
         band.bounds = CGRect(x: 0, y: 0, width: LAAMarble.lightWidth * w, height: h)
         band.position = CGPoint(x: config.look.lightAt * w, y: h / 2)
-        let peak = LAAMarble.tier(config.look.finish)?.glow(dark: config.dark) ?? 0
+        let peak = min(1, (LAAMarble.tier(config.look.finish)?.glow(dark: config.dark) ?? 0)
+                       * LAASelectionStyle.of(config.look.tone).strength)
         glow.opacity = Float(peak > 0 ? config.look.glowOpacity(dark: config.dark) / peak : 0)
     }
 
