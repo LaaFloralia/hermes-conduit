@@ -117,6 +117,7 @@ final class LAAPhoneUseUITests: XCTestCase {
         XCTAssertLessThan(stop.frame.maxY, allowFrame.minY, "Stop must stay above the former permission row")
         springboard.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: allowFrame.midX, dy: allowFrame.midY)).tap()
+        XCTAssertFalse(poll(3) { status(id) == "stopped" }, "A repeated tap at Allow must not trigger Stop")
         XCTAssertEqual(status(id), "allowed", "A repeated tap at Allow must not stop the operation")
         let ended = try XCTUnwrap(control("/end?id=\(id)"))
         add(XCTAttachment(string: "end push: \(ended["endPush"] ?? "none"), wake: \(ended["wake"] ?? "none")"))
