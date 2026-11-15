@@ -36,6 +36,36 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         XCTAssertEqual(reopened.setting(for: key(dashboard: UUID())).kind, .paper)
     }
 
+    func testBubbleChoiceIsScopedDefaultsToStandardAndSurvivesBackgroundChanges() throws {
+        let store = LAABackgroundStore(directory: directory)
+        XCTAssertEqual(store.setting(for: key()).bubble, .standard)
+        try store.save(LAABackground(kind: .paper, bubble: .glass), for: key())
+        XCTAssertEqual(LAABackgroundStore(directory: directory).setting(for: key()).bubble, .glass)
+        XCTAssertEqual(store.setting(for: key("two")).bubble, .standard)
+        XCTAssertEqual(store.setting(for: key(profile: "laa-cto")).bubble, .standard)
+        // A photo chosen afterwards keeps the bubbles, and so does its loss.
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).image { context in
+            UIColor.gray.setFill(); context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+        }.pngData()!
+        try store.savePhoto(photo, for: key(), dim: 0, blur: 0)
+        let saved = store.setting(for: key())
+        XCTAssertEqual(saved.kind, .photo)
+        XCTAssertEqual(saved.bubble, .glass)
+        try FileManager.default.removeItem(at: directory.appendingPathComponent(try XCTUnwrap(saved.photoID) + ".jpg"))
+        XCTAssertEqual(store.setting(for: key()).kind, .paper)
+        XCTAssertEqual(store.setting(for: key()).bubble, .glass)
+    }
+
+    func testRecordsSavedBeforeTheBubbleChoiceDecodeAsStandard() throws {
+        let old = #"{"kind":"tealNight","dim":0,"blur":0,"brightestComponent":1}"#
+        XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: Data(old.utf8)),
+                       LAABackground(kind: .tealNight))
+        let unknown = #"{"kind":"ink","dim":0,"blur":0,"brightestComponent":1,"bubble":"frosted"}"#
+        XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: Data(unknown.utf8)).bubble, .standard)
+        let glass = LAABackground(kind: .ink, bubble: .glass)
+        XCTAssertEqual(try JSONDecoder().decode(LAABackground.self, from: JSONEncoder().encode(glass)), glass)
+    }
+
     func testPhotoIsDownscaledPersistsAndMissingFallsBackToPaper() throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 2200, height: 1100)).image { context in
             UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2200, height: 1100))
