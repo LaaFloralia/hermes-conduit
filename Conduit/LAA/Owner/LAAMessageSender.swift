@@ -22,6 +22,18 @@ enum LAASender {
     /// iPhone the column less `oppositeGap` is narrower.
     static let bubbleMaxWidth: CGFloat = 620
 
+    /// The widest a bubble gets in a chat column `column` wide: 620, and on
+    /// a Mac's wide window a share of the column, so a maximized window's
+    /// bubbles, tables, pictures and previews widen with it (owner,
+    /// 2026-11-15).
+    static func bubbleMaxWidth(column: CGFloat) -> CGFloat {
+        #if targetEnvironment(macCatalyst)
+        max(bubbleMaxWidth, (column * ReadableWidth.macBubbleShare).rounded(.down))
+        #else
+        bubbleMaxWidth
+        #endif
+    }
+
     /// The employee's name as the chat's header shows it.
     static func agentName(profile: String, identity: ConversationAgentIdentity) -> String {
         LAAStaff(profile: profile)?.name ?? (profile == "default" ? LAACopy.agent : identity.name)
@@ -63,6 +75,7 @@ struct LAAOwnerHeader: View {
 /// trailing side. `continues` drops both for the next message in a run, and
 /// keeps the bubble's edge where the first one's was.
 struct LAAOwnerMessageRow<Content: View>: View {
+    @Environment(\.chatColumnWidth) private var column
     var continues = false
     var timestamp: String? = nil
     @ViewBuilder let content: Content
@@ -77,7 +90,7 @@ struct LAAOwnerMessageRow<Content: View>: View {
                     LAAOwnerAvatarView().frame(width: 30, height: 30)
                 }.accessibilityIdentifier("chat.sender.owner")
             }
-            content.frame(maxWidth: LAASender.bubbleMaxWidth, alignment: .trailing)
+            content.frame(maxWidth: LAASender.bubbleMaxWidth(column: column), alignment: .trailing)
                 .padding(.leading, LAASender.oppositeGap)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }.frame(maxWidth: .infinity, alignment: .trailing)
@@ -85,6 +98,7 @@ struct LAAOwnerMessageRow<Content: View>: View {
 }
 
 struct LAAAgentMessageRow<Avatar: View, Content: View>: View {
+    @Environment(\.chatColumnWidth) private var column
     let name: String
     var continues = false
     var role: String? = nil
@@ -102,7 +116,7 @@ struct LAAAgentMessageRow<Avatar: View, Content: View>: View {
                     LAAMessageTime(timestamp: timestamp)
                 }.accessibilityIdentifier("chat.sender.agent")
             }
-            content.frame(maxWidth: LAASender.bubbleMaxWidth, alignment: .leading)
+            content.frame(maxWidth: LAASender.bubbleMaxWidth(column: column), alignment: .leading)
                 .padding(.trailing, LAASender.oppositeGap)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxWidth: .infinity, alignment: .leading)

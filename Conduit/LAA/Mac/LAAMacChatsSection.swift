@@ -28,6 +28,14 @@ struct LAAMacChatsSection: View {
     }
 
     var body: some View {
+        #if DEBUG
+        if Self.showsFixture { fixtureSplit } else { content }
+        #else
+        content
+        #endif
+    }
+
+    @ViewBuilder private var content: some View {
         if requiresLogin {
             // Sign-in, where the phone's Chats tab shows it: a card at a
             // readable width in the middle of the window, not stretched
@@ -47,6 +55,24 @@ struct LAAMacChatsSection: View {
             split
         }
     }
+
+    #if DEBUG
+    /// `-LAA_MAC_CHAT_FIXTURE` (with the background fixture's arguments):
+    /// the fixture's conversation in the detail column beside an empty list,
+    /// so a window at any size can be photographed without a Bridge.
+    static var showsFixture: Bool { ProcessInfo.processInfo.arguments.contains("-LAA_MAC_CHAT_FIXTURE") }
+
+    private var fixtureSplit: some View {
+        LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
+            LAAColor.background
+        } detail: {
+            LAABackgroundUITestFixtureScreen()
+                .environment(\.v2Shell, V2ShellContext(values: .init(isTabActive: true, isRootCovered: false, isSplit: true)))
+                .environment(\.horizontalSizeClass, .compact)
+                .modifier(LAAMacFlatTopEdge())
+        }
+    }
+    #endif
 
     private var split: some View {
         LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {

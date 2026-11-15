@@ -35,7 +35,24 @@ enum ReadableWidth {
     /// wide window. A wider window widens it (`chat(available:)`).
     static let chat: CGFloat = 760
     /// The widest a chat's column gets, however wide the window.
+    #if LAA_BUILD && targetEnvironment(macCatalyst)
+    /// LAA on a Mac (owner, 2026-11-15: 「画面を最大化した時にチャットが追従して
+    /// 拡大して欲しい」): a maximized window's column keeps widening, so the
+    /// margins beside it never take most of the window.
+    static let chatMax: CGFloat = 1600
+    /// From this column on, LAA's Mac chat steps its text up once.
+    static let chatWideColumn: CGFloat = 1200
+    /// That step: DESIGN.md's app scale, body 16 → 20 and small 13 → 16.
+    /// The Mac draws chat text at fixed sizes for every system text size,
+    /// so the step scales the transcript's fonts (`ChatTextAppearance`)
+    /// rather than moving the Dynamic Type size.
+    static let macWideTextScale: CGFloat = 20.0 / 16.0
+    /// A bubble's widest on a wide window: this share of the column, never
+    /// under LAASender's 620 pt.
+    static let macBubbleShare: CGFloat = 0.8
+    #else
     static let chatMax: CGFloat = 1040
+    #endif
     /// The share of the chat's width its column takes between those two.
     static let chatShare: CGFloat = 0.72
     /// Settings' pages.
@@ -61,8 +78,14 @@ enum ReadableWidth {
     /// beside the list, keep the system's size; a maximized window's
     /// 1040 pt column steps up three.
     static func chatTextSteps(column: CGFloat) -> Int {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        // One step of LAA's type scale, and only on a wide window: a
+        // normal window keeps its look. The step is `macWideTextScale`.
+        return column >= chatWideColumn ? 1 : 0
+        #else
         let growth = column / chat
         return chatTextGrowth.filter { growth >= $0 }.count
+        #endif
     }
 
     /// The body text growth each step brings at the default size
@@ -90,6 +113,7 @@ private struct ReadableContentWidth: ViewModifier {
             let column = maxWidth(proxy.size.width)
             let steps = scalesChatText ? textSteps(column: column) : 0
             content
+                .environment(\.chatColumnWidth, scalesChatText ? column : 0)
                 .safeAreaPadding(.horizontal, ReadableWidth.margin(available: proxy.size.width, maxWidth: column))
                 // Centered for content narrower than the window too; the
                 // reader alone would put it at the leading edge.
@@ -97,7 +121,7 @@ private struct ReadableContentWidth: ViewModifier {
                 // The column's own text (step rows, cards, the composer)
                 // through Dynamic Type; transcript text, which resolves
                 // UIKit fonts, through the steps (ChatTextAppearance).
-                .dynamicTypeSize(Self.boosted(dynamicTypeSize, by: steps))
+                .dynamicTypeSize(Self.boosted(dynamicTypeSize, by: Self.usesDynamicTypeSteps ? steps : 0))
                 .environment(\.chatWidthTextSteps, steps)
         }
     }
@@ -112,8 +136,30 @@ private struct ReadableContentWidth: ViewModifier {
 
     private static var standardSizes: [DynamicTypeSize] { ChatTypography.standardDynamicTypeSizes }
 
+    /// The column's own text steps through Dynamic Type everywhere but in
+    /// LAA on a Mac, whose step is a scale of the transcript's fonts.
+    private static var usesDynamicTypeSteps: Bool {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        false
+        #else
+        true
+        #endif
+    }
+
     private static func boosted(_ size: DynamicTypeSize, by steps: Int) -> DynamicTypeSize {
         guard steps > 0, let index = standardSizes.firstIndex(of: size) else { return size }
         return standardSizes[min(standardSizes.count - 1, index + steps)]
+    }
+}
+
+private struct ChatColumnWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// The chat column's width (`readableChatColumn`); zero outside one.
+    var chatColumnWidth: CGFloat {
+        get { self[ChatColumnWidthKey.self] }
+        set { self[ChatColumnWidthKey.self] = newValue }
     }
 }

@@ -131,13 +131,20 @@ struct ChatTextAppearance: Hashable {
     /// The system text size those steps reach: transcript fonts resolve at
     /// it, as the column's other text does through `dynamicTypeSize`.
     var widthCategory: UIContentSizeCategory?
+    /// LAA on a Mac: the wide window's step as a scale of every transcript
+    /// font (`ReadableWidth.macWideTextScale`); 1 elsewhere.
+    var widthScale: CGFloat = 1
 
     /// This appearance in a column that stepped its text up `steps` sizes,
     /// to `category` (the column's environment size).
     func widened(steps: Int, category: ContentSizeCategory) -> ChatTextAppearance {
         var appearance = self
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        appearance.widthScale = steps > 0 ? ReadableWidth.macWideTextScale : 1
+        #else
         appearance.widthSteps = steps
         appearance.widthCategory = steps > 0 ? UIContentSizeCategory(category) : nil
+        #endif
         return appearance
     }
 
@@ -156,6 +163,7 @@ struct ChatTextAppearance: Hashable {
     var cacheIdentity: String {
         var identity = style == .standard ? size.cacheIdentity : "\(size.cacheIdentity)-\(style.rawValue)"
         if widthSteps > 0, let widthCategory { identity += "-w\(widthCategory.rawValue)" }
+        if widthScale != 1 { identity += "-x\(Int((widthScale * 100).rounded()))" }
         return identity
     }
 }
@@ -262,7 +270,7 @@ enum ChatTypography {
     }
 
     static func dimension(_ value: CGFloat, appearance: ChatTextAppearance) -> CGFloat {
-        dimension(value, chatSize: appearance.size) * widthRatio(appearance)
+        dimension(value, chatSize: appearance.size) * widthRatio(appearance) * appearance.widthScale
     }
 
     /// How much a wide window's steps grow body text, from the size they
@@ -327,7 +335,8 @@ enum ChatTypography {
                 traits = UITraitCollection(preferredContentSizeCategory: widthCategory)
             }
         }
-        return styled(font(for: role, chatSize: appearance.size, compatibleWith: traits), role: role, style: appearance.style)
+        let font = styled(font(for: role, chatSize: appearance.size, compatibleWith: traits), role: role, style: appearance.style)
+        return appearance.widthScale == 1 ? font : font.withSize(font.pointSize * appearance.widthScale)
     }
 
     /// `font(for:appearance:)` for a view that resolves against its
