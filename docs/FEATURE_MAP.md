@@ -1124,7 +1124,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 ## LAA campaign decisions
 
-Work's section `Campaigns` (after Decisions) lists the campaign-hunt entries the daily routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Each row shows the title, organizer, prize, deadline, the reason it waits and `ページを開く` (the site in the default browser), with `応募させる` and `見送る` in place. The segment reads `Campaigns 1` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next 11:00 run, which applies the approved ones.
+Work's section `Campaigns` (after Decisions) lists what the campaign-hunt routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Waiting rows are grouped by kind — サイトの応募, Xのプレゼント, 助成金・補助金 — each with the title, organizer, prize or ceiling, deadline, why it waits (an X post's entry conditions), a grant's preparation, `ページを開く` (the default browser) and the kind's own yes beside `見送る`: `応募させる` (the routine applies at its next 11:00 run), `自分で応募する` (the owner applies from the post), `下書きを頼む` (the routine drafts the application). The segment reads `Campaigns 37` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next run, except a grant already drafted.
 
 **Siblings:** the campaign-hunt skill's ledger and its `pending`/`decide` commands (owned by the skill, outside this
 repo) · the Bridge routes · the Work hub segment count · the Mac Work section (same view)
@@ -1135,20 +1135,23 @@ repo) · the Bridge routes · the Work hub segment count · the Mac Work section
 - Tests: `ConduitTests/LAACampaignBoardTests.swift`, `bridge/test/campaigns.test.mjs`
 
 **Rulings**
-- The Bridge never opens the ledger file. It runs `ledger.py pending --all` and `ledger.py decide <key> approve|decline`
-  (`/usr/bin/python3`, overridable with `LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`) and passes their JSON on in
-  camelCase, without the ledger's path. Decisions run one at a time.
+- The Bridge never opens the ledger file. It runs `ledger.py pending --all` and `ledger.py decide <key> approve|decline
+  --kind <kind>` (`/usr/bin/python3`, overridable with `LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`) and passes their
+  JSON on in camelCase, without the ledger's path. Decisions run one at a time.
+- The app asks for `?kind=all`; without it the Bridge returns site rows only, because the first app build (master
+  75f25177) labels every row 応募させる. A row is identified by kind and key: the same URL can be both a site entry and a
+  grant.
 - Read with `sessions:read`, decide with `sessions:write` and `Idempotency-Key`, the decision board's scopes; no new
   scope. Choosing twice records the same state, so a failed attempt frees its key.
 - No confirmation dialog: the choice stays changeable until the run reads it.
 
 **Owner check on the device**
-- Open Work › Campaigns, open a row's page, and choose 応募させる or 見送る; the row should move under 判断済み.
+- Open Work › Campaigns, open a row's page, and choose a row's yes or 見送る; the row should move under 判断済み.
 
 **Open gaps**
 - No notification or link opens the section yet; the count refreshes with the hub every 15 seconds.
 
-**Checked:** 2026-11-15, 3ddb8668 (laa/campaign-decisions): bridge campaigns tests 4, LAACampaignBoardTests, the real ledger read through the route.
+**Checked:** 2026-11-15, 75f25177 (laa/campaign-decisions-v2): bridge campaigns tests 4, LAACampaignBoardTests, the real ledger (version 2) read through the route.
 
 ## LAA answers from a notification, and which Mac notifications arrive
 

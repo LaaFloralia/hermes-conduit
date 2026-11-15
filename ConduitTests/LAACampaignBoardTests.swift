@@ -9,14 +9,18 @@ import XCTest
 @MainActor
 final class LAACampaignBoardTests: XCTestCase {
     private static let page = #"""
-    {"count":1,"items":[
-      {"key":"bb8f8dafe0d1dea8","status":"needs_owner","url":"https://jbia.org/campaign.html","at":"2026-11-15T14:20:38+09:00","decidedAt":null,
-       "title":"いい風呂の日キャンペーン（日本浴用剤工業会）","organizer":"日本浴用剤工業会","prize":"入浴剤セット","deadline":"11月30日 23:59",
-       "reason":"応募フォームで規約への同意と本人の住所の入力が必要なため、社長の判断を待っています。","conditions":null},
-      {"key":"aaaaaaaaaaaaaaaa","status":"declined","url":"https://example.com/b","at":"2026-11-14T10:00:00+09:00","decidedAt":"2026-11-14T10:00:00+09:00",
-       "title":"秋の読書キャンペーン","organizer":null,"prize":null,"deadline":null,"reason":null,"conditions":null},
-      {"key":"cccccccccccccccc","status":"approved","url":"https://example.com/c","at":"2026-11-15T09:00:00+09:00","decidedAt":"2026-11-15T09:00:00+09:00",
-       "title":"コーヒー豆プレゼント","organizer":"珈琲店","prize":"豆 200g","deadline":"12月1日","reason":"抽選","conditions":null}
+    {"count":3,"items":[
+      {"key":"bb8f8dafe0d1dea8","kind":"site","action":"agent_apply","status":"needs_owner","waiting":true,"url":"https://jbia.org/campaign.html","at":"2026-11-15T14:20:38+09:00","decidedAt":null,
+       "title":"いい風呂の日キャンペーン（日本浴用剤工業会）","organizer":"日本浴用剤工業会","benefit":"入浴剤セット","deadline":"11月30日 23:59",
+       "reason":"応募フォームで規約への同意と本人の住所の入力が必要なため、社長の判断を待っています。","conditions":null,"nextStep":null,"gbizid":null},
+      {"key":"e07cb584cf2b6f5f","kind":"x","action":"self","status":"candidate","waiting":true,"url":"https://x.com/nakau_info/status/1","at":"2026-11-15T13:42:12+09:00","decidedAt":null,
+       "title":"なか卯【公式】","organizer":null,"benefit":"なか卯お食事券1,000円分（30名）","deadline":"2026-11-15","reason":null,"conditions":"フォロー＋リポスト。23:59まで","nextStep":null,"gbizid":null},
+      {"key":"b7b5b1f12181290d","kind":"grant","action":"draft","status":"candidate","waiting":true,"url":"https://example.com/grant","at":"2026-11-15T08:35:54+09:00","decidedAt":null,
+       "title":"東京都 新製品・新技術開発助成事業","organizer":"東京都","benefit":"上限25,000,000円","deadline":"2026-04-17","reason":"自社ソフトの新製品開発は候補になり得る。","conditions":null,"nextStep":"GビズID本人確認","gbizid":true},
+      {"key":"aaaaaaaaaaaaaaaa","kind":"site","status":"declined","url":"https://example.com/b","at":"2026-11-14T10:00:00+09:00","decidedAt":"2026-11-14T10:00:00+09:00",
+       "title":"秋の読書キャンペーン","organizer":null,"benefit":null,"deadline":null,"reason":null,"conditions":null},
+      {"key":"cccccccccccccccc","kind":"site","status":"approved","url":"https://example.com/c","at":"2026-11-15T09:00:00+09:00","decidedAt":"2026-11-15T09:00:00+09:00",
+       "title":"コーヒー豆プレゼント","organizer":"珈琲店","benefit":"豆 200g","deadline":"12月1日","reason":"抽選","conditions":null}
     ]}
     """#
 
@@ -27,18 +31,33 @@ final class LAACampaignBoardTests: XCTestCase {
     func testSectionsSplitByStatusWithTheNewestChoiceFirst() throws {
         let board = LAACampaignBoard()
         board.setForTesting(try items())
-        XCTAssertEqual(board.count, 1)
-        XCTAssertEqual(board.waiting.map(\.key), ["bb8f8dafe0d1dea8"])
+        XCTAssertEqual(board.count, 3)
+        XCTAssertEqual(board.waiting(.x).map(\.key), ["e07cb584cf2b6f5f"])
+        XCTAssertEqual(board.waiting(.grant).map(\.id), ["grant:b7b5b1f12181290d"])
         XCTAssertEqual(board.decided.map(\.key), ["cccccccccccccccc", "aaaaaaaaaaaaaaaa"])
     }
 
     func testRowTextLeavesOutWhatTheLedgerDoesNotKnow() throws {
         let rows = try items()
-        XCTAssertEqual(LAACampaignCopy.meta(rows[0]), "日本浴用剤工業会 · 賞品 入浴剤セット · 締切 11月30日 23:59")
-        XCTAssertEqual(LAACampaignCopy.meta(rows[1]), "")
-        XCTAssertTrue(LAACampaignCopy.decision(rows[2]).hasPrefix("応募させる · "))
-        XCTAssertTrue(LAACampaignCopy.decision(rows[1]).hasPrefix("見送る · "))
+        XCTAssertEqual(LAACampaignCopy.meta(rows[0]), "日本浴用剤工業会 · 入浴剤セット · 締切 11月30日 23:59")
+        XCTAssertEqual(LAACampaignCopy.meta(rows[2]), "東京都 · 上限25,000,000円 · 締切 2026-04-17 · GビズIDが必要")
+        XCTAssertEqual(LAACampaignCopy.meta(rows[3]), "")
+        XCTAssertEqual(LAACampaignCopy.body(rows[1]), "フォロー＋リポスト。23:59まで")
+        XCTAssertTrue(LAACampaignCopy.decision(rows[4]).hasPrefix("応募させる · "))
+        XCTAssertTrue(LAACampaignCopy.decision(rows[3]).hasPrefix("見送る · "))
+        XCTAssertEqual(LAACampaignCopy.approve(.x), "自分で応募する")
+        XCTAssertEqual(LAACampaignCopy.approve(.grant), "下書きを頼む")
         XCTAssertEqual(rows[0].with(status: "approved", decidedAt: "x").status, "approved")
+        XCTAssertFalse(rows[2].with(status: "drafted", decidedAt: "x").changeable)
+        XCTAssertTrue(LAACampaignCopy.decision(rows[2].with(status: "drafted", decidedAt: nil)).hasPrefix("下書き済み"))
+    }
+
+    /// The Bridge before the kinds sends `prize` and no kind: still a site row.
+    func testAnOlderBridgeRowReadsAsASiteEntry() throws {
+        let row = try JSONDecoder().decode(LAACampaign.self, from: Data(#"{"key":"aaaaaaaaaaaaaaaa","status":"needs_owner","title":"t","url":"https://example.com","prize":"豆"}"#.utf8))
+        XCTAssertEqual(row.kind, .site)
+        XCTAssertEqual(row.benefit, "豆")
+        XCTAssertTrue(row.waiting)
     }
 
     func testCampaignsIsAWorkSectionWithItsCount() {
@@ -51,7 +70,7 @@ final class LAACampaignBoardTests: XCTestCase {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let suffix = style == .dark ? "dark" : "light"
             let board = LAACampaignBoard()
-            board.setForTesting(try items(), failures: ["cccccccccccccccc": "Macに接続できません。"])
+            board.setForTesting(try items(), failures: ["site:cccccccccccccccc": "Macに接続できません。"])
             try capture(board, style: style, name: "campaigns-\(suffix)")
             let empty = LAACampaignBoard()
             empty.setForTesting([])
