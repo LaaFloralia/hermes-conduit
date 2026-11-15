@@ -1570,8 +1570,11 @@ export function routineAgents(agents) {
   return routines;
 }
 
+// A session working in a git worktree that the Work engine made (Paseo's or LAA Work's).
+const WORKTREE_ROOTS = ['/.paseo/worktrees/', '/.local/share/laa-work/worktrees/'];
+
 export function isWorktree(record) {
-  return typeof record.cwd === 'string' && record.cwd.includes('/.paseo/worktrees/');
+  return typeof record.cwd === 'string' && WORKTREE_ROOTS.some((root) => record.cwd.includes(root));
 }
 
 function parseMode(raw) {

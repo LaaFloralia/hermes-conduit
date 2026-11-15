@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { BridgeError } from '../src/errors.mjs';
 import { delegationError } from '../src/sessions/adapter.mjs';
-import { sessionTitle } from '../src/sessions/service.mjs';
+import { isWorktree, sessionTitle } from '../src/sessions/service.mjs';
 import { startBridge } from './helpers.mjs';
 
 // Fake delegation path. It mirrors the parts of laa-personal-agent the Bridge
@@ -1076,4 +1076,11 @@ test('delegation permission refusals preserve the explicit 403 reason', () => {
     assert.equal(error.code, code);
     assert.ok(error.message.includes(code));
   }
+});
+
+test('a session in a worktree of either Work engine is a worktree session', () => {
+  assert.equal(isWorktree({ cwd: '/Users/owner/.paseo/worktrees/repo/branch' }), true);
+  assert.equal(isWorktree({ cwd: '/Users/owner/.local/share/laa-work/worktrees/repo/branch' }), true);
+  assert.equal(isWorktree({ cwd: '/Users/owner/dev/repo' }), false);
+  assert.equal(isWorktree({}), false);
 });
