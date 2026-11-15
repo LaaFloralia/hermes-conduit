@@ -593,12 +593,18 @@ export function createSessionService({
     return null;
   }
 
-  async function conversation(id) {
+  // Without `limit` the whole conversation is returned, as older apps expect.
+  // With it, the newest `limit` messages (or those just before `before`, a
+  // message id) come back with `hasOlder`, so a long session opens on its
+  // latest page and the app asks for older pages only when the owner does.
+  async function conversation(id, { limit = null, before = null } = {}) {
     const record = requireSession(id);
     // Read the log after the history: an observation made while the history
     // was being read may close the span that covers its newest reply.
     const { items: read, compacting } = await joinedHistory(record, history, sessionStore.file);
-    const messages = attributeReplies(read, (sessionStore.get(id) ?? record).modelLog);
+    const attributed = attributeReplies(read, (sessionStore.get(id) ?? record).modelLog);
+    const window = conversationWindow(attributed, { limit, before });
+    const messages = window.messages;
     const references = images.references(id);
     // One batch for the whole page: a poll naming the same 215 pictures must
     // not open or rewrite the index 215 times.
@@ -613,7 +619,7 @@ export function createSessionService({
       const ids = [...new Set([...localIDs.filter(Boolean), ...(references[message.id] ?? [])])];
       return { ...visible, text, images: ids };
     });
-    return { items, compacting: compacting === true };
+    return { items, compacting: compacting === true, ...(window.paged ? { hasOlder: window.hasOlder } : {}) };
   }
 
   // --- follow-up queue ------------------------------------------------------
@@ -1800,4 +1806,27 @@ function parseImages(images) {
     if (bytes > 4 * 1024 * 1024) throw badRequest('payload_too_large', 'images must fit in four MiB');
     return { data: image.data, mimeType: image.mimeType };
   });
+}
+
+export const CONVERSATION_PAGE_MAX = 500;
+
+// One page of a conversation, newest last. An unknown `before` is a cursor the
+// conversation no longer has (a compaction rewrote it): 410, so the app reads
+// the latest page again instead of showing a gap.
+export function conversationWindow(messages, { limit = null, before = null } = {}) {
+  if (limit === null || limit === undefined || limit === '') {
+    if (before) throw new BridgeError(400, 'invalid_request', 'before requires limit');
+    return { messages, paged: false, hasOlder: false };
+  }
+  const size = Number(limit);
+  if (!Number.isInteger(size) || size < 1 || size > CONVERSATION_PAGE_MAX) {
+    throw new BridgeError(400, 'invalid_request', `limit must be an integer from 1 to ${CONVERSATION_PAGE_MAX}`);
+  }
+  let end = messages.length;
+  if (before) {
+    end = messages.findIndex((message) => message.id === before);
+    if (end < 0) throw new BridgeError(410, 'cursor_expired', 'the conversation no longer holds that message');
+  }
+  const start = Math.max(0, end - size);
+  return { messages: messages.slice(start, end), paged: true, hasOlder: start > 0 };
 }

@@ -226,53 +226,28 @@ struct ChatView: View {
     /// icon-only — and the loading state is announced by the combined
     /// progress row.
     private var transcriptTopBackfillControl: some View {
-        Group {
-            if transcriptBackfillIsLoading {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Loading earlier messages")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+        TranscriptBackfillControl(isLoading: transcriptBackfillIsLoading) {
+            // A second tap while the first backfill is in flight
+            // must not overwrite the armed anchor (the single-flight
+            // guard in AppState would then discard nothing and the
+            // discharge below would kill the first request's anchor).
+            guard !transcriptBackfillIsLoading else { return }
+            ChatViewportTrace.shared.log("event loadEarlier")
+            let armedKey = renderedScrollSessionKey ?? activeScrollSessionKey
+            scrollEngine.olderPageBackfillRequested(sessionKey: armedKey)
+            backfillViewportTask?.cancel()
+            backfillViewportTask = Task { @MainActor in
+                let didPrepend = await appState.loadEarlierMessages()
+                guard !Task.isCancelled else { return }
+                if !didPrepend {
+                    // Nothing landed (short page, transient failure,
+                    // all-duplicate page): discharge the anchor so it
+                    // can never re-pin on a later unrelated change.
+                    // Scoped to the session this tap armed — a stale
+                    // task must not clobber a newer conversation's
+                    // anchor.
+                    scrollEngine.prependAnchorDischarged(matching: armedKey)
                 }
-                .accessibilityElement(children: .combine)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-            } else {
-                Button {
-                    // A second tap while the first backfill is in flight
-                    // must not overwrite the armed anchor (the single-flight
-                    // guard in AppState would then discard nothing and the
-                    // discharge below would kill the first request's anchor).
-                    guard !transcriptBackfillIsLoading else { return }
-                    ChatViewportTrace.shared.log("event loadEarlier")
-                    let armedKey = renderedScrollSessionKey ?? activeScrollSessionKey
-                    scrollEngine.olderPageBackfillRequested(sessionKey: armedKey)
-                    backfillViewportTask?.cancel()
-                    backfillViewportTask = Task { @MainActor in
-                        let didPrepend = await appState.loadEarlierMessages()
-                        guard !Task.isCancelled else { return }
-                        if !didPrepend {
-                            // Nothing landed (short page, transient failure,
-                            // all-duplicate page): discharge the anchor so it
-                            // can never re-pin on a later unrelated change.
-                            // Scoped to the session this tap armed — a stale
-                            // task must not clobber a newer conversation's
-                            // anchor.
-                            scrollEngine.prependAnchorDischarged(matching: armedKey)
-                        }
-                    }
-                } label: {
-                    Label("Load earlier messages", systemImage: "clock.arrow.circlepath")
-                        .font(.footnote.weight(.semibold))
-                        .labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.plain)
-                .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
-                .accessibilityLabel("Load earlier messages")
-                .accessibilityHint("Fetches the next older page of this conversation")
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
             }
         }
     }

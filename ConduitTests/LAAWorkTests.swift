@@ -775,15 +775,51 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkModelSelection.model(of: "fable-api-high", in: options)?.model, "anthropic:claude-fable-5-2")
     }
 
+    /// Work opens on the latest page; older pages land above it and stay
+    /// there while the latest page keeps refreshing.
+    func testTranscriptPagesKeepLoadedOlderPagesUnderRefreshes() {
+        func rows(_ ids: [String]) -> [LAAWorkConversationMessage] {
+            ids.map { LAAWorkConversationMessage(id: $0, role: "user", text: $0, timestamp: nil) }
+        }
+        XCTAssertTrue(LAAWorkTranscriptPages.latestPath("ses_0123456789abcdef").hasSuffix("/conversation?limit=\(LAAWorkTranscriptPages.pageSize)"))
+        XCTAssertTrue(LAAWorkTranscriptPages.olderPath("ses_0123456789abcdef", before: "m4").hasSuffix("before=m4"))
+        let empty = LAAWorkTranscriptPages.Shown(messages: [], canLoadOlder: false, backfilled: false)
+        var shown = LAAWorkTranscriptPages.latest(rows(["m4", "m5"]), hasOlder: true, onto: empty)
+        XCTAssertTrue(shown.canLoadOlder)
+        shown = LAAWorkTranscriptPages.prepend(rows(["m2", "m3", "m4"]), hasOlder: true, onto: shown)
+        XCTAssertEqual(shown.messages.map(\.id), ["m2", "m3", "m4", "m5"], "a row already shown is not repeated")
+        XCTAssertTrue(shown.backfilled)
+        // A reply arrives: the latest page slides, the loaded rows stay above.
+        shown = LAAWorkTranscriptPages.latest(rows(["m5", "m6"]), hasOlder: true, onto: shown)
+        XCTAssertEqual(shown.messages.map(\.id), ["m2", "m3", "m4", "m5", "m6"])
+        XCTAssertTrue(shown.canLoadOlder)
+        shown = LAAWorkTranscriptPages.prepend(rows(["m1"]), hasOlder: false, onto: shown)
+        XCTAssertFalse(shown.canLoadOlder, "the first page retires the control")
+        // A rewritten history (no anchor) starts again at the latest page.
+        shown = LAAWorkTranscriptPages.latest(rows(["x1", "x2"]), hasOlder: true, onto: shown)
+        XCTAssertEqual(shown.messages.map(\.id), ["x1", "x2"])
+        XCTAssertFalse(shown.backfilled)
+        // An older Bridge sends the whole conversation and no paging.
+        let whole = LAAWorkTranscriptPages.latest(rows(["a", "b"]), hasOlder: nil, onto: shown)
+        XCTAssertEqual(whole.messages.map(\.id), ["a", "b"])
+        XCTAssertFalse(whole.canLoadOlder)
+    }
+
     /// A held follow-up stays in the transcript until the history has it.
     func testSentEchoLeavesOnceTheHistoryHasTheMessage() {
         let before = [LAAWorkConversationMessage(id: "u1", role: "user", text: "最初", timestamp: nil)]
-        let echo = LAAWorkSentEcho(text: "この画像も", attachments: [], known: before.count)
+        let echo = LAAWorkSentEcho(text: "この画像も", attachments: [], after: before.last?.id)
         XCTAssertEqual(LAAWorkSentEcho.pending([echo], in: before).count, 1)
         let reply = before + [LAAWorkConversationMessage(id: "a1", role: "assistant", text: "回答", timestamp: nil)]
         XCTAssertEqual(LAAWorkSentEcho.pending([echo], in: reply).count, 1, "an AI reply is not the owner's message")
         let delivered = reply + [LAAWorkConversationMessage(id: "u2", role: "user", text: " この画像も ", timestamp: nil)]
         XCTAssertTrue(LAAWorkSentEcho.pending([echo], in: delivered).isEmpty)
+        // The latest page keeps its length as the conversation grows: the
+        // message arriving at the end still settles the echo.
+        let slid = Array(delivered.dropFirst())
+        XCTAssertTrue(LAAWorkSentEcho.pending([echo], in: slid).isEmpty)
+        let older = LAAWorkSentEcho(text: "最初", attachments: [], after: "u1")
+        XCTAssertEqual(LAAWorkSentEcho.pending([older], in: before).count, 1, "the message it was sent after is not it")
     }
 
     /// A follow-up interrupts a running turn unless the owner chose to wait
