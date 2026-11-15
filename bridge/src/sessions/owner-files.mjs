@@ -4,6 +4,8 @@
 // The boundary, checked on every read and from one open descriptor:
 //   * the path is absolute and lies under the owner's home, both as written
 //     and after every symlink is resolved, so a link cannot reach outside it;
+//   * a hidden folder or file of the home is read only where Hermes and
+//     Muse keep reply pictures (ALLOWED_HIDDEN);
 //   * nothing in it is a place secrets live (.ssh, .config, Library with the
 //     Keychains, the Bridge's own state, .git) and the name is not one
 //     (*.env, keys, credentials, auth.json);
@@ -23,6 +25,10 @@ const DENIED_FOLDERS = new Set([
   '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.password-store', '.1password', '.op',
   '.config', '.git', '.gcloud', '.terraform.d', 'keychains',
 ]);
+// The home's hidden folders and files (shell history, tokens, tool state)
+// are out unless the path starts with one of these: the pictures Hermes and
+// Muse write for a reply. `*` is any one folder name.
+const ALLOWED_HIDDEN = [['.hermes', 'profiles', '*', 'images'], ['.local', 'state', 'laa-muse']];
 // Folders denied from the home folder down.
 const DENIED_FROM_HOME = [['library'], ['.local', 'state', 'laa-bridge']];
 const DENIED_NAME = /(?:^|\.)env(?:\.|$)|^\.netrc$|^\.npmrc$|^\.pypirc$|^\.pgpass$|^\.git-credentials$|^\.vault-token$|^id_(?:rsa|dsa|ecdsa|ed25519)|\.(?:pem|key|p12|pfx|keychain|keychain-db|kdbx|ovpn|mobileprovision)$|credential|secret|^auth\.json$/i;
@@ -52,6 +58,8 @@ export function ownerPathAllowed(path, home) {
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return false;
   const segments = rel.split(sep);
   if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) return false;
+  if (segments[0].startsWith('.') && !ALLOWED_HIDDEN.some((prefix) => segments.length > prefix.length
+      && prefix.every((folder, index) => folder === '*' || segments[index].toLowerCase() === folder))) return false;
   if (DENIED_FROM_HOME.some((folders) => startsWithFolders(segments, folders))) return false;
   if (segments.slice(0, -1).some((segment) => DENIED_FOLDERS.has(segment.toLowerCase()))) return false;
   return !DENIED_NAME.test(basename(path));

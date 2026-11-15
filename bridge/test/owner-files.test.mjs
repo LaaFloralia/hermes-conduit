@@ -102,6 +102,11 @@ test('an owner file is read from one checked descriptor; secrets, links out of h
   assert.equal(ownerPathAllowed(join(home, 'work', 'a.md'), home), true);
   assert.equal(ownerPathAllowed(home, home), false);
   assert.equal(ownerPathAllowed(`${home}x/a.md`, home), false, 'a sibling folder sharing the prefix is outside');
+  assert.equal(ownerPathAllowed(join(home, '.hermes', 'profiles', 'laa-monet', 'images', 'a.png'), home), true);
+  assert.equal(ownerPathAllowed(join(home, '.local', 'state', 'laa-muse', 'shot.png'), home), true);
+  assert.equal(ownerPathAllowed(join(home, '.zsh_history'), home), false, 'hidden files of the home are out');
+  assert.equal(ownerPathAllowed(join(home, '.hermes', 'profiles', 'laa-monet', 'state.db'), home), false);
+  assert.equal(ownerPathAllowed(join(home, '.claude', 'x.json'), home), false);
 });
 
 test("a reply's pictures under home become the session's images; a preview of a picture too", async (t) => {
@@ -154,9 +159,15 @@ test('the files route serves a session its owner files with sessions:read and re
   const { home, put } = homeFixture(t);
   const result = put('work/x/RESULT.md', '# 結果\n');
   const secret = put('.ssh/config', 'Host *');
+  const unnamed = put('work/x/OTHER.md', 'not in the conversation');
+  const history = put('.zsh_history', 'export TOKEN=x');
   const bridge = await startBridge({ sessions: {
     daemon: daemonAdapter({ connect: daemonFixture().connect, now: () => 1000 }),
     notify: async () => {},
+    // The conversation names the result, the secret and the shell history;
+    // only the result is inside the boundary, and OTHER.md was never named.
+    history: async () => ({ compacting: false, items: [{ id: 'm1', role: 'assistant',
+      text: `[結果](${result}) ${secret} ${history}` }] }),
     readOwner: (path) => readOwnerFile(path, { home }),
   } });
   t.after(() => bridge.close());
@@ -169,6 +180,8 @@ test('the files route serves a session its owner files with sessions:read and re
   assert.deepEqual({ ...ok.body.data, data: Buffer.from(ok.body.data.data, 'base64').toString() },
     { name: 'RESULT.md', mimeType: 'text/markdown', size: 9, data: '# 結果\n' });
   assert.equal((await bridge.request(url(secret), { token })).status, 404);
+  assert.equal((await bridge.request(url(history), { token })).status, 404);
+  assert.equal((await bridge.request(url(unnamed), { token })).status, 404);
   assert.equal((await bridge.request(url('/etc/hosts'), { token })).status, 404);
   assert.equal((await bridge.request(`/v1/sessions/${id}/files`, { token })).status, 404);
   assert.equal((await bridge.request(url(result))).status, 401);

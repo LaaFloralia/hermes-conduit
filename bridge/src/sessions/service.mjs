@@ -1484,10 +1484,20 @@ export function createSessionService({
     conversation,
     initialInstruction,
     image: (id, imageID) => { requireSession(id); return images.read(id, imageID); },
-    // A file a reply names on this Mac, inside the owner-file boundary
-    // (owner-files.mjs); anything outside it reads as not found.
-    file: (id, path) => {
-      requireSession(id);
+    // A file this session's own conversation names on this Mac, inside the
+    // owner-file boundary (owner-files.mjs). A path the conversation never
+    // wrote, or one outside the boundary, reads as not found: the route is
+    // for opening what a reply showed, not for browsing the Mac.
+    file: async (id, path) => {
+      const record = requireSession(id);
+      if (typeof path !== 'string' || path.length < 2 || !path.startsWith('/')) throw notFound('file not found');
+      const { items } = await joinedHistory(record, history, sessionStore.file);
+      const forms = [path, encodeURI(path)];
+      const named = items.some((item) => {
+        const texts = [item?.text, ...(Array.isArray(item?.localImages) ? item.localImages : [])];
+        return texts.some((text) => typeof text === 'string' && forms.some((form) => text.includes(form)));
+      });
+      if (!named) throw notFound('file not found');
       const file = readOwner(path);
       if (!file) throw notFound('file not found');
       return { name: file.name, mimeType: file.mimeType, size: file.size, data: file.data.toString('base64') };
