@@ -7,7 +7,7 @@
 ## 位置づけ
 
 - LAAアプリ（LaaFloralia/hermes-conduit のmaster。Conduitのフォーク）は社長の主窓口。裏側はMac miniのHermes（会話・通話・通知）とLAA Bridge（`bridge/`。仕事・Brain・素材・Usage）。
-- Brain・HQの閲覧・編集はDocへ移行済み。Paseo・Google Drive・Linear・Grok Botの残る操作を、道具ごとの [ROADMAP](ROADMAP.md) の移行ゲートに従ってLAAへ集約する。Paseoは実行エンジンとして継続し、画面はLAA独自のSwiftUIと既存Bridge契約へ寄せる（2026-11-03 社長判断）。実行基盤の完全自作・Paseo daemonの撤去は現在の完了条件から外す。Apache-2.0のPaseoはフォーク可能だが、既存patch・pluginを優先し、それで足りない具体的な変更が出た時にフォークを判断する。実行・履歴・承認・親子管理・復旧のLAAからの操作確認は引き続き必要。
+- Brain・HQの閲覧・編集はDocへ移行済み。Paseo・Google Drive・Linear・Grok Botの残る操作を、道具ごとの [ROADMAP](ROADMAP.md) の移行ゲートに従ってLAAへ集約する。Paseoは移行完了まで実行エンジンとして使い、2026-11-15の社長判断で独自のセッションハーネスへ段階移行して、ROADMAPの移行ゲートに合格した後に削除する。
 - iPhone版（社長の端末はiPhone 16 Pro Max）とMac版（MacBook・Mac mini。Mac Catalyst、Developer ID署名・公証のDMG）を同じmasterから作る。資料作成はLAAアプリから依頼し、実行はLAA Studio（Mac専用の別アプリ）が担う。
 
 ## 始め方
