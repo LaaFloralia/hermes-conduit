@@ -440,7 +440,6 @@ export function paseoWorktreeCreator({ bin = resolvePaseoBin(), timeoutMs = 120_
     .join(':');
   return async ({ repoPath, branch, base }) => {
     const args = ['worktree', 'create', '--mode', 'branch-off', '--cwd', repoPath, '--new-branch', branch, '--json'];
-    if (process.env.LAA_BRIDGE_WORK_HOME) args.unshift('--home', process.env.LAA_BRIDGE_WORK_HOME);
     if (base) args.push('--base', base);
     let stdout;
     try {

@@ -1,15 +1,15 @@
-// Paseo is the execution and conversation authority, including sessions created
+// The LAA Work engine, accessed through its router, is the execution and conversation authority, including sessions created
 // outside the Bridge. No configuration, credentials or conversation bodies are
 // needed to enumerate it. Mutations are reached only from authenticated routes.
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { resolveWorkClient, resolveWorkHome } from '../config.mjs';
+import { resolveWorkClient } from '../config.mjs';
 import { BridgeError, badRequest, conflict } from '../errors.mjs';
 import { fastTarget, fastValue } from './features.mjs';
 
 export async function connectDaemon() {
   const { connectToDaemon } = await import(pathToFileURL(resolveWorkClient()).href);
-  return connectToDaemon({ target: { kind: 'instance', home: resolveWorkHome() }, timeout: 15_000 });
+  return connectToDaemon({ timeout: 15_000 });
 }
 export const pendingHash = (pending) => createHash('sha256').update(JSON.stringify(pending)).digest('hex');
 export const daemonSessionID = (id) => `ses_${createHash('sha256').update(`paseo|${id}`).digest('hex').slice(0, 16)}`;

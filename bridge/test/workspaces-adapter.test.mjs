@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { dirname } from 'node:path';
 import test from 'node:test';
-import { resolvePaseoBin, resolveWorkClient, resolveWorkHome, WORK_ROUTER } from '../src/config.mjs';
+import { resolvePaseoBin, resolveWorkClient, WORK_ROUTER } from '../src/config.mjs';
 import { paseoWorktreeCreator } from '../src/routes/workspaces.mjs';
 
 test('the paseo creator builds a branch-off create with the repo as cwd', async () => {
@@ -54,7 +54,4 @@ test('Work paths do not fall back when the router or CLI is missing', () => {
   assert.equal(resolveWorkClient({ LAA_BRIDGE_WORK_CLIENT: '/custom/router.mjs' }, present), '/custom/router.mjs');
   assert.throws(() => resolveWorkClient({}, missing), /Work router not found/);
   assert.throws(() => resolveWorkClient({ LAA_BRIDGE_WORK_CLIENT: '/missing' }, missing), /Work router not found/);
-  // The router still reaches Paseo's sessions through this home until Paseo is removed.
-  assert.match(resolveWorkHome({}), /\/\.paseo$/);
-  assert.equal(resolveWorkHome({ LAA_BRIDGE_WORK_HOME: '/custom/home' }), '/custom/home');
 });
