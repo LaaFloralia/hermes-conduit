@@ -26,6 +26,8 @@ if [ "$archive_only" -eq 0 ] && [ "${LAA_MAC_KEYCHAIN_ACTIVE:-}" != 1 ]; then
 fi
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false SSH_ASKPASS=/usr/bin/false GIT_CONFIG_GLOBAL=/dev/null
+jobs="${LAA_XCODE_JOBS:-4}"
+case "$jobs" in [1-9]) ;; *) printf 'error: LAA_XCODE_JOBS must be 1-9\n' >&2; exit 2;; esac
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 redact_signing_names() {
     /usr/bin/sed -E 's/(Apple Development|Apple Distribution|Developer ID Application|Developer ID Installer|iPhone Developer|iPhone Distribution|Mac Developer): [^(]*\(/\1: <redacted> (/g; s/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/<redacted-id>/g; s/[[:xdigit:]]{8}-[[:xdigit:]]{16}/<redacted-id>/g; s/[[:xdigit:]]{40,}/<redacted-id>/g'
@@ -175,7 +177,7 @@ signing=()
 printf 'Archiving universal Mac Catalyst build %s...\n' "$build_number"
 if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -scheme Conduit -configuration Release \
     -destination 'generic/platform=macOS,variant=Mac Catalyst' -archivePath "$archive" -derivedDataPath "$external_run/DerivedData" \
-    -jobs 4 -packageAuthorizationProvider netrc ${auth[@]+"${auth[@]}"} DEVELOPMENT_TEAM="$team" \
+    -jobs "$jobs" -packageAuthorizationProvider netrc ${auth[@]+"${auth[@]}"} DEVELOPMENT_TEAM="$team" \
     CURRENT_PROJECT_VERSION="$build_number" 'ARCHS=arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
     ${signing[@]+"${signing[@]}"} 2>&1 | redact_signing_names > "$work/archive.log"; then
     fail "archive failed; see $work/archive.log"
@@ -235,7 +237,7 @@ plistlib.dump({
 }, open(sys.argv[2], "wb"))
 PY
 printf 'Exporting Developer ID application...\n'
-if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild -exportArchive -jobs 4 -archivePath "$archive" -exportPath "$work/export" \
+if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild -exportArchive -jobs "$jobs" -archivePath "$archive" -exportPath "$work/export" \
     -exportOptionsPlist "$work/ExportOptions.plist" 2>&1 | redact_signing_names > "$work/export.log"; then
     fail "export failed; see $work/export.log"
 fi

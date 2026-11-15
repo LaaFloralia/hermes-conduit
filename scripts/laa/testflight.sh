@@ -26,6 +26,8 @@
 #   LAA_EXPORT_DESTINATION   upload (default) or export, which writes the .ipa
 #                            under the external build run and uploads nothing
 #   ASC_WAIT_SECONDS         how long to wait for the build to be VALID (2700)
+#   LAA_XCODE_JOBS           parallel build tasks (4); fewer keeps memory and swap
+#                            down when internal storage is near the safety line
 set -euo pipefail
 set +x
 
@@ -33,6 +35,8 @@ cd "$(dirname "$0")/../.."
 repo="$PWD"
 storage=/Users/laa/hq/harness/build_storage.py
 slot=/Users/laa/hq/harness/build-slot.sh
+jobs="${LAA_XCODE_JOBS:-4}"
+case "$jobs" in [1-9]) ;; *) printf 'error: LAA_XCODE_JOBS must be 1-9\n' >&2; exit 2;; esac
 # Serialize this app's upload, but release both locks while Apple processes it.
 # The next build number is chosen only after the preceding upload has finished.
 if [ "${LAA_TF_BUILD_PHASE:-}" != 1 ]; then
@@ -251,7 +255,7 @@ fi
 if [ -z "${LAA_WEBRTC_XCFRAMEWORK:-}" ]; then
   echo "Resolving Swift packages (no credentials consulted)..."
   derived_touched=1
-  if ! env -u ASC_KEY xcodebuild -resolvePackageDependencies -jobs 4 \
+  if ! env -u ASC_KEY xcodebuild -resolvePackageDependencies -jobs "$jobs" \
       -project Conduit.xcodeproj \
       -scheme Conduit \
       -scmProvider system \
@@ -285,7 +289,7 @@ fi
 echo "Archiving Release for generic iOS..."
 log="$work/archive.log"
 derived_touched=1
-if ! env -u ASC_KEY xcodebuild archive -jobs 4 -hideShellScriptEnvironment \
+if ! env -u ASC_KEY xcodebuild archive -jobs "$jobs" -hideShellScriptEnvironment \
     -project Conduit.xcodeproj \
     -scheme Conduit \
     -configuration Release \
@@ -347,7 +351,7 @@ PLIST
   || echo "Exporting to $work/export (no upload)..."
 export_log="$work/export.log"
 export_started=1
-if ! env -u ASC_KEY xcodebuild -exportArchive -jobs 4 \
+if ! env -u ASC_KEY xcodebuild -exportArchive -jobs "$jobs" \
     -archivePath "$archive" \
     -exportPath "$work/export" \
     -exportOptionsPlist "$options" \
