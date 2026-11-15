@@ -184,6 +184,13 @@ final class LAAWorkSessionUITests: XCTestCase {
         let title = app.buttons["work.session.detail.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         title.tap()
+        let name = app.descendants(matching: .any)["work.initialInstruction.name"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 15))
+        XCTAssertFalse((name.label + (name.value as? String ?? "")).isEmpty)
+        let copyName = app.buttons["work.initialInstruction.copyName"]
+        XCTAssertTrue(copyName.isHittable)
+        copyName.tap()
+        XCTAssertEqual(copyName.label, "コピーしました")
         let text = app.descendants(matching: .any)["work.initialInstruction.text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 15))
         XCTAssertTrue((text.label + (text.value as? String ?? "")).contains("最初の指示の全文です。"))
@@ -192,6 +199,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(copy.isHittable)
         copy.tap()
         XCTAssertEqual(copy.label, "コピーしました")
+        XCTAssertEqual(copyName.label, "名前をコピー")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = screenshot; shot.lifetime = .keepAlways
         add(shot)

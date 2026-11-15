@@ -328,7 +328,7 @@ private struct LAAWorkPaneHeader: View {
             Button { showingInitialInstruction = true } label: { identity }
                 .buttonStyle(.plain)
                 .disabled(session == nil)
-                .accessibilityLabel(Text(verbatim: (session?.name ?? "") + "、最初の指示を表示"))
+                .accessibilityLabel(Text(verbatim: (session?.name ?? "") + "、名前と最初の指示を表示"))
                 .accessibilityIdentifier("work.pane.initialInstruction")
                 .frame(maxWidth: .infinity, alignment: .leading)
             if canSplitRight || canSplitDown || many || sessionID != nil { controls }
@@ -344,7 +344,7 @@ private struct LAAWorkPaneHeader: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.pane.\(number).header")
         .sheet(isPresented: $showingInitialInstruction) {
-            if let sessionID { LAAWorkInitialInstruction(sessionID: sessionID).environmentObject(bridge) }
+            if let sessionID { LAAWorkInitialInstruction(sessionID: sessionID, sessionName: session?.name ?? "").environmentObject(bridge) }
         }
     }
 

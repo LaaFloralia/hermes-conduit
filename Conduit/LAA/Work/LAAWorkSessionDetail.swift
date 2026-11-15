@@ -193,14 +193,14 @@ struct LAAWorkSessionDetail: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(verbatim: session.name + "、" + LAAWorkPresentation.phase(session.phase)))
-                    .accessibilityHint(Text(verbatim: "最初の指示を表示"))
+                    .accessibilityHint(Text(verbatim: "名前と最初の指示を表示"))
                     .accessibilityIdentifier("work.session.detail.title")
                         .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                         .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
                 }
             }
         }
-        .sheet(isPresented: $showingInitialInstruction) { LAAWorkInitialInstruction(sessionID: id).environmentObject(bridge) }
+        .sheet(isPresented: $showingInitialInstruction) { LAAWorkInitialInstruction(sessionID: id, sessionName: session?.name ?? "").environmentObject(bridge) }
         .onChange(of: session?.needsDecision) { _, waiting in
             guard waiting == true else { parkedOnDecision = false; return }
             guard didInitialScroll, !userDragged else { return }
