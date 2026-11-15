@@ -2634,7 +2634,8 @@ struct ComposerBar: View, Equatable {
         showAttachmentMenu = true
     }
 
-    private func saveDraft(for key: ComposerDraftKey) {
+    @discardableResult
+    private func saveDraft(for key: ComposerDraftKey) -> Bool {
         draftStore.save(
             ComposerDraft(text: text, attachments: attachments, replyReference: replyReference),
             for: key
@@ -2683,11 +2684,22 @@ struct ComposerBar: View, Equatable {
         // chat a New Chat created): the field stays as it is, focus and
         // dictation with it.
         if let loadedDraftKey = keptKey, appState.composerDraftKeysAreSameChat(loadedDraftKey, destinationKey) {
-            saveDraft(for: destinationKey)
-            draftStore.removeDraft(for: loadedDraftKey)
-            self.loadedDraftKey = destinationKey
-            applyPendingPrefill()
-            return
+            // Persist at the original key first. Another device or an earlier
+            // visit may already own a draft at the destination; neither copy
+            // may replace the other merely because runtime ids changed.
+            guard saveDraft(for: loadedDraftKey) else { return }
+            let emptyHandoff = !draftStore.hasDraft(for: loadedDraftKey)
+                && !draftStore.hasDraft(for: destinationKey)
+                && !draftStore.submissions.contains(where: { $0.key == destinationKey })
+            if emptyHandoff || draftStore.migrateDraft(from: loadedDraftKey, to: destinationKey) {
+                self.loadedDraftKey = destinationKey
+                applyPendingPrefill()
+                return
+            }
+            // A failed atomic write keeps the current editor and old key.
+            // A destination collision follows the ordinary handoff below,
+            // leaving the original draft stored while loading the destination.
+            if draftStore.persistenceFailed { return }
         }
         // Dictated words belong to the draft they started in, and the full
         // editor to the chat it was opened in.
@@ -2695,13 +2707,9 @@ struct ComposerBar: View, Equatable {
         isShowingFullEditor = false
         if let loadedDraftKey = keptKey {
             saveDraft(for: loadedDraftKey)
-            if Self.draftKeysAreEquivalent(
-                loadedDraftKey,
-                destinationKey,
-                identity: appState.activeChatScrollSessionIdentity
-            ) {
-                draftStore.migrateDraft(from: loadedDraftKey, to: destinationKey)
-            }
+            // The authoritative same-chat check above already rejected this
+            // handoff (or found a collision). A historical scroll alias must
+            // not override a catalog that reassigned the runtime to a new chat.
         }
         composerErrorMessage = nil
         isFocused = false

@@ -175,15 +175,11 @@ final class ComposerDraftStore: ObservableObject {
         persist()
     }
 
-    func migrateDraft(from source: ComposerDraftKey, to destination: ComposerDraftKey) {
-        guard source != destination, let draft = drafts[source] else { return }
-        drafts.removeValue(forKey: source)
-        generations.removeValue(forKey: source)
-        order.removeAll { $0 == source }
-        drafts[destination] = draft
-        refreshGeneration(for: destination)
-        touch(destination)
-        persist()
+    @discardableResult
+    func migrateDraft(from source: ComposerDraftKey, to destination: ComposerDraftKey) -> Bool {
+        guard source.profile == destination.profile,
+              source.dashboardID == destination.dashboardID else { return false }
+        return moveDraftIfVacant(from: source, to: destination)
     }
 
     /// Move an explicitly selected local draft without replacing another one.

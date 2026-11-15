@@ -360,6 +360,108 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertEqual(store.draft(for: runtimeKey), .empty)
     }
 
+    func testAliasMigrationKeepsBothDraftsWhenDestinationAlreadyHasWords() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let source = ComposerDraftKey(profile: "work", sessionID: "runtime")
+        let destination = ComposerDraftKey(profile: "work", sessionID: "stored")
+        let original = ComposerDraft(text: "offline words", attachments: [])
+        let newer = ComposerDraft(text: "words already here", attachments: [])
+        let store = ComposerDraftStore(fileURL: url)
+        XCTAssertTrue(store.save(original, for: source))
+        XCTAssertTrue(store.save(newer, for: destination))
+
+        XCTAssertFalse(store.migrateDraft(from: source, to: destination))
+
+        let relaunched = ComposerDraftStore(fileURL: url)
+        XCTAssertEqual(relaunched.draft(for: source), original)
+        XCTAssertEqual(relaunched.draft(for: destination), newer)
+    }
+
+    func testAliasMigrationKeepsDurableAttachmentAfterRelaunchAndStagingRemoval() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let staged = directory.appendingPathComponent("notes.txt")
+        let bytes = Data("offline attachment".utf8)
+        try bytes.write(to: staged)
+        let url = directory.appendingPathComponent("drafts.json")
+        let source = ComposerDraftKey(profile: "work", sessionID: "runtime")
+        let destination = ComposerDraftKey(profile: "work", sessionID: "stored")
+        let store = ComposerDraftStore(fileURL: url)
+        XCTAssertTrue(store.save(.init(text: "keep file", attachments: [.init(
+            id: "notes", name: "notes.txt", uri: staged.absoluteString,
+            mimeType: "text/plain", kind: .document
+        )]), for: source))
+        XCTAssertTrue(store.migrateDraft(from: source, to: destination))
+        try FileManager.default.removeItem(at: staged)
+
+        let relaunched = ComposerDraftStore(fileURL: url)
+        let restored = relaunched.draft(for: destination)
+        XCTAssertEqual(restored.text, "keep file")
+        let attachmentURL = try XCTUnwrap(restored.attachments.first.flatMap { URL(string: $0.uri) })
+        XCTAssertEqual(try Data(contentsOf: attachmentURL), bytes)
+        XCTAssertFalse(relaunched.hasDraft(for: source))
+    }
+
+    func testAliasMigrationDoesNotReplaceUnknownDeliveryAtDestination() {
+        let dashboard = UUID()
+        let source = ComposerDraftKey(profile: "work", sessionID: "runtime", dashboardID: dashboard)
+        let destination = ComposerDraftKey(profile: "work", sessionID: "stored", dashboardID: dashboard)
+        let store = ComposerDraftStore()
+        let pending = ComposerDraftStore.Submission(
+            id: UUID(), key: destination, dashboardID: dashboard,
+            draft: .init(text: "delivery unconfirmed", attachments: []), pendingSendID: nil,
+            reservedAt: Date(timeIntervalSince1970: 123)
+        )
+        XCTAssertTrue(store.beginSubmission(pending, clearingDraft: true))
+        XCTAssertTrue(store.save(.init(text: "offline words", attachments: []), for: source))
+
+        XCTAssertFalse(store.migrateDraft(from: source, to: destination))
+
+        XCTAssertEqual(store.draft(for: source).text, "offline words")
+        XCTAssertEqual(store.submissions, [pending])
+        XCTAssertFalse(store.hasDraft(for: destination))
+    }
+
+    func testAliasMigrationRollsBackWhenSnapshotCannotBeWritten() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let source = ComposerDraftKey(profile: "work", sessionID: "runtime")
+        let destination = ComposerDraftKey(profile: "work", sessionID: "stored")
+        let store = ComposerDraftStore(fileURL: url)
+        let draft = ComposerDraft(text: "only copy", attachments: [])
+        XCTAssertTrue(store.save(draft, for: source))
+        let snapshot = try Data(contentsOf: url)
+        try FileManager.default.removeItem(at: directory)
+        try Data("block directory creation".utf8).write(to: directory)
+
+        XCTAssertFalse(store.migrateDraft(from: source, to: destination))
+
+        XCTAssertTrue(store.persistenceFailed)
+        XCTAssertEqual(store.draft(for: source), draft)
+        XCTAssertFalse(store.hasDraft(for: destination))
+        try FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try snapshot.write(to: url)
+        XCTAssertEqual(ComposerDraftStore(fileURL: url).draft(for: source), draft)
+    }
+
+    func testAutomaticAliasMigrationCannotCrossProfileOrDashboard() {
+        let source = ComposerDraftKey(profile: "work", sessionID: "runtime", dashboardID: UUID())
+        let store = ComposerDraftStore()
+        XCTAssertTrue(store.save(.init(text: "stay here", attachments: []), for: source))
+        XCTAssertFalse(store.migrateDraft(from: source, to: .init(
+            profile: "other", sessionID: "stored", dashboardID: source.dashboardID
+        )))
+        XCTAssertFalse(store.migrateDraft(from: source, to: .init(
+            profile: source.profile, sessionID: "stored", dashboardID: UUID()
+        )))
+        XCTAssertEqual(store.draft(for: source).text, "stay here")
+    }
+
     func testPhotosPickerCompletionRequiresSameEditorAndDraftKey() {
         let editorIdentity = UUID()
         let originKey = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
