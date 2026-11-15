@@ -125,7 +125,7 @@ final class LAASendEffectView: UIView, CAAnimationDelegate {
             let ring = CAShapeLayer()
             ring.path = core.path
             ring.fillColor = nil
-            ring.strokeColor = light.cgColor
+            ring.strokeColor = accent.cgColor
             ring.lineWidth = style.paneRim
             ring.opacity = 0
             root.addSublayer(ring)
