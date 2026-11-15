@@ -46,9 +46,12 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue(app.buttons["返信"].exists)
             capture(app, "message-menu-after-\(theme)")
             app.buttons["テキストを選択"].tap()
-            let selected = app.textViews["chat.message.selection"]
+            // The reply as drawn, in text views that select any part of it.
+            let sheet = app.descendants(matching: .any)["chat.message.selection"].firstMatch
+            XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+            let selected = sheet.textViews.matching(NSPredicate(format: "value CONTAINS %@", "午前")).firstMatch
             XCTAssertTrue(selected.waitForExistence(timeout: 5))
-            XCTAssertTrue((selected.value as? String ?? "").contains("午前"))
+            capture(app, "message-selection-after-\(theme)")
             app.navigationBars["テキストを選択"].buttons["完了"].tap()
             reply.press(forDuration: 0.8)
             app.buttons["返信"].tap()

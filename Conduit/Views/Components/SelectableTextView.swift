@@ -1357,9 +1357,18 @@ final class SelectableTextViewHostView: UIView {
         if hold.state == .began { openMessageMenu?() }
     }
     private func configureMessageMenuGestures() {
+        let menuOwnsHold = Self.menuOwnsHold(usesMessageMenu: usesMessageMenu,
+                                             onMac: ProcessInfo.processInfo.isMacCatalystApp)
         for gesture in textView?.gestureRecognizers ?? [] where gesture is UILongPressGestureRecognizer {
-            gesture.isEnabled = !usesMessageMenu
+            gesture.isEnabled = !menuOwnsHold
         }
+    }
+    /// On the Mac the menu is the right click, so the text keeps its own
+    /// gestures and the pointer selects any part of a message in place
+    /// (owner, 2026-11-16); on iPhone the hold opens the message's menu,
+    /// whose テキストを選択 is where a part is chosen.
+    static func menuOwnsHold(usesMessageMenu: Bool, onMac: Bool) -> Bool {
+        usesMessageMenu && !onMac
     }
 #endif
     /// Draws the text while the host has no text view: only hosts made to
