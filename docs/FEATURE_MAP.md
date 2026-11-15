@@ -3776,6 +3776,7 @@ pictures load)
 - A picture that won't load (unavailable, too large, or a web picture its page can't show either) gives its place to its label or fallback the same way: at rest, and above the reader made good by what the label's layout took. The web fallback's page measuring the picture goes the same way, and a row loading again a picture that failed keeps its label meanwhile (2026-10-26, #1270).
 - What memory already holds for a row (its picture, decoded, or the picture's size) shows without asking only on the row's first frame, or where the row has that height already: a row laid out with its loading line before another row of the same picture showed it, or before a cold launch's kept sizes loaded, keeps that line and takes the picture through its arrival, so nothing remembered resizes a row on its own. A web picture already decoded shows on the first frame too, its size remembered or not (2026-10-26, #1270).
 - Outside the chat's scroll engine (the saved copy, job sheets and group rooms, whose web pictures load through the same view) a picture, or the label of one that won't load, takes its height as soon as it arrives, as before: nothing there moves the offset for a row above the reader (2026-10-26, #1270).
+- A cron job's report shown in a chat (the system card, `[Cron job "…" report: …]`) draws its whole-line `@image:` references as reply pictures (fetched through the gateway resolver, opened full screen on a tap) and its `@file:` and whole-line `MEDIA:` files as their cards, the lines themselves left out of the text; quoted and fenced lines stay as written, and other system notices keep paths as text (2026-11-15, BUS-468; `MessageNormalizer.cronReportMarkdown`, SystemBubble; iPhone and Mac share the view).
 
 **Open gaps**
 - A picture never loaded on this phone, or kept by a build before #1239 and not shown since, or whose row was laid out before a cold launch's kept sizes loaded, still grows its row once, at rest: above the reader the offset moves with it, on screen it grows below what they look at, unanimated. Its height follows the row's width, so the memo can't reserve it before it loads, and only a read on the main thread before the first frame, which the ruling above keeps off it, would have the kept sizes in time.
@@ -3783,7 +3784,7 @@ pictures load)
 - Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-11-15, laa/bus468-chat-media (cron report pictures and files in the system card; unit tests only); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## Cards drawn in web pages
 

@@ -1384,7 +1384,7 @@ struct MessageBubble: View, Equatable {
                     timestamp: message.timestamp
                 )
             } else {
-                SystemBubble(message: message)
+                SystemBubble(message: message, gatewayResolver: gatewayResolver)
             }
         case .partial:
             AssistantBubble(
@@ -2864,6 +2864,9 @@ struct AssistantBubble: View {
 struct SystemBubble: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
+    /// Fetches a cron report's pictures and files from Hermes, as a
+    /// reply's are; other notices keep their paths as text.
+    var gatewayResolver: GatewayMediaDataURLResolver? = nil
 
     private var isRuntimeNotice: Bool {
         // Rows Hermes projected onto the timeline via `display_kind` are
@@ -2891,7 +2894,7 @@ struct SystemBubble: View {
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
-                MarkdownText(source: message.content)
+                noteText(message.content)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
@@ -2907,6 +2910,20 @@ struct SystemBubble: View {
                 .strokeBorder(Color.conduitAccent.opacity(0.15), lineWidth: 1)
         }
         .padding(.horizontal, 4)
+    }
+
+    /// A cron job's report shows its whole-line `@image:`, `@file:` and
+    /// `MEDIA:` references as a reply shows its media: pictures in place,
+    /// opened full screen on a tap, and other files as their cards.
+    @ViewBuilder private func noteText(_ content: String) -> some View {
+        if let gatewayResolver, MessageNormalizer.isCronReportNote(content) {
+            MarkdownText(
+                source: MessageNormalizer.cronReportMarkdown(content),
+                gatewayMediaDataURL: { path in await gatewayResolver.dataURL(for: path) }
+            )
+        } else {
+            MarkdownText(source: content)
+        }
     }
 }
 

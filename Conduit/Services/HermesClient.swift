@@ -5021,6 +5021,56 @@ enum MessageNormalizer {
         return (content, attachments)
     }
 
+    /// The first line of a cron job's report shown in a chat
+    /// (conduit_push `cron_bot_chat.HEADER`); the job's name has no `"`.
+    private static let cronReportHeader = try? NSRegularExpression(
+        pattern: #"^\[Cron job "[^"\r\n]*" report: shown in the chat, no reply asked for\]$"#
+    )
+
+    /// One whole line holding one `@image:` or `@file:` reference, quoted
+    /// the way Hermes quotes one (`format_reference_value`) or bare.
+    private static let noteReferenceLine = try? NSRegularExpression(
+        pattern: #"^@(?:image|file):(?:`([^`\r\n]+)`|"([^"\r\n]+)"|'([^'\r\n]+)'|(\S+))$"#
+    )
+
+    /// Whether `text` is a cron job's report note: a `role=user` row the
+    /// chat shows as a system card.
+    static func isCronReportNote(_ text: String) -> Bool {
+        guard let expression = cronReportHeader else { return false }
+        let first = String(text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(while: { $0 != "\n" && $0 != "\r" }))
+        return expression.firstMatch(in: first, range: NSRange(first.startIndex..<first.endIndex, in: first)) != nil
+    }
+
+    /// A cron report note as its card's Markdown reads it. The note's
+    /// whole-line `@image:` and `@file:` references (`cron_bot_chat
+    /// .reference_tags`, written from the report's `MEDIA:` tags) go back to
+    /// `MEDIA:` tags, so a picture shows as a reply's does and any other
+    /// file as its card, fetched through the gateway like a reply's. Lines in
+    /// fenced code and quoted lines stay as written; other text is unchanged.
+    static func cronReportMarkdown(_ text: String) -> String {
+        guard isCronReportNote(text), text.contains("@image:") || text.contains("@file:"),
+              let expression = noteReferenceLine else { return text }
+        var fenced = false
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                fenced.toggle()
+                return line
+            }
+            guard !fenced,
+                  let match = expression.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)),
+                  let path = (1..<match.numberOfRanges).lazy.compactMap({ Range(match.range(at: $0), in: trimmed) })
+                    .first.map({ String(trimmed[$0]).trimmingCharacters(in: .whitespaces) }),
+                  !path.isEmpty else { return line }
+            // Quoted as the tag reads a path holding a space or a quote mark.
+            guard path.contains(where: { $0.isWhitespace || "`\"'".contains($0) }) else { return "MEDIA:\(path)" }
+            guard let mark = ["\"", "'", "`"].first(where: { !path.contains($0) }) else { return line }
+            return "MEDIA:\(mark)\(path)\(mark)"
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// `@image:` tokens, quoted the way Hermes quotes one
     /// (`format_reference_value`) or bare.
     private static let imageReferencePattern = try? NSRegularExpression(

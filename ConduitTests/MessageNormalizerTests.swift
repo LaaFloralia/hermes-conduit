@@ -3315,6 +3315,82 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages[0].content, "Resume wake-up notice for the scheduled task.")
     }
 
+    // MARK: Cron report notes (BUS-468)
+
+    private static let cronNote = """
+    [Cron job "社員の候補" report: shown in the chat, no reply asked for]
+
+    1枚目が比較です。
+
+    @image:/Users/laa/.hermes/profiles/laa-monet/images/compare.jpg
+    @image:"/Users/laa/My Images/all 6.png"
+    @file:/Users/laa/work/report.pdf
+    MEDIA:/Users/laa/work/notes.txt
+    > @image:/tmp/example.png
+    ```
+    @image:/tmp/code.png
+    ```
+    """
+
+    func testCronReportNoteStaysASystemRowWithItsReferences() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(327),
+                "role": .string("user"),
+                "content": .string(Self.cronNote),
+                "display_kind": .string("internal_notification"),
+                "display_metadata": .object(["conduit_cron_delivery_id": .string("job-1:run-1")])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].role, .system)
+        XCTAssertNil(messages[0].attachments)
+        XCTAssertTrue(MessageNormalizer.isCronReportNote(messages[0].content))
+    }
+
+    func testCronReportNoteIsRecognizedByItsHeaderOnly() {
+        XCTAssertTrue(MessageNormalizer.isCronReportNote(Self.cronNote))
+        XCTAssertFalse(MessageNormalizer.isCronReportNote("Background watch fired.\n@image:/tmp/x.png"))
+        XCTAssertFalse(MessageNormalizer.isCronReportNote("Quoted: [Cron job \"a\" report: shown in the chat, no reply asked for]"))
+        // Other notices keep their text as written.
+        let other = "Background watch fired.\n@image:/tmp/x.png"
+        XCTAssertEqual(MessageNormalizer.cronReportMarkdown(other), other)
+    }
+
+    func testCronReportMarkdownTurnsWholeLineReferencesIntoMediaTags() {
+        let lines = MessageNormalizer.cronReportMarkdown(Self.cronNote).components(separatedBy: "\n")
+
+        XCTAssertTrue(lines.contains("MEDIA:/Users/laa/.hermes/profiles/laa-monet/images/compare.jpg"))
+        XCTAssertTrue(lines.contains("MEDIA:\"/Users/laa/My Images/all 6.png\""))
+        XCTAssertTrue(lines.contains("MEDIA:/Users/laa/work/report.pdf"))
+        XCTAssertTrue(lines.contains("MEDIA:/Users/laa/work/notes.txt"))
+        // A quoted example and fenced code stay as written.
+        XCTAssertTrue(lines.contains("> @image:/tmp/example.png"))
+        XCTAssertTrue(lines.contains("@image:/tmp/code.png"))
+        XCTAssertTrue(lines.contains("1枚目が比較です。"))
+    }
+
+    func testCronReportCardDrawsPicturesAndFileCardsWithoutTheirLines() {
+        let blocks = MarkdownParser.parse(
+            MessageNormalizer.cronReportMarkdown(Self.cronNote),
+            recognizesGatewayMedia: true
+        )
+        let media = blocks.compactMap { block -> String? in
+            if case .image(let url, _) = block { return url }
+            return nil
+        }
+
+        XCTAssertEqual(media, [
+            "MEDIA: /Users/laa/.hermes/profiles/laa-monet/images/compare.jpg",
+            "MEDIA: /Users/laa/My Images/all 6.png",
+            "MEDIA: /Users/laa/work/report.pdf",
+            "MEDIA: /Users/laa/work/notes.txt",
+        ])
+        XCTAssertFalse("\(blocks)".contains("@file:"), "\(blocks)")
+        XCTAssertFalse("\(blocks)".contains("@image:/Users"), "\(blocks)")
+    }
+
     func testUnknownDisplayKindPreservesTheRowConservatively() {
         // A future kind must neither crash normalization nor delete or
         // reinterpret an otherwise ordinary visible row.
