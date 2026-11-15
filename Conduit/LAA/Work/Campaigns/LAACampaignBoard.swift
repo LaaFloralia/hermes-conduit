@@ -153,13 +153,6 @@ enum LAACampaignSchedule {
     enum Order: String, CaseIterable, Identifiable {
         case category, deadline, newest
         var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .category: "種類・ジャンル順"
-            case .deadline: "期限順"
-            case .newest: "追加が新しい順"
-            }
-        }
     }
 
     struct Group: Identifiable, Equatable {
@@ -265,6 +258,14 @@ enum LAACampaignCopy {
     static let unsupportedDetail = "MacのLAA Bridgeを更新すると、応募の判断を表示します。"
 
     static let allHidden = "表示する種類を選んでください"
+
+    static func order(_ order: LAACampaignSchedule.Order) -> String {
+        switch order {
+        case .category: "種類・ジャンル順"
+        case .deadline: "期限順"
+        case .newest: "追加が新しい順"
+        }
+    }
 
     static func category(_ category: LAACampaign.Category) -> String {
         switch category {
@@ -545,17 +546,17 @@ struct LAACampaignBoardView: View {
             }
             Menu {
                 Picker(selection: $orderRaw) {
-                    ForEach(LAACampaignSchedule.Order.allCases) { Text(verbatim: $0.title).tag($0.rawValue) }
+                    ForEach(LAACampaignSchedule.Order.allCases) { Text(verbatim: LAACampaignCopy.order($0)).tag($0.rawValue) }
                 } label: { Text(verbatim: "表示順") }
                 .pickerStyle(.inline)
             } label: {
-                Label { Text(verbatim: order.title) } icon: { Image(systemName: "arrow.up.arrow.down") }
+                Label { Text(verbatim: LAACampaignCopy.order(order)) } icon: { Image(systemName: "arrow.up.arrow.down") }
                     .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)
                     .lineLimit(1).fixedSize()
                     .frame(minHeight: LAASpacing.minimumTouchTarget)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel(Text(verbatim: "表示順: \(order.title)"))
+            .accessibilityLabel(Text(verbatim: "表示順: \(LAACampaignCopy.order(order))"))
             .accessibilityIdentifier("work.campaigns.order")
         }
     }
