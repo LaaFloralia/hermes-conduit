@@ -152,7 +152,9 @@ struct LAAWorkSessionControls: View {
                         .disabled(!choice.available || !canChangeModel || selected || targetProfile(choice) == nil)
                         .accessibilityIdentifier("work.session.model.\(choice.provider).\(choice.model)")
                     }
-                    if let note = group.models.compactMap(\.usageNote).first { LAAMenuReason(text: note) }
+                    if let note = group.models.compactMap(\.usageNote).first {
+                        ForEach(note.split(separator: "\n").map(String.init), id: \.self) { LAAMenuReason(text: $0) }
+                    }
                 }
             }
         } effortMenu: {

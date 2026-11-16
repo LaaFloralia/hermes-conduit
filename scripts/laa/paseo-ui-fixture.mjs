@@ -33,7 +33,7 @@ export const server = createServer(async (req, res) => {
     }
     return send(res, project());
   }
-  if (path === '/v1/session-options') return send(res, { profiles: [{ id: 'sol-high', label: 'GPT-6.1 Sol High', provider: 'codex', model: 'gpt-6.1-sol', effort: 'high', fast: false }, { id: 'muse-high', label: 'Muse（Muse Code未導入のため使えません）', provider: 'muse', model: 'muse', effort: 'high', fast: false, available: false, usageNote: '公開情報のテキスト相談のみ・LAAの道具なし・直列・遅延。Sessionごとの履歴分離には未対応です。' }], defaultProfile: 'sol-high', defaultMode: 'default' });
+  if (path === '/v1/session-options') return send(res, { profiles: [{ id: 'sol-high', label: 'GPT-6.1 Sol High', provider: 'codex', model: 'gpt-6.1-sol', effort: 'high', fast: false }, { id: 'muse-high', label: 'Muse（Muse Code未導入のため使えません）', provider: 'muse', model: 'muse', effort: 'high', fast: false, available: false, usageNote: '無料MuseはChatの「薬用石鹸」で使います。\n公開情報のみ・道具なし・直列・遅延あり。\nSessionごとの履歴分離には未対応です。' }], defaultProfile: 'sol-high', defaultMode: 'default' });
   const id = path.split('/')[3], current = rows().find(x => x.id === id);
   if (current) {
     if (req.method === 'PATCH' && path === `/v1/sessions/${rootID}`) {

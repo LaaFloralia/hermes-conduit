@@ -57,6 +57,6 @@ export function withAvailability(profile, state) {
     label: `${profile.label}（${short ? `${short}のため使えません` : '今は使えません'}）`,
     available: false,
     unavailableReason: typeof state.reason === 'string' ? state.reason : null,
-    ...(profile.provider === 'muse' ? { usageNote: '無料Museの入口はChatの「薬用石鹸」です。公開情報のテキスト相談のみ・LAAの道具なし・直列・返信に時間がかかります。Sessionごとの履歴分離には未対応です。' } : {}),
+    ...(profile.provider === 'muse' ? { usageNote: '無料MuseはChatの「薬用石鹸」で使います。\n公開情報のみ・道具なし・直列・遅延あり。\nSessionごとの履歴分離には未対応です。' } : {}),
   };
 }

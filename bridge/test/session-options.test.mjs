@@ -340,7 +340,7 @@ test('free Muse stays visible, cannot launch, and never forwards a prompt or fal
   assert.equal(muse.model, 'muse');
   assert.equal(muse.available, false);
   assert.match(muse.label, /Muse Code未導入/);
-  assert.match(muse.usageNote, /公開情報.*道具なし.*直列.*履歴分離/);
+  assert.match(muse.usageNote, /公開情報.*道具なし.*直列.*履歴分離/s);
   assert.ok(options.switchProfiles.some((p) => p.id === muse.id));
   assert.notEqual(options.defaultProfile, muse.id);
   const unverified = sessionOptionsFrom(withMuse).profiles.find((p) => p.id === muse.id);

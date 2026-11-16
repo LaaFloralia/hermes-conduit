@@ -155,7 +155,9 @@ struct LAAWorkSessionLauncher: View {
                             .disabled(!item.available)
                             .accessibilityIdentifier("work.launch.model.\(item.model)")
                         }
-                        if let note = group.models.compactMap(\.usageNote).first { LAAMenuReason(text: note) }
+                        if let note = group.models.compactMap(\.usageNote).first {
+                            ForEach(note.split(separator: "\n").map(String.init), id: \.self) { LAAMenuReason(text: $0) }
+                        }
                     }
                 }
                 Section {
