@@ -1025,6 +1025,36 @@ test('a create the delegation path could not start can run again with the same k
   assert.equal(replay.body.data.id, again.body.data.id);
 });
 
+test('a busy delegation store keeps its reason and permits an immediate same-request retry', async (t) => {
+  const adapter = fakeDelegation();
+  const create = adapter.create;
+  let busy = true;
+  adapter.create = async args => {
+    if (busy) throw delegationError('state_busy');
+    return create(args);
+  };
+  const ctx = await boot(t, { adapter });
+  for (let n = 0; n < 3; n++) {
+    const refused = await createSession(ctx);
+    assert.equal(refused.status, 503);
+    assert.equal(refused.body.error.code, 'delegation_busy');
+  }
+  busy = false;
+  const created = await createSession(ctx);
+  assert.equal(created.status, 201);
+  await ctx.bridge.restart();
+  const replay = await createSession(ctx);
+  assert.equal(replay.body.data.id, created.body.data.id);
+  assert.equal(adapter.calls.filter(c => c.op === 'create').length, 1);
+});
+
+test('an unsupported creation protocol stays distinct from unknown delegation failure', () => {
+  const error = delegationError('creation_lifecycle_required');
+  assert.equal(error.status, 503);
+  assert.equal(error.code, 'creation_lifecycle_required');
+  assert.equal(error.retryable, false);
+});
+
 // A create whose outcome the Bridge never learned (the delegation path timed
 // out) used to answer idempotency_outcome_unknown to the app's same-key retry
 // for good. The requestId is deduplicated below, so the retry runs.

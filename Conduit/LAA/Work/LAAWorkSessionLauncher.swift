@@ -60,9 +60,12 @@ struct LAAWorkSessionLauncher: View {
     private var selected: LAAWorkSessionOptions.Profile? { options?.profiles.first { $0.id == profile } }
     private var current: LAAWorkModelFavorite { LAAWorkModelFavorite(profile: profile, fast: fast && selected?.fast == true) }
     private var key: ComposerDraftKey? { bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "launch-session") } }
-    private var pending: ComposerDraftStore.Submission? { key.flatMap { LAAWorkDrafts.pending(drafts, key: $0) } }
+    private var pendingRequests: [ComposerDraftStore.Submission] {
+        guard let key else { return [] }
+        return drafts.submissions.filter { $0.key == key }
+    }
     private var canStart: Bool {
-        selected != nil && selected?.available != false && !starting && pending == nil && !drafts.persistenceFailed
+        selected != nil && selected?.available != false && !starting && !drafts.persistenceFailed
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -70,7 +73,6 @@ struct LAAWorkSessionLauncher: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    if let pending { unknown(pending) }
                     if let error {
                         Label { Text(verbatim: error) } icon: { Image(systemName: "exclamationmark.triangle.fill") }
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -83,12 +85,17 @@ struct LAAWorkSessionLauncher: View {
                     }
                     if !favorites.isEmpty { favoriteChips }
                     LAAWorkComposer(text: $prompt, revision: $revision, placeholder: "依頼内容",
-                                    enabled: !starting && pending == nil && !drafts.persistenceFailed,
+                                    enabled: !starting && !drafts.persistenceFailed,
                                     canSend: selected != nil && selected?.available != false,
                                     onChange: saveDraft, onSubmit: start, submitLabel: "開始",
                                     accessibilityPrefix: "work.launch.composer")
                     Text(verbatim: "/Users/laa で開始 · " + (bypass ? "確認なしで実行" : "操作ごとに確認"))
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if !pendingRequests.isEmpty {
+                        Text(verbatim: "前の開始要求は保存しています。新しい依頼は別のセッションとして開始します。")
+                            .laaTextStyle(.secondary)
+                        ForEach(pendingRequests) { item in unknown(item) }
+                    }
                 }
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                 .laaPageWidth()
@@ -252,7 +259,7 @@ struct LAAWorkSessionLauncher: View {
     }
 
     @discardableResult private func applyProjectDefault() -> Bool {
-        guard pending == nil, let id = projects.first(where: { $0.id == projectID })?.defaultProfile else { return false }
+        guard !starting, let id = projects.first(where: { $0.id == projectID })?.defaultProfile else { return false }
         guard options?.switchingOptions.profiles.contains(where: { $0.id == id }) == true else {
             profile = ""; fast = false
             error = "プロジェクトの既定モデルは現在選べません。別のモデルを選んでください。"
@@ -294,9 +301,10 @@ struct LAAWorkSessionLauncher: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Label { Text(verbatim: "開始結果を確認できていません") } icon: { Image(systemName: "exclamationmark.triangle.fill") }
                 .foregroundStyle(LAAColor.attention)
-            Text(verbatim: "同じ依頼として照合します。重複して開始しません。").laaTextStyle(.secondary)
+            Text(verbatim: "Macの記録を調べ、見つからなければ同じIDで再試行します。").laaTextStyle(.secondary)
             Text(verbatim: item.draft.text).laaTextStyle(.secondary).lineLimit(3)
-            Button { Task { await reconcile(item) } } label: { Text(verbatim: "結果を確認") }.disabled(starting)
+            Button { Task { await reconcile(item) } } label: { Text(verbatim: "確認・同じ依頼を再試行") }
+                .disabled(starting).accessibilityIdentifier("work.launch.reconcile.\(item.id)")
         }
         .workCard()
     }
@@ -313,7 +321,8 @@ struct LAAWorkSessionLauncher: View {
                               mode: bypass ? "bypass" : "default", fast: fast && selected.fast)
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         guard let body = try? encoder.encode(request),
-              let item = LAAWorkDrafts.reserve(drafts, key: key, text: prompt, body: body, idempotency: LAABridgeIdempotencyKey()) else {
+              let item = LAAWorkDrafts.reserve(drafts, key: key, text: prompt, body: body, idempotency: LAABridgeIdempotencyKey(),
+                                              independentLaunch: true) else {
             error = "開始前に依頼を端末へ保存できませんでした。"; return
         }
         remember()

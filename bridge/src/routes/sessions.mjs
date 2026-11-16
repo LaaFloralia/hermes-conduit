@@ -193,7 +193,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     { method: 'POST', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/quick-reply$/, auth: true, scope: 'sessions:write', idempotent: true, handler: async ({ params, rawBody }) => ({ status: 200, data: await sessions.quickReply({ id: params[0], body: parseObjectBody(rawBody) }) }) },
     { method: 'GET', path: '/v1/sessions', auth: true, scope: 'sessions:read', handler: list },
     // The delegation path could not be started at all (wrapper missing, spawn
-    // refused, or its caller check timed out before any write), so nothing
+    // refused, its state lock is busy, or its caller check timed out before any write), so nothing
     // ran: the same request and key may run again. Without the release a
     // create that met a busy Mac stayed "outcome unknown" for good.
     // A create that never finished (a timeout, a restart) is also run again
@@ -201,7 +201,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     // session store and by the delegation path, so a second run returns the
     // same session rather than starting another.
     { method: 'POST', path: '/v1/sessions', auth: true, scope: 'sessions:write', idempotent: true, handler: create,
-      releaseOnError: (error) => error?.code === 'delegation_unavailable', resumeUnresolved: true },
+      releaseOnError: (error) => ['delegation_unavailable', 'delegation_busy'].includes(error?.code), resumeUnresolved: true },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:read', handler: detail },
     { method: 'PATCH', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:write', idempotent: true, handler: update },
     { method: 'GET', path: '/v1/session-options', auth: true, scope: 'sessions:read', handler: options },

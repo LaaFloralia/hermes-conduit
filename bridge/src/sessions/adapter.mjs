@@ -58,6 +58,8 @@ const ERROR_MAP = new Map(Object.entries({
   session_not_owned: [503, 'delegation_session_missing'],
   session_identity_mismatch: [503, 'delegation_inconsistent'],
   caller_context_unavailable: [503, 'delegation_unavailable', true],
+  state_busy: [503, 'delegation_busy', true],
+  creation_lifecycle_required: [503, 'creation_lifecycle_required'],
   worker_reply_forbidden: [403, 'worker_reply_forbidden'],
   worker_bypass_forbidden: [403, 'worker_bypass_forbidden'],
   paseo_subagent_entry_required: [403, 'paseo_subagent_entry_required'],

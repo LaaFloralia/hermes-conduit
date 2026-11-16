@@ -197,6 +197,45 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkDrafts.request(oldItem)?.0, payload)
     }
 
+    func testUnresolvedLaunchesKeepTheirIdentityWithoutBlockingIndependentNewWork() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("work-drafts.json")
+        let key = LAAWorkDrafts.key(deviceID: "device-a", target: "launch-session")
+        var store = ComposerDraftStore(capacity: .max, fileURL: url)
+        var saved: [(UUID, Data, String)] = []
+        for n in 0..<3 {
+            let body = Data("{\"requestId\":\"failed-\(n)\",\"prompt\":\"saved \(n)\"}".utf8)
+            let token = try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "launch-\(n)"))
+            let item = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: key, text: "saved \(n)", body: body,
+                                                        idempotency: token, independentLaunch: true))
+            store.markSubmissionUnknown(item.id)
+            XCTAssertNil(LAAWorkDrafts.reserve(store, key: key, text: "duplicate", body: body,
+                                              idempotency: token, independentLaunch: true))
+            saved.append((item.id, body, token.value))
+        }
+        let successBody = Data(#"{"requestId":"new-work","prompt":"new independent request"}"#.utf8)
+        let success = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: key, text: "new independent request", body: successBody,
+            idempotency: LAABridgeIdempotencyKey(), independentLaunch: true))
+        XCTAssertTrue(store.finishSubmission(success.id, restoring: false))
+        XCTAssertTrue(store.save(.init(text: "next draft", attachments: []), for: key))
+        store = ComposerDraftStore(capacity: .max, fileURL: url)
+        XCTAssertEqual(store.submissions.count, 3)
+        XCTAssertEqual(store.draft(for: key).text, "next draft")
+        for (id, body, token) in saved {
+            let item = try XCTUnwrap(store.submissions.first { $0.id == id })
+            XCTAssertEqual(LAAWorkDrafts.request(item)?.0, body)
+            XCTAssertEqual(LAAWorkDrafts.request(item)?.1.value, token)
+        }
+        let next = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: key, text: "after restart", body: Data(#"{"requestId":"after-restart"}"#.utf8),
+            idempotency: LAABridgeIdempotencyKey(), independentLaunch: true))
+        XCTAssertTrue(store.finishSubmission(next.id, restoring: false))
+        XCTAssertEqual(store.submissions.map(\.id), saved.map { $0.0 })
+        // This exception applies only to new sessions, never another chat's send.
+        XCTAssertNil(LAAWorkDrafts.reserve(store, key: LAAWorkDrafts.key(deviceID: "device-a", target: "message:existing"),
+            text: "guard", body: successBody, idempotency: LAABridgeIdempotencyKey(), independentLaunch: true))
+    }
+
     func testServerRefusalsAndUnknownOutcomesAreDistinguished() {
         func error(_ status: Int, _ code: String) -> LAABridgeHTTPError {
             LAABridgeHTTPError(status: status, code: code, message: nil, retryable: nil,

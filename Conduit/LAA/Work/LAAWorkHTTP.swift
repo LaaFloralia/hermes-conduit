@@ -63,6 +63,8 @@ enum LAAWorkHTTP {
 
     static func message(_ error: LAABridgeHTTPError) -> String {
         switch error.code {
+        case "delegation_busy": return "開始処理が混み合っています。同じ依頼を再試行できます。"
+        case "creation_lifecycle_required": return "Macの開始処理が対応していません。開始要求は保存しています。"
         case "pending_decision_requires_reply": return "判断待ちのため追加送信できません。判断内容を確認してください。"
         case "session_stopped": return "停止済みまたは停止確認中です。停止が確認できた後、後継セッションを開始できます。"
         case "session_busy": return "セッションは実行中です。完了してから追加指示を送れます。"

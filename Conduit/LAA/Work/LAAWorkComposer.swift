@@ -256,8 +256,16 @@ enum LAAWorkDrafts {
     @MainActor static func reserve(_ store: ComposerDraftStore, key: ComposerDraftKey,
                                    text: String, body: Data, idempotency: LAABridgeIdempotencyKey,
                                    attachments: [Attachment] = [],
-                                   expectedVersion: String? = nil, now: Date = Date()) -> ComposerDraftStore.Submission? {
-        guard pending(store, key: key) == nil, let payload = String(data: body, encoding: .utf8),
+                                   expectedVersion: String? = nil, now: Date = Date(),
+                                   independentLaunch: Bool = false) -> ComposerDraftStore.Submission? {
+        // New sessions are independent requests. Keep unresolved launches in
+        // the journal without reserving the one composer for all future work.
+        // Other writes still have exactly one pending request per destination.
+        guard !independentLaunch || key.sessionID.hasSuffix(":launch-session"),
+              independentLaunch || pending(store, key: key) == nil,
+              !store.submissions.contains(where: { $0.key == key &&
+                  ($0.groupEventID == idempotency.value || request($0)?.0 == body) }),
+              let payload = String(data: body, encoding: .utf8),
               let record = try? JSONEncoder().encode(RequestRecord(body: payload, reservedAt: now)) else { return nil }
         let submission = ComposerDraftStore.Submission(
             id: UUID(), key: key, dashboardID: dashboardID,

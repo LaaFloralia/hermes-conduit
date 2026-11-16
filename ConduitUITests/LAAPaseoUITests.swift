@@ -2,6 +2,49 @@
 import XCTest
 
 final class LAAPaseoUITests: XCTestCase {
+    func testFailedLaunchesDoNotBlockAnIndependentNewSession() throws {
+        let app = try launchFixture("light")
+        defer { app.terminate() }
+        func control(_ path: String) throws -> [String: Any] {
+            let done = expectation(description: path)
+            var result: [String: Any]?
+            URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19596\(path)")!) { data, _, _ in
+                if let data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    result = object["data"] as? [String: Any]
+                }
+                done.fulfill()
+            }.resume()
+            wait(for: [done], timeout: 10)
+            return try XCTUnwrap(result)
+        }
+        app.buttons["work.create"].tap()
+        app.buttons["work.sessions.new"].tap()
+        let field = app.textViews["work.launch.composer.field"]
+        let start = app.buttons["work.launch.composer.send"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        _ = try control("/launch/fail")
+        for n in 1...3 {
+            field.tap(); field.typeText("independent-\(n)")
+            XCTAssertTrue(start.isEnabled)
+            start.tap()
+            let pending = app.staticTexts.matching(NSPredicate(format: "label == %@", "開始結果を確認できていません"))
+            let done = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == %d", n), object: pending)
+            XCTAssertEqual(XCTWaiter.wait(for: [done], timeout: 15), .completed)
+            XCTAssertTrue(field.isEnabled)
+        }
+        capture(app, "failed-launches-new-composer", "light")
+        _ = try control("/launch/ready")
+        field.tap(); field.typeText("new-independent-work")
+        XCTAssertTrue(start.isEnabled); start.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.detail.title"].firstMatch.waitForExistence(timeout: 15))
+        let state = try control("/launch/state")
+        XCTAssertEqual(state["attempts"] as? Int, 4)
+        XCTAssertEqual(state["created"] as? Int, 1)
+        let existing = try XCTUnwrap(state["existing"] as? [[String: Any]])
+        XCTAssertEqual(existing.count, 2)
+        XCTAssertEqual(existing.first?["phase"] as? String, "running")
+        capture(app, "new-session-after-failures", "light")
+    }
     func testSessionListAndQuestionLight() throws { try verify("light") }
     func testSessionListAndQuestionDark() throws { try verify("dark") }
 
