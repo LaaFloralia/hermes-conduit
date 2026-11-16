@@ -37,7 +37,7 @@ extension HermesClientTests {
     /// each flavour is checked against its own exact sentence.
     func testOwnerSentences() {
         #if LAA_BUILD
-        let brand = "Monet", product = "LAA", desktopOwner = "desktop app"
+        let brand = "LAA", product = "LAA", desktopOwner = "LAA Desktop"
         #else
         let brand = "Hermes", product = "Conduit", desktopOwner = "Hermes Desktop"
         #endif

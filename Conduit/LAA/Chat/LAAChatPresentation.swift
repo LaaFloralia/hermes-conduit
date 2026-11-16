@@ -230,9 +230,9 @@ struct LAATypingDots: View {
             HStack(spacing: LAASpacing.x2) {
                 LAAOrbView(state: state, diameter: 24, isOnScreen: animates)
                 if let phrase {
-                    LAASendThinkingLabel(text: phrase, active: animates && state == .thinking && UIView.areAnimationsEnabled)
+                    Text(verbatim: phrase)
                         .id(phrase)
-                        .font(.subheadline).foregroundStyle(LAAColor.secondaryText)
+                        .font(.subheadline).foregroundStyle(LAAColor.text)
                         .lineLimit(1)
                         .contentTransition(.opacity)
                         .animation(.easeOut(duration: 0.22), value: phrase)
@@ -242,7 +242,7 @@ struct LAATypingDots: View {
                     // Counts on its own; the row does not re-render each second.
                     Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
                         .font(.caption.weight(.medium)).monospacedDigit()
-                        .foregroundStyle(LAAColor.secondaryText)
+                        .foregroundStyle(LAAColor.text)
                         .fixedSize()
                 }
             }.frame(minHeight: 44).contentShape(Rectangle())
@@ -327,6 +327,7 @@ struct LAAChatTypingRow: View {
                 name: appState.conversationAgentIdentity.name, size: 30, scrolling: true)
                 .frame(width: 30, height: 30)
             LAATypingDots(startedAt: startedAt, records: records, state: orbState, phrase: phrase)
+                .laaAssistantSurface()
         }.laaChatColumn(.leading)
     }
     private var orbState: LAAOrbState {

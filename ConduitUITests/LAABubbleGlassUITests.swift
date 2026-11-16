@@ -4,9 +4,10 @@ import XCTest
 /// The conversation's bubble choice beside its background (owner,
 /// 2026-11-16): the standard bubbles or Liquid Glass.
 final class LAABubbleGlassUITests: XCTestCase {
-    private func launch(bubble: String, dark: Bool, kind: String, white: Bool = false) -> XCUIApplication {
+    private func launch(bubble: String, dark: Bool, kind: String, white: Bool = false,
+                        thinking: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple",
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", thinking ? "typing" : "simple",
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", kind,
                                "-LAA_CAPTURE_BUBBLE", bubble, "-LAA_FIXTURE_PUSH_CHAT"]
             + (dark ? ["-LAA_V2_DARK"] : []) + (white ? ["-LAA_CAPTURE_WHITE"] : [])
@@ -78,5 +79,25 @@ final class LAABubbleGlassUITests: XCTestCase {
             }
         }
     }
+
+    /// A real busy-turn fixture uses the same foreground and bubble as Chat.
+    /// A white picture exercises the highest luminance the photo dimming allows.
+    func testThinkingStaysReadableAcrossBackgroundsAndBubbleChoices() {
+        for bubble in ["standard", "glass"] {
+            for dark in [false, true] {
+                for kind in ["paper", "photo"] {
+                    let app = launch(bubble: bubble, dark: dark, kind: kind,
+                                     white: kind == "photo", thinking: true)
+                    let activity = app.buttons["chat.typing"]
+                    XCTAssertTrue(activity.waitForExistence(timeout: 10))
+                    XCTAssertEqual(activity.value as? String, "Thinking")
+                    Thread.sleep(forTimeInterval: 1)
+                    capture(app, "thinking-\(bubble)-\(dark ? "dark" : "light")-\(kind)")
+                    app.terminate()
+                }
+            }
+        }
+    }
+
 }
 #endif

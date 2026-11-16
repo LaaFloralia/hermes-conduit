@@ -305,44 +305,4 @@ private final class LAASendEffectFollow: NSObject {
     }
 }
 
-/// The real activity label, revealed once; its full accessible text stays available throughout.
-struct LAASendThinkingLabel: View {
-    let text: String
-    let active: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @State private var revealed = false
-    @State private var sweep = false
-
-    var body: some View {
-        Text(text)
-            .mask(alignment: .leading) {
-                if !active || reduceMotion || typeSize.isAccessibilitySize {
-                    Rectangle()
-                } else {
-                    HStack(spacing: 0) {
-                        ForEach(Array(text.enumerated()), id: \.offset) { index, letter in
-                            Text(String(letter))
-                                .opacity(revealed ? 1 : 0)
-                                .animation(.easeOut(duration: 0.12).delay(Double(index) * min(0.04, 0.58 / Double(max(1, text.count - 1)))), value: revealed)
-                        }
-                    }
-                }
-            }
-            .overlay {
-                if active && !reduceMotion && !typeSize.isAccessibilitySize {
-                    GeometryReader { bounds in
-                        Rectangle().fill(Color.conduitAccent.opacity(0.5))
-                            .frame(width: 12)
-                            .offset(x: sweep ? bounds.size.width + 12 : -12)
-                            .animation(.linear(duration: 0.42).delay(0.3), value: sweep)
-                    }
-                    .mask(Text(text))
-                    .allowsHitTesting(false)
-                }
-            }
-            .onAppear { revealed = true; sweep = true }
-            .accessibilityLabel(text)
-    }
-}
 #endif
