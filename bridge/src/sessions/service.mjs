@@ -211,6 +211,11 @@ export function createSessionService({
       return { session: existing, created: false };
     }
 
+    const offered = choices().profiles.find((item) => item.id === profile);
+    if (offered?.available === false) {
+      throw badRequest('model_choice_invalid', offered.usageNote ?? offered.unavailableReason ?? 'this provider cannot take a session now');
+    }
+
     const workspace = workspaceId === HOME_WORKSPACE_ID ? { path: homeCwd } : await findWorkspace(workspaceId);
     if (!workspace) throw notFound('workspace not found under an allowlisted root');
     if (parentId && !sessionStore.get(parentId)) throw notFound('parent session not found');

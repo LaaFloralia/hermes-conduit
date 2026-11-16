@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct LAAChatsContent: View {
+    @ScaledMetric(relativeTo: .body) private var japaneseNameSize: CGFloat = 16
     let snapshot: LAAChatsSnapshot
     var settingsAvailable: Bool
     /// The Mac's split list: the highlighted row and the menu bar's requests.
@@ -307,7 +308,8 @@ struct LAAChatsContent: View {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 HStack(spacing: 6) {
-                    Text(verbatim: LAAChatPerson.name(person.name)).font(LAAType.title(person.name, size: 17, relativeTo: .body))
+                    Text(verbatim: LAAChatPerson.name(person.name)).font(LAAType.chatListName(person.name, japaneseSize: japaneseNameSize))
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                     if let role = LAAChatPerson.role(profile: person.profile, existingRole: person.role) { LAARoleBadge(role: role) }
                 }

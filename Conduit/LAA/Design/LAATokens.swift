@@ -90,6 +90,15 @@ enum LAAType {
         return latinOnly ? .custom("Georgia", size: size, relativeTo: style) : .system(size: size, weight: .semibold)
     }
 
+    /// Full-width Japanese glyphs use the body face and weight; the Latin
+    /// employee names keep Georgia. Both scale with the owner's text size.
+    static func chatListName(_ value: String, japaneseSize: CGFloat) -> Font {
+        let latinOnly = value.unicodeScalars.allSatisfy {
+            !$0.properties.isAlphabetic || (0x0041...0x024F).contains($0.value)
+        }
+        return latinOnly ? .custom("Georgia", size: 17, relativeTo: .body) : .system(size: japaneseSize)
+    }
+
     static let employeeName = Font.custom("Georgia", size: 17, relativeTo: .body)
     static let usageValue = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
 

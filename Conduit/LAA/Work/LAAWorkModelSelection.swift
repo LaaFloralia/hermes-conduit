@@ -14,6 +14,8 @@ enum LAAWorkModelSelection {
         let profiles: [LAAWorkSessionOptions.Profile]
         var id: String { provider + "\u{1F}" + model }
         var efforts: [String] { profiles.map(\.effort) }
+        var available: Bool { profiles.contains { $0.available != false } }
+        var usageNote: String? { profiles.compactMap(\.usageNote).first }
     }
 
     /// The models in the model table's order, each once.

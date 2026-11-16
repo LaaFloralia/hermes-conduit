@@ -207,6 +207,9 @@ struct LAAWorkSessionOptions: Decodable {
         let model: String
         let effort: String
         let fast: Bool
+        var available: Bool? = nil
+        var unavailableReason: String? = nil
+        var usageNote: String? = nil
     }
     /// The efforts Paseo can apply to one model of a running session. More
     /// than the profiles: those name what a new session may start with.

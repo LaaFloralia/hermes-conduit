@@ -775,6 +775,17 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAWorkModelSelection.model(of: "fable-api-high", in: options)?.model, "anthropic:claude-fable-5-2")
     }
 
+    func testUnavailableMuseSurvivesCatalogDecodingWithoutBecomingRunnable() throws {
+        let json = #"{"profiles":[{"id":"muse-high","label":"Muse（Muse Code未導入のため使えません）","provider":"muse","model":"muse","effort":"high","fast":false,"available":false,"unavailableReason":"Muse Code CLI is not installed","usageNote":"公開情報のみ・道具なし・直列・履歴分離未対応"}],"defaultProfile":null}"#
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(json.utf8))
+        let muse = try XCTUnwrap(LAAWorkModelSelection.models(options).first)
+        XCTAssertEqual(muse.provider, "muse")
+        XCTAssertEqual(muse.model, "muse")
+        XCTAssertFalse(muse.available)
+        XCTAssertTrue(muse.label.contains("Muse Code未導入"))
+        XCTAssertEqual(muse.usageNote, "公開情報のみ・道具なし・直列・履歴分離未対応")
+    }
+
     /// Work opens on the latest page; older pages land above it and stay
     /// there while the latest page keeps refreshing.
     func testTranscriptPagesKeepLoadedOlderPagesUnderRefreshes() {

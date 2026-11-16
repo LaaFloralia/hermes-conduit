@@ -46,12 +46,17 @@ export function providerAvailability({ bin, ttlMs = 30_000, timeoutMs = 10_000, 
 
 // A profile whose provider cannot take a session now keeps its place in the list and says why.
 export function withAvailability(profile, state) {
+  // The free GUI cannot stand in for a verified Muse Code session provider.
+  if (profile.provider === 'muse' && state?.available !== true && state?.available !== false) {
+    state = { available: false, reason: 'Muse Code availability has not been verified', reasonShort: '接続未確認' };
+  }
   if (!state || state.available !== false) return profile;
-  const short = typeof state.reasonShort === 'string' && state.reasonShort.trim() ? state.reasonShort.trim() : null;
+  const short = profile.provider === 'muse' && state.reason === 'Muse Code CLI is not installed' ? 'Muse Code未導入' : typeof state.reasonShort === 'string' && state.reasonShort.trim() ? state.reasonShort.trim() : null;
   return {
     ...profile,
     label: `${profile.label}（${short ? `${short}のため使えません` : '今は使えません'}）`,
     available: false,
     unavailableReason: typeof state.reason === 'string' ? state.reason : null,
+    ...(profile.provider === 'muse' ? { usageNote: '無料Museの入口はChatの「薬用石鹸」です。公開情報のテキスト相談のみ・LAAの道具なし・直列・返信に時間がかかります。Sessionごとの履歴分離には未対応です。' } : {}),
   };
 }

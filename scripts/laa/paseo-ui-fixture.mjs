@@ -13,7 +13,7 @@ const model = { provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' };
 const row = (id, name, parentId, phase) => ({ id, name, parentId, requestId: id, workspaceId: 'home', cwd: '/Users/laa', profile: 'sol-high',
   requested: model, observed: model, phase, favorite: id === rootID && favorite,
   pending: { count: phase === 'awaiting_decision' ? 1 : 0 }, createdAt: stamp, updatedAt: stamp,
-  events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' } });
+  capabilities: { model: true }, events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' } });
 const rows = () => [row(rootID, '移行の動作確認', null, 'running'), row(childID, '子｜資料の確認', rootID, replied ? 'running' : 'awaiting_decision'),
   ...(longList ? Array.from({ length: 20 }, (_, i) => row(`ses_${(i + 3).toString(16).padStart(16, '0')}`, `追加の確認 ${i + 1}`, null, 'idle')) : [])];
 const send = (res, data, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'paseo-fixture' })); };
@@ -33,7 +33,7 @@ export const server = createServer(async (req, res) => {
     }
     return send(res, project());
   }
-  if (path === '/v1/session-options') return send(res, { profiles: [{ id: 'sol-high', label: 'GPT-6.1 Sol High', provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' }], defaultProfile: 'sol-high', defaultMode: 'default' });
+  if (path === '/v1/session-options') return send(res, { profiles: [{ id: 'sol-high', label: 'GPT-6.1 Sol High', provider: 'codex', model: 'gpt-6.1-sol', effort: 'high', fast: false }, { id: 'muse-high', label: 'Muse（Muse Code未導入のため使えません）', provider: 'muse', model: 'muse', effort: 'high', fast: false, available: false, usageNote: '公開情報のテキスト相談のみ・LAAの道具なし・直列・遅延。Sessionごとの履歴分離には未対応です。' }], defaultProfile: 'sol-high', defaultMode: 'default' });
   const id = path.split('/')[3], current = rows().find(x => x.id === id);
   if (current) {
     if (req.method === 'PATCH' && path === `/v1/sessions/${rootID}`) {

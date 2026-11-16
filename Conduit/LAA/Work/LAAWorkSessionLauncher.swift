@@ -1,7 +1,7 @@
 #if LAA_BUILD
 import SwiftUI
 
-/// A saved model setting the owner reuses ("Opus High ⚡︎").
+/// A saved model setting the owner reuses ("Opus High Fast").
 struct LAAWorkModelFavorite: Codable, Hashable, Identifiable {
     let profile: String
     let fast: Bool
@@ -62,7 +62,7 @@ struct LAAWorkSessionLauncher: View {
     private var key: ComposerDraftKey? { bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "launch-session") } }
     private var pending: ComposerDraftStore.Submission? { key.flatMap { LAAWorkDrafts.pending(drafts, key: $0) } }
     private var canStart: Bool {
-        selected != nil && !starting && pending == nil && !drafts.persistenceFailed
+        selected != nil && selected?.available != false && !starting && pending == nil && !drafts.persistenceFailed
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -77,10 +77,14 @@ struct LAAWorkSessionLauncher: View {
                     }
                     projectPicker
                     modelBar
+                    if let note = options?.profiles.first(where: { $0.provider == "muse" })?.usageNote {
+                        Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            .accessibilityIdentifier("work.launch.muse.note")
+                    }
                     if !favorites.isEmpty { favoriteChips }
                     LAAWorkComposer(text: $prompt, revision: $revision, placeholder: "依頼内容",
                                     enabled: !starting && pending == nil && !drafts.persistenceFailed,
-                                    canSend: selected != nil,
+                                    canSend: selected != nil && selected?.available != false,
                                     onChange: saveDraft, onSubmit: start, submitLabel: "開始",
                                     accessibilityPrefix: "work.launch.composer")
                     Text(verbatim: "/Users/laa で開始 · " + (bypass ? "確認なしで実行" : "操作ごとに確認"))
@@ -148,8 +152,10 @@ struct LAAWorkSessionLauncher: View {
                             Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in if on { chooseModel(item) } })) {
                                 LAAModelMenu.Name(label: item.label, model: item.model)
                             }
+                            .disabled(!item.available)
                             .accessibilityIdentifier("work.launch.model.\(item.model)")
                         }
+                        if let note = group.models.compactMap(\.usageNote).first { LAAMenuReason(text: note) }
                     }
                 }
                 Section {

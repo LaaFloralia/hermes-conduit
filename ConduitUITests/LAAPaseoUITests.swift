@@ -11,6 +11,23 @@ final class LAAPaseoUITests: XCTestCase {
         for theme in ["light", "dark"] { try verifySessionDetail(theme) }
     }
 
+    func testUnavailableMuseIsVisibleWithItsLimitsAndCannotBeSelected() throws {
+        let app = try launchFixture("light")
+        defer { app.terminate() }
+        app.staticTexts["work.session.ses_1111111111111111"].firstMatch.tap()
+        let picker = app.descendants(matching: .any)["work.session.model"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        picker.tap()
+        // iOS's native Menu drops the disabled UIAction's identifier. All
+        // navigation uses IDs; inspect this noninteractive row by its full copy.
+        let muse = app.buttons.matching(NSPredicate(format: "label == %@", "Muse（Muse Code未導入のため使えません）")).firstMatch
+        XCTAssertTrue(muse.waitForExistence(timeout: 10))
+        XCTAssertFalse(muse.isEnabled)
+        XCTAssertTrue(muse.label.contains("Muse Code未導入"))
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Sessionごとの履歴分離には未対応")).firstMatch.exists)
+        capture(app, "muse-unavailable", "light")
+    }
+
     private func verifySessionDetail(_ theme: String) throws {
         let app = try launchFixture(theme)
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch

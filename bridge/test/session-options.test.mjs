@@ -324,3 +324,41 @@ test('provider states come from the engine CLI, are kept a while and survive a f
   assert.equal(states.get('muse').reasonShort, '未契約・未導入');
   assert.equal(providerAvailability({ bin: null }).get('muse'), null);
 });
+
+
+test('free Muse stays visible, cannot launch, and never forwards a prompt or falls back', async (t) => {
+  const withMuse = {
+    ...table,
+    profiles: { ...table.profiles, 'muse-high': { model: 'muse', harness: 'muse', effort: 'high', manual: true } },
+    models: { ...table.models, muse: { label: 'Muse', modelId: 'muse' } },
+    dispatch: { manual_profiles: ['muse-high'] },
+  };
+  const options = sessionOptionsFrom(withMuse, (id) => id === 'muse'
+    ? { available: false, reason: 'Muse Code CLI is not installed' } : null);
+  const muse = options.profiles.find((p) => p.id === 'muse-high');
+  assert.equal(muse.provider, 'muse');
+  assert.equal(muse.model, 'muse');
+  assert.equal(muse.available, false);
+  assert.match(muse.label, /Muse Code未導入/);
+  assert.match(muse.usageNote, /公開情報.*道具なし.*直列.*履歴分離/);
+  assert.ok(options.switchProfiles.some((p) => p.id === muse.id));
+  assert.notEqual(options.defaultProfile, muse.id);
+  const unverified = sessionOptionsFrom(withMuse).profiles.find((p) => p.id === muse.id);
+  assert.equal(unverified.available, false);
+  assert.match(unverified.label, /接続未確認/);
+  const verifiedCode = sessionOptionsFrom(withMuse, () => ({ available: true })).profiles.find((p) => p.id === muse.id);
+  assert.equal(verifiedCode.label, 'Muse');
+  assert.notEqual(verifiedCode.available, false);
+  const calls = [];
+  const bridge = await startBridge({ sessions: {
+    options: () => options, adapter: { create: async (request) => { calls.push(request); throw Error('must not run'); } },
+  } });
+  t.after(() => bridge.close());
+  const token = await bridge.token();
+  const result = await bridge.request('/v1/sessions', { token, method: 'POST', key: 'muse-unavailable', body: {
+    requestId: 'muse-unavailable', profile: muse.id, prompt: 'synthetic private sentinel; never transmit', mode: 'bypass',
+  } });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error.code, 'model_choice_invalid');
+  assert.deepEqual(calls, []);
+});

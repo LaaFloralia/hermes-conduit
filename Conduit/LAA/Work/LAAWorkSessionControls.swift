@@ -65,7 +65,7 @@ struct LAAWorkSessionControls: View {
         return listed.isEmpty ? (currentEffort.map { [$0] } ?? []) : listed
     }
     private var models: [LAAWorkModelSelection.Model] { LAAWorkModelSelection.models(options?.switchingOptions).filter {
-        session.capabilities?.providerSwitch == true || $0.provider == session.observed?.provider
+        session.capabilities?.providerSwitch == true || $0.provider == session.observed?.provider || ($0.provider == "muse" && !$0.available)
     } }
     /// False when the last read could not reach Paseo. The value we hold is then
     /// the last confirmed one, not the current setting.
@@ -149,9 +149,10 @@ struct LAAWorkSessionControls: View {
                                 LAAModelMenu.Name(label: choice.label, model: choice.model)
                             }
                         }
-                        .disabled(!canChangeModel || selected || targetProfile(choice) == nil)
+                        .disabled(!choice.available || !canChangeModel || selected || targetProfile(choice) == nil)
                         .accessibilityIdentifier("work.session.model.\(choice.provider).\(choice.model)")
                     }
+                    if let note = group.models.compactMap(\.usageNote).first { LAAMenuReason(text: note) }
                 }
             }
         } effortMenu: {
