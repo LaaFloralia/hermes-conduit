@@ -45,174 +45,6 @@ enum LAAChatVisibility {
     static let reactions = ["❤️", "👍", "👎", "‼️", "😂", "✅"]
 }
 
-struct LAAChatMenuSelection {
-    let text: String
-    let isMine: Bool
-    let reply: (() -> Void)?
-    let react: ((String) -> Void)?
-    let read: (() -> Void)?
-    let select: () -> Void
-    let moreReactions: () -> Void
-}
-
-private struct LAAPresentChatMenuKey: EnvironmentKey {
-    static let defaultValue: ((LAAChatMenuSelection) -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    @Entry var laaOpenMessageMenu: (() -> Void)? = nil
-
-    var laaPresentChatMenu: ((LAAChatMenuSelection) -> Void)? {
-        get { self[LAAPresentChatMenuKey.self] }
-        set { self[LAAPresentChatMenuKey.self] = newValue }
-    }
-}
-
-struct LAAChatMenuOverlay: View {
-    let selection: LAAChatMenuSelection
-    let dismiss: () -> Void
-    @AccessibilityFocusState private var menuFocused: Bool
-
-    var body: some View {
-        ZStack {
-            LAAColor.background.opacity(0.84).ignoresSafeArea()
-                .onTapGesture(perform: dismiss)
-                .accessibilityHidden(true)
-            ViewThatFits(in: .vertical) {
-                contents
-                ScrollView { contents }.scrollBounceBehavior(.basedOnSize)
-            }
-            .padding(20)
-        }
-        .accessibilityAddTraits(.isModal)
-        .accessibilityAction(.escape, dismiss)
-        .onAppear { menuFocused = true }
-    }
-
-    private var contents: some View {
-        VStack(spacing: 8) {
-            if let react = selection.react {
-                HStack(spacing: 1) {
-                    ForEach(LAAChatVisibility.reactions, id: \.self) { emoji in
-                        Button { dismiss(); react(emoji) } label: {
-                            Text(verbatim: emoji).font(.system(size: 24)).frame(width: 38, height: 44)
-                        }
-                        .accessibilityLabel(Text(verbatim: emoji))
-                    }
-                    Button { dismiss(); selection.moreReactions() } label: {
-                        Image(systemName: "plus").font(.system(size: 18)).frame(width: 38, height: 44)
-                    }.accessibilityLabel(Text(verbatim: "スタンプを追加"))
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 6)
-                .laaGlass(in: Capsule())
-            }
-            MarkdownText(source: selection.text, usesAccentSurface: selection.isMine)
-                .allowsHitTesting(false)
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .frame(maxWidth: 332, maxHeight: 160, alignment: .topLeading)
-                .background(selection.isMine ? LAAColor.ownBubble : LAAColor.surface,
-                            in: RoundedRectangle(cornerRadius: LAARadius.bubble))
-                .clipped().accessibilityHidden(true)
-            VStack(spacing: 0) {
-                menuItem("返信", icon: "arrowshape.turn.up.left", action: selection.reply)
-                    .accessibilityFocused($menuFocused)
-                menuItem("コピー", icon: "doc.on.doc", action: { UIPasteboard.general.string = selection.text })
-                menuItem("テキストを選択", icon: "text.cursor", action: selection.select)
-                menuItem("読み上げ", icon: "speaker.wave.2", action: selection.read, last: true)
-            }
-            .frame(width: 250)
-            .laaGlass(in: RoundedRectangle(cornerRadius: 18))
-        }
-    }
-
-    private func menuItem(_ title: String, icon: String, action: (() -> Void)?, last: Bool = false) -> some View {
-        Button {
-            dismiss()
-            action?()
-        } label: {
-            HStack {
-                Text(verbatim: title)
-                Spacer()
-                Image(systemName: icon).font(.system(size: 17))
-            }
-            .foregroundStyle(action == nil ? LAAColor.secondaryText : LAAColor.text)
-            .padding(.horizontal, 16)
-            .frame(height: 44)
-            .contentShape(Rectangle())
-            .overlay(alignment: .bottom) {
-                if !last { Rectangle().fill(LAAColor.separator).frame(height: 1).padding(.horizontal, 16) }
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(action == nil)
-    }
-}
-
-private struct LAAChatMessageMenu: ViewModifier {
-    let text: String
-    var isMine: Bool
-    var reply: (() -> Void)?
-    var react: ((String) -> Void)?
-    var read: (() -> Void)?
-    @Environment(\.laaPresentChatMenu) private var present
-    @State private var selecting = false
-    @State private var moreReactions = false
-    @State private var customReaction = ""
-
-    func body(content: Content) -> some View {
-        surface(content.environment(\.laaUsesMessageMenu, true))
-        .sheet(isPresented: $selecting) {
-            LAAMessageSelectionSheet(text: text) { selecting = false }
-        }
-        .alert(String("スタンプを追加"), isPresented: $moreReactions) {
-            TextField(String("絵文字"), text: $customReaction)
-            Button(String("追加")) {
-                let emoji = customReaction.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !emoji.isEmpty { react?(String(emoji.prefix(1))) }
-                customReaction = ""
-            }
-            Button("キャンセル", role: .cancel) { customReaction = "" }
-        }
-    }
-
-    @ViewBuilder private func surface<Content: View>(_ content: Content) -> some View {
-        if let present {
-            let open = {
-                present(.init(text: text, isMine: isMine, reply: reply, react: react, read: read,
-                              select: { selecting = true }, moreReactions: { moreReactions = true }))
-            }
-            content.environment(\.laaOpenMessageMenu, open)
-                .contentShape(Rectangle())
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in open() })
-                .accessibilityAction(named: Text(verbatim: "メッセージの操作"), open)
-        } else {
-            content.contextMenu {
-                if let react {
-                    ControlGroup {
-                        ForEach(LAAChatVisibility.reactions, id: \.self) { emoji in
-                            Button(emoji) { react(emoji) }
-                        }
-                        Button(String("スタンプを追加"), systemImage: "plus") { moreReactions = true }
-                    }.controlGroupStyle(.palette)
-                }
-                Button(String("返信"), systemImage: "arrowshape.turn.up.left") { reply?() }.disabled(reply == nil)
-                Button(String("コピー"), systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
-                Button(String("テキストを選択"), systemImage: "text.cursor") { selecting = true }
-                Button(String("読み上げ"), systemImage: "speaker.wave.2") { read?() }.disabled(read == nil)
-            }
-        }
-    }
-
-}
-
-extension View {
-    func laaMessageMenu(text: String, isMine: Bool = false, reply: (() -> Void)? = nil,
-                        react: ((String) -> Void)? = nil, read: (() -> Void)? = nil) -> some View {
-        modifier(LAAChatMessageMenu(text: text, isMine: isMine, reply: reply, react: react, read: read))
-    }
-}
-
 /// The working mark of every LAA chat: the orb (24 pt), what the agent is
 /// doing when the caller knows it, and how long the turn has run. A room
 /// passes neither words nor a start time and shows the orb alone.
@@ -400,6 +232,7 @@ struct LAAGroupMemberMessage: View {
             timestamp: timestamp.map { ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0)) }) {
                 GroupMemberAvatar(member: member, name: name, size: 30)
             } content: {
+                VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 8) {
                     if let reply { ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false, authorName: reply.author) }
                     HugsIdealWidth { MarkdownText(source: GroupRoomMentions.linkingMarkdown(ownText, members: members)) }
@@ -407,26 +240,24 @@ struct LAAGroupMemberMessage: View {
                     if !parts.files.isEmpty { GroupMessageFilesForLAA(text: text) }
                 }.padding(.horizontal, 14).padding(.vertical, 10)
                     .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 18))
-                    .laaMessageMenu(text: GroupRoomMentions.refanged(ownText),
-                        reply: appState.canQuoteIntoRoom() ? { appState.replyInRoomComposer(text: text, authorName: name, authorHandle: member?.handle) } : nil,
-                        read: appState.isConnected ? eventID.map { id in { appState.toggleRoomReadAloud(eventID: id, text: ownText, memberProfile: member?.profile) } } : nil)
+                // A hold on the text selects it; the actions are this row.
+                LAAMessageActionBar(text: GroupRoomMentions.refanged(ownText),
+                    onQuote: nil,
+                    onReply: appState.canQuoteIntoRoom() ? { appState.replyInRoomComposer(text: text, authorName: name, authorHandle: member?.handle) } : nil,
+                    onRead: appState.isConnected ? eventID.map { id in { appState.toggleRoomReadAloud(eventID: id, text: ownText, memberProfile: member?.profile) } } : nil,
+                    identifierPrefix: "room.message")
+                    .padding(.leading, -8)
+                }
             }.laaChatColumn(.leading)
     }
 }
 #endif
 
 #if LAA_BUILD
-private struct LAAUsesMessageMenuKey: EnvironmentKey {
-    static let defaultValue = false
-}
 private struct LAAConversationInfoDismissKey: EnvironmentKey {
     static let defaultValue: () -> Void = {}
 }
 extension EnvironmentValues {
-    var laaUsesMessageMenu: Bool {
-        get { self[LAAUsesMessageMenuKey.self] }
-        set { self[LAAUsesMessageMenuKey.self] = newValue }
-    }
     var laaDismissConversationInfo: () -> Void {
         get { self[LAAConversationInfoDismissKey.self] }
         set { self[LAAConversationInfoDismissKey.self] = newValue }
@@ -490,38 +321,3 @@ struct LAAGroupDelivery: View {
 
 #endif
 
-#if LAA_BUILD
-/// テキストを選択: the message drawn as in the bubble, by the chat's own
-/// Markdown renderer, whose text views select any range (hold, drag the
-/// handles, double tap a word) and copy only that (owner, 2026-11-16). The
-/// bubble's hold belongs to its menu on iPhone, so this is where a part is
-/// chosen there; on the Mac the bubble's text also selects in place.
-/// Chat and Work open the same sheet, for both sides of the conversation.
-struct LAAMessageSelectionSheet: View {
-    let text: String
-    var identifier = "chat.message.selection"
-    let done: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                MarkdownText(source: text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(20)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier(identifier)
-            }
-            // The text owns its hold here, and its menu is the system's
-            // Copy: no bubble menu, quote or pin reaches into the sheet.
-            .environment(\.laaUsesMessageMenu, false)
-            .environment(\.laaOpenMessageMenu, nil)
-            .environment(\.selectableTextDrawsUntilTouched, false)
-            .environment(\.markdownJoinsProseRuns, true)
-            .environment(\.chatQuoteAction, nil)
-            .environment(\.chatPinReplyAction, nil)
-            .navigationTitle(String("テキストを選択")).navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了"), action: done) } }
-        }.laaSheetSize(.page)
-    }
-}
-#endif

@@ -159,10 +159,6 @@ struct SelectableTextView: UIViewRepresentable {
         )
         hostView.selectionTint = context.environment.textSelectionTint
         hostView.replyMessageID = context.environment.chatPinReplyAction?.messageID
-#if LAA_BUILD
-        hostView.usesMessageMenu = context.environment.laaUsesMessageMenu
-        hostView.openMessageMenu = context.environment.laaOpenMessageMenu
-#endif
         return hostView
     }
 
@@ -180,10 +176,6 @@ struct SelectableTextView: UIViewRepresentable {
         updateUIViewForTests(uiView, coordinator: context.coordinator)
         uiView.selectionTint = context.environment.textSelectionTint
         uiView.replyMessageID = context.environment.chatPinReplyAction?.messageID
-#if LAA_BUILD
-        uiView.usesMessageMenu = context.environment.laaUsesMessageMenu
-        uiView.openMessageMenu = context.environment.laaOpenMessageMenu
-#endif
     }
 
     /// Whether this text is drawn until something needs its text view: on
@@ -1331,46 +1323,6 @@ enum SelectableTextViewPool {
 }
 
 final class SelectableTextViewHostView: UIView {
-#if LAA_BUILD
-    // Text selection is available from the bubble's standard menu. Leave
-    // link taps and accessibility enabled, and let that menu own the hold.
-    var usesMessageMenu = false {
-        didSet { configureMessageMenuGestures() }
-    }
-    var openMessageMenu: (() -> Void)? {
-        didSet {
-            if openMessageMenu != nil {
-                if messageHold.view == nil { addGestureRecognizer(messageHold) }
-                messageHold.isEnabled = true
-            } else if let installed = gestureRecognizers?.first(where: { $0.name == "LAA message menu" }) {
-                installed.isEnabled = false
-            }
-        }
-    }
-    private lazy var messageHold: UILongPressGestureRecognizer = {
-        let hold = UILongPressGestureRecognizer(target: self, action: #selector(handleMessageHold(_:)))
-        hold.minimumPressDuration = 0.4
-        hold.name = "LAA message menu"
-        return hold
-    }()
-    @objc private func handleMessageHold(_ hold: UILongPressGestureRecognizer) {
-        if hold.state == .began { openMessageMenu?() }
-    }
-    private func configureMessageMenuGestures() {
-        let menuOwnsHold = Self.menuOwnsHold(usesMessageMenu: usesMessageMenu,
-                                             onMac: ProcessInfo.processInfo.isMacCatalystApp)
-        for gesture in textView?.gestureRecognizers ?? [] where gesture is UILongPressGestureRecognizer {
-            gesture.isEnabled = !menuOwnsHold
-        }
-    }
-    /// On the Mac the menu is the right click, so the text keeps its own
-    /// gestures and the pointer selects any part of a message in place
-    /// (owner, 2026-11-16); on iPhone the hold opens the message's menu,
-    /// whose テキストを選択 is where a part is chosen.
-    static func menuOwnsHold(usesMessageMenu: Bool, onMac: Bool) -> Bool {
-        usesMessageMenu && !onMac
-    }
-#endif
     /// Draws the text while the host has no text view: only hosts made to
     /// draw until touched have one (`SelectableTextView.drawsUntilTouched`).
     let canvas: SelectableTextCanvas?
@@ -1539,9 +1491,6 @@ final class SelectableTextViewHostView: UIView {
 
     private func embedMountedTextView() {
         guard let textView else { return }
-#if LAA_BUILD
-        configureMessageMenuGestures()
-#endif
         addSubview(textView)
         textView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([

@@ -207,28 +207,51 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue(header(app).waitForExistence(timeout: 5))
     }
 
-    /// A long press on a message offers テキストを選択, which opens the
-    /// message where any part of it can be selected (owner, 2026-11-16).
-    func testMessageMenuOpensTheMessageForSelection() throws {
+    /// A hold on a message's text selects the word under the finger, with
+    /// the system's Copy, as in Safari (owner, 2026-11-16): no message menu
+    /// and no テキストを選択. What is copied is the part selected.
+    func testHoldOnAMessageSelectsItsText() throws {
         let app = try launchFixture()
         open(longID, app)
         let last = lastTurn(app)
         XCTAssertTrue(last.waitForExistence(timeout: 20))
         XCTAssertTrue(wait(last, hittable: true, timeout: 10))
         last.press(forDuration: 1.0)
-        let select = app.buttons["テキストを選択"]
-        XCTAssertTrue(select.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["コピー"].exists)
-        select.tap()
-        let sheet = app.descendants(matching: .any)["work.message.selection"].firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
-        let text = sheet.textViews.matching(NSPredicate(format: "value CONTAINS %@", lastTurn)).firstMatch
-        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        let copy = app.menuItems.matching(NSPredicate(format: "label IN %@", ["コピー", "Copy"])).firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "the hold selects text and shows the system's Copy")
+        XCTAssertFalse(app.buttons["テキストを選択"].exists)
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "work-message-selection"; shot.lifetime = .keepAlways
+        shot.name = "work-message-hold-selection"; shot.lifetime = .keepAlways
         add(shot)
-        app.navigationBars["テキストを選択"].buttons["完了"].tap()
-        XCTAssertTrue(header(app).waitForExistence(timeout: 5))
+        copy.tap()
+        // The fixture's last turn (`LAST_TEXT` in work-ui-fixture.mjs).
+        let whole = "最後のメッセージ S62M"
+        let input = field(app)
+        XCTAssertTrue(wait(input, hittable: true))
+        input.tap()
+        // The field keeps the session's draft between launches: start empty
+        // and leave it empty.
+        clearField(input, app)
+        input.press(forDuration: 1.2)
+        let paste = app.menuItems.matching(NSPredicate(format: "label IN %@", ["ペースト", "Paste"])).firstMatch
+        XCTAssertTrue(paste.waitForExistence(timeout: 5)); paste.tap()
+        let pasted = (input.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertFalse(pasted.isEmpty)
+        XCTAssertTrue(whole.contains(pasted), "pasted \(pasted) is a part of the message")
+        XCTAssertLessThan(pasted.count, whole.count)
+        clearField(input, app)
+    }
+
+    /// Select All, then delete, when the field holds anything.
+    private func clearField(_ input: XCUIElement, _ app: XCUIApplication) {
+        input.press(forDuration: 1.2)
+        let all = app.menuItems.matching(NSPredicate(format: "label IN %@", ["すべてを選択", "Select All"])).firstMatch
+        if all.waitForExistence(timeout: 2) {
+            all.tap()
+            input.typeText(XCUIKeyboardKey.delete.rawValue)
+        } else {
+            input.tap()
+        }
     }
 
     func testEmptyConversationOpensAtTheComposer() throws {

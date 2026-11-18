@@ -26,7 +26,7 @@ final class LAABubbleGlassUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: "chat.message.\(speaker)").firstMatch
     }
 
-    func testBubbleChoiceSitsInTheBackgroundSheetAndKeepsTheMessageMenu() {
+    func testBubbleChoiceSitsInTheBackgroundSheetAndKeepsTextSelection() {
         let app = launch(bubble: "standard", dark: false, kind: "paper")
         defer { app.terminate() }
         let background = app.buttons["laa.employee.background"]
@@ -42,15 +42,16 @@ final class LAABubbleGlassUITests: XCTestCase {
         capture(app, "picker-glass-light")
         app.navigationBars["背景"].buttons["完了"].tap()
 
-        // The glass reply still opens its long-press menu, and the choice
+        // A hold on the glass reply's text still selects it, and the choice
         // is still there when the sheet opens again. (The owner's bubble is
         // covered by LAAChatSteerSendUITests.)
         let reply = bubble(app, "assistant")
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
-        reply.press(forDuration: 0.8)
-        XCTAssertTrue(app.buttons["コピー"].waitForExistence(timeout: 5))
+        reply.textViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).press(forDuration: 1.0)
+        XCTAssertTrue(app.menuItems.matching(NSPredicate(format: "label IN %@", ["コピー", "Copy"])).firstMatch
+            .waitForExistence(timeout: 5))
         capture(app, "menu-glass-assistant-light")
-        app.buttons["返信"].tap()
+        app.buttons.matching(identifier: "chat.message.reply").firstMatch.tap()
         XCTAssertTrue(app.buttons["composer.reply-reference.remove"].waitForExistence(timeout: 5))
         app.buttons["composer.reply-reference.remove"].tap()
         background.tap()

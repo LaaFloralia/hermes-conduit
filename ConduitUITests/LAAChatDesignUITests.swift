@@ -22,7 +22,7 @@ final class LAAChatDesignUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: "chat.message.\(speaker)").firstMatch
     }
 
-    func testNativeMenuReplyReactionAndComposerScreenshots() {
+    func testRowReplyReactionAndComposerScreenshots() {
         for dark in [false, true] {
             let app = launch(dark: dark)
             let theme = dark ? "dark" : "light"
@@ -38,23 +38,10 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["chat.delivery.read"].exists)
             capture(app, "conversation-after-\(theme)")
 
+            // Reply is in the row under the message; the hold selects text.
             let reply = bubble(app, "assistant")
             XCTAssertTrue(reply.waitForExistence(timeout: 10))
-            reply.press(forDuration: 0.8)
-            XCTAssertTrue(app.buttons["コピー"].waitForExistence(timeout: 5))
-            XCTAssertTrue(app.buttons["テキストを選択"].exists)
-            XCTAssertTrue(app.buttons["返信"].exists)
-            capture(app, "message-menu-after-\(theme)")
-            app.buttons["テキストを選択"].tap()
-            // The reply as drawn, in text views that select any part of it.
-            let sheet = app.descendants(matching: .any)["chat.message.selection"].firstMatch
-            XCTAssertTrue(sheet.waitForExistence(timeout: 5))
-            let selected = sheet.textViews.matching(NSPredicate(format: "value CONTAINS %@", "午前")).firstMatch
-            XCTAssertTrue(selected.waitForExistence(timeout: 5))
-            capture(app, "message-selection-after-\(theme)")
-            app.navigationBars["テキストを選択"].buttons["完了"].tap()
-            reply.press(forDuration: 0.8)
-            app.buttons["返信"].tap()
+            app.buttons.matching(identifier: "chat.message.reply").firstMatch.tap()
             XCTAssertTrue(app.buttons["composer.reply-reference.remove"].waitForExistence(timeout: 5))
             capture(app, "reply-after-\(theme)")
 
@@ -80,13 +67,13 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertTrue((field.value as? String ?? "").contains("三行目"))
             app.terminate()
 
+            // Good is the row's 👍, the reaction Hermes keeps.
             let reactionApp = launch(dark: dark)
-            bubble(reactionApp, "assistant").press(forDuration: 0.8)
-            let reaction = reactionApp.buttons["❤️"]
-            XCTAssertTrue(reaction.waitForExistence(timeout: 5))
-            reaction.tap()
+            let like = reactionApp.buttons.matching(identifier: "chat.message.like").firstMatch
+            XCTAssertTrue(like.waitForExistence(timeout: 5))
+            like.tap()
             XCTAssertTrue(reactionApp.descendants(matching: .any)
-                .matching(NSPredicate(format: "label CONTAINS %@", "❤️")).firstMatch.waitForExistence(timeout: 5))
+                .matching(NSPredicate(format: "label CONTAINS %@", "👍")).firstMatch.waitForExistence(timeout: 5))
             capture(reactionApp, "reaction-after-\(theme)")
             reactionApp.terminate()
         }

@@ -63,10 +63,11 @@ struct LAAEmployeeChatOpeningView: View {
                 ForEach(messages) { message in
                     if message.role == .user {
                         LAAOwnerMessageRow(timestamp: message.timestamp) {
-                            Text(verbatim: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content)
-                                .padding(.horizontal, 14).padding(.vertical, 10).foregroundStyle(LAAColor.filledButtonText)
+                            // Selectable text, as in the conversation: a hold selects it.
+                            MarkdownText(source: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
+                                         foregroundStyle: LAAColor.filledButtonText, usesAccentSurface: true)
+                                .padding(.horizontal, 14).padding(.vertical, 10)
                                 .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: 18))
-                                .laaMessageMenu(text: message.content)
                         }
                     } else if message.role == .assistant || message.role == .partial {
                         LAAAgentMessageRow(name: LAAChatPerson.name(name), role: LAAChatPerson.role(profile: profile), timestamp: message.timestamp) {
@@ -74,7 +75,6 @@ struct LAAEmployeeChatOpeningView: View {
                         } content: {
                             MarkdownText(source: message.content).padding(.horizontal, 14).padding(.vertical, 10)
                                 .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 18))
-                                .laaMessageMenu(text: message.content)
                         }
                     }
                 }

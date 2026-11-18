@@ -35,8 +35,8 @@ final class LAAChatSteerSendUITests: XCTestCase {
         shot.name = "steer-send-\(dark ? "dark" : "light")"; shot.lifetime = .keepAlways; add(shot)
     }
 
-    /// The owner's own bubble opens its long-press menu like a reply does.
-    func testLongPressOnTheOwnersBubbleOpensItsMenu() {
+    /// A hold on the owner's own bubble selects its text like a reply does.
+    func testLongPressOnTheOwnersBubbleSelectsItsText() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple",
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper",
@@ -45,8 +45,9 @@ final class LAAChatSteerSendUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         let own = app.descendants(matching: .any).matching(identifier: "chat.message.user").firstMatch
         XCTAssertTrue(own.waitForExistence(timeout: 10))
-        own.press(forDuration: 0.8)
-        XCTAssertTrue(app.buttons["コピー"].waitForExistence(timeout: 5), "the menu opens")
+        own.textViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).press(forDuration: 1.0)
+        XCTAssertTrue(app.menuItems.matching(NSPredicate(format: "label IN %@", ["コピー", "Copy"])).firstMatch
+            .waitForExistence(timeout: 5), "the edit menu opens")
         XCTAssertEqual(app.state, .runningForeground, "the app is still running after the long press")
     }
 
