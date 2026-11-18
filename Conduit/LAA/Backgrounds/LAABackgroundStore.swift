@@ -23,8 +23,8 @@ struct LAABackgroundKey: Codable, Hashable {
 struct LAABackground: Codable, Equatable {
     enum Kind: String, Codable, CaseIterable { case paper, tealNight, ink, photo }
     /// How the conversation draws its message bubbles: the opaque surfaces
-    /// (`standard`, the default) or Liquid Glass (owner, 2026-11-16). Saved
-    /// with the background, per conversation.
+    /// (`standard`) or Liquid Glass (owner, 2026-11-16). Saved with the
+    /// background, per conversation.
     enum Bubble: String, Codable, CaseIterable { case standard, glass }
     var kind: Kind = .paper
     var dim: Double = 0
@@ -33,18 +33,25 @@ struct LAABackground: Codable, Equatable {
     /// conservative bound on every pixel, including bright coloured pixels.
     var brightestComponent: Double = 1
     var photoID: String? = nil
-    var bubble: Bubble = .standard
+    /// The bubbles the owner chose in the sheet; nil follows the background.
+    var bubbleChoice: Bubble? = nil
 
-    private enum CodingKeys: String, CodingKey { case kind, dim, blur, brightestComponent, photoID, bubble }
+    /// The bubbles drawn: the owner's choice, otherwise Liquid Glass over a
+    /// picture and the standard bubbles elsewhere (owner, 2026-11-16 07:00).
+    var bubble: Bubble { bubbleChoice ?? (kind == .photo ? .glass : .standard) }
+
+    private enum CodingKeys: String, CodingKey { case kind, dim, blur, brightestComponent, photoID, bubbleChoice, bubble }
 
     init(kind: Kind = .paper, dim: Double = 0, blur: Double = 0, brightestComponent: Double = 1,
-         photoID: String? = nil, bubble: Bubble = .standard) {
+         photoID: String? = nil, bubbleChoice: Bubble? = nil) {
         self.kind = kind; self.dim = dim; self.blur = blur
-        self.brightestComponent = brightestComponent; self.photoID = photoID; self.bubble = bubble
+        self.brightestComponent = brightestComponent; self.photoID = photoID; self.bubbleChoice = bubbleChoice
     }
 
-    /// Records saved before the bubble choice have no `bubble` and keep the
-    /// standard bubbles; an unknown value does too.
+    /// Records saved before the choice have no `bubbleChoice` and follow the
+    /// background. The first glass build (2611151632) wrote `bubble` on every
+    /// save, so only its `glass` records a choice; its `standard` and an
+    /// unknown value follow the background too.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decode(Kind.self, forKey: .kind)
@@ -52,7 +59,21 @@ struct LAABackground: Codable, Equatable {
         blur = try container.decode(Double.self, forKey: .blur)
         brightestComponent = try container.decode(Double.self, forKey: .brightestComponent)
         photoID = try container.decodeIfPresent(String.self, forKey: .photoID)
-        bubble = (try? container.decodeIfPresent(Bubble.self, forKey: .bubble)) ?? .standard
+        if let choice = try? container.decodeIfPresent(Bubble.self, forKey: .bubbleChoice) {
+            bubbleChoice = choice
+        } else if (try? container.decodeIfPresent(Bubble.self, forKey: .bubble)) == .glass {
+            bubbleChoice = .glass
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(dim, forKey: .dim)
+        try container.encode(blur, forKey: .blur)
+        try container.encode(brightestComponent, forKey: .brightestComponent)
+        try container.encodeIfPresent(photoID, forKey: .photoID)
+        try container.encodeIfPresent(bubbleChoice, forKey: .bubbleChoice)
     }
 
     var safeDim: Double {
@@ -104,7 +125,7 @@ final class LAABackgroundStore: ObservableObject {
               record.key == key else { return LAABackground() }
         var value = record.background
         value.normalize()
-        if value.kind == .photo && image(named: value.photoID) == nil { return LAABackground(bubble: value.bubble) }
+        if value.kind == .photo && image(named: value.photoID) == nil { return LAABackground(bubbleChoice: value.bubbleChoice) }
         return value
     }
 
@@ -134,7 +155,7 @@ final class LAABackgroundStore: ObservableObject {
         try photo.data.write(to: directory.appendingPathComponent(photoID + ".jpg"), options: .atomic)
         do {
             try save(LAABackground(kind: .photo, dim: dim, blur: blur, brightestComponent: photo.maxComponent, photoID: photoID,
-                                   bubble: setting(for: key).bubble), for: key)
+                                   bubbleChoice: setting(for: key).bubbleChoice), for: key)
         } catch {
             try? removeUnreferencedPhotos()
             throw error

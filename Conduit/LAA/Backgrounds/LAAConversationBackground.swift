@@ -313,7 +313,7 @@ struct LAABackgroundPicker: View {
     }
 
     private func select(_ bubble: LAABackground.Bubble) {
-        value.bubble = bubble
+        value.bubbleChoice = bubble
         persist()
     }
 
@@ -349,7 +349,7 @@ struct LAABackgroundPicker: View {
 
 /// A message bubble: the opaque surface (the owner's teal, the reply's
 /// paper card), or Liquid Glass when the conversation's bubbles are
-/// `glass` (by choice). The glass is clear,
+/// `glass` (by choice, or by default over a picture). The glass is clear,
 /// so the background shows through, tinted with the reply's night surface
 /// or the owner's teal: lightly over the dark backgrounds (every picture
 /// among them), densely on the paper, where the owner's light text needs
@@ -391,9 +391,8 @@ private struct LAAAssistantInk: ViewModifier {
 /// くらいの透明度", the owner's bubble too). Clear glass on both platforms:
 /// the Mac draws no tint on regular glass in the light appearance (a grey
 /// bubble under the owner's light text, 1.1:1), while clear glass takes it.
-/// Reuses the renderer and tint strengths from 50c136ef. The screenshot
-/// matrix includes the brightest photo the dimming allows (a white photo).
-/// Colours from
+/// Tints measured on the brightest picture the dimming allows (a white
+/// photo): reply 5.3:1, owner 5.1:1 on iPhone. Colours from
 /// `laa-design show app`: the night surface #172627, the owner's teal
 /// (`ownBubble`, light #00585E, dark #1E6B70), the paper's glass face
 /// #FFFDF8 and rims #D7D5CC / rgba(236,231,220,.16).
