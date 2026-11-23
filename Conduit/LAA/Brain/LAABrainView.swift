@@ -376,6 +376,10 @@ struct LAABrainView: View {
                 return
             }
         }
+        #else
+        // Doc normally opens the Mac source without a bookmark. The shortcut
+        // can only edit the local vault, so offer its folder chooser instead.
+        if !local.isSelected { showMacSource = false }
         #endif
         guard local.isReady, let root = try? local.snapshot() else { return }
         dailyOpening = true

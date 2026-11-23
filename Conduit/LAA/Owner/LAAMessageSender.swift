@@ -59,10 +59,13 @@ struct LAAAdministrationBadge: View {
 
 /// The owner's name and role, read by VoiceOver as "LAA、Administration".
 struct LAAOwnerHeader: View {
+    var badgeFirst = false
+
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: badgeFirst ? 8 : 6) {
+            if badgeFirst { LAAAdministrationBadge() }
             LAASenderName(text: LAAOwnerIdentity.name)
-            LAAAdministrationBadge()
+            if !badgeFirst { LAAAdministrationBadge() }
         }
         // One phrase in place of the two texts, so the role is never a
         // second element of its own.
@@ -85,10 +88,9 @@ struct LAAOwnerMessageRow<Content: View>: View {
             if !continues {
                 HStack(spacing: 8) {
                     LAAMessageTime(timestamp: timestamp)
-                    LAAAdministrationBadge()
-                    LAASenderName(text: LAAOwnerIdentity.name)
-                    LAAOwnerAvatarView().frame(width: 30, height: 30)
-                }.accessibilityIdentifier("chat.sender.owner")
+                    LAAOwnerHeader(badgeFirst: true)
+                    LAAOwnerAvatarView().frame(width: 30, height: 30).accessibilityHidden(true)
+                }
             }
             content.frame(maxWidth: LAASender.bubbleMaxWidth(column: column), alignment: .trailing)
                 .padding(.leading, LAASender.oppositeGap)
@@ -111,10 +113,10 @@ struct LAAAgentMessageRow<Avatar: View, Content: View>: View {
             if !continues {
                 HStack(spacing: 8) {
                     avatar.frame(width: 30, height: 30).accessibilityHidden(true)
-                    LAASenderName(text: name)
+                    LAASenderName(text: name).accessibilityIdentifier("chat.sender.agent")
                     if let role { LAARoleBadge(role: role) }
                     LAAMessageTime(timestamp: timestamp)
-                }.accessibilityIdentifier("chat.sender.agent")
+                }
             }
             content.frame(maxWidth: LAASender.bubbleMaxWidth(column: column), alignment: .leading)
                 .padding(.trailing, LAASender.oppositeGap)

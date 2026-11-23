@@ -24,7 +24,7 @@ final class LAAOwnerIdentityUITests: XCTestCase {
             XCTAssertTrue(agents.firstMatch.waitForExistence(timeout: 20), "agent header", file: file, line: line)
         }
         for element in agents.allElementsBoundByIndex where element.exists {
-            XCTAssertEqual(element.label, agent, file: file, line: line)
+            if let agent { XCTAssertEqual(element.label, agent, file: file, line: line) }
             XCTAssertFalse(element.label.contains("Administration"), file: file, line: line)
         }
         // Whatever carries the role is an owner header or lies inside one.

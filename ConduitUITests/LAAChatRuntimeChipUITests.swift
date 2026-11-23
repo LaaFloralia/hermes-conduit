@@ -128,7 +128,9 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         // The compact header floats over the transcript (owner, 2026-11-13):
         // it stays on screen above the keyboard and takes no row of its own.
         XCTAssertTrue(header.isHittable, "the mascot and name stay in view with the keyboard up")
-        XCTAssertLessThan(header.frame.height, 100, "the compact mascot and name")
+        // The owner enlarged the mascot from 56 to 78 pt (235f474d, 415086d8).
+        // Keep the prior budget for the rest of the heading (the name pill).
+        XCTAssertLessThan(header.frame.height, 78 + (100 - 56), "the compact mascot and name")
         XCTAssertLessThan(any("chat.transcript", app).frame.minY, header.frame.maxY, "the transcript runs under the header")
         app.terminate()
     }
