@@ -124,11 +124,11 @@ final class LAAPerformanceUITests: XCTestCase {
             }
         }
         move(.work, .doc, app)
-        let note = app.buttons.matching(NSPredicate(format: "identifier == 'laa.brain.note' AND label CONTAINS 'Start'")).firstMatch
+        let note = app.staticTexts["Start"].firstMatch // Title of this fixed synthetic document.
         XCTAssertTrue(note.waitForExistence(timeout: 15))
         sample("doc_open_long") {
             note.tap()
-            let editor = item("laa.brain.edit.text", app)
+            let editor = app.textViews["laa.brain.edit.text"].firstMatch
             XCTAssertTrue(editor.waitForExistence(timeout: 15))
             XCTAssertTrue((editor.value as? String ?? "").contains("段落45"), "The long document body, not just its shell, must be present")
         }
