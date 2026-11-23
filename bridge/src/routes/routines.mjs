@@ -20,12 +20,16 @@ const exec = promisify(execFile);
 const ROLE_NAMES = Object.freeze({ monet: 'Monet', cos: 'Merlin', cto: 'Ada', cfo: 'Morgan',
   cio: 'Sherlock', cso: 'Talos', argus: 'Argus', soap: '薬用石鹸' });
 const boundedString = (value) => typeof value === 'string' && value.length <= 500 ? value : null;
+const modelSetting = (value) => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(value) ? value : null;
 
 export function routineState(job, reading) {
+  // A disabled output never runs just because its sibling owns the shared slot.
+  if (reading.outputEnabled === false) return 'paused';
   if (reading.running === true || reading.schedulerState === 'running') return 'running';
-  if (reading.enabled === false || job.expected === 'stopped') return 'paused';
-  if (['read_unavailable', 'schedule_overdue'].includes(reading.reasonCode)) return 'error';
-  if (reading.schedulerResult === 'error' || ['failed', 'partial'].includes(reading.businessStatus)) return 'error';
+  if (reading.enabled === false || reading.schedulerState === 'paused' || job.expected === 'stopped' ||
+      (reading.source === 'launchd' && reading.loaded === false)) return 'paused';
+  if (['read_unavailable', 'schedule_overdue', 'launchd_failed'].includes(reading.reasonCode)) return 'error';
+  if (reading.schedulerResult === 'error' || ['failed', 'partial', 'needs_attention'].includes(reading.businessStatus)) return 'error';
   if (reading.enabled === true) return 'scheduled';
   return 'unknown';
 }
@@ -62,6 +66,8 @@ export function projectRoutineRows(document) {
     const reading = job.reading && typeof job.reading === 'object' ? job.reading : {};
     items.push({ id: job.id, name: job.name, schedule: boundedString(job.schedule),
       triggerKind: routineKind(job), destination: routineDestination(job), state: routineState(job, reading),
+      ...(reading.modelSettings?.author ? { authorModel: modelSetting(reading.modelSettings.author.model),
+        authorEffort: modelSetting(reading.modelSettings.author.effort) } : {}),
       nextRunAt: boundedString(reading.nextRunAt), lastRunAt: boundedString(reading.lastRunAt),
       businessStatus: boundedString(reading.businessStatus), notificationStatus: boundedString(reading.notificationStatus),
       result: boundedString(reading.result),
