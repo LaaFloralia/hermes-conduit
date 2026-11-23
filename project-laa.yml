@@ -41,6 +41,10 @@ settings:
     # app (Watch app and extensions included) gets past the build description.
     EXCLUDED_SOURCE_FILE_NAMES: Info.plist
 schemes:
+  ConduitWatchLabPhone:
+    build:
+      targets:
+        Conduit: all
   ConduitWatchLab:
     build:
       targets:

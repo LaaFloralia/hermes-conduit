@@ -8,6 +8,7 @@ import json
 import plistlib
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -15,7 +16,7 @@ import sys
 import time
 import uuid
 
-from suite import REPO, SLOT, SIGNING, env, sh
+from suite import DEVELOPER_DIR, REPO, SLOT, SIGNING, env, sh
 
 PHONE_NAME = "LAA 16 Pro Max"
 WATCH_NAME = "LAA Watch S11 46"
@@ -28,8 +29,14 @@ WATCH_RUNNER = "com.laa-inc.laa.watchuitests.xctrunner"
 AX5 = "accessibility-extra-extra-extra-large"
 
 
-def capture(*cmd, timeout=60):
-    return subprocess.check_output(cmd, cwd=REPO, env=env(), text=True, timeout=timeout).strip()
+def lab_env(**extra):
+    # Do not pass Bridge/Hermes endpoints, test opt-ins or auth to the slot.
+    keys = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LAA_BUILD_SLOT_HELD", "LAA_BUILD_SLOT_MAX_WAIT")
+    return {**{k: os.environ[k] for k in keys if k in os.environ}, "DEVELOPER_DIR": DEVELOPER_DIR, **extra}
+
+
+def capture(*cmd, timeout=60, stderr=None):
+    return subprocess.check_output(cmd, cwd=REPO, env=lab_env(), text=True, timeout=timeout, stderr=stderr).strip()
 
 
 def simulator_inventory():
@@ -159,7 +166,8 @@ def run_variant(cmd, variables, phones, log):
                     mark = f"laa-watch-lab-{variables['NEXT']}.ready"
                     while process.poll() is None and time.monotonic() < stop:
                         try:
-                            root = capture("xcrun", "simctl", "get_app_container", watch, WATCH_RUNNER, "data", timeout=10)
+                            root = capture("xcrun", "simctl", "get_app_container", watch, WATCH_RUNNER, "data",
+                                           timeout=10, stderr=subprocess.DEVNULL)
                         except subprocess.CalledProcessError:
                             root = ""
                         if root and (Path(root) / "tmp" / mark).is_file():
@@ -190,7 +198,7 @@ def export_variant(bundle, out, variant, expected, device, sha, log):
             if name.startswith("watch-appearance-proof"):
                 proof = file.read_text().strip()
             for screen in expected:
-                if file.suffix.lower() != ".png" or not name.startswith(f"watch-{screen}_"):
+                if file.suffix.lower() != ".png" or not re.match(rf"^watch-{screen}(?=[^a-z0-9-]|$)", name):
                     continue
                 if screen in frames:
                     raise RuntimeError(f"Duplicate attachment {variant}/{screen}")
@@ -220,8 +228,10 @@ def run_tests(out, phone, watch):
         raise RuntimeError("Commit sources before generating verifiable screenshots")
     log = out / "build.log"
     sh(["xcodegen", "generate", "--spec", "project-laa.yml"], log, check=True)
-    ios = xcode_base("Conduit", "iOS", phone_id, DERIVED)
-    watch_base = xcode_base("ConduitWatchLab", "watchOS", watch_id, DERIVED)
+    ios = [*xcode_base("ConduitWatchLabPhone", "iOS", phone_id, DERIVED),
+           "CONDUIT_DEFAULT_RELAY_URL=http://127.0.0.1:9"]
+    watch_base = [*xcode_base("ConduitWatchLab", "watchOS", watch_id, DERIVED),
+                  "CONDUIT_DEFAULT_RELAY_URL=http://127.0.0.1:9"]
     sh([*ios, "build"], log, check=True, timeout=1800)
     sh([*watch_base, "build-for-testing"], log, check=True, timeout=1200)
     products = DERIVED / "Build/Products"
@@ -293,13 +303,13 @@ def run_tests(out, phone, watch):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("pair-check", "test"))
-    parser.add_argument("--out", type=Path, default=Path.cwd() / "watch-check")
+    parser.add_argument("--out", type=Path, default=DERIVED / "pair-check")
     args = parser.parse_args()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
     if os.environ.get("LAA_BUILD_SLOT_HELD") != "1":
-        return sh(["/bin/bash", SLOT, sys.executable, str(Path(__file__).resolve()),
-                   args.command, "--out", str(args.out)])
+        return subprocess.run(["/bin/bash", SLOT, sys.executable, str(Path(__file__).resolve()),
+                               args.command, "--out", str(args.out)], cwd=REPO, env=lab_env()).returncode
     started = time.monotonic()
     inventory = simulator_inventory()
     phone, watch = [named_device(n, inventory) for n in (PHONE_NAME, WATCH_NAME)]

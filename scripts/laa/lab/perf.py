@@ -17,8 +17,9 @@ import time
 import urllib.request
 import uuid
 
-from suite import DEVELOPER_DIR, REPO, SLOT
-from watch import DERIVED, PHONE_APP, PHONE_NAME, boot_devices, capture, log_json, named_device, simulator_inventory, test_states, xcode_base
+from suite import REPO, SLOT
+from watch import (DERIVED, PHONE_APP, PHONE_NAME, boot_devices, capture, lab_env, log_json,
+                   named_device, simulator_inventory, test_states, xcode_base)
 
 SCHEME = "ConduitPerfLab"
 SETTINGS = ("SWIFT_OPTIMIZATION_LEVEL=-O", "SWIFT_COMPILATION_MODE=incremental",
@@ -84,12 +85,6 @@ def compare_reports(before, after):
         changes.append({"probe": probe, "unit": a["unit"], "baseline": a["median"], "new": b["median"],
                         "delta": delta, "noise_band": band, "regression": delta > band})
     return changes
-
-
-def lab_env(**extra):
-    # Do not inherit Bridge/Hermes/fixture overrides or opt-ins from the caller.
-    keys = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LAA_BUILD_SLOT_HELD", "LAA_BUILD_SLOT_MAX_WAIT")
-    return {**{k: os.environ[k] for k in keys if k in os.environ}, "DEVELOPER_DIR": DEVELOPER_DIR, **extra}
 
 
 def log_run(cmd, log, timeout=300, extra=None, check=True):
@@ -275,7 +270,7 @@ schemes:
 targets:
   ConduitUITests:
     sources:REPLACE:
-      - path: ConduitUITests/LAAPerformanceUITests.swift
+      - path: ../ConduitUITests/LAAPerformanceUITests.swift
 """)
         log_run(["xcodegen", "generate", "--spec", str(spec), "--project", str(REPO)], out / "build.log")
         cmd = xcode_base(SCHEME, "iOS", phone["udid"], DERIVED)

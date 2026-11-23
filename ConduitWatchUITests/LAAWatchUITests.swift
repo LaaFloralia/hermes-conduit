@@ -26,9 +26,12 @@ final class LAAWatchUITests: XCTestCase {
         if expectedAppearance != "native" {
             XCTAssertTrue(actual.hasPrefix(expectedAppearance + "|"), "SwiftUI reported \(actual)")
         }
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'watch.home.staff.'"))
-            .firstMatch.waitForExistence(timeout: 10))
-        if long { XCTAssertTrue(actual.hasSuffix("|ax5"), "SwiftUI reported \(actual)") }
+        let staff = app.buttons["watch.home.staff.monet"]
+        XCTAssertTrue(staff.waitForExistence(timeout: 10))
+        if long {
+            XCTAssertTrue(actual.hasSuffix("|ax5"), "SwiftUI reported \(actual)")
+            XCTAssertEqual(staff.label, "事業計画と社内外の予定を取りまとめる総合アドバイザー")
+        }
         shot(app, "home")
         let proof = XCTAttachment(string: actual)
         proof.name = "watch-appearance-proof"
@@ -40,7 +43,7 @@ final class LAAWatchUITests: XCTestCase {
         let initial = try XCTUnwrap(env["LAA_WATCH_LAB_INITIAL"])
         let next = try XCTUnwrap(env["LAA_WATCH_LAB_NEXT"])
         let app = home()
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'watch.home.staff.'")).firstMatch.tap()
+        app.buttons["watch.home.staff.monet"].tap()
         let talk = app.buttons["watch.employee.talk"]
         let call = app.buttons["watch.employee.call"]
         requireContext(initial, on: talk)

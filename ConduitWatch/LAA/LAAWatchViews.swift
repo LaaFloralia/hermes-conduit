@@ -43,14 +43,6 @@ struct LAAWatchHome: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var longJapanese: Bool {
-        #if DEBUG && targetEnvironment(simulator)
-        ProcessInfo.processInfo.arguments.contains("-laa-watch-lab-long-ja")
-        #else
-        false
-        #endif
-    }
-
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -73,13 +65,9 @@ struct LAAWatchHome: View {
                         NavigationLink { LAAWatchEmployee(staff: staff) } label: {
                             VStack(spacing: 3) {
                                 LAAWatchAvatar(staff: staff)
-                                if longJapanese && staff == LAAStaff.allCases[0] {
-                                    Text(verbatim: "事業計画と社内外の予定を取りまとめる総合アドバイザー").font(.caption).lineLimit(1)
-                                } else {
-                                    Text(staff.name).font(.caption).lineLimit(1)
-                                }
+                                Text(verbatim: staffName(staff)).font(.caption).lineLimit(1)
                             }.frame(maxWidth: .infinity)
-                        }.buttonStyle(.plain).accessibilityLabel(staff.name)
+                        }.buttonStyle(.plain).accessibilityLabel(staffName(staff))
                             .accessibilityIdentifier("watch.home.staff.\(staff.rawValue)")
                     }
                 }
@@ -96,6 +84,15 @@ struct LAAWatchHome: View {
         .toolbar { ToolbarItem(placement: .topBarTrailing) { NavigationLink { WatchSettingsView() } label: { Image(systemName: "gearshape") }.accessibilityLabel("Settings") } }
         .watchBackdrop()
         .sheet(isPresented: $voice.showing, onDismiss: { voice.cancel() }) { LAAWatchRecording().environmentObject(voice) }
+    }
+
+    private func staffName(_ staff: LAAStaff) -> String {
+        #if DEBUG && targetEnvironment(simulator)
+        if staff == LAAStaff.allCases[0], ProcessInfo.processInfo.arguments.contains("-laa-watch-lab-long-ja") {
+            return "事業計画と社内外の予定を取りまとめる総合アドバイザー"
+        }
+        #endif
+        return staff.name
     }
 }
 
