@@ -301,9 +301,8 @@ def handset(config):
         raise CaptureError('Simulator lane must hold the shared build slot')
     log = Path(config['log'])
     sim = ['xcrun', 'simctl']
-    run([*sim, 'boot', PHONE], log)
     try:
-        run([*sim, 'bootstatus', PHONE], log)
+        run([*sim, 'bootstatus', PHONE, '-b'], log)
         action = config['action']
         dest = f'platform=iOS Simulator,id={PHONE}'
         common = ['xcodebuild', action, '-destination', dest, '-jobs', '4', '-packageAuthorizationProvider', 'netrc']
