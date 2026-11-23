@@ -40,7 +40,31 @@ settings:
     # is why project.yml doesn't carry this: without it, no archive of the full
     # app (Watch app and extensions included) gets past the build description.
     EXCLUDED_SOURCE_FILE_NAMES: Info.plist
+schemes:
+  ConduitWatchLab:
+    build:
+      targets:
+        ConduitWatch: all
+        ConduitWatchUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - name: ConduitWatchUITests
+          parallelizable: false
 targets:
+  ConduitWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources: [ConduitWatchUITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchuitests
+        TARGETED_DEVICE_FAMILY: "4"
+        TEST_TARGET_NAME: ConduitWatch
+    dependencies:
+      - target: ConduitWatch
   ConduitTests:
     sources:
       - path: Shared/Widgets/LAAEmployeeWidget.swift

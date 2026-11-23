@@ -41,6 +41,11 @@ final class WatchVoiceLink: ObservableObject {
         guard WCSession.isSupported() else { return }
         proxy.link = self
         WCSession.default.delegate = proxy
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        // Only the lab installation supplies this nonce and mode. The regular
+        // WatchPhoneContext encoder, sender and receiving delegate stay in use.
+        if let fixture = Self.labContext { context = fixture }
+        #endif
         WCSession.default.activate()
     }
 
@@ -67,9 +72,22 @@ final class WatchVoiceLink: ObservableObject {
     /// which the Watch reads whenever it runs next. Sent once the session
     /// is up and the Watch app installed.
     func share(_ context: WatchPhoneContext) {
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        if Self.labContext != nil { return }
+        #endif
         self.context = context
         sendContext()
     }
+
+    #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+    private static var labContext: WatchPhoneContext? {
+        let env = ProcessInfo.processInfo.environment
+        guard let nonce = env["LAA_WATCH_LAB_CONTEXT"], UUID(uuidString: nonce) != nil,
+              let mode = env["LAA_WATCH_LAB_CALLABLE"], ["yes", "no"].contains(mode) else { return nil }
+        return WatchPhoneContext(activeDashboardID: nonce,
+            laaCallableProfiles: mode == "yes" ? ["laa-\(LAAStaff.allCases[0].rawValue)"] : [])
+    }
+    #endif
 
     private func sendContext() {
         guard let context, context != sharedContext, WCSession.isSupported() else { return }
