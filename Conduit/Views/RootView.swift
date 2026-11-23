@@ -563,6 +563,11 @@ struct MainView: View {
     private var laaShell: AnyView? {
         #if LAA_BUILD
         AnyView(shellSurface
+            #if DEBUG
+            .overlay(alignment: .topLeading) {
+                if LAALabCaptureFixture.enabled { LAALabCaptureProbe() }
+            }
+            #endif
             .environmentObject(laaBridge)
             .onChange(of: laaScenePhase, initial: true) { _, phase in
                 if phase == .active { laaBridge.retryReadingCredentialsIfNeeded() }

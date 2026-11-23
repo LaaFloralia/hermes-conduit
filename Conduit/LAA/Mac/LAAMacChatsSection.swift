@@ -64,7 +64,11 @@ struct LAAMacChatsSection: View {
 
     private var fixtureSplit: some View {
         LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
-            LAAColor.background
+            if LAALabCaptureFixture.enabled {
+                LAAChatsFixtureView().environment(\.horizontalSizeClass, .compact)
+            } else {
+                LAAColor.background
+            }
         } detail: {
             LAABackgroundUITestFixtureScreen()
                 .environment(\.v2Shell, V2ShellContext(values: .init(isTabActive: true, isRootCovered: false, isSplit: true)))

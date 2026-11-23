@@ -71,8 +71,8 @@ enum LAABrainData {
         let firstID = LAABrainReference(path: first, includeInbox: false).id
         let secondID = LAABrainReference(path: second, includeInbox: false).id
         var items: [[String: Any]] = mode == "empty" ? [] : [
-            ["id": firstID, "path": first, "title": "Start", "modifiedAt": "2026-10-29T00:00:00.000Z", "area": "company"],
-            ["id": secondID, "path": second, "title": "Other", "modifiedAt": "2026-10-28T00:00:00.000Z", "area": "company"],
+            ["id": firstID, "path": first, "title": LAALabCaptureFixture.expanded("Start"), "modifiedAt": "2026-10-29T00:00:00.000Z", "area": "company"],
+            ["id": secondID, "path": second, "title": LAALabCaptureFixture.expanded("Other"), "modifiedAt": "2026-10-28T00:00:00.000Z", "area": "company"],
         ]
         if mode == "many" {
             for number in 3...4 {
@@ -89,7 +89,8 @@ enum LAABrainData {
             let hits: [[String: Any]] = mode == "empty" ? [] : [["path": first, "section": "見出し", "text": "検索できる本文です。"]]
             return try decode(["results": hits])
         case "/v1/brain/files/" + firstID:
-            return try decode(["id": firstID, "path": first, "text": "---\nstatus: draft\n---\n# 見出し\n\n- [x] 確認\n\n[[Other|次のメモ]]\n\n![図](images/example.png)\n\n::: unknown\n"])
+            let extra = LAALabCaptureFixture.longJapanese ? "\n\n# \(LAALabCaptureFixture.name)\n\n\(String(repeating: LAALabCaptureFixture.paragraph, count: 4))\n" : ""
+            return try decode(["id": firstID, "path": first, "text": "---\nstatus: draft\n---\n# 見出し\n\n- [x] 確認\n\n[[Other|次のメモ]]\n\n![図](images/example.png)\n\n::: unknown\n" + extra])
         case "/v1/brain/files/" + secondID:
             return try decode(["id": secondID, "path": second, "text": "# 別のメモ\n\n内容です。"])
         default: throw LAABridgeError.other(status: 404, code: "not_found")

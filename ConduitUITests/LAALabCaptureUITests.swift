@@ -1,0 +1,245 @@
+#if LAA_BUILD && os(iOS) && !targetEnvironment(macCatalyst)
+import XCTest
+
+/// Opt-in only; capture.py supplies the selected IDs, fixture ports and expected traits.
+final class LAALabCaptureUITests: XCTestCase {
+    private let env = ProcessInfo.processInfo.environment
+    private var selected = Set<String>()
+    private var captured = Set<String>()
+    private let project = "work.project.proj_laa_fixture"
+    private let requirement = "laa.work.project.requirement.title.req_capture_1"
+    private let run = "work.session.ses_5555555555555555"
+    private let waiting = "work.session.ses_2222222222222222"
+    private let history = "work.session.ses_3333333333333333"
+    private let decision = "work.decision.dec_0000000000000a01"
+    private let task = "work.task.title.7a1c3d5e-2222-4a2b-9c3d-000000000100"
+    private let studio = "laa.studio.work.70175325-5cf4-421f-8a6f-95beae8fca92"
+
+    func testCapture() throws {
+        guard let raw = env["LAA_LAB_SCREENS"], let traits = env["LAA_LAB_TRAITS"],
+              let port = env["LAA_LAB_PORT"], UInt16(port) != nil else {
+            throw XCTSkip("Run via scripts/laa/lab/capture.py with synthetic fixtures")
+        }
+        continueAfterFailure = false
+        selected = Set(raw.split(separator: ",").map(String.init))
+        var observed: String?
+        func batch(_ ids: [String], tab: String, _ flags: [String] = [],
+                   portName: String = "LAA_LAB_PORT", body: (XCUIApplication) -> Void) {
+            guard ids.contains(where: selected.contains) else { return }
+            let app = XCUIApplication()
+            app.launchArguments = ["-LAA_LAB_CAPTURE", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                                   "-LAA_UI_TEST_WORK_FIXTURE_PORT", env[portName]!,
+                                   "-LAA_UI_TEST_CLEAR_WORK_STORE", "-laa-tab", tab,
+                                   "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://lab-capture.invalid",
+                                   "-conduit.themePreference", "system",
+                                   "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"] + flags
+            if env["LAA_LAB_LONG_JAPANESE"] == "1" { app.launchArguments += ["-LAA_LAB_LONG_JAPANESE"] }
+            app.launch()
+            defer { app.terminate() }
+            let probe = wait("laa.lab.capture.traits", app)
+            let actual = probe.label
+            XCTAssertEqual(actual, traits, "Effective traits on \(tab) / \(flags)")
+            if observed == nil { observed = actual }
+            body(app)
+        }
+
+        batch(["chat-staff"], tab: "chats", ["-LAA_UI_TEST_CHATS"]) { app in
+            shot("chat-staff", after: "laa.chats.person.laa-monet", app)
+        }
+        batch(["chat-thread", "chat-composer"], tab: "chats", background("chat", "rich")) { app in
+            wait("fixture.capture.ready", app)
+            wait("chat.transcript", app)
+            shot("chat-thread", after: "chat.message.assistant", app)
+            if selected.contains("chat-composer") {
+                let field = app.textViews.matching(identifier: "composer.field").firstMatch
+                XCTAssertTrue(field.waitForExistence(timeout: 15))
+                field.tap()
+                let draft = "Fixture draft — please review the next steps."
+                field.typeText(draft)
+                XCTAssertEqual(field.value as? String, draft)
+                shot("chat-composer", after: "composer.field", app)
+            }
+        }
+        batch(["chat-group"], tab: "chats", background("group", "rich")) { app in
+            wait("fixture.capture.ready", app)
+            shot("chat-group", after: "room.composer.field", app)
+        }
+        batch(["chat-empty"], tab: "chats", background("chat", "empty")) { app in
+            wait("fixture.capture.ready", app)
+            XCTAssertFalse(element("chat.message.assistant", app).exists)
+            shot("chat-empty", after: "composer.field", app)
+        }
+
+        batch(["work-projects", "work-requirements", "work-sessions", "work-session-history", "work-session-running",
+               "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail", "work-routines",
+               "work-campaigns", "usage", "usage-capacity"], tab: "work") { app in
+            wait(project, app)
+            shot("work-projects", after: project, app)
+            if selected.contains("work-requirements") {
+                tap(project, app)
+                shot("work-requirements", after: requirement, app)
+                back(to: "work.section.projects", app)
+            }
+            if needs("work-sessions", "work-session-history", "work-session-running") {
+                segment("sessions", app)
+                wait(run, app)
+                wait(waiting, app)
+                shot("work-sessions", after: "work.sessions", app)
+                for (id, row, ready) in [("work-session-history", history, "work.session.history.ready"),
+                                        ("work-session-running", run, "work.session.progress.thinking")] where selected.contains(id) {
+                    reveal(row, app)
+                    tap(row, app)
+                    shot(id, after: ready, app)
+                    back(to: "work.section.sessions", app)
+                }
+            }
+            if needs("work-decisions", "work-decision-detail") {
+                segment("decisions", app)
+                shot("work-decisions", after: decision, app)
+                if selected.contains("work-decision-detail") {
+                    reveal(decision, app)
+                    tap(decision, app)
+                    shot("work-decision-detail", after: "work.decision.option.0", app)
+                    tap("work.decision.close", app)
+                }
+            }
+            if selected.contains("work-campaigns") {
+                segment("campaigns", app)
+                shot("work-campaigns", after: "work.campaigns", app)
+            }
+            if needs("work-tasks", "work-task-detail") {
+                segment("tasks", app)
+                shot("work-tasks", after: task, app)
+                if selected.contains("work-task-detail") {
+                    reveal(task, app)
+                    tap(task, app)
+                    shot("work-task-detail", after: "work.task.detail.title", app)
+                    back(to: "work.section.tasks", app)
+                }
+            }
+            if selected.contains("work-routines") {
+                segment("routines", app)
+                shot("work-routines", after: "work.routines.tree", app)
+            }
+            if needs("usage", "usage-capacity") {
+                tap("work.usage", app)
+                shot("usage", after: "laa.capacity.mac-mini.memory", app)
+                if selected.contains("usage-capacity") {
+                    reveal("laa.capacity", app)
+                    shot("usage-capacity", after: "laa.capacity", app)
+                }
+            }
+        }
+        batch(["settings"], tab: "work") { app in
+            tap("laa.settings.open", app)
+            shot("settings", after: "settings.chat", app)
+        }
+        for (mode, expected) in [("empty", "laa.lab.empty"), ("loading", "laa.lab.loading"),
+                                 ("error", "laa.today.error")] {
+            let id = "today-\(mode)"
+            batch([id], tab: "today", portName: "LAA_LAB_PORT_" + mode.uppercased()) { app in
+                shot(id, after: expected, app)
+            }
+        }
+        batch(["today", "today-event"], tab: "today") { app in
+            let row = "laa.calendar.event.fixture-event-1"
+            shot("today", after: row, app)
+            if selected.contains("today-event") {
+                reveal(row, app)
+                tap(row, app)
+                shot("today-event", after: "laa.calendar.detail.title", app)
+            }
+        }
+        batch(["doc", "doc-note"], tab: "brain", ["-laa-brain-fixture", "normal"]) { app in
+            shot("doc", after: "laa.brain.note", app)
+            if selected.contains("doc-note") {
+                tap("laa.brain.note", app)
+                shot("doc-note", after: "laa.brain.back", app)
+            }
+        }
+        batch(["doc-error"], tab: "brain", ["-laa-brain-fixture", "offline"]) { app in
+            shot("doc-error", after: "laa.brain.readError", app)
+        }
+        batch(["studio", "studio-work", "drive"], tab: "studio") { app in
+            shot("studio", after: studio, app)
+            if selected.contains("drive") {
+                tap("studio.drive", app)
+                shot("drive", after: "laa.drive.layout", app)
+                if selected.contains("studio-work") { tap("studio.section.studio", app) }
+            }
+            if selected.contains("studio-work") {
+                reveal(studio, app)
+                tap(studio, app)
+                shot("studio-work", after: "laa.studio.gallery", app)
+            }
+        }
+
+        XCTAssertEqual(captured, selected, "Missing capture IDs: \(selected.subtracting(captured).sorted())")
+        let proof = XCTAttachment(string: observed ?? "missing")
+        proof.name = "lab-traits"
+        proof.lifetime = .keepAlways
+        add(proof)
+    }
+
+    private func background(_ surface: String, _ state: String) -> [String] {
+        ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", state, "-LAA_CAPTURE_SURFACE", surface]
+    }
+
+    private func needs(_ ids: String...) -> Bool { ids.contains(where: selected.contains) }
+
+    private func element(_ id: String, _ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", id)).firstMatch
+    }
+
+    @discardableResult private func wait(_ id: String, _ app: XCUIApplication) -> XCUIElement {
+        let item = element(id, app)
+        XCTAssertTrue(item.waitForExistence(timeout: 15), "Missing AX identifier: \(id)")
+        return item
+    }
+
+    private func tap(_ id: String, _ app: XCUIApplication) {
+        let item = wait(id, app)
+        XCTAssertTrue(item.isHittable, "No hit point for \(id)")
+        item.tap()
+    }
+
+    private func swipe(_ app: XCUIApplication, from: CGVector, to: CGVector) {
+        app.coordinate(withNormalizedOffset: from).press(forDuration: 0.03,
+            thenDragTo: app.coordinate(withNormalizedOffset: to), withVelocity: XCUIGestureVelocity(550), thenHoldForDuration: 0)
+    }
+
+    private func back(to id: String, _ app: XCUIApplication) {
+        swipe(app, from: CGVector(dx: 0.006, dy: 0.48), to: CGVector(dx: 0.86, dy: 0.48))
+        wait(id, app)
+    }
+
+    private func reveal(_ id: String, _ app: XCUIApplication) {
+        let item = element(id, app)
+        for _ in 0..<9 {
+            if item.exists && item.isHittable && item.frame.midY < app.frame.height - 100 { return }
+            swipe(app, from: CGVector(dx: 0.65, dy: 0.73), to: CGVector(dx: 0.65, dy: 0.43))
+        }
+    }
+
+    private func segment(_ name: String, _ app: XCUIApplication) {
+        let row = wait("work.segment", app)
+        let button = element("work.section.\(name)", app)
+        for _ in 0..<5 {
+            if button.exists && button.isHittable && button.frame.midX > 28 && button.frame.midX < app.frame.width - 28 { break }
+            let y = row.frame.midY / app.frame.height
+            swipe(app, from: CGVector(dx: 0.85, dy: y), to: CGVector(dx: 0.25, dy: y))
+        }
+        tap("work.section.\(name)", app)
+    }
+
+    private func shot(_ id: String, after ready: String, _ app: XCUIApplication) {
+        guard selected.contains(id) else { return }
+        wait(ready, app)
+        XCTAssertTrue(captured.insert(id).inserted, "Duplicate shot \(id)")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "lab-\(id)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+}
+#endif

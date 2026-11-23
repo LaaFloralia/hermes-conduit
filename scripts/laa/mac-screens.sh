@@ -7,6 +7,7 @@
 #                              [--sizes 900x600,1280x820,1680x1050]
 #                              [--schemes light,dark] [--skip-build] [--self-render]
 #                              [--app-args "-flag value"] [--app-env "K=V K2=V2"]
+#                              [--build-only] [--settle SECONDS] [--build-log FILE]
 #
 # --app-args adds launch arguments, --app-env adds environment variables. The
 # Chat split needs a dashboard and an open conversation, which the DEBUG
@@ -59,6 +60,9 @@ SCHEMES=light,dark
 APP_ARGS=""
 APP_ENV=""
 SKIP_BUILD=0
+BUILD_ONLY=0
+SETTLE=0
+BUILD_LOG=""
 SELF_RENDER=0
 DEV_ID=com.laa-inc.laa.macdev
 DEV_NAME="LAA"
@@ -80,6 +84,9 @@ while [ $# -gt 0 ]; do
     --app-args) APP_ARGS=$2; shift 2 ;;
     --app-env) APP_ENV=$2; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --build-only) BUILD_ONLY=1; shift ;;
+    --settle) SETTLE=$2; shift 2 ;;
+    --build-log) BUILD_LOG=$2; shift 2 ;;
     --self-render) SELF_RENDER=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -152,17 +159,17 @@ build() {
   write_spec || { echo "could not write $SPEC" >&2; exit 1; }
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate --spec "$SPEC" >/dev/null || exit 1
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  /Users/laa/hq/harness/build-slot.sh \
+  /bin/bash /Users/laa/hq/harness/build-slot.sh \
     xcodebuild build -project Conduit.xcodeproj -scheme Conduit -configuration Debug \
       -destination 'platform=macOS,variant=Mac Catalyst' \
-      -derivedDataPath "$DERIVED" -jobs 4 \
+      -derivedDataPath "$DERIVED" -jobs 4 -packageAuthorizationProvider netrc \
       CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual \
       DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
-      CONDUIT_DISPLAY_NAME="$DEV_NAME" >"$DERIVED/build.log" 2>&1
+      CONDUIT_DISPLAY_NAME="$DEV_NAME" >"${BUILD_LOG:-$DERIVED/build.log}" 2>&1
   local status=$?
   if [ $status -ne 0 ]; then
-    echo "build failed; see $DERIVED/build.log" >&2
-    grep -m5 "error:" "$DERIVED/build.log" >&2
+    echo "build failed; see ${BUILD_LOG:-$DERIVED/build.log}" >&2
+    grep -m5 "error:" "${BUILD_LOG:-$DERIVED/build.log}" >&2
     exit 1
   fi
   APP="$DERIVED/Build/Products/Debug-maccatalyst/Conduit.app"
@@ -210,6 +217,7 @@ if [ "$SKIP_BUILD" = 1 ] && [ -d "$DERIVED/Build/Products/Debug-maccatalyst/Cond
 else
   build
 fi
+[ "$BUILD_ONLY" = 0 ] || cleanup
 
 if [ -n "$FIXTURE" ]; then
   node "$ROOT/scripts/laa/$FIXTURE-ui-fixture.mjs" >"$DERIVED/fixture.log" 2>&1 &
@@ -256,6 +264,8 @@ for section in "${section_list[@]}"; do
         # The window writes the file a few seconds after it settles.
         for _ in $(seq 1 60); do [ -s "$file" ] && break; sleep 0.5; done
       else
+        # Fixture data may arrive just after the window's geometry settles.
+        [ "$SETTLE" = 0 ] || sleep "$SETTLE"
         screencapture -x -o -l "$id" "$file"
       fi
       if [ -s "$file" ]; then
