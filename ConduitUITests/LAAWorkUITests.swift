@@ -88,7 +88,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 20)); field.tap(); field.typeText("Lab next turn")
         let send = app.buttons["work.composer.send"]
         XCTAssertTrue(waitUntilReady(send, timeout: 20)); send.tap()
-        let echo = app.staticTexts["Lab Echo: Lab next turn"].firstMatch
+        let echo = transcript("Lab Echo: Lab next turn", in: app)
         XCTAssertTrue(echo.waitForExistence(timeout: 40))
         if relaunch {
             app.terminate(); app.launchInLab()
@@ -96,6 +96,11 @@ final class LAAWorkUITests: XCTestCase {
             XCTAssertTrue(openSession(app, id: id))
             XCTAssertTrue(echo.waitForExistence(timeout: 20))
         }
+    }
+
+    private func transcript(_ text: String, in app: XCUIApplication) -> XCUIElement {
+        // Work markdown is selectable and exposes its text as a TextView.
+        app.textViews.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
     }
 
     private func waitUntilReady(_ element: XCUIElement, timeout: TimeInterval = 60) -> Bool {
@@ -174,10 +179,10 @@ final class LAAWorkUITests: XCTestCase {
             XCTAssertTrue(address.waitForExistence(timeout: 10))
             let expected = try XCTUnwrap(LabUI.bridge)
             XCTAssertEqual(address.value as? String, expected)
-            address.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+            address.tap()
+            address.typeText("7")
+            XCTAssertEqual((address.value as? String)?.count, expected.count + 1)
             address.typeText(XCUIKeyboardKey.delete.rawValue)
-            XCTAssertNotEqual(address.value as? String, expected)
-            address.typeText(String(expected.suffix(1)))
             XCTAssertEqual(address.value as? String, expected)
             return
         }
@@ -401,7 +406,7 @@ final class LAAWorkUITests: XCTestCase {
             field.tap(); field.typeText("Lab UI session")
             let send = app.buttons["work.launch.composer.send"]
             XCTAssertTrue(waitUntilReady(send, timeout: 15)); send.tap()
-            XCTAssertTrue(app.staticTexts["Lab Echo: Lab UI session"].firstMatch.waitForExistence(timeout: 40))
+            XCTAssertTrue(transcript("Lab Echo: Lab UI session", in: app).waitForExistence(timeout: 40))
             return
         }
         let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]
@@ -471,7 +476,8 @@ final class LAAWorkUITests: XCTestCase {
             let field = projectEditor(in: app)
             field.tap(); field.typeText("Lab shared instructions")
             saveProject(in: app)
-            XCTAssertTrue(app.staticTexts["Lab shared instructions"].firstMatch.waitForExistence(timeout: 30))
+            XCTAssertTrue(field.waitForNonExistence(timeout: 15))
+            XCTAssertEqual(projectEditor(in: app).value as? String, "Lab shared instructions")
             return
         }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-edit" else {
@@ -622,7 +628,7 @@ final class LAAWorkUITests: XCTestCase {
             app = try pairedLaneWork()
             WorkLaneUI.sessions(app)
             XCTAssertTrue(openSession(app, id: id))
-            XCTAssertTrue(app.staticTexts["Lab Echo: Lab start"].firstMatch.waitForExistence(timeout: 30))
+            XCTAssertTrue(transcript("Lab Echo: Lab start", in: app).waitForExistence(timeout: 30))
         } else {
             app = launchWork()
             guard openScratchSession(app), app.staticTexts["最新の回答"].waitForExistence(timeout: 30) else {
