@@ -498,10 +498,13 @@ def capture(args):
     logs = out / 'logs'
     logs.mkdir()
     storage(logs)
-    sha = run(['git', 'rev-parse', 'HEAD'], logs / 'git.log', data=True)
-    dirty = run(['git', 'status', '--short', '--untracked-files=no'], logs / 'git.log', data=True)
-    if dirty:
-        raise CaptureError('Commit tracked changes before capturing so index app_sha names the source being built')
+    def clean_sha():
+        sha = run(['git', 'rev-parse', 'HEAD'], logs / 'git.log', data=True)
+        if not sha or run(['git', 'status', '--short', '--untracked-files=no'], logs / 'git.log', data=True):
+            raise CaptureError('Commit tracked changes before capturing so index app_sha names the source being built')
+        return sha
+
+    sha = clean_sha()
     # Project generation and DerivedData are worktree-local and must not race
     # a second invocation in the same worktree, even outside the build slot.
     lock_path = ROOT / 'build/capture.lock'
@@ -519,6 +522,8 @@ def capture(args):
                     phone_capture(entries, proof, work, logs, sha, [key for key in expected if key[0] == 'iphone'], ports)
                 if 'mac' in platforms:
                     mac_capture(entries, proof, work, logs, sha, [key for key in expected if key[0] == 'mac'], ports, screens)
+                if clean_sha() != sha:
+                    raise CaptureError('Source commit changed during capture; start a new run')
                 elapsed = time.monotonic() - start
                 index(work, expected, entries, screens, proof, elapsed)
                 for name in [*platforms, 'index.html', 'index.json']:
