@@ -61,7 +61,8 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         XCTAssertEqual(LAAUsageGroup.leadingAccount(google.items)?.label, "Google Sub3", "the account in use leads")
         XCTAssertTrue(LAAUsageGroup.isAccountGroup(google.id))
         XCTAssertFalse(LAAWidgetUsageBuilder.widgetSlots.contains { $0.provider == "google-ai-pro" }, "the widget keeps its seven rows")
-        XCTAssertNil(LAAUsageGauge.lowestWeeklyRemaining(googleFixture()), "Work's weekly gauge reads the listed quotas only")
+        let accounts = try googleFixture()
+        XCTAssertNil(LAAUsageGauge.lowestWeeklyRemaining(accounts), "Work's weekly gauge reads the listed quotas only")
         let key = "laa.usage.expandedGroups"
         let saved = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(saved, forKey: key) }
