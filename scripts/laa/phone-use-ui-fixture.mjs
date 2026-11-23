@@ -4,6 +4,7 @@
 //
 // Control (port + 1): GET /code (a fresh pairing code), /registered,
 // /ask?timeout=<s>, /status?id=, /end?id=.
+import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLaneFixtureServer, listenLaneFixture, reportFixturePort } from '../../bridge/src/lane/fixture.mjs';
@@ -26,7 +27,25 @@ const lane = validateLane(process.env, { stateDir: dir, port });
 mkdirSync(dir, { recursive: true, mode: 0o700 });
 const store = createStore({ dir, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
 const record = lane ? laneRecorder(lane, 'apns') : ({ kind }) => appendFileSync(join(dir, 'apns.jsonl'), `${JSON.stringify({ kind })}\n`, { mode: 0o600 });
-const push = async ({ kind }) => { record({ kind }); return { sent: true }; };
+const testSimulator = 'DFFD3966-F54E-4C7A-A161-59201C7EA105'; // LAA 16 Pro Max only
+let simulator;
+const push = async ({ kind, payload }) => {
+  record({ kind });
+  if (!simulator) return { sent: true }; // recorder-only node smoke
+  // simctl supports application pushes only, not the APNs liveactivity push
+  // type or topic. Preserve the service's payload inside a local app push.
+  const body = { aps: { 'content-available': 1 }, laa_lab_lane: lane.id, laa_lab_phone_use: payload };
+  await new Promise((resolve, reject) => {
+    const proc = spawn('/usr/bin/xcrun', ['simctl', 'push', simulator, 'com.laa-inc.laa', '-'], {
+      stdio: ['pipe', 'ignore', 'ignore'], signal: AbortSignal.timeout(15_000),
+    });
+    proc.stdin.on('error', () => {});
+    proc.once('error', reject);
+    proc.once('close', (status) => status === 0 ? resolve() : reject(new Error(`simctl push exit ${status}`)));
+    proc.stdin.end(JSON.stringify(body));
+  });
+  return { sent: true };
+};
 const phoneUse = createPhoneUse({ dir, push, devices: (id) => store.read().devices?.[id] ?? null });
 const bridge = createBridge({ store, drive: null, routeOptions: {
   workspaces: { roots: [dir] },
@@ -47,7 +66,13 @@ const control = createLaneFixtureServer(async (req, res) => {
       try { token = JSON.parse(readFileSync(phoneUse.file, 'utf8')).startToken; } catch {}
       return send(res, 200, { registered: Boolean(token), wake: Boolean(token?.wakeToken), environment: token?.environment ?? null });
     }
+    if (url.pathname === '/reset-start' && lane) return send(res, 200, phoneUse.reset());
     if (url.pathname === '/ask') {
+      const destination = url.searchParams.get('simulator');
+      if (destination !== null) {
+        if (!lane || destination.toUpperCase() !== testSimulator) return send(res, 400, { error: 'invalid_test_simulator' });
+        simulator = testSimulator;
+      }
       const asked = await phoneUse.ask({ who: 'iPhone Use｜UIテスト', purpose: 'LAAアプリの表示を確認',
         timeoutMs: Number(url.searchParams.get('timeout') ?? 60) * 1000 });
       if (asked.ok) phoneUse.waitForAnswer(asked.request.id).catch(() => {});

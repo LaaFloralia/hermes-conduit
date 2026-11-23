@@ -29,7 +29,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     func testStagedTestSuccessShowsAllStagesAndEnablesHandoff() {
         let app = XCUIApplication()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:password"]
-        app.launch()
+        app.launchInLab()
 
         walkToTestScreen(app, enteringCredentials: true)
         tapVisible(app.buttons[Identity.testRun], in: app)
@@ -58,7 +58,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     func testAuthenticationFailureKeepsPriorStagesAndOffersEditCredentials() {
         let app = XCUIApplication()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:authenticationRejected"]
-        app.launch()
+        app.launchInLab()
 
         walkToTestScreen(app, enteringCredentials: true)
         tapVisible(app.buttons[Identity.testRun], in: app)
@@ -89,7 +89,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     func testRateLimitedTestOffersNoRetryAction() {
         let app = XCUIApplication()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:rateLimited"]
-        app.launch()
+        app.launchInLab()
 
         walkToTestScreen(app, enteringCredentials: true)
         tapVisible(app.buttons[Identity.testRun], in: app)
@@ -114,7 +114,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // here.
         let app = XCUIApplication()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"]
-        app.launch()
+        app.launchInLab()
 
         walkToTestScreen(app)
         tapVisible(app.buttons[Identity.testRun], in: app)
@@ -168,7 +168,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // Enter Credentials to test the password method instead.
         let app = XCUIApplication()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:signInChoice"]
-        app.launch()
+        app.launchInLab()
 
         walkToTestScreen(app)
         tapVisible(app.buttons[Identity.testRun], in: app)

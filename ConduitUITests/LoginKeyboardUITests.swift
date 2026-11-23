@@ -37,7 +37,7 @@ final class LoginKeyboardUITests: XCTestCase {
 
     func testCloudflareFieldsAndConnectStayReachableWithKeyboardVisible() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
 
         let serverField = app.textFields[Identity.serverURL]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
@@ -118,7 +118,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// touching any other control.
     func testConnectionSetupAffordanceIsReachableAndOpensShell() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
 
         let serverField = app.textFields[Identity.serverURL]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
@@ -178,7 +178,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// shell — and it must not trap Connect below the keyboard/viewport.
     func testMalformedURLShowsActionableErrorWithTroubleshootAndConnectStaysReachable() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
 
         let serverField = app.textFields[Identity.serverURL]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
@@ -226,7 +226,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// with its own title distinct from the malformed-URL case.
     func testRemotePlainHTTPShowsInsecureTransportErrorAndConnectStaysReachable() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
 
         let serverField = app.textFields[Identity.serverURL]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")

@@ -236,7 +236,7 @@ final class LAAStaffCallUITests: XCTestCase {
     private func launch(_ arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-staff-call-fixture"] + arguments
-        app.launch()
+        app.launchInLab()
         return app
     }
 }

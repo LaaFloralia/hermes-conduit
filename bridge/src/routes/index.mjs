@@ -34,6 +34,7 @@ import { createOwnerTaskStore } from '../tasks/owner-store.mjs';
 import { createOwnerTaskService } from '../tasks/owner-service.mjs';
 import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
+import { laneUsageRoutes } from '../lane/usage.mjs';
 import { studioRoutes } from './studio.mjs';
 import { createGoogleCalendar } from '../calendar/google.mjs';
 import { createCalendarReminders } from '../calendar/reminders.mjs';
@@ -205,6 +206,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
       sessionOptions: sessionChoices,
       daemon,
     }),
+    ...(lane ? laneUsageRoutes(lane, store.dir, now) : []),
     ...(!lane ? [
       ...usageRoutes({ ...(options.usage ?? {}), now }),
       ...studioRoutes({ store, now, registerCleanup: sessionOptions.registerCleanup, ...options.studio }),

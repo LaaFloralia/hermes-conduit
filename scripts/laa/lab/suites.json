@@ -8,24 +8,7 @@
     "exclude_classes": {
       "LAALabCaptureUITests": "Capture tool, not a behavior test: it runs only from scripts/laa/lab/capture.py, which supplies its own fixtures and environment. Its pass/fail is capture.py's exit code."
     },
-    "fixtures": {
-      "work": [
-        "node",
-        "scripts/laa/work-ui-fixture.mjs"
-      ],
-      "paseo": [
-        "node",
-        "scripts/laa/paseo-ui-fixture.mjs"
-      ],
-      "studio": [
-        "node",
-        "scripts/laa/studio-ui-fixture.mjs"
-      ],
-      "habits": [
-        "node",
-        "bridge/test/habits-ui-fixture.mjs"
-      ]
-    }
+    "fixtures": ["work", "paseo", "studio", "habits", "usage", "phone-use"]
   },
   "smoke": {
     "about": "The default Conduit build (project.yml): the merge gate's selection from scripts/smoke-suite.json.",

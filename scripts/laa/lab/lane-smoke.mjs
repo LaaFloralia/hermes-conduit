@@ -15,7 +15,7 @@ const run = (...args) => exec(process.execPath, [launcher, ...args], { timeout: 
 const client = (origin, id) => laneClient(origin, id, { timeoutMs });
 const lanes = [];
 async function up() {
-  const { stdout } = await run('up', '--json', '--fixture', 'work', '--fixture', 'phone-use');
+  const { stdout } = await run('up', '--json', '--fixture', 'work', '--fixture', 'phone-use', '--fixture', 'usage');
   const manifest = JSON.parse(stdout);
   lanes.push(manifest);
   return JSON.parse(await readFile(join(manifest.root, 'lane.json'), 'utf8'));
@@ -47,6 +47,20 @@ async function workflow(lane, index, other) {
   assert.equal(pushSink.kind, 'start');
 
   const api = client(base, lane.id);
+  const usage = client(`http://127.0.0.1:${lane.ports['usage-control']}`, lane.id);
+  assert.equal((await api('/v1/usage')).status, 401);
+  const usageHeaders = { authorization: `Bearer ${lane.token}` };
+  const capacity = async () => {
+    const response = await api('/v1/usage', { headers: usageHeaders });
+    assert.equal(response.status, 200);
+    return (await response.json()).data.items.find(({ id }) => id === 'capacity.mac-mini.ssd');
+  };
+  assert.equal((await capacity()).detail.availableBytes, 100 * 1024 ** 3);
+  assert.equal((await usage('/mode/stale')).status, 200);
+  await assert.rejects(client(`http://127.0.0.1:${lane.ports['usage-control']}`, other.id)('/mode/empty'), { code: 'lane_mismatch' });
+  assert.equal((await capacity()).stale, true);
+  assert.equal(await (await usage('/counts')).text(), '2');
+
   const request = async (path, method = 'GET', value, key = '') => {
     const response = await api(path, { method, headers: { authorization: `Bearer ${lane.token}`,
       ...(value === undefined ? {} : { 'content-type': 'application/json', 'idempotency-key': key }) },
@@ -80,7 +94,7 @@ async function workflow(lane, index, other) {
   const archived = (await request('/v1/sessions?archived=only')).items;
   assert.equal(archived.length, 1);
   assert.equal(archived[0].id, id);
-  console.log(`lane ${index}: bridge :${lane.ports.bridge}, work fixture :${lane.ports.work}; handshake/cross-lane refusal/create/send/list/archive/APNs sink OK`);
+  console.log(`lane ${index}: bridge :${lane.ports.bridge}, work fixture :${lane.ports.work}; handshake/cross-lane refusal/create/send/list/archive/synthetic usage/APNs sink OK`);
 }
 
 try {

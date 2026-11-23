@@ -5,7 +5,7 @@ final class LAAHabitsUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments = ["-laa-tab", "today", "-LAA_UI_TEST_HABITS", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch(); defer { app.terminate() }
+        app.launchInLab(); defer { app.terminate() }
         let mode = app.buttons["laa.calendar.mode.habits"]
         XCTAssertTrue(mode.waitForExistence(timeout: 30)); mode.tap()
         let create = app.buttons["laa.habits.create"]; XCTAssertTrue(create.waitForExistence(timeout: 10)); create.tap()

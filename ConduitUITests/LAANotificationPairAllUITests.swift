@@ -5,7 +5,7 @@ final class LAANotificationPairAllUITests: XCTestCase {
     func testButtonAvailabilityAndRetry() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_PAIR_ALL"]
-        app.launch()
+        app.launchInLab()
         let pair = app.buttons["notifications.pair-all"]
         XCTAssertTrue(pair.waitForExistence(timeout: 20))
         XCTAssertFalse(pair.isEnabled)

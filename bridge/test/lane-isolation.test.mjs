@@ -109,7 +109,7 @@ test('Node tests, CLI and fixtures refuse the default live state and a symlink a
     assert.equal(result.status, 1);
     assert.match(result.stderr, /LAA_BRIDGE_STATE_DIR.*production/);
   }
-  const usage = run(join(here, '../../scripts/laa/usage-ui-fixture.mjs'), [], { ...env, LAA_USAGE_UI_REAL_STATE: production });
+  const usage = run(join(here, '../../scripts/laa/usage-ui-fixture.mjs'), [], { ...env, LAA_BRIDGE_STATE_DIR: production });
   assert.equal(usage.status, 1);
   assert.match(usage.stderr, /LAA_BRIDGE_STATE_DIR.*production/);
   const phone = run(join(here, '../../scripts/laa/phone-use-ui-fixture.mjs'), [production], env);

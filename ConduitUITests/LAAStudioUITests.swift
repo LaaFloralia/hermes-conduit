@@ -3,7 +3,7 @@ import XCTest
 
 final class LAAStudioUITests: XCTestCase {
     private func helper(_ route: String) throws -> String {
-        String(data: try Data(contentsOf: URL(string: "http://127.0.0.1:19583/\(route)")!), encoding: .utf8) ?? ""
+        String(data: try LabUI.data(LabUI.origin("studio-control", legacyPort: 19583), "/\(route)"), encoding: .utf8) ?? ""
     }
 
     private func composer(_ app: XCUIApplication) -> XCUIElement {
@@ -19,13 +19,13 @@ final class LAAStudioUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("studio", legacyPort: 19582)
+        app.launchInLab()
         let connect = app.buttons["laa.studio.pair"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30)); connect.tap()
         let address = app.textFields["laa.bridge.address"]
         XCTAssertTrue(address.waitForExistence(timeout: 10))
-        XCTAssertEqual(address.value as? String, "http://127.0.0.1:19582")
+        XCTAssertEqual(address.value as? String, LabUI.origin("studio", legacyPort: 19582))
         let code = app.secureTextFields["laa.bridge.code"]
         code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]
@@ -105,13 +105,13 @@ final class LAAStudioUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("studio", legacyPort: 19582)
+        app.launchInLab()
         let connect = app.buttons["laa.studio.pair"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30)); connect.tap()
         let address = app.textFields["laa.bridge.address"]
         XCTAssertTrue(address.waitForExistence(timeout: 10))
-        XCTAssertEqual(address.value as? String, "http://127.0.0.1:19582")
+        XCTAssertEqual(address.value as? String, LabUI.origin("studio", legacyPort: 19582))
         let code = app.secureTextFields["laa.bridge.code"]
         code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]
@@ -154,8 +154,8 @@ final class LAAStudioUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("studio", legacyPort: 19582)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 30)); app.buttons["laa.studio.pair"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
@@ -189,8 +189,8 @@ final class LAAStudioUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("studio", legacyPort: 19582)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 30)); app.buttons["laa.studio.pair"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
         XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")

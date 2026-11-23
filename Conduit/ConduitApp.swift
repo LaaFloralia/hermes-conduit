@@ -146,7 +146,17 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         #if DEBUG
-        guard LAALabNetworkPolicy.current.allowsPush else { completionHandler(.noData); return }
+        if !LAALabNetworkPolicy.current.allowsPush {
+            #if LAA_BUILD && targetEnvironment(simulator)
+            Task { @MainActor in
+                let handled = await LAAPhoneUseService.shared.receiveSimulatedPush(userInfo)
+                completionHandler(handled ? .newData : .noData)
+            }
+            #else
+            completionHandler(.noData)
+            #endif
+            return
+        }
         #endif
         #if LAA_BUILD
         // Any push that wakes the app is a chance to send a waiting answer.

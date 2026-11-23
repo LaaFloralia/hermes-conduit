@@ -35,7 +35,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:password"
         ]
-        app.launch()
+        app.launchInLab()
 
         openSettings(app)
 
@@ -112,7 +112,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"
         ]
-        app.launch()
+        app.launchInLab()
 
         openSettings(app)
         openConnectionSetup(app)
@@ -153,7 +153,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:credentialsRequired"
         ]
-        app.launch()
+        app.launchInLab()
 
         openSettings(app)
         openConnectionSetup(app)

@@ -337,13 +337,13 @@ export function createBridge({
 
     try {
       checkOrigin(req);
-      const refused = lane && refusedLaneEdge(pathname);
+      const candidates = ROUTES.filter((route) => (route.pattern ? route.pattern.test(pathname) : route.path === pathname));
+      const refused = lane && !candidates.some((candidate) => candidate.laneOnly === true) && refusedLaneEdge(pathname);
       if (refused) {
         res.shouldKeepAlive = false;
         throw laneMissing(refused);
       }
 
-      const candidates = ROUTES.filter((route) => (route.pattern ? route.pattern.test(pathname) : route.path === pathname));
       if (candidates.length === 0) {
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }

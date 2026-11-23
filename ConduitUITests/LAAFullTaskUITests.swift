@@ -11,7 +11,7 @@ final class LAAFullTaskUITests: XCTestCase {
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance,
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = address
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30)); app.buttons["work.connect"].tap()
         let field = app.secureTextFields["laa.bridge.code"]
         XCTAssertTrue(field.waitForExistence(timeout: 10)); field.tap(); field.typeText(code)

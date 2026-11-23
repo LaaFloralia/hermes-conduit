@@ -11,7 +11,7 @@ final class LAAChatComposerUITests: XCTestCase {
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple",
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT"]
             + (dark ? ["-LAA_V2_DARK"] : [])
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 15))
         return app
@@ -128,7 +128,7 @@ final class LAAChatComposerUITests: XCTestCase {
         app.launchArguments += ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
                                 "-CONDUIT_UI_TEST_PROFILES", "work,staging",
                                 "-CONDUIT_UI_TEST_WIDGET_URL", link]
-        app.launch()
+        app.launchInLab()
         let field = app.textViews["composer.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["BackButton"].waitForExistence(timeout: 10))

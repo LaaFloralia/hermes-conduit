@@ -14,7 +14,7 @@ final class LAAMessageHoldSelectUITests: XCTestCase {
                                "-LAA_FIXTURE_PUSH_CHAT",
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
             + (dark ? ["-LAA_V2_DARK"] : []) + (white ? ["-LAA_CAPTURE_WHITE"] : [])
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 15))
         return app

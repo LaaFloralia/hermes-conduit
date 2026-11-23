@@ -1,24 +1,14 @@
 #if LAA_BUILD
 import XCTest
 
-/// Asking before an agent operates the iPhone in use, end to end on the
-/// simulator: a real push-to-start through the APNs sandbox starts the Live
-/// Activity, and the owner's answer in the Dynamic Island reaches the Bridge.
-/// Needs `scripts/laa/phone-use-ui-fixture.mjs` running under 1Password
-/// (skipped otherwise) and a Debug build signed with the push entitlement.
+/// A local simctl notification transports the Bridge's start APS; its
+/// ActivityKit UI and answers still go through the real intent and Bridge.
 final class LAAPhoneUseUITests: XCTestCase {
-    private let port = Int(ProcessInfo.processInfo.environment["LAA_PHONE_USE_FIXTURE_PORT"] ?? "") ?? 19593
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
     private func control(_ path: String) -> [String: Any]? {
-        let done = expectation(description: path)
-        var payload: [String: Any]?
-        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:\(port + 1)\(path)")!) { data, _, _ in
-            if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
-            done.fulfill()
-        }.resume()
-        wait(for: [done], timeout: 30)
-        return payload
+        guard let data = try? LabUI.data(LabUI.fixture("phone-use-control"), path) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
     private func poll(_ seconds: TimeInterval, _ check: () -> Bool) -> Bool {
@@ -37,43 +27,45 @@ final class LAAPhoneUseUITests: XCTestCase {
         add(attachment)
     }
 
-    /// Pair once with the fixture, then let the app hand over its
-    /// push-to-start token and its own push token for the wake (it retries
-    /// when it becomes active).
-    private func pairedAndRegistered() throws {
-        guard control("/registered") != nil else { throw XCTSkip("Start scripts/laa/phone-use-ui-fixture.mjs") }
-        let ready = { (r: [String: Any]?) in r?["registered"] as? Bool == true }
-        if ready(control("/registered")) { return }
+    private func pairedAndRegistered() throws -> XCUIApplication {
+        try XCTSkipUnless(LabUI.active, "Run suite.py run integration for the local simctl connector.")
         continueAfterFailure = false
+        _ = try XCTUnwrap(control("/reset-start"))
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
-        app.launch()
-        if app.buttons["work.connect"].waitForExistence(timeout: 20) {
-            let code = try XCTUnwrap(control("/code")?["code"] as? String)
-            app.buttons["work.connect"].tap()
-            let field = app.secureTextFields["laa.bridge.code"]
-            XCTAssertTrue(field.waitForExistence(timeout: 10))
-            field.tap(); field.typeText(code)
-            let pair = app.buttons["laa.bridge.pair"]
-            if !pair.isHittable { app.swipeUp() }
-            pair.tap()
-            XCTAssertTrue(app.buttons["work.connect"].waitForNonExistence(timeout: 20))
-        }
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = try XCTUnwrap(LabUI.fixture("phone-use"))
+        app.launchEnvironment["LAA_LAB_PHONE_USE_PUSH"] = "1"
+        app.launchInLab()
+        let connect = app.buttons["work.connect"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 20))
+        let code = try XCTUnwrap(control("/code")?["code"] as? String)
+        connect.tap()
+        let field = app.secureTextFields["laa.bridge.code"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap(); field.typeText(code)
+        let pair = app.buttons["laa.bridge.pair"]
+        if !pair.isHittable { app.swipeUp() }
+        pair.tap()
+        XCTAssertTrue(connect.waitForNonExistence(timeout: 20))
         XCUIDevice.shared.press(.home)
         app.activate()
-        XCTAssertTrue(poll(150) { ready(control("/registered")) }, "push-to-start token never reached the Bridge")
-        // The app's own push token (for the wake) usually comes with it; note whether it did.
-        _ = poll(20) { control("/registered")?["wake"] as? Bool == true }
-        add(XCTAttachment(string: "registration: \(control("/registered") ?? [:])"))
+        XCTAssertTrue(poll(20) { control("/registered")?["registered"] as? Bool == true })
+        return app
     }
 
-    /// Ask with the app in the background (the owner is elsewhere on the phone).
     private func ask(timeout: Int = 60) throws -> String {
-        try pairedAndRegistered()
+        let app = try pairedAndRegistered()
+        let simulator = try XCTUnwrap(LabUI.environment["LAA_LAB_SIMULATOR"])
+        // App-originated Activity.request must run in the foreground. The
+        // activity's buttons are then exercised outside the app as before.
+        XCTAssertEqual(app.state, .runningForeground)
+        let asked = try XCTUnwrap(control("/ask?timeout=\(timeout)&simulator=\(simulator)"))
+        XCTAssertEqual(asked["ok"] as? Bool, true, "local push failed: \(asked)")
+        let id = try XCTUnwrap((asked["request"] as? [String: Any])?["id"] as? String)
+        XCTAssertTrue(poll(15) { control("/status?id=\(id)")?["hasActivityToken"] as? Bool == true },
+                      "local push did not create a Live Activity")
         XCUIDevice.shared.press(.home)
-        let asked = try XCTUnwrap(control("/ask?timeout=\(timeout)"))
-        return try XCTUnwrap((asked["request"] as? [String: Any])?["id"] as? String, "ask failed: \(asked)")
+        return id
     }
 
     /// The island's text in any form (expanded text, compact icon label).
@@ -82,13 +74,6 @@ final class LAAPhoneUseUITests: XCTestCase {
     }
 
     private func status(_ id: String) -> String? { control("/status?id=\(id)")?["status"] as? String }
-
-    /// Whether the activity's update token reached the Bridge (the system
-    /// wakes the app for it), so the Mac can end the activity by push.
-    private func noteActivityToken(_ id: String) {
-        let arrived = poll(20) { control("/status?id=\(id)")?["hasActivityToken"] as? Bool == true }
-        add(XCTAttachment(string: "activity token reached the Bridge within 20 s: \(arrived)"))
-    }
 
     /// The island's button: shown expanded when the activity starts; if it
     /// has folded into the compact island, a long press opens it again.
@@ -103,10 +88,9 @@ final class LAAPhoneUseUITests: XCTestCase {
 
     func testAllowThenOperatingThenEnd() throws {
         let id = try ask()
-        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForExistence(timeout: 20))
-        shot("1-ask")
-        noteActivityToken(id)
         let allow = try XCTUnwrap(islandButton("許可"))
+        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].exists)
+        shot("1-ask")
         let allowFrame = allow.frame
         allow.tap()
         XCTAssertTrue(poll(20) { status(id) == "allowed" })
@@ -143,10 +127,10 @@ final class LAAPhoneUseUITests: XCTestCase {
     }
 
     func testNoAnswerExpires() throws {
-        let id = try ask(timeout: 30)
-        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].waitForExistence(timeout: 20))
-        noteActivityToken(id)
-        XCTAssertTrue(poll(40) { status(id) == "expired" })
+        let id = try ask(timeout: 40)
+        _ = try XCTUnwrap(islandButton("許可"))
+        XCTAssertTrue(springboard.staticTexts["iPhoneを操作してよいですか"].exists)
+        XCTAssertTrue(poll(45) { status(id) == "expired" })
         Thread.sleep(forTimeInterval: 2)
         shot("5-expired")
         // Gone, not left as a stale question: the end push or the wake took

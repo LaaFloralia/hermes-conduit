@@ -5,7 +5,7 @@ final class LAAWorkUITests: XCTestCase {
     func testKeychainFailureOffersRetryInsteadOfNewPairing() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_KEYCHAIN_ERROR"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["接続情報を読み取れません"].waitForExistence(timeout: 30))
         let retry = app.buttons["work.retry-credentials"]
         XCTAssertTrue(retry.exists)
@@ -15,17 +15,17 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertFalse(app.buttons["work.connect"].exists)
     }
 
-    private func launchWork() -> XCUIApplication {
+    private func launchWork(fixture: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]
-        if let address = ProcessInfo.processInfo.environment["LAA_BRIDGE_DEFAULT_ADDRESS"] {
+        if let address = fixture ? LabUI.fixture("work") : ProcessInfo.processInfo.environment["LAA_BRIDGE_DEFAULT_ADDRESS"] {
             app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = address
         }
         if let appearance = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_APPEARANCE"],
            ["light", "dark"].contains(appearance) {
             app.launchArguments += ["-conduit.themePreference", appearance]
         }
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         return app
     }
@@ -111,7 +111,7 @@ final class LAAWorkUITests: XCTestCase {
     func testUnpairedWorkOffersPairing() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         let connect = app.buttons["work.connect"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30))
         connect.tap()
@@ -121,7 +121,7 @@ final class LAAWorkUITests: XCTestCase {
     func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         for name in ["sessions", "tasks", "routines"] {
             let segment = app.buttons["work.section.\(name)"]
@@ -136,7 +136,7 @@ final class LAAWorkUITests: XCTestCase {
     func testOwnerTasksRequirePairingWithoutExposingLegacyLocalTasks() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         app.buttons["work.section.tasks"].tap()
         XCTAssertTrue(app.buttons["work.connect"].exists)
@@ -148,7 +148,7 @@ final class LAAWorkUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "work-tabs-\(appearance)"
@@ -522,9 +522,26 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveFullEditorDraftSurvivesRelaunch() throws {
-        let app = launchWork()
-        if app.buttons["work.connect"].waitForExistence(timeout: 3) {
-            throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
+        continueAfterFailure = false
+        let app: XCUIApplication
+        if LabUI.active {
+            _ = try LabUI.data(LabUI.fixture("work-control"), "/reset")
+            app = launchWork(fixture: true)
+            let connect = app.buttons["work.connect"]
+            XCTAssertTrue(connect.waitForExistence(timeout: 20), "new lab namespace must start unpaired")
+            connect.tap()
+            let code = app.secureTextFields["laa.bridge.code"]
+            XCTAssertTrue(code.waitForExistence(timeout: 10))
+            code.tap(); code.typeText("TEST-TEST")
+            let pair = app.buttons["laa.bridge.pair"]
+            if !pair.isHittable { app.swipeUp() }
+            pair.tap()
+            XCTAssertTrue(connect.waitForNonExistence(timeout: 20))
+        } else {
+            app = launchWork()
+            if app.buttons["work.connect"].waitForExistence(timeout: 3) {
+                throw XCTSkip("Run the integration lane or pair the dedicated test simulator before this flow.")
+            }
         }
         let add = app.buttons["work.create"]
         guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
@@ -541,10 +558,11 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue((inline.value as? String ?? "").contains("Draft survives relaunch"))
         app.buttons["閉じる"].tap()
         app.terminate()
-        app.launch()
+        app.launchInLab()
         let work = app.buttons["Work"]
         XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
         guard waitUntilReady(add) else { XCTFail("Session data did not finish reloading."); return }
+        XCTAssertFalse(app.buttons["work.connect"].exists, "the isolated pairing must survive a process restart")
         add.tap(); app.buttons["work.sessions.new"].tap()
         let restored = app.textViews["work.composer.field"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10))

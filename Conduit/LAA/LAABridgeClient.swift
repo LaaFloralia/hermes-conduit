@@ -344,14 +344,19 @@ struct LAABridgeKeychain {
     }
 #endif
     private let service: String = {
+        #if DEBUG
+        let policy = LAALabNetworkPolicy.current
+        if policy.isActive {
+            let env = ProcessInfo.processInfo.environment
+            let suffix = [policy.laneID, env["LAA_LAB_KEYCHAIN_NAMESPACE"]].compactMap { $0 }
+            // The simulator runner sets a fresh namespace per app under test;
+            // relaunches of that app keep it. Never fall through to the regular service.
+            return (["com.laa.conduit.bridge.lab"] + suffix).joined(separator: ".")
+        }
+        #endif
         #if LAA_BUILD
         if let namespace = LAABridgeKeychain.performanceNamespace {
             return "com.laa.conduit.bridge.perf." + namespace
-        }
-        #endif
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE") {
-            return "com.laa.conduit.bridge.ui-test." + UUID().uuidString
         }
         #endif
         return "com.laa.conduit.bridge"
@@ -362,23 +367,13 @@ struct LAABridgeKeychain {
          kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
-    #if DEBUG
+    #if DEBUG && !targetEnvironment(simulator)
     nonisolated(unsafe) private static var labCredentials: LAABridgeCredentials?
     #endif
 
     func read() throws -> LAABridgeCredentials? {
-        #if DEBUG
-        if LAALabNetworkPolicy.current.isActive {
-            if let credentials = Self.labCredentials { return credentials }
-            let env = ProcessInfo.processInfo.environment
-            if let origin = env["LAA_LANE_BRIDGE"], origin == LAALabNetworkPolicy.current.bridgeAddress,
-               let url = try? LAABridgeEndpoint.parse(origin),
-               let device = env["LAA_LANE_DEVICE_ID"], let token = env["LAA_LANE_TOKEN"],
-               LAALabNetworkPolicy.current.laneID != nil {
-                return LAABridgeCredentials(baseURL: url, deviceID: device, token: token)
-            }
-            return nil
-        }
+        #if DEBUG && !targetEnvironment(simulator)
+        if LAALabNetworkPolicy.current.isActive { return Self.labCredentials }
         #endif
         #if LAA_BUILD
         // Explicit local measurement only. Never clear the normal service,
@@ -418,7 +413,7 @@ struct LAABridgeKeychain {
     #endif
 
     func save(_ credentials: LAABridgeCredentials) throws {
-        #if DEBUG
+        #if DEBUG && !targetEnvironment(simulator)
         if LAALabNetworkPolicy.current.isActive { Self.labCredentials = credentials; return }
         #endif
         #if DEBUG && targetEnvironment(macCatalyst)

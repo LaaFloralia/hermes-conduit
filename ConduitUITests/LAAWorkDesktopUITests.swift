@@ -5,7 +5,7 @@ import XCTest
 /// skip until the Mac shell provides `laaDesktop`.
 final class LAAWorkDesktopUITests: XCTestCase {
     private func launch(tab: String, appearance: String = "light") throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:19585/reset")!)) != nil else {
+        guard (try? LabUI.data(LabUI.origin("work-control", legacyPort: 19585), "/reset")) != nil else {
             throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
         }
         continueAfterFailure = false
@@ -13,8 +13,8 @@ final class LAAWorkDesktopUITests: XCTestCase {
         app.launchArguments = ["-laa-tab", tab, "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance,
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19584"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: 19584)
+        app.launchInLab()
         let connect = app.buttons["work.connect"]
         guard connect.waitForExistence(timeout: 30) else {
             throw XCTSkip("Mac desktop shell is not present in this build")

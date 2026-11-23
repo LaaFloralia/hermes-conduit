@@ -22,7 +22,7 @@ final class LAAPerformanceUITests: XCTestCase {
     func test00PairReadOnlyBridge() throws {
         try enabled()
         let app = application()
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["Work"].waitForExistence(timeout: 30))
         app.buttons["Work"].tap()
         let connect = app.buttons["work.connect"]
@@ -59,7 +59,7 @@ final class LAAPerformanceUITests: XCTestCase {
         let app = application()
         for iteration in 1...5 {
             app.terminate()
-            sample("cold_launch_interactive", iteration, action: { app.launch() }, ready: {
+            sample("cold_launch_interactive", iteration, action: { app.launchInLab() }, ready: {
                 app.buttons["Work"].waitForExistence(timeout: 30) && app.buttons["Work"].isHittable
             })
             for (tab, marker) in [("Today", "laa.calendar.mode"), ("Doc", "laa.brain.title"),
@@ -105,7 +105,7 @@ final class LAAPerformanceUITests: XCTestCase {
         try enabled()
         let app = application()
         app.launchEnvironment["LAA_PERF_CLEAR_KEYCHAIN"] = "1"
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.terminate()
     }

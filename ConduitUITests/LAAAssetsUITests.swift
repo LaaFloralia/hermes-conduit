@@ -9,7 +9,7 @@ final class LAAAssetsUITests: XCTestCase {
         app.launchArguments += ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_DRIVE_NO_SPEECH"]
         if let mode { app.launchArguments += ["-laa-assets-fixture", mode] }
         if let appearance { app.launchArguments += ["-conduit.themePreference", appearance] }
-        app.launch()
+        app.launchInLab()
         let drive = app.buttons["studio.drive"]
         if !drive.waitForExistence(timeout: 4) {
             let studio = app.buttons["Studio"].firstMatch

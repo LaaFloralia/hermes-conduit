@@ -22,8 +22,9 @@ final class LAAWorkShotsUITests: XCTestCase {
     private func fixture(_ path: String) -> [String: Any]? {
         let done = expectation(description: "fixture \(path)")
         var payload: [String: Any]?
-        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:\(port + 1)\(path)")!) { data, _, _ in
-            if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
+        guard let request = try? LabUI.request(LabUI.origin("work-control", legacyPort: port + 1), "\(path)") else { return nil }
+        LabUI.session.dataTask(with: request) { data, response, _ in
+            if LabUI.matches(response), let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
             done.fulfill()
         }.resume()
         wait(for: [done], timeout: 10)
@@ -156,8 +157,8 @@ final class LAAWorkShotsUITests: XCTestCase {
                                "-LAA_UI_TEST_CLEAR_WORK_STORE",
                                "-conduit.themePreference", theme,
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
         let code = app.secureTextFields["laa.bridge.code"]

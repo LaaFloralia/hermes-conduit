@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { hashToken, newDevice, randomDeviceId, randomToken } from '../../../bridge/src/auth.mjs';
 import { ALL_SCOPES, IDEMPOTENCY_RETENTION_MS } from '../../../bridge/src/config.mjs';
 import { createStore } from '../../../bridge/src/store.mjs';
+import { usageModePath } from '../../../bridge/src/lane/usage.mjs';
 import { laneClient } from '../../../bridge/src/lane/client.mjs';
 import { assertLaneParent, PRODUCTION_PORTS, validateLane } from '../../../bridge/src/lane/guard.mjs';
 
@@ -20,7 +21,8 @@ const repo = resolve(dirname(self), '../../..');
 const workInstall = join(userInfo().homedir, '.local/share/laa-work/engine/current');
 const fixtures = new Map([
   ['habits', ['bridge/test/habits-ui-fixture.mjs', ['habits']]],
-  ...['work', 'studio', 'usage', 'phone-use'].map((name) => [name, [`scripts/laa/${name}-ui-fixture.mjs`, [name, `${name}-control`]]]),
+  ...['work', 'studio', 'phone-use'].map((name) => [name, [`scripts/laa/${name}-ui-fixture.mjs`, [name, `${name}-control`]]]),
+  ['usage', ['scripts/laa/usage-ui-fixture.mjs', ['usage-control']]],
   ['paseo', ['scripts/laa/paseo-ui-fixture.mjs', ['paseo']]],
 ]);
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -105,6 +107,7 @@ async function supervise(root, names) {
     owned.push(work);
     await until(() => existsSync(join(root, 'work/engine.pid')), 'isolated Work engine did not start', () => work.exitCode === null);
 
+    if (names.includes('usage')) writeFileSync(usageModePath(env.LAA_BRIDGE_STATE_DIR), 'normal', { mode: 0o600 });
     const device = randomDeviceId();
     const token = randomToken();
     const store = createStore({ dir: env.LAA_BRIDGE_STATE_DIR, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
@@ -132,8 +135,7 @@ async function supervise(root, names) {
     for (const name of names) {
       const [path, expected] = fixtures.get(name);
       const args = name === 'phone-use' ? [join(root, 'phone-state')] : [];
-      const fixtureEnv = { ...env, ...(name === 'usage' ? { LAA_USAGE_UI_REAL_STATE: env.LAA_BRIDGE_STATE_DIR } : {}) };
-      const proc = child(join(repo, path), args, fixtureEnv, root, `fixture-${name}`, { ipc: true });
+      const proc = child(join(repo, path), args, env, root, `fixture-${name}`, { ipc: true });
       owned.push(proc);
       pids[`fixture-${name}`] = proc.pid;
       proc.on('message', (message) => {

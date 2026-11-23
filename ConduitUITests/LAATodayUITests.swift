@@ -7,7 +7,7 @@ final class LAATodayUITests: XCTestCase {
             let app = XCUIApplication()
             app.launchEnvironment["CONDUIT_UITEST"] = "1"
             app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance, "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-            app.launch()
+            app.launchInLab()
             XCTAssertTrue(app.staticTexts["laa.today.title"].waitForExistence(timeout: 30))
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             shot.name = "today-\(appearance)-iphone16promax"
@@ -22,7 +22,7 @@ final class LAATodayUITests: XCTestCase {
             app.launchEnvironment["CONDUIT_UITEST"] = "1"
             app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance,
                                     "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-            app.launch()
+            app.launchInLab()
             let settings = app.buttons["laa.settings.open"]
             XCTAssertTrue(settings.waitForExistence(timeout: 30))
             settings.tap()
@@ -44,7 +44,7 @@ final class LAATodayUITests: XCTestCase {
         let app = XCUIApplication()
             app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["laa.today.title"].waitForExistence(timeout: 30))
         for name in ["Chat", "Work", "Today", "Doc", "Studio"] {
             XCTAssertTrue(app.buttons[name].exists, "Missing tab \(name)")

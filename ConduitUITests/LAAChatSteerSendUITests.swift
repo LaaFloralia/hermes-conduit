@@ -12,7 +12,7 @@ final class LAAChatSteerSendUITests: XCTestCase {
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper",
                                "-LAA_FIXTURE_PUSH_CHAT", "-LAA_FIXTURE_PROFILE", "laa-monet",
                                "-LAA_FIXTURE_CONNECTED"] + (dark ? ["-LAA_V2_DARK"] : [])
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 15))
         return app
@@ -41,7 +41,7 @@ final class LAAChatSteerSendUITests: XCTestCase {
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple",
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper",
                                "-LAA_FIXTURE_PUSH_CHAT"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         let own = app.descendants(matching: .any).matching(identifier: "chat.message.user").firstMatch
         XCTAssertTrue(own.waitForExistence(timeout: 10))
