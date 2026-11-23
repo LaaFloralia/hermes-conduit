@@ -340,6 +340,7 @@ extension ChatTypographyTests {
         let state = AppState(
             defaults: defaults,
             loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(),
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         XCTAssertEqual(state.displayPreferences.reasoningMode, .off)
@@ -359,6 +360,7 @@ extension ChatTypographyTests {
         let state = AppState(
             defaults: defaults,
             loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(),
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         XCTAssertEqual(state.displayPreferences, kept)

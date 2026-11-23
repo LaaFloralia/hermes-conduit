@@ -578,16 +578,22 @@ final class DashboardProxySignOutTests: XCTestCase {
         )
         bridge.webViewCanRun = { true }
         addTeardownBlock { @MainActor in bridge.invalidate() }
-        for attempt in 0..<3 {
-            do {
-                _ = try await bridge.requestJSON(path: "/api/status")
-                break
-            } catch DashboardTicketBridgeError.notReady where attempt < 2 {
-                // A cold load that failed outright: load it again.
-                if bridge.isLoadFailed { bridge.reload() }
+        // GET now uses the background transport while the page loads. Wait
+        // for the real WebKit landing instead of using a GET as a readiness
+        // probe: this fixture has no background authentication cookie.
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(30)
+        var reloads = 0
+        while !bridge.isReady, !bridge.requiresSignIn, clock.now < deadline {
+            if bridge.isLoadFailed {
+                guard reloads < 2 else { break }
+                reloads += 1
+                bridge.reload()
             }
+            try await Task.sleep(for: .milliseconds(100))
         }
-        XCTAssertTrue(bridge.isReady)
+        _ = try XCTUnwrap(bridge.isReady ? bridge : nil, "Loopback WebKit dashboard must be ready before testing page requests")
+        _ = try await bridge.requestJSON(path: "/api/status")
         return bridge
     }
 

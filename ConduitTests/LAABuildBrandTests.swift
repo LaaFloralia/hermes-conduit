@@ -52,6 +52,38 @@ final class LAABuildBrandTests: XCTestCase {
         XCTAssertEqual(LAAProductBrand.display("Paseoの状態"), "Workの状態")
         XCTAssertEqual(LAAProductBrand.display("Monet"), "Monet")
         XCTAssertEqual(LAAProductBrand.display("the Conduit plugin"), "the LAA plugin")
+        XCTAssertEqual(LiveVoiceStyle.askFirstInstructions(on: true),
+                       "\n\nAsking first is on for this call: a new request goes to LAA only once the user OKs it.")
+        XCTAssertEqual(LiveVoiceStyle.askFirstInstructions(on: false),
+                       "\n\nAsking first is off for this call: new requests go to LAA straight away.")
+    }
+
+    @MainActor
+    func testBrandedStaticDiagnosticsAndLiveHandoffRule() {
+        XCTAssertEqual(VoiceSetupIssue.microphoneDenied.message,
+                       "LAA needs the microphone for voice. Allow it in iPhone Settings > LAA.")
+        XCTAssertEqual(UserFacingError.message(for: HermesError.timeout("session.compress")),
+                       "LAA didn't answer in time. Check that your LAA server is running, then try again.")
+
+        // Check the actual prompt builders: every variant carries the same
+        // handoff rule exactly once with only the product name substituted.
+        let sourceRule = LiveVoiceAcknowledgement.rule
+        let rule = sourceRule.replacingOccurrences(of: "Hermes", with: "LAA")
+        XCTAssertNotEqual(rule, sourceRule)
+        let prompts = [
+            GeminiLiveConversationController.instructions(search: .hermes),
+            GeminiLiveConversationController.instructions(search: .hermes, onWatch: true),
+            GeminiLiveConversationController.instructions(search: .grok, acknowledgesOnceStarted: true)
+                + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current),
+            GeminiLiveConversationController.instructions(search: .none, acknowledgesOnceStarted: true)
+                + LocalLiveProtocol.agentInstructions,
+            GPTLiveConversationController.briefing(),
+            GPTLiveConversationController.briefing(onWatch: true),
+        ]
+        for (index, prompt) in prompts.enumerated() {
+            XCTAssertEqual(prompt.components(separatedBy: rule).count, 2, "Variant \(index) carries the branded rule once")
+            XCTAssertFalse(prompt.contains(sourceRule), "Variant \(index) has no duplicate upstream handoff rule")
+        }
     }
 
     func testJapaneseIntentAliasesAndEnglishCallCopyUseLAA() {

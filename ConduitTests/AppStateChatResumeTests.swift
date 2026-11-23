@@ -7893,6 +7893,9 @@ final class AppStateChatResumeTests: XCTestCase {
             chatResumeCoordinator: coordinator,
             recoverySequence: recoverySequence,
             loadSavedConnection: false,
+            // A synthetic, unscoped notification/reconnect must not inherit
+            // the host app's saved dashboard from the simulator Keychain.
+            dashboardRegistry: SavedDashboardRegistry(),
             clearSessionPresentationCache: { cacheClearSpy.count += 1 },
             reconnectScheduler: reconnectScheduler,
             reconnectExecutor: reconnectExecutor,

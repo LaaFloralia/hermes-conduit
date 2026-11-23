@@ -604,11 +604,9 @@ final class SettledMessageIsolationTests: XCTestCase {
     /// tick observes only whatever flushed synchronously and made the
     /// previous version of this test flaky on slower CI runners (a late
     /// transaction from the initial mount landed inside the measurement
-    /// window). Actual font delivery cannot be asserted in-process:
-    /// UIFontMetrics resolve against UIApplication's
-    /// preferredContentSizeCategory, which is process-global. The Equatable
-    /// input contract (including sizeCategory) is covered directly by
-    /// testEquatableConformanceComparesEveryGateInput.
+    /// window). Both body re-evaluation and the delivered TextKit font are
+    /// observed, since Markdown resolves the hosted size category rather than
+    /// waiting for a process-global UIKit trait change.
     func testDynamicTypeChangeReOpensSettledContentGate() throws {
         let appState = try makeAppState()
         let resolver = GatewayMediaDataURLResolver(appState: appState, profile: "default")
@@ -622,7 +620,18 @@ final class SettledMessageIsolationTests: XCTestCase {
         )
         // Let the initial mount fully settle — including trait-sync follow-up
         // transactions — before arming the measurement window.
-        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
+        func headingSize(in view: UIView) -> CGFloat? {
+            if let text = (view as? UITextView)?.attributedText {
+                let heading = (text.string as NSString).range(of: "Heading one")
+                if heading.location != NSNotFound,
+                   let font = text.attribute(.font, at: heading.location, effectiveRange: nil) as? UIFont {
+                    return font.pointSize
+                }
+            }
+            return view.subviews.lazy.compactMap { headingSize(in: $0) }.first
+        }
+        drainUntil(2.0) { headingSize(in: host.view) != nil }
+        let originalSize = try XCTUnwrap(headingSize(in: host.view), "The initial Markdown heading must be mounted")
 
         TranscriptPerf.reset()
         host.rootView = makeHarnessRow(
@@ -633,12 +642,14 @@ final class SettledMessageIsolationTests: XCTestCase {
         )
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
-        drainUntil(2.0) { TranscriptPerf.settledMarkdownTextBodyEvaluations > 0 }
+        drainUntil(2.0) { (headingSize(in: host.view) ?? 0) > originalSize }
 
         XCTAssertGreaterThan(
             TranscriptPerf.settledMarkdownTextBodyEvaluations, 0,
             "a Dynamic Type change must re-open the settled-content gate and re-evaluate settled content"
         )
+        XCTAssertGreaterThan(try XCTUnwrap(headingSize(in: host.view)), originalSize,
+                             "The mounted heading must use the new Dynamic Type size")
     }
 
     /// Drains the run loop in short real intervals until `condition` holds or

@@ -106,6 +106,7 @@ struct MarkdownText: View {
     /// the same value, so the whole stream stays at one size. The
     /// `.default` environment default keeps non-chat subtrees untouched.
     @Environment(\.chatTextSize) private var chatTextSize
+    @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.accessibilitySwitchControlEnabled) private var switchControlEnabled
@@ -136,6 +137,7 @@ struct MarkdownText: View {
     }
 
     var body: some View {
+        let appearance = chatTextSize.resolving(sizeCategory)
         // Path fork is centralized here: ordinary messages keep the exact
         // fast cached path below; pathological ones (see
         // MarkdownLargeDocumentPolicy) get the bounded presentation so no
@@ -148,8 +150,10 @@ struct MarkdownText: View {
                 gatewayMediaDataURL: gatewayMediaDataURL
             )
             .environment(\.textSelectionTint, selectionTint)
+            .environment(\.chatTextSize, appearance)
         } else {
-            normalBody
+            normalBody(chatTextSize: appearance)
+                .environment(\.chatTextSize, appearance)
         }
     }
 
@@ -162,7 +166,7 @@ struct MarkdownText: View {
     private var lastBlockMayBePartial: Bool { isStreaming || mayEndMidBlock }
 
     @ViewBuilder
-    private var normalBody: some View {
+    private func normalBody(chatTextSize: ChatTextAppearance) -> some View {
         let _ = isStreaming ? () : TranscriptPerf.note(.settledMarkdownBody, context: source)
         let foregroundStyle = effectiveForeground
         let rendering = MarkdownRenderCache.rendering(
@@ -507,13 +511,9 @@ enum MarkdownRenderCache {
         // in another bubble's colour.
         let styleToken = supportedStyle ? "std" : "style:" + String(describing: foregroundStyle)
 
-        // Fonts resolve against the current Dynamic Type size AND the
-        // selected chat text size (issue #85), so either change must miss the
-        // cache rather than serve stale metrics. The chat-size identity is
-        // the persisted enum position, so re-tuning the scale factors later
-        // needs no cache migration. Reading preferredContentSizeCategory
-        // touches UIApplication.shared, hence the @MainActor isolation on
-        // this function.
+        // The appearance keys on the chosen chat size and the live SwiftUI
+        // type category. UIKit's process category is a fallback for callers
+        // that render with an appearance not yet resolved in a view.
         let key = [
             recognizesGatewayMedia ? "1" : "0",
             usesAccentSurface ? "1" : "0",
@@ -1748,7 +1748,7 @@ enum MarkdownTableLayout {
         // measurements from the previous size.
         let key = (
             [
-                UIApplication.shared.preferredContentSizeCategory.rawValue,
+               (chatTextSize.resolvedCategory ?? UIApplication.shared.preferredContentSizeCategory).rawValue,
                 chatTextSize.cacheIdentity,
                 String(format: "%.1f", availableWidth),
                 usesLAARichContentStyle ? "laa" : "conduit",
