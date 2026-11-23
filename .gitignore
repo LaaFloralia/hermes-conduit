@@ -47,3 +47,7 @@ AGENTS.md
 .test-runs/
 .deriveddata*/
 *.xcresult
+
+# Lab suite runs (scripts/laa/lab)
+.deriveddata*/
+.lab-suite.lock

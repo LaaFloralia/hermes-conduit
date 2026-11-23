@@ -18,6 +18,7 @@ its own run. Real-Bridge opt-ins are removed from the environment, so a suite
 run never talks to production.
 """
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -97,17 +98,18 @@ def select(suite, target_key):
 
 
 def prepare_simulator(log):
-    """Erase the phone, set English (US) and read it back, shut down (handoff: the smoke device)."""
-    sh(["xcrun", "simctl", "shutdown", PHONE], log)
-    sh(["xcrun", "simctl", "erase", PHONE], log, check=True)
-    sh(["xcrun", "simctl", "boot", PHONE], log, check=True)
-    sh(["xcrun", "simctl", "bootstatus", PHONE], log, check=True, timeout=600)
-    sh(["xcrun", "simctl", "spawn", PHONE, "defaults", "write", "-g", "AppleLanguages", "-array", "en-US"], log, check=True)
-    sh(["xcrun", "simctl", "spawn", PHONE, "defaults", "write", "-g", "AppleLocale", "en_US"], log, check=True)
-    lang = subprocess.run(["xcrun", "simctl", "spawn", PHONE, "defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True, env=env()).stdout
-    if "en-US" not in lang:
-        raise SystemExit("simulator language was not set to en-US")
-    sh(["xcrun", "simctl", "shutdown", PHONE], log)
+    """Erase the phone, set English (US) and read it back, shut down (handoff: the smoke device).
+
+    Runs inside the build slot: another session's test may be using the same simulator.
+    """
+    inner = (f"set -e; xcrun simctl shutdown {PHONE} 2>/dev/null || true; xcrun simctl erase {PHONE}; "
+             f"xcrun simctl boot {PHONE}; xcrun simctl bootstatus {PHONE} >/dev/null; "
+             f"xcrun simctl spawn {PHONE} defaults write -g AppleLanguages -array en-US; "
+             f"xcrun simctl spawn {PHONE} defaults write -g AppleLocale en_US; "
+             f"xcrun simctl spawn {PHONE} defaults read -g AppleLanguages | grep -q en-US; "
+             f"xcrun simctl shutdown {PHONE}")
+    if sh(["/bin/bash", SLOT, "/bin/bash", "-c", inner], log) != 0:
+        raise SystemExit(f"simulator was not erased and set to en-US; log: {log}")
 
 
 def start_fixtures(suite, out):
@@ -153,9 +155,18 @@ def cmd_run(args):
     meta = {"suite": args.suite, "spec": suite["spec"], "sha": head, "dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "only": args.only, "phases": {}}
     phases = ["build", "unit", "ui"] if args.phase == "all" else [args.phase]
 
+    # One run per checkout: a second run would regenerate Conduit.xcodeproj
+    # from another spec under the first one's remaining batches. Use a second
+    # worktree to run two suites side by side.
+    lock = open(REPO / ".lab-suite.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise SystemExit(f"another suite run holds {REPO}/.lab-suite.lock; use a separate worktree")
     sh(["xcodegen", "generate", "--spec", suite["spec"]], out / "xcodegen.log", check=True)
     if "build" in phases:
-        prepare_simulator(out / "simulator.log")
+        if not args.no_erase:
+            prepare_simulator(out / "simulator.log")
         rc = xcodebuild("build-for-testing", derived, [], out / "build.log")
         meta["phases"]["build"] = rc
         if rc != 0:
@@ -307,6 +318,7 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run"); run.add_argument("suite"); run.add_argument("--out", required=True)
     run.add_argument("--phase", default="all", choices=["all", "build", "unit", "ui"]); run.add_argument("--only", nargs="*", default=[])
+    run.add_argument("--no-erase", action="store_true", help="keep the simulator's data (a unit run beside another session's UI run)")
     parse = sub.add_parser("parse"); parse.add_argument("out")
     for name in ("check", "seed"):
         p = sub.add_parser(name); p.add_argument("suite"); p.add_argument("out")
