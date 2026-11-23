@@ -27,7 +27,11 @@ final class LAAPerformanceUITests: XCTestCase {
             app.launchArguments += ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "long120",
                                     "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT"]
         }
+        // The lab network policy (active for -LAA_UI_TEST_ISOLATED_BRIDGE) picks the
+        // Keychain service from LAA_LAB_KEYCHAIN_NAMESPACE; give it the same per-run
+        // namespace so a measurement never reads a device left by another run.
         app.launchEnvironment = ["LAA_PERF_KEYCHAIN_NAMESPACE": namespace.uuidString,
+                                 "LAA_LAB_KEYCHAIN_NAMESPACE": namespace.uuidString,
                                  "LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:\(port)"]
         if let scrollProbe, let trial = env["LAA_PERF_FRAME_TRIAL"].flatMap(UUID.init(uuidString:)) {
             app.launchArguments.append("-LAA_PERF_FRAME_PROBE")
