@@ -53,7 +53,7 @@ export async function projectsCommand(positional, flags, { stateDir = resolveSta
     const handle = (method, path, body) => {
       const route = routes.find((row) => row.method === method && (row.path === path || row.pattern?.test(path)));
       if (!route) throw badRequest('project_operation_invalid', 'unsupported project operation');
-      const { status, data } = route.handler({ params: route.pattern?.exec(path).slice(1) ?? [], reuseName: true,
+      const { status, data } = route.handler({ params: route.pattern?.exec(path).slice(1) ?? [], reuseName: true, internalFullSessions: command === 'rpc',
         rawBody: body === undefined ? undefined : Buffer.from(JSON.stringify(body)),
         req: { url: `${path}${request.op === 'list' ? `?limit=25${request.cursor ? `&cursor=${encodeURIComponent(request.cursor)}` : ''}` : ''}`,
           headers: { 'if-match': request.etag } }, device: { id: 'local-operator' } });

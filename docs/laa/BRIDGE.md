@@ -140,19 +140,21 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
   - `requested` は開始時のまま、`ownerChanged:{provider,model,effort}` と `modelLog` のowner印に「社長の切替」を記録する。旧アプリは同じ提供元の従来PATCHを使える。
 ### Projects and requirements
 
-Project reads use `sessions:read`; writes use `sessions:write` and `Idempotency-Key`. The list adds `progressNote` (string or null) and `requirementSummary: {completed,total}`. Create and patch accept `progressNote` (2 KiB; null clears it). `GET /v1/projects/{id}` also returns `instructions`, `files`, `requirements` and `sessions` without a second request. The ETag versions the project document, not the live Session observations.
+Project reads use `sessions:read`; writes use `sessions:write` and `Idempotency-Key`. The list adds `progressNote` (string or null) and `requirementSummary: {completed,total}`. Create and patch accept `progressNote` (2 KiB; null clears it). `GET /v1/projects/{id}` also returns `instructions`, `files`, `requirements` and the first page of `sessions`. The JSON `etag` versions the project document for `If-Match` on writes. Detail responses also send a weak HTTP `ETag` covering the actual detail, including the displayed Session observations. Repeat the same query with that header value in `If-None-Match`: an unchanged detail returns 304 with the tag and no body. The GET tag is also accepted by writes using its document version.
 
 ```json
 {
   "requirementSummary": {"completed": 0, "total": 1},
   "progressNote": "Next: verify the result",
   "requirements": [{"id":"req_0123456789ab","title":"Verify the result","details":null,"status":"in_progress","source":"owner","sessionIds":["ses_0123456789abcdef"],"order":0,"updatedAt":"2026-01-01T00:00:00.000Z"}],
-  "sessions": [{"id":"ses_0123456789abcdef","name":"Release｜Verify","status":"waiting","model":"model-id","updatedAt":"2026-01-01T00:00:00.000Z","parentId":null,"archivedAt":null}]
+  "sessions": [{"id":"ses_0123456789abcdef","name":"Release｜Verify","status":"waiting","model":"model-id","updatedAt":"2026-01-01T00:00:00.000Z","parentId":null,"archivedAt":null}],
+  "sessionCounts": {"active": 1, "archived": 0},
+  "nextSessionsCursor": null
 }
 ```
 
 - Requirement states: `not_started` (default), `in_progress`, `awaiting_decision`, `completed`; `source` is `owner` or `ai`. An owner title is stored verbatim and can't be replaced. Updates use the notes or state; withdrawal hides the row and retains the record. `ids` is a permutation of all current requirement IDs. The store migrates in place to schema 3 (0600); limits are 200 records including withdrawals per project, 600 UTF-8 bytes per title, 8 KiB per note and 30 distinct Session IDs per requirement. Writes use the current project ETag (428 if absent, 412 if stale).
-- Session statuses are `running`, `waiting`, `awaiting_decision`, and `completed` (closed or archived). `waiting` includes an idle turn awaiting Monet's review; it never completes a requirement. A linked Session's pending decision is reflected without changing the requirement status. Routine and deleted Sessions are not shown.
+- Session statuses are `running`, `waiting`, `awaiting_decision`, and `completed` (closed or archived). `waiting` includes an idle turn awaiting Monet's review; it never completes a requirement. A linked Session's pending decision is reflected without changing the requirement status. Routine and deleted Sessions are not shown or counted. `sessions` defaults to unarchived only, newest update first (ties by ID). `?sessions=all` includes archived Sessions. `sessionsLimit` is 1–200 (default 200); use `sessionsCursor` for the same project and filter with `nextSessionsCursor`, which is null at the end. `sessionCounts` reports both totals before filtering or paging.
 - A Session belongs to one Project independent of its workspace. `POST /v1/sessions` without `projectId` stays compatible: a child inherits its parent's project, other Sessions use the reserved `未分類` project. Legacy unassigned records are backfilled, and CLI-created roots appear there unless assigned. `PATCH /v1/sessions/{id}` with only `{ "projectId":"prj_0123456789ab" }` moves it and its descendants without reapplying instructions. Linked requirements must be unlinked first; a child cannot be moved away from its parent. Locally, `laa-bridge projects assign <project-name-or-id> <Work-agent-UUID-or-Bridge-id>` uses the same assignment logic.
 - Monet labels its new Work Session with the validated project before it starts and waits for the Bridge import. A requirement linked on launch moves from `not_started` to `in_progress`; an existing decision or verified state is not overwritten. Recover a failed attachment with the original request ID without starting another Session. Only the owner-side launcher may make a new root; Work children keep their existing scoped entry.
 

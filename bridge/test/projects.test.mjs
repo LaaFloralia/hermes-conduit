@@ -70,7 +70,7 @@ test('a project stores its instruction body, version and hash', async (t) => {
   const fetched = await api.request(`/v1/projects/${project.id}`, { token });
   assert.equal(fetched.status, 200);
   assert.deepEqual(fetched.body.data, project);
-  assert.equal(fetched.headers.get('etag'), '"1"');
+  assert.match(fetched.headers.get('etag'), /^W\/"1-[0-9a-f]{24}"$/);
 
   const listed = await api.request('/v1/projects', { token });
   assert.equal(listed.status, 200);
@@ -630,6 +630,52 @@ test('versioned requirements preserve the owner title on edits and withdrawal ac
   assert.equal(fetched.requirements[0].id, bId);
   assert.equal(fetched.progressNote, 'Next: check the result');
   assert.deepEqual(fetched.sessions, []);
+});
+
+test('project detail bounds active sessions, pages the archive, and revalidates without a body', async t => {
+  const api = await startBridge();
+  t.after(() => api.close());
+  const token = await api.token();
+  const p = (await createProject(api, token, { name: 'Project pages' })).body.data;
+  const path = `/v1/projects/${p.id}`;
+  const sessions = createSessionStore({ file: join(api.stateDir, 'sessions.json') });
+  const ids = Array.from({ length: 207 }, (_, i) => `ses_${(i + 1).toString(16).padStart(16, '0')}`);
+  const rows = ids.map((id, i) => ({ id, name: `Row ${i}`, phase: 'running', projectId: p.id,
+    updatedAt: new Date(1_790_000_000_000 + (i === 204 ? 205 : i) * 1000).toISOString(),
+    ...(i >= 205 ? { archivedAt: '2026-11-04T00:00:00.000Z' } : {}) }));
+  sessions.importDirectory(rows);
+  const request = (query = '', headers = {}) => api.request(`${path}${query}`, { token, headers });
+  const first = await request();
+  const etag = first.headers.get('etag');
+  assert.match(etag, /^W\/"1-[0-9a-f]{24}"$/);
+  assert.equal(first.body.data.etag, p.etag);
+  assert.deepEqual(first.body.data.sessionCounts, { active: 205, archived: 2 });
+  assert.equal(first.body.data.sessions.length, 200);
+  assert.equal(first.body.data.sessions[0].id, ids[204]);
+  const next = await request(`?sessionsCursor=${first.body.data.nextSessionsCursor}`);
+  assert.deepEqual(next.body.data.sessions.map(x => x.id), ids.slice(0, 5).reverse());
+  assert.equal(next.body.data.nextSessionsCursor, null);
+  const query = '?sessions=all&sessionsLimit=2';
+  const archived = await request(query, { 'if-none-match': etag });
+  assert.deepEqual(archived.body.data.sessions.map(x => x.id), [ids[206], ids[204]], 'same timestamp ties break by ID');
+  const rest = await request(`${query}&sessionsCursor=${archived.body.data.nextSessionsCursor}`);
+  assert.deepEqual(rest.body.data.sessions.map(x => x.id), [ids[205], ids[203]]);
+  const unchanged = await request('', { 'if-none-match': `"irrelevant", ${etag}` });
+  assert.equal(unchanged.status, 304);
+  assert.equal(unchanged.body, null);
+  assert.equal(unchanged.headers.get('content-length'), null);
+  assert.equal(unchanged.headers.get('etag'), etag);
+  assert.equal((await api.request(path, { headers: { 'if-none-match': etag } })).status, 401);
+  assert.equal((await request('?sessionsLimit=201')).status, 400);
+  assert.equal((await request(`?sessionsCursor=${archived.body.data.nextSessionsCursor}`)).status, 400);
+  sessions.update(ids[204], row => { row.phase = 'awaiting_decision'; return []; });
+  const changed = await request('', { 'if-none-match': etag });
+  assert.equal(changed.status, 200);
+  assert.equal(changed.body.data.sessions[0].status, 'awaiting_decision');
+  assert.equal(changed.body.data.etag, p.etag, 'Session observations do not change the project write version');
+  const patch = await api.request(path, { method: 'PATCH', token, key: 'representation-can-write', headers: { 'if-match': changed.headers.get('etag') }, body: { progressNote: 'Verified' } });
+  assert.equal(patch.status, 200);
+  assert.equal((await request('', { 'if-none-match': changed.headers.get('etag') })).status, 200);
 });
 
 test('legacy session creation and retry keep one project; the local CLI can attach Work and its children', async t => {

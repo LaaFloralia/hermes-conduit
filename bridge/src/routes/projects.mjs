@@ -230,9 +230,18 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     };
   }
 
-  function get({ params }) {
+  function get({ params, req, internalFullSessions = false }) {
     const project = requireProject(params[0]);
-    return { status: 200, data: decorate({ ...detail(project), sessions: projectSessions(project.id) }), headers: { etag: etagFor(project.version) } };
+    const data = decorate({ ...detail(project), ...sessionPage(projectSessions(project.id), req?.url, internalFullSessions, project.id) });
+    // The body carries the document version for writes. The response tag also
+    // tracks this page, membership, and live Session summaries for polling.
+    const fingerprint = createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 24);
+    const etag = `W/"${project.version}-${fingerprint}"`;
+    const match = req?.headers?.['if-none-match'];
+    if (typeof match === 'string' && match.split(',').some((tag) => tag.trim() === '*' || tag.trim().replace(/^W\//, '') === etag.slice(2))) {
+      return { status: 304, headers: { etag } };
+    }
+    return { status: 200, data, headers: { etag } };
   }
 
   function versions({ params }) {
@@ -297,7 +306,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     });
 
     assign(project);
-    return { status: reused ? 200 : 201, data: decorate({ ...detail(project), sessions: reused ? projectSessions(project.id) : [] }),
+    return { status: reused ? 200 : 201, data: decorate({ ...detail(project), ...sessionPage(reused ? projectSessions(project.id) : []) }),
       headers: { etag: etagFor(project.version) } };
   }
 
@@ -417,7 +426,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
   }
 
   function requirement(action) {
-    return ({ device, rawBody, params, req }) => {
+    return ({ device, rawBody, params, req, internalFullSessions = false }) => {
       let updated;
       try {
         const current = requireProject(params[0]);
@@ -440,7 +449,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
         if (error instanceof BridgeError) throw markBeforeWrite(error);
         throw error;
       }
-      return { status: action === 'add' ? 201 : 200, data: decorate({ ...detail(updated), sessions: projectSessions(updated.id) }),
+      return { status: action === 'add' ? 201 : 200, data: decorate({ ...detail(updated), ...sessionPage(projectSessions(updated.id), undefined, internalFullSessions) }),
         headers: { etag: etagFor(updated.version) } };
     };
   }
@@ -715,6 +724,37 @@ export function hashBody(body) {
   return `sha256:${createHash('sha256').update(body, 'utf8').digest('hex')}`;
 }
 
+function compareSessions(a, b) {
+  return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id);
+}
+
+function sessionPage(rows, url = '/', internalFull = false, projectId = null) {
+  const active = rows.filter((row) => row.archivedAt == null);
+  const sessionCounts = { active: active.length, archived: rows.length - active.length };
+  if (internalFull) return { sessions: rows, sessionCounts, nextSessionsCursor: null };
+  const query = new URL(url, 'http://127.0.0.1').searchParams;
+  const mode = query.get('sessions') ?? 'active';
+  if (mode !== 'active' && mode !== 'all') throw badRequest('project_sessions_mode_invalid', 'sessions must be active or all');
+  const requested = query.get('sessionsLimit') ?? '200';
+  const limit = Number(requested);
+  if (!/^[1-9][0-9]{0,2}$/.test(requested) || limit > 200) throw badRequest('project_sessions_limit_invalid', 'sessionsLimit must be 1–200');
+  let candidates = (mode === 'active' ? active : rows).sort(compareSessions);
+  const cursor = query.get('sessionsCursor');
+  if (cursor !== null) {
+    let from;
+    try {
+      if (!/^[a-zA-Z0-9_-]{1,180}$/.test(cursor)) throw new Error();
+      from = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+      if (from?.mode !== mode || from.projectId !== projectId || !/^ses_[0-9a-f]{16}$/.test(from.id) || typeof from.updatedAt !== 'string' || from.updatedAt.length > 32) throw new Error();
+    } catch { throw badRequest('project_sessions_cursor_invalid', 'sessionsCursor must come from the same view'); }
+    candidates = candidates.filter((row) => compareSessions(row, from) > 0);
+  }
+  const sessions = candidates.slice(0, limit);
+  const last = sessions.at(-1);
+  const nextSessionsCursor = candidates.length <= limit ? null : Buffer.from(JSON.stringify({ mode, projectId, id: last.id, updatedAt: last.updatedAt ?? '' })).toString('base64url');
+  return { sessions, sessionCounts, nextSessionsCursor };
+}
+
 // If-Match is mandatory for updates so two devices cannot silently overwrite
 // each other. `*` is accepted (resource exists), weak tags are compared by
 // version value only. A mismatch returns the current side of the project so
@@ -726,7 +766,7 @@ function requireIfMatch(header, project, mismatch) {
   const tags = header.split(',').map((tag) => tag.trim()).filter(Boolean);
   if (tags.includes('*')) return project.version;
   for (const tag of tags) {
-    const match = /^(?:W\/)?"?(\d+)"?$/.exec(tag);
+    const match = /^(?:W\/)?"?(\d+)(?:-[0-9a-f]{24})?"?$/.exec(tag);
     if (match && Number(match[1]) === project.version) return project.version;
   }
   throw mismatch(project);

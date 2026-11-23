@@ -150,6 +150,13 @@ export function createBridge({
   }
 
   function ok(res, status, data, requestId, headers = {}) {
+    if (status === 304) {
+      if (!res.writableEnded && !res.destroyed) {
+        res.writeHead(status, { 'cache-control': 'no-store', 'x-request-id': requestId, ...headers });
+        res.end();
+      }
+      return;
+    }
     sendJson(res, status, { data, requestId }, requestId, headers);
   }
 
