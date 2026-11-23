@@ -44,7 +44,31 @@ def quiets(job_id):
         return False
 
 
+def route_label(route):
+    if not isinstance(route, dict):
+        return None
+    provider, model, effort, reason = (route.get(k) for k in ('provider', 'model', 'effort', 'reason'))
+    if (not all(isinstance(v, str) for v in (provider, model, effort, reason))
+            or (provider, model) not in {('laa-dsh', 'deepseek-v4.1-flash'),
+                ('dsh', '["opencode-go","deepseek-v4.1-flash"]'),
+                ('laa-agy', 'gemini-4-hydrogen'), ('antigravity', 'gemini-4-hydrogen')}
+            or effort not in ('low', 'high', 'max', 'xhigh')):
+        return None
+    reasons = {'usage_available': '残量あり', 'usage_unavailable': '残量不明',
+               'quota_before_tools': '初回要求が枠切れ'}
+    label = reasons.get(reason)
+    if label is None and reason.startswith('quota_'):
+        windows = reason[6:].split('_')
+        names = {'5h': '5時間', 'weekly': '週間', 'monthly': '月間'}
+        if windows and len(set(windows)) == len(windows) and all(w in names for w in windows):
+            label = '枠切れ: ' + '・'.join(names[w] for w in windows)
+    return f'{provider} / {model} / {effort}（{label}）' if label else None
+
+
 def model_label(job, home):
+    actual = route_label(job.get('_laa_routine_route'))
+    if actual:
+        return actual
     model = job.get('model') or job.get('model_name')
     if isinstance(model, dict):
         model = model.get('default') or model.get('name')
@@ -189,7 +213,7 @@ def scan_work(jobs_path, state_path):
                     except (OSError, ValueError, subprocess.TimeoutExpired):
                         pass
                 config = job.get('target', {}).get('config', {})
-                records[run['id']] = {'model': model or config.get('model') or config.get('provider') or 'モデル未記録',
+                records[run['id']] = {'model': route_label(run.get('modelRoute')) or model or config.get('model') or config.get('provider') or 'モデル未記録',
                                       'name': job['name']}
                 temporary = state_path.with_suffix('.tmp')
                 temporary.write_text(json.dumps(state))
