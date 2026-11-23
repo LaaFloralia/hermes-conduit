@@ -10,6 +10,7 @@ METRICS = {"hitch_ratio": "ms/s", "late_1_5x": "frames", "late_2x": "frames", "w
            "expected_hz": "Hz", "observed_hz": "Hz"}
 PROBES = {f"{kind}_scroll_proxy_{metric}" for kind in KINDS for metric in METRICS}
 METHOD = {"source": SOURCE, "scope": "Simulator main-run-loop display-link cadence; not presented frames or absolute device performance",
+          "comparability": "Before/after only on the same Mac, simulator runtime and scripted protocol",
           "window": "Monotonic XCTest gesture/deceleration span; control taps and export excluded",
           "budget": "Previous callback targetTimestamp minus timestamp; no forced refresh rate",
           "hitch_ratio": "Sum of the portions of callback intervals after their expected deadline and inside the scroll window / window duration (ms/s)",
