@@ -10,7 +10,7 @@ final class LAAPluginPolicyUITests: XCTestCase {
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_NOTIFIER_UPDATE_AVAILABLE",
                                 "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid"]
         app.launch()
-        let settings = app.buttons["Settings"]
+        let settings = app.buttons["laa.settings.open"]
         XCTAssertTrue(settings.waitForExistence(timeout: 30))
         XCTAssertFalse(app.buttons["pluginUpdate.update"].exists)
         XCTAssertFalse(app.buttons["pluginUpdate.showSteps"].exists)
