@@ -66,7 +66,10 @@ def aggregate(runs):
         unit = entries[0]["unit"]
         if any(entry["unit"] != unit for entry in entries):
             raise ValueError(f"Unit changed: {key}")
-        summary[key] = {"unit": unit, **stats([entry["value"] for entry in entries])}
+        source = entries[0].get("source")
+        if any(entry.get("source") != source for entry in entries):
+            raise ValueError(f"Metric source changed: {key}")
+        summary[key] = {"unit": unit, **({"source": source} if source else {}), **stats([entry["value"] for entry in entries])}
     return summary
 
 
@@ -80,8 +83,8 @@ def compare_reports(before, after):
     changes = []
     for probe, a in old.items():
         b = new[probe]
-        if a["unit"] != b["unit"]:
-            raise ValueError(f"Incompatible unit: {probe}")
+        if a["unit"] != b["unit"] or a.get("source") != b.get("source"):
+            raise ValueError(f"Incompatible unit or metric source: {probe}")
         band = max(a["spread"], b["spread"])
         delta = b["median"] - a["median"]
         changes.append({"probe": probe, "unit": a["unit"], "baseline": a["median"], "new": b["median"],
@@ -214,33 +217,44 @@ def metric_rows(value):
 
 
 def native_metrics(bundle, out):
+    # The xcresult identifiers include `()` and are not the `-only-testing`
+    # selectors. Read the real identifiers and metrics in one call.
+    data = json.loads(capture("xcrun", "xcresulttool", "get", "test-results", "metrics", "--path", str(bundle)))
+    log_json(out / "metrics.json", data)
+    return parsed_native_metrics(data)
+
+
+def parsed_native_metrics(data):
     samples = {}
     for test, probe in (("testColdLaunch", "cold_launch_first_usable"), ("testScrollChat", "chat_scroll"),
                         ("testScrollWork", "work_scroll")):
-        data = json.loads(capture("xcrun", "xcresulttool", "get", "test-results", "metrics", "--path", str(bundle),
-                                  "--test-id", f"LAAPerformanceUITests/{test}"))
-        log_json(out / f"{test}.metrics.json", data)
-        rows = list(metric_rows(data))
+        rows = [metric for result in data if result["testIdentifierURL"].endswith(f"/{TEST_CLASS}/{test}")
+                for metric in metric_rows(result)]
         matches = []
         for row in rows:
             name = (row["identifier"] + " " + row.get("displayName", "")).lower()
             key = re.sub(r"[^a-z0-9]", "", name)
             if probe.startswith("cold_") and "duration" in key:
-                # The selected XCTest metric is the responsive app-launch
-                # interval. Convert the exported seconds to the wall unit.
-                matches.append(row)
+                if "applicationfirstframepresentationresponsive" in key:
+                    matches.append(row)
             elif not probe.startswith("cold_") and "hitch" in key and "ratio" in key:
                 matches.append(row)
+        if len(matches) > 1 and not probe.startswith("cold_"):
+            # When both are available, the scrolling signpost excludes the
+            # interval between gestures; prefer it over the app-wide window.
+            signpost = [row for row in matches if "XCTMetric_OSSignpost" in row["identifier"]]
+            if signpost:
+                matches = signpost
         if len(matches) != 1 or len(matches[0]["measurements"]) != 1:
-            raise ValueError(f"Expected one measurement for {test}; see {out / (test + '.metrics.json')}")
+            raise ValueError(f"Expected one responsive launch or hitch-ratio measurement for {test}; see run metrics.json")
         row = matches[0]
         unit, value = row["unitOfMeasurement"], row["measurements"][0]
         if probe.startswith("cold_"):
             if unit in ("s", "seconds", "sec"): value *= 1000
             elif unit != "ms": raise ValueError(f"Unknown launch unit: {unit}")
-            samples[probe] = {"unit": "ms", "value": value}
+            samples[probe] = {"unit": "ms", "value": value, "source": row["identifier"]}
         else:
-            samples[probe + "_hitch_ratio"] = {"unit": unit, "value": value}
+            samples[probe + "_hitch_ratio"] = {"unit": unit, "value": value, "source": row["identifier"]}
     return samples
 
 

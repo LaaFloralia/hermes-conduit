@@ -154,6 +154,14 @@ final class LAAPerformanceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[longID].firstMatch.waitForExistence(timeout: 25))
     }
 
+    private func measureScroll(in app: XCUIApplication, body: () -> Void) throws {
+        // Simulators may export a duration but no frame counters for the
+        // scrolling signpost. Request application hitches directly too.
+        guard #available(iOS 26.0, *) else { throw XCTSkip("XCTHitchMetric requires iOS 26") }
+        measure(metrics: [XCTOSSignpostMetric.scrollingAndDecelerationMetric, XCTHitchMetric(application: app)],
+                options: options, block: body)
+    }
+
     func testScrollChat() throws {
         let app = try application(chatFixture: true)
         app.launch()
@@ -172,7 +180,7 @@ final class LAAPerformanceUITests: XCTestCase {
         towardEarlier()
         XCTAssertTrue(!tail.exists || tail.frame.minY > tailY + 10, "Long Chat must actually scroll")
         scroller.swipeUp(velocity: .fast)
-        measure(metrics: [XCTOSSignpostMetric.scrollingAndDecelerationMetric], options: options) {
+        try measureScroll(in: app) {
             towardEarlier()
             scroller.swipeUp(velocity: .fast)
         }
@@ -189,7 +197,7 @@ final class LAAPerformanceUITests: XCTestCase {
         scroller.swipeUp(velocity: .fast)
         XCTAssertTrue(!anchor.exists || anchor.frame.minY < before - 10, "Work list must actually scroll")
         scroller.swipeDown(velocity: .fast)
-        measure(metrics: [XCTOSSignpostMetric.scrollingAndDecelerationMetric], options: options) {
+        try measureScroll(in: app) {
             scroller.swipeUp(velocity: .fast)
             scroller.swipeDown(velocity: .fast)
         }
