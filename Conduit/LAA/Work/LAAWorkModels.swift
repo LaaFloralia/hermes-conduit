@@ -164,6 +164,10 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     /// The detail's requirements and sessions; nil when the Bridge predates them.
     let requirements: [LAAWorkRequirement]?
     let sessions: [LAAWorkProjectSession]?
+    /// The detail's session totals before paging, and the cursor to the next
+    /// page of `sessions` (unarchived by default, at most 200, newest first).
+    let sessionCounts: LAAWorkSessionCounts?
+    let nextSessionsCursor: String?
 
     var isArchived: Bool { archivedAt != nil }
 
@@ -173,7 +177,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, name, nameSource, defaultProfile, instructionRef, instructionHash, instructionVersion
         case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files, ref
-        case requirementSummary, progressNote, requirements, sessions
+        case requirementSummary, progressNote, requirements, sessions, sessionCounts, nextSessionsCursor
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
@@ -203,6 +207,8 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         progressNote = note.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         requirements = ((try? box.decodeIfPresent(LAAWorkLossyList<LAAWorkRequirement>.self, forKey: .requirements)) ?? nil)?.items
         sessions = ((try? box.decodeIfPresent(LAAWorkLossyList<LAAWorkProjectSession>.self, forKey: .sessions)) ?? nil)?.items
+        sessionCounts = try? box.decodeIfPresent(LAAWorkSessionCounts.self, forKey: .sessionCounts)
+        nextSessionsCursor = (try? box.decodeIfPresent(String.self, forKey: .nextSessionsCursor)) ?? nil
     }
 
     /// A project as the screens show it before the detail arrives (fixtures
@@ -210,7 +216,8 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     init(id: String, name: String, ref: String? = nil, etag: String? = nil, updatedAt: String? = nil,
          instructions: String? = nil, files: [LAAWorkProjectFile]? = nil,
          requirementSummary: LAAWorkRequirementSummary? = nil, progressNote: String? = nil,
-         requirements: [LAAWorkRequirement]? = nil, sessions: [LAAWorkProjectSession]? = nil) {
+         requirements: [LAAWorkRequirement]? = nil, sessions: [LAAWorkProjectSession]? = nil,
+         sessionCounts: LAAWorkSessionCounts? = nil) {
         self.id = id; self.name = name; nameSource = "owner"; defaultProfile = nil; hasDefaultProfile = true
         instructionRef = nil; instructionHash = instructions == nil ? nil : "fixture"; instructionVersion = nil
         self.instructions = instructions; instructionError = nil; version = 1; self.etag = etag
@@ -218,6 +225,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         self.ref = ref; hasInstructionBody = true
         self.requirementSummary = requirementSummary; self.progressNote = progressNote
         self.requirements = requirements; self.sessions = sessions
+        self.sessionCounts = sessionCounts; nextSessionsCursor = nil
     }
 
     /// The counts for the list row: the Bridge's summary, else the detail's own rows.

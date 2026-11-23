@@ -16,6 +16,8 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertNil(value.progressNote)
         XCTAssertNil(value.requirements)
         XCTAssertNil(value.sessions)
+        XCTAssertNil(value.sessionCounts)
+        XCTAssertNil(value.nextSessionsCursor)
         XCTAssertNil(value.progress, "no summary and no rows reads as no requirements, not as 0 of 0 done")
     }
 
@@ -86,6 +88,36 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertTrue(LAAWorkRequirementBoard([]).groups.isEmpty)
     }
 
+    /// The paged detail (2026-11-23): unarchived sessions only, totals before
+    /// paging and a cursor to the next page.
+    func testDetailCarriesSessionTotalsAndCursor() throws {
+        let value = try project(#"""
+        {"id":"prj_000000000000","name":"未分類","requirements":[],"sessions":[],
+         "sessionCounts":{"active":6,"archived":1584},"nextSessionsCursor":"eyJtb2RlIjoiYWN0aXZlIn0"}
+        """#)
+        XCTAssertEqual(value.sessionCounts, LAAWorkSessionCounts(active: 6, archived: 1584))
+        XCTAssertEqual(value.nextSessionsCursor, "eyJtb2RlIjoiYWN0aXZlIn0")
+        let malformed = try project(#"{"id":"prj_000000000000","name":"未分類","sessionCounts":{"active":"x"},"nextSessionsCursor":7}"#)
+        XCTAssertNil(malformed.sessionCounts, "a malformed total is left out, the project still opens")
+        XCTAssertNil(malformed.nextSessionsCursor)
+        XCTAssertEqual(LAAWorkProjectSnapshot(value).sessionCounts, LAAWorkSessionCounts(active: 6, archived: 1584))
+    }
+
+    func testSessionPagesAskForTheirOwnList() {
+        func names(_ items: [URLQueryItem]) -> [String] { items.map { "\($0.name)=\($0.value ?? "")" } }
+        XCTAssertEqual(names(LAAWorkProjectSessionsAPI.query("prj_000000000001", archived: false, cursor: nil)),
+                       ["projectId=prj_000000000001", "limit=100"])
+        XCTAssertEqual(names(LAAWorkProjectSessionsAPI.query("prj_000000000001", archived: true, cursor: "c2")),
+                       ["projectId=prj_000000000001", "limit=100", "archived=only", "cursor=c2"])
+    }
+
+    func testLinkedSessionOutsideThePageStillOpens() {
+        let row = LAAWorkLinkedSession.unlisted("ses_00000000000000ff")
+        XCTAssertEqual(row.id, "ses_00000000000000ff")
+        XCTAssertEqual(row.name, "一覧にないセッション")
+        XCTAssertEqual(row.mark, .pending)
+    }
+
     func testSummaryFraction() {
         XCTAssertEqual(LAAWorkRequirementSummary(completed: 0, total: 0).fraction, 0)
         XCTAssertEqual(LAAWorkRequirementSummary(completed: 3, total: 4).fraction, 0.75)
@@ -148,6 +180,9 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertTrue(first.sameContent(as: later), "a re-read with the same rows is not rewritten")
         let data = try JSONEncoder().encode(first)
         XCTAssertEqual(try JSONDecoder().decode(LAAWorkProjectSnapshot.self, from: data), first)
+        // A reading kept by an earlier build has no totals; it still opens.
+        let kept = #"{"progressNote":null,"requirements":[],"sessions":[],"savedAt":0}"#
+        XCTAssertNil(try JSONDecoder().decode(LAAWorkProjectSnapshot.self, from: Data(kept.utf8)).sessionCounts)
     }
 }
 #endif

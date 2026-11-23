@@ -3,10 +3,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// One project, opened, on the phone and in the Mac's detail column. It reads
-/// the project's detail and its sessions, re-reads them every five seconds
-/// while it is shown (the session lists' interval), keeps the last reading on
-/// the device for when the Mac is out of reach, and sends the owner's few
-/// requirement changes.
+/// the project's detail and its sessions, re-reads the detail every five
+/// seconds while it is shown (the session lists' interval) with the last
+/// answer's tag, so an unchanged project is a 304, and reads the session rows
+/// again only when the detail changed. Archived sessions are read only when
+/// the owner opens them. The last reading stays on the device for when the
+/// Mac is out of reach.
 struct LAAWorkProjectHome: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
@@ -15,8 +17,13 @@ struct LAAWorkProjectHome: View {
     @State private var detail: LAAWorkProjectSnapshot?
     @State private var phase: LAAWorkProjectPhase = .loading
     @State private var sessions: [LAAWorkSession] = []
+    @State private var sessionsCursor: String?
     @State private var archivedSessions: [LAAWorkSession]?
+    @State private var archivedCursor: String?
     @State private var showArchived = false
+    @State private var readingMore = false
+    /// The HTTP tag of the last detail whose sessions were also read.
+    @State private var detailTag: String?
     @State private var options: LAAWorkSessionOptions?
     @State private var showEditor = false
     @State private var showLauncher = false
@@ -43,12 +50,13 @@ struct LAAWorkProjectHome: View {
                                    archivedSessions: archivedSessions, options: options, phase: phase,
                                    actionError: actionError, busyRequirement: busyRequirement,
                                    uploading: uploading, showArchived: showArchived,
-                                   canChange: project.etag != nil && !project.isArchived, actions: actions)
+                                   moreSessions: sessionsCursor != nil, moreArchived: archivedCursor != nil,
+                                   readingMore: readingMore, canChange: project.etag != nil && !project.isArchived, actions: actions)
                     .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                     .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
             }
-            .refreshable { await load() }
+            .refreshable { await load(force: true) }
         }
         .navigationTitle(Text(verbatim: ""))
         .navigationBarTitleDisplayMode(.inline)
@@ -98,11 +106,12 @@ struct LAAWorkProjectHome: View {
             editInstructions: { showEditor = true },
             addFile: { showImporter = true },
             removeFile: { file in Task { await remove(file) } },
-            retry: { Task { await load() } },
+            retry: { Task { await load(force: true) } },
             toggleArchived: {
                 showArchived.toggle()
                 if showArchived { Task { await loadArchived() } }
-            })
+            },
+            readMore: { archived in Task { await readMore(archived: archived) } })
     }
 
     // MARK: Reading
@@ -114,16 +123,25 @@ struct LAAWorkProjectHome: View {
         detail = kept
     }
 
-    @MainActor private func load() async {
+    /// `force` drops the tag: pull to refresh and retry read everything again.
+    @MainActor private func load(force: Bool = false) async {
         guard bridge.status == .paired else { return }
         do {
-            async let read: LAAWorkProject = bridge.read("/v1/projects/\(project.id)")
-            async let page: [LAAWorkSession] = LAAWorkPaging.all(bridge, "/v1/sessions",
-                                                                 query: [URLQueryItem(name: "projectId", value: project.id)])
-            let (fetched, loaded) = try await (read, page)
-            guard !Task.isCancelled else { return }
-            apply(fetched)
-            sessions = loaded.filter { $0.worktree != true && !$0.isArchived }
+            switch try await LAAWorkProjectDetailAPI.read(bridge, id: project.id, tag: force ? nil : detailTag) {
+            case .unchanged:
+                break
+            case .changed(let fetched, let tag):
+                guard !Task.isCancelled else { return }
+                apply(fetched)
+                // As many rows as already shown, so a re-read doesn't fold the owner's "read more".
+                let shown = max(LAAWorkProjectSessionsAPI.firstScreen, sessions.count)
+                let page = try await LAAWorkProjectSessionsAPI.read(bridge, project: project.id, archived: false, atLeast: shown)
+                guard !Task.isCancelled else { return }
+                sessions = page.rows; sessionsCursor = page.cursor
+                // Kept only once the rows match it, so a failed row read is retried.
+                detailTag = tag
+                if showArchived { await loadArchived() }
+            }
             phase = .ready
         } catch is CancellationError {
             return
@@ -131,17 +149,41 @@ struct LAAWorkProjectHome: View {
             phase = .offline(detail?.savedAt)
         } catch let failure as LAABridgeError {
             phase = .failed(failure.japaneseText)
+        } catch let failure as LAABridgeHTTPError {
+            phase = .failed(LAAWorkHTTP.message(failure))
         } catch {
             phase = .failed(LAACopy.WorkProject.readFailed)
         }
         if options == nil { options = try? await LAAWorkOptionsStore.read(bridge) }
-        if showArchived { await loadArchived() }
     }
 
+    /// The archived rows, read when the owner opens them and again when the
+    /// detail changes while they're open. Never part of the five-second read.
     @MainActor private func loadArchived() async {
-        let query = [URLQueryItem(name: "projectId", value: project.id), URLQueryItem(name: "archived", value: "only")]
-        guard let rows: [LAAWorkSession] = try? await LAAWorkPaging.all(bridge, "/v1/sessions", query: query) else { return }
-        archivedSessions = rows.filter { $0.worktree != true && $0.isArchived }
+        let shown = max(LAAWorkProjectSessionsAPI.pageSize, archivedSessions?.count ?? 0)
+        guard let page = try? await LAAWorkProjectSessionsAPI.read(bridge, project: project.id, archived: true,
+                                                                   atLeast: shown) else { return }
+        archivedSessions = page.rows; archivedCursor = page.cursor
+    }
+
+    @MainActor private func readMore(archived: Bool) async {
+        guard !readingMore, let cursor = archived ? archivedCursor : sessionsCursor else { return }
+        readingMore = true
+        defer { readingMore = false }
+        do {
+            let page = try await LAAWorkProjectSessionsAPI.read(bridge, project: project.id, archived: archived, from: cursor,
+                                                                atLeast: LAAWorkProjectSessionsAPI.pageSize)
+            if archived {
+                archivedSessions = (archivedSessions ?? []) + page.rows.filter { row in archivedSessions?.contains { $0.id == row.id } != true }
+                archivedCursor = page.cursor
+            } else {
+                sessions += page.rows.filter { row in !sessions.contains { $0.id == row.id } }
+                sessionsCursor = page.cursor
+            }
+            actionError = nil
+        } catch {
+            actionError = LAACopy.WorkProject.readFailed
+        }
     }
 
     /// Takes a detail the Bridge returned, from a read or a change. A change's
@@ -151,7 +193,7 @@ struct LAAWorkProjectHome: View {
         let next = LAAWorkProjectSnapshot(fetched)
         let merged = fetched.sessions == nil && fetched.requirements != nil && detail?.sessions != nil
             ? LAAWorkProjectSnapshot(progressNote: next.progressNote, requirements: next.requirements,
-                                     sessions: detail?.sessions, savedAt: next.savedAt)
+                                     sessions: detail?.sessions, sessionCounts: detail?.sessionCounts, savedAt: next.savedAt)
             : next
         // Written only when what it shows changed, not on every read.
         if detail?.sameContent(as: merged) != true {
@@ -241,12 +283,15 @@ struct LAAWorkProjectHome: View {
 }
 
 extension LAAWorkProjectSnapshot {
-    init(progressNote: String?, requirements: [LAAWorkRequirement]?, sessions: [LAAWorkProjectSession]?, savedAt: Date) {
-        self.progressNote = progressNote; self.requirements = requirements; self.sessions = sessions; self.savedAt = savedAt
+    init(progressNote: String?, requirements: [LAAWorkRequirement]?, sessions: [LAAWorkProjectSession]?,
+         sessionCounts: LAAWorkSessionCounts? = nil, savedAt: Date) {
+        self.progressNote = progressNote; self.requirements = requirements; self.sessions = sessions
+        self.sessionCounts = sessionCounts; self.savedAt = savedAt
     }
 
     func sameContent(as other: Self) -> Bool {
         progressNote == other.progressNote && requirements == other.requirements && sessions == other.sessions
+            && sessionCounts == other.sessionCounts
     }
 }
 

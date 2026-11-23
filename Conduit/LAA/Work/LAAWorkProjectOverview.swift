@@ -136,6 +136,8 @@ struct LAAWorkProjectActions {
     var removeFile: (LAAWorkProjectFile) -> Void = { _ in }
     var retry: () -> Void = {}
     var toggleArchived: () -> Void = {}
+    /// Reads the next page of the active (false) or archived (true) sessions.
+    var readMore: (Bool) -> Void = { _ in }
 }
 
 /// One project, opened: the heading with how far it has come, Monet's note,
@@ -157,6 +159,10 @@ struct LAAWorkProjectPage: View {
     var busyRequirement: String? = nil
     var uploading = false
     var showArchived = false
+    /// The Bridge holds more rows past the ones shown.
+    var moreSessions = false
+    var moreArchived = false
+    var readingMore = false
     var canChange = true
     var actions = LAAWorkProjectActions()
 
@@ -282,7 +288,7 @@ struct LAAWorkProjectPage: View {
             }
             if open {
                 ForEach(group.items) { requirement in
-                    LAAWorkRequirementRow(requirement: requirement, linked: requirement.sessionIds.compactMap { linked[$0] },
+                    LAAWorkRequirementRow(requirement: requirement, linked: requirement.sessionIds.map { linked[$0] ?? .unlisted($0) },
                                           busy: busyRequirement == requirement.id, canChange: canChange,
                                           setStatus: { actions.setStatus(requirement, $0) },
                                           withdraw: { withdrawing = requirement },
@@ -319,16 +325,18 @@ struct LAAWorkProjectPage: View {
 
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionHeading(LAACopy.WorkTab.sessions, count: sessions.isEmpty ? nil : sessions.count,
+            sectionHeading(LAACopy.WorkTab.sessions, count: activeCount,
                            action: canChange ? (LAACopy.WorkProject.startSession, "plus", "work.project.newSession", actions.startSession) : nil)
             // While the first read runs, "none yet" would be a claim the app can't make.
             if !(sessions.isEmpty && phase == .loading) {
                 sessionRows(sessions, empty: LAACopy.WorkProject.noSessions)
             }
+            if moreSessions { readMoreButton(archived: false) }
             if showArchived, let archivedSessions {
                 Text(verbatim: LAACopy.WorkTab.archived).laaTextStyle(.secondary).fontWeight(.semibold)
                     .foregroundStyle(LAAColor.secondaryText).padding(.top, LAASpacing.x2)
-                sessionRows(archivedSessions, empty: "アーカイブしたセッションはありません。")
+                sessionRows(archivedSessions, empty: LAACopy.WorkProject.noArchived)
+                if moreArchived { readMoreButton(archived: true) }
             }
             if archivedCount != 0 {
                 Button(action: actions.toggleArchived) {
@@ -345,10 +353,30 @@ struct LAAWorkProjectPage: View {
         .accessibilityIdentifier("laa.work.project.sessions")
     }
 
+    /// The Bridge's totals before paging; an older one sent every row instead.
+    private var activeCount: Int? {
+        detail?.sessionCounts?.active ?? (sessions.isEmpty ? nil : sessions.count)
+    }
     /// Archived sessions the detail counted; nil when it could not say.
-    private var archivedCount: Int? { detail?.sessions.map { $0.filter(\.isArchived).count } }
+    private var archivedCount: Int? {
+        detail?.sessionCounts?.archived ?? detail?.sessions.map { $0.filter(\.isArchived).count }
+    }
     private var archivedTitle: String {
-        archivedCount.map { "\(LAACopy.WorkProject.showArchived)（\($0)）" } ?? LAACopy.WorkProject.showArchived
+        archivedCount.map(LAACopy.WorkProject.archivedCount) ?? LAACopy.WorkProject.showArchived
+    }
+
+    private func readMoreButton(archived: Bool) -> some View {
+        Button { actions.readMore(archived) } label: {
+            HStack(spacing: LAASpacing.x2) {
+                Text(verbatim: LAACopy.WorkProject.readMore)
+                if readingMore { ProgressView().controlSize(.small) }
+            }
+            .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+        }
+        .buttonStyle(.plain)
+        .disabled(readingMore)
+        .accessibilityIdentifier(archived ? "laa.work.project.archived.more" : "laa.work.project.sessions.more")
     }
 
     @ViewBuilder private func sessionRows(_ rows: [LAAWorkSession], empty: String) -> some View {
@@ -357,7 +385,7 @@ struct LAAWorkProjectPage: View {
         if all.isEmpty {
             Text(verbatim: empty).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         } else {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 ForEach(all) { session in
                     Button { actions.openSession(session.id) } label: {
                         LAAWorkSessionRow(session: session, projectName: nil, options: options)

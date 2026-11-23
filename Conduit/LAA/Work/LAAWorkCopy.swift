@@ -102,6 +102,10 @@ extension LAACopy {
         static let noRequirementsShort = "要件なし"
         static let noSessions = "まだありません。"
         static let requirementsUnread = "Macから読み取れた後に表示します。"
+        static let unlistedSession = "一覧にないセッション"
+        static let readMore = "続きを読む"
+        static let noArchived = "アーカイブしたセッションはありません。"
+        static func archivedCount(_ count: Int) -> String { "アーカイブ \(count)件" }
         static let bridgeTooOld = "MacのLAAアプリを更新すると、要件の一覧と進捗を表示できます。"
         static let conflict = "別の端末で更新されていました。読み直したので、もう一度操作してください。"
         static let limitReached = "このプロジェクトの要件は上限に達しています。"

@@ -96,6 +96,12 @@ struct LAAWorkRequirement: Codable, Hashable, Identifiable {
     var addedByAI: Bool { source == "ai" }
 }
 
+/// A project's sessions before paging: unarchived and archived.
+struct LAAWorkSessionCounts: Codable, Hashable {
+    let active: Int
+    let archived: Int
+}
+
 struct LAAWorkRequirementSummary: Codable, Hashable {
     let completed: Int
     let total: Int
@@ -153,6 +159,64 @@ struct LAAWorkLinkedSession: Hashable, Identifiable {
             result[row.id] = .init(id: row.id, name: row.name, ref: row.ref, mark: mark, statusLabel: mark.label)
         }
         return result
+    }
+
+    /// A linked session the shown pages don't hold (archived, or past the
+    /// first 200). It still opens by its ID.
+    static func unlisted(_ id: String) -> LAAWorkLinkedSession {
+        .init(id: id, name: LAACopy.WorkProject.unlistedSession, ref: nil, mark: .pending,
+              statusLabel: LAACopy.WorkProject.unlistedSession)
+    }
+}
+
+/// The detail, re-read with the tag of the last answer: an unchanged project
+/// costs the Bridge a 304 and the phone nothing. The tag covers the shown
+/// sessions too; the project's own `etag` stays the one writes send.
+enum LAAWorkProjectDetailAPI {
+    enum Answer {
+        case changed(LAAWorkProject, tag: String?)
+        case unchanged
+    }
+
+    @MainActor static func read(_ bridge: LAABridgeSession, id: String, tag: String?) async throws -> Answer {
+        do {
+            let response: LAABridgeResponse<LAAWorkProject> = try await bridge.request(
+                method: "GET", path: "/v1/projects/\(id)", ifNoneMatch: tag)
+            return .changed(response.data, tag: response.etag)
+        } catch let failure as LAABridgeHTTPError where failure.status == 304 && tag != nil {
+            return .unchanged
+        }
+    }
+}
+
+/// A project's full session rows (`GET /v1/sessions?projectId=`), read a page
+/// at a time: the first screen holds up to 200, and the owner reads on from
+/// there. Archived rows are a list of their own, read only when asked for.
+enum LAAWorkProjectSessionsAPI {
+    static let firstScreen = 200
+    static let pageSize = 100
+
+    static func query(_ projectID: String, archived: Bool, cursor: String?) -> [URLQueryItem] {
+        var items = [URLQueryItem(name: "projectId", value: projectID), URLQueryItem(name: "limit", value: String(pageSize))]
+        if archived { items.append(URLQueryItem(name: "archived", value: "only")) }
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return items
+    }
+
+    /// Reads on from `cursor` until it holds `atLeast` rows or the list ends.
+    @MainActor static func read(_ bridge: LAABridgeSession, project: String, archived: Bool, from cursor: String? = nil,
+                                atLeast: Int = firstScreen) async throws -> (rows: [LAAWorkSession], cursor: String?) {
+        var rows: [LAAWorkSession] = []
+        var next = cursor
+        var seen = Set<String>()
+        repeat {
+            let page: LAAWorkPage<LAAWorkSession> = try await bridge.read(
+                LAAWorkPresentation.path("/v1/sessions", query: query(project, archived: archived, cursor: next)))
+            rows += page.items
+            next = page.nextCursor
+            if let next, !seen.insert(next).inserted { throw LAABridgeError.invalidResponse }
+        } while next != nil && rows.count < atLeast
+        return (rows.filter { $0.worktree != true && $0.isArchived == archived }, next)
     }
 }
 
@@ -216,11 +280,13 @@ struct LAAWorkProjectSnapshot: Codable, Equatable {
     let progressNote: String?
     let requirements: [LAAWorkRequirement]?
     let sessions: [LAAWorkProjectSession]?
+    /// Absent from a reading kept by an earlier build; decoded as nil.
+    let sessionCounts: LAAWorkSessionCounts?
     let savedAt: Date
 
     init(_ project: LAAWorkProject, at date: Date = Date()) {
         progressNote = project.progressNote; requirements = project.requirements
-        sessions = project.sessions; savedAt = date
+        sessions = project.sessions; sessionCounts = project.sessionCounts; savedAt = date
     }
 }
 

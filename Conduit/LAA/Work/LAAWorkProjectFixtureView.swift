@@ -10,13 +10,15 @@ import SwiftUI
 /// States: `list` (the phone's project list), `detail` (requirements in
 /// every state), `empty` (a project without requirements), `loading`,
 /// `error`, `offline` (the copy kept on the device), `legacy` (a Bridge
-/// without requirements) and `done` (every requirement completed). On the Mac
+/// without requirements), `done` (every requirement completed) and `many`
+/// (the default project: no requirements, the first 200 of many sessions and
+/// a large archive, like the owner's 「未分類」). On the Mac
 /// every state draws the list beside its detail.
 struct LAAWorkProjectFixtureView: View {
     static let launchArgument = "-LAA_WORK_PROJECT_FIXTURE"
 
     enum Mode: String, CaseIterable {
-        case list, detail, empty, loading, error, offline, legacy, done
+        case list, detail, empty, loading, error, offline, legacy, done, many
     }
 
     let state: Mode
@@ -75,7 +77,8 @@ struct LAAWorkProjectFixtureView: View {
 
     private var detailScreen: some View {
         ScrollView {
-            LAAWorkProjectPage(project: project, detail: detail, sessions: sessions, options: Self.options, phase: phase)
+            LAAWorkProjectPage(project: project, detail: detail, sessions: sessions, options: Self.options, phase: phase,
+                               moreSessions: state == .many)
                 .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
                 .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
@@ -120,6 +123,7 @@ struct LAAWorkProjectFixtureView: View {
         switch state {
         case .empty: Self.projects[3]
         case .done: Self.projects[2]
+        case .many: Self.uncategorized
         default: Self.projects[0]
         }
     }
@@ -138,6 +142,7 @@ struct LAAWorkProjectFixtureView: View {
         case .loading, .error, .empty: []
         case .done: [Self.session("ses_00000000000000d1", ref: "S21", name: "LAAアプリ｜週報の下書き", phase: "awaiting_review",
                                   model: "claude-opus-5-5", effort: "high", updated: "2026-11-21T03:00:00Z")]
+        case .many: Self.manySessions
         default: Self.appSessions
         }
     }
@@ -209,7 +214,8 @@ struct LAAWorkProjectFixtureView: View {
                        files: [LAAWorkProjectFile(id: "file_1", name: "画面の参考.pdf", size: 482_000, mimeType: "application/pdf", createdAt: nil)],
                        requirementSummary: .init(completed: 3, total: 7),
                        progressNote: "要件の一覧とMacの定期読込みを実装中。次はBridgeの既定プロジェクト名を社長に確認してから、TestFlightへ出す。",
-                       requirements: requirements, sessions: compactSessions),
+                       requirements: requirements, sessions: compactSessions,
+                       sessionCounts: .init(active: 5, archived: 1)),
         LAAWorkProject(id: "prj_00000000000b", name: "法人化", ref: "P5", updatedAt: "2026-11-22T09:00:00Z",
                        requirementSummary: .init(completed: 1, total: 4),
                        progressNote: "会社形態の比較表を作成中。"),
@@ -227,6 +233,25 @@ struct LAAWorkProjectFixtureView: View {
                        requirementSummary: .init(completed: 0, total: 0), requirements: [], sessions: []),
         LAAWorkProject(id: "prj_000000000000", name: "未分類", ref: "P1", updatedAt: "2026-11-18T03:00:00Z"),
     ]
+
+    /// The default project as the Bridge shows it to an owner with a long
+    /// history: no requirements, 230 open sessions (200 on the first page)
+    /// and 1,584 archived ones.
+    static let uncategorized = LAAWorkProject(
+        id: "prj_000000000000", name: "未分類", ref: "P1", etag: "\"fixture-5\"", updatedAt: "2026-11-23T05:40:00Z",
+        requirementSummary: .init(completed: 0, total: 0), requirements: [],
+        sessions: manySessions.map { .init(id: $0.id, name: $0.name, status: "waiting", model: nil, updatedAt: nil,
+                                           parentId: nil, archivedAt: nil) },
+        sessionCounts: .init(active: 230, archived: 1584))
+
+    static let manySessions: [LAAWorkSession] = (0..<200).map { index in
+        let minutes = String(format: "%02d", 59 - index % 60)
+        let hour = String(format: "%02d", 23 - index / 60)
+        return session(String(format: "ses_%016x", 0xb000 + index), ref: "S\(900 + index)",
+                       name: "未分類｜作業 \(200 - index)", phase: index % 17 == 0 ? "running" : "awaiting_review",
+                       model: index % 3 == 0 ? "gpt-6-sol" : "claude-opus-5-5", effort: "high",
+                       updated: "2026-11-22T\(hour):\(minutes):00Z")
+    }
 
     static func date(_ value: String) -> Date? { LAAWorkFreshness.date(value) }
 
