@@ -13,7 +13,7 @@ final class LAAPerformanceUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func application(chatFixture: Bool = false) throws -> XCUIApplication {
+    private func application(scrollProbe: String? = nil) throws -> XCUIApplication {
         let port = try XCTUnwrap(Int(env["LAA_PERF_PORT"] ?? ""))
         let namespace = try XCTUnwrap(env["LAA_PERF_NAMESPACE"].flatMap(UUID.init(uuidString:)))
         let app = XCUIApplication()
@@ -23,12 +23,17 @@ final class LAAPerformanceUITests: XCTestCase {
                                "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://perf-lab.invalid",
                                "-laa-brain-local-fixture", "-laa-brain-document-fixture"]
-        if chatFixture {
+        if scrollProbe == "chat" {
             app.launchArguments += ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "long120",
                                     "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT"]
         }
         app.launchEnvironment = ["LAA_PERF_KEYCHAIN_NAMESPACE": namespace.uuidString,
                                  "LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:\(port)"]
+        if let scrollProbe, let trial = env["LAA_PERF_FRAME_TRIAL"].flatMap(UUID.init(uuidString:)) {
+            app.launchArguments.append("-LAA_PERF_FRAME_PROBE")
+            app.launchEnvironment["LAA_PERF_FRAME_TRIAL"] = trial.uuidString
+            app.launchEnvironment["LAA_PERF_FRAME_KIND"] = scrollProbe
+        }
         return app
     }
 
@@ -154,16 +159,37 @@ final class LAAPerformanceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[longID].firstMatch.waitForExistence(timeout: 25))
     }
 
-    private func measureScroll(in app: XCUIApplication, body: () -> Void) throws {
-        // Simulators may export a duration but no frame counters for the
-        // scrolling signpost. Request application hitches directly too.
-        guard #available(iOS 26.0, *) else { throw XCTSkip("XCTHitchMetric requires iOS 26") }
-        measure(metrics: [XCTOSSignpostMetric.scrollingAndDecelerationMetric, XCTHitchMetric(application: app)],
-                options: options, block: body)
+    private func measureScroll(in app: XCUIApplication, kind: String, body: () -> Void) {
+        var metrics: [XCTMetric] = [XCTOSSignpostMetric.scrollingAndDecelerationMetric]
+        if #available(iOS 26.0, *) { metrics.append(XCTHitchMetric(application: app)) }
+        let control = app.buttons["laa.perf.frame-probe"]
+        var window: (start: CFTimeInterval, end: CFTimeInterval)?
+        measure(metrics: metrics, options: options) {
+            // XCTest may do a warm-up invocation. The app atomically replaces
+            // the trace after each invocation; only publish the last bounds.
+            window = nil
+            var armed = false
+            if control.exists && control.isHittable {
+                control.tap()
+                armed = (control.value as? String) == "recording"
+            }
+            // The unit is the shared monotonic media clock. Control taps and
+            // export are outside this gesture/deceleration window.
+            let start = CACurrentMediaTime()
+            body()
+            let end = CACurrentMediaTime()
+            if armed {
+                control.tap()
+                if (control.value as? String) == "saved" { window = (start, end) }
+            }
+        }
+        if let window {
+            print("LAA_LAB_FRAME {\"kind\":\"\(kind)\",\"start\":\(window.start),\"end\":\(window.end)}")
+        }
     }
 
     func testScrollChat() throws {
-        let app = try application(chatFixture: true)
+        let app = try application(scrollProbe: "chat")
         app.launch()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         let scroller = item("chat.transcript", app)
@@ -180,7 +206,7 @@ final class LAAPerformanceUITests: XCTestCase {
         towardEarlier()
         XCTAssertTrue(!tail.exists || tail.frame.minY > tailY + 10, "Long Chat must actually scroll")
         scroller.swipeUp(velocity: .fast)
-        try measureScroll(in: app) {
+        measureScroll(in: app, kind: "chat") {
             towardEarlier()
             scroller.swipeUp(velocity: .fast)
         }
@@ -188,7 +214,7 @@ final class LAAPerformanceUITests: XCTestCase {
     }
 
     func testScrollWork() throws {
-        let app = try application()
+        let app = try application(scrollProbe: "work")
         app.launch()
         openSessionList(app)
         let scroller = try XCTUnwrap(app.scrollViews.allElementsBoundByIndex.first { $0.frame.height > 400 })
@@ -197,7 +223,7 @@ final class LAAPerformanceUITests: XCTestCase {
         scroller.swipeUp(velocity: .fast)
         XCTAssertTrue(!anchor.exists || anchor.frame.minY < before - 10, "Work list must actually scroll")
         scroller.swipeDown(velocity: .fast)
-        try measureScroll(in: app) {
+        measureScroll(in: app, kind: "work") {
             scroller.swipeUp(velocity: .fast)
             scroller.swipeDown(velocity: .fast)
         }

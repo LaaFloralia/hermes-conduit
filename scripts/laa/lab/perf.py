@@ -2,6 +2,7 @@
 """Run or compare quiet LAA iPhone performance probes with synthetic inputs."""
 import argparse
 from contextlib import contextmanager
+from collections import Counter
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -19,6 +20,7 @@ import time
 import urllib.request
 import uuid
 
+import perf_frames
 from suite import REPO, SLOT
 from watch import (DERIVED, PHONE_APP, PHONE_NAME, boot_devices, capture, lab_env, log_json,
                    named_device, require_build_headroom, simulator_inventory, test_states, xcode_base)
@@ -32,9 +34,13 @@ TESTS = ("testColdLaunch", "testNavigationAndOpen", "testScrollChat", "testScrol
 DEST = ("chat", "work", "today", "doc", "usage")
 WALL = {"warm_activate", "doc_open_long", "work_open_long_history"} | {
     f"nav_{source}_to_{target}" for source in DEST for target in DEST if source != target}
-REQUIRED = WALL | {"cold_launch_first_usable", "chat_scroll_hitch_ratio", "work_scroll_hitch_ratio"}
+NATIVE = {"cold_launch_first_usable"} | {f"{kind}_scroll_{metric}" for kind in perf_frames.KINDS
+                                         for metric in ("hitch_ratio", "signpost_duration")}
+PROBES = WALL | NATIVE | perf_frames.PROBES
+BASELINE = Path(__file__).with_name("perf-baseline.json")
+PROTOCOL = "laa-simulator-perf-v2"
 LOAD_LIMIT = min(6.0, (os.cpu_count() or 2) / 2)
-NOISE_RULE = "regression if new median minus baseline median exceeds max(baseline range, new range)"
+NOISE_RULE = "regression if worsening median delta exceeds max(baseline range, new range); observed Hz prefers higher, expected Hz is context"
 MIN_RUNS = 5
 
 
@@ -51,29 +57,29 @@ def stats(values):
             "spread": hi - lo, "samples": list(values)}
 
 
-def aggregate(runs, *, diagnostic_partial=False):
+def aggregate(runs):
     quiet = [run for run in runs if run.get("state") == "quiet"]
     if len(quiet) < MIN_RUNS:
         raise ValueError(f"Only {len(quiet)} quiet runs")
-    keys = quiet[0]["probes"].keys()
-    if diagnostic_partial:
-        keys = set.intersection(*(set(run["probes"]) for run in quiet))
-    else:
-        if not REQUIRED.issubset(keys):
-            raise ValueError(f"Missing required probes: {sorted(REQUIRED - keys)}")
-        if any(run["probes"].keys() != keys for run in quiet):
-            raise ValueError("Probe set changed between quiet runs")
     summary = {}
-    for key in sorted(keys):
-        entries = [run["probes"][key] for run in quiet]
-        unit = entries[0]["unit"]
-        if any(entry["unit"] != unit for entry in entries):
-            raise ValueError(f"Unit changed: {key}")
-        source = entries[0].get("source")
-        if any(entry.get("source") != source for entry in entries):
-            raise ValueError(f"Metric source changed: {key}")
-        summary[key] = {"unit": unit, **({"source": source} if source else {}), **stats([entry["value"] for entry in entries])}
+    for key in sorted(PROBES):
+        entries = [run["probes"][key] for run in quiet if key in run["probes"]]
+        signatures = {(entry["unit"], entry.get("source")) for entry in entries}
+        if len(entries) < MIN_RUNS:
+            reasons = Counter(run.get("unavailable", {}).get(key, "No sample emitted") for run in quiet if key not in run["probes"])
+            why = "; ".join(f"{reason} ({n})" for reason, n in sorted(reasons.items()))
+            summary[key] = {"state": "unavailable", "count": len(entries), "reason": f"Need {MIN_RUNS} samples: {why}"}
+        elif len(signatures) != 1:
+            summary[key] = {"state": "unavailable", "count": len(entries), "reason": "Unit or metric source changed within series"}
+        else:
+            unit, source = signatures.pop()
+            summary[key] = {"state": "measured", "unit": unit, **({"source": source} if source else {}),
+                            **stats([entry["value"] for entry in entries])}
     return summary
+
+
+def lost_probes(before, after):
+    return [key for key, row in before.items() if row["state"] == "measured" and after[key]["state"] != "measured"]
 
 
 def compare_reports(before, after):
@@ -81,17 +87,27 @@ def compare_reports(before, after):
     if any(key not in before or key not in after or before[key] != after[key] for key in fields):
         raise ValueError("Incompatible reports (protocol, build settings, device/runtime, Xcode or quiet threshold)")
     old, new = aggregate(before["runs"]), aggregate(after["runs"])
-    if old.keys() != new.keys():
-        raise ValueError("Probe sets differ")
     changes = []
     for probe, a in old.items():
         b = new[probe]
-        if a["unit"] != b["unit"] or a.get("source") != b.get("source"):
-            raise ValueError(f"Incompatible unit or metric source: {probe}")
-        band = max(a["spread"], b["spread"])
-        delta = b["median"] - a["median"]
-        changes.append({"probe": probe, "unit": a["unit"], "baseline": a["median"], "new": b["median"],
-                        "delta": delta, "noise_band": band, "regression": delta > band})
+        if a["state"] != "measured" or b["state"] != "measured":
+            reason = "; ".join(f"{side}: {row['reason']}" for side, row in (("baseline", a), ("new", b))
+                               if row["state"] != "measured")
+        elif a["unit"] != b["unit"] or a.get("source") != b.get("source"):
+            reason = "Unit or metric source differs"
+        else:
+            band = max(a["spread"], b["spread"])
+            delta = b["median"] - a["median"]
+            # Nominal refresh is context, whereas a lower observed callback
+            # cadence is worse. All time/count probes prefer smaller values.
+            context = probe.endswith("_expected_hz")
+            worse = -delta if probe.endswith("_observed_hz") else delta
+            changes.append({"probe": probe, "state": "context" if context else "comparable", "unit": a["unit"],
+                            "baseline": a["median"], "new": b["median"], "delta": delta, "noise_band": band,
+                            "regression": not context and worse > band})
+            continue
+        changes.append({"probe": probe, "state": "not_comparable", "reason": reason,
+                        "lost": a["state"] == "measured" and b["state"] != "measured"})
     return changes
 
 
@@ -202,8 +218,8 @@ def timing_log(text):
         if probe in samples:
             raise ValueError(f"Duplicate timing: {probe}")
         samples[probe] = {"unit": "ms", "value": obj["ms"]}
-    if samples.keys() != WALL:
-        raise ValueError(f"Missing or unexpected wall probes: {sorted(samples.keys() ^ WALL)}")
+    if samples.keys() - WALL:
+        raise ValueError(f"Unexpected wall probes: {sorted(samples.keys() - WALL)}")
     return samples
 
 
@@ -224,43 +240,45 @@ def native_metrics(bundle, out):
     # selectors. Read the real identifiers and metrics in one call.
     data = json.loads(capture("xcrun", "xcresulttool", "get", "test-results", "metrics", "--path", str(bundle)))
     log_json(out / "metrics.json", data)
-    return parsed_native_metrics(data, collect_partial=True)
+    return parsed_native_metrics(data)
 
 
-def parsed_native_metrics(data, *, collect_partial=False):
-    samples = {}
-    for test, probe in (("testColdLaunch", "cold_launch_first_usable"), ("testScrollChat", "chat_scroll"),
-                        ("testScrollWork", "work_scroll")):
-        rows = [metric for result in data if result["testIdentifierURL"].endswith(f"/{TEST_CLASS}/{test}")
-                for metric in metric_rows(result)]
-        matches = []
-        for row in rows:
-            name = (row["identifier"] + " " + row.get("displayName", "")).lower()
-            key = re.sub(r"[^a-z0-9]", "", name)
-            if probe.startswith("cold_") and "duration" in key:
-                if "applicationfirstframepresentationresponsive" in key:
-                    matches.append(row)
-            elif not probe.startswith("cold_") and "hitch" in key and "ratio" in key:
-                matches.append(row)
-        if len(matches) > 1 and not probe.startswith("cold_"):
-            # When both are available, the scrolling signpost excludes the
-            # interval between gestures; prefer it over the app-wide window.
-            signpost = [row for row in matches if "XCTMetric_OSSignpost" in row["identifier"]]
-            if signpost:
-                matches = signpost
-        if not matches and collect_partial and not probe.startswith("cold_"):
-            continue  # Preserve the other probes, but never turn absent hitch data into zero or success.
-        if len(matches) != 1 or len(matches[0]["measurements"]) != 1:
-            raise ValueError(f"Expected one responsive launch or hitch-ratio measurement for {test}; see run metrics.json")
-        row = matches[0]
+def parsed_native_metrics(data):
+    samples, unavailable = {}, {}
+    by_test = {test: [metric for result in data if result["testIdentifierURL"].endswith(f"/{TEST_CLASS}/{test}")
+                      for metric in metric_rows(result)] for test in TESTS}
+
+    def store(test, probe, rows, duration=False):
+        if len(rows) != 1 or len(rows[0]["measurements"]) != 1:
+            observed = ", ".join(sorted({row.get("displayName", row["identifier"]) for row in by_test[test]})) or "none"
+            unavailable[probe] = f"XCTest did not export a single matching sample; exported: {observed}"
+            return
+        row = rows[0]
         unit, value = row["unitOfMeasurement"], row["measurements"][0]
-        if probe.startswith("cold_"):
-            if unit in ("s", "seconds", "sec"): value *= 1000
-            elif unit != "ms": raise ValueError(f"Unknown launch unit: {unit}")
-            samples[probe] = {"unit": "ms", "value": value, "source": row["identifier"]}
-        else:
-            samples[probe + "_hitch_ratio"] = {"unit": unit, "value": value, "source": row["identifier"]}
-    return samples
+        if duration:
+            if unit in ("s", "seconds", "sec"):
+                unit, value = "ms", 1000 * value
+            elif unit != "ms":
+                unavailable[probe] = f"Unknown XCTest duration unit: {unit}"
+                return
+        samples[probe] = {"unit": unit, "value": value, "source": row["identifier"]}
+
+    launch = "testColdLaunch"
+    store(launch, "cold_launch_first_usable", [r for r in by_test[launch]
+          if r["identifier"].endswith("-ApplicationFirstFramePresentationResponsive.duration")], duration=True)
+    for kind in perf_frames.KINDS:
+        test = f"testScroll{kind.capitalize()}"
+        rows = by_test[test]
+        store(test, f"{kind}_scroll_signpost_duration", [r for r in rows
+              if r["identifier"].endswith("-Scroll_DraggingAndDeceleration.duration")], duration=True)
+        ratios = []
+        for row in rows:
+            key = re.sub(r"[^a-z0-9]", "", (row["identifier"] + " " + row.get("displayName", "")).lower())
+            if "hitch" in key and "ratio" in key:
+                ratios.append(row)
+        signpost = [row for row in ratios if "XCTMetric_OSSignpost" in row["identifier"]]
+        store(test, f"{kind}_scroll_hitch_ratio", signpost or ratios)
+    return samples, unavailable
 
 
 def prepare_build(out, phone, head, reuse):
@@ -328,13 +346,41 @@ def clear_credentials(udid, namespace, log):
     time.sleep(3)
 
 
+def frame_container(udid):
+    try:
+        return capture("xcrun", "simctl", "get_app_container", udid, PHONE_APP, "data", stderr=subprocess.DEVNULL)
+    except subprocess.SubprocessError:
+        return None
+
+
+def collect_probes(bundle, out, udid, trial):
+    text = (out / "test.log").read_text()
+    samples = timing_log(text)
+    unavailable = {key: "XCTest did not print the timed action marker" for key in WALL - samples.keys()}
+    try:
+        native, why = native_metrics(bundle, out)
+    except (ValueError, KeyError, subprocess.SubprocessError):
+        native, why = {}, dict.fromkeys(NATIVE, "xcresulttool did not return readable metric data")
+    samples.update(native)
+    unavailable.update(why)
+    proxy, why = perf_frames.collect(text, trial, frame_container(udid), out)
+    samples.update(proxy)
+    unavailable.update(why)
+    return samples, unavailable
+
+
 def report_md(report):
     rows = ["# LAA Performance", "", f"Build `{report['sha']}` · {report['environment']['device']} · "
             f"{report['environment']['runtime']} · {report['configuration']['configuration']} + Swift `-O`", "",
+            "Scroll `proxy` probes describe this Mac's Simulator callback timings, not physical-device frames.", "",
             "| Probe | Unit | Quiet n | Median | Min | Max | Spread |", "|---|---|---:|---:|---:|---:|---:|"]
     for probe, row in report["probes"].items():
-        values = " | ".join(f"{row[key]:.3f}" for key in ("median", "min", "max", "spread"))
-        rows.append(f"| {probe} | {row['unit']} | {row['count']} | {values} |")
+        if row["state"] == "measured":
+            values = " | ".join(f"{row[key]:.3f}" for key in ("median", "min", "max", "spread"))
+            rows.append(f"| {probe} | {row['unit']} | {row['count']} | {values} |")
+    missing = [f"- `{probe}`: {row['reason']}" for probe, row in report["probes"].items() if row["state"] == "unavailable"]
+    if missing:
+        rows.extend(["", "Unavailable (not comparable):", *missing])
     return "\n".join(rows) + "\n"
 
 
@@ -344,8 +390,11 @@ def run_locked(args):
     head = capture("git", "rev-parse", "HEAD")
     if capture("git", "status", "--porcelain", "-uno"):
         raise RuntimeError("Commit source changes first so the recorded build SHA is exact")
+    baseline = json.loads(BASELINE.read_text()) if BASELINE.is_file() else None
+    previous = aggregate(baseline["runs"]) if baseline and baseline.get("protocol") == PROTOCOL else {}
     phone = named_device(PHONE_NAME)
     attempts = []
+    counts = Counter()
     with boot_devices((phone,), out / "simulator.log", shutdown_wait=30):
         spec, build = prepare_build(out, phone, head, args.reuse_build)
         runtime = next(row for row in json.loads(capture("xcrun", "simctl", "list", "runtimes", "--json"))["runtimes"]
@@ -371,13 +420,16 @@ def run_locked(args):
                         log_json(out / "attempts.json", attempts)
                         continue
                     bundle = run_out / "perf.xcresult"
+                    trial = str(uuid.uuid4()).upper()
                     tick = time.monotonic()
-                    rc, interference = measured_test([*shared, "-resultBundlePath", str(bundle)], run_out / "test.log", phone["udid"], extra)
+                    rc, interference = measured_test([*shared, "-resultBundlePath", str(bundle)], run_out / "test.log", phone["udid"],
+                                                      {**extra, "TEST_RUNNER_LAA_PERF_FRAME_TRIAL": trial})
                     row.update(exit=rc, after=busy_snapshot(phone["udid"]), interference=interference,
                                wall_seconds=round(time.monotonic() - tick, 2))
                     if interference or row["after"]["other_xcodebuild"] or row["after"]["other_simulators"]:
                         row["state"] = "noisy"
                         log_json(out / "attempts.json", attempts)
+                        perf_frames.cleanup(trial, frame_container(phone["udid"]))
                         if bundle.exists(): shutil.rmtree(bundle)
                         continue
                     row["state"] = "invalid"
@@ -386,34 +438,38 @@ def run_locked(args):
                     log_json(out / "attempts.json", attempts)
                     if rc or test_results.keys() != {f"{TEST_CLASS}/{t}" for t in TESTS} or any(
                             test["result"] != "Passed" for test in test_results.values()):
-                        raise RuntimeError(f"Performance test failed, skipped or was not executed ({rc}): {run_out / 'test.log'}")
-                    row["probes"] = {**timing_log((run_out / "test.log").read_text()), **native_metrics(bundle, run_out)}
+                        print(f"Invalid trial {number}: test failed, skipped or not executed ({rc}); see {run_out / 'test.log'}", flush=True)
+                        perf_frames.cleanup(trial, frame_container(phone["udid"]))
+                        continue
+                    row["probes"], row["unavailable"] = collect_probes(bundle, run_out, phone["udid"], trial)
                     row["state"] = "quiet"
                     log_json(out / "attempts.json", attempts)
                     shutil.rmtree(bundle)
                     accepted += 1
-                    print(f"Quiet run {accepted}/{args.runs} (load {row['before']['load1']}, {row['wall_seconds']}s)", flush=True)
-                    if accepted == args.runs:
+                    counts.update(row["probes"].keys())
+                    print(f"Quiet run {accepted}/{args.runs} (load {row['before']['load1']}, {row['wall_seconds']}s, "
+                          f"{len(row['probes'])} probes)", flush=True)
+                    needs_retry = any(0 < counts[key] < MIN_RUNS or
+                                      (previous.get(key, {}).get("state") == "measured" and counts[key] < MIN_RUNS) for key in PROBES)
+                    if accepted >= args.runs and not needs_retry:
                         break
             finally:
                 clear_credentials(phone["udid"], namespace, out / "simulator.log")
-    if accepted != args.runs:
+    if accepted < args.runs:
         raise RuntimeError(f"Insufficient quiet runs: {accepted}/{args.runs}; see {out / 'attempts.json'}")
-    missing = sorted(REQUIRED - set.intersection(*(set(row["probes"]) for row in attempts if row["state"] == "quiet")))
-    result = {"schema": 1, "protocol": "laa-simulator-perf-v1", "sha": head, "configuration": CONFIG,
+    result = {"schema": 2, "protocol": PROTOCOL, "sha": head, "configuration": CONFIG,
               "environment": {"device": phone["name"], "device_type": phone["deviceTypeIdentifier"],
                               "os": runtime["version"], "runtime": runtime["identifier"], "runtime_build": runtime["buildversion"],
                               "xcode": build["xcode"], "quiet_max_load1": LOAD_LIMIT},
               "build_products": build["build_products"], "completed_at": utc(),
               "wall_seconds": round(time.monotonic() - started, 2), "noise_rule": NOISE_RULE,
-              "runs": attempts, "probes": aggregate(attempts, diagnostic_partial=bool(missing))}
-    if missing:
-        result["missing_probes"] = missing
-        log_json(out / "perf-partial.json", result)
-        (out / "perf-partial.md").write_text(report_md(result) + "\nIncomplete; no baseline. Missing: " + ", ".join(missing) + "\n")
-        raise RuntimeError(f"Incomplete native metrics: {missing}; see {out / 'perf-partial.json'}")
+              "frame_proxy": perf_frames.METHOD, "runs": attempts, "probes": aggregate(attempts)}
+    lost = lost_probes(previous, result["probes"])
+    result["lost_baseline_probes"] = lost
     log_json(out / "perf.json", result)
     (out / "perf.md").write_text(report_md(result))
+    if lost:
+        raise RuntimeError(f"Previously measured probes now unavailable: {lost}; see {out / 'perf.json'}")
     return 0
 
 
@@ -432,10 +488,18 @@ def main():
         changes = compare_reports(json.loads(args.baseline.read_text()), json.loads(args.new.read_text()))
         print(NOISE_RULE)
         for row in changes:
-            print(f"{'REGRESSION' if row['regression'] else 'within band'} {row['probe']}: "
-                  f"{row['baseline']:.3f} → {row['new']:.3f} {row['unit']} "
+            if row["state"] == "not_comparable":
+                print(f"NOT COMPARABLE {row['probe']}: {row['reason']}")
+                continue
+            label = "context" if row["state"] == "context" else "REGRESSION" if row["regression"] else "within band"
+            print(f"{label} {row['probe']}: {row['baseline']:.3f} → {row['new']:.3f} {row['unit']} "
                   f"({row['delta']:+.3f}, band {row['noise_band']:.3f})")
-        return int(any(row["regression"] for row in changes))
+        compared = sum(row["state"] == "comparable" for row in changes)
+        unavailable = sum(row["state"] == "not_comparable" for row in changes)
+        print(f"Compared: {compared}; not comparable: {unavailable}")
+        if any(row.get("regression") or row.get("lost") for row in changes):
+            return 1
+        return 0 if compared else 2
     if not MIN_RUNS <= args.runs <= 50:
         parser.error(f"--runs must be between {MIN_RUNS} and 50")
     args.out = args.out.resolve()
