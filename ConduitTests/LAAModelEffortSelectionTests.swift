@@ -178,6 +178,36 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertFalse(shown.contains { $0.model.contains("fable") || $0.model.contains("900k") || $0.model.hasPrefix("gpt-5") })
     }
 
+    /// C2's union of the five replies (2026-11-23): Codex still lists older
+    /// GPT 5 names; `-900k` is never offered, even with no lineup read or
+    /// beside the newest name; the uncensored model only in its own chat.
+    /// What is sent stays Hermes' raw id.
+    func testOlderCodexNamesLongContextAndUncensoredAreLeftOut() {
+        let lineup = LAAChatModelAllowList(keys: Set(["gpt-6.2-sol", "gpt-6.2-sol-900k", "deepseek-v4.1-flash",
+                                                      #"["venice","deepseek-v4-1-flash-1017-uncensored"]"#,
+                                                      "claude-opus-5-5"].map(LAAChatModelAllowList.key)))
+        let providers = [
+            ProviderInfo(name: "openai-codex", models: ["gpt-6.2-sol", "gpt-6.2-sol-900k", "gpt-5.3-codex-spark", "gpt-5.4",
+                                                        "gpt-5.4-900k", "gpt-5.4-mini", "gpt-5.5"]
+                .map { ModelInfo(id: $0, label: nil, reasoningCapable: true) }),
+            ProviderInfo(name: "laa-dsh", models: ["deepseek-v4.1-flash", "deepseek-v4-1-flash-1017-uncensored"]
+                .map { ModelInfo(id: $0, label: nil, reasoningCapable: true) }),
+            ProviderInfo(name: "claude-subscription-directsdk-experimental",
+                         models: [ModelInfo(id: "claude-opus-5-5[1m]", label: nil, reasoningCapable: true)]),
+        ]
+        func shown(_ allowed: LAAChatModelAllowList?, _ profile: String) -> [String] {
+            LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(), runningModel: nil, runningProvider: nil,
+                                        allowed: allowed, profile: profile).map(\.model)
+        }
+        let employee = shown(lineup, "laa-cto")
+        XCTAssertEqual(employee.filter { $0.hasPrefix("gpt") }, ["gpt-6.2-sol"])
+        XCTAssertFalse(employee.contains { $0.contains("uncensored") })
+        XCTAssertTrue(employee.contains("claude-opus-5-5[1m]"), "matched without [1m], sent with it")
+        XCTAssertTrue(shown(lineup, "laa-monet-uncensored").contains("deepseek-v4-1-flash-1017-uncensored"))
+        XCTAssertFalse(shown(nil, "laa-cto").contains { $0.hasSuffix("-900k") || $0.contains("uncensored") },
+                       "with no lineup kept, these two rules still hold")
+    }
+
     /// The lineup read last is kept on the device for when the Bridge cannot
     /// be read; nothing kept means no filter.
     @MainActor func testTheLineupIsKeptOnTheDevice() throws {

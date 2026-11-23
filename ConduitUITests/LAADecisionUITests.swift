@@ -43,11 +43,11 @@ final class LAADecisionUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
-        XCTAssertTrue(app.buttons["work.section.sessions"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.buttons["work.sessions.menu"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["work.section.projects"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.descendants(matching: .any)["work.projects"].firstMatch.waitForExistence(timeout: 20))
         if !root {
-            // The board is Work's second section; the hub still opens on Sessions.
-            XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+            // The board sits beside Sessions; the hub opens on Projects.
+            XCTAssertTrue(app.buttons["work.section.projects"].isSelected)
             app.buttons["work.section.decisions"].tap()
         }
         return app
@@ -119,15 +119,23 @@ final class LAADecisionUITests: XCTestCase {
         func item(_ labels: [String]) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", labels)).firstMatch
         }
-        if replacing {
-            field.press(forDuration: 1.2)
-            let all = item(["すべてを選択", "Select All"])
-            XCTAssertTrue(all.waitForExistence(timeout: 5)); all.tap()
-        } else {
-            field.press(forDuration: 1.2)
+        // The focused field shows its edit menu on a second tap; a long press
+        // is the fallback (it can bring the loupe instead).
+        func menu(_ labels: [String]) -> XCUIElement {
+            let entry = item(labels)
+            for attempt in 0..<3 where !entry.exists {
+                if attempt == 1 { field.press(forDuration: 1.2) } else { field.tap() }
+                _ = entry.waitForExistence(timeout: 3)
+            }
+            XCTAssertTrue(entry.waitForExistence(timeout: 2), "\(labels[0]) in the edit menu")
+            return entry
         }
-        let paste = item(["ペースト", "Paste"])
-        XCTAssertTrue(paste.waitForExistence(timeout: 5)); paste.tap()
+        if replacing {
+            // Select all and delete, then paste into the empty field.
+            menu(["すべてを選択", "Select All"]).tap()
+            field.typeText(XCUIKeyboardKey.delete.rawValue)
+        }
+        menu(["ペースト", "Paste"]).tap()
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             ((field.value as? String) ?? "").count == text.count
         }, object: nil)
@@ -294,17 +302,18 @@ final class LAADecisionUITests: XCTestCase {
         for dark in [false, true] {
             let app = try launch(board: "normal", dark: dark, root: true)
             let style = dark ? "dark" : "light"
-            // Sessions opens first, with no decision card above it; the
+            // Projects opens first, with no decision card above it; the
             // board's segment says how many wait.
-            XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+            XCTAssertTrue(app.buttons["work.section.projects"].isSelected)
             XCTAssertFalse(app.descendants(matching: .any)["work.decisions.summary"].exists)
             let board = app.buttons["work.section.decisions"]
             XCTAssertTrue(board.waitForExistence(timeout: 15))
             XCTAssertTrue(NSPredicate(format: "label BEGINSWITH 'Decisions '").evaluate(with: board), board.label)
-            XCTAssertFalse(app.buttons["work.section.projects"].exists)
+            XCTAssertTrue(app.buttons["work.section.projects"].exists, "Projects is Work's first section again (owner, 2026-11-23)")
             XCTAssertFalse(app.buttons["work.section.skills"].exists)
             XCTAssertTrue(app.buttons["work.usage"].exists)
             screenshot("work-head-after-\(style)", app)
+            app.buttons["work.section.sessions"].tap()
             app.buttons["work.sessions.menu"].tap()
             app.buttons["work.sessions.byProject"].tap()
             screenshot("work-projects-after-\(style)", app)

@@ -49,7 +49,6 @@ struct LAAWorkDesktopSessionsView: View {
     @State private var reloadID = 0
     @State private var expanded = Set<String>()
     @State private var projectOrder = false
-    @State private var showProjects = false
     @State private var editingProject: LAAWorkProject?
     @State private var archivePrompt: LAAWorkArchivePrompt?
     @FocusState private var searchFocused: Bool
@@ -99,7 +98,6 @@ struct LAAWorkDesktopSessionsView: View {
                             Button(String("新しい順")) { projectOrder = false }
                             Button(String("プロジェクト別")) { projectOrder = true }
                             Button(showArchived ? String("最近のセッションに戻る") : String("アーカイブを表示")) { showArchived.toggle(); reloadID += 1 }
-                            Button(String("プロジェクトを管理")) { showProjects = true }
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
                     }
@@ -200,7 +198,6 @@ struct LAAWorkDesktopSessionsView: View {
         .sheet(item: $editingProject, onDismiss: { reloadID += 1 }) { project in
             LAAWorkProjectEditor(project: project, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
-        .navigationDestination(isPresented: $showProjects) { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0) }
         .onChange(of: createID, initial: true) { _, value in
             guard value > 0 else { return }; showLauncher = true; onCreateConsumed()
         }
@@ -498,6 +495,7 @@ struct LAAWorkDesktopProjectsView: View {
             if let selected {
                 NavigationStack {
                     LAAWorkProjectHome(project: selected, drafts: drafts).id(selected.id)
+                        .onAppear { LAAWorkSessionProjects.noteOpened(selected.id) }
                 }
             } else {
                 LAAMacEmptyDetail(symbol: "folder", title: LAACopy.macNoProjectTitle)
@@ -606,13 +604,14 @@ struct LAAWorkDesktopCatalogView: View {
 
     private var rows: [CatalogRow] {
         if kind == .routines {
-            let scheduled = routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
-                .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
+            let split = LAAWorkRoutineShelf.split(routines.filter {
+                LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""])
+            })
             // The phone's day order: grouped by part of the day, by the clock
             // inside each part, with the last result's mark on every row.
             var band = ""
             var result: [CatalogRow] = []
-            for entry in LAAWorkRoutineTree.entries(scheduled) {
+            for entry in LAAWorkRoutineTree.entries(split.scheduled, always: split.always) {
                 switch entry {
                 case .band(let value): band = value.title
                 case .routine(let routine, let clock):
@@ -621,14 +620,13 @@ struct LAAWorkDesktopCatalogView: View {
                                              group: band, ref: routine.ref, status: LAAWorkStatus.routine(routine)))
                 }
             }
-            // Always-on and manual services have no schedule to place them by;
-            // the phone lists them under their own note, so the Mac does too.
-            let services = self.services
-            if !services.isEmpty {
-                let title = "常駐・手動・時刻未確認（\(services.count)）"
-                result += services.map { routine in
+            // Paused routines fold under the day, as on the phone; closed,
+            // the heading alone stays.
+            if !split.paused.isEmpty {
+                let title = LAAWorkRoutineShelf.pausedTitle(split.paused.count)
+                result += split.paused.map { routine in
                     CatalogRow(id: routine.id, title: routine.name,
-                               subtitle: "次回 \(LAAWorkRoutineTime.next(routine.nextRunAt))",
+                               subtitle: [routine.destination, routine.schedule].compactMap { $0 }.joined(separator: " · "),
                                group: title, ref: routine.ref, service: true, status: LAAWorkStatus.routine(routine))
                 }
             }
@@ -642,9 +640,35 @@ struct LAAWorkDesktopCatalogView: View {
                               subtitle: $0.explanation.isEmpty ? "説明はありません" : $0.explanation, group: "", ref: $0.ref) }
     }
 
-    private var services: [LAAWorkRoutine] {
-        routines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
-            .filter { LAAWorkRef.matches(search, ref: $0.ref, text: [$0.name, $0.destination ?? "", $0.schedule ?? ""]) }
+    /// 「停止中」 on the Mac opens like the phone's, closed at first.
+    @State private var pausedOpen = false
+    /// The rows on screen: a closed 「停止中」 keeps only its heading row's group.
+    private var shownRows: [CatalogRow] {
+        pausedOpen ? rows : rows.filter { !$0.service }
+    }
+
+    private func catalogRow(_ row: CatalogRow) -> some View {
+        Button { selectedID = row.id } label: {
+            HStack(alignment: .top, spacing: LAASpacing.x3) {
+                if let status = row.status { LAAWorkStatusMark(status: status) }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                        LAAWorkRefLabel(ref: row.ref)
+                        Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.medium)
+                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                    }
+                    Text(verbatim: row.subtitle).laaTextStyle(.secondary)
+                        .foregroundStyle(LAAColor.secondaryText).lineLimit(2)
+                }
+            }
+            .padding(.vertical, LAASpacing.x2)
+            .padding(.horizontal, LAASpacing.x4)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+            .background(rowBackground(row.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredID = $0 ? row.id : (hoveredID == row.id ? nil : hoveredID) }
+        .accessibilityAddTraits(selectedID == row.id ? .isSelected : [])
     }
 
     var body: some View {
@@ -673,36 +697,37 @@ struct LAAWorkDesktopCatalogView: View {
                 Rectangle().fill(LAAColor.separator).frame(height: 1)
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(rows) { row in
-                            if !row.group.isEmpty, rows.first(where: { $0.group == row.group })?.id == row.id {
+                        let dayRows = rows.filter { !$0.service }
+                        ForEach(dayRows) { row in
+                            if !row.group.isEmpty, dayRows.first(where: { $0.group == row.group })?.id == row.id {
                                 Text(verbatim: row.group).laaTextStyle(.section).fontWeight(.semibold)
                                     .foregroundStyle(LAAColor.secondaryText)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, LAASpacing.x4)
                                     .padding(.top, LAASpacing.x3)
-                                    .accessibilityIdentifier(row.service ? "work.routines.services" : "work.desktop.routines.group")
+                                    .accessibilityIdentifier("work.desktop.routines.group")
                             }
-                            Button { selectedID = row.id } label: {
-                                HStack(alignment: .top, spacing: LAASpacing.x3) {
-                                    if let status = row.status { LAAWorkStatusMark(status: status) }
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                                            LAAWorkRefLabel(ref: row.ref)
-                                            Text(verbatim: row.title).laaTextStyle(.body).fontWeight(.medium)
-                                                .foregroundStyle(LAAColor.text).lineLimit(1)
-                                        }
-                                        Text(verbatim: row.subtitle).laaTextStyle(.secondary)
-                                            .foregroundStyle(LAAColor.secondaryText).lineLimit(2)
-                                    }
+                            catalogRow(row)
+                        }
+                        let paused = rows.filter(\.service)
+                        if let first = paused.first {
+                            Button { withAnimation(.snappy) { pausedOpen.toggle() } } label: {
+                                HStack(spacing: LAASpacing.x2) {
+                                    Text(verbatim: first.group).laaTextStyle(.section).fontWeight(.semibold)
+                                        .foregroundStyle(LAAColor.secondaryText)
+                                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(LAAColor.secondaryText)
+                                        .rotationEffect(.degrees(pausedOpen ? 90 : 0))
+                                    Spacer(minLength: 0)
                                 }
-                                .padding(.vertical, LAASpacing.x2)
                                 .padding(.horizontal, LAASpacing.x4)
-                                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                                .background(rowBackground(row.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
+                                .padding(.top, LAASpacing.x3)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .onHover { hoveredID = $0 ? row.id : (hoveredID == row.id ? nil : hoveredID) }
-                            .accessibilityAddTraits(selectedID == row.id ? .isSelected : [])
+                            .accessibilityValue(Text(verbatim: pausedOpen ? "開いています" : "閉じています"))
+                            .accessibilityIdentifier("work.routines.services")
+                            if pausedOpen { ForEach(paused) { catalogRow($0) } }
                         }
                         if loaded && rows.isEmpty && failure == nil {
                             Text(verbatim: kind == .routines ? LAACopy.macNoRoutines : LAACopy.macNoSkills)
@@ -806,7 +831,7 @@ struct LAAWorkDesktopCatalogView: View {
     }
 
     private func move(_ delta: Int) {
-        let ids = rows.map(\.id)
+        let ids = shownRows.map(\.id)
         let index = selectedID.flatMap { ids.firstIndex(of: $0) }
         if let next = LAAWorkDesktopList.next(current: index, count: ids.count, delta: delta) { selectedID = ids[next] }
     }

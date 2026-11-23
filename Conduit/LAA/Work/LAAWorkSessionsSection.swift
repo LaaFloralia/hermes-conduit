@@ -15,7 +15,6 @@ struct LAAWorkSessionsSection: View {
     @State private var projectOrder = false
     @State private var editingProject: LAAWorkProject?
     @State private var projectHome: LAAWorkProject?
-    @State private var showingProjects = false
 
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @State private var search = ""
@@ -58,8 +57,6 @@ struct LAAWorkSessionsSection: View {
                                   identifier: "work.sessions.archiveToggle") {
                     showArchived.toggle(); Task { await load() }
                 }
-                Divider()
-                Button(String("プロジェクトを管理")) { showingProjects = true }.accessibilityIdentifier("work.projects.manage")
             }
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
@@ -120,9 +117,6 @@ struct LAAWorkSessionsSection: View {
         .navigationDestination(item: $projectHome) { project in
             LAAWorkProjectHome(project: project, drafts: drafts)
                 .onAppear { LAAWorkSessionProjects.noteOpened(project.id) }
-        }
-        .navigationDestination(isPresented: $showingProjects) {
-            ScrollView { LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).padding(20) }.navigationTitle(String("プロジェクト"))
         }
         .task(id: linkRequest.generation) { await openLinkedSession() }
         .sheet(isPresented: $showLauncher) {

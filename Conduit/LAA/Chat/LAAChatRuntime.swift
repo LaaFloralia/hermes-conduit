@@ -121,6 +121,16 @@ enum LAAChatModelCatalog {
         provider.name.hasPrefix("claude-subscription-directsdk")
     }
 
+    /// Never offered here (C2, 2026-11-23): GPT's `-900k` variants, even of
+    /// the newest name, and an uncensored model outside the uncensored
+    /// Monet's own chat (laa-dsh lists one for every profile).
+    static func offered(_ id: String, uncensoredProfile: Bool) -> Bool {
+        let key = LAAChatModelAllowList.key(id)
+        if key.hasSuffix("-900k") { return false }
+        if key.contains("uncensored") { return uncensoredProfile }
+        return true
+    }
+
     /// Muse and Dots run only for their own employees (薬用石鹸, Monet（Dots）):
     /// another employee cannot switch to them (owner, 2026-11-23).
     static func isDedicated(model: String, provider: ProviderInfo) -> Bool {
@@ -145,13 +155,16 @@ enum LAAChatModelCatalog {
     /// Hermes' list as it is.
     static func choices(_ providers: [ProviderInfo], visibility: ModelVisibility,
                         runningModel: String?, runningProvider: String?,
-                        allowed: LAAChatModelAllowList? = nil) -> [Choice] {
-        providers.filter { !visibility.hiddenProviders.contains($0.name) }.flatMap { provider in
+                        allowed: LAAChatModelAllowList? = nil, profile: String? = nil) -> [Choice] {
+        // Without a profile (nothing open) the uncensored rule has no chat to apply to.
+        let uncensoredProfile = profile.map { LAAStaff(profile: $0) == .monetUncensored } ?? true
+        return providers.filter { !visibility.hiddenProviders.contains($0.name) }.flatMap { provider in
             let running = runningProvider.map(provider.matches) == true
             let listed = provider.models
                 .filter { !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0.id)") }
                 .filter { !isDedicated(model: $0.id, provider: provider) || ($0.id == runningModel && running) }
                 .filter { allowed?.allows($0.id) != false || ($0.id == runningModel && running) }
+                .filter { offered($0.id, uncensoredProfile: uncensoredProfile) || ($0.id == runningModel && running) }
                 .map { model in
                     Choice(model: model.id, provider: provider.name,
                            providerName: sectionName(provider),
@@ -537,7 +550,8 @@ struct LAAChatModelPickers: View {
             capability = LAAChatFastControl.capability(result.providers, model: result.model, provider: result.provider)
             phase = .ready(LAAChatModelCatalog.choices(result.providers, visibility: appState.modelVisibility,
                                                        runningModel: result.model, runningProvider: result.provider,
-                                                       allowed: LAAChatModelAllowList.current()))
+                                                       allowed: LAAChatModelAllowList.current(),
+                                                       profile: appState.activeProfile))
         } catch {
             guard !Task.isCancelled, sessionID == appState.activeSessionId else { return }
             phase = .failed
@@ -575,7 +589,8 @@ struct LAAChatModelPickers: View {
         capability = LAAChatFastControl.capability(report.providers, model: report.model, provider: report.provider)
         phase = .ready(LAAChatModelCatalog.choices(report.providers, visibility: appState.modelVisibility,
                                                    runningModel: report.model, runningProvider: report.provider,
-                                                   allowed: LAAChatModelAllowList.current()))
+                                                   allowed: LAAChatModelAllowList.current(),
+                                                   profile: appState.activeProfile))
     }
 
     private func changeEffort(_ effort: String) {

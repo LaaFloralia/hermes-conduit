@@ -100,6 +100,7 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 10), .completed, "PATCH carried projectId alone")
     }
 
+
     /// Picks the fixture's one project in the new-session sheet.
     private func chooseProject(_ app: XCUIApplication) {
         let picker = app.descendants(matching: .any)["work.launch.project"].firstMatch
@@ -191,8 +192,7 @@ final class LAAPaseoUITests: XCTestCase {
 
     func testProjectOpensAndArchivesWithASwipe() throws {
         let app = try launchFixture("light")
-        app.buttons["work.sessions.menu"].tap()
-        app.buttons["work.projects.manage"].tap()
+        app.buttons["work.section.projects"].tap()
         let row = app.descendants(matching: .any)["work.project.prj_aaaaaaaaaaaa"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()

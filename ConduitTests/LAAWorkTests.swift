@@ -597,11 +597,12 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNil(try session(#""capabilities":null"#).capabilities)
     }
 
-    /// The board is a section beside Sessions, not a card above them; Sessions
-    /// stays first, so the hub still opens on it (owner, 2026-11-11).
+    /// Projects comes first and Work opens on it (owner, 2026-11-23); the
+    /// board stays a section beside Sessions, not a card above them.
     func testWorkSectionsInTheReadingOrder() {
-        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue), ["sessions", "decisions", "campaigns", "tasks", "routines"])
-        XCTAssertEqual(LAAWorkHub.Section.allCases.first, .sessions)
+        XCTAssertEqual(LAAWorkHub.Section.allCases.map(\.rawValue),
+                       ["projects", "sessions", "decisions", "campaigns", "tasks", "routines"])
+        XCTAssertEqual(LAAWorkHub.Section.allCases.first, .projects)
         XCTAssertFalse(LAAWorkHub.Section.decisions.searchable)
     }
 
@@ -630,6 +631,46 @@ final class LAAWorkTests: XCTestCase {
         }
         XCTAssertEqual(shape, ["[朝]", "06:05 early", "07:30 morning", "[昼]", "12:00 noon", "[夜]", "21:00 night",
                                "[深夜]", "02:15 late", "[時刻未確認]", "- unknown"])
+    }
+
+    /// 「停止中」 holds what is paused, whatever its trigger; a resident or
+    /// manual routine that runs ends the day on 「常時」 (owner, 2026-11-23).
+    func testPausedRoutinesFoldAndResidentOnesEndTheDay() throws {
+        func routine(_ id: String, trigger: String?, state: String?, next: String? = nil) throws -> LAAWorkRoutine {
+            var fields = #""id":"\#(id)","name":"\#(id)""#
+            if let trigger { fields += #","triggerKind":"\#(trigger)""# }
+            if let state { fields += #","state":"\#(state)""# }
+            if let next { fields += #","nextRunAt":"\#(next)""# }
+            // The Bridge's optional author fields (C7, a57066c1) are not shown
+            // and must not break the read.
+            fields += #","authorModel":"gpt-6.2-sol","authorEffort":"high""#
+            return try JSONDecoder().decode(LAAWorkRoutine.self, from: Data("{\(fields)}".utf8))
+        }
+        let rows = [
+            try routine("btc", trigger: "scheduled", state: "paused", next: "2026-11-12T06:00:00+09:00"),
+            try routine("watch", trigger: "service", state: "running"),
+            try routine("hand", trigger: "manual", state: "scheduled"),
+            try routine("odd", trigger: "unknown", state: nil),
+            try routine("held", trigger: "service", state: "paused"),
+            try routine("daily", trigger: "scheduled", state: "scheduled", next: "2026-11-12T07:30:00+09:00"),
+            try routine("legacy", trigger: nil, state: nil, next: "2026-11-12T12:00:00+09:00"),
+        ]
+        let split = LAAWorkRoutineShelf.split(rows)
+        XCTAssertEqual(split.paused.map(\.id), ["btc", "held"])
+        XCTAssertEqual(split.always.map(\.id), ["watch", "hand", "odd"])
+        XCTAssertEqual(split.scheduled.map(\.id), ["daily", "legacy"])
+        XCTAssertEqual(LAAWorkRoutineShelf.pausedTitle(2), "停止中（2）")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let shape = LAAWorkRoutineTree.entries(split.scheduled, always: split.always, calendar: calendar).map { entry -> String in
+            switch entry {
+            case .band(let band): return "[\(band.title)]"
+            case .routine(let routine, let clock): return "\(clock ?? "-") \(routine.id)"
+            }
+        }
+        XCTAssertEqual(shape, ["[朝]", "07:30 daily", "[昼]", "12:00 legacy", "[常時]", "- hand", "- odd", "- watch"])
+        XCTAssertTrue(LAAWorkRoutineShelf.split([try routine("daily", trigger: "scheduled", state: "scheduled")]).paused.isEmpty,
+                      "nothing paused: no 「停止中」")
     }
 
     func testStatusMarksSeparateDoneFromError() throws {

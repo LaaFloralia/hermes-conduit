@@ -76,6 +76,7 @@ struct LAAWorkProjectsSection: View {
         .laaWorkArchivePrompt($archivePrompt)
         .navigationDestination(item: $opened) { project in
             LAAWorkProjectHome(project: project, drafts: drafts)
+                .onAppear { LAAWorkSessionProjects.noteOpened(project.id) }
         }
         .sheet(isPresented: $showNew, onDismiss: { editorID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)

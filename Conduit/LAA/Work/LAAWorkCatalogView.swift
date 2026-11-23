@@ -117,11 +117,41 @@ extension LAAWorkRoutineTime {
     }
 }
 
+/// Where a routine sits on the Routines screen (owner, 2026-11-23): a paused
+/// one under 「停止中」, folded below the day whatever its trigger; a resident
+/// or manual one that runs on the day's 「常時」 band; the rest by the clock.
+enum LAAWorkRoutineShelf {
+    static func isPaused(_ routine: LAAWorkRoutine) -> Bool { routine.state == "paused" }
+    static func isScheduled(_ routine: LAAWorkRoutine) -> Bool {
+        routine.triggerKind == nil || routine.triggerKind == "scheduled"
+    }
+
+    struct Split {
+        var scheduled: [LAAWorkRoutine] = []
+        var always: [LAAWorkRoutine] = []
+        var paused: [LAAWorkRoutine] = []
+    }
+
+    static func split(_ routines: [LAAWorkRoutine]) -> Split {
+        var split = Split()
+        for routine in routines {
+            if isPaused(routine) { split.paused.append(routine) }
+            else if isScheduled(routine) { split.scheduled.append(routine) }
+            else { split.always.append(routine) }
+        }
+        return split
+    }
+
+    static func pausedTitle(_ count: Int) -> String { "停止中（\(count)）" }
+}
+
 /// The routines as a day: morning to late night, each part with its own
 /// point on the line, and the routines in it by the clock.
 enum LAAWorkRoutineTree {
     enum Band: Int, CaseIterable {
-        case morning, daytime, evening, lateNight, unknown
+        /// `always` is never a time of day: it closes the day with the
+        /// resident and manual routines, which run at no clock.
+        case morning, daytime, evening, lateNight, unknown, always
 
         static func of(_ minutes: Int?) -> Band {
             guard let minutes else { return .unknown }
@@ -140,6 +170,7 @@ enum LAAWorkRoutineTree {
             case .evening: String("夜")
             case .lateNight: String("深夜")
             case .unknown: String("時刻未確認")
+            case .always: String("常時")
             }
         }
 
@@ -149,7 +180,7 @@ enum LAAWorkRoutineTree {
             case .daytime: "11–17時"
             case .evening: "17–24時"
             case .lateNight: "0–5時"
-            case .unknown: nil
+            case .unknown, .always: nil
             }
         }
     }
@@ -162,16 +193,22 @@ enum LAAWorkRoutineTree {
     static func clock(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
 
     /// Band points and routines in reading order; an empty band is left out.
-    static func entries(_ routines: [LAAWorkRoutine], calendar: Calendar = .autoupdatingCurrent) -> [Entry] {
+    /// `always` (resident and manual routines) ends the day, by name.
+    static func entries(_ routines: [LAAWorkRoutine], always: [LAAWorkRoutine] = [],
+                        calendar: Calendar = .autoupdatingCurrent) -> [Entry] {
         let timed = routines.map { ($0, LAAWorkRoutineTime.minutes($0, calendar: calendar)) }
         var result: [Entry] = []
-        for band in Band.allCases {
+        for band in Band.allCases where band != .always {
             let rows = timed.filter { Band.of($0.1) == band }.sorted { left, right in
                 left.1 == right.1 ? left.0.name < right.0.name : (left.1 ?? 0) < (right.1 ?? 0)
             }
             guard !rows.isEmpty else { continue }
             result.append(.band(band))
             result += rows.map { .routine($0.0, clock: $0.1.map(clock)) }
+        }
+        if !always.isEmpty {
+            result.append(.band(.always))
+            result += always.sorted { $0.name < $1.name }.map { .routine($0, clock: nil) }
         }
         return result
     }
@@ -244,6 +281,7 @@ struct LAAWorkCatalogView: View {
     /// partial, so the screen says so instead of calling it complete.
     @State private var skipped = 0
     @State private var expandedRoutines = Set<String>()
+    /// 「停止中」 opens on a tap and starts closed.
     @State private var servicesOpen = false
     /// A first read the Bridge was still preparing is asked again, so a cold
     /// cache does not leave "could not load" on screen until someone taps.
@@ -276,8 +314,8 @@ struct LAAWorkCatalogView: View {
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                         .accessibilityIdentifier("work.routines.partial")
                 }
-                let scheduled = shownRoutines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }
-                let entries = LAAWorkRoutineTree.entries(scheduled)
+                let split = LAAWorkRoutineShelf.split(shownRoutines)
+                let entries = LAAWorkRoutineTree.entries(split.scheduled, always: split.always)
                 if !entries.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(entries.indices, id: \.self) { index in
@@ -287,8 +325,7 @@ struct LAAWorkCatalogView: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("work.routines.tree")
                 }
-                let services = shownRoutines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
-                if !services.isEmpty { servicesGroup(services) }
+                if !split.paused.isEmpty { pausedGroup(split.paused) }
                 if showsEmptyState {
                     ContentUnavailableView {
                         Label { Text(verbatim: filtering ? "一致する定期実行はありません" : "定期実行はありません") }
@@ -302,13 +339,13 @@ struct LAAWorkCatalogView: View {
         .accessibilityIdentifier("work.routines")
     }
 
-    /// Persistent, manual and unscheduled jobs stay folded under the day:
-    /// they do not run at a time, so they have no place on it.
-    private func servicesGroup(_ services: [LAAWorkRoutine]) -> some View {
+    /// Paused routines stay folded under the day: they do not run, so they
+    /// have no place on it until resumed.
+    private func pausedGroup(_ services: [LAAWorkRoutine]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { withAnimation(.snappy) { servicesOpen.toggle() } } label: {
                 HStack(spacing: LAASpacing.x2) {
-                    Text(verbatim: "常駐・手動・時刻未確認（\(services.count)）")
+                    Text(verbatim: LAAWorkRoutineShelf.pausedTitle(services.count))
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(LAAColor.secondaryText)

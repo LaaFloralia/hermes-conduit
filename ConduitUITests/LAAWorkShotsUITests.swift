@@ -37,7 +37,8 @@ final class LAAWorkShotsUITests: XCTestCase {
 
     private func listShots(_ theme: String) throws {
         let app = try launch(theme, board: "normal")
-        XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+        XCTAssertTrue(app.buttons["work.section.projects"].isSelected)
+        app.buttons["work.section.sessions"].tap()
         settle()
         capture(app, "list-sessions-\(theme)")
 

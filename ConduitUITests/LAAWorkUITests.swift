@@ -67,7 +67,7 @@ final class LAAWorkUITests: XCTestCase {
 
     private func openScratchProject(_ app: XCUIApplication) -> Bool {
         guard waitUntilReady(app.buttons["work.create"]) else { return false }
-        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        app.buttons["work.section.projects"].tap()
         let row = app.staticTexts["LAA 14i Project Test 20261029"].firstMatch
         guard row.waitForExistence(timeout: 30), reveal(row, in: app) else { return false }
         row.tap()
@@ -261,7 +261,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["文字サイズ"].exists)
         XCTAssertTrue(app.buttons["入力欄を広げる"].exists)
         app.buttons["閉じる"].tap()
-        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        app.buttons["work.section.projects"].tap()
         let addProject = app.buttons["work.projects.new"]
         XCTAssertTrue(addProject.waitForExistence(timeout: 10))
         addProject.tap()
@@ -311,7 +311,7 @@ final class LAAWorkUITests: XCTestCase {
         }
         let app = launchWork()
         guard waitUntilReady(app.buttons["work.create"]) else { XCTFail("Work did not load."); return }
-        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        app.buttons["work.section.projects"].tap()
         let add = app.buttons["work.projects.new"]
         guard waitUntilReady(add) else { XCTFail("Project creation unavailable."); return }
         add.tap()
@@ -480,7 +480,7 @@ final class LAAWorkUITests: XCTestCase {
         }
         let app = launchWork()
         XCTAssertTrue(app.buttons["Projects"].waitForExistence(timeout: 30))
-        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        app.buttons["work.section.projects"].tap()
         let project = app.staticTexts["LAA 14i conflict test"]
         guard project.waitForExistence(timeout: 30) else {
             XCTFail("The synthetic Project did not load.")
@@ -578,7 +578,7 @@ final class LAAWorkUITests: XCTestCase {
         let close = app.buttons["閉じる"]
         XCTAssertTrue(waitUntilReady(close, timeout: 10))
         close.tap()
-        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+        app.buttons["work.section.projects"].tap()
         XCTAssertTrue(app.buttons["work.projects.new"].waitForExistence(timeout: 10))
         let project = app.staticTexts["トレード｜環境認識"].firstMatch
         XCTAssertTrue(project.waitForExistence(timeout: 30))

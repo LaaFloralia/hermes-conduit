@@ -57,7 +57,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 | 順序 | 表示名 | 主な内容 | アイコン |
 |---|---|---|---|
 | 1 | Chats | Monet、社員、グループ、最近 | `bubble.left.and.bubble.right` |
-| 2 | Work | Sessions、Projects、Tasks、Routines | `checklist` |
+| 2 | Work | Projects、Sessions、Decisions、Tasks、Routines（開くとProjects） | `checklist` |
 | 3 | Doc | Recent、Folders、Tags、検索 | `doc.text` |
 | 4 | Assets | Drive、Inspiration、Studio | `photo.on.rectangle` |
 | 5 | Usage | サービスごとのAI利用枠・残高 | `gauge.medium` |
@@ -79,7 +79,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 
 ## Chats：相手を選ぶ一覧
 
-画面上部に `Chats`、検索、新規作成。縦スクロールの順は `Monet`、`Employees`、`Contractors`（派遣社員）、`Groups`（2026-11-23 社長）。Monetは最初に1行で固定し（無検閲Monetはその下のvariant）、Employeesは既存の社員データ、ContractorsはMuse（薬用石鹸）とMonet（Dots）、Groupsは参加中のグループを、折りたたまずに全件表示する。区分は `LAAStaff.placement` が持ち、接続先が区分を返す時はそれを優先する。接続先にいない派遣社員は、使えない社員と同じく押せない行で示す（Recentは2026-11-02に社長の指示で削除。会話の一覧はWorkのSessions）。`+` は既存の作成フローへ進む。未実装の作成操作を成功したように見せない。
+画面上部に `Chats`、検索、新規作成。縦スクロールの順は `Monet`、`Employees`、`Contractors`（派遣社員）、`Groups`（2026-11-23 社長）。Monetは最初に1行で固定し（無検閲Monetはその下のvariant）、Employeesは既存の社員データ、ContractorsはMuse（薬用石鹸）とMonet（Dots）、Groupsは参加中のグループを、折りたたまずに全件表示する。区分は `LAAStaff.placement` がプロフィールIDで持つ（Hermesの `/api/profiles` は区分を返さない）。接続先にいない派遣社員は、使えない社員と同じく押せない行で示す（Recentは2026-11-02に社長の指示で削除。会話の一覧はWorkのSessions）。`+` は既存の作成フローへ進む。未実装の作成操作を成功したように見せない。
 
 社員行は40〜44ptの静止アバター、表示名、役割を並べる。グループ行は参加社員の顔を同じ大きさの枠に重ねて示す（2人は斜め、3人以上は3つの塊、4人以上は3つ目を人数）。実際に取得できない状態や未読数は作らない。検索は相手名・役割・グループ名・メンバーを対象にし、結果なし、読み込み中、接続失敗を区別する。
 
@@ -119,7 +119,7 @@ CallKitの純正画面には任意の3D・動画を置けない。アプリ内�
 
 | 画面 | 構成と操作 | データがない場合 |
 |---|---|---|
-| Work | `Sessions / Projects / Tasks / Routines` を切り替え、進行中と判断待ちを分ける。行には題名、種別、実際の担当を表示 | 0件、未接続、取得失敗を分ける。担当や状態を推測しない |
+| Work | `Projects / Sessions / Decisions / Campaigns / Tasks / Routines` を切り替え（既定はProjects。2026-11-23 社長）、進行中と判断待ちを分ける。行には題名、種別、実際の担当を表示 | 0件、未接続、取得失敗を分ける。担当や状態を推測しない |
 | Doc | `Recent / Folders / Tags`、検索、文書行、フォルダ。本文は紙色の面。編集はMarkdownのまま、見出し・箇条書き・番号・チェック・引用・表を整形して表示し、上部のLiquid Glassの書式メニューで切り替える（2026-11-06 社長指示。タブ表示名はDoc、内部名と保管庫は`brain`のまま） | 0件・未接続・競合を分け、競合は両版への導線を示す |
 | Assets | `Drive / Inspiration / Studio`、検索、種類フィルター、画像・文書の一覧 | 未接続・取得失敗・未対応形式を区別し、開けない理由を示す |
 

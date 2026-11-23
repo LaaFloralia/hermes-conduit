@@ -30,9 +30,8 @@ final class LAAWorkLinearUITests: XCTestCase {
 
     func testFirstProjectToolbarAllowsSharedInstructions() throws {
         let app = try launch()
-        app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
-        app.navigationBars.buttons.firstMatch.tap()
-        app.buttons["work.create"].tap()
+        // Projects is Work's first section; its own button starts a project.
+        app.buttons["work.section.projects"].tap()
         let add = app.buttons["work.projects.new"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         add.tap()
@@ -115,24 +114,37 @@ final class LAAWorkLinearUITests: XCTestCase {
         }
     }
 
-    func testSkillDetailRoutineServiceFoldAndRefresh() throws {
+    func testSkillDetailOpens() throws {
         let app = try launch()
         selectSection(app, "skills")
         let skill = app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch
         XCTAssertTrue(skill.waitForExistence(timeout: 10)); skill.tap()
         XCTAssertTrue(app.staticTexts["社長の指定内容に沿って現職の週報を入力します。"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
+    }
+
+    func testRoutinesFoldThePausedOnesLight() throws { try routines("light") }
+    func testRoutinesFoldThePausedOnesDark() throws { try routines("dark") }
+
+    /// 「停止中（n）」 holds the paused routines, closed at first; resident ones
+    /// end the day on 「常時」 (owner, 2026-11-23).
+    private func routines(_ appearance: String) throws {
+        let app = try launch(appearance)
         selectSection(app, "routines")
         XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["前回"].exists)
-        XCTAssertTrue(app.staticTexts["11月2日 7:30・完了"].exists)
-        XCTAssertTrue(app.staticTexts["次回"].exists)
+        XCTAssertTrue(app.staticTexts["常時"].exists)
         for label in ["最終実行", "業務結果", "配信", "最終結果"] { XCTAssertFalse(app.staticTexts[label].exists) }
-        XCTAssertFalse(app.staticTexts["常駐の確認用"].exists)
-        app.buttons["work.routines.services"].tap()
+        // Resident routines end the day on 「常時」; paused ones fold under 「停止中」.
         XCTAssertTrue(app.staticTexts["常駐の確認用"].exists)
-        app.buttons["work.catalog.refresh"].tap()
-        XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["停止中の確認用"].exists)
+        let paused = app.buttons["work.routines.services"]
+        XCTAssertTrue(paused.label.contains("停止中（1）"), paused.label)
+        XCTAssertEqual(paused.value as? String, "閉じています")
+        attach("work-routine-paused-closed-\(appearance)")
+        paused.tap()
+        XCTAssertTrue(app.staticTexts["停止中の確認用"].waitForExistence(timeout: 5))
+        XCTAssertEqual(paused.value as? String, "開いています")
+        attach("work-routine-paused-open-\(appearance)")
     }
 
     private func capture(_ appearance: String) throws {
@@ -166,9 +178,10 @@ final class LAAWorkLinearUITests: XCTestCase {
                 attach("work-skill-detail-\(appearance)")
                 app.navigationBars.buttons.firstMatch.tap()
             } else if section == "routines" {
+                attach("work-routine-paused-closed-\(appearance)")
                 app.buttons["work.routines.services"].tap()
-                XCTAssertTrue(app.staticTexts["常駐の確認用"].exists)
-                attach("work-routine-services-\(appearance)")
+                XCTAssertTrue(app.staticTexts["停止中の確認用"].exists)
+                attach("work-routine-paused-open-\(appearance)")
             }
         }
         app.buttons["laa.settings.open"].firstMatch.tap()

@@ -13,7 +13,7 @@ final class LAAShellNavigationUITests: XCTestCase {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["work.section.sessions"].isSelected)
+        XCTAssertTrue(app.buttons["work.section.projects"].isSelected, "Work opens on Projects (owner, 2026-11-23)")
         app.buttons["Doc"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
@@ -24,7 +24,7 @@ final class LAAShellNavigationUITests: XCTestCase {
             segment.tap()
         }
         XCTAssertTrue(app.buttons["work.section.routines"].isSelected)
-        XCTAssertFalse(app.buttons["work.section.projects"].exists)
+        XCTAssertTrue(app.buttons["work.section.projects"].exists)
         XCTAssertFalse(app.buttons["work.section.skills"].exists)
         XCTAssertTrue(app.buttons["work.usage"].exists)
         // Unpaired, AI usage waits for the Mac like the other Work sections.

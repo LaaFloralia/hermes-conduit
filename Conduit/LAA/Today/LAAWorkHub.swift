@@ -11,24 +11,25 @@ struct LAAWorkHub: View {
     @StateObject private var usageState = LAAUsageState()
     @StateObject private var decisions = LAADecisionBoard()
     @StateObject private var campaigns = LAACampaignBoard()
-    @State private var section: Section = .sessions
+    @State private var section: Section = .projects
     @State private var showPairing = false
     @State private var showUsage = false
-    @State private var showNewProject = false
     @State private var createID = 0
     @State private var refreshID = 0
     @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var search = ""
     @State private var decisionDevice: String?
 
-    /// Sessions opens first; the board is the section beside it, so what waits
-    /// for the owner is one tap away without pushing the lists down (owner,
-    /// 2026-11-11).
+    /// Projects opens first: opening a project shows its requirements, done
+    /// and under way, with its Sessions (owner, 2026-11-23; Sessions had
+    /// opened first since 2026-11-11). The board stays beside Sessions, so
+    /// what waits for the owner is one tap away.
     enum Section: String, CaseIterable, Identifiable {
-        case sessions, decisions, campaigns, tasks, routines
+        case projects, sessions, decisions, campaigns, tasks, routines
         var id: String { rawValue }
         var title: String {
             switch self {
+            case .projects: String("Projects")
             case .sessions: String("Sessions")
             case .decisions: String("Decisions")
             case .campaigns: LAACampaignCopy.section
@@ -85,13 +86,13 @@ struct LAAWorkHub: View {
                         LAACopy.Usage.lowestWeekly + " " + $0.formatted(.number.precision(.fractionLength(0))) + "%"
                     } ?? LAACopy.notFetched))
                 if section == .sessions {
+                    // A new project is the Projects section's own first button.
                     Menu {
                         Button(String("新しいセッション")) { createID += 1 }.accessibilityIdentifier("work.sessions.new")
-                        Button(String("新しいプロジェクト")) { showNewProject = true }.accessibilityIdentifier("work.projects.new")
                     } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .accessibilityLabel("作成").accessibilityIdentifier("work.create")
                     .disabled(bridge.status != .paired)
-                } else if section != .decisions && section != .campaigns {
+                } else if section != .projects && section != .decisions && section != .campaigns {
                     Button { if section == .routines { section = .tasks }; createID += 1 } label: {
                         Image(systemName: "plus").frame(width: 44, height: 44)
                     }
@@ -138,9 +139,6 @@ struct LAAWorkHub: View {
         }
         .onChange(of: decisions.count, initial: true) { _, count in decisionCount = count }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .sheet(isPresented: $showNewProject) {
-            LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
-        }
         .navigationDestination(isPresented: $showUsage) {
             LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
         }
@@ -148,6 +146,14 @@ struct LAAWorkHub: View {
 
     @ViewBuilder private var sectionContent: some View {
         switch section {
+        case .projects:
+            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID) }
+            else {
+                ScrollView {
+                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search)
+                        .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
+                }.refreshable { refreshID += 1 }
+            }
         case .sessions:
             if laaDesktop { LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0, createID: createID, onCreateConsumed: { createID = 0 }) }
             else {

@@ -38,7 +38,7 @@ final class LAAWorkRefUITests: XCTestCase {
             app.navigationBars.buttons.firstMatch.tap()
         }
         if value == "projects" {
-            app.buttons["work.section.sessions"].tap(); app.buttons["work.sessions.menu"].tap(); app.buttons["work.projects.manage"].tap()
+            app.buttons["work.section.projects"].tap()
         } else if value == "skills" {
             app.buttons["Settings"].tap(); app.buttons["settings.skills"].tap()
         } else { app.buttons["work.section.\(value)"].tap() }
@@ -102,9 +102,7 @@ final class LAAWorkRefUITests: XCTestCase {
         XCTAssertTrue(app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.waitForExistence(timeout: 20))
         app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.tap()
         XCTAssertTrue(app.staticTexts["work.ref.R1"].waitForExistence(timeout: 10))
-        // The disclosure carries one identifier for its subtree, so the
-        // resident routine is matched by its label.
-        app.buttons["work.routines.services"].tap()
+        // The resident routine ends the day on 「常時」, matched by its label.
         app.buttons.containing(.staticText, identifier: "常駐の確認用").firstMatch.tap()
         XCTAssertTrue(app.staticTexts["R2"].waitForExistence(timeout: 10))
 
