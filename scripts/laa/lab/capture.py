@@ -36,7 +36,7 @@ VARIANTS = {
     'light': ('light', 'large', 'large', False, False, False),
     'dark': ('dark', 'large', 'large', False, False, False),
     'long-japanese': ('light', 'large', 'large', False, False, False),
-    'text-mid': ('light', 'accessibility-medium', 'accessibility1', False, False, False),
+    'text-mid': ('light', 'accessibility-extra-large', 'accessibility3', False, False, False),
     'text-max': ('light', 'accessibility-extra-extra-extra-large', 'accessibility5', False, False, False),
     'reduce-motion': ('light', 'large', 'large', True, False, False),
     'reduce-transparency': ('light', 'large', 'large', False, True, False),
@@ -454,7 +454,7 @@ def mac_capture(entries, proof, work, logs, sha, cells, ports, screens):
         owner = f'{screen}-{variant}'
         run(['/bin/bash', MAC_SH, '--skip-build', '--out', base, '--owner', owner, '--sections', mac['section'],
              '--sizes', ','.join(SIZES), '--schemes', theme, '--settle', '1.5',
-             '--app-args', ' '.join(settings), '--app-env', 'CONDUIT_UITEST=1'], log)
+             '--lab-fixture-mode', mode, '--app-args', ' '.join(settings), '--app-env', 'CONDUIT_UITEST=1'], log)
         for size in SIZES:
             raw = base / owner / f'{mac["section"]}-{size}-{theme}.png'
             if not raw.is_file():
@@ -463,11 +463,17 @@ def mac_capture(entries, proof, work, logs, sha, cells, ports, screens):
             dest = work / filename(key)
             dest.parent.mkdir(parents=True, exist_ok=True)
             raw.replace(dest)
-            entries.append(image_entry(work, key, sha, dest.stat().st_mtime))
+            entry = image_entry(work, key, sha, dest.stat().st_mtime)
+            width, height = entry['pixel_size']
+            want_w, want_h = map(int, size.split('x'))
+            if not any(abs(width - want_w * scale) <= 2 * scale and
+                       want_h * scale <= height <= (want_h + 40) * scale for scale in (1, 2)):
+                raise CaptureError(f'Mac PNG dimensions do not match {size} plus title bar: {entry["path"]} ({entry["pixel_size"]})')
+            entries.append(entry)
         if mac.get('observe') and mac['observe'] not in observe(port, '/lab/observed'):
             raise CaptureError(f'{screen}/{variant}: Mac fixture never served {mac["observe"]}')
         proof[f'mac/{variant}'] = {'window': 'screencapture -l (real macdev window)', 'appearance': theme,
-                                   'fixture': mode, 'content_sizes': SIZES}
+                                   'fixture': mode, 'content_sizes': SIZES, 'source': 'SwiftUI + CGWindow bounds'}
 
 
 def capture(args):
@@ -488,7 +494,9 @@ def capture(args):
     logs.mkdir()
     storage(logs)
     sha = run(['git', 'rev-parse', 'HEAD'], logs / 'git.log', data=True)
-    run(['git', 'status', '--short', '--untracked-files=no'], logs / 'git.log')
+    dirty = run(['git', 'status', '--short', '--untracked-files=no'], logs / 'git.log', data=True)
+    if dirty:
+        raise CaptureError('Commit tracked changes before capturing so index app_sha names the source being built')
     # Project generation and DerivedData are worktree-local and must not race
     # a second invocation in the same worktree, even outside the build slot.
     lock_path = ROOT / 'build/capture.lock'

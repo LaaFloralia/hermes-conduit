@@ -22,7 +22,7 @@ struct LAALabCaptureProbe: View {
     private var sizeID: String {
         switch size {
         case .large: "large"
-        case .accessibility1: "accessibility1"
+        case .accessibility3: "accessibility3"
         case .accessibility5: "accessibility5"
         default: String(describing: size)
         }
@@ -37,6 +37,13 @@ struct LAALabCaptureProbe: View {
             .accessibilityLabel(Text(verbatim: traits.joined(separator: ",")))
             .accessibilityIdentifier("laa.lab.capture.traits")
             .allowsHitTesting(false)
+            #if targetEnvironment(macCatalyst)
+            .onChange(of: scheme, initial: true) { _, scheme in
+                let appearance = scheme == .dark ? "dark" : "light"
+                let fixture = LAALabCaptureFixture.longJapanese ? "long" : "normal"
+                FileHandle.standardError.write(Data("LAA_LAB_WINDOW_TRAITS \(appearance) \(fixture)\n".utf8))
+            }
+            #endif
     }
 }
 #endif

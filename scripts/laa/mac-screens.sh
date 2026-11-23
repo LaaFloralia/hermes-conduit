@@ -8,6 +8,7 @@
 #                              [--schemes light,dark] [--skip-build] [--self-render]
 #                              [--app-args "-flag value"] [--app-env "K=V K2=V2"]
 #                              [--build-only] [--settle SECONDS] [--build-log FILE]
+#                              [--lab-fixture-mode normal|long]
 #
 # --app-args adds launch arguments, --app-env adds environment variables. The
 # Chat split needs a dashboard and an open conversation, which the DEBUG
@@ -63,6 +64,7 @@ SKIP_BUILD=0
 BUILD_ONLY=0
 SETTLE=0
 BUILD_LOG=""
+LAB_FIXTURE_MODE=""
 SELF_RENDER=0
 DEV_ID=com.laa-inc.laa.macdev
 DEV_NAME="LAA"
@@ -87,6 +89,7 @@ while [ $# -gt 0 ]; do
     --build-only) BUILD_ONLY=1; shift ;;
     --settle) SETTLE=$2; shift 2 ;;
     --build-log) BUILD_LOG=$2; shift 2 ;;
+    --lab-fixture-mode) LAB_FIXTURE_MODE=$2; shift 2 ;;
     --self-render) SELF_RENDER=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -266,6 +269,15 @@ for section in "${section_list[@]}"; do
       else
         # Fixture data may arrive just after the window's geometry settles.
         [ "$SETTLE" = 0 ] || sleep "$SETTLE"
+        if [ -n "$LAB_FIXTURE_MODE" ]; then
+          observed=$(grep '^LAA_LAB_WINDOW_TRAITS ' "$DERIVED/app.log" | tail -1)
+          if [ "$observed" != "LAA_LAB_WINDOW_TRAITS $scheme $LAB_FIXTURE_MODE" ]; then
+            echo "wrong Mac appearance/fixture for $section $size: $observed" >&2
+            stop_app
+            continue
+          fi
+          echo "$section $size ${ww}x${wh} $observed"
+        fi
         screencapture -x -o -l "$id" "$file"
       fi
       if [ -s "$file" ]; then

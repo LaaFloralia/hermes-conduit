@@ -87,7 +87,13 @@ final class LAAUsageState: ObservableObject {
     init(widgetStore: WidgetSnapshotStore? = WidgetSnapshotStore.production,
          reloadWidgets: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.employee) },
          loader: (@MainActor (LAABridgeSession) async throws -> [LAAUsageItem])? = nil) {
+        #if DEBUG
+        // A capture fixture is intentionally ephemeral. Never publish its
+        // in-memory connection to the widget's shared files or Keychain.
+        self.storage = LAALabCaptureFixture.enabled ? nil : widgetStore.map(LAAUsageStorage.init)
+        #else
         self.storage = widgetStore.map(LAAUsageStorage.init)
+        #endif
         self.reloadWidgets = reloadWidgets
         self.loadUsage = loader ?? { try await Self.loadPages(bridge: $0) }
     }
