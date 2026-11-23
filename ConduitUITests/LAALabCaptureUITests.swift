@@ -217,7 +217,12 @@ final class LAALabCaptureUITests: XCTestCase {
 
     @discardableResult private func wait(_ id: String, _ app: XCUIApplication) -> XCUIElement {
         let item = element(id, app)
-        XCTAssertTrue(item.waitForExistence(timeout: 15), "Missing AX identifier: \(id)")
+        if !item.waitForExistence(timeout: 15) {
+            // Only this synthetic app instance; keep the tree in the text
+            // log after the runner removes the failed xcresult bundle.
+            print("LAA_LAB_MISSING_AX \(id)\n\(app.debugDescription)")
+            XCTFail("Missing AX identifier: \(id)")
+        }
         return item
     }
 
