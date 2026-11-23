@@ -278,9 +278,16 @@ targets:
     if len(matches) != 1:
         raise RuntimeError(f"Missing or ambiguous {SCHEME} .xctestrun")
     debug = product / "Debug-iphonesimulator"
-    binaries = [debug / "Conduit.app/Conduit",
+    app = debug / "Conduit.app"
+    binaries = [app / "Conduit", *sorted(app.glob("*.debug.dylib")),
                 debug / "ConduitUITests-Runner.app/PlugIns/ConduitUITests.xctest/ConduitUITests", matches[0]]
-    signature["build_products"] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in binaries}
+    signature["build_products"] = {}
+    for path in binaries:
+        digest = hashlib.sha256()
+        with path.open("rb") as f:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                digest.update(block)
+        signature["build_products"][path.name] = digest.hexdigest()
     if reuse:
         if not stamp.exists() or json.loads(stamp.read_text()) != signature:
             raise RuntimeError("--reuse-build needs the exact same build SHA/settings/runtime and binaries")
