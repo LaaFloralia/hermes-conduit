@@ -114,7 +114,8 @@ enum LAAChatModelCatalog {
     /// Models LAA runs on the Claude subscription that the Claude CLI's own
     /// picker (where Hermes reads this provider's list) does not name yet.
     /// Hermes takes them by id, so they are offered ahead of the listed ones.
-    static let subscriptionExtras = ["claude-fable-5-2", "claude-mythos-5-2"]
+    /// Fable left the lineup and Mythos took its part (owner, 2026-11-23).
+    static let subscriptionExtras = ["claude-mythos-5-2"]
 
     static func isClaudeSubscription(_ provider: ProviderInfo) -> Bool {
         provider.name.hasPrefix("claude-subscription-directsdk")
@@ -137,13 +138,20 @@ enum LAAChatModelCatalog {
         routeNames.first { provider.matches($0.key) }?.value ?? provider.displayName ?? provider.name
     }
 
+    /// `allowed` is LAA's lineup (LAAChatModelAllowList): Hermes lists every
+    /// model its routes know, old ones included, and cannot be narrowed, so
+    /// a model the lineup does not name is left out here. The chat's running
+    /// model always stays, so a chat on an old one carries on. Nil shows
+    /// Hermes' list as it is.
     static func choices(_ providers: [ProviderInfo], visibility: ModelVisibility,
-                        runningModel: String?, runningProvider: String?) -> [Choice] {
+                        runningModel: String?, runningProvider: String?,
+                        allowed: LAAChatModelAllowList? = nil) -> [Choice] {
         providers.filter { !visibility.hiddenProviders.contains($0.name) }.flatMap { provider in
             let running = runningProvider.map(provider.matches) == true
             let listed = provider.models
                 .filter { !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0.id)") }
                 .filter { !isDedicated(model: $0.id, provider: provider) || ($0.id == runningModel && running) }
+                .filter { allowed?.allows($0.id) != false || ($0.id == runningModel && running) }
                 .map { model in
                     Choice(model: model.id, provider: provider.name,
                            providerName: sectionName(provider),
@@ -155,6 +163,7 @@ enum LAAChatModelCatalog {
             let named = Set(provider.models.map { $0.id.replacingOccurrences(of: "[1m]", with: "") })
             let extras = subscriptionExtras
                 .filter { !named.contains($0) && !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0)") }
+                .filter { allowed?.allows($0) != false || ($0 == runningModel && running) }
                 .map { id in
                     Choice(model: id, provider: provider.name, providerName: sectionName(provider),
                            label: LAAModelCapsule.readableName(id) ?? id, reasoning: true,
@@ -181,7 +190,7 @@ enum LAAChatModelCatalog {
         // Hermes agent/reasoning_effort.py CODEX_ASTRA_EFFORTS and the
         // OpenAI Astra model contract: none/minimal are rejected.
         if ["openai-codex", "codex", "openai"].contains(provider ?? ""),
-           ["gpt-6-astra", "gpt-6-astra-900k"].contains(model ?? "") {
+           LAAChatModelAllowList.key(model ?? "").hasPrefix("gpt-6"), (model ?? "").lowercased().contains("astra") {
             return ["low", "medium", "high", "xhigh", "max"]
         }
         // Gemini 4 through Antigravity: Low to XHigh (agy's thinking levels).
@@ -198,6 +207,93 @@ enum LAAChatModelCatalog {
         case idle, loading, failed
         case ready([Choice])
     }
+}
+
+/// LAA's model lineup for Chat: the models the Work catalog names (the
+/// Bridge's session options, which come from the engine's catalog.json:
+/// the latest of each tier, owner 2026-11-23). It is the one source; the
+/// app holds no list of its own. Ids are compared without their route
+/// ("openai-api:", "anthropic:", a JSON route's last element), the 1M
+/// context mark, a date or an effort suffix, so Hermes' and Work's ids for
+/// the same model meet. The last list read is kept on the device for when
+/// the Bridge cannot be read; with none, Chat shows Hermes' list unfiltered.
+struct LAAChatModelAllowList: Equatable, Codable {
+    let keys: Set<String>
+
+    init(keys: Set<String>) { self.keys = keys }
+
+    init?(options: LAAWorkSessionOptions) {
+        let ids = options.profiles.map(\.model) + (options.switchProfiles ?? []).map(\.model)
+            + (options.efforts ?? []).map(\.model)
+        let keys = Set(ids.map(Self.key).filter { !$0.isEmpty })
+        guard !keys.isEmpty else { return nil }
+        self.keys = keys
+    }
+
+    func allows(_ id: String) -> Bool {
+        let key = Self.key(id)
+        return keys.contains(key) || keys.contains(Self.withoutEffort(key))
+    }
+
+    /// One model's id in a form every route shares.
+    static func key(_ id: String) -> String {
+        var raw = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if raw.hasPrefix("["), let data = raw.data(using: .utf8),
+           let route = try? JSONDecoder().decode([String].self, from: data), let last = route.last {
+            raw = last.lowercased()
+        }
+        if let bracket = raw.firstIndex(of: "[") { raw = String(raw[..<bracket]) }
+        if let colon = raw.lastIndex(of: ":") { raw = String(raw[raw.index(after: colon)...]) }
+        if let slash = raw.lastIndex(of: "/") { raw = String(raw[raw.index(after: slash)...]) }
+        raw = raw.replacingOccurrences(of: ".", with: "-")
+        if let date = raw.firstMatch(of: #/-\d{8}$/#) { raw.removeSubrange(date.range) }
+        return raw
+    }
+
+    private static func withoutEffort(_ key: String) -> String {
+        guard let suffix = key.firstMatch(of: #/-(?:low|medium|high|xhigh|max)$/#) else { return key }
+        var trimmed = key
+        trimmed.removeSubrange(suffix.range)
+        return trimmed
+    }
+
+    // MARK: The device's copy
+
+    static let storageKey = "laa.chat.modelAllowList"
+    @MainActor private static var memory: LAAChatModelAllowList?
+    @MainActor private static weak var bridge: LAABridgeSession?
+
+    /// The lineup Chat filters with now: the last one read, or nil.
+    @MainActor static func current(_ defaults: UserDefaults = .standard) -> LAAChatModelAllowList? {
+        if let memory { return memory }
+        guard let data = defaults.data(forKey: storageKey),
+              let saved = try? JSONDecoder().decode(Self.self, from: data), !saved.keys.isEmpty else { return nil }
+        memory = saved
+        return saved
+    }
+
+    /// Keeps the lineup a Work catalog read returned.
+    @MainActor static func record(_ options: LAAWorkSessionOptions, defaults: UserDefaults = .standard) {
+        guard let list = LAAChatModelAllowList(options: options) else { return }
+        memory = list
+        if let data = try? JSONEncoder().encode(list) { defaults.set(data, forKey: storageKey) }
+    }
+
+    /// Reads the Work catalog (shared with Work's screens, so at most one
+    /// read a minute) and keeps its lineup. Without a bridge given, the last
+    /// one Chat was shown with is used.
+    @MainActor static func refresh(_ given: LAABridgeSession? = nil) async {
+        if let given { bridge = given }
+        guard let bridge, bridge.status == .paired else { return }
+        _ = try? await LAAWorkOptionsStore.read(bridge)
+    }
+
+    #if DEBUG
+    @MainActor static func resetForTesting() { memory = nil; bridge = nil }
+    #endif
+}
+
+extension LAAChatModelCatalog {
 
     /// Why the model menu offers nothing, or nil.
     static func modelLock(sessionID: String?, connected: Bool, phase: Phase, switching: Bool) -> String? {
@@ -432,12 +528,16 @@ struct LAAChatModelPickers: View {
             phase = .idle; capability = nil; return
         }
         phase = .loading
+        // The lineup is read beside Hermes' list, never in its way: this
+        // load filters with the one kept, the next with the fresh one.
+        Task { await LAAChatModelAllowList.refresh() }
         do {
             let result = try await operations.options(sessionID)
             guard !Task.isCancelled, sessionID == appState.activeSessionId else { return }
             capability = LAAChatFastControl.capability(result.providers, model: result.model, provider: result.provider)
             phase = .ready(LAAChatModelCatalog.choices(result.providers, visibility: appState.modelVisibility,
-                                                       runningModel: result.model, runningProvider: result.provider))
+                                                       runningModel: result.model, runningProvider: result.provider,
+                                                       allowed: LAAChatModelAllowList.current()))
         } catch {
             guard !Task.isCancelled, sessionID == appState.activeSessionId else { return }
             phase = .failed
@@ -474,7 +574,8 @@ struct LAAChatModelPickers: View {
         appState.laaApplyChatModelReport(sessionID: sessionID, model: report.model, provider: report.provider, effort: nil)
         capability = LAAChatFastControl.capability(report.providers, model: report.model, provider: report.provider)
         phase = .ready(LAAChatModelCatalog.choices(report.providers, visibility: appState.modelVisibility,
-                                                   runningModel: report.model, runningProvider: report.provider))
+                                                   runningModel: report.model, runningProvider: report.provider,
+                                                   allowed: LAAChatModelAllowList.current()))
     }
 
     private func changeEffort(_ effort: String) {

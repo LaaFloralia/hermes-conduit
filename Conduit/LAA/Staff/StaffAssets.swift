@@ -11,6 +11,38 @@ enum LAAStaff: String, CaseIterable {
         self.init(rawValue: String(profile.dropFirst(4)))
     }
 
+    /// Where a person sits in Chat (owner, 2026-11-23): Monet at the top,
+    /// then the employees, then the contractors (派遣社員: Muse and Dots),
+    /// then the groups.
+    enum Placement: String, CaseIterable {
+        case monet, employee, contractor
+
+        /// A group the Bridge or Hermes names (`group` on a roster row).
+        init?(reported: String?) {
+            switch reported?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "monet", "secretary": self = .monet
+            case "employee", "employees", "staff", "社員": self = .employee
+            case "contractor", "contractors", "dispatch", "dispatched", "派遣社員": self = .contractor
+            default: return nil
+            }
+        }
+    }
+
+    /// The fixed placement. A group reported by the host wins (`placement(reported:)`).
+    var placement: Placement {
+        switch self {
+        case .monet, .monetUncensored: return .monet
+        case .monetDots, .soap: return .contractor
+        case .argus, .cfo, .cio, .cos, .cso, .cto: return .employee
+        }
+    }
+
+    /// The host's placement when it names one, else the fixed one.
+    func placement(reported: String?) -> Placement { Placement(reported: reported) ?? placement }
+
+    /// The people of one group, in the list's order.
+    static func members(of placement: Placement) -> [LAAStaff] { allCases.filter { $0.placement == placement } }
+
     /// In-app calls (GPT Live). Dots replies through its text bridge; its
     /// phone hands the call to the owner's own ChatGPT dot (`dotCallURL`).
     var supportsCalls: Bool { self != .monetUncensored && self != .monetDots && self != .soap }

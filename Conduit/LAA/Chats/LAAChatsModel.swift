@@ -8,7 +8,30 @@ struct LAAChatsPerson: Identifiable, Equatable {
     let available: Bool
     var lastMessage: String? = nil
     var lastMessageAt: Date? = nil
+    /// The group the host reported for this person, if any (LAAStaff.Placement).
+    var reportedGroup: String? = nil
     var id: String { profile }
+
+    var staff: LAAStaff? { LAAStaff(profile: profile) }
+    /// Where the list puts this person; nil for a profile LAA does not know.
+    var placement: LAAStaff.Placement? { staff?.placement(reported: reportedGroup) }
+}
+
+/// The Chat list's sections, in order: Monet (with its uncensored variant),
+/// the employees, the contractors. Groups follow them.
+enum LAAChatsPlacement {
+    static func monet(_ people: [LAAChatsPerson]) -> LAAChatsPerson? {
+        people.first { $0.staff == .monet }
+    }
+
+    /// Monet's own variants under it: only the uncensored one (Dots is a contractor).
+    static func monetVariants(_ people: [LAAChatsPerson]) -> [LAAChatsPerson] {
+        people.filter { $0.staff != .monet && $0.placement == .monet }
+    }
+
+    static func people(_ people: [LAAChatsPerson], in placement: LAAStaff.Placement) -> [LAAChatsPerson] {
+        people.filter { $0.staff != .monet && $0.placement == placement }
+    }
 }
 
 enum LAAChatsLoadState: Equatable {

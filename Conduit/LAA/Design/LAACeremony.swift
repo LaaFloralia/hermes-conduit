@@ -12,7 +12,7 @@ import UIKit
 enum LAASelectionStep: Equatable {
     /// Every other model, and Low to High: the plain Liquid Glass.
     case plain
-    /// Mythos, Astra, Fable and Neon on the model capsule.
+    /// Mythos, Astra and Neon on the model capsule.
     case model
     case xhigh, max, ultracode
 
@@ -27,14 +27,14 @@ enum LAASelectionStep: Equatable {
     }
 }
 
-/// Mythos, Fable, Astra and Gemini 4 Neon (2026-11-23) wear the model step;
-/// every other model is plain.
+/// Mythos, Astra and Gemini 4 Neon (2026-11-23) wear the model step;
+/// every other model is plain. Fable left the lineup (owner, 2026-11-23:
+/// Mythos takes its part), so an old chat still on it reads plain.
 enum LAAModelRank: Equatable {
-    case mythos, fable, astra, neon, none
+    case mythos, astra, neon, none
     static func of(_ model: String?) -> LAAModelRank {
         let raw = (model ?? "").lowercased()
         if raw.contains("mythos") { return .mythos }
-        if raw.contains("fable") { return .fable }
         if raw.contains("astra") { return .astra }
         if raw.contains("gemini") && raw.contains("neon") || raw.hasPrefix("neon") { return .neon }
         return .none

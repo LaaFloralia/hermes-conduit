@@ -31,12 +31,6 @@ enum LAAAppSelectionTokens {
         ink: .init(dark: .init(r: 0.84, g: 0.9, b: 1.0), light: .init(r: 0.13, g: 0.3, b: 0.6)),
         lightColor: .init(dark: .init(r: 0.93, g: 0.96, b: 1.0), light: .init(r: 1.0, g: 0.99, b: 0.97)),
         glow: .init(r: 0.27, g: 0.55, b: 1.0))
-    static let fable = Model(strength: 0.8, tileScale: 1.0, speed: 1.0,
-        bodyTop: .init(dark: .init(r: 0.95, g: 0.54, b: 0.2), light: .init(r: 1.0, g: 0.94, b: 0.86)),
-        bodyBottom: .init(dark: .init(r: 0.36, g: 0.14, b: 0.04), light: .init(r: 0.98, g: 0.75, b: 0.55)),
-        ink: .init(dark: .init(r: 1.0, g: 0.9, b: 0.78), light: .init(r: 0.58, g: 0.3, b: 0.1)),
-        lightColor: .init(dark: .init(r: 1.0, g: 0.96, b: 0.9), light: .init(r: 1.0, g: 0.99, b: 0.97)),
-        glow: .init(r: 1.0, g: 0.55, b: 0.24))
     static let neon = Model(strength: 0.8, tileScale: 1.0, speed: 1.0,
         bodyTop: .init(dark: .init(r: 0.118, g: 0.42, b: 0.439), light: .init(r: 0.875, g: 0.918, b: 0.898)),
         bodyBottom: .init(dark: .init(r: 0.059, g: 0.106, b: 0.11), light: .init(r: 0.459, g: 0.765, b: 0.765)),

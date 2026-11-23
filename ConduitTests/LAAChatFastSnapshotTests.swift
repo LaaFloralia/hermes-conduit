@@ -56,8 +56,8 @@ final class LAAChatFastSnapshotTests: XCTestCase {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
                 row("Opus 5.5 · High · 通常", composer("claude-opus-5-5", "claude", "high", fast(.normal)))
                 row("Opus 5.5 · High · Fast・応答中", composer("claude-opus-5-5", "claude", "high", fast(.fast), running: true))
-                row("GPT 6 Astra · XHigh · 通常（Ultrafastあり）", composer("gpt-6-astra", "openai-codex", "xhigh", fast(.normal, ultrafast: true)))
-                row("GPT 6 Astra · XHigh · Ultrafast", composer("gpt-6-astra", "openai-codex", "xhigh", fast(.ultrafast, ultrafast: true)))
+                row("GPT 6.2 Astra · XHigh · 通常（Ultrafastあり）", composer("gpt-6.2-astra", "openai-codex", "xhigh", fast(.normal, ultrafast: true)))
+                row("GPT 6.2 Astra · XHigh · Ultrafast", composer("gpt-6.2-astra", "openai-codex", "xhigh", fast(.ultrafast, ultrafast: true)))
                 row("Mythos 5.2 · Max · Fast", composer("claude-mythos-5-2", "claude", "max", fast(.fast)))
                 row("Mythos 5.2 · Ultra Code · Fast・応答中", composer("claude-mythos-5-2", "claude", "ultracode", fast(.fast), running: true))
                 row("DeepSeek · High · 変更中", composer("deepseek-v4.1-flash", "laa-dsh", "high", fast(.normal, writing: true), changing: true))

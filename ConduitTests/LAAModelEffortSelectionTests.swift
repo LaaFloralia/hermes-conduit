@@ -77,8 +77,9 @@ final class LAAModelEffortSelectionTests: XCTestCase {
     }
 
     /// The Claude CLI's picker, where Hermes reads the subscription's models,
-    /// names neither yet; Hermes switches to them by id.
-    func testTheClaudeSubscriptionOffersFableAndMythosAheadOfItsListedModels() {
+    /// does not name Mythos yet; Hermes switches to it by id. Fable is no
+    /// longer added (owner, 2026-11-23: Mythos takes its part).
+    func testTheClaudeSubscriptionOffersMythosAheadOfItsListedModels() {
         let slug = "claude-subscription-directsdk-experimental"
         let listed = [ModelInfo(id: "claude-opus-5-5[1m]", label: nil, reasoningCapable: true),
                       ModelInfo(id: "claude-fable-5-1[1m]", label: nil, reasoningCapable: true)]
@@ -86,16 +87,116 @@ final class LAAModelEffortSelectionTests: XCTestCase {
                          ProviderInfo(name: "anthropic", models: [ModelInfo(id: "claude-opus-5-5", label: nil, reasoningCapable: true)])]
         let choices = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(),
                                                   runningModel: "claude-mythos-5-2", runningProvider: slug)
-        XCTAssertEqual(choices.map(\.label), ["Fable 5.2", "Mythos 5.2", "Opus 5.5", "Fable 5.1", "Opus 5.5"])
-        XCTAssertEqual(choices.prefix(2).map(\.model), ["claude-fable-5-2", "claude-mythos-5-2"])
+        XCTAssertEqual(choices.map(\.label), ["Mythos 5.2", "Opus 5.5", "Fable 5.1", "Opus 5.5"])
+        XCTAssertEqual(choices.first?.model, "claude-mythos-5-2")
+        XCTAssertFalse(choices.contains { $0.model == "claude-fable-5-2" }, "Fable is not added")
         XCTAssertEqual(choices.filter(\.current).map(\.model), ["claude-mythos-5-2"], "the running model is checked though unlisted")
-        XCTAssertTrue(choices.prefix(2).allSatisfy { $0.provider == slug && $0.reasoning })
+        XCTAssertTrue(choices.prefix(1).allSatisfy { $0.provider == slug && $0.reasoning })
         // Once the picker names one, or the owner hides one, it is not added again.
-        let named = [ProviderInfo(name: slug, models: listed + [ModelInfo(id: "claude-fable-5-2[1m]", label: nil, reasoningCapable: true)])]
+        let named = [ProviderInfo(name: slug, models: listed + [ModelInfo(id: "claude-mythos-5-2[1m]", label: nil, reasoningCapable: true)])]
+        XCTAssertEqual(LAAChatModelCatalog.choices(named, visibility: ModelVisibility(), runningModel: nil, runningProvider: nil).map(\.model),
+                       ["claude-opus-5-5[1m]", "claude-fable-5-1[1m]", "claude-mythos-5-2[1m]"])
         var hidden = ModelVisibility()
         hidden.hiddenModels = ["\(slug)\u{1F}claude-mythos-5-2"]
-        XCTAssertEqual(LAAChatModelCatalog.choices(named, visibility: hidden, runningModel: nil, runningProvider: nil).map(\.model),
-                       ["claude-opus-5-5[1m]", "claude-fable-5-1[1m]", "claude-fable-5-2[1m]"])
+        XCTAssertEqual(LAAChatModelCatalog.choices(providers, visibility: hidden, runningModel: nil, runningProvider: nil).map(\.model),
+                       ["claude-opus-5-5[1m]", "claude-fable-5-1[1m]", "claude-opus-5-5"])
+    }
+
+    /// Hermes lists every model its routes know; Chat offers only the ones the
+    /// Work catalog names (owner, 2026-11-23: the latest of each tier). The
+    /// chat's running model stays, so a chat on an old one carries on.
+    func testChatOffersOnlyTheWorkCatalogsLineup() throws {
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(#"""
+        {"profiles":[
+          {"id":"opus-high","label":"Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"high","fast":false},
+          {"id":"mythos-high","label":"Mythos 5.2","provider":"claude","model":"claude-mythos-5-2","effort":"high","fast":false},
+          {"id":"sol-high","label":"GPT-6.2 Sol","provider":"codex","model":"gpt-6.2-sol","effort":"high","fast":true},
+          {"id":"astra-high","label":"GPT-6.2 Astra","provider":"codex","model":"gpt-6.2-astra","effort":"high","fast":true},
+          {"id":"dsh-high","label":"DeepSeek","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","effort":"high","fast":false},
+          {"id":"neon-high","label":"Gemini 4 Neon","provider":"antigravity","model":"gemini-4-neon","effort":"high","fast":false},
+          {"id":"gptapi-high","label":"GPT-6.2 Sol（API）","provider":"hermes-openai-api","model":"openai-api:gpt-6.2-sol","effort":"high","fast":false}
+        ],"defaultProfile":"opus-high","defaultMode":"bypass"}
+        """#.utf8))
+        let lineup = try XCTUnwrap(LAAChatModelAllowList(options: options))
+        func info(_ id: String) -> ModelInfo { ModelInfo(id: id, label: nil, reasoningCapable: true) }
+        let slug = "claude-subscription-directsdk-experimental"
+        let providers = [
+            ProviderInfo(name: slug, models: ["claude-opus-5-5[1m]", "claude-fable-5-2[1m]", "claude-opus-4-8", "claude-sonnet-4-5-20250929"].map(info)),
+            ProviderInfo(name: "openai-codex", models: ["gpt-6.2-sol", "gpt-6.1-sol", "gpt-6-astra", "gpt-6.2-astra", "gpt-5.5"].map(info)),
+            ProviderInfo(name: "laa-dsh", models: ["deepseek-v4.1-flash", "deepseek-v4-pro"].map(info)),
+            ProviderInfo(name: "laa-agy", models: ["gemini-4-neon-high", "gemini-3-pro"].map(info)),
+            ProviderInfo(name: "gpt-api", models: ["openai-api:gpt-6.2-sol", "openai-api:gpt-5.5"].map(info)),
+        ]
+        let shown = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(), runningModel: "gpt-6.1-sol",
+                                                runningProvider: "openai-codex", allowed: lineup)
+        XCTAssertEqual(shown.map(\.model), ["claude-mythos-5-2", "claude-opus-5-5[1m]",
+                                             "gpt-6.2-sol", "gpt-6.1-sol", "gpt-6.2-astra",
+                                             "deepseek-v4.1-flash", "gemini-4-neon-high", "openai-api:gpt-6.2-sol"])
+        XCTAssertEqual(shown.filter(\.current).map(\.model), ["gpt-6.1-sol"], "the chat's old model stays and is checked")
+        XCTAssertFalse(shown.contains { $0.label.contains("Fable") })
+        // Without a lineup, Hermes' list is shown as it is.
+        let unfiltered = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(), runningModel: nil, runningProvider: nil)
+        XCTAssertEqual(unfiltered.count, 1 + providers.map(\.models.count).reduce(0, +))
+        // Ids from different routes meet.
+        XCTAssertEqual(LAAChatModelAllowList.key(#"["opencode-go","deepseek-v4.1-flash"]"#), "deepseek-v4-1-flash")
+        XCTAssertEqual(LAAChatModelAllowList.key("anthropic:claude-opus-5-5"), "claude-opus-5-5")
+        XCTAssertEqual(LAAChatModelAllowList.key("claude-opus-5-5[1m]"), "claude-opus-5-5")
+        XCTAssertEqual(LAAChatModelAllowList.key("anthropic/claude-opus-5.5"), "claude-opus-5-5")
+        XCTAssertEqual(LAAChatModelAllowList.key("claude-sonnet-5-5-20261001"), "claude-sonnet-5-5")
+        XCTAssertFalse(lineup.allows("claude-sonnet-4-5-20250929"))
+    }
+
+    /// Hermes' real `model.options` for Monet (2026-11-23, C2): the Codex and
+    /// Claude subscription rows carry every old model; the lineup keeps the
+    /// latest of each tier, and Mythos is added to the subscription.
+    func testHermesRealListNarrowsToTheLineup() {
+        let catalog = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-mythos-5-2",
+                       "gpt-6.2-sol", "gpt-6.1-terra", "gpt-6-luna", "gpt-6.2-astra",
+                       #"["opencode-go","deepseek-v4.1-flash"]"#, #"["venice","deepseek-v4-1-flash-1017-uncensored"]"#,
+                       "anthropic:claude-opus-5-5", "openai-api:gpt-6.2-sol", "gemini-4-neon", "gemini-4-hydrogen", "dots"]
+        let lineup = LAAChatModelAllowList(keys: Set(catalog.map(LAAChatModelAllowList.key)))
+        let rows: [(String, [String])] = [
+            ("openai-codex", ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6.1-sol-900k", "gpt-6-astra", "gpt-6-astra-900k", "gpt-6-sol", "gpt-6-sol-900k", "gpt-6-luna", "gpt-6-luna-900k", "gpt-5.6-sol", "gpt-5.6-sol-900k", "gpt-5.6-terra", "gpt-5.6-terra-900k", "gpt-5.6-luna", "gpt-5.6-luna-900k"]),
+            ("laa-agy", ["gemini-4-neon", "gemini-4-hydrogen"]),
+            ("laa-dsh", ["deepseek-v4.1-flash", "deepseek-v4-1-flash-1017-uncensored"]),
+            ("claude-subscription-directsdk-experimental", ["claude-sonnet-5-5[1m]", "claude-sonnet-5[1m]", "claude-haiku-5-5[1m]", "claude-haiku-4-5-20251001", "claude-opus-5-5[1m]", "claude-opus-5[1m]", "claude-opus-4-8[1m]", "claude-fable-5-1[1m]", "claude-fable-5-2"]),
+            ("gpt-api", ["gpt-6.2-sol", "gpt-6.1-terra", "gpt-6-luna", "gpt-6.2-astra"]),
+            ("claude-api", ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-mythos-5-2"])
+        ]
+        let providers = rows.map { name, ids in
+            ProviderInfo(name: name, models: ids.map { ModelInfo(id: $0, label: nil, reasoningCapable: true) })
+        }
+        let shown = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(), runningModel: "gemini-4-neon",
+                                                runningProvider: "laa-agy", allowed: lineup)
+        let byProvider = Dictionary(grouping: shown, by: \.provider).mapValues { $0.map(\.model) }
+        XCTAssertEqual(byProvider["openai-codex"], ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6-luna"])
+        XCTAssertEqual(byProvider["claude-subscription-directsdk-experimental"],
+                       ["claude-mythos-5-2", "claude-sonnet-5-5[1m]", "claude-haiku-5-5[1m]", "claude-opus-5-5[1m]"])
+        XCTAssertEqual(byProvider["gpt-api"]?.count, 4)
+        XCTAssertEqual(byProvider["claude-api"]?.count, 4)
+        XCTAssertEqual(byProvider["laa-agy"], ["gemini-4-neon", "gemini-4-hydrogen"])
+        XCTAssertFalse(shown.contains { $0.model.contains("fable") || $0.model.contains("900k") || $0.model.hasPrefix("gpt-5") })
+    }
+
+    /// The lineup read last is kept on the device for when the Bridge cannot
+    /// be read; nothing kept means no filter.
+    @MainActor func testTheLineupIsKeptOnTheDevice() throws {
+        let suite = "laa.test.lineup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite); LAAChatModelAllowList.resetForTesting() }
+        LAAChatModelAllowList.resetForTesting()
+        XCTAssertNil(LAAChatModelAllowList.current(defaults))
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(#"""
+        {"profiles":[{"id":"sol-high","label":"GPT-6.2 Sol","provider":"codex","model":"gpt-6.2-sol","effort":"high","fast":true}],
+         "defaultProfile":"sol-high","defaultMode":"bypass"}
+        """#.utf8))
+        LAAChatModelAllowList.record(options, defaults: defaults)
+        LAAChatModelAllowList.resetForTesting()
+        XCTAssertEqual(LAAChatModelAllowList.current(defaults)?.keys, ["gpt-6-2-sol"], "read back from the device after a restart")
+        // An empty catalog does not replace the kept lineup.
+        LAAChatModelAllowList.record(try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(#"{"profiles":[],"defaultProfile":null,"defaultMode":null}"#.utf8)),
+                                     defaults: defaults)
+        XCTAssertEqual(LAAChatModelAllowList.current(defaults)?.keys, ["gpt-6-2-sol"])
     }
 
     func testChatLocksSayWhy() {
@@ -120,8 +221,9 @@ final class LAAModelEffortSelectionTests: XCTestCase {
 
     func testStandingIsMarbleByStepWithMythosTheStrongest() {
         XCTAssertEqual(LAAModelRank.of("claude-mythos-5-2").step, .model)
-        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").step, .model)
-        XCTAssertEqual(LAAModelRank.of("gpt-6-astra").step, .model)
+        // Fable left the lineup (owner, 2026-11-23): an old chat on it reads plain.
+        XCTAssertEqual(LAAModelRank.of("claude-fable-5-2").step, .plain)
+        XCTAssertEqual(LAAModelRank.of("gpt-6.2-astra").step, .model)
         XCTAssertEqual(LAAModelRank.of("claude-opus-5-5").step, .plain, "owner, 2026-11-14 22:00: Opus is plain glass")
         XCTAssertEqual(LAAModelRank.of("gpt-6.1-sol").step, .plain)
         XCTAssertEqual(LAAModelRank.of("deepseek-v4.1-flash").step, .plain)
@@ -143,13 +245,12 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(LAAEffort.name("ultracode"), "Ultra Code")
         XCTAssertEqual(LAAModelRank.mythos.tone, .mythos)
         XCTAssertEqual(LAAModelRank.astra.tone, .astra)
-        XCTAssertEqual(LAAModelRank.fable.tone, .fable)
         XCTAssertEqual(LAAModelRank.none.tone, .stone)
-        // Mythos > Astra = Fable; XHigh < Max < Ultra Code (appSelection).
+        // Mythos > Astra = Neon; XHigh < Max < Ultra Code (appSelection).
         let mythos = LAASelectionStyle(tone: .mythos, step: .model)
-        let astra = LAASelectionStyle(tone: .astra, step: .model), fable = LAASelectionStyle(tone: .fable, step: .model)
+        let astra = LAASelectionStyle(tone: .astra, step: .model), neon = LAASelectionStyle(tone: .neon, step: .model)
         XCTAssertGreaterThan(mythos.intensity, astra.intensity)
-        XCTAssertEqual(astra.intensity, fable.intensity)
+        XCTAssertEqual(astra.intensity, neon.intensity)
         let xhigh = LAASelectionStyle(tone: .stone, step: .xhigh), max = LAASelectionStyle(tone: .stone, step: .max)
         let ultra = LAASelectionStyle(tone: .stone, step: .ultracode)
         XCTAssertLessThan(xhigh.intensity, max.intensity)

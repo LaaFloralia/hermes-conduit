@@ -9,6 +9,13 @@ struct LAAWorkInitialInstruction: View {
     @Environment(\.dismiss) private var dismiss
     let sessionID: String
     let sessionName: String
+    /// The Session and the projects it can move to; nil hides the project row.
+    var session: LAAWorkSession? = nil
+    var projects: [LAAWorkProject] = []
+    var onMoved: (LAAWorkSession) -> Void = { _ in }
+    @State private var moved: LAAWorkSession?
+    @State private var moveFailure: String?
+    @State private var moving = false
     struct Instruction: Decodable {
         let text: String
         let createdAt: String
@@ -19,6 +26,36 @@ struct LAAWorkInitialInstruction: View {
     @State private var failed = false
     @State private var copied: Copied? = nil
     private enum Copied { case name, instruction }
+
+    /// The project the Session is in, and 「プロジェクトを変更」.
+    @ViewBuilder private func projectRow(_ current: LAAWorkSession) -> some View {
+        Text(verbatim: "プロジェクト").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+        HStack(spacing: LAASpacing.x2) {
+            Text(verbatim: projects.first { $0.id == current.projectId }?.name ?? "未確認")
+                .laaTextStyle(.body)
+                .accessibilityIdentifier("work.initialInstruction.project")
+            Spacer(minLength: 0)
+            if moving { ProgressView() }
+            LAAWorkProjectMoveMenu(session: current, projects: projects) { project in
+                Task { await move(current, to: project) }
+            }
+            .disabled(moving)
+        }
+        if let moveFailure {
+            Text(verbatim: moveFailure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+        }
+    }
+
+    @MainActor private func move(_ current: LAAWorkSession, to project: LAAWorkProject) async {
+        moving = true; defer { moving = false }
+        do {
+            let updated = try await LAAWorkSessionProjects.move(current, to: project, bridge: bridge)
+            moved = updated; moveFailure = nil
+            onMoved(updated)
+        } catch {
+            moveFailure = LAAWorkSessionProjects.failure(error)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -32,6 +69,10 @@ struct LAAWorkInitialInstruction: View {
                         .accessibilityIdentifier("work.initialInstruction.name")
                     copyButton(.name, value: sessionName, label: "名前をコピー")
                         .accessibilityIdentifier("work.initialInstruction.copyName")
+                    if let current = moved ?? session {
+                        Divider()
+                        projectRow(current)
+                    }
                     Divider()
                     Text(verbatim: "最初の指示").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
                     if let instruction = response?.instruction {

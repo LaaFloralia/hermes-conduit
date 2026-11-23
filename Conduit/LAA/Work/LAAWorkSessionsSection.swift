@@ -117,7 +117,10 @@ struct LAAWorkSessionsSection: View {
         .sheet(item: $editingProject, onDismiss: { Task { await load() } }) { project in
             LAAWorkProjectEditor(project: project, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
-        .navigationDestination(item: $projectHome) { LAAWorkProjectHome(project: $0, drafts: drafts) }
+        .navigationDestination(item: $projectHome) { project in
+            LAAWorkProjectHome(project: project, drafts: drafts)
+                .onAppear { LAAWorkSessionProjects.noteOpened(project.id) }
+        }
         .navigationDestination(isPresented: $showingProjects) {
             ScrollView { LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).padding(20) }.navigationTitle(String("プロジェクト"))
         }
@@ -183,6 +186,9 @@ struct LAAWorkSessionsSection: View {
                             }
                             Button { toggleArchive(session) } label: {
                                 Label { Text(verbatim: session.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
+                            }
+                            LAAWorkProjectMoveMenu(session: session, projects: projects) { project in
+                                Task { await move(session, to: project) }
                             }
                         }
                         if !folded.isEmpty && !searching {
@@ -265,6 +271,19 @@ struct LAAWorkSessionsSection: View {
     private func toggleArchive(_ session: LAAWorkSession) {
         if session.isArchived { Task { await update(session, archived: false) }; return }
         archivePrompt = .session(session) { Task { await update(session, archived: true) } }
+    }
+
+    /// Moves the Session (and its children, on the Bridge) to another project.
+    @MainActor private func move(_ session: LAAWorkSession, to project: LAAWorkProject) async {
+        openRow = nil
+        do {
+            let updated = try await LAAWorkSessionProjects.move(session, to: project, bridge: bridge)
+            if let index = sessions.firstIndex(where: { $0.id == updated.id }) { sessions[index] = updated }
+            failure = nil
+            await load()
+        } catch {
+            failure = LAAWorkSessionProjects.failure(error)
+        }
     }
 
     @MainActor private func update(_ session: LAAWorkSession, favorite: Bool? = nil, archived: Bool? = nil) async {

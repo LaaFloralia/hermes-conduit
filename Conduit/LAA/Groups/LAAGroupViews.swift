@@ -19,6 +19,20 @@ struct LAAGroupSelection {
 }
 
 @MainActor
+/// Who a new group can include, sectioned as the Chat list is. The
+/// uncensored Monet stays out of groups.
+enum LAAGroupCandidates {
+    struct Section { let title: String; var spoken: String? = nil; let staff: [LAAStaff] }
+
+    static var sections: [Section] {
+        [Section(title: LAACopy.groupSelectEmployees, staff: [.monet]),
+         Section(title: LAACopy.chatsEmployees, staff: LAAStaff.members(of: .employee)),
+         Section(title: LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, staff: LAAStaff.members(of: .contractor))]
+    }
+
+    static var all: [LAAStaff] { sections.flatMap(\.staff) }
+}
+
 struct LAAGroupListView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -87,7 +101,7 @@ struct LAAGroupCreateView: View {
     @State private var failed = false
 
     private var available: [BotProfile] {
-        roster.filter { bot in LAAWidgetEmployee.forProfile(bot.name) != nil && LAAWidgetEmployee.forProfile(bot.name) != .monetUncensored && !bot.isHiddenByMeta }
+        roster.filter { bot in LAAGroupCandidates.all.contains { "laa-\($0.rawValue)" == bot.name } && !bot.isHiddenByMeta }
     }
     private var selection: LAAGroupSelection {
         var selection = LAAGroupSelection(available: Set(available.map(\.name)))
@@ -100,25 +114,32 @@ struct LAAGroupCreateView: View {
             Section(LAACopy.groupName) {
                 TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.create.name")
             }
-            Section {
-                ForEach(LAAWidgetEmployee.allCases.filter { $0 != .monetUncensored }, id: \.self) { employee in
-                    let isAvailable = available.contains { $0.name == employee.profile }
-                    Button {
-                        var next = selection
-                        next.toggle(employee.profile)
-                        selected = next.selected
-                    } label: {
-                        HStack {
-                            Text(employee.name)
-                            Spacer()
-                            if !isAvailable { Text(verbatim: "接続先にいません").font(.caption).foregroundStyle(.secondary) }
-                            else { Image(systemName: selected.contains(employee.profile) ? "checkmark.circle.fill" : "circle") }
+            // The same placement and order as the Chat list: Monet, the
+            // employees, then the contractors (owner, 2026-11-23).
+            ForEach(LAAGroupCandidates.sections, id: \.title) { section in
+                Section {
+                    ForEach(section.staff, id: \.self) { staff in
+                        let profile = "laa-\(staff.rawValue)"
+                        let isAvailable = available.contains { $0.name == profile }
+                        Button {
+                            var next = selection
+                            next.toggle(profile)
+                            selected = next.selected
+                        } label: {
+                            HStack {
+                                Text(verbatim: LAAChatPerson.name(staff.name))
+                                Spacer()
+                                if !isAvailable { Text(verbatim: "接続先にいません").font(.caption).foregroundStyle(.secondary) }
+                                else { Image(systemName: selected.contains(profile) ? "checkmark.circle.fill" : "circle") }
+                            }
                         }
+                        .disabled(!isAvailable || creating)
+                        .accessibilityIdentifier("groups.employee.\(profile)")
                     }
-                    .disabled(!isAvailable || creating)
-                    .accessibilityIdentifier("groups.employee.\(employee.profile)")
+                } header: {
+                    Text(verbatim: section.title).accessibilityLabel(Text(verbatim: section.spoken ?? section.title))
                 }
-            } header: { Text(verbatim: LAACopy.groupSelectEmployees) }
+            }
             if failed { Text(verbatim: "作成できませんでした。接続先と選択した社員を確認して再試行してください。")
                 .foregroundStyle(.red) }
         }

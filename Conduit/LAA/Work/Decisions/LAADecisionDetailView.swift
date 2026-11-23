@@ -36,6 +36,10 @@ struct LAADecisionDetailView: View {
         self.drafts = drafts
         self.onAnswered = onAnswered
         self.onFinished = onFinished
+        // An answer typed before and not yet taken comes back with the decision.
+        let draft = board.noteDrafts[item.id] ?? ""
+        _note = State(initialValue: draft)
+        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { _choice = State(initialValue: .other) }
         _undelivered = State(initialValue: item.deliveryFailed ? LAADecisionCopy.deliveryError(item.delivery?.error)
                              : item.deliveryWaiting ? LAADecisionCopy.waitingDetail : nil)
     }
@@ -208,12 +212,19 @@ struct LAADecisionDetailView: View {
                     .strokeBorder(selected ? LAAColor.link : LAAColor.separator, lineWidth: selected ? 1.5 : 1))
                 .accessibilityLabel(Text(verbatim: LAADecisionCopy.otherTitle))
                 .accessibilityIdentifier("work.decision.note")
+            if let count = LAADecisionCopy.noteCount(note) {
+                Text(verbatim: count.text).laaTextStyle(.secondary)
+                    .foregroundStyle(count.over ? LAAColor.attention : LAAColor.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("work.decision.note.count")
+            }
         }
         .padding(.top, LAASpacing.x3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
         .accessibilityIdentifier("work.decision.otherSection")
         .onChange(of: note) { _, value in
+            board.noteDrafts[item.id] = value.isEmpty ? nil : value
             let written = !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if written { choice = .other }
             else if choice == .other { choice = nil }
@@ -303,6 +314,7 @@ struct LAADecisionDetailView: View {
     // MARK: Send
 
     private var canSend: Bool {
+        if LAADecisionCopy.noteLength(note) > LAADecisionCopy.noteLimit { return false }
         switch choice {
         case .option?: return true
         case .other?: return !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

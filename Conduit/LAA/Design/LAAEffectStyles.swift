@@ -10,14 +10,13 @@ import UIKit
 /// Whose look a strong selection wears: the stone (a strong effort under any
 /// other model), or one model's own colour.
 enum LAAVeinTone: Equatable, CaseIterable {
-    case stone, mythos, astra, fable, neon
+    case stone, mythos, astra, neon
 
     var tokens: LAAAppSelectionTokens.Model {
         switch self {
         case .stone: LAAAppSelectionTokens.stone
         case .mythos: LAAAppSelectionTokens.mythos
         case .astra: LAAAppSelectionTokens.astra
-        case .fable: LAAAppSelectionTokens.fable
         case .neon: LAAAppSelectionTokens.neon
         }
     }
@@ -28,7 +27,6 @@ extension LAAModelRank {
         switch self {
         case .mythos: .mythos
         case .astra: .astra
-        case .fable: .fable
         case .neon: .neon
         case .none: .stone
         }
@@ -41,7 +39,7 @@ extension LAAAppSelectionTokens.RGB {
 
 /// The look of one capsule, worked out from `appSelection.formula`:
 /// I = models[tone].strength × steps[step].intensity, every layer's strength
-/// following I and capped at 1. Mythos is the strongest, Astra and Fable
+/// following I and capped at 1. Mythos is the strongest, Astra and Neon
 /// next; XHigh < Max < Ultra Code; High and below (and other models) plain.
 struct LAASelectionStyle: Equatable {
     struct RGB: Equatable {

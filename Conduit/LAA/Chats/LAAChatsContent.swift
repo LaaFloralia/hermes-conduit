@@ -26,15 +26,21 @@ struct LAAChatsContent: View {
     @FocusState private var focusedRow: String?
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var monet: LAAChatsPerson? { snapshot.people.first { LAAStaff(profile: $0.profile) == .monet } }
+    private var monet: LAAChatsPerson? { LAAChatsPlacement.monet(snapshot.people) }
     private var employees: [LAAChatsPerson] {
-        snapshot.people.filter { LAAStaff(profile: $0.profile).map { [.monet, .monetDots, .monetUncensored].contains($0) } != true && LAAChatsSearch.person($0, matches: query) }
+        LAAChatsPlacement.people(snapshot.people, in: .employee).filter { LAAChatsSearch.person($0, matches: query) }
+    }
+    /// 派遣社員: Muse (薬用石鹸) and Monet（Dots） (owner, 2026-11-23).
+    private var contractors: [LAAChatsPerson] {
+        LAAChatsPlacement.people(snapshot.people, in: .contractor).filter { LAAChatsSearch.person($0, matches: query) }
     }
     private var rooms: [GroupRoom] { snapshot.rooms.filter { LAAChatsSearch.room($0, matches: query) } }
     private var matchingMonet: LAAChatsPerson? {
         monet.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
     }
-    private var hasResults: Bool { matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !rooms.isEmpty }
+    private var hasResults: Bool {
+        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !contractors.isEmpty || !rooms.isEmpty
+    }
 
     private var failure: String? {
         switch snapshot.groupsState {
@@ -72,6 +78,10 @@ struct LAAChatsContent: View {
                 } else {
                     if let monet, matchingMonet != nil || !monetVariants.isEmpty { monetSection(monet) }
                     if !searching || !employees.isEmpty { employeeSection }
+                    if !contractors.isEmpty {
+                        peopleSection(LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, contractors,
+                                      identifier: "laa.chats.contractors")
+                    }
                     if !searching || !rooms.isEmpty { groupSection }
                     if searching { searchIncomplete }
                 }
@@ -117,6 +127,7 @@ struct LAAChatsContent: View {
         if let monet = matchingMonet, monet.available { ids.append("person.\(monet.profile)") }
         ids += monetVariants.filter(\.available).map { "person.\($0.profile)" }
         ids += employees.filter(\.available).map { "person.\($0.profile)" }
+        ids += contractors.filter(\.available).map { "person.\($0.profile)" }
         if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
         return ids
     }
@@ -133,7 +144,7 @@ struct LAAChatsContent: View {
     private func rowTarget(_ id: String) -> LAAChatsRowTarget? {
         if id.hasPrefix("person.") {
             let profile = String(id.dropFirst("person.".count))
-            let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees)
+            let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees + contractors)
             return people.first { $0.profile == profile }.map(LAAChatsRowTarget.person)
         }
         let roomID = String(id.dropFirst("room.".count))
@@ -188,10 +199,7 @@ struct LAAChatsContent: View {
     }
 
     private var monetVariants: [LAAChatsPerson] {
-        let order: [LAAStaff] = [.monetDots, .monetUncensored]
-        return order.flatMap { variant in
-            snapshot.people.filter { LAAStaff(profile: $0.profile) == variant && LAAChatsSearch.person($0, matches: query) }
-        }
+        LAAChatsPlacement.monetVariants(snapshot.people).filter { LAAChatsSearch.person($0, matches: query) }
     }
 
     private func monetSection(_ monet: LAAChatsPerson) -> some View {
@@ -232,7 +240,7 @@ struct LAAChatsContent: View {
                 Button { openPerson(person) } label: {
                     HStack(spacing: 12) {
                         avatar(profile: person.profile, name: person.name, size: 36)
-                        Text(verbatim: LAAStaff(profile: person.profile) == .monetDots ? "Monet · Dots" : "Monet · 無検閲")
+                        Text(verbatim: LAAChatPerson.name(person.name))
                             .font(.custom("Georgia", size: 17, relativeTo: .body))
                         Spacer(minLength: 0)
                     }.frame(minHeight: 56).contentShape(Rectangle())
@@ -250,19 +258,33 @@ struct LAAChatsContent: View {
             } else if employees.isEmpty {
                 note(LAACopy.chatsNoEmployees)
             } else {
-                VStack(spacing: 0) {
-                ForEach(employees) { employee in
-                    Button { openPerson(employee) } label: { personRow(employee, size: Self.personAvatarSize, selected: isSelected("person.\(employee.profile)")) }
-                        .buttonStyle(LAAListRowStyle())
-                        .disabled(!employee.available)
-                        .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))
-                        .accessibilityAddTraits(isSelected("person.\(employee.profile)") ? .isSelected : [])
-                        .accessibilityIdentifier("laa.chats.person.\(employee.profile)")
-                        .modifier(rowChrome("person.\(employee.profile)"))
-                        .focused($focusedRow, equals: "person.\(employee.profile)")
-                        .onHover(perform: hover("person.\(employee.profile)"))
-                }
-                }
+                personRows(employees)
+            }
+        }
+    }
+
+    /// A section of people under its heading, drawn as the employees are.
+    private func peopleSection(_ title: String, spoken: String, _ people: [LAAChatsPerson], identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            sectionHeader(title).accessibilityLabel(Text(verbatim: spoken))
+            personRows(people)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func personRows(_ people: [LAAChatsPerson]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(people) { employee in
+                Button { openPerson(employee) } label: { personRow(employee, size: Self.personAvatarSize, selected: isSelected("person.\(employee.profile)")) }
+                    .buttonStyle(LAAListRowStyle())
+                    .disabled(!employee.available)
+                    .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))
+                    .accessibilityAddTraits(isSelected("person.\(employee.profile)") ? .isSelected : [])
+                    .accessibilityIdentifier("laa.chats.person.\(employee.profile)")
+                    .modifier(rowChrome("person.\(employee.profile)"))
+                    .focused($focusedRow, equals: "person.\(employee.profile)")
+                    .onHover(perform: hover("person.\(employee.profile)"))
             }
         }
     }

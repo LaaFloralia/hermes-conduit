@@ -22,6 +22,7 @@ final class LAAPaseoUITests: XCTestCase {
         let field = app.textViews["work.launch.composer.field"]
         let start = app.buttons["work.launch.composer.send"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
+        chooseProject(app)
         _ = try control("/launch/fail")
         for n in 1...3 {
             field.tap(); field.typeText("independent-\(n)")
@@ -52,6 +53,61 @@ final class LAAPaseoUITests: XCTestCase {
     /// one-line row: no heading card, no second title, no dictation.
     func testSessionHeaderIsTheBarAndTheRowIsOneLine() throws {
         for theme in ["light", "dark"] { try verifySessionDetail(theme) }
+    }
+
+    /// Every Session goes into a project (owner, 2026-11-23): with no
+    /// project to start in, 開始 stays off and the sheet says why; the chosen
+    /// one goes with the request, and a Session moves from its row's menu.
+    func testANewSessionNeedsAProjectAndASessionCanMove() throws {
+        let app = try launchFixture("light")
+        defer { app.terminate() }
+        func control(_ path: String) throws -> [String: Any] {
+            let data = try Data(contentsOf: URL(string: "http://127.0.0.1:19596\(path)")!)
+            let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            return try XCTUnwrap(object?["data"] as? [String: Any])
+        }
+        app.buttons["work.create"].tap()
+        app.buttons["work.sessions.new"].tap()
+        let field = app.textViews["work.launch.composer.field"]
+        let start = app.buttons["work.launch.composer.send"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap(); field.typeText("project-required")
+        let required = app.staticTexts["work.launch.project.required"]
+        XCTAssertTrue(required.waitForExistence(timeout: 5), "the sheet says a project is needed")
+        XCTAssertFalse(start.isEnabled, "開始 waits for a project")
+        capture(app, "launch-project-required", "light")
+        chooseProject(app)
+        XCTAssertFalse(required.exists)
+        XCTAssertTrue(start.isEnabled)
+        capture(app, "launch-project-chosen", "light")
+        start.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.detail.title"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertEqual(try control("/launch/state")["projects"] as? [String], ["prj_aaaaaaaaaaaa"])
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        row.press(forDuration: 1.2)
+        let move = app.buttons["プロジェクトを変更"].firstMatch
+        XCTAssertTrue(move.waitForExistence(timeout: 5), "the row's menu has 「プロジェクトを変更」")
+        move.tap()
+        let target = app.buttons["試験プロジェクト"].firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        capture(app, "session-move-project", "light")
+        target.tap()
+        let moved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? control("/state"))?["rootProject"] as? String == "prj_aaaaaaaaaaaa"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 10), .completed, "PATCH carried projectId alone")
+    }
+
+    /// Picks the fixture's one project in the new-session sheet.
+    private func chooseProject(_ app: XCUIApplication) {
+        let picker = app.descendants(matching: .any)["work.launch.project"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        picker.tap()
+        let item = app.buttons["試験プロジェクト"].firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        item.tap()
     }
 
     func testUnavailableMuseIsVisibleWithItsLimitsAndCannotBeSelected() throws {
@@ -239,7 +295,9 @@ final class LAAPaseoUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance,
-                               "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
+                               "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
+                               // Each run starts with no project remembered.
+                               "-laa.work.lastProject", ""]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19596"
         app.launch()
         let connect = app.buttons["work.connect"]

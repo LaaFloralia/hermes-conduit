@@ -30,6 +30,10 @@ import SwiftUI
     private var requestIDs: [String: LAABridgeIdempotencyKey] = [:]
 
     @Published private(set) var records: [String: LAADecision] = [:]
+    /// What the owner typed for each open decision, kept until the answer is
+    /// recorded: a refused or failed send leaves it to send again, and
+    /// reopening the decision finds it.
+    var noteDrafts: [String: String] = [:]
     private var sendingIDs = Set<String>()
     private var writeRevisions: [String: Int] = [:]
 
@@ -122,8 +126,12 @@ import SwiftUI
         guard current.status == "open" else { return .failed("この判断はすでに閉じられています。") }
         let key = requestIDs[item.id] ?? LAABridgeIdempotencyKey()
         requestIDs[item.id] = key
-        return await send(item, path: "/v1/decisions/\(item.id)/answer", key: key, bridge: bridge,
-                          body: Self.answerBody(optionIndex: optionIndex, note: note, requestId: key.value))
+        if let note, !note.isEmpty { noteDrafts[item.id] = note }
+        let outcome = await send(item, path: "/v1/decisions/\(item.id)/answer", key: key, bridge: bridge,
+                                 body: Self.answerBody(optionIndex: optionIndex, note: note, requestId: key.value))
+        if case .failed = outcome { return outcome }
+        noteDrafts[item.id] = nil
+        return outcome
     }
 
     func retry(_ item: LAADecision, bridge: LAABridgeSession) async -> Outcome {

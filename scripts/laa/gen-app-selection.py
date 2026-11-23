@@ -78,7 +78,8 @@ def render(sel, neon):
         "    struct Step: Equatable { let intensity: Double, tileScale: Double, hair: Double, speed: Double }",
         "",
     ]
-    for key in ("mythos", "astra", "fable", "neon", "stone"):
+    # Fable left the lineup (owner, 2026-11-23); its tokens, while present, are not read.
+    for key in ("mythos", "astra", "neon", "stone"):
         t = m[key]
         b = t["body"]
         lines.append(

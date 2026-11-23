@@ -20,8 +20,11 @@ enum LAAWorkModelPreferences {
     }
 }
 
-/// New session: the request, an optional project and the model. Always runs in
-/// /Users/laa (no worktree choice) and, unless switched off, without permission prompts.
+/// New session: the request, its project and the model. Every Session is
+/// started inside a project (owner, 2026-11-23): the one it was opened from,
+/// else the last one used, else the owner chooses one (or creates one here).
+/// Always runs in /Users/laa (no worktree choice) and, unless switched off,
+/// without permission prompts.
 struct LAAWorkSessionLauncher: View {
     private struct Request: Codable {
         let requestId: String
@@ -33,7 +36,7 @@ struct LAAWorkSessionLauncher: View {
     }
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dismiss) private var dismiss
-    let projects: [LAAWorkProject]
+    @State private var projects: [LAAWorkProject]
     @ObservedObject var drafts: ComposerDraftStore
     let onCreated: (LAAWorkSession) -> Void
 
@@ -46,14 +49,22 @@ struct LAAWorkSessionLauncher: View {
     @State private var revision: UInt64 = 0
     @State private var starting = false
     @State private var error: String?
+    @State private var creatingProject = false
+    @AppStorage(LAAWorkSessionProjects.lastKey) private var lastProject = ""
     @AppStorage(LAAWorkModelPreferences.favoritesKey) private var favoritesRaw = "[]"
     @AppStorage(LAAWorkModelPreferences.lastKey) private var lastRaw = ""
 
     init(projects: [LAAWorkProject], options: LAAWorkSessionOptions?, drafts: ComposerDraftStore,
          projectID: String = "", onCreated: @escaping (LAAWorkSession) -> Void) {
-        self.projects = projects; self.drafts = drafts; self.onCreated = onCreated
+        self.drafts = drafts; self.onCreated = onCreated
+        _projects = State(initialValue: projects)
         _options = State(initialValue: options)
-        _projectID = State(initialValue: projectID)
+        _projectID = State(initialValue: LAAWorkSessionProjects.initialID(
+            given: projectID, last: UserDefaults.standard.string(forKey: LAAWorkSessionProjects.lastKey) ?? "", in: projects))
+    }
+
+    private var chosenProject: LAAWorkProject? {
+        LAAWorkSessionProjects.choices(projects).first { $0.id == projectID }
     }
 
     private var favorites: [LAAWorkModelFavorite] { LAAWorkModelPreferences.decode(favoritesRaw) }
@@ -65,7 +76,7 @@ struct LAAWorkSessionLauncher: View {
         return drafts.submissions.filter { $0.key == key }
     }
     private var canStart: Bool {
-        selected != nil && selected?.available != false && !starting && !drafts.persistenceFailed
+        selected != nil && selected?.available != false && chosenProject != nil && !starting && !drafts.persistenceFailed
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -86,7 +97,7 @@ struct LAAWorkSessionLauncher: View {
                     if !favorites.isEmpty { favoriteChips }
                     LAAWorkComposer(text: $prompt, revision: $revision, placeholder: "依頼内容",
                                     enabled: !starting && !drafts.persistenceFailed,
-                                    canSend: selected != nil && selected?.available != false,
+                                    canSend: selected != nil && selected?.available != false && chosenProject != nil,
                                     onChange: saveDraft, onSubmit: start, submitLabel: "開始",
                                     accessibilityPrefix: "work.launch.composer")
                     Text(verbatim: "/Users/laa で開始 · " + (bypass ? "確認なしで実行" : "操作ごとに確認"))
@@ -111,32 +122,71 @@ struct LAAWorkSessionLauncher: View {
             }
         }
         .onChange(of: projectID) { _, _ in applyProjectDefault() }
+        .sheet(isPresented: $creatingProject, onDismiss: { Task { await adoptCreatedProject() } }) {
+            LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+        }
         .tint(LAAColor.link)
         .laaSheetSize(.form)
         .task(id: bridge.revision) {
             if let key { revision &+= 1; prompt = drafts.draft(for: key).text }
             if let refreshed = try? await LAAWorkOptionsStore.read(bridge) { options = refreshed }
             applyInitialModel()
+            // Opened before the list had its projects: read them here, so the
+            // required choice is never empty for want of a read.
+            if LAAWorkSessionProjects.choices(projects).isEmpty,
+               let loaded: [LAAWorkProject] = try? await LAAWorkPaging.all(bridge, "/v1/projects") {
+                projects = loaded
+                if chosenProject == nil {
+                    projectID = LAAWorkSessionProjects.initialID(given: projectID, last: lastProject, in: loaded)
+                }
+            }
         }
     }
 
+    /// The project is required: until one is chosen the capsule says so in
+    /// the attention colour and 開始 stays off.
     private var projectPicker: some View {
-        Menu {
-            Button { projectID = "" } label: { Text(verbatim: "プロジェクトなし") }
-            ForEach(projects) { item in
-                Button { projectID = item.id } label: { Text(verbatim: item.name) }
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            Menu {
+                ForEach(LAAWorkSessionProjects.choices(projects)) { item in
+                    Toggle(isOn: Binding(get: { item.id == projectID }, set: { if $0 { projectID = item.id } })) {
+                        Text(verbatim: item.name)
+                    }
+                    .accessibilityIdentifier("work.launch.project.\(item.id)")
+                }
+                Section {
+                    Button { creatingProject = true } label: {
+                        Label { Text(verbatim: "新しいプロジェクト") } icon: { Image(systemName: "folder.badge.plus") }
+                    }
+                    .accessibilityIdentifier("work.launch.project.new")
+                }
+            } label: {
+                HStack(spacing: LAASpacing.x2) {
+                    Image(systemName: "folder")
+                    Text(verbatim: chosenProject?.name ?? "プロジェクトを選択").lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 11))
+                }
+                .laaTextStyle(.secondary).foregroundStyle(chosenProject == nil ? LAAColor.attention : LAAColor.text)
+                .padding(.horizontal, LAASpacing.x3).frame(minHeight: 36)
+                .background(LAAColor.subtleSurface, in: Capsule())
             }
-        } label: {
-            HStack(spacing: LAASpacing.x2) {
-                Image(systemName: "folder")
-                Text(verbatim: projects.first { $0.id == projectID }?.name ?? "プロジェクトなし").lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11))
+            .accessibilityLabel(Text(verbatim: "プロジェクト"))
+            .accessibilityValue(Text(verbatim: chosenProject?.name ?? "未選択"))
+            .accessibilityIdentifier("work.launch.project")
+            if chosenProject == nil {
+                Text(verbatim: "セッションはプロジェクトの中に作ります。プロジェクトを選んでください。")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityIdentifier("work.launch.project.required")
             }
-            .laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
-            .padding(.horizontal, LAASpacing.x3).frame(minHeight: 36)
-            .background(LAAColor.subtleSurface, in: Capsule())
         }
-        .accessibilityIdentifier("work.launch.project")
+    }
+
+    /// After the new-project sheet closes, the project it made is chosen.
+    @MainActor private func adoptCreatedProject() async {
+        guard let loaded: [LAAWorkProject] = try? await LAAWorkPaging.all(bridge, "/v1/projects") else { return }
+        let made = LAAWorkSessionProjects.created(before: projects, after: loaded)
+        projects = loaded
+        if let made { projectID = made.id }
     }
 
     /// The control layer of the sheet: the model and the effort, each its
@@ -315,9 +365,10 @@ struct LAAWorkSessionLauncher: View {
     }
 
     private func start() {
-        guard canStart, let key, let selected else { return }
+        guard canStart, let key, let selected, let project = chosenProject else { return }
+        lastProject = project.id
         let request = Request(requestId: UUID().uuidString.lowercased(), profile: selected.id, prompt: prompt,
-                              projectId: projectID.isEmpty ? nil : projectID,
+                              projectId: project.id,
                               mode: bypass ? "bypass" : "default", fast: fast && selected.fast)
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         guard let body = try? encoder.encode(request),

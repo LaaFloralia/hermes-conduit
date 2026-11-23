@@ -205,7 +205,11 @@ struct LAAWorkSessionDetail: View {
                 }
             }
         }
-        .sheet(isPresented: $showingInitialInstruction) { LAAWorkInitialInstruction(sessionID: id, sessionName: session?.name ?? "").environmentObject(bridge) }
+        .sheet(isPresented: $showingInitialInstruction) {
+            LAAWorkInitialInstruction(sessionID: id, sessionName: session?.name ?? "", session: session,
+                                      projects: projects) { moved in session = moved }
+                .environmentObject(bridge)
+        }
         .onChange(of: session?.needsDecision) { _, waiting in
             guard waiting == true else { parkedOnDecision = false; return }
             guard didInitialScroll, !userDragged else { return }

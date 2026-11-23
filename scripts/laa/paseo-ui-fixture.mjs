@@ -8,13 +8,14 @@ let longList = false;
 let failLaunch = false;
 let launchAttempts = 0;
 let launches = [];
+let rootProject = null;
 const projectID = 'prj_aaaaaaaaaaaa';
 let projectArchivedAt = null;
 const project = () => ({ id: projectID, name: '試験プロジェクト', nameSource: 'owner', instructionHash: null, instructionVersion: 0, instructions: null,
   fileCount: 0, files: [], version: 1, etag: '"1"', createdAt: stamp, updatedAt: stamp, archivedAt: projectArchivedAt });
 const model = { provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' };
 const row = (id, name, parentId, phase) => ({ id, name, parentId, requestId: id, workspaceId: 'home', cwd: '/Users/laa', profile: 'sol-high',
-  requested: model, observed: model, phase, favorite: id === rootID && favorite,
+  requested: model, observed: model, phase, favorite: id === rootID && favorite, projectId: id === rootID ? rootProject : null,
   pending: { count: phase === 'awaiting_decision' ? 1 : 0 }, createdAt: stamp, updatedAt: stamp,
   capabilities: { model: true }, events: { lastSeq: 1, oldestSeq: 1, cursor: 'fixture' } });
 const rows = () => [row(rootID, '移行の動作確認', null, 'running'), row(childID, '子｜資料の確認', rootID, replied ? 'running' : 'awaiting_decision'), ...launches,
@@ -22,10 +23,10 @@ const rows = () => [row(rootID, '移行の動作確認', null, 'running'), row(c
 const send = (res, data, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'paseo-fixture' })); };
 export const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1'), path = url.pathname;
-  if (path === '/reset') { replied = false; favorite = true; projectArchivedAt = null; longList = url.searchParams.get('long') === '1'; failLaunch = false; launchAttempts = 0; launches = []; return send(res, {}); }
-  if (path === '/state') return send(res, { favorite });
+  if (path === '/reset') { replied = false; favorite = true; projectArchivedAt = null; longList = url.searchParams.get('long') === '1'; failLaunch = false; launchAttempts = 0; launches = []; rootProject = null; return send(res, {}); }
+  if (path === '/state') return send(res, { favorite, rootProject });
   if (path === '/launch/fail' || path === '/launch/ready') { failLaunch = path.endsWith('/fail'); return send(res, {}); }
-  if (path === '/launch/state') return send(res, { attempts: launchAttempts, created: launches.length, existing: rows().filter(r => r.id === rootID || r.id === childID).map(r => ({ id: r.id, phase: r.phase })) });
+  if (path === '/launch/state') return send(res, { attempts: launchAttempts, created: launches.length, projects: launches.map(r => r.projectId ?? null), existing: rows().filter(r => r.id === rootID || r.id === childID).map(r => ({ id: r.id, phase: r.phase })) });
   if (path === '/v1/devices/enroll') { req.resume(); return send(res, { deviceId: 'paseo-fixture', token: 'fixture-paseo', scopes: ['sessions:read', 'sessions:write'] }, 201); }
   if (req.headers.authorization !== 'Bearer fixture-paseo') return send(res, {}, 401);
   if (path === '/v1/sessions') {
@@ -38,7 +39,7 @@ export const server = createServer(async (req, res) => {
         res.writeHead(503, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ error: { code: 'delegation_failed', retryable: true }, requestId: 'paseo-fixture' }));
       }
-      const created = { ...row(`ses_${(launches.length + 100).toString(16).padStart(16, '0')}`, '新しい独立した依頼', null, 'running'), requestId: body.requestId };
+      const created = { ...row(`ses_${(launches.length + 100).toString(16).padStart(16, '0')}`, '新しい独立した依頼', null, 'running'), requestId: body.requestId, projectId: body.projectId ?? null };
       launches.push(created); return send(res, created, 201);
     }
     const requestId = url.searchParams.get('requestId');
@@ -60,6 +61,10 @@ export const server = createServer(async (req, res) => {
       let body = '';
       for await (const chunk of req) body += chunk;
       const change = JSON.parse(body);
+      if (change.projectId !== undefined) {
+        if (Object.keys(change).length !== 1 || change.projectId !== projectID) return send(res, {}, 400);
+        rootProject = change.projectId;
+      }
       if (typeof change.favorite === 'boolean') favorite = change.favorite;
       return send(res, rows()[0]);
     }

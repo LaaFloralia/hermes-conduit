@@ -104,6 +104,8 @@ enum LAAWorkModelSelection {
             throw CancellationError()
         }
         entries = [key: Entry(value: value, fetchedAt: Date())]
+        // Chat's model menus offer the same lineup (LAAChatModelAllowList).
+        LAAChatModelAllowList.record(value)
         return value
     }
 }

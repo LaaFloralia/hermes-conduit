@@ -227,16 +227,53 @@ enum LAADecisionCopy {
         }
     }
 
+    /// The longest free answer the Bridge takes, in Unicode code points
+    /// (bridge/src/decisions/store.mjs ANSWER_NOTE_LIMIT).
+    static let noteLimit = 8000
+    /// The count starts to show this close to the limit.
+    static let noteCountFrom = 7600
+
+    static func noteLength(_ note: String) -> Int { note.unicodeScalars.count }
+
+    /// Under the field: the room left near the limit, the excess past it, else nil.
+    static func noteCount(_ note: String) -> (text: String, over: Bool)? {
+        let length = noteLength(note)
+        guard length >= noteCountFrom else { return nil }
+        if length > noteLimit { return ("\(length - noteLimit)字多すぎます（\(noteLimit)字まで）", true) }
+        return ("残り\(noteLimit - length)字", false)
+    }
+
+    /// Why an answer was not taken. A refusal (4xx) is about the answer, never
+    /// the connection (owner, 2026-11-23: a 1,000-character answer read as
+    /// "Macと接続できない"): the Bridge's own sentence when it wrote one, and
+    /// the typed answer stays in the field to send again.
     static func answerError(_ error: Error) -> String {
         if let error = error as? LAABridgeHTTPError {
             switch error.code {
             case "decision_closed": return "この判断はすでに回答済みか、取り下げられています。"
             case "not_found", "decision_not_found": return "この判断は見つかりません。取り下げられた可能性があります。"
-            default: return LAAWorkHTTP.message(error)
+            case "decision_note_too_long":
+                return japanese(error.message) ?? "回答は\(noteLimit)文字以内で入力してください。"
+            default:
+                guard (400..<500).contains(error.status), !LAAWorkHTTP.outcomeUnknown(error),
+                      ![401, 403, 404, 409, 410, 429].contains(error.status) else { return LAAWorkHTTP.message(error) }
+                if let sentence = japanese(error.message) { return sentence }
+                if (error.message ?? "").localizedCaseInsensitiveContains("note") {
+                    return "回答が長すぎるか、使えない文字が含まれています。短くしてから送ってください。"
+                }
+                return "回答を受け付けられませんでした。内容を確認して送り直してください。"
             }
         }
         if let error = error as? LAABridgeError { return error.japaneseText }
         return "送信の結果を確認できません。読み直してください。"
+    }
+
+    /// The Bridge's message when it is written for the owner (Japanese).
+    private static func japanese(_ message: String?) -> String? {
+        guard let message = message?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty,
+              message.unicodeScalars.contains(where: { (0x3040...0x30FF).contains($0.value) || (0x4E00...0x9FFF).contains($0.value) })
+        else { return nil }
+        return message
     }
 }
 #endif

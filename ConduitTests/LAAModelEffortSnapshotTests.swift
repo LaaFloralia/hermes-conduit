@@ -14,7 +14,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         .init(id: "opus-high", label: "Claude Opus 5.5", provider: "claude", model: "claude-opus-5-5", effort: "high", fast: true),
         .init(id: "opus-xhigh", label: "Claude Opus 5.5", provider: "claude", model: "claude-opus-5-5", effort: "xhigh", fast: true),
         .init(id: "mythos-high", label: "Claude Mythos 5.2", provider: "claude", model: "claude-mythos-5-2", effort: "high", fast: false),
-        .init(id: "astra-max", label: "GPT-6 Astra", provider: "codex", model: "gpt-6-astra", effort: "max", fast: true),
+        .init(id: "astra-max", label: "GPT-6 Astra", provider: "codex", model: "gpt-6.2-astra", effort: "max", fast: true),
         .init(id: "dsh-high", label: "DeepSeek V4.1 Flash", provider: "dsh", model: "deepseek-v4.1-flash", effort: "high", fast: false),
     ], defaultProfile: "opus-high", defaultMode: "bypass")
 
@@ -72,11 +72,11 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
                         LAAEffortCapsule(effort: "max").capsule(elapsed: t)
                     }
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelCapsule(model: "claude-fable-5-2", provider: "claude").face(elapsed: t).fixedSize()
+                        LAAModelCapsule(model: "gemini-4-neon", provider: "antigravity").face(elapsed: t).fixedSize()
                         LAAEffortCapsule(effort: "xhigh").capsule(elapsed: t)
                     }
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelCapsule(model: "gpt-6.1-sol", provider: "codex").face(elapsed: t).fixedSize()
+                        LAAModelCapsule(model: "gpt-6.2-sol", provider: "codex").face(elapsed: t).fixedSize()
                         LAAEffortCapsule(effort: "high").capsule(elapsed: t)
                     }
                     HStack(spacing: LAASpacing.x2) {
@@ -98,8 +98,8 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     /// for the recording and the strip: each step from plain to crystal.
     func testVeinFramesLightAndDark() throws {
         let rows: [(String, String, String)] = [
-            ("claude-mythos-5-2", "claude", "ultracode"), ("gpt-6-astra", "codex", "max"),
-            ("claude-fable-5-2", "claude", "xhigh"), ("claude-opus-5-5", "claude", "high"),
+            ("claude-mythos-5-2", "claude", "ultracode"), ("gpt-6.2-astra", "codex", "max"),
+            ("gemini-4-neon", "antigravity", "xhigh"), ("claude-opus-5-5", "claude", "high"),
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
             for frame in 0..<24 {
@@ -126,12 +126,12 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     /// GPT and DeepSeek at each effort), then the other faces at High.
     func testEveryModelAndEffortLightAndDark() throws {
         let models: [(String, String)] = [("claude-mythos-5-2", "claude"), ("claude-opus-5-5", "claude"),
-                                          ("gpt-6.1-sol", "codex"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh")]
+                                          ("gpt-6.2-sol", "codex"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh")]
         let efforts = ["low", "medium", "high", "xhigh", "max"]
-        let others: [(String, String)] = [("claude-fable-5-2", "claude"), ("gpt-6-astra", "codex"), ("claude-sonnet-5-5", "claude"),
+        let others: [(String, String)] = [("gpt-6.2-astra", "codex"), ("claude-sonnet-5-5", "claude"),
                                           ("gpt-6.1-terra", "codex"), ("claude-haiku-5-5", "claude"),
                                           ("gemini-4-neon", "antigravity"), ("gemini-4-hydrogen", "antigravity"),
-                                          ("openai-api:gpt-5.5", "hermes-openai-api"), ("anthropic:claude-opus-5-5", "hermes-claude-api")]
+                                          ("openai-api:gpt-6.2-sol", "hermes-openai-api"), ("anthropic:claude-opus-5-5", "hermes-claude-api")]
         func page(_ rows: [(String, String, String)]) -> some View {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in self.pickers(row.0, row.1, row.2) }
@@ -153,8 +153,8 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     /// The four models the owner compares, and every effort including Ultra Code.
     private static let compareModels: [(model: String, provider: String, slug: String)] = [
         ("claude-mythos-5-2", "claude", "mythos"), ("claude-opus-5-5", "claude", "opus"),
-        ("gpt-6.1-sol", "codex", "gpt"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "dsh"),
-        ("claude-fable-5-2", "claude", "fable"), ("gpt-6-astra", "codex", "astra"),
+        ("gpt-6.2-sol", "codex", "gpt"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "dsh"),
+        ("gpt-6.2-astra", "codex", "astra"),
         ("gemini-4-neon", "antigravity", "neon"), ("gemini-4-hydrogen", "antigravity", "hydrogen"),
     ]
     private static let compareEfforts = ["low", "medium", "high", "xhigh", "max", "ultracode"]
@@ -213,7 +213,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
     func testCompareMotionFramesLightAndDark() throws {
         let rows: [(String, String, String)] = [
             ("claude-mythos-5-2", "claude", "max"), ("claude-opus-5-5", "claude", "xhigh"),
-            ("gpt-6.1-sol", "codex", "medium"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"),
+            ("gpt-6.2-sol", "codex", "medium"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"),
             ("claude-mythos-5-2", "claude", "ultracode"),
         ]
         func board(phase: String, seconds: Double) -> some View {
@@ -284,13 +284,13 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
                 // Standing is light in the glass; menu rows have no ring ornaments.
                 row("Mythos · Max（crystal・crystal）", pickers("claude-mythos-5-2", "claude", "max"))
-                row("Fable · XHigh（polished・polished）", pickers("claude-fable-5-2", "claude", "xhigh"))
+                row("Neon · XHigh（polished・polished）", pickers("gemini-4-neon", "antigravity", "xhigh"))
                 row("Opus · High（脈なし）", pickers("claude-opus-5-5", "claude", "high"))
-                row("Astra · Ultra Code", pickers("gpt-6-astra", "codex", "ultracode"))
-                row("Sol · Medium", pickers("gpt-6.1-sol", "codex", "medium"))
+                row("Astra · Ultra Code", pickers("gpt-6.2-astra", "codex", "ultracode"))
+                row("Sol · Medium", pickers("gpt-6.2-sol", "codex", "medium"))
                 row("DeepSeek · Low（脈なし）", pickers(#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "low"))
                 row("不明 · 不明", pickers(nil, nil, nil))
-                row("最終確認", pickers("claude-fable-5-2", "claude", "xhigh", current: false))
+                row("最終確認", pickers("gemini-4-neon", "antigravity", "xhigh", current: false))
                 row("依頼と実行の不一致・変更中", pickers("claude-opus-4-8", "claude", "high", attention: true, changing: true))
                 row("狭い行（名前は切らず、推論を次の行へ）", HStack(spacing: LAASpacing.x2) {
                     LAAGlassActionButton(systemImage: "photo", label: "写真", role: .neutral) {}

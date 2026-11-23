@@ -458,7 +458,7 @@ private final class LAAChatModelFixture {
         self.variant = variant
         let shown = app.laaChatRuntime.shown(for: [session])
         model = shown.model; provider = shown.provider
-        let ids = variant == "single" ? ["claude-opus-5-5"] : ["claude-opus-5-5", "claude-mythos-5-2", "claude-fable-5-2"]
+        let ids = variant == "single" ? ["claude-opus-5-5"] : ["claude-opus-5-5", "claude-mythos-5-2", "claude-sonnet-5-5"]
         providers = [ProviderInfo(name: "claude", models: ids.map { ModelInfo(id: $0, label: nil, reasoningCapable: true) },
                                   displayName: "Claude")]
     }
@@ -467,7 +467,7 @@ private final class LAAChatModelFixture {
         LAAChatModelOperations(
             options: { [self] _ in
                 var rows = providers
-                if variant == "astra", let astra = ProviderInfo(from: AnyCodable(jsonObject: ["slug": "openai-codex", "models": ["gpt-6-astra"], "capabilities": ["gpt-6-astra": ["reasoning": true]]])) { rows.append(astra) }
+                if variant == "astra", let astra = ProviderInfo(from: AnyCodable(jsonObject: ["slug": "openai-codex", "models": ["gpt-6.2-astra"], "capabilities": ["gpt-6.2-astra": ["reasoning": true]]])) { rows.append(astra) }
                 return (model, provider, rows)
             },
             setModel: { [self] _, model, provider, confirmed in

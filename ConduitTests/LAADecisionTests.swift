@@ -3,6 +3,22 @@ import SwiftUI
 import XCTest
 @testable import Conduit
 
+private final class DecisionAnswerProtocol: URLProtocol {
+    nonisolated(unsafe) static var replies: [(Int, Data)] = []
+    nonisolated(unsafe) static var paths: [String] = []
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.paths.append("\(request.httpMethod ?? "GET") \(request.url!.path)")
+        let reply = Self.replies.isEmpty ? (503, Data()) : Self.replies.removeFirst()
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: reply.0, httpVersion: nil,
+                                                              headerFields: ["Content-Type": "application/json"])!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: reply.1); client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
 /// The decision board's client side: decoding the Bridge's two item kinds,
 /// the order, the quiet meta line and the links.
 @MainActor
@@ -238,5 +254,67 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertEqual(board.phase, .idle)
     }
 
+
+    // MARK: A refused answer (owner, 2026-11-23)
+
+    private func error(_ status: Int, _ code: String?, _ message: String?) -> LAABridgeHTTPError {
+        LAABridgeHTTPError(status: status, code: code, message: message, retryable: false,
+                           details: nil, requestId: nil, currentETag: nil)
+    }
+
+    /// A 1,000-character answer read as "Macからデータを取得できませんでした":
+    /// a refusal says what is wrong with the answer, never the connection.
+    func testARefusedAnswerSaysWhyNotThatTheMacIsUnreachable() {
+        let connection = LAAWorkHTTP.message(error(400, "decision_invalid", "note must be at most 600 characters"))
+        XCTAssertEqual(LAADecisionCopy.answerError(error(400, "decision_note_too_long", "回答は8000文字以内で入力してください。")),
+                       "回答は8000文字以内で入力してください。")
+        XCTAssertEqual(LAADecisionCopy.answerError(error(400, "decision_note_too_long", nil)), "回答は8000文字以内で入力してください。")
+        XCTAssertEqual(LAADecisionCopy.answerError(error(400, "decision_invalid", "回答に使用できない制御文字があります。")),
+                       "回答に使用できない制御文字があります。")
+        let older = LAADecisionCopy.answerError(error(400, "decision_invalid", "note must be at most 600 characters"))
+        XCTAssertEqual(older, "回答が長すぎるか、使えない文字が含まれています。短くしてから送ってください。")
+        XCTAssertNotEqual(older, connection)
+        XCTAssertEqual(LAADecisionCopy.answerError(error(422, "payload_invalid", "bad body")),
+                       "回答を受け付けられませんでした。内容を確認して送り直してください。")
+        XCTAssertEqual(LAADecisionCopy.answerError(error(409, "decision_closed", nil)), "この判断はすでに回答済みか、取り下げられています。")
+        XCTAssertEqual(LAADecisionCopy.answerError(error(503, "unavailable", nil)), LAAWorkHTTP.message(error(503, "unavailable", nil)))
+    }
+
+    /// The field takes what the Bridge takes (8000 code points) and counts
+    /// only near the end.
+    func testTheFreeAnswerCountsOnlyNearTheLimit() {
+        XCTAssertNil(LAADecisionCopy.noteCount(String(repeating: "あ", count: 1000)))
+        XCTAssertNil(LAADecisionCopy.noteCount(String(repeating: "あ", count: 7599)))
+        XCTAssertEqual(LAADecisionCopy.noteCount(String(repeating: "あ", count: 7600))?.text, "残り400字")
+        XCTAssertEqual(LAADecisionCopy.noteCount(String(repeating: "あ", count: 8000))?.over, false)
+        let over = LAADecisionCopy.noteCount(String(repeating: "あ", count: 8010))
+        XCTAssertEqual(over?.text, "10字多すぎます（8000字まで）")
+        XCTAssertEqual(over?.over, true)
+        XCTAssertEqual(LAADecisionCopy.noteLength("👍🏽"), 2, "counted as the Bridge counts: code points")
+    }
+
+    /// The typed answer survives a refused send: the board keeps it, the
+    /// reopened detail finds it, and nothing reads as a connection failure.
+    func testARefusedSendKeepsTheDraft() async throws {
+        DecisionAnswerProtocol.paths = []
+        DecisionAnswerProtocol.replies = [
+            (400, Data(#"{"error":{"code":"decision_note_too_long","message":"回答は8000文字以内で入力してください。","retryable":false},"requestId":"req_1"}"#.utf8)),
+            (200, Data(#"{"data":{"kind":"board","id":"dec_0000000000000d01","status":"open","title":"公開日を決める","summary":"","options":[{"label":"来週","recommended":true}],"answer":null},"requestId":"req_2"}"#.utf8)),
+        ]
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [DecisionAnswerProtocol.self]
+        let credentials = LAABridgeCredentials(baseURL: URL(string: "http://127.0.0.1:9")!, deviceID: UUID().uuidString, token: "fixture")
+        let bridge = LAABridgeSession(client: LAABridgeClient(session: URLSession(configuration: config)),
+                                      readCredentials: { credentials })
+        let item = LAADecision(id: "dec_0000000000000d01", title: "公開日を決める", summary: "",
+                               options: [.init(label: "来週", recommended: true)])
+        let board = LAADecisionBoard()
+        board.setForTesting([item])
+        let long = String(repeating: "長い回答。", count: 200)
+        let outcome = await board.answer(item, optionIndex: nil, note: long, bridge: bridge)
+        XCTAssertEqual(outcome, .failed("回答は8000文字以内で入力してください。"))
+        XCTAssertEqual(DecisionAnswerProtocol.paths.first, "POST /v1/decisions/dec_0000000000000d01/answer")
+        XCTAssertEqual(board.noteDrafts[item.id], long, "the answer stays to send again")
+        XCTAssertNil(board.records[item.id]?.answer)
+    }
 }
 #endif

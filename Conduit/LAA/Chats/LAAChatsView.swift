@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct LAAChatsView: View {
     @ObservedObject var appState: AppState
+    @EnvironmentObject private var bridge: LAABridgeSession
     /// The Mac's list column asks for a highlighted row and forwards the
     /// menu bar's search, reload and new-chat requests. The phone passes none.
     var selection: LAAChatsListSelection? = nil
@@ -36,7 +37,9 @@ struct LAAChatsView: View {
         let people = LAAStaff.allCases.compactMap { staff -> LAAChatsPerson? in
             let expected = "laa-\(staff.rawValue)"
             let found = appState.profiles.first { AppState.profilesMatch($0, expected) }
-            guard staff == .monet || found != nil else { return nil }
+            // Monet and the contractors always have a row; one the Mac does
+            // not have reads unavailable, as an employee's row does.
+            guard staff == .monet || staff.placement == .contractor || found != nil else { return nil }
             let profile = found ?? expected
             let name = staff.name
             let localMessage = appState.activeRoomSurface == nil && appState.conversationIdentityProfile == profile
@@ -87,6 +90,9 @@ struct LAAChatsView: View {
             #endif
         }
         .task(id: previewRequest) { await refreshLocalPreviews(previewRequest) }
+        // The model lineup Chat's menus offer comes from Work's catalog
+        // (LAAChatModelAllowList); read it when the list is first shown.
+        .task(id: bridge.revision) { await LAAChatModelAllowList.refresh(bridge) }
     }
 
     private var liveContent: some View {

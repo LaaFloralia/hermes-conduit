@@ -280,6 +280,9 @@ struct LAAWorkDesktopSessionsView: View {
             } label: {
                 Label { Text(verbatim: session.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
             }
+            LAAWorkProjectMoveMenu(session: session, projects: projects) { project in
+                Task { await move(session, to: project) }
+            }
         }
         .accessibilityAddTraits(selectedID == session.id ? .isSelected : [])
         .accessibilityIdentifier("work.session.\(session.id)")
@@ -342,6 +345,18 @@ struct LAAWorkDesktopSessionsView: View {
             failure = LAACopy.macSessionsUnreadable
         }
         if options == nil { options = try? await bridge.read("/v1/session-options") }
+    }
+
+    /// Moves the Session (and its children, on the Bridge) to another project.
+    @MainActor private func move(_ session: LAAWorkSession, to project: LAAWorkProject) async {
+        do {
+            let updated = try await LAAWorkSessionProjects.move(session, to: project, bridge: bridge)
+            if let index = sessions.firstIndex(where: { $0.id == updated.id }) { sessions[index] = updated }
+            failure = nil
+            reloadID += 1
+        } catch {
+            failure = LAAWorkSessionProjects.failure(error)
+        }
     }
 
     @MainActor private func update(_ session: LAAWorkSession, favorite: Bool? = nil, archived: Bool? = nil) async {

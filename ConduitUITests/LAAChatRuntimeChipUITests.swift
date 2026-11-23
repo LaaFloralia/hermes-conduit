@@ -61,9 +61,9 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         let effort = any("composer.runtime.effort", app)
         capture(app, "mythos-before-switch")
         model.tap()
-        let astra = menuRow("GPT 6 Astra", app)
+        let astra = menuRow("GPT 6.2 Astra", app)
         XCTAssertTrue(astra.waitForExistence(timeout: 5)); astra.tap()
-        waitValue(model, "GPT 6 Astra")
+        waitValue(model, "GPT 6.2 Astra")
         effort.tap()
         let max = menuRow("Max", app)
         XCTAssertTrue(max.waitForExistence(timeout: 5))
@@ -110,7 +110,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
     }
 
     func testKeyboardKeepsComposerControlsAboveKeyboard() {
-        let app = launch(profile: "laa-monet", runtime: "gpt-6-astra,openai-codex,xhigh", models: "astra")
+        let app = launch(profile: "laa-monet", runtime: "gpt-6.2-astra,openai-codex,xhigh", models: "astra")
         let field = app.textViews["composer.field"]
         field.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
@@ -134,7 +134,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
     }
 
     func testOfflineMultilineKeyboardKeepsControls() {
-        let app = launch(profile: "laa-monet", runtime: "gpt-6-astra,openai-codex,xhigh", models: "astra", offline: true)
+        let app = launch(profile: "laa-monet", runtime: "gpt-6.2-astra,openai-codex,xhigh", models: "astra", offline: true)
         let field = app.textViews["composer.field"]
         field.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
@@ -220,12 +220,12 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             XCTAssertEqual(chipValue(app), "Claude Opus 5.5 · High")
 
             model.tap()
-            let fable = app.buttons["Fable 5.2"].firstMatch
-            XCTAssertTrue(fable.waitForExistence(timeout: 5), "the model menu lists Hermes' models")
+            let sonnet = app.buttons["Sonnet 5.5"].firstMatch
+            XCTAssertTrue(sonnet.waitForExistence(timeout: 5), "the model menu lists Hermes' models")
             XCTAssertFalse(menuRow("XHigh", app).exists, "the model menu lists models only")
             capture(app, "chat-model-menu-\(theme)")
-            fable.tap()
-            waitValue(model, "Claude Fable 5.2")
+            sonnet.tap()
+            waitValue(model, "Claude Sonnet 5.5")
             XCTAssertEqual(effort.value as? String, "High", "the effort is left alone")
 
             // Mythos asks first, as Hermes' confirm_required does.
@@ -234,7 +234,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             let confirm = app.alerts.buttons["切り替える"]
             XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the confirmation must come up")
             capture(app, "chat-model-confirm-\(theme)")
-            XCTAssertEqual(model.value as? String, "Claude Fable 5.2", "nothing changes before the confirmation")
+            XCTAssertEqual(model.value as? String, "Claude Sonnet 5.5", "nothing changes before the confirmation")
             confirm.tap()
             waitValue(model, "Claude Mythos 5.2")
 
