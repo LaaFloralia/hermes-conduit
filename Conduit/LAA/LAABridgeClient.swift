@@ -336,13 +336,6 @@ struct LAABridgeClient {
 }
 
 struct LAABridgeKeychain {
-#if LAA_BUILD
-    private static var performanceNamespace: String? {
-        guard let value = ProcessInfo.processInfo.environment["LAA_PERF_KEYCHAIN_NAMESPACE"],
-              UUID(uuidString: value) != nil else { return nil }
-        return value
-    }
-#endif
     private let service: String = {
         #if DEBUG
         let policy = LAALabNetworkPolicy.current
@@ -352,11 +345,6 @@ struct LAABridgeKeychain {
             // The simulator runner sets a fresh namespace per app under test;
             // relaunches of that app keep it. Never fall through to the regular service.
             return (["com.laa.conduit.bridge.lab"] + suffix).joined(separator: ".")
-        }
-        #endif
-        #if LAA_BUILD
-        if let namespace = LAABridgeKeychain.performanceNamespace {
-            return "com.laa.conduit.bridge.perf." + namespace
         }
         #endif
         return "com.laa.conduit.bridge"
@@ -371,20 +359,30 @@ struct LAABridgeKeychain {
     nonisolated(unsafe) private static var labCredentials: LAABridgeCredentials?
     #endif
 
+    #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+    /// Called only by the isolated app launch. Both namespaces must match;
+    /// never touch the normal service, an unnamespaced lab service, or a lane.
+    func acknowledgePerformanceCleanup() {
+        let process = ProcessInfo.processInfo
+        let env = process.environment
+        guard process.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE"),
+              env["LAA_PERF_CLEAR_KEYCHAIN"] == "1",
+              LAALabNetworkPolicy.current.laneID == nil,
+              let namespace = env["LAA_PERF_KEYCHAIN_NAMESPACE"],
+              UUID(uuidString: namespace)?.uuidString == namespace,
+              env["LAA_LAB_KEYCHAIN_NAMESPACE"] == namespace,
+              service == "com.laa.conduit.bridge.lab." + namespace,
+              let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let status = SecItemDelete(query as CFDictionary)
+        let result = status == errSecSuccess ? "deleted" : status == errSecItemNotFound ? "absent" : "error \(status)"
+        let receipt = cache.appendingPathComponent("laa-perf-cleanup-\(namespace).txt")
+        try? Data(result.utf8).write(to: receipt, options: .atomic)
+    }
+    #endif
+
     func read() throws -> LAABridgeCredentials? {
         #if DEBUG && !targetEnvironment(simulator)
         if LAALabNetworkPolicy.current.isActive { return Self.labCredentials }
-        #endif
-        #if LAA_BUILD
-        // Explicit local measurement only. Never clear the normal service,
-        // even when a cleanup flag is accidentally present without a namespace.
-        if let namespace = Self.performanceNamespace,
-           service == "com.laa.conduit.bridge.perf." + namespace,
-           ProcessInfo.processInfo.environment["LAA_PERF_CLEAR_KEYCHAIN"] == "1" {
-            let status = SecItemDelete(query as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else { throw LAABridgeError.keychain }
-            return nil
-        }
         #endif
         #if DEBUG && targetEnvironment(macCatalyst)
         if keepsIsolatedMacPairingInMemory { return Self.isolatedMacCredentials }

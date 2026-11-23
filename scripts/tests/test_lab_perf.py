@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
@@ -120,6 +121,30 @@ class Collection(unittest.TestCase):
         with patch.dict(perf.os.environ, {"LAA_UI_TEST_REAL_BRIDGE": "1", "LAA_BRIDGE_DEFAULT_ADDRESS": "https://production.invalid",
                                          "TEST_RUNNER_LAA_PERF_RUN": "1"}):
             self.assertFalse({"LAA_UI_TEST_REAL_BRIDGE", "LAA_BRIDGE_DEFAULT_ADDRESS", "TEST_RUNNER_LAA_PERF_RUN"} & perf.lab_env().keys())
+
+    def test_cleanup_namespaces_match_and_requires_app_receipt(self):
+        namespace = "9413CB00-2DA1-4A02-A91C-1A9B08E7D7AC"
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            receipt = root / "Library" / "Caches" / f"laa-perf-cleanup-{namespace}.txt"
+            receipt.parent.mkdir(parents=True)
+            log = root / "simulator.log"
+
+            def launch(*args, extra, **kwargs):
+                self.assertEqual(extra["SIMCTL_CHILD_LAA_LAB_KEYCHAIN_NAMESPACE"], namespace)
+                self.assertEqual(extra["SIMCTL_CHILD_LAA_PERF_KEYCHAIN_NAMESPACE"], namespace)
+                self.assertFalse(receipt.exists(), "stale receipts must not be accepted")
+                receipt.write_text("deleted")
+
+            receipt.write_text("stale")
+            with patch.object(perf, "frame_container", return_value=temp), patch.object(perf, "log_run", side_effect=launch):
+                perf.clear_credentials("phone", namespace, log)
+            self.assertFalse(receipt.exists())
+            self.assertIn("Keychain cleanup: deleted", log.read_text())
+            with patch.object(perf, "frame_container", return_value=temp), patch.object(perf, "log_run"), \
+                    patch.object(perf.time, "monotonic", side_effect=[0, 11]):
+                with self.assertRaisesRegex(RuntimeError, "not acknowledged"):
+                    perf.clear_credentials("phone", namespace, log)
 
     def test_quiet_gate_waits_until_xcode_sim_and_load_clear(self):
         readings = [{"load1": 1, "other_simulators": 1, "other_xcodebuild": 0},

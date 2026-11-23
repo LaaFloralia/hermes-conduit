@@ -34,6 +34,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             // The local Phone Use fixture still needs the ordinary activity
             // observers and intent handler, but never OS push registration.
             MainActor.assumeIsolated {
+                if ProcessInfo.processInfo.environment["LAA_PERF_CLEAR_KEYCHAIN"] == "1" {
+                    LAABridgeKeychain().acknowledgePerformanceCleanup()
+                }
+                WatchVoiceLink.activateLabContextSender()
                 if LAAPhoneUseService.usesSimulatedPush {
                     UNUserNotificationCenter.current().delegate = self
                     LAAPhoneUseService.shared.start()
