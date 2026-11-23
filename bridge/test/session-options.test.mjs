@@ -338,7 +338,7 @@ test('Muse is not a Work choice: Work has no Muse CLI (owner, 2026-11-23)', () =
   }
 });
 
-test('GPT API is a paid manual route with the openai: wire id and （API）, offered only from a manual entrance', () => {
+test('GPT API is a paid manual route with the openai-api: wire id (the Hermes provider; openai: resolves to the ChatGPT plan) and （API）, offered only from a manual entrance', () => {
   const api = { ...table, profiles: { ...table.profiles,
     'gpt-api-55-high': { model: 'gpt55api', harness: 'hermes-openai-api', effort: 'high', manual: true },
     'gpt-api-unlisted-high': { model: 'gpt55api', harness: 'hermes-openai-api', effort: 'xhigh', manual: true },
@@ -346,10 +346,10 @@ test('GPT API is a paid manual route with the openai: wire id and （API）, off
   // A paid route is not offered by naming it in manual_profiles alone.
   dispatch: { manual_profiles: ['gpt-api-unlisted-high'] },
   entrances: [...table.entrances, { kind: 'work', status: 'manual', work: {
-    provider: 'hermes-openai-api', model: 'openai:{{id:gpt55api}}', thinking: 'high' } }] };
+    provider: 'hermes-openai-api', model: 'openai-api:{{id:gpt55api}}', thinking: 'high' } }] };
   const options = sessionOptionsFrom(api);
   assert.deepEqual(options.profiles.find((p) => p.id === 'gpt-api-55-high'), {
-    id: 'gpt-api-55-high', label: 'GPT-5.5（API）', provider: 'hermes-openai-api', model: 'openai:gpt-5.5', effort: 'high', fast: false,
+    id: 'gpt-api-55-high', label: 'GPT-5.5（API）', provider: 'hermes-openai-api', model: 'openai-api:gpt-5.5', effort: 'high', fast: false,
   });
   assert.ok(!options.profiles.some((p) => p.id === 'gpt-api-unlisted-high'));
   assert.ok(options.switchProfiles.some((p) => p.id === 'gpt-api-55-high'));

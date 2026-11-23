@@ -30,7 +30,7 @@ enum LAAModelFace: Equatable {
             || provider == "claude" {
             return .claude
         }
-        if raw.contains("gpt") || raw.hasPrefix("openai:") || ["codex", "openai", "hermes-openai-api"].contains(provider) {
+        if raw.contains("gpt") || raw.hasPrefix("openai-api:") || ["codex", "openai", "hermes-openai-api"].contains(provider) {
             if raw.contains("sol") { return .gpt(.sol) }
             if raw.contains("terra") { return .gpt(.terra) }
             if raw.contains("luna") { return .gpt(.luna) }

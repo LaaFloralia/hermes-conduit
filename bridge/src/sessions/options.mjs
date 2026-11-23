@@ -19,7 +19,7 @@ const DEFAULT_PROFILE = 'opus-high';
 const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'hermes-openai-api', 'antigravity'];
 // Metered API routes: offered only by hand, with the route in the label.
 const PAID_ROUTES = { 'hermes-claude-api': { prefix: 'anthropic:', suffix: '（API）' },
-  'hermes-openai-api': { prefix: 'openai:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' } };
+  'hermes-openai-api': { prefix: 'openai-api:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' } };
 // The model id a Work entrance and the launch body carry for a profile.
 function wireModel(harness, modelId) {
   if (harness === 'dsh' || harness === 'dsh-venice') return JSON.stringify([harness === 'dsh' ? 'opencode-go' : 'venice', modelId]);

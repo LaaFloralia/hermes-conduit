@@ -208,8 +208,8 @@ struct LAAModelCapsule: View {
         // A routed id: ["opencode-go","deepseek-v4.1-flash"].
         if let data = raw.data(using: .utf8), let route = try? JSONDecoder().decode([String].self, from: data),
            let last = route.last { raw = last }
-        // A paid API route names its maker before the id: "openai:gpt-5.5", "anthropic:claude-opus-5-5".
-        for route in ["openai:", "anthropic:", "google:", "gemini:"] where raw.lowercased().hasPrefix(route) {
+        // A paid API route names its route before the id: "openai-api:gpt-5.5", "anthropic:claude-opus-5-5".
+        for route in ["openai-api:", "openai:", "anthropic:", "google:", "gemini:"] where raw.lowercased().hasPrefix(route) {
             raw = String(raw.dropFirst(route.count))
         }
         if raw.hasPrefix("Claude ") { raw = String(raw.dropFirst("Claude ".count)) }

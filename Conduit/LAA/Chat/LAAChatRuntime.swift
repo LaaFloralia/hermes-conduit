@@ -127,20 +127,14 @@ enum LAAChatModelCatalog {
         return ["muse", "dots"].contains(model) || ["custom:laa-muse", "custom:laa-dots", "laa-muse", "laa-dots"].contains { provider.matches($0) }
     }
 
-    /// The menu heading for a provider: the route for the API and
-    /// subscription ones, whatever Hermes calls them; Hermes' own name otherwise.
+    /// Hermes' providers for Google AI Pro's Gemini (Sub2→Sub3→Sub4) and the
+    /// two paid APIs, as LAA names them (2026-11-23).
+    static let routeNames = ["laa-agy": "Gemini", "gpt-api": "GPT API", "claude-api": "Claude API"]
+
+    /// The menu heading for a provider: LAA's name for those routes,
+    /// Hermes' own name otherwise.
     static func sectionName(_ provider: ProviderInfo) -> String {
-        let names = ([provider.name, provider.displayName ?? ""] + provider.aliases).map { $0.lowercased() }
-        let models = provider.models.map { $0.id.lowercased() }
-        if names.contains(where: { $0.contains("antigravity") || $0.contains("gemini") || $0 == "google" })
-            || (!models.isEmpty && models.allSatisfy { $0.hasPrefix("gemini") }) { return "Gemini" }
-        if !isClaudeSubscription(provider), names.contains(where: { $0 == "anthropic" || $0.hasPrefix("anthropic-") || $0.hasPrefix("claude-api") }) {
-            return "Claude API"
-        }
-        if names.contains(where: { $0 == "openai" || $0 == "openai-api" || $0.hasPrefix("openai-api") || $0 == "custom:openai" }) {
-            return "GPT API"
-        }
-        return provider.displayName ?? provider.name
+        routeNames.first { provider.matches($0.key) }?.value ?? provider.displayName ?? provider.name
     }
 
     static func choices(_ providers: [ProviderInfo], visibility: ModelVisibility,

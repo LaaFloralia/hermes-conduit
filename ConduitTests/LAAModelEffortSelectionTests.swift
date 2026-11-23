@@ -224,7 +224,7 @@ final class LAAModelEffortSelectionTests: XCTestCase {
             profile("neon-high", "antigravity", "gemini-4-neon", "Gemini 4 Neon", "high"),
             profile("neon-low", "antigravity", "gemini-4-neon", "Gemini 4 Neon", "low"),
             profile("hydrogen-xhigh", "antigravity", "gemini-4-hydrogen", "Gemini 4 Hydrogen", "xhigh"),
-            profile("gpt-api-high", "hermes-openai-api", "openai:gpt-5.5", "GPT-5.5（API）", "high"),
+            profile("gpt-api-high", "hermes-openai-api", "openai-api:gpt-5.5", "GPT-5.5（API）", "high"),
             profile("opus-api-high", "hermes-claude-api", "anthropic:claude-opus-5-5", "Claude Opus 5.5（API）", "high"),
         ], defaultProfile: "opus-high", defaultMode: "bypass")
         let models = LAAWorkModelSelection.models(options)
@@ -232,21 +232,21 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(models[1].efforts, ["low", "high"])
         XCTAssertEqual(LAAWorkModelSelection.providers(models).map(\.name), ["Claude", "Gemini", "GPT API", "Claude API"])
         XCTAssertEqual(LAAModelFace.face(model: "gemini-4-hydrogen", provider: "antigravity"), .gemini)
-        XCTAssertEqual(LAAModelFace.face(model: "openai:o3", provider: "hermes-openai-api"), .gpt(.other))
+        XCTAssertEqual(LAAModelFace.face(model: "openai-api:o3", provider: "hermes-openai-api"), .gpt(.other))
     }
 
-    /// Hermes' provider names for Gemini and the APIs are not fixed yet: the
-    /// headings read the route, Gemini offers Low to XHigh, and Muse and Dots
-    /// stay with their own employees.
+    /// Hermes' providers for Gemini (`laa-agy`), the GPT API (`gpt-api`) and
+    /// the Claude API (`claude-api`) read as LAA names them; Gemini offers Low
+    /// to XHigh, and Muse and Dots stay with their own employees.
     func testChatReadsGeminiAndTheAPIsAndKeepsMuseAndDotsToTheirEmployees() {
         let providers = [
-            ProviderInfo(name: "antigravity-subscription-directsdk", models: [
+            ProviderInfo(name: "laa-agy", models: [
                 ModelInfo(id: "gemini-4-neon", label: nil, reasoningCapable: true),
-                ModelInfo(id: "gemini-4-hydrogen", label: nil, reasoningCapable: true)], displayName: "Antigravity Subscription"),
-            ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5.5", label: nil, reasoningCapable: true),
-                                                  ModelInfo(id: "o3", label: nil, reasoningCapable: true)], displayName: "OpenAI"),
-            ProviderInfo(name: "anthropic", models: [ModelInfo(id: "claude-opus-5-5", label: nil, reasoningCapable: true)],
-                         displayName: "Anthropic"),
+                ModelInfo(id: "gemini-4-hydrogen", label: nil, reasoningCapable: true)], displayName: "laa-agy"),
+            ProviderInfo(name: "gpt-api", models: [ModelInfo(id: "gpt-5.5", label: nil, reasoningCapable: true),
+                                                   ModelInfo(id: "o3", label: nil, reasoningCapable: true)], displayName: "GPT API"),
+            ProviderInfo(name: "claude-api", models: [ModelInfo(id: "claude-opus-5-5", label: nil, reasoningCapable: true)],
+                         displayName: "Claude API"),
             ProviderInfo(name: "custom:laa-dots", models: [ModelInfo(id: "dots", label: "Dots", reasoningCapable: false)]),
             ProviderInfo(name: "custom:laa-muse", models: [ModelInfo(id: "muse", label: "Muse", reasoningCapable: false)]),
         ]
@@ -262,10 +262,10 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(LAAChatModelCatalog.efforts(current: "max", model: "gemini-4-neon"), ["low", "medium", "high", "xhigh", "max"],
                        "a reported level outside Gemini's four is listed")
         XCTAssertEqual(LAAModelCapsule.readableName("gemini-4-neon-high"), "Gemini 4 Neon")
-        XCTAssertEqual(LAAModelCapsule.readableName("openai:gpt-5.4-mini"), "GPT 5.4 Mini")
+        XCTAssertEqual(LAAModelCapsule.readableName("openai-api:gpt-5.4-mini"), "GPT 5.4 Mini")
         XCTAssertEqual(LAAModelCapsule.readableName("gpt-6.1-sol"), "GPT 6.1 Sol")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "anthropic:claude-opus-5-5", provider: "hermes-claude-api"), "Claude Opus 5.5")
-        XCTAssertEqual(LAAModelDisplay.name("openai:gpt-5.5"), "GPT-5.5")
+        XCTAssertEqual(LAAModelDisplay.name("openai-api:gpt-5.5"), "GPT-5.5")
         XCTAssertEqual(LAAModelDisplay.name("gemini-4-neon"), "Gemini 4 Neon")
     }
 

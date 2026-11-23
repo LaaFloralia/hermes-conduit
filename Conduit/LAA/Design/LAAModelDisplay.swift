@@ -11,8 +11,8 @@ enum LAAModelDisplay {
             model = route[1]
         }
         model = model.split(separator: "/").last.map(String.init) ?? model
-        // A paid API route's maker prefix: "openai:gpt-5.5", "anthropic:claude-opus-5-5".
-        if let colon = model.firstIndex(of: ":"), ["openai", "anthropic", "google", "gemini"].contains(model[..<colon].lowercased()) {
+        // A paid API route's prefix: "openai-api:gpt-5.5", "anthropic:claude-opus-5-5".
+        if let colon = model.firstIndex(of: ":"), ["openai-api", "openai", "anthropic", "google", "gemini"].contains(model[..<colon].lowercased()) {
             model = String(model[model.index(after: colon)...])
         }
         let lower = model.lowercased()
