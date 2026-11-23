@@ -171,7 +171,11 @@ final class LAALabCaptureUITests: XCTestCase {
         batch(["doc", "doc-note"], tab: "brain", ["-laa-brain-fixture", "normal"]) { app in
             shot("doc", after: "laa.brain.note", app)
             if selected.contains("doc-note") {
-                tap("laa.brain.note", app)
+                // A plain NavigationLink only hit-tests its visible content.
+                // The row centre can be the spacer between name and date.
+                let icon = app.buttons.matching(identifier: "laa.brain.note").firstMatch.images["doc.text"]
+                XCTAssertTrue(icon.waitForExistence(timeout: 15))
+                icon.tap()
                 shot("doc-note", after: "laa.brain.back", app)
             }
         }
