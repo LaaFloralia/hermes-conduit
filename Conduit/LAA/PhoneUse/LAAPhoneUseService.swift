@@ -47,13 +47,73 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
         #endif
     }
 
+    #if DEBUG && targetEnvironment(simulator)
+    static var usesSimulatedPush: Bool {
+        let policy = LAALabNetworkPolicy.current
+        let env = ProcessInfo.processInfo.environment
+        guard policy.laneID != nil, env["LAA_LAB_PHONE_USE_PUSH"] == "1",
+              let fixture = env["LAA_LANE_FIXTURE_PHONE_USE"], fixture == policy.bridgeAddress else { return false }
+        return true
+    }
+
+    // simctl has no liveactivity push type or ActivityKit topic. Carry the
+    // original Bridge APS inside an app notification and ask ActivityKit to
+    // present the same attributes and state, without requesting a push token.
+    func receiveSimulatedPush(_ info: [AnyHashable: Any]) async -> Bool {
+        guard Self.usesSimulatedPush,
+              (info["laa_lab_lane"] as? String) == LAALabNetworkPolicy.current.laneID,
+              let payload = info["laa_lab_phone_use"] as? [String: Any],
+              let aps = payload["aps"] as? [String: Any] else { return false }
+        let event = aps["event"] as? String
+        guard event == "start" else {
+            guard event == "end" || Self.handlesWake(payload) else { return false }
+            await refresh()
+            return true
+        }
+        guard aps["attributes-type"] as? String == "LAAPhoneUseAttributes",
+              let startData = try? JSONSerialization.data(withJSONObject: aps),
+              let start = try? JSONDecoder().decode(SimulatedStart.self, from: startData),
+              Self.isRequestID(start.attributes.requestID),
+              !Activity<LAAPhoneUseAttributes>.activities.contains(where: { $0.attributes.requestID == start.attributes.requestID }) else { return true }
+        do {
+            let activity = try Activity.request(attributes: start.attributes,
+                content: ActivityContent(state: start.state, staleDate: start.staleDate.map(Date.init(timeIntervalSince1970:))),
+                pushType: nil)
+            // A synthetic token acknowledges ActivityKit creation without
+            // requesting a real APNs token. End delivery stays inside simctl.
+            let token = Self.hex(Data(activity.id.utf8.prefix(120)))
+            await registerActivity(requestID: start.attributes.requestID, token: token)
+        } catch {
+            phoneUseLog.error("simulated ActivityKit start failed: \(String(describing: error), privacy: .public)")
+        }
+        return true
+    }
+
+    private struct SimulatedStart: Decodable {
+        let attributes: LAAPhoneUseAttributes
+        let state: LAAPhoneUseAttributes.ContentState
+        let staleDate: Double?
+        enum CodingKeys: String, CodingKey {
+            case attributes, state = "content-state", staleDate = "stale-date"
+        }
+    }
+    #endif
+
     func start() {
+        #if DEBUG && targetEnvironment(simulator)
+        let simulated = Self.usesSimulatedPush
+        #else
+        let simulated = false
+        #endif
+        #if DEBUG
+        guard simulated || LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         guard !started else { return }
         started = true
         LAAPhoneUseAnswers.handler = { requestID, answer in
             await LAAPhoneUseService.shared.answer(requestID: requestID, answer: answer)
         }
-        if #available(iOS 17.2, *) {
+        if !simulated, #available(iOS 17.2, *) {
             Task {
                 for await data in Activity<LAAPhoneUseAttributes>.pushToStartTokenUpdates {
                     await registerStart(token: Self.hex(data))
@@ -65,7 +125,7 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
         }
         Task { await refresh() }
         // The app's push token, for the Mac's wake (no prompt: it only reads the token).
-        UIApplication.shared.registerForRemoteNotifications()
+        if !simulated { UIApplication.shared.registerForRemoteNotifications() }
         // Not paired yet, or offline at launch: try again when the app is opened.
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in
@@ -134,6 +194,13 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     /// Reconcile the current ActivityKit token whenever the app runs again,
     /// even if the earlier registration succeeded and no update was observed.
     func refreshStartToken() async {
+        #if DEBUG && targetEnvironment(simulator)
+        if Self.usesSimulatedPush {
+            wakeToken = String(repeating: "02", count: 32)
+            await registerStart(token: String(repeating: "01", count: 32))
+            return
+        }
+        #endif
         let token = currentStartToken().map(Self.hex) ?? pendingStartToken ?? startToken
         if let token { await registerStart(token: token) }
     }

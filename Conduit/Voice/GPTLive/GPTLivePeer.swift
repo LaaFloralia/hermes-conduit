@@ -98,6 +98,9 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     }
 
     func makeOffer(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) async throws -> String {
+        #if DEBUG
+        guard !LAALabNetworkPolicy.current.isActive else { throw URLError(.unsupportedURL) }
+        #endif
         guard initialCaptureAuthorization?.mayStartCapture != false else { throw CancellationError() }
         try audio.start()
         initialCaptureAuthorization?.captureDidStart()

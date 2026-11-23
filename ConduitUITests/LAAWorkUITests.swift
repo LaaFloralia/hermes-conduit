@@ -5,7 +5,7 @@ final class LAAWorkUITests: XCTestCase {
     func testKeychainFailureOffersRetryInsteadOfNewPairing() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_KEYCHAIN_ERROR"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["接続情報を読み取れません"].waitForExistence(timeout: 30))
         let retry = app.buttons["work.retry-credentials"]
         XCTAssertTrue(retry.exists)
@@ -25,9 +25,97 @@ final class LAAWorkUITests: XCTestCase {
            ["light", "dark"].contains(appearance) {
             app.launchArguments += ["-conduit.themePreference", appearance]
         }
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         return app
+    }
+
+    private func pairedLaneWork() throws -> XCUIApplication {
+        continueAfterFailure = false
+        let app = WorkLaneUI.launch()
+        try WorkLaneUI.pair(app)
+        return app
+    }
+
+    private func openLaneProject(_ name: String, instructions: String? = nil) throws -> (XCUIApplication, String) {
+        var setup = ["name": name]
+        setup["instructions"] = instructions
+        let id = try XCTUnwrap(WorkLaneUI.setup("project", setup)["id"] as? String)
+        let app = try pairedLaneWork()
+        let row = app.staticTexts[name].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20)); row.tap()
+        return (app, id)
+    }
+
+    private func projectEditor(in app: XCUIApplication) -> XCUIElement {
+        let edit = app.buttons["laa.work.project.editInstructions"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 15))
+        if !edit.isHittable { app.swipeUp() }
+        edit.tap()
+        let field = app.textViews["work.project.instructions"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        return field
+    }
+
+    private func saveProject(in app: XCUIApplication) {
+        let save = app.buttons["保存"].firstMatch
+        if !save.isHittable { app.swipeUp() }
+        XCTAssertTrue(waitUntilReady(save, timeout: 15))
+        save.tap()
+    }
+
+    private func laneProjectConflict(name: String) throws {
+        let (app, projectID) = try openLaneProject(name)
+        let field = projectEditor(in: app)
+        field.tap(); field.typeText("Lab UI revision")
+        _ = try WorkLaneUI.setup("revise-project", ["id": projectID])
+        saveProject(in: app)
+        XCTAssertTrue(app.staticTexts["Server revision"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Lab UI revision"].firstMatch.exists)
+        let adopt = app.buttons["現在の内容を使う"]
+        if !adopt.isHittable { app.swipeUp() }
+        XCTAssertTrue(waitUntilReady(adopt, timeout: 15)); adopt.tap()
+        XCTAssertEqual(field.value as? String, "Server revision")
+    }
+
+    private func startLaneConversation(_ prompt: String, project name: String) throws -> XCUIApplication {
+        let projectID = try XCTUnwrap(WorkLaneUI.setup("project", ["name": name])["id"] as? String)
+        let app = try pairedLaneWork()
+        WorkLaneUI.composer(app)
+        let picker = app.descendants(matching: .any)["work.launch.project"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.tap()
+        let project = app.buttons["work.launch.project.\(projectID)"]
+        XCTAssertTrue(project.waitForExistence(timeout: 10)); project.tap()
+        let field = app.textViews["work.launch.composer.field"]
+        field.tap(); field.typeText(prompt)
+        let send = app.buttons["work.launch.composer.send"]
+        XCTAssertTrue(waitUntilReady(send, timeout: 15)); send.tap()
+        XCTAssertTrue(transcript("Lab Echo: \(prompt)", in: app).waitForExistence(timeout: 40))
+        return app
+    }
+
+    private func laneFollowUp(relaunch: Bool) throws {
+        let name = relaunch ? "Lab follow-up readback" : "Lab follow-up"
+        let app = try startLaneConversation(name, project: relaunch ? "Lab readback project" : "Lab follow-up project")
+        let field = app.textViews["work.composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20)); field.tap(); field.typeText("Lab next turn")
+        let send = app.buttons["work.composer.send"]
+        XCTAssertTrue(waitUntilReady(send, timeout: 20)); send.tap()
+        let echo = transcript("Lab Echo: Lab next turn", in: app)
+        XCTAssertTrue(echo.waitForExistence(timeout: 40))
+        if relaunch {
+            app.terminate(); app.launchInLab()
+            WorkLaneUI.sessions(app)
+            let row = app.staticTexts[name].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 20))
+            XCTAssertTrue(reveal(row, in: app)); row.tap()
+            XCTAssertTrue(echo.waitForExistence(timeout: 20))
+        }
+    }
+
+    private func transcript(_ text: String, in app: XCUIApplication) -> XCUIElement {
+        // Work markdown is selectable and exposes its text as a TextView.
+        app.textViews.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
     }
 
     private func waitUntilReady(_ element: XCUIElement, timeout: TimeInterval = 60) -> Bool {
@@ -98,6 +186,21 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testDedicatedSimulatorAddressEntry() throws {
+        if LabUI.active {
+            continueAfterFailure = false
+            let app = WorkLaneUI.launch()
+            WorkLaneUI.openPairing(app)
+            let address = app.textFields["laa.bridge.address"]
+            XCTAssertTrue(address.waitForExistence(timeout: 10))
+            let expected = try XCTUnwrap(LabUI.bridge)
+            XCTAssertEqual(address.value as? String, expected)
+            address.tap()
+            address.typeText("7")
+            XCTAssertEqual((address.value as? String)?.count, expected.count + 1)
+            address.typeText(XCUIKeyboardKey.delete.rawValue)
+            XCTAssertEqual(address.value as? String, expected)
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_ADDRESS"] == "1" else {
             throw XCTSkip("Explicit address-entry diagnostic is not enabled.")
         }
@@ -111,7 +214,7 @@ final class LAAWorkUITests: XCTestCase {
     func testUnpairedWorkOffersPairing() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         let connect = app.buttons["work.connect"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30))
         connect.tap()
@@ -121,7 +224,7 @@ final class LAAWorkUITests: XCTestCase {
     func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         for name in ["sessions", "tasks", "routines"] {
             let segment = app.buttons["work.section.\(name)"]
@@ -136,7 +239,7 @@ final class LAAWorkUITests: XCTestCase {
     func testOwnerTasksRequirePairingWithoutExposingLegacyLocalTasks() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         app.buttons["work.section.tasks"].tap()
         XCTAssertTrue(app.buttons["work.connect"].exists)
@@ -148,7 +251,7 @@ final class LAAWorkUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "work-tabs-\(appearance)"
@@ -162,6 +265,13 @@ final class LAAWorkUITests: XCTestCase {
     // This helper is opt-in on a dedicated simulator. The one-time code is
     // pasted from its clipboard, so XCTest never receives it as typed text.
     func testPairDedicatedSimulator() throws {
+        if LabUI.active {
+            continueAfterFailure = false
+            let app = WorkLaneUI.launch()
+            try WorkLaneUI.pair(app)
+            WorkLaneUI.sessions(app)
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_PAIR"] == "1" else {
             throw XCTSkip("Explicit live pairing is not enabled.")
         }
@@ -208,6 +318,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveBridgeFailureIsVisible() throws {
+        try XCTSkipIf(LabUI.active, "Requires a scoped upstream failure or offline injection; the real lane Bridge is left healthy for other tests.")
         let mode = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_FAILURE"]
         guard mode == "error" || mode == "offline" else {
             throw XCTSkip("Explicit live failure injection is not enabled.")
@@ -222,6 +333,14 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveEmptySessionList() throws {
+        if LabUI.active {
+            continueAfterFailure = false
+            XCTAssertEqual(try WorkLaneUI.setup("empty-sessions")["empty"] as? Bool, true)
+            let app = try pairedLaneWork()
+            WorkLaneUI.sessions(app)
+            XCTAssertTrue(app.staticTexts["セッションはまだありません。"].waitForExistence(timeout: 20))
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_EMPTY"] == "1" else {
             throw XCTSkip("Explicit live empty-response injection is not enabled.")
         }
@@ -230,10 +349,11 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testCaptureLiveSessionList() throws {
-        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SCREENSHOT"] == "1" else {
+        guard LabUI.active || ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SCREENSHOT"] == "1" else {
             throw XCTSkip("Explicit live screenshots are not enabled.")
         }
-        let app = launchWork()
+        let app = try LabUI.active ? pairedLaneWork() : launchWork()
+        if LabUI.active { WorkLaneUI.sessions(app) }
         XCTAssertTrue(waitUntilReady(app.buttons["work.create"], timeout: 30))
         if ProcessInfo.processInfo.environment["LAA_WORK_LIVE_EMPTY"] == "1" {
             XCTAssertTrue(app.staticTexts["セッションはまだありません。"].waitForExistence(timeout: 30))
@@ -250,6 +370,18 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveWorkSectionsAndSessionEntry() throws {
+        if LabUI.active {
+            let app = try pairedLaneWork()
+            WorkLaneUI.composer(app)
+            XCTAssertTrue(app.navigationBars["新しいセッション"].exists)
+            XCTAssertTrue(app.buttons["入力欄を広げる"].exists)
+            app.buttons["閉じる"].tap()
+            app.buttons["work.section.projects"].tap()
+            let newProject = app.buttons["work.projects.new"]
+            XCTAssertTrue(newProject.waitForExistence(timeout: 10)); newProject.tap()
+            XCTAssertTrue(app.navigationBars["新しいプロジェクト"].waitForExistence(timeout: 10))
+            return
+        }
         let app = launchWork()
         if app.buttons["work.connect"].waitForExistence(timeout: 3) {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
@@ -277,6 +409,10 @@ final class LAAWorkUITests: XCTestCase {
     // Separating workspace creation from session creation makes each external
     // write observable before the next one is attempted.
     func testLiveCreateScratchSession() throws {
+        if LabUI.active {
+            _ = try startLaneConversation("Lab UI session", project: "Lab session project")
+            return
+        }
         let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]
         guard stage == "session" || stage == "session-preflight" else {
             throw XCTSkip("Explicit scratch-session creation is not enabled.")
@@ -306,6 +442,16 @@ final class LAAWorkUITests: XCTestCase {
     // Each opt-in mutation is isolated so an uncertain result is never retried
     // as a new write without first reconciling the Bridge state.
     func testLiveCreateScratchProject() throws {
+        if LabUI.active {
+            let app = try pairedLaneWork()
+            let add = app.buttons["work.projects.new"]
+            XCTAssertTrue(waitUntilReady(add, timeout: 15)); add.tap()
+            let name = app.textFields["プロジェクト名"]
+            XCTAssertTrue(name.waitForExistence(timeout: 15)); name.tap(); name.typeText("Lab UI project")
+            saveProject(in: app)
+            XCTAssertTrue(app.staticTexts["Lab UI project"].firstMatch.waitForExistence(timeout: 30))
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-create" else {
             throw XCTSkip("Explicit scratch-Project creation is not enabled.")
         }
@@ -329,6 +475,15 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveEditScratchProject() throws {
+        if LabUI.active {
+            let (app, _) = try openLaneProject("Lab edit project")
+            let field = projectEditor(in: app)
+            field.tap(); field.typeText("Lab shared instructions")
+            saveProject(in: app)
+            XCTAssertTrue(field.waitForNonExistence(timeout: 15))
+            XCTAssertEqual(projectEditor(in: app).value as? String, "Lab shared instructions")
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-edit" else {
             throw XCTSkip("Explicit scratch-Project edit is not enabled.")
         }
@@ -351,6 +506,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveProjectRealConflict() throws {
+        if LabUI.active { try laneProjectConflict(name: "Lab version conflict"); return }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-stale" else {
             throw XCTSkip("Explicit scratch-Project conflict is not enabled.")
         }
@@ -379,6 +535,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchHistoryRecovery() throws {
+        try XCTSkipIf(LabUI.active, "Requires cursor-gap, expiry or resync responses; the Echo lane does not inject these faults.")
         let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] ?? ""
         guard ["gap", "expired", "resync"].contains(stage) else { throw XCTSkip("History fault injection is not enabled.") }
         let app = launchWork()
@@ -392,6 +549,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchFollowUp() throws {
+        if LabUI.active { try laneFollowUp(relaunch: false); return }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "follow-up" else { throw XCTSkip("Follow-up is not enabled.") }
         let app = launchWork()
         guard openScratchSession(app), app.staticTexts["○ 確認待ち"].waitForExistence(timeout: 180) else {
@@ -409,6 +567,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchFollowUpReadback() throws {
+        if LabUI.active { try laneFollowUp(relaunch: true); return }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "follow-up-readback" else { throw XCTSkip("Follow-up readback is not enabled.") }
         let app = launchWork()
         guard openScratchSession(app) else { XCTFail("Scratch session unavailable."); return }
@@ -417,6 +576,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchStop() throws {
+        try XCTSkipIf(LabUI.active, "Legacy Stop from review was replaced by Interrupt during an active turn; the old Stop/Resume UI is gone.")
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "stop" else { throw XCTSkip("Stop is not enabled.") }
         let app = launchWork()
         guard openScratchSession(app), app.staticTexts["○ 確認待ち"].waitForExistence(timeout: 180) else {
@@ -429,6 +589,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchResume() throws {
+        try XCTSkipIf(LabUI.active, "The current app explicitly does not offer resuming a stopped session.")
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "resume" else { throw XCTSkip("Resume is not enabled.") }
         let app = launchWork()
         guard openScratchSession(app) else { XCTFail("Scratch session unavailable."); return }
@@ -447,6 +608,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchStopSuccessor() throws {
+        try XCTSkipIf(LabUI.active, "Depends on the retired Resume flow to create a successor and the retired Stop from review.")
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "stop-successor" else { throw XCTSkip("Successor cleanup is not enabled.") }
         let app = launchWork()
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SESSION_ID"]?.isEmpty == false,
@@ -461,10 +623,17 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveScratchScreenshot() throws {
-        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "screenshot" else { throw XCTSkip("Screenshot capture is not enabled.") }
-        let app = launchWork()
-        guard openScratchSession(app), app.staticTexts["最新の回答"].waitForExistence(timeout: 30) else {
-            XCTFail("Scratch session detail did not load."); return
+        guard LabUI.active || ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "screenshot" else {
+            throw XCTSkip("Screenshot capture is not enabled.")
+        }
+        let app: XCUIApplication
+        if LabUI.active {
+            app = try startLaneConversation("Lab screenshot session", project: "Lab screenshots")
+        } else {
+            app = launchWork()
+            guard openScratchSession(app), app.staticTexts["最新の回答"].waitForExistence(timeout: 30) else {
+                XCTFail("Scratch session detail did not load."); return
+            }
         }
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "14i-session-detail"
@@ -475,6 +644,7 @@ final class LAAWorkUITests: XCTestCase {
     // The dedicated relay serves a synthetic Project and a 412; no existing
     // Project is changed while testing the explicit conflict choice.
     func testProjectInstructionConflictChoice() throws {
+        if LabUI.active { try laneProjectConflict(name: "Lab conflict choice"); return }
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "projectconflict" else {
             throw XCTSkip("Explicit Project-conflict fixture is not enabled.")
         }
@@ -522,37 +692,49 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     func testLiveFullEditorDraftSurvivesRelaunch() throws {
-        let app = launchWork()
-        if app.buttons["work.connect"].waitForExistence(timeout: 3) {
-            throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
+        continueAfterFailure = false
+        let app: XCUIApplication
+        if LabUI.active {
+            app = try pairedLaneWork()
+        } else {
+            app = launchWork()
+            if app.buttons["work.connect"].waitForExistence(timeout: 3) {
+                throw XCTSkip("Run the integration lane or pair the dedicated test simulator before this flow.")
+            }
         }
+        let sessions = app.buttons["work.section.sessions"]
+        XCTAssertTrue(sessions.waitForExistence(timeout: 10)); sessions.tap()
         let add = app.buttons["work.create"]
-        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
+        XCTAssertTrue(waitUntilReady(add), "Paired Sessions did not open")
         add.tap(); app.buttons["work.sessions.new"].tap()
         let expand = app.buttons["入力欄を広げる"]
         XCTAssertTrue(expand.waitForExistence(timeout: 10))
         expand.tap()
-        let full = app.textViews["work.composer.fullEditor.field"]
+        let full = app.textViews["work.launch.composer.fullEditor.field"]
         XCTAssertTrue(full.waitForExistence(timeout: 10))
         full.tap()
         full.typeText("Draft survives relaunch")
         app.buttons["composer.collapse-editor"].tap()
-        let inline = app.textViews["work.composer.field"]
+        let inline = app.textViews["work.launch.composer.field"]
+        XCTAssertTrue(inline.waitForExistence(timeout: 10))
         XCTAssertTrue((inline.value as? String ?? "").contains("Draft survives relaunch"))
         app.buttons["閉じる"].tap()
         app.terminate()
-        app.launch()
+        app.launchInLab()
         let work = app.buttons["Work"]
         XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
-        guard waitUntilReady(add) else { XCTFail("Session data did not finish reloading."); return }
+        XCTAssertTrue(sessions.waitForExistence(timeout: 10)); sessions.tap()
+        XCTAssertTrue(waitUntilReady(add), "Paired Sessions did not reopen")
+        XCTAssertFalse(app.buttons["work.connect"].exists, "the isolated pairing must survive a process restart")
         add.tap(); app.buttons["work.sessions.new"].tap()
-        let restored = app.textViews["work.composer.field"]
+        let restored = app.textViews["work.launch.composer.field"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10))
         XCTAssertTrue((restored.value as? String ?? "").contains("Draft survives relaunch"))
     }
     // Opt-in screenshots of Sessions, the launcher, Projects and a project on a
     // simulator paired with a seeded throwaway Bridge.
     func testCaptureSessionsAndProjectsDesign() throws {
+        try XCTSkipIf(LabUI.active, "Curated design capture requires a pinned session, the named project and its named file; not the Echo lane's generic seed.")
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SCREENSHOT"] == "sessions" else {
             throw XCTSkip("Explicit sessions screenshots are not enabled.")
         }
@@ -592,6 +774,7 @@ final class LAAWorkUITests: XCTestCase {
     /// An empty conversation still opens on its follow-up field, and a session
     /// waiting for the owner opens on the decision rather than on old history.
     func testEmptyAndWaitingDecisionSessionsOpenInPlace() throws {
+        try XCTSkipIf(LabUI.active, "Echo emits a reply and does not request a decision; those two seeded states are exercised by the separate Work UI fixture.")
         let empty = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_EMPTY_SESSION_ID"] ?? ""
         let waiting = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_DECISION_SESSION_ID"] ?? ""
         guard !empty.isEmpty || !waiting.isEmpty else {
@@ -619,6 +802,7 @@ final class LAAWorkUITests: XCTestCase {
     /// the model bar on screen. Scrolling up to read history must stop the
     /// follow, so a later poll cannot pull the owner back to the bottom.
     func testSessionOpensAtTheComposerAndStopsFollowingWhileReadingHistory() throws {
+        try XCTSkipIf(LabUI.active, "Requires a long history and a timed new turn while reading; the separate Work UI fixture controls those events.")
         guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SCROLL"] == "1" else {
             throw XCTSkip("Set LAA_WORK_LIVE_SCROLL=1 with a long live session.")
         }

@@ -76,6 +76,9 @@ enum LAADrivePresentation {
         case .networkUnreachable: return AppLocalization.string("Cannot reach the Mac. Check Tailscale and the Mac.")
         case .tlsFailed: return AppLocalization.string("The secure connection could not be verified. Check the address and certificate.")
         case .invalidResponse: return AppLocalization.string("The Mac returned an invalid response.")
+        #if DEBUG
+        case .laneMismatch: return error.japaneseText
+        #endif
         case .keychain: return AppLocalization.string("The connection information could not be saved or read.")
         case .revoked: return AppLocalization.string("This device’s connection was revoked. Pair it again.")
         case .unauthorized: return AppLocalization.string("Authentication failed. Pair the device again.")

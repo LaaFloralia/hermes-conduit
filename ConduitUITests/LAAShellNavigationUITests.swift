@@ -8,7 +8,7 @@ final class LAAShellNavigationUITests: XCTestCase {
     func testTabLabelsNavigationAndSettings() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         for name in ["Chat", "Today", "Doc", "Studio", "Work"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
@@ -47,7 +47,7 @@ final class LAAShellNavigationUITests: XCTestCase {
     func testDocumentHidesTabBarAndBackRestoresIt() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-laa-brain-fixture", "normal"]
-        app.launch()
+        app.launchInLab()
         let note = app.staticTexts["Start"]
         XCTAssertTrue(note.waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["Work"].exists)
@@ -66,7 +66,7 @@ final class LAAShellNavigationUITests: XCTestCase {
         app.launchArguments += ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
                                 "-CONDUIT_UI_TEST_PROFILES", "work,staging",
                                 "-CONDUIT_UI_TEST_WIDGET_URL", link]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.buttons["Work"].exists)
     }
@@ -74,7 +74,7 @@ final class LAAShellNavigationUITests: XCTestCase {
     func testCallPresentationHidesTabBar() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_CALL_COVERS_TABS"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.buttons["Work"].exists)
     }
@@ -82,13 +82,19 @@ final class LAAShellNavigationUITests: XCTestCase {
     /// simulator's pasteboard. The code is pasted into SecureField, never
     /// passed as a test argument or printed by the test.
     func testRealBridgePairingWhenExplicitlyEnabled() throws {
+        if LabUI.active {
+            let app = WorkLaneUI.launch()
+            try WorkLaneUI.pair(app)
+            WorkLaneUI.sessions(app)
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_REAL_BRIDGE_TEST"] == "1" else {
             throw XCTSkip("Live Bridge pairing requires the dedicated simulator and an operator-issued code.")
         }
         defer { UIPasteboard.general.items = [] }
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
         let connect = app.buttons["Macに接続する"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30))
@@ -107,12 +113,21 @@ final class LAAShellNavigationUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["この画面は準備中です。"].waitForExistence(timeout: 30))
     }
     func testRealBridgeRevocationWhenExplicitlyEnabled() throws {
+        if LabUI.active {
+            let app = WorkLaneUI.launch()
+            let tag = try WorkLaneUI.pair(app)
+            WorkLaneUI.sessions(app)
+            XCTAssertEqual(try WorkLaneUI.setup("revoke", ["tag": tag])["revoked"] as? Bool, true)
+            app.terminate(); app.launchInLab()
+            XCTAssertTrue(app.staticTexts["この端末の接続は失効しています。新しいコードで接続してください。"].waitForExistence(timeout: 30))
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_REAL_BRIDGE_TEST"] == "1" else {
             throw XCTSkip("Live Bridge revocation requires the dedicated simulator.")
         }
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
         XCTAssertTrue(app.staticTexts["この端末の接続が無効になりました。新しいコードで接続してください。"].waitForExistence(timeout: 30))
     }

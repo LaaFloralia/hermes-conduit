@@ -36,9 +36,15 @@ extension LAABridgeClient {
         request.timeoutInterval = 30
         request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
         request.setValue("image/jpeg, image/png, image/gif, image/webp", forHTTPHeaderField: "Accept")
+        #if DEBUG
+        request = try await prepareLabRequest(request)
+        #endif
         do {
             let (bytes, response) = try await rangeSession.bytes(for: request)
             defer { bytes.task.cancel() }
+            #if DEBUG
+            try LAALabNetworkPolicy.current.verifyBridgeResponse(response)
+            #endif
             guard let http = response as? HTTPURLResponse else { throw LAABridgeError.invalidResponse }
             guard http.statusCode == 200 else {
                 var body = Data()

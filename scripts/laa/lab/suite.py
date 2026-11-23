@@ -136,27 +136,45 @@ def prepare_simulator(log):
 
 
 def start_fixtures(suite, out):
-    procs = []
-    for name, cmd in suite.get("fixtures", {}).items():
-        log = open(out / f"fixture-{name}.log", "ab")
-        procs.append(subprocess.Popen(cmd, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=env()))
-    if procs:
-        time.sleep(3)
-        dead = [p.args for p in procs if p.poll() is not None]
-        if dead:
-            stop_fixtures(procs)
-            raise SystemExit(f"fixture exited at start (port in use?): {dead}")
-    return procs
+    names = suite.get("fixtures")
+    if not names:
+        return None
+    command = ["node", str(LAB / "lane.mjs")]
+    log = out / "fixtures.log"
+    lane_env = env()
+    # Keep the fixture's private state within the suite's requested scratch area.
+    lane_env["LAA_LANE_PARENT"] = str(out.resolve())
+    with log.open("a") as stream:
+        started = subprocess.run(command + ["up", "--json"] + [arg for name in names for arg in ("--fixture", name)],
+                                 cwd=REPO, env=lane_env, stdout=subprocess.PIPE, stderr=stream,
+                                 text=True, timeout=120, check=True)
+        stream.write(started.stdout)  # public manifest only; no bearer or pairing code
+    lane = json.loads(started.stdout)
+    values = {"LAA_LANE_ID": lane["id"], "LAA_LANE_BRIDGE": lane["bridge"], "LAA_LAB_SIMULATOR": PHONE}
+    values.update({f"LAA_LANE_FIXTURE_{name.upper().replace('-', '_')}": f"http://127.0.0.1:{port}"
+                   for name, port in lane["ports"].items() if name != "bridge"})
+    keys = {f"TEST_RUNNER_{k}": v for k, v in values.items()}
+    old = {k: os.environ.get(k) for k in keys}
+    os.environ.update(keys)
+    return command, lane["root"], log, old
 
 
-def stop_fixtures(procs):
-    for p in procs:
-        p.terminate()
-    for p in procs:
-        try:
-            p.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            p.kill()
+def stop_fixtures(fixture):
+    if fixture is None:
+        return
+    command, root, log, old = fixture
+    try:
+        with log.open("a") as stream:
+            subprocess.run(command + ["down", root], cwd=REPO, env=env(), stdout=stream,
+                           stderr=stream, timeout=120, check=True)
+        if Path(root).exists():
+            raise RuntimeError(f"lane root remained after shutdown: {root}")
+    finally:
+        for key, value in old.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def xcodebuild(action, derived, extra, log, bundle=None):

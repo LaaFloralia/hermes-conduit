@@ -210,7 +210,7 @@ final class ProfilePickerUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
         app.launchArguments += [Identity.seededProfiles, (profiles ?? Self.seededProfiles).joined(separator: ",")]
-        app.launch()
+        app.launchInLab()
         return app
     }
 

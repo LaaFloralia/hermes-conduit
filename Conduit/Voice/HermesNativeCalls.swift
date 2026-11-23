@@ -291,6 +291,9 @@ final class HermesNativeCalls: NSObject {
     }
 
     private func startRinging() {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         guard !isRinging else { return }
         isRinging = true
         ensureProvider()

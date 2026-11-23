@@ -124,6 +124,9 @@ final class DashboardRequestAuthorizer: DashboardUpgradeAuthorizing {
     /// (refreshed first once expired) in place of any Authorization header
     /// already there. A request for another address gets neither.
     func authorizeUpgrade(_ request: URLRequest) async throws -> URLRequest {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(request.url) else { throw URLError(.unsupportedURL) }
+        #endif
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         var authorized = request
         authorized.setValue(nil, forHTTPHeaderField: "Cookie")

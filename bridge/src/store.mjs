@@ -13,6 +13,7 @@
 
 import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
+import { assertTestStateDir } from './lane/guard.mjs';
 
 export const STATE_SCHEMA = 1;
 
@@ -29,6 +30,7 @@ function emptyState() {
 }
 
 export function createStore({ dir, idempotencyRetentionMs, now = () => Date.now() }) {
+  assertTestStateDir(dir);
   const file = join(dir, 'state.json');
   const lockFile = join(dir, 'state.lock');
 

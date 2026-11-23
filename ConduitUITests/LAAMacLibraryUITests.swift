@@ -11,7 +11,7 @@ final class LAAMacLibraryUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE"] + arguments
         app.launchEnvironment.merge(environment) { _, new in new }
-        app.launch()
+        app.launchInLab()
         return app
     }
 
@@ -76,12 +76,12 @@ final class LAAMacLibraryUITests: XCTestCase {
     }
 
     func testStudioWorkOpensInTheDetailColumn() throws {
-        guard let health = try? Data(contentsOf: URL(string: "http://127.0.0.1:19583/health")!),
+        guard let health = try? LabUI.data(LabUI.origin("studio-control", legacyPort: 19583), "/health"),
               String(data: health, encoding: .utf8) == "ok" else {
             throw XCTSkip("Start scripts/laa/studio-ui-fixture.mjs first")
         }
-        _ = try? Data(contentsOf: URL(string: "http://127.0.0.1:19583/reset")!)
-        let app = launch(environment: ["LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:19582"])
+        _ = try? LabUI.data(LabUI.origin("studio-control", legacyPort: 19583), "/reset")
+        let app = launch(environment: ["LAA_BRIDGE_DEFAULT_ADDRESS": try XCTUnwrap(LabUI.origin("studio", legacyPort: 19582))])
         openSection(app, "studio")
         let connect = app.buttons["laa.studio.pair"]
         if connect.waitForExistence(timeout: 20) {

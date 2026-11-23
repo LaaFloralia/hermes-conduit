@@ -22,8 +22,23 @@ enum GatewayReadinessProbe {
         configuration.waitsForConnectivity = false
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
+        #if DEBUG
+        if LAALabNetworkPolicy.current.isActive {
+            return URLSession(configuration: configuration, delegate: LabNoRedirects(), delegateQueue: nil)
+        }
+        #endif
         return URLSession(configuration: configuration)
     }()
+
+    #if DEBUG
+    private final class LabNoRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+    #endif
 
     /// Whether the dashboard at `baseURL` answered. Any HTTP answer counts
     /// (a sign-in redirect, an access page, 405 for HEAD), except a proxy's
@@ -35,6 +50,9 @@ enum GatewayReadinessProbe {
         components.path = (components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path) + "/api/status"
         components.query = nil
         guard let url = components.url else { return true }
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(url) else { return false }
+        #endif
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.httpMethod = "HEAD"
         request.httpShouldHandleCookies = false

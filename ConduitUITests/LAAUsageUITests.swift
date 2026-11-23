@@ -4,7 +4,7 @@ import XCTest
 
 final class LAAUsageUITests: XCTestCase {
     func testCapacityUsesSharedFeedAndRetainsStaleNumbersWithAge() throws {
-        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
+        try requireUsageFeed()
         continueAfterFailure = false
         _ = try helper("mode/normal")
         let app = XCUIApplication()
@@ -13,11 +13,11 @@ final class LAAUsageUITests: XCTestCase {
                                "https://conduit-ui-test.invalid", "-laa-tab", "work",
                                "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
                                "-CONDUIT_UI_TEST_WIDGET_DELIVERY", "cold"]
-        app.launch()
+        app.launchInLab()
         defer { app.terminate() }
         openUsage(app)
         app.buttons["laa.bridge.openPairing"].tap()
-        try pair(app, port: 19492, codeRoute: "fixture-code")
+        try pair(app)
         XCTAssertTrue(app.staticTexts["空き 100 GiB"].waitForExistence(timeout: 30))
         screenshot("usage-capacity-live-fixture")
         _ = try helper("mode/stale")
@@ -35,7 +35,7 @@ final class LAAUsageUITests: XCTestCase {
             app.launchArguments = ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
                                    "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
                                    "-CONDUIT_UI_TEST_WIDGET_DELIVERY", delivery]
-            app.launch()
+            app.launchInLab()
             if delivery == "warm" {
                 let deliver = app.buttons["widgetUITestDeliverURL"]
                 XCTAssertTrue(deliver.waitForExistence(timeout: 15))
@@ -50,9 +50,13 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 30))
     }
 
+    private func requireUsageFeed() throws {
+        try XCTSkipUnless(LabUI.active, "Run suite.py run integration for the synthetic usage feed.")
+        XCTAssertEqual(try helper("health"), "ok")
+    }
+
     private func helper(_ route: String) throws -> String {
-        let data = try Data(contentsOf: URL(string: "http://127.0.0.1:19493/\(route)")!)
-        return String(data: data, encoding: .utf8) ?? ""
+        String(decoding: try LabUI.data(LabUI.fixture("usage-control"), "/\(route)"), as: UTF8.self)
     }
 
     private func screenshot(_ name: String) {
@@ -62,27 +66,13 @@ final class LAAUsageUITests: XCTestCase {
         add(attachment)
     }
 
-    private func pair(_ app: XCUIApplication, port: Int, codeRoute: String) throws {
+    private func pair(_ app: XCUIApplication) throws {
         let address = app.textFields["laa.bridge.address"]
         XCTAssertTrue(address.waitForExistence(timeout: 15))
-        for _ in 0..<4 {
-            let value = address.value as? String ?? ""
-            if value.isEmpty || value == "Address" { break }
-            address.tap()
-            address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count + 10))
-        }
-        address.typeText("http://127.0.0.1:\(port)")
-        XCTAssertEqual(address.value as? String, "http://127.0.0.1:\(port)")
+        XCTAssertEqual(address.value as? String, try XCTUnwrap(LabUI.bridge))
         let code = app.secureTextFields["laa.bridge.code"]
-        XCTAssertTrue(code.waitForExistence(timeout: 5))
-        UIPasteboard.general.string = try helper(codeRoute)
-        code.tap()
-        code.press(forDuration: 1.2)
-        let paste = app.menuItems.matching(NSPredicate(format: "label IN %@", ["Paste", "ペースト"])).firstMatch
-        let alternate = app.buttons.matching(NSPredicate(format: "label IN %@", ["Paste", "ペースト"])).firstMatch
-        if paste.waitForExistence(timeout: 3) { paste.tap() }
-        else { XCTAssertTrue(alternate.waitForExistence(timeout: 3)); alternate.tap() }
-        UIPasteboard.general.string = ""
+        XCTAssertTrue(code.waitForExistence(timeout: 10))
+        code.tap(); code.typeText(try helper("fixture-code"))
         let button = app.buttons["laa.bridge.pair"]
         XCTAssertTrue(button.waitForExistence(timeout: 5))
         if !button.isHittable { app.swipeUp() }
@@ -99,7 +89,7 @@ final class LAAUsageUITests: XCTestCase {
     }
 
     func testVisibleUsageFetchesAgainWithoutManualRefresh() throws {
-        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
+        try requireUsageFeed()
         continueAfterFailure = false
         _ = try helper("mode/normal")
         let app = XCUIApplication()
@@ -109,13 +99,13 @@ final class LAAUsageUITests: XCTestCase {
                                "-laa-tab", "work",
                                "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
                                "-CONDUIT_UI_TEST_WIDGET_DELIVERY", "cold"]
-        app.launch()
+        app.launchInLab()
         defer { app.terminate() }
         openUsage(app)
         let connect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
-        try pair(app, port: 19492, codeRoute: "fixture-code")
+        try pair(app)
         XCTAssertTrue(text(containing: "Claude", app: app).waitForExistence(timeout: 30))
         XCTAssertTrue(text(containing: "Claude", app: app).exists)
         XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
@@ -129,7 +119,7 @@ final class LAAUsageUITests: XCTestCase {
     }
 
     func testUsageRefreshAndFailureStates() throws {
-        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
+        try requireUsageFeed()
         continueAfterFailure = false
         _ = try helper("mode/normal")
         let app = XCUIApplication()
@@ -140,13 +130,13 @@ final class LAAUsageUITests: XCTestCase {
                                "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
                                "-CONDUIT_UI_TEST_WIDGET_DELIVERY", "cold"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launch()
+        app.launchInLab()
         openUsage(app)
         let connect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         screenshot("usage-ui-unpaired")
         connect.tap()
-        try pair(app, port: 19492, codeRoute: "fixture-code")
+        try pair(app)
         XCTAssertTrue(text(containing: "Claude", app: app).waitForExistence(timeout: 30))
         XCTAssertTrue(text(containing: "Claude", app: app).exists)
         let refresh = app.buttons["laa.usage.refresh"]
@@ -184,15 +174,11 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/empty")
-        // Start with no in-memory last-good values, as on an actual first run.
+        // Clear in-memory last-good usage, but keep the paired lab device.
         app.terminate()
-        app.launch()
-        // The isolated test Keychain deliberately uses a new service per launch.
+        app.launchInLab()
         openUsage(app)
-        let reconnect = app.buttons["laa.bridge.openPairing"]
-        XCTAssertTrue(reconnect.waitForExistence(timeout: 15))
-        reconnect.tap()
-        try pair(app, port: 19492, codeRoute: "fixture-code")
+        XCTAssertFalse(app.buttons["laa.bridge.openPairing"].exists)
         XCTAssertTrue(app.staticTexts["取得できません"].firstMatch.waitForExistence(timeout: 30))
         screenshot("usage-ui-empty")
 

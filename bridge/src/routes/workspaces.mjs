@@ -464,7 +464,7 @@ export function paseoWorktreeCreator({ bin = resolvePaseoBin(), timeoutMs = 120_
   };
 }
 
-const defaultCreateWorktree = paseoWorktreeCreator();
+const defaultCreateWorktree = (options) => paseoWorktreeCreator()(options);
 
 // --- helpers ---------------------------------------------------------------
 

@@ -195,7 +195,7 @@ final class WidgetLaunchUITests: XCTestCase {
         field.typeText("Draft survives relaunch")
         XCTAssertEqual(field.value as? String, "Draft survives relaunch")
         app.terminate()
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.otherElements[Identity.conversationOutcome].waitForExistence(timeout: 15), tree(app))
         let restored = app.textViews["composer.field"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10), tree(app))
@@ -214,7 +214,7 @@ final class WidgetLaunchUITests: XCTestCase {
         let field = app.textViews["composer.field"]
         XCTAssertEqual(field.value as? String, "Interrupted message")
         app.terminate()
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(field.waitForExistence(timeout: 15), tree(app))
         XCTAssertEqual(field.value as? String, "Interrupted message")
         XCTAssertFalse(review.exists)
@@ -250,7 +250,7 @@ final class WidgetLaunchUITests: XCTestCase {
         XCTAssertEqual(input.value as? String, "Largest")
         XCTAssertEqual(response.value as? String, responseValue)
         app.terminate()
-        app.launch()
+        app.launchInLab()
         openChatSettings()
         reveal(input)
         XCTAssertEqual(input.value as? String, "Largest")
@@ -322,7 +322,7 @@ final class WidgetLaunchUITests: XCTestCase {
             app.launchArguments += [Identity.persistentDraft, persistentDraftID.uuidString]
         }
         if unknownDelivery { app.launchArguments.append("-CONDUIT_UI_TEST_UNKNOWN_DELIVERY") }
-        app.launch()
+        app.launchInLab()
         return app
     }
 

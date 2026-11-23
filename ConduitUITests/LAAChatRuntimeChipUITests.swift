@@ -13,7 +13,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             + (runtime.map { ["-LAA_FIXTURE_RUNTIME", $0] } ?? []) + (dark ? ["-LAA_V2_DARK"] : [])
             + (models.map { ["-LAA_FIXTURE_CHAT_MODELS", $0] } ?? [])
             + (offline ? ["-LAA_GROUPS_STATE", "offline"] : [])
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 15))
         return app
@@ -154,7 +154,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple",
             "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT",
             "-LAA_FIXTURE_PROFILE", "laa-monet", "-LAA_FIXTURE_PREVIEW_FAILED"]
-        app.launch()
+        app.launchInLab()
         let field = app.textViews["laa.chats.preview.composer"]
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         field.tap(); field.typeText("saved draft")
@@ -179,7 +179,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
     func testClarifyKeyboardAnswerReachesSameRequestAndResumes() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple", "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT", "-LAA_FIXTURE_PROFILE", "laa-monet", "-LAA_FIXTURE_CLARIFY"]
-        app.launch()
+        app.launchInLab()
         let answer = any("clarify.answer.q0", app)
         XCTAssertTrue(answer.waitForExistence(timeout: 30))
         capture(app, "clarify-pending-before-input")
@@ -197,7 +197,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         for end in ["timeout", "cancelled", "resolved"] {
             let app = XCUIApplication()
             app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "simple", "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT", "-LAA_FIXTURE_PROFILE", "laa-monet", "-LAA_FIXTURE_CLARIFY", "-LAA_FIXTURE_CLARIFY_END", end]
-            app.launch()
+            app.launchInLab()
             XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
             let terminal = any(end == "resolved" ? "clarify.answeredElsewhere.q0" : "clarify.expired.q0", app)
             XCTAssertTrue(terminal.waitForExistence(timeout: 10))

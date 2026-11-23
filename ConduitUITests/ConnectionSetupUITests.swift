@@ -28,7 +28,7 @@ final class ConnectionSetupUITests: XCTestCase {
         // for a password dashboard (Credentials required until credentials
         // are entered): UI tests never depend on a real Hermes server.
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:password"]
-        app.launch()
+        app.launchInLab()
         openSetup(app)
         stepLabel(app, "Step 1 of 2")
         tapVisible(app.buttons[Identity.answerYes], in: app)
@@ -124,7 +124,7 @@ final class ConnectionSetupUITests: XCTestCase {
 
     func testTailscaleServeDetailEntryUsesHTTPSWithoutDefaultPort() {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
         openSetup(app)
         stepLabel(app, "Step 1 of 2")
         tapVisible(app.buttons[Identity.answerYes], in: app)
@@ -222,7 +222,7 @@ final class ConnectionSetupUITests: XCTestCase {
 
     func testWizardAdvancesThroughQuestionsToTailscaleBranchAndBack() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
         openSetup(app)
 
         // Step 1: dashboard readiness, answered No → Ask Hermes guidance.
@@ -293,7 +293,7 @@ final class ConnectionSetupUITests: XCTestCase {
 
     func testDontKnowPathShowsCopyPromptAndCompactsStayScrollable() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
         openSetup(app)
 
         stepLabel(app, "Step 1 of 2")
@@ -332,7 +332,7 @@ final class ConnectionSetupUITests: XCTestCase {
     /// directly.
     func testSetupCardsSelectFromWhitespaceOffTheirText() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchInLab()
 
         // 1. The login screen's setup entry card: its leading padding.
         let serverField = serverFieldAgain(app)

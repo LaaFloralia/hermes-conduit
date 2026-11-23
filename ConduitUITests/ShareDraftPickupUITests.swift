@@ -65,7 +65,7 @@ final class ShareDraftPickupUITests: XCTestCase {
             Identity.seededProfiles, "work,staging",
             Identity.shareDraft, mode,
         ]
-        app.launch()
+        app.launchInLab()
         return app
     }
 

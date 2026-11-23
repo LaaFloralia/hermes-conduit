@@ -1,5 +1,5 @@
 // Isolated local mock Bridge for LAAStudioUITests; no real Studio or device state.
-import { createServer } from 'node:http';
+import { createLaneFixtureServer as createServer, listenLaneFixture } from '../../bridge/src/lane/fixture.mjs';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -233,6 +233,6 @@ export function createStudioUIFixture() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const fixture = createStudioUIFixture();
-  fixture.api.listen(19582, '127.0.0.1');
-  fixture.control.listen(19583, '127.0.0.1');
+  listenLaneFixture(fixture.api, 'studio', 19582);
+  listenLaneFixture(fixture.control, 'studio-control', 19583);
 }

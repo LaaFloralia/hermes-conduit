@@ -26,7 +26,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
     func testAllBackgroundsAndPhotoControlsPersist() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND"]
-        app.launch()
+        app.launchInLab()
         openBackground(app)
         for kind in ["paper", "tealNight", "ink"] {
             let choice = app.buttons["background.choice.\(kind)"]
@@ -45,7 +45,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertNotNil(blurValue)
         closeBackground(app)
         app.terminate()
-        app.launch()
+        app.launchInLab()
         openBackground(app)
         XCTAssertTrue(app.sliders["background.photo.dim"].exists)
         XCTAssertTrue(app.sliders["background.photo.blur"].exists)
@@ -61,7 +61,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         ] {
             let app = XCUIApplication()
             app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_GROUPS_STATE", mode]
-            app.launch()
+            app.launchInLab()
             let list = app.buttons["fixture.groups.list"]
             XCTAssertTrue(list.waitForExistence(timeout: 20))
             list.tap()
@@ -74,7 +74,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
     func testUnpairedBridgeExplainsPairingAndRejectsEmptyCode() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_REAL_BRIDGE", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.bridge.status"].waitForExistence(timeout: 20))
         XCTAssertEqual(app.staticTexts["fixture.bridge.status"].label, "未接続")
         app.buttons["fixture.bridge"].tap()
@@ -86,7 +86,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
     func testCreateAndUnsupportedParticipantChanges() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND"]
-        app.launch()
+        app.launchInLab()
         // The expanded photo canvas must not intercept controls above it.
         openBackground(app)
         app.buttons["background.fixture.photo"].tap()
@@ -138,7 +138,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_CAPTURE_SURFACE", surface,
                                "-LAA_CAPTURE_KIND", "photo", "-LAA_CAPTURE_WHITE"]
-        app.launch()
+        app.launchInLab()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons[surface == "chat" ? "laa.employee.header" : "room.header"].waitForExistence(timeout: 20), file: file, line: line)
         let deadline = Date().addingTimeInterval(15)

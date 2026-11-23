@@ -9,7 +9,7 @@ final class LAAWorkRefUITests: XCTestCase {
     private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
 
     private func launch(_ appearance: String = "light") throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:\(port + 1)/reset")!)) != nil else {
+        guard (try? LabUI.data(LabUI.origin("work-control", legacyPort: port + 1), "/reset")) != nil else {
             throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
         }
         continueAfterFailure = false
@@ -17,8 +17,8 @@ final class LAAWorkRefUITests: XCTestCase {
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance,
                                "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
@@ -148,7 +148,7 @@ final class LAAWorkRefSnapshotTests: XCTestCase {
     private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
 
     private func launch(_ appearance: String) throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:\(port + 1)/reset")!)) != nil else {
+        guard (try? LabUI.data(LabUI.origin("work-control", legacyPort: port + 1), "/reset")) != nil else {
             throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
         }
         continueAfterFailure = false
@@ -156,8 +156,8 @@ final class LAAWorkRefSnapshotTests: XCTestCase {
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance,
                                "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
         let code = app.secureTextFields["laa.bridge.code"]

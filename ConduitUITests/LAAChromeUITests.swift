@@ -12,7 +12,7 @@ final class LAAChromeUITests: XCTestCase {
                                "-conduit.themePreference", appearance,
                                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://chats-ui-test.invalid",
                                "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_CHATS"] + extra
-        app.launch()
+        app.launchInLab()
         return app
     }
 
@@ -264,7 +264,7 @@ final class LAAChromeUITests: XCTestCase {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()
             app.launchArguments = ["-laa-staff-call-fixture"] + (appearance == "dark" ? ["-laa-dark"] : [])
-            app.launch()
+            app.launchInLab()
             XCTAssertTrue(app.buttons["laa.employee.call"].waitForExistence(timeout: 30))
             app.buttons["laa.employee.call"].tap()
             XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))

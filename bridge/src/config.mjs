@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { laneEnabled } from './lane/guard.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -88,7 +89,7 @@ export function resolvePort(env = process.env) {
   const raw = env.LAA_BRIDGE_PORT;
   if (raw === undefined || raw === '') return DEFAULT_PORT;
   const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  if (!Number.isInteger(port) || port < (laneEnabled(env) ? 0 : 1) || port > 65535) {
     throw new Error(`LAA_BRIDGE_PORT is not a valid port: ${raw}`);
   }
   return port;

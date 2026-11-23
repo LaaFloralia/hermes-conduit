@@ -264,6 +264,9 @@ final class ServerSignOutQueue {
     }
 
     private static func urlSessionSend(_ request: URLRequest) async -> (status: Int, location: String?)? {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(request.url) else { return nil }
+        #endif
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never

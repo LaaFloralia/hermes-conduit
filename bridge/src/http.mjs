@@ -32,6 +32,9 @@ import { createGoogleDrive } from './drive/google.mjs';
 import { driveRoutes } from './routes/drive.mjs';
 import { BridgeError, badRequest } from './errors.mjs';
 import { businessRoutes } from './routes/index.mjs';
+import { LANE_HEADER, laneEnabled, laneMissing, validateLane } from './lane/guard.mjs';
+import { laneAdapters, refusedLaneEdge } from './lane/adapters.mjs';
+import { resolvePort } from './config.mjs';
 
 export { BridgeError };
 
@@ -129,6 +132,8 @@ export function createBridge({
   routeOptions = {},
   rejectedUploadDrainer = createRejectedUploadDrainer(),
 } = {}) {
+  const lane = laneEnabled() ? validateLane(process.env, { stateDir: store.dir, port: resolvePort() }) : null;
+  if (lane) routeOptions = laneAdapters(lane, store, now);
   const startedAt = now();
   const enrollFailures = [];
   const cleanup = [];
@@ -214,7 +219,7 @@ export function createBridge({
   // --- handlers: return {status, data}; the pipeline owns the envelope -------
 
   function health() {
-    return { status: 200, data: { version, uptimeSeconds: Math.floor((now() - startedAt) / 1000) } };
+    return { status: 200, data: { version, uptimeSeconds: Math.floor((now() - startedAt) / 1000), ...(lane ? { lane: lane.id } : {}) } };
   }
 
   function enroll({ rawBody }) {
@@ -296,8 +301,8 @@ export function createBridge({
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
-    ...driveRoutes({ adapter: drive === undefined ? createGoogleDrive() : drive, now, log }),
-    ...businessRoutes({ store, now, options: { ...routeOptions, log,
+    ...(lane ? [] : driveRoutes({ adapter: drive === undefined ? createGoogleDrive() : drive, now, log })),
+    ...businessRoutes({ store, now, lane, options: { ...routeOptions, log,
       sessions: { ...routeOptions.sessions, registerCleanup: (fn) => cleanup.push(fn) },
       calendar: { ...routeOptions.calendar, registerCleanup: (fn) => cleanup.push(fn) },
       usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) },
@@ -306,8 +311,19 @@ export function createBridge({
 
   // --- request pipeline -----------------------------------------------------
 
-  async function handle(req, res) {
+  function matchesLane(req) {
+    return lane ? req.headers[LANE_HEADER] === lane.id : req.headers[LANE_HEADER] === undefined;
+  }
+
+  async function handle(req, res, expectingBody = false) {
     const requestId = `req_${randomBytes(8).toString('hex')}`;
+    if (lane) res.setHeader(LANE_HEADER, lane.id);
+    if (!matchesLane(req)) {
+      res.shouldKeepAlive = false;
+      fail(res, requestId, new BridgeError(421, 'lane_mismatch', 'request belongs to a different lane'), { connection: 'close' });
+      return;
+    }
+    if (expectingBody) res.writeContinue();
     const started = now();
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const pathname = url.pathname.length > 1 && url.pathname.endsWith('/')
@@ -321,8 +337,13 @@ export function createBridge({
 
     try {
       checkOrigin(req);
-
       const candidates = ROUTES.filter((route) => (route.pattern ? route.pattern.test(pathname) : route.path === pathname));
+      const refused = lane && !candidates.some((candidate) => candidate.laneOnly === true) && refusedLaneEdge(pathname);
+      if (refused) {
+        res.shouldKeepAlive = false;
+        throw laneMissing(refused);
+      }
+
       if (candidates.length === 0) {
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
@@ -447,18 +468,31 @@ export function createBridge({
     }
   }
 
+  function dispatch(req, res, expectingBody = false) {
+    handle(req, res, expectingBody).catch(() => {
+      if (!res.headersSent) {
+        res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+        res.end('{"error":{"code":"internal_error","message":"unexpected server error","retryable":false}}');
+      }
+    });
+  }
+  const server = createServer(dispatch);
+  // Do not let Node acknowledge an upload before checking its lane header.
+  server.on('checkContinue', (req, res) => dispatch(req, res, true));
+  server.on('checkExpectation', (req, res) => {
+    if (!matchesLane(req)) return dispatch(req, res);
+    if (lane) res.setHeader(LANE_HEADER, lane.id);
+    res.writeHead(417, { connection: 'close' });
+    res.end();
+  });
   return {
-    server: createServer((req, res) => {
-      handle(req, res).catch(() => {
-        if (!res.headersSent) {
-          res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
-          res.end('{"error":{"code":"internal_error","message":"unexpected server error","retryable":false}}');
-        }
-      });
-    }),
+    server,
     version,
     startedAt,
     listen({ port, host }) {
+      if (lane && (host !== '127.0.0.1' || port !== resolvePort())) {
+        throw new BridgeError(503, 'lane_config_unsafe', 'LAA_BRIDGE_PORT: must bind the validated lane loopback port');
+      }
       return new Promise((resolvePromise, reject) => {
         this.server.once('error', reject);
         this.server.listen(port, host, () => {

@@ -19,7 +19,7 @@ final class LAAMacShellUITests: XCTestCase {
     private func launch(_ section: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-mac-section", section]
-        app.launch()
+        app.launchInLab()
         return app
     }
 
