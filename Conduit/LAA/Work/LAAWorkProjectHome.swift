@@ -1,0 +1,334 @@
+#if LAA_BUILD
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// One project, opened, on the phone and in the Mac's detail column. It reads
+/// the project's detail and its sessions, re-reads them every five seconds
+/// while it is shown (the session lists' interval), keeps the last reading on
+/// the device for when the Mac is out of reach, and sends the owner's few
+/// requirement changes.
+struct LAAWorkProjectHome: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
+    @ObservedObject var drafts: ComposerDraftStore
+    @State private var project: LAAWorkProject
+    @State private var detail: LAAWorkProjectSnapshot?
+    @State private var phase: LAAWorkProjectPhase = .loading
+    @State private var sessions: [LAAWorkSession] = []
+    @State private var archivedSessions: [LAAWorkSession]?
+    @State private var showArchived = false
+    @State private var options: LAAWorkSessionOptions?
+    @State private var showEditor = false
+    @State private var showLauncher = false
+    @State private var showImporter = false
+    @State private var showAddRequirement = false
+    @State private var openedID: String?
+    @State private var uploading = false
+    @State private var busyRequirement: String?
+    @State private var actionError: String?
+
+    init(project: LAAWorkProject, drafts: ComposerDraftStore) {
+        _project = State(initialValue: project); self.drafts = drafts
+    }
+
+    static let interval: Duration = .seconds(5)
+    private static let maxFileBytes = 5 * 1024 * 1024
+    private var cacheTarget: String { "project:\(project.id)" }
+
+    var body: some View {
+        ZStack {
+            LAAColor.background.ignoresSafeArea()
+            ScrollView {
+                LAAWorkProjectPage(project: project, detail: detail, sessions: sessions,
+                                   archivedSessions: archivedSessions, options: options, phase: phase,
+                                   actionError: actionError, busyRequirement: busyRequirement,
+                                   uploading: uploading, showArchived: showArchived,
+                                   canChange: project.etag != nil && !project.isArchived, actions: actions)
+                    .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
+                    .frame(maxWidth: laaDesktop ? LAADesktopMetrics.documentWidth : 720, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
+            }
+            .refreshable { await load() }
+        }
+        .navigationTitle(Text(verbatim: ""))
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(LAAColor.link)
+        .toolbar(.hidden, for: .tabBar)
+        .accessibilityIdentifier("laa.work.project.detail")
+        .navigationDestination(item: $openedID) { id in
+            LAAWorkSessionDetail(id: id, projects: [project], workspaces: [], drafts: drafts)
+        }
+        .sheet(isPresented: $showEditor, onDismiss: { Task { await load() } }) {
+            LAAWorkProjectEditor(project: project, canEditInstructions: project.hasInstructionBody && project.instructionError == nil,
+                                 drafts: drafts)
+                .environmentObject(bridge)
+                .laaSheetSize(.form)
+        }
+        .sheet(isPresented: $showLauncher) {
+            LAAWorkSessionLauncher(projects: [project], options: options, drafts: drafts, projectID: project.id) { created in
+                showLauncher = false
+                Task { await load(); openedID = created.id }
+            }
+            .environmentObject(bridge)
+        }
+        .sheet(isPresented: $showAddRequirement) {
+            LAAWorkRequirementAddSheet { addition, key in try await add(addition, key: key) }
+                .laaSheetSize(.form)
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            Task { await upload(result) }
+        }
+        .task(id: bridge.revision) {
+            restoreCache()
+            await load()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: Self.interval) } catch { return }
+                await load()
+            }
+        }
+    }
+
+    private var actions: LAAWorkProjectActions {
+        LAAWorkProjectActions(
+            openSession: { openedID = $0 },
+            setStatus: { requirement, status in Task { await setStatus(status, of: requirement) } },
+            withdraw: { requirement in Task { await withdraw(requirement) } },
+            addRequirement: { actionError = nil; showAddRequirement = true },
+            startSession: { showLauncher = true },
+            editInstructions: { showEditor = true },
+            addFile: { showImporter = true },
+            removeFile: { file in Task { await remove(file) } },
+            retry: { Task { await load() } },
+            toggleArchived: {
+                showArchived.toggle()
+                if showArchived { Task { await loadArchived() } }
+            })
+    }
+
+    // MARK: Reading
+
+    private func restoreCache() {
+        guard detail == nil,
+              let kept = LAAWorkSessionCache.read(LAAWorkProjectSnapshot.self, store: drafts, device: bridge.deviceID,
+                                                  target: cacheTarget) else { return }
+        detail = kept
+    }
+
+    @MainActor private func load() async {
+        guard bridge.status == .paired else { return }
+        do {
+            async let read: LAAWorkProject = bridge.read("/v1/projects/\(project.id)")
+            async let page: [LAAWorkSession] = LAAWorkPaging.all(bridge, "/v1/sessions",
+                                                                 query: [URLQueryItem(name: "projectId", value: project.id)])
+            let (fetched, loaded) = try await (read, page)
+            guard !Task.isCancelled else { return }
+            apply(fetched)
+            sessions = loaded.filter { $0.worktree != true && !$0.isArchived }
+            phase = .ready
+        } catch is CancellationError {
+            return
+        } catch LAABridgeError.networkUnreachable {
+            phase = .offline(detail?.savedAt)
+        } catch let failure as LAABridgeError {
+            phase = .failed(failure.japaneseText)
+        } catch {
+            phase = .failed(LAACopy.WorkProject.readFailed)
+        }
+        if options == nil { options = try? await LAAWorkOptionsStore.read(bridge) }
+        if showArchived { await loadArchived() }
+    }
+
+    @MainActor private func loadArchived() async {
+        let query = [URLQueryItem(name: "projectId", value: project.id), URLQueryItem(name: "archived", value: "only")]
+        guard let rows: [LAAWorkSession] = try? await LAAWorkPaging.all(bridge, "/v1/sessions", query: query) else { return }
+        archivedSessions = rows.filter { $0.worktree != true && $0.isArchived }
+    }
+
+    /// Takes a detail the Bridge returned, from a read or a change. A change's
+    /// answer without sessions keeps the ones already shown.
+    @MainActor private func apply(_ fetched: LAAWorkProject) {
+        project = fetched
+        let next = LAAWorkProjectSnapshot(fetched)
+        let merged = fetched.sessions == nil && fetched.requirements != nil && detail?.sessions != nil
+            ? LAAWorkProjectSnapshot(progressNote: next.progressNote, requirements: next.requirements,
+                                     sessions: detail?.sessions, savedAt: next.savedAt)
+            : next
+        // Written only when what it shows changed, not on every read.
+        if detail?.sameContent(as: merged) != true {
+            LAAWorkSessionCache.save(merged, store: drafts, device: bridge.deviceID, target: cacheTarget)
+        }
+        detail = merged
+    }
+
+    // MARK: Requirement changes
+
+    @MainActor private func setStatus(_ status: LAAWorkRequirementStatus, of requirement: LAAWorkRequirement) async {
+        busyRequirement = requirement.id
+        defer { busyRequirement = nil }
+        do {
+            apply(try await LAAWorkRequirementAPI.setStatus(status, of: requirement, in: project, bridge: bridge))
+            actionError = nil
+        } catch {
+            actionError = LAAWorkRequirementAPI.message(error)
+            await load()
+        }
+    }
+
+    @MainActor private func withdraw(_ requirement: LAAWorkRequirement) async {
+        busyRequirement = requirement.id
+        defer { busyRequirement = nil }
+        do {
+            apply(try await LAAWorkRequirementAPI.withdraw(requirement, in: project, bridge: bridge))
+            actionError = nil
+        } catch {
+            actionError = LAAWorkRequirementAPI.message(error)
+            await load()
+        }
+    }
+
+    /// Throws for the sheet to show; a refused version re-reads first so the
+    /// owner's next try carries the current one.
+    @MainActor private func add(_ addition: LAAWorkRequirementAPI.Addition, key: LAABridgeIdempotencyKey) async throws {
+        do {
+            apply(try await LAAWorkRequirementAPI.add(addition, to: project, key: key, bridge: bridge))
+            actionError = nil
+        } catch let failure as LAABridgeHTTPError where LAAWorkHTTP.isVersionConflict(failure) {
+            await load()
+            throw failure
+        }
+    }
+
+    // MARK: Files
+
+    @MainActor private func upload(_ result: Result<[URL], Error>) async {
+        guard case .success(let urls) = result else { actionError = "ファイルを開けませんでした。"; return }
+        struct Upload: Encodable { let name: String; let contentBase64: String; let mimeType: String? }
+        uploading = true
+        defer { uploading = false }
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { actionError = "\(url.lastPathComponent) を読めませんでした。"; continue }
+            guard data.count <= Self.maxFileBytes else { actionError = "\(url.lastPathComponent) は5 MBを超えています。"; continue }
+            let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+            guard let body = try? JSONEncoder().encode(Upload(name: url.lastPathComponent, contentBase64: data.base64EncodedString(),
+                                                              mimeType: mime)) else { continue }
+            do {
+                let updated: LAAWorkProject = try await LAAWorkHTTP.write(bridge, path: "/v1/projects/\(project.id)/files",
+                                                                         body: body, key: LAABridgeIdempotencyKey())
+                project = updated; actionError = nil
+            } catch let failure as LAABridgeHTTPError {
+                actionError = failure.status == 404 || failure.status == 405 ? "MacのLAAアプリを最新にすると資料を追加できます。"
+                    : failure.code == "file_limit_reached" ? "資料は20件までです。" : LAAWorkHTTP.message(failure)
+                return
+            } catch {
+                actionError = "資料を送れませんでした。"; return
+            }
+        }
+    }
+
+    @MainActor private func remove(_ file: LAAWorkProjectFile) async {
+        do {
+            let updated: LAAWorkProject = try await LAAWorkHTTP.write(bridge, path: "/v1/projects/\(project.id)/files/\(file.id)",
+                                                                     body: Data("{}".utf8), key: LAABridgeIdempotencyKey(), method: "DELETE")
+            project = updated; actionError = nil
+        } catch let failure as LAABridgeHTTPError {
+            actionError = LAAWorkHTTP.message(failure)
+        } catch {
+            actionError = "資料を削除できませんでした。"
+        }
+    }
+}
+
+extension LAAWorkProjectSnapshot {
+    init(progressNote: String?, requirements: [LAAWorkRequirement]?, sessions: [LAAWorkProjectSession]?, savedAt: Date) {
+        self.progressNote = progressNote; self.requirements = requirements; self.sessions = sessions; self.savedAt = savedAt
+    }
+
+    func sameContent(as other: Self) -> Bool {
+        progressNote == other.progressNote && requirements == other.requirements && sessions == other.sessions
+    }
+}
+
+/// The owner adds a requirement in their own words, with an optional note.
+/// The request keeps one idempotency key until it is answered, so a retry
+/// after a lost answer cannot add it twice.
+struct LAAWorkRequirementAddSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let submit: (LAAWorkRequirementAPI.Addition, LAABridgeIdempotencyKey) async throws -> Void
+    @State private var title = ""
+    @State private var details = ""
+    @State private var key = LAABridgeIdempotencyKey()
+    @State private var sent: LAAWorkRequirementAPI.Addition?
+    @State private var busy = false
+    @State private var error: String?
+    @FocusState private var titleFocused: Bool
+
+    private var addition: LAAWorkRequirementAPI.Addition {
+        let note = details.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .init(title: title.trimmingCharacters(in: .whitespacesAndNewlines), details: note.isEmpty ? nil : note)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let error {
+                    Text(verbatim: error).foregroundStyle(LAAColor.attention)
+                        .accessibilityIdentifier("laa.work.project.add.error")
+                }
+                Section {
+                    TextField(LAACopy.WorkProject.requirementTitlePrompt, text: $title, axis: .vertical)
+                        .lineLimit(1...6)
+                        .focused($titleFocused)
+                        .accessibilityIdentifier("laa.work.project.add.title")
+                } header: { Text(verbatim: LAACopy.WorkProject.requirementTitle) }
+                Section {
+                    TextEditor(text: $details).frame(minHeight: 120)
+                        .scrollContentBackground(.hidden).background(LAAColor.surface)
+                        .accessibilityIdentifier("laa.work.project.add.details")
+                } header: { Text(verbatim: LAACopy.WorkProject.requirementDetails) }
+                  footer: { Text(verbatim: LAACopy.WorkProject.addFooter) }
+            }
+            .scrollContentBackground(.hidden)
+            .background(LAAColor.background)
+            .laaTextStyle(.body)
+            .foregroundStyle(LAAColor.text)
+            .tint(LAAColor.link)
+            .disabled(busy)
+            .navigationTitle(Text(verbatim: LAACopy.WorkProject.addRequirement))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Text(verbatim: LAACopy.WorkTab.cancel) }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await save() } } label: { Text(verbatim: LAACopy.WorkTab.save).fontWeight(.semibold) }
+                        .disabled(addition.title.isEmpty || busy)
+                        .accessibilityIdentifier("laa.work.project.add.save")
+                }
+            }
+            .onAppear { titleFocused = true }
+        }
+    }
+
+    @MainActor private func save() async {
+        let body = addition
+        guard !body.title.isEmpty else { return }
+        // A changed text is a new request: it must not reuse the earlier key.
+        if let sent, sent != body { key = LAABridgeIdempotencyKey() }
+        sent = body
+        busy = true
+        defer { busy = false }
+        do {
+            try await submit(body, key)
+            dismiss()
+        } catch let failure as LAABridgeHTTPError {
+            // Refused before anything was written: the next try is a new request.
+            if !LAAWorkHTTP.outcomeUnknown(failure) { key = LAABridgeIdempotencyKey(); sent = nil }
+            error = LAAWorkRequirementAPI.message(failure)
+        } catch {
+            self.error = LAAWorkRequirementAPI.message(error)
+        }
+    }
+}
+#endif

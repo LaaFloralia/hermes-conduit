@@ -156,6 +156,14 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let files: [LAAWorkProjectFile]?
     /// The short number the owner says ("P2"). Absent from an older Bridge.
     let ref: String?
+    /// What the project's requirements add up to, and Monet's short note on
+    /// where it stands. An older Bridge omits all four; a list row then reads
+    /// as a project without requirements, and the detail says what is missing.
+    let requirementSummary: LAAWorkRequirementSummary?
+    let progressNote: String?
+    /// The detail's requirements and sessions; nil when the Bridge predates them.
+    let requirements: [LAAWorkRequirement]?
+    let sessions: [LAAWorkProjectSession]?
 
     var isArchived: Bool { archivedAt != nil }
 
@@ -165,6 +173,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, name, nameSource, defaultProfile, instructionRef, instructionHash, instructionVersion
         case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files, ref
+        case requirementSummary, progressNote, requirements, sessions
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
@@ -186,6 +195,35 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         fileCount = try box.decodeIfPresent(Int.self, forKey: .fileCount)
         files = try box.decodeIfPresent([LAAWorkProjectFile].self, forKey: .files)
         ref = try box.decodeIfPresent(String.self, forKey: .ref)
+        // A malformed new field must not cost the owner the whole project:
+        // each is read on its own, and a requirement or session row the app
+        // cannot read is left out rather than failing the list.
+        requirementSummary = try? box.decodeIfPresent(LAAWorkRequirementSummary.self, forKey: .requirementSummary)
+        let note = (try? box.decodeIfPresent(String.self, forKey: .progressNote)) ?? nil
+        progressNote = note.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        requirements = ((try? box.decodeIfPresent(LAAWorkLossyList<LAAWorkRequirement>.self, forKey: .requirements)) ?? nil)?.items
+        sessions = ((try? box.decodeIfPresent(LAAWorkLossyList<LAAWorkProjectSession>.self, forKey: .sessions)) ?? nil)?.items
+    }
+
+    /// A project as the screens show it before the detail arrives (fixtures
+    /// and tests). The Bridge's own answer goes through the decoder above.
+    init(id: String, name: String, ref: String? = nil, etag: String? = nil, updatedAt: String? = nil,
+         instructions: String? = nil, files: [LAAWorkProjectFile]? = nil,
+         requirementSummary: LAAWorkRequirementSummary? = nil, progressNote: String? = nil,
+         requirements: [LAAWorkRequirement]? = nil, sessions: [LAAWorkProjectSession]? = nil) {
+        self.id = id; self.name = name; nameSource = "owner"; defaultProfile = nil; hasDefaultProfile = true
+        instructionRef = nil; instructionHash = instructions == nil ? nil : "fixture"; instructionVersion = nil
+        self.instructions = instructions; instructionError = nil; version = 1; self.etag = etag
+        self.updatedAt = updatedAt; archivedAt = nil; fileCount = files?.count; self.files = files
+        self.ref = ref; hasInstructionBody = true
+        self.requirementSummary = requirementSummary; self.progressNote = progressNote
+        self.requirements = requirements; self.sessions = sessions
+    }
+
+    /// The counts for the list row: the Bridge's summary, else the detail's own rows.
+    var progress: LAAWorkRequirementSummary? {
+        if let requirements { return LAAWorkRequirementSummary(requirements) }
+        return requirementSummary
     }
 }
 

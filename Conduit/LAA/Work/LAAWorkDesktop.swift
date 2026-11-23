@@ -372,6 +372,9 @@ struct LAAWorkDesktopProjectsView: View {
     @ObservedObject var drafts: ComposerDraftStore
     let refreshID: Int
     @State private var projects: [LAAWorkProject] = []
+    /// Only for the rows' marks of work running or waiting for the owner.
+    @State private var sessions: [LAAWorkSession] = []
+    @State private var hasLoaded = false
     @State private var search = ""
     @State private var selectedID: String?
     @State private var hoveredID: String?
@@ -423,22 +426,9 @@ struct LAAWorkDesktopProjectsView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(visible) { project in
                             Button { selectedID = project.id } label: {
-                                HStack(spacing: LAASpacing.x3) {
-                                    Image(systemName: "folder").foregroundStyle(LAAColor.link).frame(width: 22)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                                            LAAWorkRefLabel(ref: project.ref)
-                                            Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
-                                                .foregroundStyle(LAAColor.text).lineLimit(1)
-                                        }
-                                        Text(verbatim: summary(project)).laaTextStyle(.secondary)
-                                            .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, LAASpacing.x4)
-                                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-                                .background(rowBackground(project.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
+                                LAAWorkProjectRow(project: project,
+                                                  activity: project.isArchived ? .idle : LAAWorkProjectActivity.of(project.id, sessions: sessions))
+                                    .background(rowBackground(project.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
                             }
                             .buttonStyle(.plain)
                             .onHover { hoveredID = $0 ? project.id : (hoveredID == project.id ? nil : hoveredID) }
@@ -453,7 +443,7 @@ struct LAAWorkDesktopProjectsView: View {
                             .accessibilityAddTraits(selectedID == project.id ? .isSelected : [])
                             .accessibilityIdentifier("work.project.\(project.id)")
                         }
-                        if visible.isEmpty && !loading && failure == nil {
+                        if visible.isEmpty && (hasLoaded || !loading) && failure == nil {
                             Text(verbatim: showArchived ? LAACopy.macNoArchivedProjects : LAACopy.macNoProjects)
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 .padding(LAASpacing.x4)
@@ -505,13 +495,15 @@ struct LAAWorkDesktopProjectsView: View {
                 .environmentObject(bridge)
                 .laaSheetSize(.form)
         }
-        .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") { await load() }
-    }
-
-    private func summary(_ project: LAAWorkProject) -> String {
-        let instructions = (project.instructionHash ?? "").isEmpty ? "指示なし" : "指示あり"
-        let files = (project.fileCount ?? 0) > 0 ? "資料 \(project.fileCount ?? 0)" : "資料なし"
-        return [instructions, files, LAAWorkSessionStyle.relative(project.updatedAt ?? "")].compactMap { $0 }.joined(separator: " · ")
+        // The phone's interval: the Mac list had no re-read of its own
+        // (PROJECT-RULES: both lists are checked).
+        .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") {
+            await load()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: LAAWorkProjectHome.interval) } catch { return }
+                await load()
+            }
+        }
     }
 
     private func rowBackground(_ id: String) -> Color {
@@ -534,7 +526,10 @@ struct LAAWorkDesktopProjectsView: View {
             let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
             let loaded: [LAAWorkProject] = try await LAAWorkPaging.all(bridge, "/v1/projects", query: query)
             guard !Task.isCancelled else { return }
-            projects = loaded; failure = nil
+            projects = loaded; failure = nil; hasLoaded = true
+            if !showArchived, let rows: [LAAWorkSession] = try? await LAAWorkPaging.all(bridge, "/v1/sessions") {
+                sessions = rows
+            }
             if selectedID == nil || !projects.contains(where: { $0.id == selectedID }) { selectedID = projects.first?.id }
         } catch is CancellationError {
             return
