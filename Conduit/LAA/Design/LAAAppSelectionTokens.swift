@@ -37,6 +37,12 @@ enum LAAAppSelectionTokens {
         ink: .init(dark: .init(r: 1.0, g: 0.9, b: 0.78), light: .init(r: 0.58, g: 0.3, b: 0.1)),
         lightColor: .init(dark: .init(r: 1.0, g: 0.96, b: 0.9), light: .init(r: 1.0, g: 0.99, b: 0.97)),
         glow: .init(r: 1.0, g: 0.55, b: 0.24))
+    static let neon = Model(strength: 0.8, tileScale: 1.0, speed: 1.0,
+        bodyTop: .init(dark: .init(r: 0.118, g: 0.42, b: 0.439), light: .init(r: 0.875, g: 0.918, b: 0.898)),
+        bodyBottom: .init(dark: .init(r: 0.059, g: 0.106, b: 0.11), light: .init(r: 0.459, g: 0.765, b: 0.765)),
+        ink: .init(dark: .init(r: 0.459, g: 0.765, b: 0.765), light: .init(r: 0.0, g: 0.345, b: 0.369)),
+        lightColor: .init(dark: .init(r: 0.925, g: 0.906, b: 0.863), light: .init(r: 1.0, g: 0.992, b: 0.973)),
+        glow: .init(r: 0.459, g: 0.765, b: 0.765))
     static let stone = Model(strength: 0.65, tileScale: 1.0, speed: 1.0,
         bodyTop: .init(dark: .init(r: 0.37, g: 0.43, b: 0.43), light: .init(r: 0.99, g: 0.98, b: 0.95)),
         bodyBottom: .init(dark: .init(r: 0.12, g: 0.17, b: 0.17), light: .init(r: 0.87, g: 0.85, b: 0.8)),

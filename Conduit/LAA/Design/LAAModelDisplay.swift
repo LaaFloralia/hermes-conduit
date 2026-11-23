@@ -5,13 +5,22 @@ import Foundation
 enum LAAModelDisplay {
     static func name(_ identifier: String, label: String? = nil) -> String {
         if let label, !label.isEmpty, label != identifier, isDisplayLabel(label),
-           !["gpt-", "deepseek-", "claude-", "opus-", "sonnet-", "haiku-", "fable-", "mythos-"].contains(where: { label.lowercased().hasPrefix($0) }) { return label }
+           !["gpt-", "deepseek-", "claude-", "opus-", "sonnet-", "haiku-", "fable-", "mythos-", "gemini-"].contains(where: { label.lowercased().hasPrefix($0) }) { return label }
         var model = identifier
         if let data = model.data(using: .utf8), let route = try? JSONDecoder().decode([String].self, from: data), route.count == 2 {
             model = route[1]
         }
         model = model.split(separator: "/").last.map(String.init) ?? model
+        // A paid API route's maker prefix: "openai:gpt-5.5", "anthropic:claude-opus-5-5".
+        if let colon = model.firstIndex(of: ":"), ["openai", "anthropic", "google", "gemini"].contains(model[..<colon].lowercased()) {
+            model = String(model[model.index(after: colon)...])
+        }
         let lower = model.lowercased()
+        if lower.hasPrefix("gemini-") {
+            let words = model.dropFirst("gemini-".count).split(separator: "-")
+                .filter { !["low", "medium", "high", "xhigh", "max"].contains($0.lowercased()) }
+            return (["Gemini"] + words.map { $0.prefix(1).uppercased() + $0.dropFirst() }).joined(separator: " ")
+        }
         if lower.hasPrefix("deepseek-v") {
             return "DeepSeek V" + model.dropFirst("deepseek-v".count).split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
         }

@@ -129,7 +129,9 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
                                           ("gpt-6.1-sol", "codex"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh")]
         let efforts = ["low", "medium", "high", "xhigh", "max"]
         let others: [(String, String)] = [("claude-fable-5-2", "claude"), ("gpt-6-astra", "codex"), ("claude-sonnet-5-5", "claude"),
-                                          ("gpt-6.1-terra", "codex"), ("claude-haiku-5-5", "claude")]
+                                          ("gpt-6.1-terra", "codex"), ("claude-haiku-5-5", "claude"),
+                                          ("gemini-4-neon", "antigravity"), ("gemini-4-hydrogen", "antigravity"),
+                                          ("openai:gpt-5.5", "hermes-openai-api"), ("anthropic:claude-opus-5-5", "hermes-claude-api")]
         func page(_ rows: [(String, String, String)]) -> some View {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in self.pickers(row.0, row.1, row.2) }
@@ -153,6 +155,7 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         ("claude-mythos-5-2", "claude", "mythos"), ("claude-opus-5-5", "claude", "opus"),
         ("gpt-6.1-sol", "codex", "gpt"), (#"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "dsh"),
         ("claude-fable-5-2", "claude", "fable"), ("gpt-6-astra", "codex", "astra"),
+        ("gemini-4-neon", "antigravity", "neon"), ("gemini-4-hydrogen", "antigravity", "hydrogen"),
     ]
     private static let compareEfforts = ["low", "medium", "high", "xhigh", "max", "ultracode"]
     /// What the capsules showed before the choice: the house default, or one

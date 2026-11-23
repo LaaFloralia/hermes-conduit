@@ -6,7 +6,9 @@ enum LAAWidgetUsageBuilder {
     /// widget leaves out Liquid AI, so the list fits the largest widget without
     /// dropping a row silently.
     struct Slot {
-        enum Reading { case weeklyQuota, balance, credits, recordedUsage }
+        /// `accountGroup`: the rows whose `group` is `provider`, one per
+        /// account, shown together on the Usage screen only.
+        enum Reading { case weeklyQuota, balance, credits, recordedUsage, accountGroup }
         let provider: String
         let name: String
         let reading: Reading
@@ -22,6 +24,7 @@ enum LAAWidgetUsageBuilder {
             case .balance: return meterID == prefix + "balance"
             case .credits: return meterID.hasPrefix(prefix + "credits")
             case .recordedUsage: return meterID.hasPrefix(prefix + "usage")
+            case .accountGroup: return false
             }
         }
     }
@@ -30,6 +33,9 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "codex", name: "Codex", reading: .weeklyQuota, showsInWidget: true),
         Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, showsInWidget: true),
         Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
+        // Sub2・Sub3・Sub4 (2026-11-23). Left out of the widget, whose largest
+        // size already holds seven rows, and of Work's weekly gauge.
+        Slot(provider: "google-ai-pro", name: "Google AI Pro", reading: .accountGroup, showsInWidget: false),
         Slot(provider: "magnific", name: "Magnific", reading: .credits, showsInWidget: true),
         Slot(provider: "openai-api", name: "GPT API", reading: .balance, showsInWidget: true),
         Slot(provider: "claude-api", name: "Claude API", reading: .balance, showsInWidget: true),
@@ -102,6 +108,8 @@ enum LAAWidgetUsageBuilder {
             return meter(id: item.id, label: slot.name, unit: .credits, amount: amount,
                          item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt,
                          granted: item.detail?.grantedAmount ?? item.detail?.monthlyGrantedAmount)
+        case .accountGroup:
+            return nil
         case .recordedUsage:
             guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "usage" }) else { return nil }
             guard available(item), let amount = item.detail?.recordedCostUsd, amount.isFinite else {

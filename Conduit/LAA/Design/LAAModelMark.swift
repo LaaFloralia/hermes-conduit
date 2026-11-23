@@ -24,13 +24,13 @@ enum LAAModelFace: Equatable {
         let raw = (model ?? "").lowercased()
         let provider = (provider ?? "").lowercased()
         if raw.contains("deepseek") || provider == "dsh" { return .deepSeek }
-        if raw.contains("gemini") || provider == "gemini" { return .gemini }
+        if raw.contains("gemini") || provider == "gemini" || provider == "antigravity" { return .gemini }
         if raw.contains("grok") || provider == "grok" { return .grok }
         if raw.contains("claude") || ["opus", "sonnet", "haiku", "mythos", "fable"].contains(where: raw.contains)
             || provider == "claude" {
             return .claude
         }
-        if raw.contains("gpt") || provider == "codex" || provider == "openai" {
+        if raw.contains("gpt") || raw.hasPrefix("openai:") || ["codex", "openai", "hermes-openai-api"].contains(provider) {
             if raw.contains("sol") { return .gpt(.sol) }
             if raw.contains("terra") { return .gpt(.terra) }
             if raw.contains("luna") { return .gpt(.luna) }

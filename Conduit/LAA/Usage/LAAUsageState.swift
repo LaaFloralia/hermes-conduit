@@ -265,6 +265,8 @@ final class LAAUsageState: ObservableObject {
                 let prior = previous[items[index].id]
                 if items[index].availability != "available", var retained = prior, retained.availableValue != nil {
                     retained.retainedReason = items[index].nullReason
+                    // Which account is in use is today's word, not the kept reading's.
+                    retained.active = items[index].active
                     items[index] = retained
                 }
                 items[index].freshnessAnchor = LAAUsageItem.date(prior?.observedAt) == LAAUsageItem.date(items[index].observedAt)
@@ -351,6 +353,11 @@ struct LAAUsageGroup: Identifiable {
     /// cancelled it on 2026-11-11) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
+            if slot.reading == .accountGroup {
+                let accounts = items.filter { $0.group == slot.provider && $0.id.hasPrefix("provider.") && $0.source == "codexbar-usage-proxy" }
+                return accounts.isEmpty ? nil
+                    : LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.name, items: accounts.sorted { $0.id < $1.id })
+            }
             let prefix = "provider.\(slot.provider)."
             let reported = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
             let selected = reported.filter(showsOnScreen)
@@ -368,6 +375,16 @@ struct LAAUsageGroup: Identifiable {
     /// The API groups show what is left, never what was spent.
     private static func showsOnScreen(_ item: LAAUsageItem) -> Bool {
         !isAPI(item.id) || item.id.hasSuffix(".balance")
+    }
+
+    static func isAccountGroup(_ id: String) -> Bool {
+        LAAWidgetUsageBuilder.slots.contains { $0.reading == .accountGroup && "provider.\($0.provider)" == id }
+    }
+
+    /// The account the closed group speaks for: the one in use, else the
+    /// first with a reading, else the first.
+    static func leadingAccount(_ items: [LAAUsageItem]) -> LAAUsageItem? {
+        items.first { $0.active == true } ?? items.first { $0.availableValue != nil } ?? items.first
     }
 
     static func isAPI(_ id: String) -> Bool {

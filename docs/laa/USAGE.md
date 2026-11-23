@@ -1,6 +1,6 @@
 # Usage・Mac状態のデータ契約
 
-2026-11-11更新。UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
+2026-11-23更新。UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
 
 ## 1. 指標と取得元
 
@@ -8,6 +8,7 @@
 |---|---|---|
 | 各サービスの利用枠 | CodexBar → ローカルproxy `/widget`、残り% | 数値なし |
 | 自動取得可能な残高 | 同proxy、USD・クレジット | 数値なし |
+| Google AI Pro（Sub2・Sub3・Sub4） | `laa-agy-pool usage` の `agy -p /usage`（モデルを呼ばない）→ usage-meters → 同proxy（`source: agy-usage`）。Gemini群の5時間・週の残り% | アカウントごとに数値なし。サインイン切れは `auth_required` |
 | GPT API・Claude APIの残高 | 請求画面で確かめた残高（HQ `catalog.verifiedMoney`、確認日時付き）。usage-metersが `balance` として渡す。両社とも残高のAPIを公開していない（2026-11-11確認：AnthropicのAdmin API・OpenAIのCosts APIは使用額だけ、ダッシュボードの請求経路はブラウザのセッション専用） | `not_auto`・数値なし。使用額で代用しない |
 | nanoGPT | 表示しない（2026-11-11に社長が解約）。proxyが行を送ってもBridgeは読まない | — |
 | Venice | 自動取得したUSD残高と補助残高 | 数値なし |
@@ -49,6 +50,7 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
+- Google AI Pro（2026-11-23）: IDは `provider.google-ai-pro-sub2.quota`・`-sub3`・`-sub4`（プールが使う順）。項目は全状態で `group: google-ai-pro`・`groupName: Google AI Pro`（コード所有）を持ち、上流行の真偽値 `active`（プールが次に使うアカウント）だけを `active` として渡す。windowsは「5時間」（300分）と「週間」（10080分）。上流の理由文は渡さず、既知の理由コード以外は `fetch_failed`。Usage画面はこの3行を1群「Google AI Pro」にまとめ、閉じた状態は使用中アカウントの5時間・週、開くと各アカウントの2枠と回復時刻を出す。開閉は端末に保存する。ウィジェットと週間の計器には入れない（大7行の上限、2026-11-23）。
 - 表示順はCodex、OpenCode、Claude、Magnific、GPT API、Claude API、Liquid AI、Venice（nanoGPTは2026-11-11に外した）。複数の枠がある時は期間を「週間」「月間」と添える。アプリはAIを先、Storageを後に、節ごとに1枚の面で表示する。題の横に最後に取得できた時刻の相対表記と「今すぐ更新」ボタンを置き、ボタンで即時に再取得する（取得中は矢印が回り「更新中」）。行は名前・値・比率のメーター・補助1行に絞る。ウィジェットはLiquid AIを除いた7行を表示し、利用枠・クレジット・残高に細いメーターを付ける。ウィジェットには「6日前」などの経過を出さない（2026-11-12 社長指摘。読み上げとUsage画面には残す）。
 - メーターは値に連動する。行が現れると値まで伸び、更新のたびに新しい値へ滑らかに移る（視差効果を減らす設定では即時）。利用枠とクレジットは残りを表し、残り2割未満で要確認の色にする。容量は使用量を表し、9割以上か警告水準で要確認の色にする。Magnificは付与量（`grantedAmount`、なければ `monthlyGrantedAmount`）に対する残りを描き、補助行に付与量と残りの割合を出す。残高（GPT API・Claude API・Venice）は、最後に補充した直後の額（`grantedAmount`）に対する残りを描き、補助行に「補充後 $X · 残り N%」を出す（2026-11-12 社長指摘）。補充後の額はどの提供元も返さないため、usage-metersが残高の増加を観測して `~/.local/state/laa-usage/balance-marks.json` に記録する（最初に見た正の残高、以後は前回より増えた時の残高）。残高が0以下なら空のメーター、補充を一度も観測していない正の残高はメーターを描かない。請求画面が付与額を示すクレジット（`catalog.verifiedMoney` の `creditComponents`）は、その付与額を分母にする。同じ内訳に期限があれば `detail.expiresOnUtc`（請求画面の日付、UTC）として渡し、Usage画面は補助行に「期限 12月13日」を出して、その日を過ぎたら「期限切れ」にする（2026-11-13 社長指摘。ウィジェットには出さない）。WorkのUsageボタンの計器も、一覧の週間枠で最も残りが少ない値を指す。
 - GPT API・Claude APIは残高だけを表示する。残高が未取得でも行を残し、「未取得」と「自動取得できる残高がありません」を出す。補助行は請求画面へのリンクを兼ねる。今日・今月の費用を残高に代用しない。App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。

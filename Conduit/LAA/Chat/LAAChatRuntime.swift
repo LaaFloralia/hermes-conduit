@@ -120,15 +120,39 @@ enum LAAChatModelCatalog {
         provider.name.hasPrefix("claude-subscription-directsdk")
     }
 
+    /// Muse and Dots run only for their own employees (薬用石鹸, Monet（Dots）):
+    /// another employee cannot switch to them (owner, 2026-11-23).
+    static func isDedicated(model: String, provider: ProviderInfo) -> Bool {
+        let model = model.lowercased()
+        return ["muse", "dots"].contains(model) || ["custom:laa-muse", "custom:laa-dots", "laa-muse", "laa-dots"].contains { provider.matches($0) }
+    }
+
+    /// The menu heading for a provider: the route for the API and
+    /// subscription ones, whatever Hermes calls them; Hermes' own name otherwise.
+    static func sectionName(_ provider: ProviderInfo) -> String {
+        let names = ([provider.name, provider.displayName ?? ""] + provider.aliases).map { $0.lowercased() }
+        let models = provider.models.map { $0.id.lowercased() }
+        if names.contains(where: { $0.contains("antigravity") || $0.contains("gemini") || $0 == "google" })
+            || (!models.isEmpty && models.allSatisfy { $0.hasPrefix("gemini") }) { return "Gemini" }
+        if !isClaudeSubscription(provider), names.contains(where: { $0 == "anthropic" || $0.hasPrefix("anthropic-") || $0.hasPrefix("claude-api") }) {
+            return "Claude API"
+        }
+        if names.contains(where: { $0 == "openai" || $0 == "openai-api" || $0.hasPrefix("openai-api") || $0 == "custom:openai" }) {
+            return "GPT API"
+        }
+        return provider.displayName ?? provider.name
+    }
+
     static func choices(_ providers: [ProviderInfo], visibility: ModelVisibility,
                         runningModel: String?, runningProvider: String?) -> [Choice] {
         providers.filter { !visibility.hiddenProviders.contains($0.name) }.flatMap { provider in
             let running = runningProvider.map(provider.matches) == true
             let listed = provider.models
                 .filter { !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0.id)") }
+                .filter { !isDedicated(model: $0.id, provider: provider) || ($0.id == runningModel && running) }
                 .map { model in
                     Choice(model: model.id, provider: provider.name,
-                           providerName: provider.displayName ?? provider.name,
+                           providerName: sectionName(provider),
                            label: LAAModelCapsule.readableName(model.id) ?? model.label ?? model.id,
                            reasoning: model.reasoningCapable,
                            current: model.id == runningModel && running)
@@ -138,7 +162,7 @@ enum LAAChatModelCatalog {
             let extras = subscriptionExtras
                 .filter { !named.contains($0) && !visibility.hiddenModels.contains("\(provider.name)\u{1F}\($0)") }
                 .map { id in
-                    Choice(model: id, provider: provider.name, providerName: provider.displayName ?? provider.name,
+                    Choice(model: id, provider: provider.name, providerName: sectionName(provider),
                            label: LAAModelCapsule.readableName(id) ?? id, reasoning: true,
                            current: id == runningModel && running)
                 }
@@ -165,6 +189,12 @@ enum LAAChatModelCatalog {
         if ["openai-codex", "codex", "openai"].contains(provider ?? ""),
            ["gpt-6-astra", "gpt-6-astra-900k"].contains(model ?? "") {
             return ["low", "medium", "high", "xhigh", "max"]
+        }
+        // Gemini 4 through Antigravity: Low to XHigh (agy's thinking levels).
+        if (model ?? "").lowercased().contains("gemini") {
+            let gemini = ["low", "medium", "high", "xhigh"]
+            guard let current, !current.isEmpty, !gemini.contains(current) else { return gemini }
+            return gemini + [current]
         }
         guard let current, !current.isEmpty, !LAAEffort.order.contains(current) else { return LAAEffort.order }
         return LAAEffort.order + [current]

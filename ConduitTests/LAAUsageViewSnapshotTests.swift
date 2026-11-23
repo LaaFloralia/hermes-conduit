@@ -48,6 +48,62 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
     }
 
+    /// Google AI Pro's three accounts as one group (2026-11-23): closed, the
+    /// account in use and its 5-hour and weekly windows; open, every account.
+    /// A reading of 0% stays 0%, an account never read stays 未取得.
+    func testGoogleAIProGroupClosedAndOpenLightAndDark() async throws {
+        let items = try fixture(stale: false) + googleFixture()
+        let groups = LAAUsageGroup.consoleGroups(items)
+        let google = try XCTUnwrap(groups.first { $0.id == "provider.google-ai-pro" })
+        XCTAssertEqual(groups.map(\.id).prefix(4), ["provider.codex", "provider.opencode-go", "provider.claude", "provider.google-ai-pro"])
+        XCTAssertEqual(google.label, "Google AI Pro")
+        XCTAssertEqual(google.items.map(\.label), ["Google Sub2", "Google Sub3", "Google Sub4"])
+        XCTAssertEqual(LAAUsageGroup.leadingAccount(google.items)?.label, "Google Sub3", "the account in use leads")
+        XCTAssertTrue(LAAUsageGroup.isAccountGroup(google.id))
+        XCTAssertFalse(LAAWidgetUsageBuilder.widgetSlots.contains { $0.provider == "google-ai-pro" }, "the widget keeps its seven rows")
+        XCTAssertNil(LAAUsageGauge.lowestWeeklyRemaining(googleFixture()), "Work's weekly gauge reads the listed quotas only")
+        let key = "laa.usage.expandedGroups"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        for open in [false, true] {
+            UserDefaults.standard.set(open ? "provider.google-ai-pro" : "", forKey: key)
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let state = LAAUsageState(widgetStore: nil)
+                await state.refreshUsage { items }
+                try capture(state: state, paired: true, style: style,
+                            name: "usage-google-\(open ? "open" : "closed")-\(style == .dark ? "dark" : "light")")
+            }
+        }
+    }
+
+    private func googleFixture() throws -> [LAAUsageItem] {
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let observed = formatter.string(from: now.addingTimeInterval(-60))
+        let freshUntil = formatter.string(from: now.addingTimeInterval(240))
+        let hours = formatter.string(from: now.addingTimeInterval(2 * 3600))
+        let week = formatter.string(from: now.addingTimeInterval(4 * 86_400))
+        func account(_ id: String, active: Bool, windows: [(String, Double, Double, String)]?) -> [String: Any] {
+            var row: [String: Any] = ["id": "provider.google-ai-pro-\(id).quota", "kind": "quota", "label": "Google \(id.capitalized)",
+                "unit": "percent", "source": "codexbar-usage-proxy", "stale": false, "estimated": false, "expired": false,
+                "group": "google-ai-pro", "groupName": "Google AI Pro", "active": active]
+            if let windows {
+                row.merge(["value": windows.map(\.1).min() ?? 0, "observedAt": observed, "availability": "available",
+                           "detail": ["freshUntil": freshUntil, "windows": windows.map {
+                               ["label": $0.0, "remainingPercent": $0.1, "windowMinutes": $0.2, "resetsAt": $0.3] }]]) { _, new in new }
+            } else {
+                row.merge(["value": NSNull(), "observedAt": NSNull(), "availability": "unavailable", "nullReason": "auth_required"]) { _, new in new }
+            }
+            return row
+        }
+        let rows = [
+            account("sub2", active: false, windows: [("5時間", 0, 300, hours), ("週間", 41, 10080, week)]),
+            account("sub3", active: true, windows: [("5時間", 72, 300, hours), ("週間", 88.5, 10080, week)]),
+            account("sub4", active: false, windows: nil),
+        ]
+        return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
+    }
+
     func testACreditsLapseDayReadsAsMonthAndDay() {
         XCTAssertEqual(LAAUsageView.expiryNote("2026-12-13"), "期限 12月13日")
         XCTAssertEqual(LAAUsageView.expiryNote("2027-01-05"), "期限 1月5日")

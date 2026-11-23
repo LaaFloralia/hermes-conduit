@@ -69,12 +69,19 @@ struct LAAUsageItem: Codable, Identifiable {
     let expired: Bool
     let nullReason: String?
     let detail: Detail?
+    /// A code-owned group the row belongs to (`google-ai-pro`: one row per
+    /// subscription account) and its name; nil for a standalone service.
+    let group: String?
+    let groupName: String?
+    /// Whether this account is the one the group uses now; nil when unknown.
+    var active: Bool?
     // Set locally on receipt; it is never decoded from the remote response.
     var freshnessAnchor: Date? = nil
     var retainedReason: String? = nil
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, label, value, unit, source, observedAt, availability, stale, estimated, expired, nullReason, detail
+        case group, groupName, active
     }
 
     var availableValue: Double? { availability == "available" ? value : nil }

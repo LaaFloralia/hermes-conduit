@@ -2,7 +2,7 @@
 // (`laa-work provider ls --json`). The session options stay synchronous: the answer is read in
 // the background and kept for a short while, and until the first one nothing is marked.
 // A provider that cannot run stays in the list with its reason on the label (a Dot whose
-// contract ended, Muse before its contract), so choosing it is never a silent wait.
+// contract ended, Gemini with no signed-in account), so choosing it is never a silent wait.
 
 import { execFile } from 'node:child_process';
 import { dirname } from 'node:path';
@@ -46,17 +46,12 @@ export function providerAvailability({ bin, ttlMs = 30_000, timeoutMs = 10_000, 
 
 // A profile whose provider cannot take a session now keeps its place in the list and says why.
 export function withAvailability(profile, state) {
-  // The free GUI cannot stand in for a verified Muse Code session provider.
-  if (profile.provider === 'muse' && state?.available !== true && state?.available !== false) {
-    state = { available: false, reason: 'Muse Code availability has not been verified', reasonShort: '接続未確認' };
-  }
   if (!state || state.available !== false) return profile;
-  const short = profile.provider === 'muse' && state.reason === 'Muse Code CLI is not installed' ? 'Muse Code未導入' : typeof state.reasonShort === 'string' && state.reasonShort.trim() ? state.reasonShort.trim() : null;
+  const short = typeof state.reasonShort === 'string' && state.reasonShort.trim() ? state.reasonShort.trim() : null;
   return {
     ...profile,
     label: `${profile.label}（${short ? `${short}のため使えません` : '今は使えません'}）`,
     available: false,
     unavailableReason: typeof state.reason === 'string' ? state.reason : null,
-    ...(profile.provider === 'muse' ? { usageNote: '無料MuseはChatの「薬用石鹸」で使います。\n公開情報のみ・道具なし・直列・遅延あり。\nSessionごとの履歴分離には未対応です。' } : {}),
   };
 }

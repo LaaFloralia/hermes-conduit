@@ -295,8 +295,11 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
         throw conflict('model_switch_busy', 'the source changed while preparing the switch');
       }
       await assertChildrenIdle(c, [source.id, ...(source.relatedIds ?? [])]);
+      // Bypass in each harness's words. Both Hermes API routes run Hermes's ACP (`dont_ask`);
+      // Antigravity and the other ACP agents keep their catalog mode and auto-accept.
       const modeId = target.provider === 'claude' ? 'bypassPermissions'
-        : target.provider === 'codex' ? 'full-access' : target.provider === 'hermes-claude-api' ? 'dont_ask' : null;
+        : target.provider === 'codex' ? 'full-access'
+          : ['hermes-claude-api', 'hermes-openai-api'].includes(target.provider) ? 'dont_ask' : null;
       const featureValues = target.provider === 'claude' ? { fast_mode: false }
         : target.provider === 'codex' ? { service_tier: 'default' } : { auto_accept: true };
       const created = await c.createAgent({ agentId: id, provider: target.provider, model: target.model,

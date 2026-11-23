@@ -24,6 +24,10 @@ import {
 } from './items.mjs';
 
 export const USAGE_FEED_VERSION = 1;
+const GOOGLE_AI_PRO = Object.freeze({ id: 'google-ai-pro', name: 'Google AI Pro' });
+// Automatic readings: CodexBar's (no source, `live`, `local`, `codexbar-cli`) and the
+// Antigravity pool's own `/usage` reading (`agy-usage`, usage-meters).
+const AUTO_SOURCES = Object.freeze(['live', 'local', 'codexbar-cli', 'agy-usage']);
 const MAX_PROVIDERS = 32;
 const MAX_WINDOWS = 32;
 const MAX_COMPONENTS = 30;
@@ -44,6 +48,11 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'codex', label: 'Codex', kind: 'quota' },
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
+  // Google AI Pro (2026-11-23): one row per subscription account, in the order the
+  // Antigravity pool uses them (laa-agy-pool, Sub2→Sub3→Sub4). The app shows them as one
+  // group that opens to the accounts; `active` marks the one the pool would use next.
+  ...['sub2', 'sub3', 'sub4'].map((account) => ({ id: `google-ai-pro-${account}`, label: `Google ${account[0].toUpperCase()}${account.slice(1)}`,
+    kind: 'quota', group: GOOGLE_AI_PRO.id, groupName: GOOGLE_AI_PRO.name })),
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
   { id: 'openai-api', label: 'GPT API', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
@@ -89,7 +98,14 @@ function baseOf(provider) {
     label: provider.label,
     unit: shapeOf(provider).unit,
     source: USAGE_SOURCE,
+    ...(provider.group ? { group: provider.group, groupName: provider.groupName } : {}),
   };
+}
+
+// The grouped rows say which account is in use, read or not; anything but a boolean is left out.
+function withActive(item, provider, row) {
+  if (provider.group && typeof row?.active === 'boolean') item.active = row.active;
+  return item;
 }
 
 export function unavailableUsageItems(reason = 'fetch_failed') {
@@ -198,7 +214,7 @@ function balanceExpired(row, now) {
 function isStale(row, feedFetchedAt, now, autoStaleMs, receivedAt = now) {
   const observed = isoTime(row.updatedAt);
   if (observed === null || Date.parse(observed) > Math.min(now, receivedAt) + 120_000) return true;
-  if (row.source != null && !['live', 'local', 'codexbar-cli', 'verified'].includes(row.source)) return true;
+  if (row.source != null && ![...AUTO_SOURCES, 'verified'].includes(row.source)) return true;
   if (row.source === 'verified') return true;
   if (row.freshUntil != null && (isoTime(row.freshUntil) === null || Date.parse(row.freshUntil) <= now)) return true;
   const times = [observed, feedFetchedAt]
@@ -408,7 +424,9 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
     byId.set(provider.id, entry);
   }
   const autoLimit = Math.min(autoStaleMs, 10 * 60 * 1000);
-  return USAGE_PROVIDERS.map((provider) => {
+  return USAGE_PROVIDERS.map((provider) => withActive(itemForProvider(provider), provider, byId.get(provider.id)));
+
+  function itemForProvider(provider) {
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
     if (provider.kind === 'balance' && row.balance) return confirmedBalanceItem(row.balance, provider, now);
@@ -429,7 +447,7 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
     // live for them. Manual credit rows explicitly carry source: verified.
     // The raw /widget response has no row.fetchedAt.
     const source = row.source ?? 'live';
-    if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(source)) {
+    if (item.availability === 'available' && AUTO_SOURCES.includes(source)) {
       const updated = isoTime(row.updatedAt);
       if (updated !== null && Date.parse(updated) <= Math.min(now, context.receivedAt) + 120_000) {
         item.detail ??= {};
@@ -440,5 +458,5 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
       }
     }
     return item;
-  });
+  }
 }

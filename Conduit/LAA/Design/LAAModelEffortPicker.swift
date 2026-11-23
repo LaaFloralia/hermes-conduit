@@ -208,6 +208,10 @@ struct LAAModelCapsule: View {
         // A routed id: ["opencode-go","deepseek-v4.1-flash"].
         if let data = raw.data(using: .utf8), let route = try? JSONDecoder().decode([String].self, from: data),
            let last = route.last { raw = last }
+        // A paid API route names its maker before the id: "openai:gpt-5.5", "anthropic:claude-opus-5-5".
+        for route in ["openai:", "anthropic:", "google:", "gemini:"] where raw.lowercased().hasPrefix(route) {
+            raw = String(raw.dropFirst(route.count))
+        }
         if raw.hasPrefix("Claude ") { raw = String(raw.dropFirst("Claude ".count)) }
         // The 1M-context route of the same model: "claude-opus-5-5[1m]".
         if raw.hasSuffix("[1m]") { raw = String(raw.dropLast("[1m]".count)) }
@@ -217,6 +221,20 @@ struct LAAModelCapsule: View {
         }
         if let match = lower.firstMatch(of: #/^gpt-([\d.]+)-([a-z]+)$/#) {
             return "GPT \(match.1) \(match.2.capitalized)"
+        }
+        // GPT API ids: "gpt-5.5", "gpt-5.4-mini", "gpt-4o"; and the o-series, "o3", "o4-mini".
+        if let match = lower.firstMatch(of: #/^gpt-([\da-z.]+)((?:-[a-z][a-z0-9]*)*)$/#) {
+            let words = match.2.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            return (["GPT", String(match.1)] + words).joined(separator: " ")
+        }
+        if let match = lower.firstMatch(of: #/^(o\d+)((?:-[a-z]+)*)$/#) {
+            let words = match.2.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            return ([String(match.1)] + words).joined(separator: " ")
+        }
+        // "gemini-4-neon" → "Gemini 4 Neon"; an effort suffix ("-high") is the effort's, not the name's.
+        if let match = lower.firstMatch(of: #/^gemini-([\d.]+)((?:-[a-z]+)*?)(?:-(?:low|medium|high|xhigh|max))?$/#) {
+            let words = match.2.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            return (["Gemini", String(match.1)] + words).joined(separator: " ")
         }
         if lower.hasPrefix("deepseek") {
             // "deepseek-v4.1-flash" → "DeepSeek V4.1 Flash", each word as written.

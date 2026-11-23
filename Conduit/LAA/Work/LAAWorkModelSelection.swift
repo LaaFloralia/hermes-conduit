@@ -61,9 +61,20 @@ enum LAAWorkModelSelection {
             byProvider[item.provider, default: []].append(item)
         }
         return order.map { provider in
-            (provider == "dsh-venice" ? "Venice" : provider == "hermes-claude-api" ? "Claude API" :
-                (LAAModelFace.face(model: byProvider[provider]?.first?.model, provider: provider).providerName ?? provider),
-             byProvider[provider] ?? [])
+            (sectionName(provider, first: byProvider[provider]?.first?.model), byProvider[provider] ?? [])
+        }
+    }
+
+    /// The heading a provider's models sit under: the route for the paid and
+    /// subscription ones (Gemini is Google AI Pro through Antigravity), the
+    /// maker otherwise.
+    static func sectionName(_ provider: String, first model: String?) -> String {
+        switch provider {
+        case "dsh-venice": "Venice"
+        case "hermes-claude-api": "Claude API"
+        case "hermes-openai-api": "GPT API"
+        case "antigravity": "Gemini"
+        default: LAAModelFace.face(model: model, provider: provider).providerName ?? provider
         }
     }
 }

@@ -126,6 +126,15 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertEqual(LAAModelRank.of("gpt-6.1-sol").step, .plain)
         XCTAssertEqual(LAAModelRank.of("deepseek-v4.1-flash").step, .plain)
         XCTAssertEqual(LAAModelRank.of(nil).step, .plain)
+        // Gemini 4 Neon wears the model step in the house 青緑 (2026-11-23); Hydrogen is plain.
+        XCTAssertEqual(LAAModelRank.of("gemini-4-neon"), .neon)
+        XCTAssertEqual(LAAModelRank.of("Gemini 4 Neon"), .neon)
+        XCTAssertEqual(LAAModelRank.of("gemini-4-neon").step, .model)
+        XCTAssertEqual(LAAModelRank.neon.tone, .neon)
+        XCTAssertEqual(LAAModelRank.of("gemini-4-hydrogen").step, .plain)
+        XCTAssertNotEqual(LAAVeinTone.neon.tokens, LAAVeinTone.mythos.tokens, "Neon reads apart from Mythos")
+        XCTAssertGreaterThan(LAASelectionStyle(tone: .mythos, step: .model).intensity,
+                             LAASelectionStyle(tone: .neon, step: .model).intensity, "Mythos stays the strongest")
         XCTAssertEqual(LAAEffort.step("medium"), .plain)
         XCTAssertEqual(LAAEffort.step("high"), .plain, "High and below stay plain")
         XCTAssertEqual(LAAEffort.step("xhigh"), .xhigh)
@@ -205,6 +214,59 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertTrue(Row.oneLine(lead: 36, middle: 220, trail: 80, available: 400, spacing: 8))
         XCTAssertFalse(Row.oneLine(lead: 36, middle: 340, trail: 80, available: 400, spacing: 8))
         XCTAssertTrue(Row.oneLine(lead: 36, middle: 340, trail: 80, available: nil, spacing: 8))
+    }
+
+    /// Gemini (Google AI Pro via Antigravity) and the GPT API in Work's menu
+    /// (2026-11-23), under their own headings, Neon and Hydrogen by name.
+    func testWorkOffersGeminiAndTheGPTAPIUnderTheirRoutes() {
+        let options = LAAWorkSessionOptions(profiles: [
+            profile("opus-high", "claude", "claude-opus-5-5", "Claude Opus 5.5", "high"),
+            profile("neon-high", "antigravity", "gemini-4-neon", "Gemini 4 Neon", "high"),
+            profile("neon-low", "antigravity", "gemini-4-neon", "Gemini 4 Neon", "low"),
+            profile("hydrogen-xhigh", "antigravity", "gemini-4-hydrogen", "Gemini 4 Hydrogen", "xhigh"),
+            profile("gpt-api-high", "hermes-openai-api", "openai:gpt-5.5", "GPT-5.5（API）", "high"),
+            profile("opus-api-high", "hermes-claude-api", "anthropic:claude-opus-5-5", "Claude Opus 5.5（API）", "high"),
+        ], defaultProfile: "opus-high", defaultMode: "bypass")
+        let models = LAAWorkModelSelection.models(options)
+        XCTAssertEqual(models.map(\.label), ["Opus 5.5", "Gemini 4 Neon", "Gemini 4 Hydrogen", "GPT-5.5（API）", "Opus 5.5（API）"])
+        XCTAssertEqual(models[1].efforts, ["low", "high"])
+        XCTAssertEqual(LAAWorkModelSelection.providers(models).map(\.name), ["Claude", "Gemini", "GPT API", "Claude API"])
+        XCTAssertEqual(LAAModelFace.face(model: "gemini-4-hydrogen", provider: "antigravity"), .gemini)
+        XCTAssertEqual(LAAModelFace.face(model: "openai:o3", provider: "hermes-openai-api"), .gpt(.other))
+    }
+
+    /// Hermes' provider names for Gemini and the APIs are not fixed yet: the
+    /// headings read the route, Gemini offers Low to XHigh, and Muse and Dots
+    /// stay with their own employees.
+    func testChatReadsGeminiAndTheAPIsAndKeepsMuseAndDotsToTheirEmployees() {
+        let providers = [
+            ProviderInfo(name: "antigravity-subscription-directsdk", models: [
+                ModelInfo(id: "gemini-4-neon", label: nil, reasoningCapable: true),
+                ModelInfo(id: "gemini-4-hydrogen", label: nil, reasoningCapable: true)], displayName: "Antigravity Subscription"),
+            ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5.5", label: nil, reasoningCapable: true),
+                                                  ModelInfo(id: "o3", label: nil, reasoningCapable: true)], displayName: "OpenAI"),
+            ProviderInfo(name: "anthropic", models: [ModelInfo(id: "claude-opus-5-5", label: nil, reasoningCapable: true)],
+                         displayName: "Anthropic"),
+            ProviderInfo(name: "custom:laa-dots", models: [ModelInfo(id: "dots", label: "Dots", reasoningCapable: false)]),
+            ProviderInfo(name: "custom:laa-muse", models: [ModelInfo(id: "muse", label: "Muse", reasoningCapable: false)]),
+        ]
+        let choices = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(), runningModel: nil, runningProvider: nil)
+        XCTAssertEqual(choices.map(\.label), ["Gemini 4 Neon", "Gemini 4 Hydrogen", "GPT 5.5", "o3", "Opus 5.5"])
+        XCTAssertEqual(LAAChatModelCatalog.sections(choices).map(\.name), ["Gemini", "GPT API", "Claude API"])
+        // The dedicated employee still sees its own model.
+        let dots = LAAChatModelCatalog.choices(providers, visibility: ModelVisibility(), runningModel: "dots", runningProvider: "custom:laa-dots")
+        XCTAssertEqual(dots.filter(\.current).map(\.model), ["dots"])
+        XCTAssertFalse(dots.contains { $0.model == "muse" })
+        XCTAssertEqual(LAAChatModelCatalog.efforts(current: "high", model: "gemini-4-neon", provider: "antigravity"),
+                       ["low", "medium", "high", "xhigh"])
+        XCTAssertEqual(LAAChatModelCatalog.efforts(current: "max", model: "gemini-4-neon"), ["low", "medium", "high", "xhigh", "max"],
+                       "a reported level outside Gemini's four is listed")
+        XCTAssertEqual(LAAModelCapsule.readableName("gemini-4-neon-high"), "Gemini 4 Neon")
+        XCTAssertEqual(LAAModelCapsule.readableName("openai:gpt-5.4-mini"), "GPT 5.4 Mini")
+        XCTAssertEqual(LAAModelCapsule.readableName("gpt-6.1-sol"), "GPT 6.1 Sol")
+        XCTAssertEqual(LAAModelCapsule.displayName(model: "anthropic:claude-opus-5-5", provider: "hermes-claude-api"), "Claude Opus 5.5")
+        XCTAssertEqual(LAAModelDisplay.name("openai:gpt-5.5"), "GPT-5.5")
+        XCTAssertEqual(LAAModelDisplay.name("gemini-4-neon"), "Gemini 4 Neon")
     }
 
     func testCapsuleNamesAreWholeAndBeginWithTheirMaker() {

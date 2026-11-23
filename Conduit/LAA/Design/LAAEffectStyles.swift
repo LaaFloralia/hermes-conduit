@@ -10,7 +10,7 @@ import UIKit
 /// Whose look a strong selection wears: the stone (a strong effort under any
 /// other model), or one model's own colour.
 enum LAAVeinTone: Equatable, CaseIterable {
-    case stone, mythos, astra, fable
+    case stone, mythos, astra, fable, neon
 
     var tokens: LAAAppSelectionTokens.Model {
         switch self {
@@ -18,6 +18,7 @@ enum LAAVeinTone: Equatable, CaseIterable {
         case .mythos: LAAAppSelectionTokens.mythos
         case .astra: LAAAppSelectionTokens.astra
         case .fable: LAAAppSelectionTokens.fable
+        case .neon: LAAAppSelectionTokens.neon
         }
     }
 }
@@ -28,6 +29,7 @@ extension LAAModelRank {
         case .mythos: .mythos
         case .astra: .astra
         case .fable: .fable
+        case .neon: .neon
         case .none: .stone
         }
     }

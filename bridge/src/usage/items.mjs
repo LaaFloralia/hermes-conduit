@@ -70,8 +70,14 @@ export function expiryTime(value) {
   return isoTime(value) === null ? null : Date.parse(value);
 }
 
+// A grouped row (Google AI Pro's accounts) names its code-owned group on every state.
+function withGroup(item, group, groupName) {
+  if (typeof group === 'string' && typeof groupName === 'string') Object.assign(item, { group, groupName });
+  return item;
+}
+
 export function availableItem({
-  id, kind, label, value, unit, source, observedAt, stale = false, expired = false, detail,
+  id, kind, label, value, unit, source, observedAt, stale = false, expired = false, detail, group, groupName,
 }) {
   const item = {
     id,
@@ -87,13 +93,13 @@ export function availableItem({
     expired,
   };
   if (detail !== undefined) item.detail = detail;
-  return item;
+  return withGroup(item, group, groupName);
 }
 
 export function unavailableItem({
-  id, kind, label, unit, source, reason, expired = false,
+  id, kind, label, unit, source, reason, expired = false, group, groupName,
 }) {
-  return {
+  return withGroup({
     id,
     kind,
     label,
@@ -106,5 +112,5 @@ export function unavailableItem({
     estimated: false,
     expired,
     nullReason: reason,
-  };
+  }, group, groupName);
 }

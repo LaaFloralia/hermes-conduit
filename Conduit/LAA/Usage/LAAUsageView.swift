@@ -14,6 +14,10 @@ extension LAACopy {
         static let lapsed = "期限切れ"
         static let meter = "利用枠"
         static let lowestWeekly = "週間の残りが最も少ない枠"
+        static let inUse = "使用中"
+        static let windows = "5時間・週間"
+        static let expanded = "開いています"
+        static let collapsed = "閉じています"
     }
 }
 
@@ -46,6 +50,8 @@ struct LAAUsageView: View {
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
     @State private var evaluatedAt = Date()
+    /// Grouped services the owner opened (`provider.google-ai-pro`), kept across launches.
+    @AppStorage("laa.usage.expandedGroups") private var expandedGroups = ""
     private let automaticallyRefresh: Bool
 
     init(state: LAAUsageState, showsSettingsButton: Bool = true, onRequestSettings: @escaping () -> Void = {}) {
@@ -188,7 +194,9 @@ struct LAAUsageView: View {
                 } else {
                     ForEach(groups) { group in
                         VStack(spacing: 0) {
-                            if LAAUsageGroup.isAPI(group.id + ".") {
+                            if LAAUsageGroup.isAccountGroup(group.id), !group.items.isEmpty {
+                                accountGroup(group)
+                            } else if LAAUsageGroup.isAPI(group.id + ".") {
                                 apiBalanceRow(group.items.first { $0.id == group.id + ".balance" },
                                               groupID: group.id, name: group.label)
                             } else if group.items.isEmpty {
@@ -205,11 +213,65 @@ struct LAAUsageView: View {
         }
     }
 
-    @ViewBuilder private func serviceRow(_ item: LAAUsageItem, name: String) -> some View {
+    /// One account per row group (Google AI Pro's Sub2・Sub3・Sub4). Closed,
+    /// the header names the account in use and its two windows follow; open,
+    /// every account shows its own windows under its name.
+    @ViewBuilder private func accountGroup(_ group: LAAUsageGroup) -> some View {
+        let expanded = expandedGroups.split(separator: ",").contains { $0 == group.id }
+        let lead = LAAUsageGroup.leadingAccount(group.items)
+        Button {
+            var open = Set(expandedGroups.split(separator: ",").map(String.init))
+            if expanded { open.remove(group.id) } else { open.insert(group.id) }
+            withAnimation(.smooth(duration: 0.25)) { expandedGroups = open.sorted().joined(separator: ",") }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                Text(verbatim: group.label).font(.body).foregroundStyle(LAAColor.text)
+                Spacer(minLength: LAASpacing.x2)
+                if !expanded, let lead {
+                    Text(verbatim: lead.active == true ? LAACopy.Usage.inUse + " " + lead.label : lead.label)
+                        .laaTextStyle(.secondary).foregroundStyle(lead.active == true ? LAAColor.link : LAAColor.secondaryText)
+                }
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, LAASpacing.x3)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: group.label))
+        .accessibilityValue(Text(verbatim: expanded ? LAACopy.Usage.expanded : LAACopy.Usage.collapsed))
+        .accessibilityIdentifier("laa.usage.group.\(group.id)")
+        if expanded {
+            ForEach(group.items) { item in
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: LAASpacing.x2) {
+                        Text(verbatim: item.label).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        if item.active == true {
+                            Text(verbatim: LAACopy.Usage.inUse).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                        }
+                    }
+                    .padding(.top, LAASpacing.x2)
+                    serviceRow(item, name: item.label, windowsOnly: true)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("laa.usage.account.\(item.id)")
+            }
+        } else if let lead {
+            serviceRow(lead, name: lead.label, windowsOnly: true)
+        }
+    }
+
+    /// `windowsOnly`: the row is named by its window alone ("5時間", "週間"),
+    /// because a heading above it already names the account.
+    @ViewBuilder private func serviceRow(_ item: LAAUsageItem, name: String, windowsOnly: Bool = false) -> some View {
         let age = age(item)
         if item.availability == "available", item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
-                let label = windows.count > 1 ? name + " " + LAAUsageLabel.window(window) : name
+                let label = windowsOnly ? LAAUsageLabel.window(window)
+                    : windows.count > 1 ? name + " " + LAAUsageLabel.window(window) : name
                 let reset = LAAUsageFreshness.windowExpired(window, at: evaluatedAt)
                 readingRow(name: label, result: value(window.remainingPercent, unit: "percent"), age: age,
                            fraction: window.remainingPercent.map { $0 / 100 }, countsDown: true,
@@ -225,7 +287,8 @@ struct LAAUsageView: View {
             let money = item.kind == "balance" && unit == "usd"
             let fraction = money ? LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
                 : LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
-            readingRow(name: name, result: value(amount, unit: unit), age: age, fraction: fraction, countsDown: true,
+            readingRow(name: windowsOnly ? LAACopy.Usage.windows : name, result: value(amount, unit: unit), age: age,
+                       fraction: fraction, countsDown: true,
                        note: reason(item) ?? (item.kind == "usage" ? "記録済み費用" : grantNote(granted, fraction: fraction, money: money)))
         }
     }

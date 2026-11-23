@@ -12,10 +12,19 @@ import { providerAvailability, withAvailability } from './availability.mjs';
 import { entranceProfiles, workRoute } from './entrance-profiles.mjs';
 
 const DEFAULT_PROFILE = 'opus-high';
-// The harnesses a Work session can run on. Dots (Monet on ChatGPT) and Muse run only in the
-// LAA Work engine. HQ lists both; while one cannot run (Dots after its contract ends, Muse
-// before its contract) its label carries the engine's reason (availability.mjs).
-const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'dots', 'muse'];
+// The harnesses a Work session can run on. Dots (Monet on ChatGPT) runs only in the LAA Work
+// engine; while it cannot run its label carries the engine's reason (availability.mjs).
+// Antigravity is the Google AI Pro subscription (Sub2→Sub3→Sub4). Muse is not offered: Work
+// has no Muse CLI (owner, 2026-11-23); the free Muse stays in Chat as 薬用石鹸.
+const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'hermes-openai-api', 'antigravity', 'dots'];
+// Metered API routes: offered only by hand, with the route in the label.
+const PAID_ROUTES = { 'hermes-claude-api': { prefix: 'anthropic:', suffix: '（API）' },
+  'hermes-openai-api': { prefix: 'openai:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' } };
+// The model id a Work entrance and the launch body carry for a profile.
+function wireModel(harness, modelId) {
+  if (harness === 'dsh' || harness === 'dsh-venice') return JSON.stringify([harness === 'dsh' ? 'opencode-go' : 'venice', modelId]);
+  return (PAID_ROUTES[harness]?.prefix ?? '') + modelId;
+}
 
 // One reader of the engine's provider states for the live Bridge.
 let shared = null;
@@ -52,11 +61,10 @@ function expandModelId(table, value) {
 // the automatic default.
 function manualEntranceExists(table, profile) {
   const modelId = table.models?.[profile.model]?.modelId;
-  const wireModel = profile.harness === 'hermes-claude-api' ? `anthropic:${modelId}`
-    : profile.harness === 'dsh-venice' ? JSON.stringify(['venice', modelId]) : modelId;
+  const wire = profile.harness === 'dsh' ? modelId : wireModel(profile.harness, modelId);
   return typeof modelId === 'string' && (table.entrances ?? []).some((entry) => {
     const route = workRoute(entry);
-    return entry.status === 'manual' && route?.provider === profile.harness && expandModelId(table, route.model) === wireModel &&
+    return entry.status === 'manual' && route?.provider === profile.harness && expandModelId(table, route.model) === wire &&
       (route.thinking === profile.effort || (profile.harness === 'dsh-venice' && route.thinking == null));
   });
 }
@@ -64,7 +72,7 @@ function manualEntranceExists(table, profile) {
 export function sessionOptionsFrom(table, availability = null) {
   const aliases = table?.aliases ?? {};
   const manualProfiles = new Set(table?.dispatch?.manual_profiles ?? []);
-  const paidRoute = (profile) => ['hermes-claude-api', 'dsh-venice'].includes(profile.harness);
+  const paidRoute = (profile) => Object.hasOwn(PAID_ROUTES, profile.harness);
   const choices = Object.entries(table?.profiles ?? {})
     .filter(([id, profile]) => profile && !Object.hasOwn(aliases, id) &&
       (profile.manual !== true || (!paidRoute(profile) && manualProfiles.has(id)) || manualEntranceExists(table, profile)))
@@ -78,10 +86,9 @@ export function sessionOptionsFrom(table, availability = null) {
       const model = table.models?.[profile.model] ?? {};
       return withAvailability({
         id,
-        label: (model.label ?? profile.model) + (profile.harness === 'hermes-claude-api' ? '（API）' : profile.harness === 'dsh-venice' ? '（Venice）' : ''),
+        label: (model.label ?? profile.model) + (PAID_ROUTES[profile.harness]?.suffix ?? ''),
         provider: profile.harness,
-        model: ['dsh', 'dsh-venice'].includes(profile.harness) ? JSON.stringify([profile.harness === 'dsh' ? 'opencode-go' : 'venice', model.modelId ?? profile.model])
-          : (profile.harness === 'hermes-claude-api' ? 'anthropic:' : '') + (model.modelId ?? profile.model),
+        model: wireModel(profile.harness, model.modelId ?? profile.model),
         effort: profile.effort,
         fast: fastSupported(profile.harness, model.modelId),
       }, availability?.(profile.harness) ?? null);

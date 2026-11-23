@@ -326,39 +326,56 @@ test('provider states come from the engine CLI, are kept a while and survive a f
 });
 
 
-test('free Muse stays visible, cannot launch, and never forwards a prompt or falls back', async (t) => {
+test('Muse is not a Work choice: Work has no Muse CLI (owner, 2026-11-23)', () => {
   const withMuse = {
     ...table,
     profiles: { ...table.profiles, 'muse-high': { model: 'muse', harness: 'muse', effort: 'high', manual: true } },
     models: { ...table.models, muse: { label: 'Muse', modelId: 'muse' } },
     dispatch: { manual_profiles: ['muse-high'] },
   };
-  const options = sessionOptionsFrom(withMuse, (id) => id === 'muse'
-    ? { available: false, reason: 'Muse Code CLI is not installed' } : null);
-  const muse = options.profiles.find((p) => p.id === 'muse-high');
-  assert.equal(muse.provider, 'muse');
-  assert.equal(muse.model, 'muse');
-  assert.equal(muse.available, false);
-  assert.match(muse.label, /Muse Code未導入/);
-  assert.match(muse.usageNote, /公開情報.*道具なし.*直列.*履歴分離/s);
-  assert.ok(options.switchProfiles.some((p) => p.id === muse.id));
-  assert.notEqual(options.defaultProfile, muse.id);
-  const unverified = sessionOptionsFrom(withMuse).profiles.find((p) => p.id === muse.id);
-  assert.equal(unverified.available, false);
-  assert.match(unverified.label, /接続未確認/);
-  const verifiedCode = sessionOptionsFrom(withMuse, () => ({ available: true })).profiles.find((p) => p.id === muse.id);
-  assert.equal(verifiedCode.label, 'Muse');
-  assert.notEqual(verifiedCode.available, false);
-  const calls = [];
-  const bridge = await startBridge({ sessions: {
-    options: () => options, adapter: { create: async (request) => { calls.push(request); throw Error('must not run'); } },
-  } });
-  t.after(() => bridge.close());
-  const token = await bridge.token();
-  const result = await bridge.request('/v1/sessions', { token, method: 'POST', key: 'muse-unavailable', body: {
-    requestId: 'muse-unavailable', profile: muse.id, prompt: 'synthetic private sentinel; never transmit', mode: 'bypass',
-  } });
-  assert.equal(result.status, 400);
-  assert.equal(result.body.error.code, 'model_choice_invalid');
-  assert.deepEqual(calls, []);
+  for (const state of [null, { available: true }, { available: false, reason: 'Muse Code CLI is not installed' }]) {
+    const options = sessionOptionsFrom(withMuse, () => state);
+    assert.ok(!options.profiles.some((p) => p.provider === 'muse'));
+    assert.ok(!options.switchProfiles.some((p) => p.provider === 'muse'));
+  }
+});
+
+test('GPT API is a paid manual route with the openai: wire id and （API）, offered only from a manual entrance', () => {
+  const api = { ...table, profiles: { ...table.profiles,
+    'gpt-api-55-high': { model: 'gpt55api', harness: 'hermes-openai-api', effort: 'high', manual: true },
+    'gpt-api-unlisted-high': { model: 'gpt55api', harness: 'hermes-openai-api', effort: 'xhigh', manual: true },
+  }, models: { ...table.models, gpt55api: { label: 'GPT-5.5', modelId: 'gpt-5.5' } },
+  // A paid route is not offered by naming it in manual_profiles alone.
+  dispatch: { manual_profiles: ['gpt-api-unlisted-high'] },
+  entrances: [...table.entrances, { kind: 'work', status: 'manual', work: {
+    provider: 'hermes-openai-api', model: 'openai:{{id:gpt55api}}', thinking: 'high' } }] };
+  const options = sessionOptionsFrom(api);
+  assert.deepEqual(options.profiles.find((p) => p.id === 'gpt-api-55-high'), {
+    id: 'gpt-api-55-high', label: 'GPT-5.5（API）', provider: 'hermes-openai-api', model: 'openai:gpt-5.5', effort: 'high', fast: false,
+  });
+  assert.ok(!options.profiles.some((p) => p.id === 'gpt-api-unlisted-high'));
+  assert.ok(options.switchProfiles.some((p) => p.id === 'gpt-api-55-high'));
+  assert.equal(options.defaultProfile, 'opus-high');
+  api.profiles['gpt-api-55-high'].manual = false;
+  assert.ok(!sessionOptionsFrom(api).profiles.some((p) => p.id === 'gpt-api-55-high'));
+});
+
+test('Gemini on Antigravity is a subscription manual choice from manual_profiles or an entrance, never the default', () => {
+  const efforts = ['low', 'medium', 'high', 'xhigh'];
+  const gemini = { ...table, profiles: { ...table.profiles,
+    ...Object.fromEntries(efforts.map((effort) => [`neon-${effort}`, { model: 'neon', harness: 'antigravity', effort, manual: true }])),
+    'hydrogen-high': { model: 'hydrogen', harness: 'antigravity', effort: 'high', manual: true },
+  }, models: { ...table.models, neon: { label: 'Gemini 4 Neon', modelId: 'gemini-4-neon' },
+    hydrogen: { label: 'Gemini 4 Hydrogen', modelId: 'gemini-4-hydrogen' } },
+  dispatch: { manual_profiles: efforts.map((effort) => `neon-${effort}`) },
+  entrances: [...table.entrances, { kind: 'work', status: 'manual', work: { provider: 'antigravity', model: '{{id:hydrogen}}', thinking: 'high' } }] };
+  const options = sessionOptionsFrom(gemini);
+  const neon = options.profiles.filter((p) => p.provider === 'antigravity' && p.model === 'gemini-4-neon');
+  assert.deepEqual(neon.map((p) => [p.effort, p.label, p.fast]), efforts.map((effort) => [effort, 'Gemini 4 Neon', false]));
+  assert.deepEqual(options.profiles.find((p) => p.id === 'hydrogen-high'),
+    { id: 'hydrogen-high', label: 'Gemini 4 Hydrogen', provider: 'antigravity', model: 'gemini-4-hydrogen', effort: 'high', fast: false });
+  assert.equal(options.defaultProfile, 'opus-high');
+  const unavailable = sessionOptionsFrom(gemini, (provider) => provider === 'antigravity'
+    ? { available: false, reason: 'no signed-in account', reasonShort: 'サインイン済みのアカウントなし' } : null);
+  assert.equal(unavailable.profiles.find((p) => p.id === 'neon-high').label, 'Gemini 4 Neon（サインイン済みのアカウントなしのため使えません）');
 });
