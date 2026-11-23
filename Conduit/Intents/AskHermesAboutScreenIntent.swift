@@ -98,6 +98,9 @@ enum ScreenQuestionShortcutLink {
     }
 
     static func fetchConfig(_ url: URL) async throws -> Data {
+        #if DEBUG
+        guard !LAALabNetworkPolicy.current.isActive else { throw URLError(.unsupportedURL) }
+        #endif
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }

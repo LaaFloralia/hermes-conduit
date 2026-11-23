@@ -1,5 +1,5 @@
 // Synthetic session UI server. No daemon, pairing secrets or real data.
-import { createServer } from 'node:http';
+import { createLaneFixtureServer, listenLaneFixture } from '../../bridge/src/lane/fixture.mjs';
 const stamp = '2026-11-02T10:00:00Z';
 const rootID = 'ses_1111111111111111', childID = 'ses_2222222222222222';
 let replied = false;
@@ -21,7 +21,7 @@ const row = (id, name, parentId, phase) => ({ id, name, parentId, requestId: id,
 const rows = () => [row(rootID, '移行の動作確認', null, 'running'), row(childID, '子｜資料の確認', rootID, replied ? 'running' : 'awaiting_decision'), ...launches,
   ...(longList ? Array.from({ length: 20 }, (_, i) => row(`ses_${(i + 3).toString(16).padStart(16, '0')}`, `追加の確認 ${i + 1}`, null, 'idle')) : [])];
 const send = (res, data, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'paseo-fixture' })); };
-export const server = createServer(async (req, res) => {
+export const server = createLaneFixtureServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1'), path = url.pathname;
   if (path === '/reset') { replied = false; favorite = true; projectArchivedAt = null; longList = url.searchParams.get('long') === '1'; failLaunch = false; launchAttempts = 0; launches = []; rootProject = null; return send(res, {}); }
   if (path === '/state') return send(res, { favorite, rootProject });
@@ -76,4 +76,5 @@ export const server = createServer(async (req, res) => {
     return send(res, current);
   }
   return send(res, { items: [], nextCursor: null });
-}).listen(19596, '127.0.0.1');
+});
+listenLaneFixture(server, 'paseo', 19596);

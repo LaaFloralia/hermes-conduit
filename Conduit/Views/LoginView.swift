@@ -302,6 +302,12 @@ struct AuthWebView: UIViewRepresentable {
         }
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        #if DEBUG
+        if LAALabNetworkPolicy.current.isActive {
+            Self.reportConstructionFailure(onError, detail: "Web sign-in is disabled in the lab lane")
+            return webView
+        }
+        #endif
         guard let normalized else {
             Self.reportConstructionFailure(onError, detail: AppLocalization.string("dashboard URL failed normalization in AuthWebView"))
             return webView

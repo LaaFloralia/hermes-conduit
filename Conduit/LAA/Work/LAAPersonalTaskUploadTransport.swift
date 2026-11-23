@@ -49,10 +49,16 @@ extension LAABridgeClient {
         request.setValue(String(metadata.size), forHTTPHeaderField: "Content-Length")
         let data: Data
         let response: URLResponse
+        #if DEBUG
+        request = try await prepareLabRequest(request)
+        #endif
         do { (data, response) = try await rangeSession.upload(for: request, fromFile: file) }
         catch is CancellationError { throw CancellationError() }
         catch let failure as URLError where failure.code == .cancelled { throw CancellationError() }
         catch { throw LAABridgeError.networkUnreachable }
+        #if DEBUG
+        try LAALabNetworkPolicy.current.verifyBridgeResponse(response)
+        #endif
         guard let http = response as? HTTPURLResponse else { throw LAABridgeError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let envelope = try? JSONDecoder().decode(LAAPersonalUploadFailure.self, from: data)

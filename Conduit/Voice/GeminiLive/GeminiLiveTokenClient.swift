@@ -156,6 +156,10 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     }
 
     func freshToken() async throws -> GeminiLiveToken {
+        #if DEBUG
+        // A successful answer contains a live provider URI and a credential.
+        guard !LAALabNetworkPolicy.current.isActive else { throw URLError(.unsupportedURL) }
+        #endif
         let response: [String: Any]
         do {
             response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/token" : Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)

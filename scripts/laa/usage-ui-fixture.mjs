@@ -3,7 +3,8 @@
 // and start this helper with LAA_USAGE_UI_REAL_STATE set to that same directory.
 // Use an ad-hoc-signed LAA_BUILD simulator; the real-cache test also needs a
 // successful usage-feed cache. Revoke the test device and purge the test state.
-import { createServer } from 'node:http';
+import { createLaneFixtureServer as createServer, listenLaneFixture } from '../../bridge/src/lane/fixture.mjs';
+import { assertTestStateDir } from '../../bridge/src/lane/guard.mjs';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
@@ -13,6 +14,7 @@ const exec = promisify(execFile);
 const fixtureRoot = new URL('../../docs/laa/fixtures/usage/', import.meta.url);
 const cli = new URL('../../bridge/bin/laa-bridge', import.meta.url).pathname;
 const stateDir = process.env.LAA_USAGE_UI_REAL_STATE;
+if (stateDir) assertTestStateDir(stateDir, { ...process.env, NODE_TEST_CONTEXT: 'ui-fixture' });
 let mode = 'normal';
 let usageRequests = 0;
 const send = (res, status, body) => {
@@ -21,7 +23,7 @@ const send = (res, status, body) => {
 };
 const readFixture = async (name) => JSON.parse(await readFile(new URL(name, fixtureRoot), 'utf8'));
 
-createServer(async (req, res) => {
+const api = createServer(async (req, res) => {
   try {
     if (req.method === 'POST' && req.url === '/v1/devices/enroll') {
       req.resume();
@@ -72,9 +74,10 @@ createServer(async (req, res) => {
     }
     send(res, 200, body);
   } catch { send(res, 500, {}); }
-}).listen(19492, '127.0.0.1');
+});
+listenLaneFixture(api, 'usage', 19492);
 
-createServer(async (req, res) => {
+const control = createServer(async (req, res) => {
   try {
     if (req.url === '/health') { res.end('ok'); return; }
     if (req.url === '/fixture-code') { res.end('TEST-TEST'); return; }
@@ -105,4 +108,5 @@ createServer(async (req, res) => {
     }
     send(res, 404, {});
   } catch { send(res, 500, {}); }
-}).listen(19493, '127.0.0.1');
+});
+listenLaneFixture(control, 'usage-control', 19493);

@@ -48,6 +48,9 @@ private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneU
     }
 
     func start() {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         guard !started else { return }
         started = true
         LAAPhoneUseAnswers.handler = { requestID, answer in

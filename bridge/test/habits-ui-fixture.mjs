@@ -1,12 +1,12 @@
 // Local UI harness: the real habits routes and temporary storage, no owner data.
-import http from 'node:http';
+import { createLaneFixtureServer, listenLaneFixture } from '../src/lane/fixture.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { habitRoutes } from '../src/routes/habits.mjs';
 const dir = mkdtempSync(join(tmpdir(), 'habits-ui-'));
 const routes = habitRoutes({ dir });
-const server = http.createServer(async (req, res) => {
+const server = createLaneFixtureServer(async (req, res) => {
   try {
     const path = new URL(req.url, 'http://localhost').pathname;
     const route = routes.find(r => r.method === req.method && (r.pattern ? r.pattern.test(path) : r.path === path));
@@ -16,5 +16,5 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(result.status, { 'Content-Type': 'application/json', ...result.headers }); res.end(JSON.stringify({ data: result.data, requestId: 'ui-fixture' }));
   } catch (e) { res.writeHead(e.status ?? 500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: { code: e.code, message: e.message } })); }
 });
-server.listen(19684, '127.0.0.1', () => console.log('habits UI fixture ready'));
+listenLaneFixture(server, 'habits', 19684, () => console.log('habits UI fixture ready'));
 process.on('SIGTERM', () => server.close(() => { rmSync(dir, { recursive: true, force: true }); process.exit(0); }));

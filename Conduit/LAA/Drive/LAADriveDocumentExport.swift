@@ -32,9 +32,15 @@ extension LAABridgeClient {
         request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/pdf", forHTTPHeaderField: "Accept")
         if let expectedVersion { request.setValue(expectedVersion, forHTTPHeaderField: "x-laa-drive-version") }
+        #if DEBUG
+        request = try await prepareLabRequest(request)
+        #endif
         do {
             let (bytes, response) = try await rangeSession.bytes(for: request)
             defer { bytes.task.cancel() }
+            #if DEBUG
+            try LAALabNetworkPolicy.current.verifyBridgeResponse(response)
+            #endif
             guard let http = response as? HTTPURLResponse else { throw LAABridgeError.invalidResponse }
             guard http.statusCode == 200 else {
                 var body = Data()

@@ -196,7 +196,10 @@ extension DashboardTicketBridge {
         maxResponseBytes: Int,
         session: URLSession = DashboardBackgroundSession.shared
     ) async throws -> (data: Data, response: URLResponse, oversized: Bool) {
-        try await withThrowingTaskGroup(of: (data: Data, response: URLResponse, oversized: Bool).self) { group in
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(request.url) else { throw URLError(.unsupportedURL) }
+        #endif
+        return try await withThrowingTaskGroup(of: (data: Data, response: URLResponse, oversized: Bool).self) { group in
             group.addTask {
                 let (bytes, response) = try await session.bytes(for: request)
                 if let length = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init),

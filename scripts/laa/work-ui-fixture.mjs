@@ -1,5 +1,5 @@
 // Local, synthetic Work UI fixture. Never calls Linear or reads personal data.
-import http from 'node:http';
+import { createLaneFixtureServer, listenLaneFixture } from '../../bridge/src/lane/fixture.mjs';
 let tasks;
 // The Bridge's run record (contract 2026-11-09). One row is running so the
 // completion is refused; the rest cover every label the list draws, plus the
@@ -312,7 +312,7 @@ const settleDecision = (decision) => {
   decision.updatedAt = new Date().toISOString();
 };
 
-const api = http.createServer(async (req, res) => {
+const api = createLaneFixtureServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   const path = url.pathname;
   // The usage read is worth watching while the fixture serves it.
@@ -584,7 +584,7 @@ const api = http.createServer(async (req, res) => {
   res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'fixture_unavailable', message: 'Fixture unavailable', retryable: false }, requestId: 'fixture' }));
 });
 let advanced = 0;
-const control = http.createServer((req, res) => {
+const control = createLaneFixtureServer((req, res) => {
   if (req.url === '/reset') {
     resetGeneration += 1;
     releaseImages();
@@ -639,4 +639,5 @@ const control = http.createServer((req, res) => {
 });
 // WORK_FIXTURE_PORT moves both servers (api, api + 1) when the usual pair is taken.
 const apiPort = Number(process.env.WORK_FIXTURE_PORT || 19584);
-api.listen(apiPort, '127.0.0.1'); control.listen(apiPort + 1, '127.0.0.1');
+listenLaneFixture(api, 'work', apiPort);
+listenLaneFixture(control, 'work-control', apiPort + 1);

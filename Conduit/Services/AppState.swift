@@ -13565,6 +13565,11 @@ final class AppState: ObservableObject {
             }
             return
         }
+        if LAALabNetworkPolicy.current.isActive {
+            // Do not restore the owner's saved credentials or queued logout.
+            showLogin = true
+            return
+        }
         #endif
         // A sign-out that couldn't reach Hermes tries again.
         serverSignOutQueue.retryPending()

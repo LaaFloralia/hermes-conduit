@@ -15,8 +15,8 @@ struct LAABridgeEndpoint {
     // field editing made flaky.
     static var defaultAddress: String {
         #if DEBUG
-        if let override = ProcessInfo.processInfo.environment["LAA_BRIDGE_DEFAULT_ADDRESS"], !override.isEmpty {
-            return override
+        if LAALabNetworkPolicy.current.isActive {
+            return LAALabNetworkPolicy.current.bridgeAddress ?? "http://127.0.0.1:1"
         }
         #endif
         return "https://mac-mini.tailc9b8e7.ts.net:8445"
@@ -42,12 +42,18 @@ struct LAABridgeEndpoint {
         parts.path = ""
         if parts.port == nil { parts.port = 8445 }
         guard let url = parts.url else { throw LAABridgeError.invalidAddress }
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsBridge(url) else { throw LAABridgeError.laneMismatch }
+        #endif
         return url
     }
 }
 
 enum LAABridgeError: Error, Equatable {
     case invalidAddress, networkUnreachable, tlsFailed, invalidResponse, keychain
+    #if DEBUG
+    case laneMismatch
+    #endif
     case revoked, unauthorized, forbidden, conflict, expired, rateLimited, unavailable
     case other(status: Int, code: String?)
 
@@ -70,6 +76,9 @@ enum LAABridgeError: Error, Equatable {
         case .networkUnreachable: return "Macに届きません。TailscaleとMacの接続を確認してください。"
         case .tlsFailed: return "安全な接続を確認できません。接続先と証明書を確認してください。"
         case .invalidResponse: return "Macからの応答を読み取れませんでした。"
+        #if DEBUG
+        case .laneMismatch: return "検証レーンの接続先を確認できませんでした。"
+        #endif
         case .keychain: return "接続情報を端末に保存または読み出しできませんでした。"
         case .revoked: return "この端末の接続は失効しています。新しいコードで接続してください。"
         case .unauthorized: return "認証できませんでした。コードの期限と入力を確認してください。"
@@ -169,6 +178,14 @@ private final class LAANoRedirects: NSObject, URLSessionTaskDelegate {
 
 struct LAABridgeClient {
     private let session: URLSession
+    #if DEBUG
+    private var labPolicy = LAALabNetworkPolicy.current
+
+    init(labSession: URLSession, labPolicy: LAALabNetworkPolicy) {
+        session = labSession
+        self.labPolicy = labPolicy
+    }
+    #endif
 
     // Drive's bounded byte-range reader uses the same ephemeral, no-redirect session.
     var rangeSession: URLSession { session }
@@ -182,6 +199,26 @@ struct LAABridgeClient {
         config.timeoutIntervalForRequest = 120
         self.session = URLSession(configuration: config, delegate: LAANoRedirects(), delegateQueue: nil)
     }
+
+    #if DEBUG
+    func prepareLabRequest(_ request: URLRequest) async throws -> URLRequest {
+        let policy = labPolicy
+        var request = request
+        try policy.stampBridgeRequest(&request)
+        guard policy.laneID != nil else { return request }
+        // An older Bridge does not know the lane header. Check a safe GET
+        // before sending credentials or the body, and check the actual reply too.
+        guard let url = request.url,
+              let health = URL(string: "/v1/health", relativeTo: url)?.absoluteURL else { throw LAABridgeError.laneMismatch }
+        var probe = URLRequest(url: health, timeoutInterval: 5)
+        try policy.stampBridgeRequest(&probe)
+        let (bytes, response) = try await session.bytes(for: probe)
+        defer { bytes.task.cancel() }
+        try policy.verifyBridgeResponse(response)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw LAABridgeError.laneMismatch }
+        return request
+    }
+    #endif
 
     func transcribeWatchAudio(_ audio: Data, credentials: LAABridgeCredentials) async throws -> String {
         struct Body: Encodable { let pcm16: String; let sampleRate: Int; let language: String }
@@ -260,6 +297,9 @@ struct LAABridgeClient {
         if let ifNoneMatch { request.setValue(ifNoneMatch, forHTTPHeaderField: "If-None-Match") }
         let data: Data
         let response: URLResponse
+        #if DEBUG
+        request = try await prepareLabRequest(request)
+        #endif
         do {
             (data, response) = try await session.data(for: request)
         } catch is CancellationError {
@@ -274,6 +314,9 @@ struct LAABridgeClient {
             default: throw LAABridgeError.networkUnreachable
             }
         } catch { throw LAABridgeError.networkUnreachable }
+        #if DEBUG
+        try labPolicy.verifyBridgeResponse(response)
+        #endif
         guard let http = response as? HTTPURLResponse else { throw LAABridgeError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let envelope = try? JSONDecoder().decode(BridgeErrorEnvelope.self, from: data)
@@ -319,7 +362,24 @@ struct LAABridgeKeychain {
          kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
+    #if DEBUG
+    nonisolated(unsafe) private static var labCredentials: LAABridgeCredentials?
+    #endif
+
     func read() throws -> LAABridgeCredentials? {
+        #if DEBUG
+        if LAALabNetworkPolicy.current.isActive {
+            if let credentials = Self.labCredentials { return credentials }
+            let env = ProcessInfo.processInfo.environment
+            if let origin = env["LAA_LANE_BRIDGE"], origin == LAALabNetworkPolicy.current.bridgeAddress,
+               let url = try? LAABridgeEndpoint.parse(origin),
+               let device = env["LAA_LANE_DEVICE_ID"], let token = env["LAA_LANE_TOKEN"],
+               LAALabNetworkPolicy.current.laneID != nil {
+                return LAABridgeCredentials(baseURL: url, deviceID: device, token: token)
+            }
+            return nil
+        }
+        #endif
         #if LAA_BUILD
         // Explicit local measurement only. Never clear the normal service,
         // even when a cleanup flag is accidentally present without a namespace.
@@ -358,6 +418,9 @@ struct LAABridgeKeychain {
     #endif
 
     func save(_ credentials: LAABridgeCredentials) throws {
+        #if DEBUG
+        if LAALabNetworkPolicy.current.isActive { Self.labCredentials = credentials; return }
+        #endif
         #if DEBUG && targetEnvironment(macCatalyst)
         if keepsIsolatedMacPairingInMemory { Self.isolatedMacCredentials = credentials; return }
         #endif

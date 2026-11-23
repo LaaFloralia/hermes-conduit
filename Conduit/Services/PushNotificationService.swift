@@ -1546,6 +1546,9 @@ final class PushNotificationService: ObservableObject {
     /// Composes a credential-bearing relay endpoint and enforces the
     /// transport policy before any `Authorization: Bearer` header is attached.
     func authenticatedRelayURL(_ path: String) throws -> URL {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { throw RelayDecisionError.insecureTransport }
+        #endif
         let url = relayURL.appending(path: path)
         guard RelayTransportPolicy.allowsCredentialTransport(url) else {
             throw RelayDecisionError.insecureTransport
@@ -1786,6 +1789,9 @@ final class PushNotificationService: ObservableObject {
     }
 
     func enable() async {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         // The Enable button is disabled while working, but a second tap can
         // land before that state reaches the view.
         guard !isWorking, !isPairing else { return }
@@ -1902,6 +1908,9 @@ final class PushNotificationService: ObservableObject {
 
     /// Best-effort DELETE of `installation` on the relay that issued it.
     private func revokeInstallation(_ installation: StoredRegistration) async {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         guard let base = Self.requestRelayURL(issuer: installation.relayURL, configured: configuredRelayURL) else {
             return
         }
@@ -2120,6 +2129,9 @@ final class PushNotificationService: ObservableObject {
     private let becomeActiveObserver = NotificationObserverToken()
 
     private func requestCurrentDeviceToken() {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         guard registration != nil else { return }
         UIApplication.shared.registerForRemoteNotifications()
     }
@@ -2858,6 +2870,9 @@ final class PushNotificationService: ObservableObject {
     }
 
     private func requestDeviceToken(timeout: Duration = .seconds(20)) async throws -> String {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { throw CancellationError() }
+        #endif
         if let deviceToken { return deviceToken }
         // One request at a time: a second would overwrite the pending
         // continuation and leave its caller waiting forever.
@@ -2986,6 +3001,9 @@ final class PushNotificationService: ObservableObject {
     }
 
     private func jsonRequest<Body: Encodable>(path: String, method: String, body: Body, credential: String? = nil) throws -> URLRequest {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { throw RelayDecisionError.insecureTransport }
+        #endif
         let url = relayURL.appending(path: path)
         // A request carrying the pairing credential enforces the transport
         // policy (HTTPS, or loopback HTTP for self-hosted development).

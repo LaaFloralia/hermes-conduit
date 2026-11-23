@@ -1288,6 +1288,11 @@ final class HermesClient: ObservableObject {
     private func openSocket(with request: URLRequest, generation: UInt64) async throws -> any HermesWebSocket {
         try ensureCurrentConnect(generation)
         let transport = transportFactory()
+        #if DEBUG
+        if transport is URLSessionWebSocketTransport, !LAALabNetworkPolicy.current.allowsHermes(request.url) {
+            throw URLError(.unsupportedURL)
+        }
+        #endif
         self.transport = transport
         let socket = transport.makeSocket(
             request: request,

@@ -89,6 +89,9 @@ extension DashboardTicketBridge {
         maxBytes: Int,
         session: URLSession = DashboardBackgroundSession.shared
     ) async throws -> DashboardDownloadedFile {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(request.url) else { throw URLError(.unsupportedURL) }
+        #endif
         var request = request
         request.httpMethod = "GET"
         // Limits the wait between bytes; a large file may take a while in
