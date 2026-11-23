@@ -39,6 +39,9 @@ class Statistics(unittest.TestCase):
         runs[0]["probes"].pop("doc_open_long")
         with self.assertRaisesRegex(ValueError, "Missing required probes"):
             perf.aggregate(runs)
+        diagnostic = perf.aggregate(runs, diagnostic_partial=True)
+        self.assertNotIn("doc_open_long", diagnostic)
+        self.assertEqual(diagnostic["work_open_long_history"]["count"], 5)
 
     def test_bad_probe_units_fail(self):
         runs = report([8, 9, 10, 11, 12])["runs"]
@@ -90,6 +93,8 @@ class Collection(unittest.TestCase):
             "cold_launch_first_usable": 1500, "chat_scroll_hitch_ratio": 3, "work_scroll_hitch_ratio": 0})
         with self.assertRaisesRegex(ValueError, "hitch-ratio measurement for testScrollWork"):
             perf.parsed_native_metrics([cold, chat, duration])
+        self.assertEqual(set(perf.parsed_native_metrics([cold, chat, duration], collect_partial=True)),
+                         {"cold_launch_first_usable", "chat_scroll_hitch_ratio"})
 
     def test_duplicate_and_missing_wall_markers_fail(self):
         def line(probe):

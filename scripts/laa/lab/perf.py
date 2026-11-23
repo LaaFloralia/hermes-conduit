@@ -51,15 +51,18 @@ def stats(values):
             "spread": hi - lo, "samples": list(values)}
 
 
-def aggregate(runs):
+def aggregate(runs, *, diagnostic_partial=False):
     quiet = [run for run in runs if run.get("state") == "quiet"]
     if len(quiet) < MIN_RUNS:
         raise ValueError(f"Only {len(quiet)} quiet runs")
     keys = quiet[0]["probes"].keys()
-    if not REQUIRED.issubset(keys):
-        raise ValueError(f"Missing required probes: {sorted(REQUIRED - keys)}")
-    if any(run["probes"].keys() != keys for run in quiet):
-        raise ValueError("Probe set changed between quiet runs")
+    if diagnostic_partial:
+        keys = set.intersection(*(set(run["probes"]) for run in quiet))
+    else:
+        if not REQUIRED.issubset(keys):
+            raise ValueError(f"Missing required probes: {sorted(REQUIRED - keys)}")
+        if any(run["probes"].keys() != keys for run in quiet):
+            raise ValueError("Probe set changed between quiet runs")
     summary = {}
     for key in sorted(keys):
         entries = [run["probes"][key] for run in quiet]
@@ -221,10 +224,10 @@ def native_metrics(bundle, out):
     # selectors. Read the real identifiers and metrics in one call.
     data = json.loads(capture("xcrun", "xcresulttool", "get", "test-results", "metrics", "--path", str(bundle)))
     log_json(out / "metrics.json", data)
-    return parsed_native_metrics(data)
+    return parsed_native_metrics(data, collect_partial=True)
 
 
-def parsed_native_metrics(data):
+def parsed_native_metrics(data, *, collect_partial=False):
     samples = {}
     for test, probe in (("testColdLaunch", "cold_launch_first_usable"), ("testScrollChat", "chat_scroll"),
                         ("testScrollWork", "work_scroll")):
@@ -245,6 +248,8 @@ def parsed_native_metrics(data):
             signpost = [row for row in matches if "XCTMetric_OSSignpost" in row["identifier"]]
             if signpost:
                 matches = signpost
+        if not matches and collect_partial and not probe.startswith("cold_"):
+            continue  # Preserve the other probes, but never turn absent hitch data into zero or success.
         if len(matches) != 1 or len(matches[0]["measurements"]) != 1:
             raise ValueError(f"Expected one responsive launch or hitch-ratio measurement for {test}; see run metrics.json")
         row = matches[0]
@@ -394,13 +399,19 @@ def run_locked(args):
                 clear_credentials(phone["udid"], namespace, out / "simulator.log")
     if accepted != args.runs:
         raise RuntimeError(f"Insufficient quiet runs: {accepted}/{args.runs}; see {out / 'attempts.json'}")
+    missing = sorted(REQUIRED - set.intersection(*(set(row["probes"]) for row in attempts if row["state"] == "quiet")))
     result = {"schema": 1, "protocol": "laa-simulator-perf-v1", "sha": head, "configuration": CONFIG,
               "environment": {"device": phone["name"], "device_type": phone["deviceTypeIdentifier"],
                               "os": runtime["version"], "runtime": runtime["identifier"], "runtime_build": runtime["buildversion"],
                               "xcode": build["xcode"], "quiet_max_load1": LOAD_LIMIT},
               "build_products": build["build_products"], "completed_at": utc(),
               "wall_seconds": round(time.monotonic() - started, 2), "noise_rule": NOISE_RULE,
-              "runs": attempts, "probes": aggregate(attempts)}
+              "runs": attempts, "probes": aggregate(attempts, diagnostic_partial=bool(missing))}
+    if missing:
+        result["missing_probes"] = missing
+        log_json(out / "perf-partial.json", result)
+        (out / "perf-partial.md").write_text(report_md(result) + "\nIncomplete; no baseline. Missing: " + ", ".join(missing) + "\n")
+        raise RuntimeError(f"Incomplete native metrics: {missing}; see {out / 'perf-partial.json'}")
     log_json(out / "perf.json", result)
     (out / "perf.md").write_text(report_md(result))
     return 0
