@@ -318,7 +318,9 @@ def handset(config):
         ui = [*sim, 'ui', PHONE]
         defaults = [*sim, 'spawn', PHONE, 'defaults']
         domain = 'com.apple.Accessibility'
-        toggles = {'ReduceMotionEnabled': motion, 'ReduceTransparencyEnabled': trans}
+        # UIKit's Reduce Transparency reads the historical accessibility
+        # key for background contrast, not the separate Increase Contrast.
+        toggles = {'ReduceMotionEnabled': motion, 'EnhancedBackgroundContrastEnabled': trans}
         ui_values = {'appearance': color, 'content_size': size, 'increase_contrast': 'enabled' if contrast else 'disabled'}
         original = {key: run([*ui, key], log, data=True) for key in ui_values}
         if any(setting in ('unknown', 'unsupported', '') for setting in original.values()):

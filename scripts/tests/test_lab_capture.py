@@ -6,6 +6,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 
 LAB = Path(__file__).resolve().parents[1] / 'laa' / 'lab'
@@ -46,6 +47,46 @@ class ScreenManifestTests(unittest.TestCase):
                 capture.validate_screens(value)
         with self.assertRaises(capture.CaptureError):
             capture.selection('light,missing', capture.VARIANTS, '--variants')
+
+
+class SimulatorRestoreTests(unittest.TestCase):
+    def test_failed_capture_restores_existing_and_absent_settings(self):
+        ui = {'appearance': 'dark', 'content_size': 'extra-large', 'increase_contrast': 'enabled'}
+        defaults = {'ReduceMotionEnabled': '1'}
+        initial_ui, initial_defaults = ui.copy(), defaults.copy()
+        lifecycle = []
+
+        def run(command, _log, *, env=None, check=True, data=False):
+            if command[0] == 'xcodebuild':
+                self.assertEqual(ui, {'appearance': 'light', 'content_size': 'large', 'increase_contrast': 'disabled'})
+                self.assertEqual(defaults, {'ReduceMotionEnabled': '0', 'EnhancedBackgroundContrastEnabled': '1'})
+                self.assertEqual(env['TEST_RUNNER_LAA_LAB_SCREENS'], 'chat-staff')
+                raise capture.CaptureError('test action failed')
+            op = command[2]
+            if op == 'ui':
+                key = command[4]
+                if data:
+                    return ui[key]
+                ui[key] = command[5]
+            elif op == 'spawn':
+                verb, key = command[5], command[7]
+                if verb == 'read':
+                    return defaults.get(key)
+                if verb == 'delete':
+                    del defaults[key]
+                if verb == 'write':
+                    defaults[key] = '1' if command[9] == 'true' else '0'
+            else:
+                lifecycle.append(op)
+
+        config = {'action': 'test-without-building', 'log': 'unused', 'variant': 'reduce-transparency',
+                  'result': 'test.xcresult', 'xctestrun': 'test.xctestrun', 'test_env': {'LAA_LAB_SCREENS': 'chat-staff'}}
+        with patch.dict(capture.os.environ, {'LAA_BUILD_SLOT_HELD': '1'}), patch.object(capture, 'run', run):
+            with self.assertRaisesRegex(capture.CaptureError, 'test action failed'):
+                capture.handset(config)
+        self.assertEqual(ui, initial_ui)
+        self.assertEqual(defaults, initial_defaults)
+        self.assertEqual(lifecycle, ['bootstatus', 'shutdown'])
 
 
 class OutputTests(unittest.TestCase):
