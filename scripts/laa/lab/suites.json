@@ -1,0 +1,47 @@
+{
+  "integration": {
+    "about": "The LAA build (project-laa.yml): every unit class and every UI class, against the synthetic fixtures.",
+    "spec": "project-laa.yml",
+    "unit": "all",
+    "ui": "all",
+    "ui_batch": 6,
+    "exclude_classes": {
+      "LAALabCaptureUITests": "Capture tool, not a behavior test: it runs only from scripts/laa/lab/capture.py, which supplies its own fixtures and environment. Its pass/fail is capture.py's exit code."
+    },
+    "fixtures": {
+      "work": [
+        "node",
+        "scripts/laa/work-ui-fixture.mjs"
+      ],
+      "paseo": [
+        "node",
+        "scripts/laa/paseo-ui-fixture.mjs"
+      ],
+      "studio": [
+        "node",
+        "scripts/laa/studio-ui-fixture.mjs"
+      ],
+      "habits": [
+        "node",
+        "bridge/test/habits-ui-fixture.mjs"
+      ]
+    }
+  },
+  "smoke": {
+    "about": "The default Conduit build (project.yml): the merge gate's selection from scripts/smoke-suite.json.",
+    "spec": "project.yml",
+    "unit": "smoke-plan",
+    "ui": "smoke-plan",
+    "ui_batch": 6,
+    "fixtures": {},
+    "derived": ".deriveddata-lab-default"
+  },
+  "upstream-unit": {
+    "about": "The default Conduit build (project.yml): every unit class. It proves that a test listed as not-applicable in the LAA build (it asserts upstream copy the LAA brand layer replaces) still passes where it applies.",
+    "spec": "project.yml",
+    "derived": ".deriveddata-lab-default",
+    "unit": "all",
+    "ui": [],
+    "fixtures": {}
+  }
+}
