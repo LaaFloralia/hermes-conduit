@@ -281,9 +281,13 @@ def fixtures(logs):
 
 
 def storage(logs):
-    run(['laa-storage-guard', 'status', '--quick'], logs / 'storage.log')
-    if shutil.disk_usage(ROOT).free < 80 * (1024 ** 3):
-        raise CaptureError('Less than 80 GiB free on the build host')
+    log = logs / 'storage.log'
+    # The guard can return a warning for Drive, which this local lane never
+    # writes. Require the independently verified build-host reading instead.
+    run(['laa-storage-guard', 'status', '--quick'], log, check=False)
+    host = re.search(r'^- Build-host 空き([0-9.]+)GiB（UUID確認済み）$', log.read_text(), re.MULTILINE)
+    if host is None or float(host[1]) < 80 or shutil.disk_usage(ROOT).free < 80 * (1024 ** 3):
+        raise CaptureError(f'Cannot verify at least 80 GiB free on the build host — {log}')
 
 
 def bool_text(value):
