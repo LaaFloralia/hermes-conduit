@@ -192,14 +192,23 @@ def run(command, log, *, env=None, check=True, data=False):
     with log.open('a', encoding='utf-8') as f:
         f.write(f'\n$ {" ".join(command)}\n')
         f.flush()
-        r = subprocess.run(command, cwd=ROOT, env=env or safe_env(), text=True,
-                           stdout=subprocess.PIPE if data else f, stderr=f)
+        with subprocess.Popen(command, cwd=ROOT, env=env or safe_env(), text=True,
+                              stdout=subprocess.PIPE if data else f, stderr=f, start_new_session=True) as proc:
+            try:
+                stdout, _ = proc.communicate()
+            except KeyboardInterrupt:
+                # Forward cancellation only to our own command. In the slot
+                # wrapper, _handset restores settings before releasing the lock.
+                if proc.poll() is None:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                proc.wait()
+                raise
         if data:
-            f.write(r.stdout)
-        f.write(f'\nexit={r.returncode}\n')
-    if check and r.returncode != 0:
-        raise CaptureError(f'Exit {r.returncode}: {command[0]} {command[1]} — {log}')
-    return r.stdout.strip() if data and r.returncode == 0 else None
+            f.write(stdout)
+        f.write(f'\nexit={proc.returncode}\n')
+    if check and proc.returncode != 0:
+        raise CaptureError(f'Exit {proc.returncode}: {command[0]} {command[1]} — {log}')
+    return stdout.strip() if data and proc.returncode == 0 else None
 
 
 def observe(port, route):
@@ -482,7 +491,8 @@ def capture(args):
     run(['git', 'status', '--short', '--untracked-files=no'], logs / 'git.log')
     # Project generation and DerivedData are worktree-local and must not race
     # a second invocation in the same worktree, even outside the build slot.
-    lock_path = ROOT / '.deriveddata-capture.lock'
+    lock_path = ROOT / 'build/capture.lock'
+    lock_path.parent.mkdir(exist_ok=True)
     with lock_path.open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

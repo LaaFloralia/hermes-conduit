@@ -34,6 +34,7 @@ final class LAALabCaptureUITests: XCTestCase {
                                    "-conduit.themePreference", "system",
                                    "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"] + flags
             if env["LAA_LAB_LONG_JAPANESE"] == "1" { app.launchArguments += ["-LAA_LAB_LONG_JAPANESE"] }
+            app.launchEnvironment["CONDUIT_UITEST"] = "1"
             app.launch()
             defer { app.terminate() }
             let probe = wait("laa.lab.capture.traits", app)
@@ -71,22 +72,26 @@ final class LAALabCaptureUITests: XCTestCase {
         }
 
         batch(["work-projects", "work-requirements", "work-sessions", "work-session-history", "work-session-running",
-               "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail", "work-routines",
+               "work-session-waiting", "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail", "work-routines",
                "work-campaigns", "usage", "usage-capacity"], tab: "work") { app in
-            wait(project, app)
+            let row = wait(project, app)
+            if env["LAA_LAB_LONG_JAPANESE"] == "1" {
+                XCTAssertTrue((row.label + app.debugDescription).contains("長い日本語の名前"), "Long fixture is not in the accessibility tree")
+            }
             shot("work-projects", after: project, app)
             if selected.contains("work-requirements") {
                 tap(project, app)
                 shot("work-requirements", after: requirement, app)
                 back(to: "work.section.projects", app)
             }
-            if needs("work-sessions", "work-session-history", "work-session-running") {
+            if needs("work-sessions", "work-session-history", "work-session-running", "work-session-waiting") {
                 segment("sessions", app)
                 wait(run, app)
                 wait(waiting, app)
                 shot("work-sessions", after: "work.sessions", app)
                 for (id, row, ready) in [("work-session-history", history, "work.session.history.ready"),
-                                        ("work-session-running", run, "work.session.progress.thinking")] where selected.contains(id) {
+                                        ("work-session-running", run, "work.session.progress.thinking"),
+                                        ("work-session-waiting", waiting, "work.session.decision.note.0")] where selected.contains(id) {
                     reveal(row, app)
                     tap(row, app)
                     shot(id, after: ready, app)
@@ -114,7 +119,7 @@ final class LAALabCaptureUITests: XCTestCase {
                     reveal(task, app)
                     tap(task, app)
                     shot("work-task-detail", after: "work.task.detail.title", app)
-                    back(to: "work.section.tasks", app)
+                    tap("work.task.detail.close", app)
                 }
             }
             if selected.contains("work-routines") {
@@ -123,7 +128,7 @@ final class LAALabCaptureUITests: XCTestCase {
             }
             if needs("usage", "usage-capacity") {
                 tap("work.usage", app)
-                shot("usage", after: "laa.capacity.mac-mini.memory", app)
+                shot("usage", after: "laa.capacity.capacity.mac-mini.memory", app)
                 if selected.contains("usage-capacity") {
                     reveal("laa.capacity", app)
                     shot("usage-capacity", after: "laa.capacity", app)
@@ -161,10 +166,10 @@ final class LAALabCaptureUITests: XCTestCase {
             shot("doc-error", after: "laa.brain.readError", app)
         }
         batch(["studio", "studio-work", "drive"], tab: "studio") { app in
-            shot("studio", after: studio, app)
+            shot("studio", after: "laa.studio.menu", app)
             if selected.contains("drive") {
                 tap("studio.drive", app)
-                shot("drive", after: "laa.drive.layout", app)
+                shot("drive", after: "laa.drive.browser.item.studio-reference", app)
                 if selected.contains("studio-work") { tap("studio.section.studio", app) }
             }
             if selected.contains("studio-work") {

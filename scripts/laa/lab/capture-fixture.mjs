@@ -22,8 +22,12 @@ const ok = (data) => ({ data, requestId: 'capture-fixture' });
 const requirements = ['in_progress', 'awaiting_decision', 'not_started', 'completed'].map((status, order) => ({
   id: `req_capture_${order + 1}`, title: ['実窓の余白を比較する', '公開用見本を選ぶ', '操作手順をまとめる', '主要画面を洗い出す'][order],
   details: '初めて読む人が迷わないよう、手元の画面と照らし合わせます。', source: order === 1 ? 'ai' : 'owner', status, order,
+  sessionIds: order === 0 ? ['ses_5555555555555555'] : order === 1 ? ['ses_2222222222222222'] : [],
 }));
 const progress = { requirementSummary: { completed: 1, total: 4 }, progressNote: '撮影手順を確認済み。見本の選択を待っています。' };
+const campaign = { key: 'capture-fixture', kind: 'site', category: 'prize', status: 'needs_owner',
+  title: '制作資料の見本を受け取る', organizer: '見本の主催者', benefit: '制作ノート',
+  conditions: '見本のため応募は行いません。', url: 'https://campaign.example.invalid/' };
 const { api, control } = createStudioUIFixture();
 const listen = async (server) => { server.listen(0, '127.0.0.1'); await once(server, 'listening'); return server.address().port; };
 const studioPort = await listen(api);
@@ -49,6 +53,11 @@ function server(mode) {
     const calendar = path.startsWith('/v1/calendar/');
     if (mode === 'loading' && calendar) return; // client cancellation closes this request
     if (mode === 'empty' && path === '/v1/calendar/events') { json(res, ok({ items: [] })); return; }
+    const send = (body, status, etag) => {
+      if (status == null || (status >= 200 && status < 300)) responded.add(path);
+      json(res, mode === 'long' ? expand(body) : body, status, etag);
+    };
+    if (path === '/v1/campaigns') { send(ok({ count: 1, items: [campaign] })); return; }
     try {
       const isStudio = /^\/v1\/(studio|drive)\//.test(path);
       const isProject = path === '/v1/projects/proj_laa_fixture';
@@ -63,18 +72,28 @@ function server(mode) {
         return;
       }
       let body = await reply.json();
-      if (path === '/v1/projects' && body.data?.items) body.data.items = body.data.items.map((p) => ({ ...p, ...progress }));
+      if (requestPath === '/v1/projects' && body.data?.items) {
+        body.data.items = body.data.items.map((p) => ({ ...p, name: '制作の進行確認', ...progress }));
+      }
       if (isProject && body.data?.items?.length) {
         body = ok({ ...body.data.items[0], ...progress, requirements, sessions: [], sessionCounts: { active: 0, archived: 0 } });
+      }
+      if (path === '/v1/sessions' && body.data?.items) {
+        const projectIDs = new Set(requirements.flatMap((row) => row.sessionIds));
+        body.data.items = body.data.items.map((row) => projectIDs.has(row.id) ? { ...row, projectId: 'proj_laa_fixture' } : row);
+        if (new URL(requestPath, 'http://fixture.invalid').searchParams.has('projectId')) {
+          body.data.items = body.data.items.filter((row) => row.projectId === 'proj_laa_fixture');
+        }
       }
       if (path.endsWith('/conversation') && body.data?.items) {
         // Keep the long conversation, including its real Markdown, but remove
         // the delayed picture-only records so balance and settling are repeatable.
         body.data.items = body.data.items.filter((item) => item.text);
       }
-      if (mode === 'long') body = expand(body);
-      if (reply.ok) responded.add(path);
-      json(res, body, reply.status, reply.headers.get('etag'));
+      if (path === '/v1/drive/files' && body.data?.items) {
+        body.data.items = body.data.items.map((file) => ({ ...file, name: '制作資料.png' }));
+      }
+      send(body, reply.status, reply.headers.get('etag'));
     } catch {
       if (!res.headersSent) res.writeHead(502);
       res.end();

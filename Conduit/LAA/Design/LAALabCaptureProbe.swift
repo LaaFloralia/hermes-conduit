@@ -19,8 +19,17 @@ struct LAALabCaptureProbe: View {
     @Environment(\.accessibilityReduceTransparency) private var transparency
     @Environment(\.colorSchemeContrast) private var contrast
 
+    private var sizeID: String {
+        switch size {
+        case .large: "large"
+        case .accessibility1: "accessibility1"
+        case .accessibility5: "accessibility5"
+        default: String(describing: size)
+        }
+    }
+
     var body: some View {
-        let traits = [scheme == .dark ? "dark" : "light", String(describing: size),
+        let traits = [scheme == .dark ? "dark" : "light", sizeID,
                       String(motion), String(transparency), String(contrast == .increased),
                       String(UIAccessibility.isReduceMotionEnabled), String(UIAccessibility.isReduceTransparencyEnabled)]
         Text(verbatim: traits.joined(separator: ","))
