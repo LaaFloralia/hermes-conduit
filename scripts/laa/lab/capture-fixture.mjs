@@ -9,7 +9,7 @@ if (!Number.isInteger(work) || work <= 1024 || work >= 65535) throw new Error('W
 const stem = '次の四半期に向けた制作計画と関係者への確認事項をまとめた長い日本語の名前';
 const paragraph = '関係者が順番を迷わないよう、変更の理由と確認する箇所を資料にまとめます。';
 const titleKeys = new Set(['name', 'title', 'label']);
-const bodyKeys = new Set(['text', 'summary', 'description', 'details', 'instructions', 'progressNote', 'prompt']);
+const bodyKeys = new Set(['text', 'summary', 'description', 'detail', 'details', 'instructions', 'progressNote', 'prompt', 'question', 'reason', 'conditions', 'nextStep']);
 function expand(value, key = '') {
   if (Array.isArray(value)) return value.map((x) => expand(x));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, expand(v, k)]));
