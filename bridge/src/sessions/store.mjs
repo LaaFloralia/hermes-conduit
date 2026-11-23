@@ -8,6 +8,7 @@
 // "no new events".
 
 import { createJsonFile } from '../routes/state-file.mjs';
+import { conflict, notFound } from '../errors.mjs';
 
 export const SESSION_SCHEMA = 1;
 export const SESSION_ID_PATTERN = /^ses_[0-9a-f]{16}$/;
@@ -115,12 +116,73 @@ export function createSessionStore({
         return { record, events: appended };
       }, { tag: id });
     },
+    backfillProjects(defaultId) {
+      if (!Object.values(state.read().sessions ?? {}).some((row) => !row.projectId)) return;
+      state.mutate((doc) => {
+        const rows = doc.sessions ?? {};
+        const inherit = (row, seen = new Set()) => {
+          if (row.projectId) return row.projectId;
+          if (seen.has(row.id)) return defaultId;
+          seen.add(row.id);
+          const parent = rows[row.parentId];
+          row.launchProjectId ??= null;
+          return row.projectId = parent ? inherit(parent, seen) : defaultId;
+        };
+        for (const row of Object.values(rows)) inherit(row);
+      });
+    },
+    moveProject(id, projectId, validate) {
+      return state.mutate((doc) => {
+        prune(doc);
+        const root = doc.sessions[id];
+        if (!root || root.daemonDeletedAt) throw notFound('session not found');
+        const parent = doc.sessions[root.parentId];
+        if (parent && parent.projectId !== projectId) {
+          throw conflict('parent_project_mismatch', 'move the parent session to move its children');
+        }
+        const byParent = new Map();
+        for (const row of Object.values(doc.sessions)) {
+          if (!row.parentId) continue;
+          if (!byParent.has(row.parentId)) byParent.set(row.parentId, []);
+          byParent.get(row.parentId).push(row);
+        }
+        const moving = [root];
+        const rows = new Set([id]);
+        for (const row of moving) for (const child of byParent.get(row.id) ?? []) {
+          if (rows.has(child.id)) continue;
+          moving.push(child);
+          rows.add(child.id);
+        }
+        validate({ root, moving, rows });
+        const iso = new Date(now()).toISOString();
+        for (const row of moving) {
+          if (row.projectId === projectId) continue;
+          if (!Object.hasOwn(row, 'launchProjectId')) row.launchProjectId = row.projectId ?? null;
+          row.projectId = projectId;
+          row.version = (row.version ?? 1) + 1;
+          row.updatedAt = iso;
+          const stream = (doc.streams[row.id] ??= { lastSeq: 0, events: [] });
+          stream.events.push({ seq: ++stream.lastSeq, type: 'session.project', version: row.version,
+            occurredAt: iso, payload: { projectId } });
+        }
+        return root;
+      }, { tag: id });
+    },
     // One atomic directory snapshot, rather than rewriting the complete file
     // once per agent. Directory input contains metadata only.
     importDirectory(rows) {
       return state.mutate((doc) => {
         prune(doc);
         const transitions = [];
+        const incoming = new Map(rows.map((row) => [row.id, row]));
+        function importedProject(row, seen = new Set()) {
+          const stored = doc.sessions[row.id];
+          if (stored?.projectId) return stored.projectId;
+          if (seen.has(row.id)) return row.projectId;
+          seen.add(row.id);
+          const parent = doc.sessions[row.parentId] ?? incoming.get(row.parentId);
+          return parent ? importedProject(parent, seen) : row.projectId;
+        }
         for (const row of rows) {
           const previous = doc.sessions[row.id];
           const current = previous ? { ...previous, ...row,
@@ -140,8 +202,8 @@ export function createSessionStore({
             delegate: previous.delegate ?? row.delegate,
             requestId: previous.requestId ?? row.requestId,
             source: previous.source ?? row.source,
-            projectId: previous.projectId ?? row.projectId,
-          } : row;
+            projectId: importedProject(row),
+          } : { ...row, projectId: importedProject(row) };
           if (previous?.stopRequestedAt) current.phase = previous.phase;
           const changed = previous && (previous.phase !== current.phase || previous.pending?.hash !== current.pending?.hash || (current.requiresAttention && previous.attentionTimestamp !== current.attentionTimestamp));
           const stream = (doc.streams[row.id] ??= { lastSeq: 0, events: [] });

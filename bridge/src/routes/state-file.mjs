@@ -32,7 +32,7 @@ export class StateFileError extends Error {
 // with an exclusive lock. Corrupt files are never reset silently: the caller
 // surfaces 500 and the operator has to look, because a lost project or
 // workspace record is an authorization-relevant loss of identity.
-export function createJsonFile({ file, schema = 1, initial = () => ({}) }) {
+export function createJsonFile({ file, schema = 1, initial = () => ({}), migrate = (doc) => doc }) {
   const dir = dirname(file);
   const lockFile = `${file}.lock`;
   // In-process listeners for "this document was written", tagged with the
@@ -74,6 +74,7 @@ export function createJsonFile({ file, schema = 1, initial = () => ({}) }) {
     } catch {
       throw new StateFileError('state_corrupt', `state file is not valid JSON: ${file}`);
     }
+    if (parsed?.schema !== schema) parsed = migrate(parsed);
     if (!parsed || typeof parsed !== 'object' || parsed.schema !== schema) {
       throw new StateFileError('state_corrupt', `unsupported state schema in ${file}`);
     }

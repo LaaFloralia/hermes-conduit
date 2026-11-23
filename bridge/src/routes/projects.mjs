@@ -27,14 +27,17 @@
 // can never replace it; `auto` marks a generated name that may be recomputed.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { badRequest, BridgeError, conflict, markBeforeWrite, notFound } from '../errors.mjs';
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
 import { projectRefItem } from '../refs/items.mjs';
 
-const PROJECT_SCHEMA = 2;
+import { changeRequirement, parseProgressNote, projectRequirements } from './project-requirements.mjs';
+
+const PROJECT_SCHEMA = 3;
+export const DEFAULT_PROJECT_ID = 'prj_000000000000';
 const NAME_MAX = 80;
 const INSTRUCTIONS_MAX_BYTES = 32 * 1024;
 const INSTRUCTION_HISTORY_LIMIT = 10;
@@ -50,7 +53,7 @@ const FILES_PER_PROJECT = 20;
 
 export function createProjectStore({ file, now = () => Date.now() }) {
   migrateLegacyProjects(file);
-  const state = createJsonFile({ file, schema: PROJECT_SCHEMA, initial: () => ({ projects: {} }) });
+  const state = createJsonFile({ file, schema: PROJECT_SCHEMA, initial: () => ({ projects: {} }), migrate: upgradeProjectRecord });
 
   function all() {
     return state.read().projects ?? {};
@@ -63,6 +66,17 @@ export function createProjectStore({ file, now = () => Date.now() }) {
     },
     list() {
       return Object.values(all());
+    },
+    ensureDefault() {
+      const existing = all()[DEFAULT_PROJECT_ID];
+      if (existing) return existing;
+      return state.mutate(({ projects }) => {
+        const iso = new Date(now()).toISOString();
+        return projects[DEFAULT_PROJECT_ID] ??= {
+          id: DEFAULT_PROJECT_ID, name: '未分類', nameSource: 'owner',
+          version: 1, createdAt: iso, updatedAt: iso,
+        };
+      });
     },
     // Reference files (like Claude Projects knowledge) live next to the state
     // file; sessions get their paths, never their bytes.
@@ -112,27 +126,28 @@ function migrateLegacyProjects(file) {
   } catch {
     return; // createJsonFile reports corruption with the operator-facing error
   }
-  if (!doc || doc.schema !== 1) return;
-  const projects = {};
-  for (const [id, record] of Object.entries(doc.projects ?? {})) {
-    projects[id] = {
-      ...record,
-      instructionRef: record.instructionRef ?? null,
-      instructions: null,
-      instructionVersion: record.instructionVersion ?? 0,
-      instructionHash: null,
-      instructionHistory: [],
-    };
-    delete projects[id].instructionTextHash;
+  if (!doc || ![1, 2].includes(doc.schema)) return;
+  createJsonFile({ file, schema: PROJECT_SCHEMA, migrate: upgradeProjectRecord }).mutate(() => {});
+}
+
+function upgradeProjectRecord(legacy) {
+  if (![1, 2].includes(legacy?.schema)) return legacy;
+  const projects = legacy.projects ?? {};
+  if (legacy.schema === 1) for (const record of Object.values(projects)) {
+    Object.assign(record, {
+      instructionRef: record.instructionRef ?? null, instructions: null,
+      instructionVersion: record.instructionVersion ?? 0, instructionHash: null, instructionHistory: [],
+    });
+    delete record.instructionTextHash;
   }
-  const tmp = `${file}.${process.pid}.migrate.tmp`;
-  writeFileSync(tmp, `${JSON.stringify({ schema: PROJECT_SCHEMA, projects }, null, 2)}\n`, { mode: 0o600 });
-  renameSync(tmp, file);
+  return { ...legacy, schema: PROJECT_SCHEMA, projects };
 }
 
 // --- routes -----------------------------------------------------------------
 
-export function createProjectRoutes({ projects, now = () => Date.now(), refs = null, choices = () => ({ profiles: [] }) }) {
+export function createProjectRoutes({ projects, now = () => Date.now(), refs = null, choices = () => ({ profiles: [] }),
+  projectSessions = () => [], sessionMembership = () => new Map(),
+}) {
   const releasesReservation = (error) => error?.writeStarted === false;
 
   function parseDefaultProfile(value) {
@@ -170,6 +185,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     return {
       ...view(project),
       instructions: project.instructions ?? null,
+      requirements: projectRequirements(project),
       files: (project.files ?? []).map(({ id, name, size, mimeType, sha256, createdAt }) => ({ id, name, size, mimeType, sha256, createdAt })),
     };
   }
@@ -186,6 +202,8 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
           instructionRef: project.instructionRef ?? null,
           instructions: project.instructions ?? null,
           defaultProfile: project.defaultProfile ?? null,
+          progressNote: project.progressNote ?? null,
+          requirements: projectRequirements(project),
         },
       },
     });
@@ -214,7 +232,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 
   function get({ params }) {
     const project = requireProject(params[0]);
-    return { status: 200, data: decorate(detail(project)), headers: { etag: etagFor(project.version) } };
+    return { status: 200, data: decorate({ ...detail(project), sessions: projectSessions(project.id) }), headers: { etag: etagFor(project.version) } };
   }
 
   function versions({ params }) {
@@ -223,12 +241,13 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     return { status: 200, data: { items, nextCursor: null } };
   }
 
-  function create({ device, rawBody }) {
+  function create({ device, rawBody, reuseName = false }) {
     let name;
     let nameSource;
     let instructions;
     let instructionHash;
     let defaultProfile;
+    let progressNote;
     try {
       const body = parseObjectBody(rawBody);
       name = parseName(body.name, { required: true });
@@ -237,13 +256,20 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
       instructions = parseInstructions(body.instructions);
       instructionHash = instructions === null ? null : hashBody(instructions);
       defaultProfile = parseDefaultProfile(body.defaultProfile);
+      progressNote = parseProgressNote(body.progressNote ?? null);
     } catch (error) {
       throw markBeforeWrite(error);
     }
     const t = now();
     const iso = new Date(t).toISOString();
 
+    let reused = false;
     const project = projects.mutate((all) => {
+      if (reuseName) {
+        const matches = Object.values(all).filter((item) => !item.archivedAt && item.name === name);
+        if (matches.length > 1) throw conflict('project_ambiguous', 'several active projects use this name; use the ID');
+        if (matches.length === 1) { reused = true; return matches[0]; }
+      }
       let id;
       do {
         id = `prj_${randomBytes(6).toString('hex')}`;
@@ -253,6 +279,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
         name,
         nameSource,
         defaultProfile,
+        progressNote,
         instructionRef: null,
         instructions,
         instructionHash,
@@ -270,7 +297,8 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     });
 
     assign(project);
-    return { status: 201, data: decorate(detail(project)), headers: { etag: etagFor(project.version) } };
+    return { status: reused ? 200 : 201, data: decorate({ ...detail(project), sessions: reused ? projectSessions(project.id) : [] }),
+      headers: { etag: etagFor(project.version) } };
   }
 
   function patch({ device, rawBody, params, req }) {
@@ -285,6 +313,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     let archivedChanged;
     let nextArchivedAt;
     let nextDefaultProfile;
+    let nextProgressNote;
     let changed;
     let iso;
     try {
@@ -295,7 +324,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 
       const requested = body.name !== undefined || body.nameSource !== undefined
         || body.instructionRef !== undefined || body.instructions !== undefined || body.archived !== undefined
-        || body.defaultProfile !== undefined;
+        || body.defaultProfile !== undefined || body.progressNote !== undefined;
       if (!requested) throw badRequest('payload_invalid', 'no supported change was requested');
 
       name = body.name === undefined ? undefined : parseName(body.name, { required: true });
@@ -332,9 +361,13 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
       }
       archivedChanged = body.archived !== undefined && body.archived !== Boolean(current.archivedAt);
       nextArchivedAt = body.archived ? iso : null;
+      if (current.id === DEFAULT_PROJECT_ID && (archivedChanged || identityChanged)) {
+        throw conflict('project_reserved', 'the default project cannot be renamed or archived');
+      }
+      nextProgressNote = body.progressNote === undefined ? current.progressNote ?? null : parseProgressNote(body.progressNote);
       nextDefaultProfile = body.defaultProfile === undefined ? (current.defaultProfile ?? null) : parseDefaultProfile(body.defaultProfile);
       changed = identityChanged || instructionsChanged || refCleared || archivedChanged
-        || nextDefaultProfile !== (current.defaultProfile ?? null);
+        || nextDefaultProfile !== (current.defaultProfile ?? null) || nextProgressNote !== (current.progressNote ?? null);
     } catch (error) {
       throw markBeforeWrite(error);
     }
@@ -350,6 +383,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
           record.nameSource = nameSource ?? 'owner';
         }
         record.defaultProfile = nextDefaultProfile;
+        record.progressNote = nextProgressNote;
         if (refCleared) record.instructionRef = null;
         if (archivedChanged) record.archivedAt = nextArchivedAt;
         record.instructions = nextInstructions;
@@ -380,6 +414,35 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 
     if (archivedChanged) observeVisible();
     return { status: 200, data: decorate(detail(updated)), headers: { etag: etagFor(updated.version) } };
+  }
+
+  function requirement(action) {
+    return ({ device, rawBody, params, req }) => {
+      let updated;
+      try {
+        const current = requireProject(params[0]);
+        const expected = requireIfMatch(req.headers['if-match'], current, mismatch);
+        const body = parseObjectBody(rawBody);
+        const iso = new Date(now()).toISOString();
+        updated = projects.mutate((all) => {
+          const record = all[current.id];
+          if (!record || record.version !== expected) throw mismatch(record ?? current);
+          if (record.archivedAt) throw conflict('project_archived', 'restore the project before changing requirements');
+          const membership = sessionMembership();
+          if (changeRequirement(record, { action, id: params[1], body, iso, belongs: (id) => membership.get(id) === record.id })) {
+            record.version += 1;
+            record.updatedAt = iso;
+            record.updatedBy = device?.id ?? null;
+          }
+          return record;
+        });
+      } catch (error) {
+        if (error instanceof BridgeError) throw markBeforeWrite(error);
+        throw error;
+      }
+      return { status: action === 'add' ? 201 : 200, data: decorate({ ...detail(updated), sessions: projectSessions(updated.id) }),
+        headers: { etag: etagFor(updated.version) } };
+    };
   }
 
   function addFile({ device, rawBody, params }) {
@@ -467,6 +530,13 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
   }
 
   return [
+    ...[
+      ['POST', /^\/v1\/projects\/(prj_[0-9a-f]{12})\/requirements$/, 'add'],
+      ['PUT', /^\/v1\/projects\/(prj_[0-9a-f]{12})\/requirements\/order$/, 'order'],
+      ['PATCH', /^\/v1\/projects\/(prj_[0-9a-f]{12})\/requirements\/(req_[0-9a-f]{12})$/, 'update'],
+      ['DELETE', /^\/v1\/projects\/(prj_[0-9a-f]{12})\/requirements\/(req_[0-9a-f]{12})$/, 'withdraw'],
+    ].map(([method, pattern, action]) => ({ method, pattern, auth: true, scope: 'sessions:write',
+      idempotent: true, handler: requirement(action), releaseOnError: releasesReservation })),
     { method: 'GET', path: '/v1/projects', auth: true, scope: 'sessions:read', handler: list },
     {
       method: 'POST',
@@ -505,7 +575,10 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 // List view: no instruction body, so a phone listing many projects does not
 // download every shared prompt. `GET /v1/projects/{id}` adds `instructions`.
 function view(project) {
+  const requirements = projectRequirements(project);
   return {
+    progressNote: project.progressNote ?? null,
+    requirementSummary: { completed: requirements.filter((item) => item.status === 'completed').length, total: requirements.length },
     id: project.id,
     name: project.name,
     nameSource: project.nameSource,

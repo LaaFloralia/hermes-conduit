@@ -18,7 +18,8 @@ import { personalAgentAdapter } from '../sessions/adapter.mjs';
 import { createSessionService } from '../sessions/service.mjs';
 import { createSessionStore } from '../sessions/store.mjs';
 import { resolveModelsFile, sessionOptionsReader, sharedProviderAvailability } from '../sessions/options.mjs';
-import { createProjectRoutes, createProjectStore } from './projects.mjs';
+import { createProjectRoutes, createProjectStore, DEFAULT_PROJECT_ID } from './projects.mjs';
+import { assignSessionProject, projectSessionViews } from '../sessions/projects.mjs';
 import { createSessionRoutes } from './sessions.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOptions } from './workspaces.mjs';
 import { taskRoutes } from './tasks.mjs';
@@ -75,6 +76,10 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     now,
     retentionMs: sessionOptions.eventRetentionMs,
   });
+  if (sessionStore.all().some((row) => !row.projectId)) {
+    projectStore.ensureDefault();
+    sessionStore.backfillProjects(DEFAULT_PROJECT_ID);
+  }
   const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
   const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile(),
     availability: sessionOptions.availability ?? (sessionOptions.live ? sharedProviderAvailability() : null) });
@@ -96,6 +101,9 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
     findProject: sessionOptions.findProject ?? ((id) => projectStore.get(id)),
+    defaultProject: () => projectStore.ensureDefault(),
+    activeProjectIds: () => new Set(projectStore.list().filter((row) => !row.archivedAt).map((row) => row.id)),
+    moveProject: (input) => assignSessionProject({ projects: projectStore, sessionStore, ...input }),
     resolveProjectInstructions: sessionOptions.resolveProjectInstructions
       ?? ((project) => projectStore.instructionsFor(project)),
     resolveProjectFiles: sessionOptions.resolveProjectFiles ?? ((project) => projectStore.filesFor(project)),
@@ -176,7 +184,12 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...habitRoutes({ dir: store.dir, now, ...options.habits }),
     ...brainRoutes({ store, now, options: options.brain ?? {} }),
-    ...createProjectRoutes({ projects: projectStore, now, refs, choices: sessionChoices }),
+    ...createProjectRoutes({ projects: projectStore, now, refs, choices: sessionChoices,
+      projectSessions: (id) => projectSessionViews(sessionStore, id,
+        decisionStore.all().filter((row) => row.status === 'open' || isWaiting(row)
+          || (row.status === 'answered' && row.delivery?.state === 'failed'))),
+      sessionMembership: () => new Map(sessionStore.all().map((row) => [row.id, row.projectId])),
+    }),
     ...createWorkspaceRoutes({
       workspaceStore,
       service: workspaceService,

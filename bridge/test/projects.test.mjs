@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createProjectStore, storedFileName } from '../src/routes/projects.mjs';
+import { createProjectStore, DEFAULT_PROJECT_ID, storedFileName } from '../src/routes/projects.mjs';
+import { createSessionStore } from '../src/sessions/store.mjs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { startBridge } from './helpers.mjs';
 
 const BODY = 'Always answer in Japanese.\nKeep it under five lines.';
@@ -223,6 +226,8 @@ test('updates require If-Match and a stale version returns the current side', as
     instructionRef: null,
     instructions: 'Answer in Japanese only.',
     defaultProfile: null,
+    progressNote: null,
+    requirements: [],
   });
 
   const replay = await api.request(`/v1/projects/${project.id}`, {
@@ -561,7 +566,7 @@ test('a schema-1 project file is converted once without inventing a body', async
   assert.equal(project.instructionHash, null, 'the old hash covered text the Bridge never kept');
   assert.deepEqual(project.instructionHistory, []);
   assert.equal(store.instructionsFor(project), null, 'a ref is never read');
-  assert.equal(JSON.parse(readFileSync(file, 'utf8')).schema, 2);
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).schema, 3);
 });
 
 test('archiving a project moves it out of the list, keeps it readable and restores it', async (t) => {
@@ -583,4 +588,110 @@ test('archiving a project moves it out of the list, keeps it readable and restor
   assert.equal(restored.body.data.archivedAt, null);
   assert.deepEqual(await names(), [project.id]);
   assert.deepEqual(await names('?archived=only'), []);
+});
+
+test('versioned requirements preserve the owner title on edits and withdrawal across a restart', async t => {
+  const { api, token } = await boot(t);
+  const p = (await createProject(api, token, { name: 'Example', progressNote: 'Next: check the result', instructions: BODY })).body.data;
+  const path = `/v1/projects/${p.id}`;
+  const req = (suffix, method, key, etag, body, otherToken = token) => api.request(path + suffix, {
+    method, key, token: otherToken, headers: etag ? { 'if-match': etag } : {}, body,
+  });
+  const owner = { title: '  Preserve my exact words.  ', source: 'owner' };
+  assert.equal((await req('/requirements', 'POST', 'missing-version', null, owner)).status, 428);
+  const readOnly = await api.token(['sessions:read']);
+  assert.equal((await req('/requirements', 'POST', 'read-only', p.etag, owner, readOnly)).status, 403);
+  const a = await req('/requirements', 'POST', 'requirement-a', p.etag, owner);
+  assert.equal(a.status, 201);
+  assert.deepEqual((await req('/requirements', 'POST', 'requirement-a', p.etag, owner)).body.data, a.body.data);
+  const aId = a.body.data.requirements[0].id;
+  const b = await req('/requirements', 'POST', 'requirement-b', a.body.data.etag, { title: 'AI check', source: 'ai' });
+  const bId = b.body.data.requirements[1].id;
+  assert.equal((await req(`/requirements/${aId}`, 'PATCH', 'stale', a.body.data.etag, { status: 'completed' })).status, 412);
+  assert.equal((await req(`/requirements/${aId}`, 'PATCH', 'locked', b.body.data.etag, { title: 'Different words' })).status, 409);
+  assert.equal((await req('/requirements/order', 'PUT', 'duplicate-order', b.body.data.etag, { ids: [aId, aId] })).status, 400);
+  const ordered = await req('/requirements/order', 'PUT', 'order', b.body.data.etag, { ids: [bId, aId] });
+  assert.equal(ordered.status, 200);
+  assert.deepEqual(ordered.body.data.requirements.map(r => [r.id, r.order]), [[bId, 0], [aId, 1]]);
+  const done = await req(`/requirements/${aId}`, 'PATCH', 'complete', ordered.body.data.etag, { status: 'completed', details: 'Verified' });
+  assert.equal(done.body.data.requirements[1].title, owner.title);
+  assert.deepEqual(done.body.data.requirementSummary, { completed: 1, total: 2 });
+  const removed = await req(`/requirements/${aId}`, 'DELETE', 'withdraw', done.body.data.etag);
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body.data.requirementSummary, { completed: 0, total: 1 });
+  const file = join(api.stateDir, 'projects.json');
+  const stored = JSON.parse(readFileSync(file, 'utf8')).projects[p.id];
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(stored.requirements.find(r => r.id === aId).title, owner.title);
+  assert.ok(stored.requirements.find(r => r.id === aId).withdrawnAt);
+  await api.restart();
+  const fetched = (await api.request(path, { token })).body.data;
+  assert.equal(fetched.requirements.length, 1);
+  assert.equal(fetched.requirements[0].id, bId);
+  assert.equal(fetched.progressNote, 'Next: check the result');
+  assert.deepEqual(fetched.sessions, []);
+});
+
+test('legacy session creation and retry keep one project; the local CLI can attach Work and its children', async t => {
+  let launches = 0;
+  const api = await startBridge({ sessions: { adapter: {
+    create: async () => ({ sessionId: `delegate-${++launches}`, requested: { model: 'test-model' } }), status: async () => ({}),
+  } } });
+  t.after(() => api.close());
+  const token = await api.token();
+  const p = (await createProject(api, token, { name: 'Release' })).body.data;
+  const path = `/v1/projects/${p.id}`;
+  const requirement = (await api.request(`${path}/requirements`, {
+    method: 'POST', token, key: 'add', headers: { 'if-match': p.etag }, body: { title: 'Check', source: 'owner' },
+  })).body.data;
+  const reqId = requirement.requirements[0].id;
+  const body = { requestId: 'app-v1-fallback', profile: 'opus-high', prompt: 'legacy no project' };
+  const legacy = await api.request('/v1/sessions', { method: 'POST', token, key: 'legacy', body });
+  assert.equal(legacy.status, 201);
+  assert.equal(legacy.body.data.projectId, DEFAULT_PROJECT_ID);
+  const id = legacy.body.data.id;
+  const patch = (key, dest) => api.request(`/v1/sessions/${id}`, { method: 'PATCH', token, key, body: { projectId: dest } });
+  assert.equal((await patch('move', p.id)).body.data.projectId, p.id);
+  const replay = await api.request('/v1/sessions', { method: 'POST', token, key: 'legacy-new-key', body });
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.data.projectId, p.id);
+  assert.equal(launches, 1);
+
+  const sessionStore = createSessionStore({ file: join(api.stateDir, 'sessions.json') });
+  const uuid = '00000000-0000-4000-8000-000000000123';
+  const parent = 'ses_1111111111111111';
+  const child = 'ses_2222222222222222';
+  const at = '2026-10-01T00:00:00.000Z';
+  const row = { phase: 'running', requested: { model: 'test' }, updatedAt: at };
+  sessionStore.importDirectory([
+    { ...row, id: child, parentId: parent, phase: 'awaiting_decision', name: 'Child', projectId: DEFAULT_PROJECT_ID },
+    { ...row, id: parent, name: 'Work parent', projectId: DEFAULT_PROJECT_ID, delegate: { sessionId: uuid } },
+  ]);
+  const cli = (args, input) => {
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), 'projects', ...args], {
+      env: { ...process.env, LAA_BRIDGE_STATE_DIR: api.stateDir }, input: input && JSON.stringify(input), encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stdout);
+    return JSON.parse(result.stdout).data;
+  };
+  assert.equal(cli(['assign', 'Release', uuid]).sessionId, parent);
+  cli(['rpc'], { op: 'assign', project: p.id, sessionId: uuid, requirementId: reqId });
+  const read = async () => (await api.request(path, { token })).body.data;
+  let detail = await read();
+  assert.deepEqual(detail.requirements[0].sessionIds, [parent]);
+  assert.equal(detail.requirements[0].status, 'in_progress');
+  assert.equal(detail.sessions.find(s => s.id === parent).status, 'running');
+  assert.equal(detail.sessions.find(s => s.id === child).status, 'awaiting_decision');
+  assert.equal(detail.sessions.find(s => s.id === child).parentId, parent);
+  const blocked = await api.request(`/v1/sessions/${parent}`, { method: 'PATCH', token, key: 'reject-linked', body: { projectId: DEFAULT_PROJECT_ID } });
+  assert.equal(blocked.status, 409);
+  // A new directory snapshot cannot overwrite an explicit move.
+  sessionStore.importDirectory([{ ...row, id: parent, name: 'Work parent', projectId: DEFAULT_PROJECT_ID, delegate: { sessionId: uuid } }]);
+  await api.restart();
+  detail = await read();
+  assert.equal(detail.sessions.some(s => s.id === parent), true);
+  assert.equal(detail.sessions.some(s => s.id === child), true);
+  const unclassified = (await api.request(`/v1/projects/${DEFAULT_PROJECT_ID}`, { token })).body.data;
+  assert.equal(unclassified.name, '未分類');
+  assert.equal(unclassified.sessions.some(s => [id, parent, child].includes(s.id)), false);
 });

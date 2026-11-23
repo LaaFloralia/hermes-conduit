@@ -25,6 +25,7 @@ import { HABITS_USAGE, habitsCommand } from './cli-habits.mjs';
 import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
 import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
+import { PROJECTS_USAGE, projectsCommand } from './cli-projects.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +56,7 @@ ${TASKS_USAGE}
 ${HABITS_USAGE}
 ${DECISIONS_USAGE}
 ${PHONE_USE_USAGE}
+${PROJECTS_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
 Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
@@ -299,6 +301,9 @@ if (flags.help) {
     break;
   case 'ref':
     process.exitCode = refsCommand(['ref', ...positional], flags);
+    break;
+  case 'projects':
+    process.exitCode = await projectsCommand(positional, flags);
     break;
   case 'refs':
     process.exitCode = refsCommand(['refs', ...positional], flags);

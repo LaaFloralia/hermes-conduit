@@ -90,6 +90,9 @@ export function createSessionService({
   modelSwitchOptions = {},
   findWorkspace,
   findProject = () => null,
+  defaultProject = null,
+  activeProjectIds = () => new Set(),
+  moveProject = null,
   resolveProjectInstructions = () => null,
   resolveProjectFiles = () => [],
   homeCwd = homedir(),
@@ -210,6 +213,7 @@ export function createSessionService({
       assertSameRequest(existing, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest });
       return { session: existing, created: false };
     }
+    if (project?.archivedAt) throw conflict('project_archived', 'choose an active project');
 
     const offered = choices().profiles.find((item) => item.id === profile);
     if (offered?.available === false) {
@@ -218,7 +222,12 @@ export function createSessionService({
 
     const workspace = workspaceId === HOME_WORKSPACE_ID ? { path: homeCwd } : await findWorkspace(workspaceId);
     if (!workspace) throw notFound('workspace not found under an allowlisted root');
-    if (parentId && !sessionStore.get(parentId)) throw notFound('parent session not found');
+    const parent = parentId ? sessionStore.get(parentId) : null;
+    if (parentId && !parent) throw notFound('parent session not found');
+    if (moveProject && projectId && parent?.projectId && parent.projectId !== projectId) {
+      throw conflict('parent_project_mismatch', 'a child session belongs to its parent’s project');
+    }
+    const membership = projectId ?? parent?.projectId ?? defaultProject?.()?.id ?? null;
 
     let name = body.name === undefined || body.name === null ? null : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
     const nameSource = name === null ? 'default' : 'owner';
@@ -264,7 +273,8 @@ export function createSessionService({
       requestId,
       requestDigest,
       parentId,
-      projectId,
+      projectId: membership,
+      launchProjectId: projectId,
       workspaceId,
       cwd: workspace.path,
       name,
@@ -402,6 +412,9 @@ export function createSessionService({
         [...(r.delegateHistory ?? []), r.delegate, ...(r.modelSwitch ? [{ sessionId: r.modelSwitch.nextId }] : [])]
           .filter(Boolean).map((entry) => [entry.sessionId, r])));
       const ids = new Map(agents.map((a) => [a.id, known.get(a.id)?.id ?? daemonSessionID(a.id)]));
+      const unknown = agents.filter((agent) => !known.get(agent.id)?.projectId);
+      const projectIds = unknown.some((agent) => agent.labels?.['laa.bridge.project-id']) ? activeProjectIds() : new Set();
+      const fallbackId = unknown.some((agent) => !projectIds.has(agent.labels?.['laa.bridge.project-id'])) ? defaultProject?.()?.id ?? null : null;
       const rows = agents.filter((a) => {
         const row = known.get(a.id);
         return row ? row.delegate?.sessionId === a.id && !switcher.isBusy(row.id)
@@ -423,7 +436,7 @@ export function createSessionService({
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
           parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
           routine: routines.get(a.id) ?? null,
-          projectId: null, workspaceId, cwd: a.cwd,
+          projectId: previous?.projectId ?? (projectIds.has(a.labels?.['laa.bridge.project-id']) ? a.labels['laa.bridge.project-id'] : fallbackId), workspaceId, cwd: a.cwd,
           name: paseoTitle || a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
           // The detail read (applyObservation) uses the same two fields to reach
           // the same name, so a list row and its detail cannot disagree.
@@ -953,6 +966,12 @@ export function createSessionService({
   // these actions stops a turn: the adapter refuses a tree with a turn running.
   async function updateSession({ id, body = {} }) {
     switcher.assertUnlocked(id);
+    if (body.projectId !== undefined) {
+      if (!moveProject || Object.keys(body).length !== 1 || typeof body.projectId !== 'string' || !/^prj_[0-9a-f]{12}$/.test(body.projectId)) {
+        throw badRequest('payload_invalid', 'supply projectId alone as a valid project ID');
+      }
+      return { session: moveProject({ sessionId: id, projectId: body.projectId }) };
+    }
     const existing = requireSession(id);
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
     const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
@@ -1577,7 +1596,7 @@ export function sessionTitle(raw) {
 // One clearly delimited block, version and hash on the header line, then the
 // owner's own request. The body is the project's shared text verbatim; it was
 // refused at write time (or is refused above) if it could close the delimiter.
-function composePrompt(projectId, instructions, files, prompt) {
+export function composePrompt(projectId, instructions, files, prompt) {
   const blocks = [];
   if (instructions) {
     const header = `<${INSTRUCTION_TAG} project="${projectId}" version="${instructions.version}" hash="${instructions.hash}">`;
@@ -1750,7 +1769,8 @@ function parseWait(raw) {
 
 function assertSameRequest(record, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest }) {
   if (record.profile !== profile || record.workspaceId !== workspaceId
-    || (record.parentId ?? null) !== parentId || (record.projectId ?? null) !== projectId
+    || (record.parentId ?? null) !== parentId
+    || (Object.hasOwn(record, 'launchProjectId') ? record.launchProjectId : record.projectId ?? null) !== projectId
     || (record.requestDigest !== requestDigest && record.requestDigest !== legacyRequestDigest)) {
     throw conflict('request_id_conflict', 'requestId was already used for a different session request');
   }
