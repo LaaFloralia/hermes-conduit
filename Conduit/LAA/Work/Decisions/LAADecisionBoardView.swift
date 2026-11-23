@@ -17,6 +17,12 @@ struct LAADecisionBoardView: View {
     /// Answers sent from this screen. A delivered answer leaves the board, so
     /// the list keeps its own record for the 回答済み section and the detail.
     @State private var answered: [LAADecision] = []
+    /// For each row in `answered`, the board reads started when it got there.
+    /// It leaves once a later read has come back without it, so a delivered
+    /// answer does not stay on the board (2026-11-23). A record opened from a
+    /// link stays while it is the one shown.
+    @State private var answeredMark: [String: Int] = [:]
+    @State private var linkedOnly = Set<String>()
     @State private var retrying: String?
     @State private var retryFailure: [String: String] = [:]
     @State private var retried = 0
@@ -40,6 +46,7 @@ struct LAADecisionBoardView: View {
             .onChange(of: board.linkedID, initial: true) { _, _ in openLinked() }
             .onChange(of: board.items) { _, _ in openLinked() }
             .onChange(of: rowIDs, initial: true) { _, ids in selectFirstIfNeeded(ids) }
+            .onChange(of: board.lastLoadStart) { _, start in pruneAnswered(after: start) }
             .sheet(item: $selected) { item in
                 NavigationStack {
                     LAADecisionDetailView(item: item, board: board, drafts: drafts, onAnswered: remember) { _ in
@@ -304,14 +311,41 @@ struct LAADecisionBoardView: View {
             answered.removeAll { $0.id == item.id }
             answered.insert(item, at: 0)
         }
+        answeredMark[item.id] = board.loadsStarted
+        linkedOnly.insert(item.id)
     }
 
-    /// An answer that left for the conversation: the row moves to 回答済み.
+    /// An answer that left for the conversation: the row moves to 回答済み
+    /// until the next board read comes back.
     private func remember(_ item: LAADecision) {
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.35)) {
             answered.removeAll { $0.id == item.id }
             answered.insert(item, at: 0)
             board.remove(item.id)
+        }
+        answeredMark[item.id] = board.loadsStarted
+        linkedOnly.remove(item.id)
+    }
+
+    /// Drops the 回答済み rows a read that began after them no longer lists.
+    private func pruneAnswered(after start: Int) {
+        let keep = Self.keptAnswered(answered, marks: answeredMark, linkedOnly: linkedOnly,
+                                     selectedID: selectedID, boardIDs: Set(board.items.map(\.id)), lastLoadStart: start)
+        guard keep.count != answered.count else { return }
+        let kept = Set(keep.map(\.id))
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.35)) { answered = keep }
+        answeredMark = answeredMark.filter { kept.contains($0.key) }
+        linkedOnly = linkedOnly.intersection(kept)
+    }
+
+    /// Pure rule for `pruneAnswered`, for unit tests.
+    static func keptAnswered(_ answered: [LAADecision], marks: [String: Int], linkedOnly: Set<String>,
+                             selectedID: String?, boardIDs: Set<String>, lastLoadStart: Int) -> [LAADecision] {
+        answered.filter { item in
+            if boardIDs.contains(item.id) { return true }
+            if linkedOnly.contains(item.id), item.id == selectedID { return true }
+            guard let mark = marks[item.id] else { return false }
+            return lastLoadStart <= mark
         }
     }
 

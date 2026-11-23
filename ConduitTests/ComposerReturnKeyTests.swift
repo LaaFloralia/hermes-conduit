@@ -532,11 +532,17 @@ final class ComposerReturnKeyTests: XCTestCase {
 
     func testReturnSendsByDefaultOnlyOnAMac() {
         XCTAssertTrue(ComposerReturnKey.sendsByDefault(onMac: true))
+#if LAA_BUILD
+        // LAA: Return sends on every device (owner, 2026-11-23).
+        XCTAssertTrue(ComposerReturnKey.sendsByDefault(onMac: false))
+        XCTAssertTrue(ComposerReturnKey.sendsByDefault)
+#else
         XCTAssertFalse(ComposerReturnKey.sendsByDefault(onMac: false))
         XCTAssertEqual(
             ComposerReturnKey.sendsByDefault,
             ProcessInfo.processInfo.isMacCatalystApp
         )
+#endif
     }
 
     /// Settings says where the preference starts, so a Mac user can tell
@@ -546,10 +552,15 @@ final class ComposerReturnKeyTests: XCTestCase {
             ComposerReturnKey.defaultFootnote(onMac: true),
             AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
         )
+#if LAA_BUILD
+        XCTAssertEqual(ComposerReturnKey.defaultFootnote(onMac: false),
+                       "LAAでは最初からオンです。オフにすると、Returnで改行します。")
+#else
         XCTAssertEqual(
             ComposerReturnKey.defaultFootnote(onMac: false),
             AppLocalization.string("Off by default on iPhone and iPad.")
         )
+#endif
     }
 
     func testPreferenceRestoresStoredValue() {

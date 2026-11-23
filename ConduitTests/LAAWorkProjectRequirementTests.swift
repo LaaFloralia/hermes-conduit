@@ -53,7 +53,7 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertTrue(requirements[1].addedByAI)
         XCTAssertEqual(requirements[1].details, "補足")
         XCTAssertEqual(value.sessions?.first?.statusLabel, "待機")
-        XCTAssertEqual(value.sessions?.first?.mark, .done)
+        XCTAssertEqual(value.sessions?.first?.mark, .waiting)
         // The detail's own rows win over the list's summary.
         XCTAssertEqual(value.progress, LAAWorkRequirementSummary(completed: 1, total: 2))
     }

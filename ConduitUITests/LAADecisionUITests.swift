@@ -178,10 +178,30 @@ final class LAADecisionUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["work.decision.sent"].firstMatch.waitForExistence(timeout: 10))
         screenshot("ui-decisions-sent-light", app)
         XCTAssertTrue(row(hpID, app).waitForNonExistence(timeout: 10), "The row still awaits an answer")
-        XCTAssertTrue(app.buttons["work.decision.answered.\(hpID)"].firstMatch.exists)
         XCTAssertTrue(row(cardID, app).exists)
         XCTAssertEqual(answered(hpID)?["optionIndex"] as? Int, 0)
         XCTAssertEqual(answered(hpID)?["delivery"] as? String, "delivered")
+        // A delivered answer does not stay on the board: the next read (every
+        // 15 seconds, or a pull) takes 回答済み away (2026-11-23).
+        XCTAssertTrue(app.buttons["work.decision.answered.\(hpID)"].firstMatch.waitForNonExistence(timeout: 25),
+                      "The delivered answer stayed on the board")
+        XCTAssertTrue(row(cardID, app).exists)
+    }
+
+    /// Answering the last open decision leaves the calm empty board, not a
+    /// 回答済み list that never goes (2026-11-23).
+    func testAnsweringTheLastDecisionEmptiesTheBoard() throws {
+        let app = try launch(board: "single")
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["work.section.decisions"].label.hasSuffix("1"))
+        openUnansweredDecision(hpID, app)
+        app.buttons["work.decision.option.0"].tap()
+        app.buttons["work.decision.send"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.decision.sent"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(row(hpID, app).waitForNonExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["判断待ちはありません"].waitForExistence(timeout: 25), "The answered row stayed")
+        XCTAssertEqual(app.buttons["work.section.decisions"].label, "Decisions")
+        screenshot("ui-decisions-answered-empty-light", app)
     }
 
     /// An answer the conversation did not receive stays, says so, and a retry
@@ -229,7 +249,9 @@ final class LAADecisionUITests: XCTestCase {
         openUnansweredDecision(hpID, app)
         app.buttons["work.decision.option.0"].tap()
         app.buttons["work.decision.send"].tap()
-        XCTAssertTrue(app.buttons["work.decision.answered.\(hpID)"].firstMatch.waitForExistence(timeout: 15))
+        // Reconciled as answered: the open row leaves (回答済み may already
+        // have gone with the next read).
+        XCTAssertTrue(row(hpID, app).waitForNonExistence(timeout: 15))
         XCTAssertEqual(fixture("/state")?["decisionPosts"] as? Int, 1)
         XCTAssertEqual(answered(hpID)?["delivery"] as? String, "delivered")
         screenshot("decision-lost-response-reconciled", app)
@@ -250,7 +272,8 @@ final class LAADecisionUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["work.decision.undelivered"].firstMatch.exists)
         screenshot("decision-later-delivered", app)
         app.buttons["work.decision.close"].tap()
-        XCTAssertTrue(app.buttons["work.decision.answered.\(cardID)"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(row(cardID, app).waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["work.decision.retry.\(cardID)"].exists)
         XCTAssertEqual(fixture("/state")?["decisionPosts"] as? Int, 1)
     }
 

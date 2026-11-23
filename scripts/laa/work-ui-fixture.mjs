@@ -292,7 +292,9 @@ const boardItems = () => {
   if (decisionMode === 'off' || decisionMode === 'empty' || decisionMode === 'unsupported') return [];
   let items = decisions.filter((d) => d.status === 'open' || d.delivery?.state === 'failed').map((d) => ({ kind: 'board', ...d }));
   if (decisionMode === 'long') items = items.filter((d) => d.id === DECISION_IDS.long);
-  if (decisionMode !== 'normal' && decisionMode !== 'long') return [];
+  // /decisions/single: only J1, so answering it empties the board.
+  if (decisionMode === 'single') items = items.filter((d) => d.id === DECISION_IDS.hp);
+  if (decisionMode !== 'normal' && decisionMode !== 'long' && decisionMode !== 'single') return [];
   if (decisionMode === 'normal') {
     const waiting = sessions.find((session) => session.id === SESSION_IDS.decision);
     items.push({ kind: 'session', sessionId: waiting.id, ref: null, title: waiting.name, summary: 'どちらにしますか？',
@@ -602,7 +604,7 @@ const control = http.createServer((req, res) => {
     imagesServed = 0;
     resetDecisions();
   }
-  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long)$/);
+  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long|single)$/);
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/decisions/note-limit-600') noteLimit = 600;

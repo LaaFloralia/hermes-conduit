@@ -38,11 +38,21 @@ import SwiftUI
     private var writeRevisions: [String: Int] = [:]
 
     private var loadedAt: Date?
+    /// Board reads started so far, and the start number of the last read
+    /// that finished. A row answered here leaves 回答済み once a read that
+    /// began after the answer has come back (2026-11-23: answered rows stayed
+    /// on the board for as long as the screen lived).
+    private(set) var loadsStarted = 0
+    @Published private(set) var lastLoadStart = 0
+    /// Decisions answered from this device. A read that was already under way
+    /// when the answer went out still lists them as open; they must not come
+    /// back to 未回答 because of it.
+    private var answeredHere = Set<String>()
 
     var count: Int { items.count }
 
     func reset() {
-        items = []; records = [:]; phase = .idle; loadedAt = nil
+        items = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
     }
 
     func restoreIfNeeded(_ cached: [LAADecision]) {
@@ -69,12 +79,16 @@ import SwiftUI
         guard bridge.status == .paired else { items = []; phase = .idle; return }
         loading = true
         defer { loading = false }
+        loadsStarted += 1
+        let start = loadsStarted
         do {
             let page: LAADecisionPage = try await bridge.read("/v1/decisions")
-            for item in page.items { records[item.id] = item }
-            items = LAADecisionOrder.sorted(page.items)
+            let fresh = Self.visible(page.items, answeredHere: answeredHere)
+            for item in fresh { records[item.id] = item }
+            items = LAADecisionOrder.sorted(fresh)
             phase = .loaded
             loadedAt = Date()
+            if start > lastLoadStart { lastLoadStart = start }
         } catch is CancellationError {
         } catch let error as LAABridgeError {
             if case .other(status: 404, code: _) = error { items = []; phase = .unsupported }
@@ -90,10 +104,28 @@ import SwiftUI
         self.items = LAADecisionOrder.sorted(items); self.phase = phase
         for item in items { records[item.id] = item }
     }
+
+    /// Unit tests: a board read that finished, as `load` records it.
+    func finishLoadForTesting(_ items: [LAADecision]) {
+        loadsStarted += 1
+        let fresh = Self.visible(items, answeredHere: answeredHere)
+        for item in fresh { records[item.id] = item }
+        self.items = LAADecisionOrder.sorted(fresh); phase = .loaded
+        lastLoadStart = loadsStarted
+    }
+
+    func noteAnsweredForTesting(_ id: String) { answeredHere.insert(id); items.removeAll { $0.id == id } }
     #endif
 
     func remove(_ id: String) {
         items.removeAll { $0.id == id }
+    }
+
+    /// The board's rows from one read, without the open copies of decisions
+    /// this device has already answered (a read that crossed the answer).
+    /// A row that carries an answer, such as a failed delivery, stays.
+    static func visible(_ items: [LAADecision], answeredHere: Set<String>) -> [LAADecision] {
+        items.filter { $0.answer != nil || !answeredHere.contains($0.id) }
     }
 
     /// The answer body. A free answer keeps `optionIndex` null on the wire
@@ -204,6 +236,7 @@ import SwiftUI
 
     private static func outcome(of decision: LAADecision, replacing item: LAADecision, in board: LAADecisionBoard) -> Outcome {
         board.records[decision.id] = decision
+        if decision.answer != nil || decision.isGone { board.answeredHere.insert(decision.id) }
         if decision.isGone {
             board.items.removeAll { $0.id == item.id }
             return .gone(LAADecisionCopy.gone(decision))

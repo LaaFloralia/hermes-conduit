@@ -23,12 +23,23 @@ enum ComposerReturnKey {
     /// newline it always had.
     static var sendsByDefault: Bool { sendsByDefault(onMac: ProcessInfo.processInfo.isMacCatalystApp) }
 
-    static func sendsByDefault(onMac: Bool) -> Bool { onMac }
+    /// The LAA build starts with the shortcut on everywhere: Return sends and
+    /// Shift-Return starts a new line, in Chat and in Work (owner, 2026-11-23).
+    static func sendsByDefault(onMac: Bool) -> Bool {
+#if LAA_BUILD
+        true
+#else
+        onMac
+#endif
+    }
 
     /// Settings' note on where the preference starts, so a Mac user can
     /// tell why it's already on.
     static func defaultFootnote(onMac: Bool) -> String {
-        sendsByDefault(onMac: onMac)
+#if LAA_BUILD
+        if !onMac { return "LAAでは最初からオンです。オフにすると、Returnで改行します。" }
+#endif
+        return sendsByDefault(onMac: onMac)
             ? AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
             : AppLocalization.string("Off by default on iPhone and iPad.")
     }

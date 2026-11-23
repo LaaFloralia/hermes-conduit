@@ -31,6 +31,10 @@ struct LAAWorkComposer: View {
     @State private var fullEditor = false
     @State private var warning: String?
     @AppStorage(ChatTypography.inputPreferenceKey) private var inputSize = ChatTypography.defaultInputSize.rawValue
+    /// The Chat composer's hardware-keyboard rule (Settings › Keyboard):
+    /// Return sends, Shift-Return starts a new line, and Return while the IME
+    /// still holds marked text confirms the conversion instead (2026-11-23).
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
 
     /// How tall the owner may drag the compact field: roomy for a long
     /// instruction, short enough that the conversation keeps a few turns.
@@ -42,6 +46,15 @@ struct LAAWorkComposer: View {
     }
 
     private var canSubmit: Bool { enabled && canSend && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// Return's send, checked against the live text: the flag the text view
+    /// holds may be a render behind fast typing. Declining keeps the newline.
+    private func submitFromReturn(closingEditor: Bool = false) -> Bool {
+        guard canSubmit else { return false }
+        if closingEditor { fullEditor = false }
+        onSubmit()
+        return true
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
@@ -56,7 +69,7 @@ struct LAAWorkComposer: View {
                 text: $text, placeholder: placeholder, programmaticRevision: revision,
                 fieldIdentifier: "\(accessibilityPrefix).fullEditor.field", enabled: enabled,
                 onUserEdit: { _ in }, onCollapse: { fullEditor = false },
-                canSubmitFromReturn: false, onSubmitFromReturn: { false },
+                canSubmitFromReturn: canSubmit, onSubmitFromReturn: { submitFromReturn(closingEditor: true) },
                 attachments: { EmptyView() }, dictateButton: { EmptyView() },
                 actionButton: {
                     Button { fullEditor = false; onSubmit() } label: {
@@ -106,7 +119,10 @@ struct LAAWorkComposer: View {
                 onPastedImageError: { _ in warning = "画像を追加できません。" },
                 editorIdentity: editorIdentity,
                 inputTextSize: ChatTypography.inputSize(rawValue: inputSize),
-                programmaticRevision: revision
+                programmaticRevision: revision,
+                returnKeySends: returnKeySends,
+                canSubmitFromReturn: canSubmit,
+                onSubmitFromReturn: { submitFromReturn() }
             )
             .frame(height: fieldHeight)
             // The compact field carries the expand control in its top-right

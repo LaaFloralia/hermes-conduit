@@ -42,11 +42,37 @@ class ReturnKeyTextView: UITextView {
         return command
     }()
 
+    /// Shift-Return while the shortcut is on: a newline put in by the view
+    /// itself. Forwarded to the text system, the shifted press inserted
+    /// nothing on iOS (2026-11-23, the LAA 16 Pro Max simulator with a
+    /// hardware key event), so Return could send but no new line could be
+    /// started. With the option off, or while the IME holds marked text, the
+    /// command declines and the text system keeps the press.
+    private static let shiftReturnKeyCommand: UIKeyCommand = {
+        let command = UIKeyCommand(input: "\r", modifierFlags: .shift, action: #selector(shiftReturnKeyCommandPressed))
+        command.wantsPriorityOverSystemBehavior = true
+        return command
+    }()
+
     override var keyCommands: [UIKeyCommand]? {
-        (super.keyCommands ?? []) + [Self.returnKeyCommand]
+        (super.keyCommands ?? []) + [Self.returnKeyCommand, Self.shiftReturnKeyCommand]
+    }
+
+    /// Whether Shift-Return is this view's own newline. Internal for tests.
+    func shiftReturnInsertsNewline(hasMarkedText: Bool) -> Bool {
+        returnKeySends && onSubmitFromReturn != nil && isEditable && !hasMarkedText
+    }
+
+    @objc func shiftReturnKeyCommandPressed() {
+        returnTakenByKeyCommand = true
+        DispatchQueue.main.async { [weak self] in self?.returnTakenByKeyCommand = false }
+        insertText("\n")
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(shiftReturnKeyCommandPressed) {
+            return shiftReturnInsertsNewline(hasMarkedText: markedTextRange != nil)
+        }
         if action == #selector(returnKeyCommandPressed) {
             // Declining hands Return back to the text system: a newline,
             // or the IME confirming its candidate. A Shift the key command
@@ -101,6 +127,10 @@ class ReturnKeyTextView: UITextView {
                 // declined callback) is forwarded with the remaining presses so
                 // UIKit's normal text-input behavior is preserved.
                 if handleReturnKeyPress(shiftPressed: shiftPressed) {
+                    forwarding.remove(returnPress)
+                } else if shiftPressed, shiftReturnInsertsNewline(hasMarkedText: markedTextRange != nil) {
+                    // The key command did not take it: the same newline here.
+                    insertText("\n")
                     forwarding.remove(returnPress)
                 }
             }

@@ -730,7 +730,11 @@ function compareSessions(a, b) {
 
 function sessionPage(rows, url = '/', internalFull = false, projectId = null) {
   const active = rows.filter((row) => row.archivedAt == null);
-  const sessionCounts = { active: active.length, archived: rows.length - active.length };
+  // `active` is every unarchived Session, not the ones working: the screen
+  // shows running, awaiting the owner and waiting apart (BUS-508).
+  const count = (status) => active.filter((row) => row.status === status).length;
+  const sessionCounts = { active: active.length, archived: rows.length - active.length,
+    running: count('running'), awaitingDecision: count('awaiting_decision'), waiting: count('waiting') };
   if (internalFull) return { sessions: rows, sessionCounts, nextSessionsCursor: null };
   const query = new URL(url, 'http://127.0.0.1').searchParams;
   const mode = query.get('sessions') ?? 'active';

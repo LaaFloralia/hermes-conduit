@@ -67,7 +67,10 @@ struct LAAWorkProjectRow: View {
         case .running(let count), .decision(let count):
             HStack(spacing: 4) {
                 LAAWorkStatusMark(status: activity == .running(count) ? .running : .decision)
-                Text(verbatim: "\(count)").laaTextStyle(.secondary).monospacedDigit()
+                // The word goes with the number, so it never reads as the
+                // requirements' 9 / 13 beside it (BUS-508).
+                Text(verbatim: "\(activity == .running(count) ? LAAWorkStatus.running.label : LAAWorkStatus.decision.label) \(count)")
+                    .laaTextStyle(.secondary).monospacedDigit()
                     .foregroundStyle(activity == .running(count) ? LAAColor.secondaryText : LAAColor.attention)
             }
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
@@ -325,8 +328,13 @@ struct LAAWorkProjectPage: View {
 
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionHeading(LAACopy.WorkTab.sessions, count: activeCount,
+            // No bare total beside the heading: 「Sessions 7」 read as seven at
+            // work when they were waiting (BUS-508). The line says which.
+            sectionHeading(LAACopy.WorkTab.sessions, count: nil,
                            action: canChange ? (LAACopy.WorkProject.startSession, "plus", "work.project.newSession", actions.startSession) : nil)
+            if detail != nil || !sessions.isEmpty {
+                LAAWorkSessionTallyLine(tally: sessionTally, identifier: "laa.work.project.sessions.tally")
+            }
             // While the first read runs, "none yet" would be a claim the app can't make.
             if !(sessions.isEmpty && phase == .loading) {
                 sessionRows(sessions, empty: LAACopy.WorkProject.noSessions)
@@ -353,9 +361,13 @@ struct LAAWorkProjectPage: View {
         .accessibilityIdentifier("laa.work.project.sessions")
     }
 
-    /// The Bridge's totals before paging; an older one sent every row instead.
-    private var activeCount: Int? {
-        detail?.sessionCounts?.active ?? (sessions.isEmpty ? nil : sessions.count)
+    /// Running, awaiting the owner and waiting: the Bridge's totals before
+    /// paging, else the compact rows, else the full rows shown.
+    private var sessionTally: LAAWorkSessionTally {
+        if detail?.sessionCounts?.running != nil || detail?.sessions != nil {
+            return LAAWorkSessionTally(counts: detail?.sessionCounts, compact: detail?.sessions)
+        }
+        return LAAWorkSessionTally(sessions: sessions)
     }
     /// Archived sessions the detail counted; nil when it could not say.
     private var archivedCount: Int? {

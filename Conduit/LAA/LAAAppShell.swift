@@ -79,6 +79,16 @@ struct LAAAppShell: View {
                     await usageState.refreshAutomatically(bridge: bridge)
                 }
             }
+            // The Work tab's badge is the board's last count. Read it again on
+            // every activation, so an answer given elsewhere (a notification,
+            // another device) does not leave a stale number (2026-11-23).
+            .task(id: "decisions|\(bridge.revision)|\(scenePhase == .active)") {
+                guard scenePhase == .active else { return }
+                guard bridge.status == .paired else { return }
+                if let page: LAADecisionPage = try? await bridge.read("/v1/decisions"), !Task.isCancelled {
+                    decisionCount = page.items.count
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { LAAUsageBackground.schedule() }
             }

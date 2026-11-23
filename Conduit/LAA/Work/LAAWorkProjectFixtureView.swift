@@ -215,7 +215,7 @@ struct LAAWorkProjectFixtureView: View {
                        requirementSummary: .init(completed: 3, total: 7),
                        progressNote: "要件の一覧とMacの定期読込みを実装中。次はBridgeの既定プロジェクト名を社長に確認してから、TestFlightへ出す。",
                        requirements: requirements, sessions: compactSessions,
-                       sessionCounts: .init(active: 5, archived: 1)),
+                       sessionCounts: .init(active: 5, archived: 1, running: 2, awaitingDecision: 1, waiting: 1)),
         LAAWorkProject(id: "prj_00000000000b", name: "法人化", ref: "P5", updatedAt: "2026-11-22T09:00:00Z",
                        requirementSummary: .init(completed: 1, total: 4),
                        progressNote: "会社形態の比較表を作成中。"),
@@ -242,7 +242,7 @@ struct LAAWorkProjectFixtureView: View {
         requirementSummary: .init(completed: 0, total: 0), requirements: [],
         sessions: manySessions.map { .init(id: $0.id, name: $0.name, status: "waiting", model: nil, updatedAt: nil,
                                            parentId: nil, archivedAt: nil) },
-        sessionCounts: .init(active: 230, archived: 1584))
+        sessionCounts: .init(active: 230, archived: 1584, running: 0, awaitingDecision: 0, waiting: 230))
 
     static let manySessions: [LAAWorkSession] = (0..<200).map { index in
         let minutes = String(format: "%02d", 59 - index % 60)

@@ -104,6 +104,8 @@ struct LAAWorkDesktopSessionsView: View {
                     LAASearchField(placeholder: "検索", text: $search,
                                    identifier: "work.sessions.desktop.search", focus: $searchFocused)
                         .accessibilityIdentifier("work.sessions.search")
+                    // Only running Sessions are 実行中; the rest wait (BUS-508).
+                    if !showArchived && hasLoaded { LAAWorkSessionTallyLine(tally: LAAWorkSessionTally(sessions: sessions)) }
                     if let failure {
                         LAAWorkFailure(text: failure) { Task { await load() } }
                     }

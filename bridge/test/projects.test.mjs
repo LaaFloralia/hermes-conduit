@@ -649,7 +649,7 @@ test('project detail bounds active sessions, pages the archive, and revalidates 
   const etag = first.headers.get('etag');
   assert.match(etag, /^W\/"1-[0-9a-f]{24}"$/);
   assert.equal(first.body.data.etag, p.etag);
-  assert.deepEqual(first.body.data.sessionCounts, { active: 205, archived: 2 });
+  assert.deepEqual(first.body.data.sessionCounts, { active: 205, archived: 2, running: 205, awaitingDecision: 0, waiting: 0 });
   assert.equal(first.body.data.sessions.length, 200);
   assert.equal(first.body.data.sessions[0].id, ids[204]);
   const next = await request(`?sessionsCursor=${first.body.data.nextSessionsCursor}`);
@@ -740,4 +740,21 @@ test('legacy session creation and retry keep one project; the local CLI can atta
   const unclassified = (await api.request(`/v1/projects/${DEFAULT_PROJECT_ID}`, { token })).body.data;
   assert.equal(unclassified.name, '未分類');
   assert.equal(unclassified.sessions.some(s => [id, parent, child].includes(s.id)), false);
+});
+
+test('project session counts keep running, awaiting the owner and waiting apart (BUS-508)', async t => {
+  const api = await startBridge();
+  t.after(() => api.close());
+  const token = await api.token();
+  const p = (await createProject(api, token, { name: 'Project states' })).body.data;
+  const sessions = createSessionStore({ file: join(api.stateDir, 'sessions.json') });
+  const phases = ['running', 'created', 'awaiting_review', 'awaiting_review', 'idle', 'awaiting_decision', 'closed', 'running'];
+  sessions.importDirectory(phases.map((phase, i) => ({ id: `ses_${(i + 1).toString(16).padStart(16, '0')}`, name: `Row ${i}`, phase,
+    projectId: p.id, updatedAt: new Date(1_790_000_000_000 + i * 1000).toISOString(),
+    ...(i === 7 ? { archivedAt: '2026-11-04T00:00:00.000Z' } : {}) })));
+  const body = (await api.request(`/v1/projects/${p.id}`, { token })).body.data;
+  // Seven unarchived: two at work, one asking, three waiting, one closed.
+  assert.deepEqual(body.sessionCounts, { active: 7, archived: 1, running: 2, awaitingDecision: 1, waiting: 3 });
+  assert.deepEqual(body.sessions.map(x => x.status).sort(),
+    ['awaiting_decision', 'completed', 'running', 'running', 'waiting', 'waiting', 'waiting']);
 });

@@ -96,10 +96,15 @@ struct LAAWorkRequirement: Codable, Hashable, Identifiable {
     var addedByAI: Bool { source == "ai" }
 }
 
-/// A project's sessions before paging: unarchived and archived.
+/// A project's sessions before paging: unarchived and archived. `active` is
+/// every unarchived Session, at work or not; the breakdown (BUS-508) is absent
+/// from an older Bridge and from a reading kept by an earlier build.
 struct LAAWorkSessionCounts: Codable, Hashable {
     let active: Int
     let archived: Int
+    var running: Int? = nil
+    var awaitingDecision: Int? = nil
+    var waiting: Int? = nil
 }
 
 struct LAAWorkRequirementSummary: Codable, Hashable {
@@ -128,13 +133,14 @@ struct LAAWorkProjectSession: Codable, Hashable, Identifiable {
 
     var isArchived: Bool { archivedAt != nil }
 
-    /// The session list's mark. A session waiting for its next instruction has
-    /// finished its turn, which the session list already draws as done.
+    /// The session list's mark: a session waiting for its next instruction is
+    /// 待機, apart from 完了 and 実行中 (BUS-508).
     var mark: LAAWorkStatus {
         switch status {
         case "running": .running
         case "awaiting_decision": .decision
-        case "waiting", "completed": .done
+        case "waiting": .waiting
+        case "completed": .done
         default: .pending
         }
     }

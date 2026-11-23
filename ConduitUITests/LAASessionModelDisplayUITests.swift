@@ -46,6 +46,18 @@ final class LAASessionModelDisplayUITests: XCTestCase {
     }
     func testModelDisplayDark() throws { try run("dark") }
 
+    /// The Sessions list says how many run and how many wait, so open
+    /// Sessions never read as work under way (BUS-508).
+    func testSessionsListTellsRunningFromWaiting() throws {
+        let app = try launch("light")
+        app.buttons["work.section.sessions"].tap()
+        let tally = any("laa.work.sessions.tally", app)
+        XCTAssertTrue(tally.waitForExistence(timeout: 15))
+        XCTAssertTrue(tally.label.hasPrefix("実行中 "), tally.label)
+        XCTAssertTrue(tally.label.contains("待機 "), tally.label)
+        capture(app, "sessions-tally-light")
+    }
+
     @discardableResult
     private func fixture(_ path: String) -> [String: Any]? {
         let done = expectation(description: "fixture \(path)")

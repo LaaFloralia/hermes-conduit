@@ -674,7 +674,8 @@ final class LAAWorkTests: XCTestCase {
     }
 
     func testStatusMarksSeparateDoneFromError() throws {
-        XCTAssertEqual(LAAWorkStatus.session("awaiting_review"), .done)
+        XCTAssertEqual(LAAWorkStatus.session("awaiting_review"), .waiting, "a finished turn waits (BUS-508)")
+        XCTAssertEqual(LAAWorkStatus.session("idle"), .waiting)
         XCTAssertEqual(LAAWorkStatus.session("closed"), .done)
         XCTAssertEqual(LAAWorkStatus.session("error"), .error)
         XCTAssertEqual(LAAWorkStatus.session("stop_unconfirmed"), .error)
