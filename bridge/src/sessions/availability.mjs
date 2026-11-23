@@ -1,8 +1,8 @@
 // Which Work providers can start a session now, as the LAA Work engine reports it
 // (`laa-work provider ls --json`). The session options stay synchronous: the answer is read in
 // the background and kept for a short while, and until the first one nothing is marked.
-// A provider that cannot run stays in the list with its reason on the label (a Dot whose
-// contract ended, Gemini with no signed-in account), so choosing it is never a silent wait.
+// A provider that cannot run stays in the list with its reason on the label (Gemini with no
+// signed-in account), so choosing it is never a silent wait.
 
 import { execFile } from 'node:child_process';
 import { dirname } from 'node:path';

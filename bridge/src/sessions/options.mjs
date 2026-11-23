@@ -12,11 +12,11 @@ import { providerAvailability, withAvailability } from './availability.mjs';
 import { entranceProfiles, workRoute } from './entrance-profiles.mjs';
 
 const DEFAULT_PROFILE = 'opus-high';
-// The harnesses a Work session can run on. Dots (Monet on ChatGPT) runs only in the LAA Work
-// engine; while it cannot run its label carries the engine's reason (availability.mjs).
-// Antigravity is the Google AI Pro subscription (Sub2→Sub3→Sub4). Muse is not offered: Work
-// has no Muse CLI (owner, 2026-11-23); the free Muse stays in Chat as 薬用石鹸.
-const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'hermes-openai-api', 'antigravity', 'dots'];
+// The harnesses a Work session can run on; one that cannot run now keeps its place with the
+// engine's reason on its label (availability.mjs). Antigravity is the Google AI Pro
+// subscription (Sub2→Sub3→Sub4). Muse and Dots are not offered (2026-11-23: Work has no Muse
+// CLI, and Dots did not answer a live turn in 300 s); their own employees keep them in Chat.
+const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'hermes-openai-api', 'antigravity'];
 // Metered API routes: offered only by hand, with the route in the label.
 const PAID_ROUTES = { 'hermes-claude-api': { prefix: 'anthropic:', suffix: '（API）' },
   'hermes-openai-api': { prefix: 'openai:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' } };
