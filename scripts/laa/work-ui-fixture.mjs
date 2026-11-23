@@ -240,11 +240,14 @@ const longSummary = '新しいHPと名刺、写真の選び直しが同時に進
 let decisionMode = 'off';
 let failNextDelivery = false;
 let loseNextDecisionResponse = false;
+// /decisions/note-limit-600 answers as a Bridge from before 2026-11-23 did:
+// a free answer over 600 characters is refused with decision_invalid.
+let noteLimit = null;
 let decisionPosts = 0;
 let decisions = [];
 const iso = (offsetHours) => new Date(Date.now() + offsetHours * 3600 * 1000).toISOString();
 const resetDecisions = () => {
-  decisionMode = 'off'; failNextDelivery = false; loseNextDecisionResponse = false; decisionPosts = 0;
+  decisionMode = 'off'; failNextDelivery = false; loseNextDecisionResponse = false; noteLimit = null; decisionPosts = 0;
   decisions = [
     { id: DECISION_IDS.hp, ref: 'J1', status: 'open', title: 'HPの公開日を決める',
       summary: '新しいHPは公開できる状態です。告知の準備に合わせて公開日を1つ選んでください。選んだ日に合わせて告知文と予約投稿を整えます。',
@@ -393,6 +396,10 @@ const api = http.createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : {};
     if (decisionMatch[2] === 'answer') {
+      if (noteLimit && [...(body.note ?? '')].length > noteLimit) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: { code: 'decision_invalid', message: `note must be at most ${noteLimit} characters`, retryable: false }, requestId: 'fixture' }));
+      }
       if (decision.status !== 'open') { res.writeHead(409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code: 'decision_closed', message: 'closed', retryable: false }, requestId: 'fixture' })); }
       const option = Number.isInteger(body.optionIndex) ? decision.options[body.optionIndex] : null;
       lastAnswer = { id: decision.id, optionIndex: Number.isInteger(body.optionIndex) ? body.optionIndex : null,
@@ -596,6 +603,7 @@ const control = http.createServer((req, res) => {
   const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long)$/);
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
+  if (req.url === '/decisions/note-limit-600') noteLimit = 600;
   if (req.url === '/decisions/lose-next-response') loseNextDecisionResponse = true;
   // Synthetic J4 lifecycle, using the production schema without production
   // identifiers, text or side effects. An external retry later confirms delivery.

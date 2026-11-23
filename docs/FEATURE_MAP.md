@@ -1128,7 +1128,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   pulled; there is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
 
-**Checked:** 2026-11-23, laa/c5-staff-models (a refused long answer keeps its draft and shows the Bridge's message: LAADecisionTests with a stubbed 400 `decision_note_too_long`, the 7,600/8,000 count); 2026-11-14, 6cf44994 (laa/app-final): a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
+**Checked:** 2026-11-23, laa/c5-staff-models (a refused long answer keeps its draft and shows the Bridge's message: LAADecisionTests with a stubbed 400 `decision_note_too_long`, the 7,600/8,000 count; `LAADecisionUITests.testALongAnswerIsCountedAndARefusalKeepsIt` against work-ui-fixture's `/decisions/note-limit-600` (the older Bridge's refusal): 8,001 characters held with 「1字多すぎます」, a refused 1,000 kept through close and reopen; the live Bridge took 1,500 (200) and refused 8,001 (400) in the parent's check); 2026-11-14, 6cf44994 (laa/app-final): a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
 
 ## LAA campaign decisions
 

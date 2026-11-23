@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import XCTest
+import UIKit
 
 /// The decision board against the synthetic Work fixture
 /// (`scripts/laa/work-ui-fixture.mjs`): board → detail → choose → delivered,
@@ -63,6 +64,74 @@ final class LAADecisionUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [tappable], timeout: 10), .completed)
         card.tap()
         XCTAssertTrue(app.buttons["work.decision.option.0"].waitForExistence(timeout: 10))
+    }
+
+    /// Owner, 2026-11-23: a 1,000-character answer was refused and read as a
+    /// lost connection. The field counts near 8000 and holds the send past it;
+    /// a refusal says why, and the words stay, also after closing the decision.
+    func testALongAnswerIsCountedAndARefusalKeepsIt() throws {
+        let app = try launch(board: "normal")
+        fixture("/decisions/note-limit-600")
+        openUnansweredDecision(hpID, app)
+        XCTAssertTrue(app.staticTexts["選択肢以外で答える"].waitForExistence(timeout: 10))
+        let note = noteField(app)
+        for _ in 0..<4 where !(note.exists && note.isHittable) { app.swipeUp() }
+        let unit = "長い回答の確認です。"   // 10 characters
+        paste(String(repeating: unit, count: 800) + "超", into: note, app, replacing: false)
+        let count = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label BEGINSWITH %@", "字多すぎます", "残り")).firstMatch
+        XCTAssertTrue(count.waitForExistence(timeout: 5))
+        XCTAssertEqual(count.label, "1字多すぎます（8000字まで）")
+        let send = app.buttons["work.decision.send"]
+        XCTAssertFalse(send.isEnabled, "past 8000 the send waits")
+        screenshot("decision-note-over-limit", app)
+
+        paste(String(repeating: unit, count: 100), into: note, app, replacing: true)
+        XCTAssertFalse(count.exists, "no count far from the limit")
+        XCTAssertTrue(send.isEnabled)
+        send.tap()
+        let failure = app.staticTexts["work.decision.failure"].firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 10))
+        XCTAssertEqual(failure.label, "回答が長すぎるか、使えない文字が含まれています。短くしてから送ってください。")
+        XCTAssertFalse(failure.label.contains("Mac"), "a refusal is not a connection failure")
+        XCTAssertEqual((note.value as? String)?.count, 1000, "the answer stays to send again")
+        screenshot("decision-note-refused", app)
+
+        app.buttons["work.decision.close"].tap()
+        openUnansweredDecision(hpID, app)
+        XCTAssertTrue(app.staticTexts["選択肢以外で答える"].waitForExistence(timeout: 10))
+        let reopened = noteField(app)
+        for _ in 0..<4 where !(reopened.exists && reopened.isHittable) { app.swipeUp() }
+        XCTAssertEqual((reopened.value as? String)?.count, 1000, "reopening the decision finds the answer")
+        XCTAssertNil(answered(hpID), "nothing was recorded")
+    }
+
+    /// The free answer, by identifier when SwiftUI exposes it; otherwise the
+    /// detail's only text field.
+    private func noteField(_ app: XCUIApplication) -> XCUIElement {
+        let byID = app.descendants(matching: .any)["work.decision.note"].firstMatch
+        if byID.exists { return byID }
+        return app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
+    }
+
+    private func paste(_ text: String, into field: XCUIElement, _ app: XCUIApplication, replacing: Bool) {
+        UIPasteboard.general.string = text
+        field.tap()
+        func item(_ labels: [String]) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        }
+        if replacing {
+            field.press(forDuration: 1.2)
+            let all = item(["すべてを選択", "Select All"])
+            XCTAssertTrue(all.waitForExistence(timeout: 5)); all.tap()
+        } else {
+            field.press(forDuration: 1.2)
+        }
+        let paste = item(["ペースト", "Paste"])
+        XCTAssertTrue(paste.waitForExistence(timeout: 5)); paste.tap()
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            ((field.value as? String) ?? "").count == text.count
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed, "pasted")
     }
 
     private func screenshot(_ name: String, _ app: XCUIApplication) {
