@@ -59,11 +59,26 @@ test('routine states use current scheduler and business observations with explic
   assert.equal(routineState({ expected: 'stopped' }, { running: true, enabled: false, schedulerResult: 'error' }), 'running');
   assert.equal(routineState({ expected: 'stopped' }, { enabled: true, schedulerResult: 'error' }), 'paused');
   assert.equal(routineState({}, { enabled: false }), 'paused');
+  assert.equal(routineState({}, { enabled: true, schedulerState: 'paused' }), 'paused');
+  assert.equal(routineState({}, { outputEnabled: false, schedulerState: 'running', schedulerResult: 'error' }), 'paused');
+  assert.equal(routineState({}, { source: 'launchd', loaded: false, enabled: true }), 'paused');
+  assert.equal(routineState({}, { source: 'launchd', loaded: true, running: true, enabled: false }), 'running');
+  assert.equal(routineState({}, { source: 'launchd', loaded: null, reasonCode: 'read_unavailable' }), 'error');
+  assert.equal(routineState({}, { source: 'launchd', loaded: true, running: false, reasonCode: 'launchd_failed' }), 'error');
   assert.equal(routineState({}, { enabled: true, schedulerResult: 'error' }), 'error');
   assert.equal(routineState({}, { enabled: true, businessStatus: 'partial' }), 'error');
   assert.equal(routineState({}, { enabled: true, businessStatus: 'failed' }), 'error');
   assert.equal(routineState({}, { enabled: true, result: 'timeout', schedulerResult: 'success', businessStatus: 'success' }), 'scheduled');
   assert.equal(routineState({}, {}), 'unknown');
+});
+
+test('chart routines expose only author model and effort identifiers', () => {
+  const project = author => projectRoutines({ data: [{ id: 'job:a', name: 'Daily', reading: { modelSettings: { author, model: 'reporter' } } }] })[0];
+  const row = project({ model: 'gemini-4-neon', effort: 'xhigh', provider: 'provider', raw: 'secret' });
+  assert.equal(row.authorModel, 'gemini-4-neon');
+  assert.equal(row.authorEffort, 'xhigh');
+  assert.equal(Object.hasOwn(row, 'modelSettings'), false);
+  assert.equal(project({ model: '{"key":"secret"}' }).authorModel, null);
 });
 
 test('destinations only use explicitly configured chat roles and preserve unknown receivers', () => {
