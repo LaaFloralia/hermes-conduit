@@ -74,6 +74,23 @@ class Compare(unittest.TestCase):
 
 
 class Collection(unittest.TestCase):
+    def test_native_metrics_select_by_test_url_and_force_required_ratio(self):
+        def result(name, metric, label, unit, value):
+            return {"testIdentifier": "LAAPerformanceUITests/" + name + "()",
+                    "testIdentifierURL": "test://com.apple.xcode/Conduit/" + perf.TEST_CLASS + "/" + name,
+                    "testRuns": [{"metrics": [{"identifier": metric, "displayName": label,
+                                              "unitOfMeasurement": unit, "measurements": [value]}]}]}
+        cold = result("testColdLaunch", "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration",
+                      "Duration (ApplicationFirstFramePresentationResponsive)", "s", 1.5)
+        chat = result("testScrollChat", "synthetic.hitch.ratio", "Hitch Time Ratio", "ms/s", 3)
+        work = result("testScrollWork", "synthetic.hitch.ratio", "Hitch Time Ratio", "ms/s", 0)
+        duration = result("testScrollWork", "synthetic.duration", "Duration", "s", 1)
+        samples = perf.parsed_native_metrics([cold, chat, work, duration])
+        self.assertEqual({name: row["value"] for name, row in samples.items()}, {
+            "cold_launch_first_usable": 1500, "chat_scroll_hitch_ratio": 3, "work_scroll_hitch_ratio": 0})
+        with self.assertRaisesRegex(ValueError, "hitch-ratio measurement for testScrollWork"):
+            perf.parsed_native_metrics([cold, chat, duration])
+
     def test_duplicate_and_missing_wall_markers_fail(self):
         def line(probe):
             return "prefix LAA_LAB_PERF " + json.dumps({"probe": probe, "ms": 6})
