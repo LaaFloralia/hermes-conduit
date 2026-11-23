@@ -78,12 +78,25 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "Server revision")
     }
 
+    private func startLaneConversation(_ prompt: String, project name: String) throws -> XCUIApplication {
+        let projectID = try XCTUnwrap(WorkLaneUI.setup("project", ["name": name])["id"] as? String)
+        let app = try pairedLaneWork()
+        WorkLaneUI.composer(app)
+        let picker = app.descendants(matching: .any)["work.launch.project"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.tap()
+        let project = app.buttons["work.launch.project.\(projectID)"]
+        XCTAssertTrue(project.waitForExistence(timeout: 10)); project.tap()
+        let field = app.textViews["work.launch.composer.field"]
+        field.tap(); field.typeText(prompt)
+        let send = app.buttons["work.launch.composer.send"]
+        XCTAssertTrue(waitUntilReady(send, timeout: 15)); send.tap()
+        XCTAssertTrue(transcript("Lab Echo: \(prompt)", in: app).waitForExistence(timeout: 40))
+        return app
+    }
+
     private func laneFollowUp(relaunch: Bool) throws {
         let name = relaunch ? "Lab follow-up readback" : "Lab follow-up"
-        let id = try XCTUnwrap(WorkLaneUI.setup("session", ["name": name])["id"] as? String)
-        let app = try pairedLaneWork()
-        WorkLaneUI.sessions(app)
-        XCTAssertTrue(openSession(app, id: id))
+        let app = try startLaneConversation(name, project: relaunch ? "Lab readback project" : "Lab follow-up project")
         let field = app.textViews["work.composer.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 20)); field.tap(); field.typeText("Lab next turn")
         let send = app.buttons["work.composer.send"]
@@ -93,7 +106,9 @@ final class LAAWorkUITests: XCTestCase {
         if relaunch {
             app.terminate(); app.launchInLab()
             WorkLaneUI.sessions(app)
-            XCTAssertTrue(openSession(app, id: id))
+            let row = app.staticTexts[name].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 20))
+            XCTAssertTrue(reveal(row, in: app)); row.tap()
             XCTAssertTrue(echo.waitForExistence(timeout: 20))
         }
     }
@@ -395,18 +410,7 @@ final class LAAWorkUITests: XCTestCase {
     // write observable before the next one is attempted.
     func testLiveCreateScratchSession() throws {
         if LabUI.active {
-            let projectID = try XCTUnwrap(WorkLaneUI.setup("project", ["name": "Lab session project"])["id"] as? String)
-            let app = try pairedLaneWork()
-            WorkLaneUI.composer(app)
-            let picker = app.descendants(matching: .any)["work.launch.project"].firstMatch
-            XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.tap()
-            let project = app.buttons["work.launch.project.\(projectID)"]
-            XCTAssertTrue(project.waitForExistence(timeout: 10)); project.tap()
-            let field = app.textViews["work.launch.composer.field"]
-            field.tap(); field.typeText("Lab UI session")
-            let send = app.buttons["work.launch.composer.send"]
-            XCTAssertTrue(waitUntilReady(send, timeout: 15)); send.tap()
-            XCTAssertTrue(transcript("Lab Echo: Lab UI session", in: app).waitForExistence(timeout: 40))
+            _ = try startLaneConversation("Lab UI session", project: "Lab session project")
             return
         }
         let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]
@@ -624,11 +628,7 @@ final class LAAWorkUITests: XCTestCase {
         }
         let app: XCUIApplication
         if LabUI.active {
-            let id = try XCTUnwrap(WorkLaneUI.setup("session", ["name": "Lab screenshot session"])["id"] as? String)
-            app = try pairedLaneWork()
-            WorkLaneUI.sessions(app)
-            XCTAssertTrue(openSession(app, id: id))
-            XCTAssertTrue(transcript("Lab Echo: Lab start", in: app).waitForExistence(timeout: 30))
+            app = try startLaneConversation("Lab screenshot session", project: "Lab screenshots")
         } else {
             app = launchWork()
             guard openScratchSession(app), app.staticTexts["最新の回答"].waitForExistence(timeout: 30) else {

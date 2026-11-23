@@ -53,11 +53,6 @@ export function workUIControl(env = process.env) {
       const project = await request(`/v1/projects/${id}`);
       return request(`/v1/projects/${id}`, { method: 'PATCH', etag: project.etag, body: { instructions: 'Server revision' } });
     }
-    if (url.pathname === '/lab/session') {
-      const name = url.searchParams.get('name');
-      if (!/^Lab [\w -]{1,45}$/.test(name ?? '')) throw new Error('bad lab Work name');
-      return request('/v1/sessions', { method: 'POST', body: { requestId: randomUUID(), profile: 'lab-echo', name, prompt: 'Lab start' } });
-    }
     if (url.pathname === '/lab/empty-sessions') {
       const { items } = await request('/v1/sessions');
       for (const { id } of items) await request(`/v1/sessions/${id}`, { method: 'PATCH', body: { archived: true } });

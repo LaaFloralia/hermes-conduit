@@ -16,7 +16,7 @@ node scripts/laa/lab/lane.mjs status "$lane"
 
 統合ランナーは `TEST_RUNNER_` 付きでレーンIDとURLだけを渡し、UIテストの `launchInLab()` がアプリへ転送する。使うfixtureのURLは `LAA_BRIDGE_DEFAULT_ADDRESS` に指定し、通常のペアリング画面から登録する。実Bridgeが既定。control側も同じレーンヘッダーを照合し、固定ポートに+1せず `LAA_LANE_FIXTURE_*_CONTROL` を読む。CLIで実Bridgeに接続する場合は `lane.mjs env` の使い捨て端末資格情報を使えるが、統合ランナーはトークンをUIへ渡さない。
 
-Work/Shellの実接続試験は本番用のopt-inを使わず、レーン内で一回限りのコードを発行して実Bridgeにペアリングする。Work制御fixtureだけにセットアップ専用の資格情報を渡し、ProjectやEchoセッションを用意する。失効試験はそのテストが登録した端末だけを対象にする。
+Work/Shellの実接続試験は本番用のopt-inを使わず、レーン内で一回限りのコードを発行して実Bridgeにペアリングする。Work制御fixtureだけにセットアップ専用の資格情報を渡し、Projectを用意する。Echoセッションの作成・送信はアプリから行う。失効試験はそのテストが登録した端末だけを対象にする。
 
 インストール済みのWorkエンジンが `LAA_WORK_SOCKET`・`LAA_WORK_STATE`・`LAA_WORK_CONFIG` と `LAA_WORK_CATALOG` の `module:` providerを持つため、フェイクdaemonは不要。`up` は実行に必要な `engine/` と `client/` のコードだけをレーンにコピーし、既存ユーザー設定・端末情報・認証はコピーしない。レーンのモデルは外部I/Oゼロの `lab-echo` 一つ。productionの複合ルーター・Paseo・委譲CLIを経由せずUnixソケットへ直結する。ジョブなし、定期処理なし、Work側のBridge署名鍵取得なし（`bridgeUrl: null`）。このためオーナー署名の受渡し自体は別の単体試験で扱う。
 
