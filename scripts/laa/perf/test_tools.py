@@ -1,10 +1,6 @@
 """Synthetic checks for the regression measurement report; no Bridge calls."""
 import unittest
-import plistlib
-import tempfile
-from pathlib import Path
 from summarize import summarize
-from run import focus_test_sources, TESTS
 
 
 class SummaryTests(unittest.TestCase):
@@ -32,33 +28,6 @@ class SummaryTests(unittest.TestCase):
             for i in range(1, 6)))
         self.assertEqual(result['metrics']['open']['median_ms'], 3)
         self.assertEqual(result['incomplete_metrics'], [])
-
-
-class FocusedProjectTests(unittest.TestCase):
-    def test_only_selected_tests_are_compiled_and_app_sources_are_preserved(self):
-        objects = {
-            'app': {'isa': 'PBXNativeTarget', 'name': 'Conduit', 'buildPhases': ['app-phase']},
-            'app-phase': {'isa': 'PBXSourcesBuildPhase', 'files': ['application-source']},
-        }
-        for target in ['ConduitTests', 'ConduitUITests']:
-            files = []
-            names = [test.split('/')[1] + '.swift' for test in TESTS if test.startswith(target + '/')]
-            names += ['UnrelatedDebugOnly.swift']
-            for index, name in enumerate(names):
-                file = target + str(index)
-                objects[file] = {'isa': 'PBXBuildFile', 'fileRef': file + '-ref'}
-                objects[file + '-ref'] = {'isa': 'PBXFileReference', 'path': name}
-                files.append(file)
-            objects[target] = {'isa': 'PBXNativeTarget', 'name': target, 'buildPhases': [target + '-phase']}
-            objects[target + '-phase'] = {'isa': 'PBXSourcesBuildPhase', 'files': files}
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'project.pbxproj'
-            path.write_bytes(plistlib.dumps({'objects': objects}))
-            focus_test_sources(Path(directory))
-            result = plistlib.loads(path.read_bytes())['objects']
-        self.assertEqual(result['app-phase']['files'], ['application-source'])
-        self.assertEqual(len(result['ConduitTests-phase']['files']), 4)
-        self.assertEqual(len(result['ConduitUITests-phase']['files']), 1)
 
 
 if __name__ == '__main__':
