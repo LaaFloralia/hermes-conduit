@@ -69,5 +69,89 @@ extension LAACopy {
         static let showArchive = "アーカイブを表示"
         static let backToRecent = "最近のセッションに戻る"
     }
+
+    /// A project's detail: its requirements, Monet's note and its sessions.
+    /// The status names are the owner's own (2026-11-23).
+    enum WorkProject {
+        static let requirements = "要件"
+        static let instructions = "指示"
+        static let files = "資料"
+        static let note = "進捗メモ"
+        static let add = "追加"
+        static let addRequirement = "要件を追加"
+        static let requirementTitle = "要件"
+        static let requirementTitlePrompt = "社長の言葉のまま"
+        static let requirementDetails = "補足（任意）"
+        static let addFooter = "社長の要件として登録します。題名は後から変えず、補足と状態で進みを表します。"
+        static let changeStatus = "状態を変える"
+        static let withdraw = "取り下げる"
+        static func withdrawTitle(_ title: String) -> String { "「\(title)」を取り下げますか？" }
+        static let withdrawMessage = "一覧から外します。元の文はMacに残ります。"
+        static let addedByAI = "AI追加"
+        static let addedByAIHint = "AIが足した項目"
+        static let ownerHint = "社長の要件"
+        static let startSession = "開始"
+        static let startSessionHint = "このプロジェクトで新しいセッションを開始"
+        static let showArchived = "アーカイブを表示"
+        static let hideArchived = "アーカイブを隠す"
+        static let showDone = "完了を表示"
+        static let hideDone = "完了をたたむ"
+        static let unfold = "表示"
+        static let fold = "たたむ"
+        static let noRequirements = "要件はまだありません。社長の依頼を、Monetがここへ項目に分けて登録します。"
+        static let noRequirementsShort = "要件なし"
+        static let noSessions = "まだありません。"
+        static let requirementsUnread = "Macから読み取れた後に表示します。"
+        static let unlistedSession = "一覧にないセッション"
+        static let readMore = "続きを読む"
+        static let noArchived = "アーカイブしたセッションはありません。"
+        static func archivedCount(_ count: Int) -> String { "アーカイブ \(count)件" }
+        static let bridgeTooOld = "MacのLAAアプリを更新すると、要件の一覧と進捗を表示できます。"
+        static let conflict = "別の端末で更新されていました。読み直したので、もう一度操作してください。"
+        static let limitReached = "このプロジェクトの要件は上限に達しています。"
+        static let archivedProject = "アーカイブしたプロジェクトの要件は変更できません。"
+        static let saveFailed = "変更を保存できませんでした。"
+        static let readFailed = "プロジェクトを読み取れませんでした。"
+        static let instructionsEmpty = "このプロジェクトの全セッションに渡す指示を書けます。"
+        static let filesEmpty = "PDF・画像・メモなどを追加すると、セッションが必要な時に読みます。"
+        static let fileHint = "長押しで削除できます。"
+        static let edit = "編集"
+        static let sending = "送信中"
+
+        static func offline(since date: Date?) -> String {
+            let when = date.map { LAADateText.string($0, .monthDayTime) } ?? "未確認"
+            return "Macに届きません。\(when)に取得した内容です。"
+        }
+        static func done(_ completed: Int, of total: Int) -> String { "完了 \(completed) / \(total)" }
+        static func progressLabel(_ completed: Int, of total: Int) -> String { "要件 \(total)件中 \(completed)件完了" }
+
+        static func status(_ status: LAAWorkRequirementStatus) -> String {
+            switch status {
+            case .inProgress: "着手中"
+            case .awaitingDecision: "判断待ち"
+            case .notStarted: "未着手"
+            case .completed: "完了"
+            case .unknown: "状態不明"
+            }
+        }
+
+        static func sessionStatus(_ raw: String) -> String {
+            switch raw {
+            case "running": "実行中"
+            case "waiting": "待機"
+            case "awaiting_decision": "判断待ち"
+            case "completed": "完了"
+            default: "状態不明"
+            }
+        }
+
+        static func activity(_ activity: LAAWorkProjectActivity) -> String? {
+            switch activity {
+            case .idle: nil
+            case .running(let count): "実行中のセッション \(count)件"
+            case .decision(let count): "判断待ちのセッション \(count)件"
+            }
+        }
+    }
 }
 #endif

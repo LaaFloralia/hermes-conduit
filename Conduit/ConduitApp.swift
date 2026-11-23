@@ -330,6 +330,8 @@ struct ConduitApp: App {
                 RoutineRoomLiveFixture()
             } else if ProcessInfo.processInfo.arguments.contains(LAAStaffCallFixture.launchArgument) {
                 LAAStaffCallFixture()
+            } else if ProcessInfo.processInfo.arguments.contains(LAAWorkProjectFixtureView.launchArgument) {
+                LAAWorkProjectFixtureView().preferredColorScheme(appState.themePreference.colorScheme)
             } else if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
                 SelectionFixtureView()
             } else {
