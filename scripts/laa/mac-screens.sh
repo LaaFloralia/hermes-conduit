@@ -271,9 +271,12 @@ for section in "${section_list[@]}"; do
           sleep 0.1
         done
       fi
-      # Wait for the window and the requested geometry after it appears.
+      # A tall lab window is briefly frontmost; don't keep it there if the
+      # display cannot fit the request.
+      polls=120
+      [ "$tall" != 1 ] || polls=24
       id=""
-      for _ in $(seq 1 120); do
+      for _ in $(seq 1 "$polls"); do
         info=$(window_info "$APP_PID")
         if [ -n "$info" ]; then
           read -r wid ww wh <<< "$info"
