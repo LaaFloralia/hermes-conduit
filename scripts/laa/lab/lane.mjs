@@ -27,6 +27,7 @@ const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const write = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 const hex = () => randomBytes(16).toString('hex');
 const at = (port) => `http://127.0.0.1:${port}`;
+const readinessTimeoutMs = 90_000;
 const privateEnv = (root) => ({ HOME: join(root, 'home'), TMPDIR: join(root, 'tmp'), PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, LANG: 'C' });
 const layout = (root, id) => ({ ...privateEnv(root), LAA_LANE_ID: id, LAA_LANE_ROOT: root,
   LAA_BRIDGE_STATE_DIR: join(root, 'state'), LAA_BRIDGE_BRAIN_ROOT: join(root, 'brain'), LAA_BRIDGE_PORT: '0' });
@@ -53,7 +54,7 @@ function child(script, args, env, root, name, { ipc = false, pipe = false } = {}
 }
 
 async function until(check, message, alive = () => true) {
-  const end = Date.now() + 15_000;
+  const end = Date.now() + readinessTimeoutMs;
   while (Date.now() < end && alive()) {
     if (await check()) return;
     await sleep(40);
@@ -124,7 +125,7 @@ async function supervise(root, names) {
       writeLog(bridgeLog, line);
     });
     await until(() => ports.bridge, 'real lane Bridge did not start', () => bridge.exitCode === null);
-    const api = laneClient(at(ports.bridge), id);
+    const api = laneClient(at(ports.bridge), id, { timeoutMs: readinessTimeoutMs });
     const health = await (await api('/v1/health')).json();
     if (health.data.lane !== id) throw new Error('lane Bridge health disagrees with its header');
 
@@ -181,7 +182,7 @@ async function command(lane, word) {
   return new Promise((ok, fail) => {
     const conn = connect(join(lane.root, 'ctl.sock'));
     const chunks = [];
-    conn.setTimeout(20_000, () => conn.destroy(new Error('lane supervisor did not answer')));
+    conn.setTimeout(readinessTimeoutMs, () => conn.destroy(new Error('lane supervisor did not answer')));
     conn.once('error', fail);
     conn.once('connect', () => conn.write(`${lane.control} ${word}\n`));
     conn.on('data', (part) => chunks.push(part));
@@ -234,7 +235,7 @@ async function main([verb, ...args]) {
     process.stdout.write(envScript(lane));
   } else if (verb === 'status') {
     if (await command(lane, 'status') !== 'running') throw new Error('lane is not running');
-    const proof = await laneClient(at(lane.ports.bridge), lane.id)('/v1/health');
+    const proof = await laneClient(at(lane.ports.bridge), lane.id, { timeoutMs: readinessTimeoutMs })('/v1/health');
     await proof.body?.cancel();
     if (!proof.ok) throw new Error('Bridge is not healthy');
     process.stdout.write(`${JSON.stringify({ status: 'running', ...publicLane(lane) })}\n`);

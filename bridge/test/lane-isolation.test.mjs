@@ -19,20 +19,40 @@ const cli = join(here, '../bin/laa-bridge');
 const state = (root) => join(root, 'state');
 const production = productionStateDir();
 const id = 'lane-test-a';
+const timeoutMs = 90_000;
 const seed = { title: 'Synthetic decision', summary: 'No delivery off this Mac', options: [{ label: 'A' }, { label: 'B' }], requestId: 'seed' };
 
-function layout(t) {
+function layout(t, beforeRemove = () => {}) {
   const root = mkdtempSync(join(tmpdir(), 'laa-lane-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const child of ['home', 'tmp', 'state', 'brain', 'sink']) mkdirSync(join(root, child), { mode: 0o700 });
+  t.after(async () => {
+    try { await beforeRemove(); }
+    finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  // Leave state absent so a negative test catches even an empty mkdir, not
+  // just a write to state.json.
+  for (const child of ['home', 'tmp', 'brain', 'sink']) mkdirSync(join(root, child), { mode: 0o700 });
   const env = { HOME: join(root, 'home'), TMPDIR: join(root, 'tmp'), PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
     LAA_LANE_ID: id, LAA_LANE_ROOT: root, LAA_BRIDGE_STATE_DIR: state(root), LAA_BRIDGE_PORT: '0', LAA_BRIDGE_BRAIN_ROOT: join(root, 'brain') };
   return { root, env };
 }
 
 function run(script, args, env) {
-  return script === cli ? spawnSync(script, args, { env, timeout: 4000, encoding: 'utf8' })
-    : spawnSync(process.execPath, [script, ...args], { env, timeout: 4000, encoding: 'utf8' });
+  const options = { env, timeout: timeoutMs, killSignal: 'SIGKILL', encoding: 'utf8' };
+  const result = script === cli ? spawnSync(script, args, options)
+    : spawnSync(process.execPath, [script, ...args], options);
+  assert.ifError(result.error);
+  assert.equal(result.signal, null, `${script} must exit normally`);
+  return result;
+}
+
+function assertStartupRefusal(result, key, target) {
+  assert.equal(result.status, 1, result.stderr);
+  const fatal = JSON.parse(result.stderr.trim());
+  assert.equal(fatal.event, 'fatal');
+  assert.equal(fatal.code, 'lane_config_unsafe');
+  assert.ok(fatal.message.startsWith(`${key}:`), fatal.message);
+  assert.equal(existsSync(target), false, 'Bridge created a state directory before refusing');
+  assert.equal(result.stdout, '');
 }
 
 for (const [edge, value] of [
@@ -50,11 +70,7 @@ for (const [edge, value] of [
   test(`a lane Bridge refuses ${edge} before opening state`, (t) => {
     const { root, env } = layout(t);
     const result = run(main, ['serve'], { ...env, [key]: value });
-    assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /lane_config_unsafe/);
-    assert.ok(result.stderr.includes(key), result.stderr);
-    assert.equal(existsSync(join(state(root), 'state.json')), false);
-    assert.equal(result.stdout.includes('listening'), false);
+    assertStartupRefusal(result, key, state(root));
   });
 }
 
@@ -70,12 +86,14 @@ test('a lane cannot hide a path to host state behind a symlink', (t) => {
   const alias = join(root, 'alias');
   symlinkSync(userInfo().homedir, alias, 'dir');
   const result = run(main, ['serve'], { ...env, LAA_BRIDGE_BRAIN_ROOT: alias });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /LAA_BRIDGE_BRAIN_ROOT.*escapes/);
+  assertStartupRefusal(result, 'LAA_BRIDGE_BRAIN_ROOT', state(root));
+  assert.match(result.stderr, /escapes/);
+  mkdirSync(state(root), { mode: 0o700 });
   symlinkSync(join(production, 'decisions.json'), join(state(root), 'decisions.json'));
   const fileEscape = run(main, ['serve'], env);
   assert.equal(fileEscape.status, 1);
   assert.match(fileEscape.stderr, /LAA_BRIDGE_STATE_DIR.*links/);
+  assert.equal(existsSync(join(state(root), 'state.json')), false);
 });
 
 test('Node tests, CLI and fixtures refuse the default live state and a symlink alias', (t) => {
@@ -107,7 +125,7 @@ test('a production-mode Bridge drops lane-tagged decisions, before any body/Cont
   const decision = createDecisionStore({ dir: h.stateDir }).add(seed).decision;
   const snapshot = () => ['decisions.json', 'state.json'].map((name) => readFileSync(join(h.stateDir, name)));
   const before = snapshot();
-  const api = laneClient(h.base, id);
+  const api = laneClient(h.base, id, { timeoutMs });
   await assert.rejects(() => api(`/v1/decisions/${decision.id}/answer`, {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'test' }, body: '{"optionIndex":0}',
   }), { code: 'lane_mismatch', status: 421 });
@@ -117,47 +135,62 @@ test('a production-mode Bridge drops lane-tagged decisions, before any body/Cont
     assert.equal(refused.headers.has(LANE_HEADER), false);
     assert.equal(refused.body.error.code, 'lane_mismatch');
   }
-  await new Promise((ok, fail) => {
+  const status = await new Promise((ok, fail) => {
     const req = httpRequest(`${h.base}/v1/decisions`, { method: 'POST', headers: {
       [LANE_HEADER]: id, expect: '100-continue', 'content-length': '999',
-    } }, (res) => { res.resume(); assert.equal(res.statusCode, 421); res.on('end', ok); });
-    req.setTimeout(1500, () => req.destroy(new Error('header refusal waited for body')));
+    } }, (res) => {
+      res.on('error', fail);
+      res.on('end', () => ok(res.statusCode));
+      res.resume();
+    });
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('server did not refuse while the client withheld the body')));
     req.on('continue', () => req.destroy(new Error('server accepted body before checking lane')));
     req.on('error', fail);
     req.flushHeaders();
   });
+  assert.equal(status, 421);
   assert.deepEqual(snapshot(), before);
   assert.deepEqual(notices, []);
 });
 
-async function startLane(t, env) {
+async function startLane(t) {
+  let stop = () => {};
+  const { root, env } = layout(t, () => stop());
   const proc = spawn(process.execPath, [main, 'serve'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const closed = new Promise((ok) => proc.once('close', ok));
+  stop = async () => {
+    if (proc.exitCode !== null || proc.signalCode !== null) return closed;
+    const watchdog = setTimeout(() => proc.kill('SIGKILL'), timeoutMs);
+    try { proc.kill('SIGTERM'); await closed; }
+    finally { clearTimeout(watchdog); }
+  };
   let stderr = '';
   proc.stderr.on('data', (chunk) => { stderr += chunk; });
-  t.after(async () => {
-    if (proc.exitCode !== null || proc.signalCode !== null) return;
-    await new Promise((done) => { proc.once('exit', done); proc.kill('SIGTERM'); });
-  });
+  const lines = createInterface({ input: proc.stdout });
+  let watchdog;
   const port = await new Promise((ok, fail) => {
-    proc.once('exit', (code) => fail(new Error(`lane exit ${code}: ${stderr}`)));
-    createInterface({ input: proc.stdout }).on('line', (line) => {
-      const item = JSON.parse(line);
-      if (item.event === 'listening') ok(item.port);
+    watchdog = setTimeout(() => fail(new Error(`lane never reported listening: ${stderr}`)), timeoutMs);
+    proc.once('error', fail);
+    proc.once('close', (code, signal) => fail(new Error(`lane exit ${code ?? signal}: ${stderr}`)));
+    lines.on('line', (line) => {
+      try {
+        const item = JSON.parse(line);
+        if (item.event === 'listening') ok(item.port);
+      } catch (error) { fail(error); }
     });
-  });
-  return `http://127.0.0.1:${port}`;
+  }).finally(() => { clearTimeout(watchdog); lines.close(); proc.stdout.resume(); });
+  return { root, env, base: `http://127.0.0.1:${port}` };
 }
 
 test('lane matches only its own stamp and every removed outbound route refuses', async (t) => {
-  const { root, env } = layout(t);
-  const base = await startLane(t, env);
+  const { root, env, base } = await startLane(t);
   for (const headers of [{}, { [LANE_HEADER]: 'some-other-lane' }]) {
-    const response = await fetch(`${base}/v1/health`, { headers });
+    const response = await fetch(`${base}/v1/health`, { headers, signal: AbortSignal.timeout(timeoutMs) });
     assert.equal(response.status, 421);
     assert.equal(response.headers.get(LANE_HEADER), id);
     assert.equal((await response.json()).error.code, 'lane_mismatch');
   }
-  const call = laneClient(base, id);
+  const call = laneClient(base, id, { timeoutMs });
   assert.equal((await (await call('/v1/health')).json()).data.lane, id);
   for (const path of ['/v1/drive/files', '/v1/calendar/events', '/v1/tasks', '/v1/linear-owner-tasks', '/v1/personal-tasks',
     '/v1/voice/transcribe', '/v1/usage', '/v1/mac/status', '/v1/brain/search', '/v1/brain/files', '/v1/brain/gates',

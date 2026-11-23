@@ -13,26 +13,26 @@ import {
   resolveVoiceWorkerPath,
   testEndpointsEnabled,
 } from './config.mjs';
-import { createStore } from './store.mjs';
-import { createBridge } from './http.mjs';
-import { createVoiceWorker } from './voice/worker.mjs';
-import { startWorkReports } from './routines/work-reports.mjs';
 import { laneEnabled, validateLane } from './lane/guard.mjs';
 
 let bridge;
 let voiceWorker;
-let stateDir;
+let stopWorkReports = () => {};
 const isLane = laneEnabled();
 try {
   const port = resolvePort();
-  stateDir = resolveStateDir();
+  const stateDir = resolveStateDir();
+  // Static ESM imports run before this point. Keep the HTTP graph (all
+  // routes/adapters) and state store behind the startup boundary.
   validateLane(process.env, { stateDir, port });
+  const [{ createStore }, { createBridge }] = await Promise.all([import('./store.mjs'), import('./http.mjs')]);
+  const startWorkReports = isLane ? null : (await import('./routines/work-reports.mjs')).startWorkReports;
   const store = createStore({ dir: stateDir, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
 
   // Voice stays off unless the operator names the worker binary, and a lane
   // never constructs the production worker.
   const voiceWorkerPath = isLane ? '' : resolveVoiceWorkerPath();
-  voiceWorker = voiceWorkerPath === '' ? null : createVoiceWorker({
+  voiceWorker = voiceWorkerPath === '' ? null : (await import('./voice/worker.mjs')).createVoiceWorker({
     command: voiceWorkerPath,
     requestTimeoutMs: VOICE_REQUEST_TIMEOUT_MS,
     coldTimeoutMs: VOICE_COLD_TIMEOUT_MS,
@@ -47,6 +47,9 @@ try {
     routeOptions: { sessions: { live: true }, voice: { worker: voiceWorker } },
   });
   const address = await bridge.listen({ port, host: HOST });
+  if (startWorkReports) {
+    stopWorkReports = startWorkReports({ stateDir, log: (event) => process.stderr.write(JSON.stringify({ event }) + '\n') });
+  }
   process.stdout.write(`${JSON.stringify({
     event: 'listening',
     version: VERSION,
@@ -65,8 +68,6 @@ try {
   })}\n`);
   process.exit(1);
 }
-
-const stopWorkReports = isLane ? () => {} : startWorkReports({ stateDir, log: (event) => process.stderr.write(JSON.stringify({ event }) + '\n') });
 
 let shuttingDown = false;
 async function shutdown(signal) {

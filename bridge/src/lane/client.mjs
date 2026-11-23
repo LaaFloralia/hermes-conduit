@@ -11,11 +11,11 @@ export class LaneMismatch extends Error {
   }
 }
 
-async function stampedFetch(url, id, init = {}) {
+async function stampedFetch(url, id, init = {}, timeoutMs = 5000) {
   if (!/^[A-Za-z0-9_-]{1,96}$/.test(id ?? '')) throw new LaneMismatch();
   const headers = new Headers(init.headers);
   headers.set(LANE_HEADER, id);
-  const response = await fetch(url, { ...init, headers, redirect: 'error', signal: init.signal ?? AbortSignal.timeout(5000) });
+  const response = await fetch(url, { ...init, headers, redirect: 'error', signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
   if (response.status === 421 || response.headers.get(LANE_HEADER) !== id) {
     await response.body?.cancel().catch(() => {});
     throw new LaneMismatch(response.status);
@@ -23,7 +23,7 @@ async function stampedFetch(url, id, init = {}) {
   return response;
 }
 
-export function laneClient(origin, id) {
+export function laneClient(origin, id, { timeoutMs = 5000 } = {}) {
   const base = new URL(origin);
   if (base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || !base.port || PRODUCTION_PORTS.includes(Number(base.port))
       || base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new LaneMismatch();
@@ -33,11 +33,11 @@ export function laneClient(origin, id) {
     if (path !== HEALTH || (init.method ?? 'GET').toUpperCase() !== 'GET' || init.body !== undefined) {
       // Prove the peer understands the lane before sending even a read with
       // credentials, let alone a write, to a legacy or misconfigured server.
-      const proof = await stampedFetch(new URL(HEALTH, base), id);
+      const proof = await stampedFetch(new URL(HEALTH, base), id, { signal: init.signal }, timeoutMs);
       await proof.body?.cancel();
       if (!proof.ok) throw new LaneMismatch(proof.status);
     }
-    return stampedFetch(url, id, init);
+    return stampedFetch(url, id, init, timeoutMs);
   };
 }
 

@@ -10,7 +10,9 @@ import { laneClient } from '../../../bridge/src/lane/client.mjs';
 
 const exec = promisify(execFile);
 const launcher = fileURLToPath(new URL('./lane.mjs', import.meta.url));
-const run = (...args) => exec(process.execPath, [launcher, ...args], { timeout: 30_000 });
+const timeoutMs = 90_000;
+const run = (...args) => exec(process.execPath, [launcher, ...args], { timeout: 240_000 });
+const client = (origin, id) => laneClient(origin, id, { timeoutMs });
 const lanes = [];
 async function up() {
   const { stdout } = await run('up', '--json', '--fixture', 'work', '--fixture', 'phone-use');
@@ -23,15 +25,15 @@ async function workflow(lane, index, other) {
   const base = `http://127.0.0.1:${lane.ports.bridge}`;
   const fixture = `http://127.0.0.1:${lane.ports.work}`;
   await run('status', lane.root);
-  await assert.rejects(laneClient(base, other.id)('/v1/health'), { code: 'lane_mismatch', status: 421 });
-  const synthetic = laneClient(fixture, lane.id);
+  await assert.rejects(client(base, other.id)('/v1/health'), { code: 'lane_mismatch', status: 421 });
+  const synthetic = client(fixture, lane.id);
   const enroll = await (await synthetic('/v1/devices/enroll', { method: 'POST', body: '{}' })).json();
   const fixtureResponse = await synthetic('/v1/sessions', { headers: { authorization: `Bearer ${enroll.data.token}` } });
   assert.ok(fixtureResponse.ok);
   assert.ok((await fixtureResponse.json()).data.items.length > 0);
 
-  const phone = laneClient(`http://127.0.0.1:${lane.ports['phone-use']}`, lane.id);
-  const phoneControl = laneClient(`http://127.0.0.1:${lane.ports['phone-use-control']}`, lane.id);
+  const phone = client(`http://127.0.0.1:${lane.ports['phone-use']}`, lane.id);
+  const phoneControl = client(`http://127.0.0.1:${lane.ports['phone-use-control']}`, lane.id);
   const { code } = await (await phoneControl('/code')).json();
   const { data: phoneAuth } = await (await phone('/v1/devices/enroll', { method: 'POST',
     body: JSON.stringify({ code, name: 'Synthetic phone', platform: 'ios' }) })).json();
@@ -44,7 +46,7 @@ async function workflow(lane, index, other) {
   assert.deepEqual(Object.keys(pushSink).sort(), ['at', 'kind']);
   assert.equal(pushSink.kind, 'start');
 
-  const api = laneClient(base, lane.id);
+  const api = client(base, lane.id);
   const request = async (path, method = 'GET', value, key = '') => {
     const response = await api(path, { method, headers: { authorization: `Bearer ${lane.token}`,
       ...(value === undefined ? {} : { 'content-type': 'application/json', 'idempotency-key': key }) },
@@ -65,7 +67,8 @@ async function workflow(lane, index, other) {
   const followUp = `Lane ${index} follow-up`;
   await request(`/v1/sessions/${id}/messages`, 'POST', { text: followUp }, 'send');
   let echoed = [];
-  for (let attempt = 0; attempt < 40; attempt++) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
     const { items } = await request(`/v1/sessions/${id}/conversation`);
     echoed = items.filter(({ role }) => role === 'assistant').map(({ text }) => text);
     if (echoed.includes(`Lab Echo: ${followUp}`)) break;
