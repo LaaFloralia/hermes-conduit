@@ -119,8 +119,8 @@ def start_fixtures(suite, out):
     command = ["node", str(LAB / "lane.mjs")]
     log = out / "fixtures.log"
     lane_env = env()
-    # Use a canonical, short local path (Unix domain sockets have a length limit).
-    lane_env["LAA_LANE_PARENT"] = "/private/tmp"
+    # Keep the fixture's private state within the suite's requested scratch area.
+    lane_env["LAA_LANE_PARENT"] = str(out.resolve())
     with log.open("a") as stream:
         started = subprocess.run(command + ["up", "--json"] + [arg for name in names for arg in ("--fixture", name)],
                                  cwd=REPO, env=lane_env, stdout=subprocess.PIPE, stderr=stream,

@@ -1,6 +1,6 @@
 ## Lane
 
-統合試験は `python3 scripts/laa/lab/suite.py run integration --out <結果フォルダ>`。Work・Paseo・Studio・習慣・Usage・iPhone Useのfixtureと実Bridgeをランナーが同じレーンで起動し、UIバッチ後に停止・削除する。個別起動・ポート指定・1Passwordは不要。ビルドと実行は共有スロットを使い、終了時にシミュレーターを停止する。結果は `.xcresult` から `results.json` に採取される。
+統合試験は `python3 scripts/laa/lab/suite.py run integration --out <結果フォルダ>`。Work・Paseo・Studio・習慣・Usage・iPhone Useのfixtureと実Bridgeをランナーが同じレーンで起動し、UIバッチ後に停止・削除する。個別起動・ポート指定・1Passwordは不要。ビルドと実行は共有スロットを使い、終了時にシミュレーターを停止する。結果は `.xcresult` から `results.json` に採取される。レーンは `--out` の下に作るため、Unixソケットの上限に収まる短い絶対パスを使う。
 
 レーン単体の検証には `scripts/laa/lab/lane.mjs` で実Bridgeを立てる。本番のBridge・Work・Hermesに接続せず、アプリはDebugビルドを使う。Node 20.11+、追加パッケージ不要。
 
