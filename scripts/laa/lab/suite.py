@@ -137,11 +137,12 @@ def stop_fixtures(procs):
 
 
 def xcodebuild(action, derived, extra, log, bundle=None):
-    inner = (f"xcrun simctl boot {PHONE} 2>/dev/null; xcrun simctl bootstatus {PHONE} >/dev/null; "
-             f"xcodebuild {action} -project Conduit.xcodeproj -scheme Conduit -destination 'platform=iOS Simulator,id={PHONE}' "
+    # A build needs no booted simulator; booting one beside the compile only adds load.
+    boot = "" if action == "build-for-testing" else f"xcrun simctl boot {PHONE} 2>/dev/null; xcrun simctl bootstatus {PHONE} >/dev/null; "
+    inner = (boot + f"xcodebuild {action} -project Conduit.xcodeproj -scheme Conduit -destination 'platform=iOS Simulator,id={PHONE}' "
              f"-derivedDataPath {derived} -jobs 4 -packageAuthorizationProvider netrc {' '.join(extra)} "
              + (f"-resultBundlePath '{bundle}' " if bundle else "") + " ".join(SIGNING)
-             + f"; rc=$?; xcrun simctl shutdown {PHONE}; exit $rc")
+             + ("" if action == "build-for-testing" else f"; rc=$?; xcrun simctl shutdown {PHONE}; exit $rc"))
     return sh(["/bin/bash", SLOT, "/bin/bash", "-c", inner], log)
 
 
