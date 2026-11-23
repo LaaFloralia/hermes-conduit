@@ -96,7 +96,8 @@ final class LAAWorkUITests: XCTestCase {
 
     private func laneFollowUp(relaunch: Bool) throws {
         let name = relaunch ? "Lab follow-up readback" : "Lab follow-up"
-        let app = try startLaneConversation(name, project: relaunch ? "Lab readback project" : "Lab follow-up project")
+        let projectName = relaunch ? "Lab readback project" : "Lab follow-up project"
+        let app = try startLaneConversation(name, project: projectName)
         let field = app.textViews["work.composer.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 20)); field.tap(); field.typeText("Lab next turn")
         let send = app.buttons["work.composer.send"]
@@ -105,7 +106,13 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(echo.waitForExistence(timeout: 40))
         if relaunch {
             app.terminate(); app.launchInLab()
-            WorkLaneUI.sessions(app)
+            // The global Sessions view deliberately hides a non-LAA project
+            // whose cwd isn't /Users/laa. Reopen from its actual project.
+            let projects = app.buttons["work.section.projects"]
+            XCTAssertTrue(projects.waitForExistence(timeout: 15)); projects.tap()
+            let project = app.staticTexts[projectName].firstMatch
+            XCTAssertTrue(project.waitForExistence(timeout: 20)); project.tap()
+            XCTAssertFalse(app.buttons["work.connect"].exists)
             let row = app.staticTexts[name].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 20))
             XCTAssertTrue(reveal(row, in: app)); row.tap()
