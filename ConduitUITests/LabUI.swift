@@ -30,18 +30,19 @@ enum LabUI {
         return request
     }
 
-    static func matches(_ response: URLResponse?) -> Bool {
-        guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else { return false }
+    static func matches(_ response: URLResponse?, acceptHTTPError: Bool = false) -> Bool {
+        guard let response = response as? HTTPURLResponse,
+              (200..<300).contains(response.statusCode) || (acceptHTTPError && (400..<600).contains(response.statusCode)) else { return false }
         return id.map { response.value(forHTTPHeaderField: "X-LAA-Lane") == $0 } ?? true
     }
 
-    static func data(_ origin: String?, _ path: String, method: String = "GET") throws -> Data {
+    static func data(_ origin: String?, _ path: String, method: String = "GET", acceptHTTPError: Bool = false) throws -> Data {
         var request = try request(origin, path)
         request.httpMethod = method
         let done = DispatchSemaphore(value: 0)
         let result = ResultBox()
         let task = session.dataTask(with: request) { data, response, _ in
-            if matches(response) { result.data = data }
+            if matches(response, acceptHTTPError: acceptHTTPError) { result.data = data }
             done.signal()
         }
         task.resume()

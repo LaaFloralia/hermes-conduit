@@ -5,7 +5,7 @@
 // Control (port + 1): GET /code (a fresh pairing code), /registered,
 // /ask?timeout=<s>, /status?id=, /end?id=.
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLaneFixtureServer, listenLaneFixture, reportFixturePort } from '../../bridge/src/lane/fixture.mjs';
 import { assertTestStateDir, laneEnabled, PRODUCTION_PORTS, validateLane } from '../../bridge/src/lane/guard.mjs';
@@ -35,15 +35,29 @@ const push = async ({ kind, payload }) => {
   // simctl supports application pushes only, not the APNs liveactivity push
   // type or topic. Preserve the service's payload inside a local app push.
   const body = { aps: { 'content-available': 1 }, laa_lab_lane: lane.id, laa_lab_phone_use: payload };
-  await new Promise((resolve, reject) => {
-    const proc = spawn('/usr/bin/xcrun', ['simctl', 'push', simulator, 'com.laa-inc.laa', '-'], {
-      stdio: ['pipe', 'ignore', 'ignore'], signal: AbortSignal.timeout(15_000),
+  // Use a regular .apns file, not Node's socket-backed child stdin. Keep the
+  // temporary payload out of logs and remove it even on a simctl refusal.
+  const scratch = mkdtempSync(join(dir, 'local-push-'));
+  try {
+    const file = join(scratch, 'payload.apns');
+    writeFileSync(file, JSON.stringify(body), { mode: 0o600 });
+    await new Promise((resolve, reject) => {
+      const proc = spawn('/usr/bin/xcrun', ['simctl', 'push', simulator, 'com.laa-inc.laa', file], {
+        stdio: ['ignore', 'ignore', 'pipe'], signal: AbortSignal.timeout(15_000),
+      });
+      let stderr = '';
+      proc.stderr.setEncoding('utf8').on('data', (text) => { stderr = (stderr + text).slice(-640); });
+      proc.once('error', reject);
+      proc.once('close', (status, signal) => {
+        if (status === 0) return resolve();
+        const reason = `simctl push exit ${status ?? signal}: ${stderr.trim()}`;
+        process.stderr.write(`${reason}\n`);
+        reject(new Error(reason));
+      });
     });
-    proc.stdin.on('error', () => {});
-    proc.once('error', reject);
-    proc.once('close', (status) => status === 0 ? resolve() : reject(new Error(`simctl push exit ${status}`)));
-    proc.stdin.end(JSON.stringify(body));
-  });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
   return { sent: true };
 };
 const phoneUse = createPhoneUse({ dir, push, devices: (id) => store.read().devices?.[id] ?? null });

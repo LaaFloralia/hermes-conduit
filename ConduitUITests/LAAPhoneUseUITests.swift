@@ -7,7 +7,7 @@ final class LAAPhoneUseUITests: XCTestCase {
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
     private func control(_ path: String) -> [String: Any]? {
-        guard let data = try? LabUI.data(LabUI.fixture("phone-use-control"), path) else { return nil }
+        guard let data = try? LabUI.data(LabUI.fixture("phone-use-control"), path, acceptHTTPError: true) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
