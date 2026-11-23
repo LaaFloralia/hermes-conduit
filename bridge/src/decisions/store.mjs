@@ -14,6 +14,17 @@ export function text(value, field, max, { optional = false } = {}) {
 }
 export const requestKey = (value) => text(value, 'requestId', 200);
 
+const ANSWER_NOTE_LIMIT = 8000;
+function answerNote(value) {
+  if (value == null) return null;
+  if (typeof value !== 'string') throw badRequest('decision_invalid', 'note must be text');
+  if ([...value].length > ANSWER_NOTE_LIMIT) throw badRequest('decision_note_too_long', `回答は${ANSWER_NOTE_LIMIT}文字以内で入力してください。`);
+  // Unlike titles, an answer is conversation text. Preserve whitespace,
+  // paragraph breaks and emoji joiners; reject non-text control characters.
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/u.test(value)) throw badRequest('decision_invalid', '回答に使用できない制御文字があります。');
+  return value.trim() ? value : null;
+}
+
 function input(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw badRequest('decision_invalid', 'decision must be an object');
   if (!Array.isArray(body.options) || body.options.length < 2 || body.options.length > 6) throw badRequest('decision_invalid', 'choose 2..6 options');
@@ -61,9 +72,9 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
         || (d.waiting !== undefined && (d.state !== 'pending' || d.waiting !== true))
         || (d.waitingSince !== undefined && (d.state !== 'pending' || !validTime(d.waitingSince)))
         || (d.holds !== undefined && (d.state !== 'pending' || !Number.isSafeInteger(d.holds) || d.holds < 1))
-        || text(a.deviceId, 'deviceId', 200) !== a.deviceId || text(a.label, 'answer', 600) !== a.label
-        || text(a.note, 'note', 600, { optional: true }) !== a.note) return false;
-      return a.optionIndex === null ? r.allowOther && Boolean(a.label) : Number.isInteger(a.optionIndex) && r.options[a.optionIndex]?.label === a.label;
+        || text(a.deviceId, 'deviceId', 200) !== a.deviceId || answerNote(a.note) !== a.note) return false;
+      return a.optionIndex === null ? r.allowOther && a.note === null && Boolean(a.label) && answerNote(a.label) === a.label
+        : Number.isInteger(a.optionIndex) && r.options[a.optionIndex]?.label === a.label;
     } catch { return false; }
   }
   function checked(s) {
@@ -98,7 +109,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     if (body.quick !== undefined && typeof body.quick !== 'boolean') throw badRequest('decision_invalid', 'quick must be boolean');
     const r = find(s, id);
     const key = JSON.stringify([deviceId, requestKey(body.requestId)]);
-    const note = retry ? null : text(body.note, 'note', 600, { optional: true });
+    const note = retry ? null : answerNote(body.note);
     const optionIndex = body.optionIndex ?? null;
     const digest = createHash('sha256').update(JSON.stringify([r.id, retry, optionIndex, note])).digest('hex');
     if (s.operations[key]) {

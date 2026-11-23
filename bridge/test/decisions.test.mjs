@@ -61,7 +61,7 @@ test('store: field limits, invalid options/deadlines and free answers are reject
   const r = f.service.add(request({ allowOther: false })).decision;
   assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'free', optionIndex: null, note: '自由回答' }), code('decision_invalid'));
   for (const optionIndex of [-1, 2, '0', 0.5]) assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'bad', optionIndex }), code('decision_invalid'));
-  assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'bad', optionIndex: 0, note: 'x'.repeat(601) }), code('decision_invalid'));
+  assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'bad', optionIndex: 0, note: '\0' }), code('decision_invalid'));
 });
 
 test('store: corrupt JSON and invalid schema refuse writes without resetting', (t) => {
@@ -266,6 +266,36 @@ test('HTTP: authenticated read, reply scope, idempotency and closed detail histo
   assert.equal(f.sent.length, 1);
   assert.equal((await h.request(path, { method: 'POST', token: writer, key: 'four', body: { ...body, requestId: 'second' } })).status, 409);
   assert.equal((await h.request(`/v1/decisions/${r.id}`, { token: reader })).body.data.status, 'answered');
+});
+
+test('HTTP: full 8,000-char quick note and 1,500-char free answer survive store, delivery and replay', async (t) => {
+  const f = fixture(t);
+  const h = await startBridge({ decisions: { service: f.service } });
+  t.after(() => h.close());
+  const token = await h.token();
+  for (const [name, optionIndex, quick, size] of [['option', 0, true, 8000], ['free', null, false, 1500]]) {
+    const { id } = f.service.add(request({ requestId: name })).decision;
+    const path = `/v1/decisions/${id}`;
+    const prefix = '　音声の回答。\n\n二段目を保持👩‍💻。\t';
+    const note = `${prefix}${'返'.repeat(size - [...prefix].length - 1)}。`;
+    assert.equal([...note].length, size);
+    const body = { requestId: `answer-${name}`, optionIndex, note, quick };
+    const tooLong = await h.request(`${path}/answer`, { method: 'POST', token, key: `${name}-over`, body: { ...body, note: '字'.repeat(8001) } });
+    assert.equal(tooLong.status, 400);
+    assert.equal(tooLong.body.error.code, 'decision_note_too_long');
+    assert.match(tooLong.body.error.message, /8000文字以内/);
+    assert.equal(f.store.get(id).status, 'open');
+    const accepted = await h.request(`${path}/answer`, { method: 'POST', token, key: name, body });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.data.decision.delivery.state, 'delivered');
+    const reload = await h.request(path, { token });
+    assert.equal(reload.body.data.answer[optionIndex === null ? 'label' : 'note'], note);
+    assert.ok(f.sent.at(-1).text.includes(`${optionIndex === null ? '選択: ' : '補足: '}${note}\n`));
+    const count = f.sent.length;
+    assert.equal((await h.request(`${path}/answer`, { method: 'POST', token, key: `${name}-retry`, body })).status, 200);
+    assert.equal(f.sent.length, count);
+  }
+  assert.ok(f.notifications.every(n => !n.body.includes('二段目を保持')));
 });
 
 test('HTTP integration: CLI file + native questions, existing reply tickets, failed delivery retry through shared daemon', async (t) => {
