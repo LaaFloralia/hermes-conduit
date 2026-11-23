@@ -40,6 +40,9 @@ struct LAAWatchHome: View {
     @StateObject private var voice = LAAWatchVoice.shared
     @Environment(\.watchAccent) private var accent
     @State private var fixtureEmployee = false
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -53,14 +56,19 @@ struct LAAWatchHome: View {
                 .tint(accent)
                 .laaPrimaryAction()
                 .accessibilityLabel(Text(verbatim: "Talk, \(LAAStaff.allCases[0].name)"))
+                .accessibilityIdentifier("watch.home.talk")
+                #if DEBUG && targetEnvironment(simulator)
+                .modifier(WatchLabAccessibilityValue(value: "\(colorScheme == .dark ? "dark" : "light")|\(dynamicTypeSize == .accessibility5 ? "ax5" : "standard")"))
+                #endif
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     ForEach(LAAStaff.allCases, id: \.rawValue) { staff in
                         NavigationLink { LAAWatchEmployee(staff: staff) } label: {
                             VStack(spacing: 3) {
                                 LAAWatchAvatar(staff: staff)
-                                Text(staff.name).font(.caption).lineLimit(1)
+                                Text(verbatim: staffName(staff)).font(.caption).lineLimit(1)
                             }.frame(maxWidth: .infinity)
-                        }.buttonStyle(.plain).accessibilityLabel(staff.name)
+                        }.buttonStyle(.plain).accessibilityLabel(staffName(staff))
+                            .accessibilityIdentifier("watch.home.staff.\(staff.rawValue)")
                     }
                 }
             }
@@ -77,7 +85,29 @@ struct LAAWatchHome: View {
         .watchBackdrop()
         .sheet(isPresented: $voice.showing, onDismiss: { voice.cancel() }) { LAAWatchRecording().environmentObject(voice) }
     }
+
+    private func staffName(_ staff: LAAStaff) -> String {
+        #if DEBUG && targetEnvironment(simulator)
+        if staff == LAAStaff.allCases[0], ProcessInfo.processInfo.arguments.contains("-laa-watch-lab-long-ja") {
+            return "事業計画と社内外の予定を取りまとめる総合アドバイザー"
+        }
+        #endif
+        return staff.name
+    }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+private struct WatchLabAccessibilityValue: ViewModifier {
+    let value: String
+    func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.arguments.contains("-laa-watch-lab") {
+            content.accessibilityValue(Text(verbatim: value))
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 private struct LAAWatchEmployee: View {
     let staff: LAAStaff
@@ -93,8 +123,13 @@ private struct LAAWatchEmployee: View {
                 HStack {
                     if link.phoneContext?.laaCallableProfiles?.contains("laa-\(staff.rawValue)") ?? true {
                         Button { WatchVoiceCall.shared.startEmployee(staff) } label: { Label { Text(verbatim: "Call") } icon: { Image(systemName: "phone.fill") } }.tint(.green)
+                            .accessibilityIdentifier("watch.employee.call")
                     }
                     Button { voice.open(staff) } label: { Label { Text(verbatim: "Talk") } icon: { Image(systemName: "mic.fill") } }
+                        .accessibilityIdentifier("watch.employee.talk")
+                        #if DEBUG && targetEnvironment(simulator)
+                        .modifier(WatchLabAccessibilityValue(value: link.phoneContext?.activeDashboardID ?? "no-context"))
+                        #endif
                         .tint(accent)
                         .highPriorityGesture(LongPressGesture().onEnded { _ in voice.open(staff, textOnly: true) })
                 }.font(.caption2)

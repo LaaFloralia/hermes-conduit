@@ -1,112 +1,232 @@
 #if LAA_BUILD
-import XCTest
 import QuartzCore
+import XCTest
 
-/// Opt-in, real Release UI. No fixtures, live messages, or document mutations.
+/// Lab only: real app surfaces with an inert Hermes stub and the local Work
+/// fixture. Every XCTest invocation contributes at most one sample per probe.
 final class LAAPerformanceUITests: XCTestCase {
-    private static let keychainNamespace = UUID().uuidString
+    private let env = ProcessInfo.processInfo.environment
+    private let longID = "work.session.ses_3333333333333333"
 
-    private func application() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments = ["-laa-tab", "work"]
-        app.launchEnvironment["LAA_PERF_KEYCHAIN_NAMESPACE"] = Self.keychainNamespace
-        return app
-    }
-    private func enabled() throws {
-        guard ProcessInfo.processInfo.environment["LAA_PERF_RUN"] == "1" else {
-            throw XCTSkip("Run scripts/laa/perf/run.py")
-        }
+    override func setUpWithError() throws {
+        guard env["LAA_PERF_RUN"] == "1" else { throw XCTSkip("Run scripts/laa/lab/perf.py run") }
         continueAfterFailure = false
     }
 
-    func test00PairReadOnlyBridge() throws {
-        try enabled()
-        let app = application()
-        app.launch()
-        XCTAssertTrue(app.buttons["Work"].waitForExistence(timeout: 30))
-        app.buttons["Work"].tap()
-        let connect = app.buttons["work.connect"]
-        guard connect.waitForExistence(timeout: 5) else {
-            XCTFail("Dedicated simulator must start without an existing Bridge pairing")
-            return
+    private func application(scrollProbe: String? = nil) throws -> XCUIApplication {
+        let port = try XCTUnwrap(Int(env["LAA_PERF_PORT"] ?? ""))
+        let namespace = try XCTUnwrap(env["LAA_PERF_NAMESPACE"].flatMap(UUID.init(uuidString:)))
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                               "-LAA_UI_TEST_PAIR_CODE", "TEST-TEST",
+                               "-laa.work.lastProject", "", "-conduit.themePreference", "light",
+                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                               "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://perf-lab.invalid",
+                               "-laa-brain-local-fixture", "-laa-brain-document-fixture"]
+        if scrollProbe == "chat" {
+            app.launchArguments += ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "long120",
+                                    "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT"]
         }
-        connect.tap()
-        let code = app.secureTextFields["laa.bridge.code"]
-        XCTAssertTrue(code.waitForExistence(timeout: 10))
-        code.tap(); code.press(forDuration: 1.2)
-        let paste = app.menuItems.matching(NSPredicate(format: "label IN %@", ["Paste", "ペースト"])).firstMatch
-        XCTAssertTrue(paste.waitForExistence(timeout: 5)); paste.tap()
-        for label in ["Allow Paste", "ペーストを許可", "貼り付けを許可"] {
-            if app.buttons[label].exists { app.buttons[label].tap() }
+        app.launchEnvironment = ["LAA_PERF_KEYCHAIN_NAMESPACE": namespace.uuidString,
+                                 "LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:\(port)"]
+        if let scrollProbe, let trial = env["LAA_PERF_FRAME_TRIAL"].flatMap(UUID.init(uuidString:)) {
+            app.launchArguments.append("-LAA_PERF_FRAME_PROBE")
+            app.launchEnvironment["LAA_PERF_FRAME_TRIAL"] = trial.uuidString
+            app.launchEnvironment["LAA_PERF_FRAME_KIND"] = scrollProbe
         }
-        let pair = app.buttons["laa.bridge.pair"]
-        if !pair.isHittable { app.swipeUp() }
-        XCTAssertTrue(pair.isEnabled); pair.tap()
-        XCTAssertTrue(connect.waitForNonExistence(timeout: 30))
+        return app
     }
 
-    private func sample(_ name: String, _ index: Int, action: () -> Void, ready: () -> Bool) {
-        let start = CACurrentMediaTime()
-        action()
-        let ok = ready()
-        let ms = (CACurrentMediaTime() - start) * 1000
-        print("LAA_PERF {\"metric\":\"\(name)\",\"iteration\":\(index),\"ms\":\(ms),\"ready\":\(ok)}")
-        XCTAssertTrue(ok, name)
+    private var options: XCTMeasureOptions {
+        let options = XCTMeasureOptions()
+        options.iterationCount = 1
+        return options
     }
 
-    func test10NavigationFiveRuns() throws {
-        try enabled()
-        let app = application()
-        for iteration in 1...5 {
-            app.terminate()
-            sample("cold_launch_interactive", iteration, action: { app.launch() }, ready: {
-                app.buttons["Work"].waitForExistence(timeout: 30) && app.buttons["Work"].isHittable
-            })
-            for (tab, marker) in [("Today", "laa.calendar.mode"), ("Doc", "laa.brain.title"),
-                                  ("Studio", "studio.drive"), ("Chat", ""), ("Work", "work.section.sessions")] {
-                sample("tab_" + tab.lowercased(), iteration, action: { app.buttons[tab].tap() }, ready: {
-                    if marker.isEmpty { return app.buttons[tab].isSelected }
-                    // Selection + a mounted destination, not a network completion.
-                    let item = app.descendants(matching: .any).matching(identifier: marker).firstMatch
-                    return item.waitForExistence(timeout: 15) || app.buttons[tab].isSelected
-                })
+    func testColdLaunch() throws {
+        let app = try application()
+        measure(metrics: [XCTApplicationLaunchMetric(waitUntilResponsive: true)], options: options) {
+            if app.state != .notRunning { app.terminate() }
+            app.launch()
+            XCTAssertTrue(app.buttons["work.section.sessions"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.buttons["work.section.sessions"].isHittable)
+        }
+        app.terminate()
+    }
+
+    private enum Destination: String, CaseIterable {
+        case work, today, doc, usage, chat
+        var tabIndex: Int? {
+            switch self {
+            case .chat: return 0
+            case .work: return 1
+            case .today: return 2
+            case .doc: return 3
+            case .usage: return nil // Work pushes Usage; it isn't a native tab.
             }
-            app.buttons["Work"].tap()
-            let sessions = app.buttons["work.section.sessions"]
-            if sessions.waitForExistence(timeout: 10) { sessions.tap() }
-            let row = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "work.session.ses_")).firstMatch
-            if row.waitForExistence(timeout: 30), row.isHittable {
-                sample("work_open_session_shell", iteration, action: { row.tap() }, ready: {
-                    app.descendants(matching: .any).matching(identifier: "work.session.detail.title").firstMatch.waitForExistence(timeout: 30)
-                })
-                app.navigationBars.buttons.element(boundBy: 0).tap()
-            } else { print("LAA_PERF_UNAVAILABLE work_open_session_shell") }
-            app.buttons["Doc"].tap()
-            let note = app.buttons.matching(identifier: "laa.brain.note").firstMatch
-            if note.waitForExistence(timeout: 15), note.isHittable {
-                sample("doc_open_document", iteration, action: { note.tap() }, ready: {
-                    app.buttons["laa.brain.back"].waitForExistence(timeout: 30)
-                })
-                app.buttons["laa.brain.back"].tap()
-            } else { print("LAA_PERF_UNAVAILABLE doc_open_document") }
-            app.buttons["Studio"].tap()
-            app.buttons["studio.drive"].tap()
-            let scroll = app.scrollViews.firstMatch
-            if scroll.waitForExistence(timeout: 15) {
-                sample("drive_scroll_gesture", iteration, action: { scroll.swipeUp() }, ready: { scroll.exists })
-                scroll.swipeDown()
-            } else { print("LAA_PERF_UNAVAILABLE drive_scroll_gesture") }
         }
-        print("LAA_PERF_UNAVAILABLE chat_open_conversation_requires_hermes_pairing")
-        print("LAA_PERF_UNAVAILABLE send_to_display_live_send_not_authorized")
+        var marker: String {
+            switch self {
+            case .work: return "work.section.sessions"
+            case .today: return "laa.today.title"
+            case .doc: return "laa.brain.title"
+            case .usage: return "laa.usage.refresh"
+            case .chat: return "laa.chats.list"
+            }
+        }
     }
 
-    func test99ClearOnlyTrialCredentials() throws {
-        try enabled()
-        let app = application()
-        app.launchEnvironment["LAA_PERF_CLEAR_KEYCHAIN"] = "1"
+    private func item(_ id: String, _ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
+    private func usable(_ target: Destination, _ app: XCUIApplication) {
+        XCTAssertTrue(item(target.marker, app).waitForExistence(timeout: 15), "Destination \(target.rawValue) not mounted")
+        if let index = target.tabIndex {
+            XCTAssertTrue(app.tabBars.buttons.element(boundBy: index).isSelected, "Wrong native tab for \(target.rawValue)")
+        }
+    }
+
+    private func move(_ source: Destination, _ target: Destination, _ app: XCUIApplication) {
+        if source == .usage { app.buttons["BackButton"].firstMatch.tap() }
+        if let index = target.tabIndex {
+            if source != .usage || target != .work { app.tabBars.buttons.element(boundBy: index).tap() }
+        } else {
+            if source != .work {
+                app.tabBars.buttons.element(boundBy: Destination.work.tabIndex!).tap()
+                usable(.work, app)
+            }
+            app.buttons["work.usage"].tap()
+        }
+        usable(target, app)
+    }
+
+    private func sample(_ name: String, _ body: () -> Void) {
+        let began = CACurrentMediaTime()
+        body()
+        let ms = (CACurrentMediaTime() - began) * 1000
+        print("LAA_LAB_PERF {\"probe\":\"\(name)\",\"ms\":\(ms)}")
+    }
+
+    func testNavigationAndOpen() throws {
+        let app = try application()
         app.launch()
-        XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
+        usable(.work, app)
+        // Make the warm measurement distinct from a fresh process launch.
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 15))
+        sample("warm_activate") { app.activate(); usable(.work, app) }
+
+        // For five destinations, four full cycles with distinct step sizes
+        // visit each directed pair exactly once and finish back at Work.
+        let order = Destination.allCases
+        for step in 1..<order.count {
+            var from = 0
+            for _ in order {
+                let to = (from + step) % order.count
+                sample("nav_\(order[from].rawValue)_to_\(order[to].rawValue)") { move(order[from], order[to], app) }
+                from = to
+            }
+        }
+        move(.work, .doc, app)
+        let note = app.staticTexts["Start"].firstMatch // Title of this fixed synthetic document.
+        XCTAssertTrue(note.waitForExistence(timeout: 15))
+        sample("doc_open_long") {
+            note.tap()
+            let editor = app.textViews["laa.brain.edit.text"].firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 15))
+            XCTAssertTrue((editor.value as? String ?? "").contains("段落45"), "The long document body, not just its shell, must be present")
+        }
+        app.buttons["laa.brain.back"].firstMatch.tap()
+        move(.doc, .work, app)
+        openSessionList(app)
+        let session = app.staticTexts[longID].firstMatch
+        XCTAssertTrue(session.waitForExistence(timeout: 15))
+        sample("work_open_long_history") {
+            session.tap()
+            XCTAssertTrue(item("work.session.history.ready", app).waitForExistence(timeout: 25))
+            XCTAssertTrue(app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS 'S62M'")).firstMatch.waitForExistence(timeout: 15),
+                "The 62nd message is a fixture data assertion, not a control lookup")
+        }
+        app.terminate()
+    }
+
+    private func openSessionList(_ app: XCUIApplication) {
+        let sessions = app.buttons["work.section.sessions"].firstMatch
+        XCTAssertTrue(sessions.waitForExistence(timeout: 15))
+        sessions.tap()
+        XCTAssertTrue(app.staticTexts[longID].firstMatch.waitForExistence(timeout: 25))
+    }
+
+    private func measureScroll(in app: XCUIApplication, kind: String, body: () -> Void) {
+        var metrics: [XCTMetric] = [XCTOSSignpostMetric.scrollingAndDecelerationMetric]
+        if #available(iOS 26.0, *) { metrics.append(XCTHitchMetric(application: app)) }
+        let control = app.buttons["laa.perf.frame-probe"]
+        var window: (start: CFTimeInterval, end: CFTimeInterval)?
+        measure(metrics: metrics, options: options) {
+            // XCTest may do a warm-up invocation. The app atomically replaces
+            // the trace after each invocation; only publish the last bounds.
+            window = nil
+            var armed = false
+            if control.exists && control.isHittable {
+                control.tap()
+                armed = (control.value as? String) == "recording"
+            }
+            // The unit is the shared monotonic media clock. Control taps and
+            // export are outside this gesture/deceleration window.
+            let start = CACurrentMediaTime()
+            body()
+            let end = CACurrentMediaTime()
+            if armed {
+                control.tap()
+                if (control.value as? String) == "saved" { window = (start, end) }
+            }
+        }
+        if let window {
+            print("LAA_LAB_FRAME {\"kind\":\"\(kind)\",\"start\":\(window.start),\"end\":\(window.end)}")
+        }
+    }
+
+    func testScrollChat() throws {
+        let app = try application(scrollProbe: "chat")
+        app.launch()
+        XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
+        let scroller = item("chat.transcript", app)
+        XCTAssertTrue(scroller.waitForExistence(timeout: 20))
+        let tail = scroller.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "長い会話の120件目")).firstMatch
+        XCTAssertTrue(tail.waitForExistence(timeout: 10))
+        func towardEarlier() {
+            scroller.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+                .press(forDuration: 0.05, thenDragTo: scroller.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)),
+                       withVelocity: .fast, thenHoldForDuration: 0)
+        }
+        let tailY = tail.frame.minY
+        towardEarlier()
+        XCTAssertTrue(!tail.exists || tail.frame.minY > tailY + 10, "Long Chat must actually scroll")
+        scroller.swipeUp(velocity: .fast)
+        measureScroll(in: app, kind: "chat") {
+            towardEarlier()
+            scroller.swipeUp(velocity: .fast)
+        }
+        app.terminate()
+    }
+
+    func testScrollWork() throws {
+        let app = try application(scrollProbe: "work")
+        app.launch()
+        openSessionList(app)
+        let scroller = try XCTUnwrap(app.scrollViews.allElementsBoundByIndex.first { $0.frame.height > 400 })
+        let anchor = app.staticTexts[longID].firstMatch
+        let before = anchor.frame.minY
+        scroller.swipeUp(velocity: .fast)
+        XCTAssertTrue(!anchor.exists || anchor.frame.minY < before - 10, "Work list must actually scroll")
+        scroller.swipeDown(velocity: .fast)
+        measureScroll(in: app, kind: "work") {
+            scroller.swipeUp(velocity: .fast)
+            scroller.swipeDown(velocity: .fast)
+        }
         app.terminate()
     }
 }

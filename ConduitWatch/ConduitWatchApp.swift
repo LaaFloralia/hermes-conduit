@@ -18,11 +18,19 @@ struct ConduitWatchApp: App {
     @StateObject private var link = WatchLink.shared
     @Environment(\.scenePhase) private var scenePhase
 
+    private static var labLaunch: Bool {
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-laa-watch-lab")
+        #else
+        false
+        #endif
+    }
+
     init() {
         WatchLink.shared.activate()
         // Before launch finishes: a call from Hermes that launched the app
         // waits on its PushKit registry.
-        HermesWatchCalls.shared.activate()
+        if !Self.labLaunch { HermesWatchCalls.shared.activate() }
         // The Action button, a control or a shortcut (TalkToHermesIntent).
         #if LAA_BUILD
         WatchCallRequests.handler = { _ in LAAWatchVoice.shared.openDefault() }
@@ -34,7 +42,7 @@ struct ConduitWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            WatchRootView()
+            root
                 .environmentObject(call)
                 .environmentObject(link)
                 .onOpenURL { url in
@@ -49,6 +57,7 @@ struct ConduitWatchApp: App {
                 }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
+            guard !Self.labLaunch else { return }
             call.scenePhaseChanged(phase)
             #if LAA_BUILD
             if phase == .active { LAAWatchVoice.shared.resumePending() }
@@ -57,6 +66,18 @@ struct ConduitWatchApp: App {
             // go first.
             if phase == .background { WatchCallLog.shared.sendBatch() }
         }
+    }
+
+    @ViewBuilder private var root: some View {
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        if Self.labLaunch && ProcessInfo.processInfo.arguments.contains("-laa-watch-lab-force-ax5") {
+            WatchRootView().dynamicTypeSize(.accessibility5)
+        } else {
+            WatchRootView()
+        }
+        #else
+        WatchRootView()
+        #endif
     }
 }
 

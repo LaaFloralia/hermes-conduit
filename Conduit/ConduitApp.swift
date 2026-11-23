@@ -374,6 +374,13 @@ struct ConduitApp: App {
 
     private var rootContent: some View {
         RootView()
+            #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+            .overlay(alignment: .topTrailing) {
+                if ProcessInfo.processInfo.arguments.contains(LAAPerfFrameProbeControl.launchArgument) {
+                    LAAPerfFrameProbeControl()
+                }
+            }
+            #endif
             #if LAA_BUILD && targetEnvironment(macCatalyst)
             .frame(minWidth: LAAMacWindow.minimumWidth, minHeight: LAAMacWindow.minimumHeight)
             .background(LAAColor.background.ignoresSafeArea())

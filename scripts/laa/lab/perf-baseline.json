@@ -1,0 +1,1686 @@
+{
+  "schema": 2,
+  "protocol": "laa-simulator-perf-v2",
+  "sha": "e1a7278042af3c4e910d8507513a1bb1bc52f5d9",
+  "configuration": {
+    "configuration": "Debug",
+    "settings": [
+      "SWIFT_OPTIMIZATION_LEVEL=-O",
+      "SWIFT_COMPILATION_MODE=incremental",
+      "GCC_OPTIMIZATION_LEVEL=2",
+      "CONDUIT_DEFAULT_RELAY_URL=http://127.0.0.1:9"
+    ],
+    "spec": "project-laa.yml (UI-only lab scheme)"
+  },
+  "environment": {
+    "device": "LAA 16 Pro Max",
+    "device_type": "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max",
+    "os": "27.0",
+    "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
+    "runtime_build": "24A434",
+    "xcode": "Xcode 27.2\nBuild version 27B52",
+    "quiet_max_load1": 6.0
+  },
+  "build_products": {
+    "Conduit": "cae3d5515ec72714645d401de86c9ddeeb5d73e05d6272d04aaf617cc0278fc7",
+    "ConduitUITests": "146c43615cdc472cc66f734accf234398418d0214fb5a27f8fa2de8d369c42ee",
+    "ConduitPerfLab_iphonesimulator27.2-arm64.xctestrun": "305338d4dac42fe148094322ccde9f092e882130f5542609fb9712bf4054bbd9"
+  },
+  "completed_at": "2026-11-23T19:54:55+00:00",
+  "wall_seconds": 1136.89,
+  "noise_rule": "regression if worsening median delta exceeds max(baseline range, new range); observed Hz prefers higher, expected Hz is context",
+  "frame_proxy": {
+    "source": "cadisplaylink-simulator-proxy-v1",
+    "scope": "Simulator main-run-loop display-link cadence; not presented frames or absolute device performance",
+    "comparability": "Before/after only on the same Mac, simulator runtime and scripted protocol",
+    "window": "Monotonic XCTest gesture/deceleration span; control taps and export excluded",
+    "budget": "Previous callback targetTimestamp minus timestamp; no forced refresh rate",
+    "hitch_ratio": "Sum of the portions of callback intervals after their expected deadline and inside the scroll window / window duration (ms/s)",
+    "frame_counts": "Actual interval strictly greater than 1.5x or 2x expected; intervals ending in the window",
+    "refresh": "Expected Hz = reciprocal of median budget, observed Hz = callbacks divided by their covered time"
+  },
+  "runs": [
+    {
+      "attempt": 1,
+      "before": {
+        "at": "2026-11-23T19:41:06+00:00",
+        "load1": 5.915,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "wait_observations": [
+        {
+          "at": "2026-11-23T19:41:00+00:00",
+          "load1": 6.343,
+          "other_xcodebuild": 0,
+          "other_simulators": 0
+        },
+        {
+          "at": "2026-11-23T19:41:06+00:00",
+          "load1": 5.915,
+          "other_xcodebuild": 0,
+          "other_simulators": 0
+        }
+      ],
+      "exit": 0,
+      "after": {
+        "at": "2026-11-23T19:43:59+00:00",
+        "load1": 4.357,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "interference": [],
+      "wall_seconds": 173.02,
+      "state": "quiet",
+      "probes": {
+        "warm_activate": {
+          "unit": "ms",
+          "value": 1202.241666673217
+        },
+        "nav_work_to_today": {
+          "unit": "ms",
+          "value": 3403.330958331935
+        },
+        "nav_today_to_doc": {
+          "unit": "ms",
+          "value": 3423.8129166769795
+        },
+        "nav_doc_to_usage": {
+          "unit": "ms",
+          "value": 5117.795500002103
+        },
+        "nav_usage_to_chat": {
+          "unit": "ms",
+          "value": 4016.0466250090394
+        },
+        "nav_chat_to_work": {
+          "unit": "ms",
+          "value": 3166.9797916547395
+        },
+        "nav_work_to_doc": {
+          "unit": "ms",
+          "value": 3120.329249999486
+        },
+        "nav_doc_to_chat": {
+          "unit": "ms",
+          "value": 3121.175458334619
+        },
+        "nav_chat_to_today": {
+          "unit": "ms",
+          "value": 3148.0871250096243
+        },
+        "nav_today_to_usage": {
+          "unit": "ms",
+          "value": 4941.5969166730065
+        },
+        "nav_usage_to_work": {
+          "unit": "ms",
+          "value": 1808.6800416640472
+        },
+        "nav_work_to_usage": {
+          "unit": "ms",
+          "value": 1720.1809583348222
+        },
+        "nav_usage_to_today": {
+          "unit": "ms",
+          "value": 3840.9139583527576
+        },
+        "nav_today_to_chat": {
+          "unit": "ms",
+          "value": 3117.0057083072606
+        },
+        "nav_chat_to_doc": {
+          "unit": "ms",
+          "value": 3134.3011666613165
+        },
+        "nav_doc_to_work": {
+          "unit": "ms",
+          "value": 3098.3666666725185
+        },
+        "nav_work_to_chat": {
+          "unit": "ms",
+          "value": 3105.223708320409
+        },
+        "nav_chat_to_usage": {
+          "unit": "ms",
+          "value": 4963.649958343012
+        },
+        "nav_usage_to_doc": {
+          "unit": "ms",
+          "value": 3802.8684166783933
+        },
+        "nav_doc_to_today": {
+          "unit": "ms",
+          "value": 3191.0522083344404
+        },
+        "nav_today_to_work": {
+          "unit": "ms",
+          "value": 3151.722625014372
+        },
+        "doc_open_long": {
+          "unit": "ms",
+          "value": 1966.3290833414067
+        },
+        "work_open_long_history": {
+          "unit": "ms",
+          "value": 3082.762375008315
+        },
+        "cold_launch_first_usable": {
+          "unit": "ms",
+          "value": 2817.476209,
+          "source": "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration"
+        },
+        "chat_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 2366.72825,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "work_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 867.9669590000001,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "chat_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 28.945766167795917,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 7,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 3,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 39.832083333749324,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 58.265650393651896,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 39.24927980509433,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 4,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 2,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 52.52399999881163,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 57.64320331460073,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        }
+      },
+      "unavailable": {
+        "chat_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)",
+        "work_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)"
+      }
+    },
+    {
+      "attempt": 2,
+      "before": {
+        "at": "2026-11-23T19:43:59+00:00",
+        "load1": 4.357,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "wait_observations": [
+        {
+          "at": "2026-11-23T19:43:59+00:00",
+          "load1": 4.357,
+          "other_xcodebuild": 0,
+          "other_simulators": 0
+        }
+      ],
+      "exit": 0,
+      "after": {
+        "at": "2026-11-23T19:46:41+00:00",
+        "load1": 4.406,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "interference": [],
+      "wall_seconds": 162.22,
+      "state": "quiet",
+      "probes": {
+        "warm_activate": {
+          "unit": "ms",
+          "value": 1242.7834583213553
+        },
+        "nav_work_to_today": {
+          "unit": "ms",
+          "value": 3227.8348749969155
+        },
+        "nav_today_to_doc": {
+          "unit": "ms",
+          "value": 3380.134333332535
+        },
+        "nav_doc_to_usage": {
+          "unit": "ms",
+          "value": 4962.665583356284
+        },
+        "nav_usage_to_chat": {
+          "unit": "ms",
+          "value": 3854.282416665228
+        },
+        "nav_chat_to_work": {
+          "unit": "ms",
+          "value": 3198.7238333094865
+        },
+        "nav_work_to_doc": {
+          "unit": "ms",
+          "value": 3110.317208309425
+        },
+        "nav_doc_to_chat": {
+          "unit": "ms",
+          "value": 3115.5675833288115
+        },
+        "nav_chat_to_today": {
+          "unit": "ms",
+          "value": 3210.947166691767
+        },
+        "nav_today_to_usage": {
+          "unit": "ms",
+          "value": 4920.34758333466
+        },
+        "nav_usage_to_work": {
+          "unit": "ms",
+          "value": 1799.9758333317004
+        },
+        "nav_work_to_usage": {
+          "unit": "ms",
+          "value": 1783.36358332308
+        },
+        "nav_usage_to_today": {
+          "unit": "ms",
+          "value": 3834.981791675091
+        },
+        "nav_today_to_chat": {
+          "unit": "ms",
+          "value": 3153.865833330201
+        },
+        "nav_chat_to_doc": {
+          "unit": "ms",
+          "value": 3133.685874985531
+        },
+        "nav_doc_to_work": {
+          "unit": "ms",
+          "value": 3124.697583320085
+        },
+        "nav_work_to_chat": {
+          "unit": "ms",
+          "value": 3111.1035000067204
+        },
+        "nav_chat_to_usage": {
+          "unit": "ms",
+          "value": 4879.4769999803975
+        },
+        "nav_usage_to_doc": {
+          "unit": "ms",
+          "value": 3805.652791663306
+        },
+        "nav_doc_to_today": {
+          "unit": "ms",
+          "value": 3163.146625010995
+        },
+        "nav_today_to_work": {
+          "unit": "ms",
+          "value": 3156.275708315661
+        },
+        "doc_open_long": {
+          "unit": "ms",
+          "value": 1818.5365416866262
+        },
+        "work_open_long_history": {
+          "unit": "ms",
+          "value": 2753.239041659981
+        },
+        "cold_launch_first_usable": {
+          "unit": "ms",
+          "value": 2603.5932080000002,
+          "source": "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration"
+        },
+        "chat_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 2350.1853330000004,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "work_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 884.0227500000001,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "chat_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 28.301810894295944,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 6,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 4,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 41.6794583434239,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 58.322721665663785,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 32.924161468795866,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 2,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 2,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 49.09291668445803,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 58.03110676133966,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        }
+      },
+      "unavailable": {
+        "chat_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)",
+        "work_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)"
+      }
+    },
+    {
+      "attempt": 3,
+      "before": {
+        "at": "2026-11-23T19:46:41+00:00",
+        "load1": 4.406,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "wait_observations": [
+        {
+          "at": "2026-11-23T19:46:41+00:00",
+          "load1": 4.406,
+          "other_xcodebuild": 0,
+          "other_simulators": 0
+        }
+      ],
+      "exit": 0,
+      "after": {
+        "at": "2026-11-23T19:49:24+00:00",
+        "load1": 3.5,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "interference": [],
+      "wall_seconds": 163.0,
+      "state": "quiet",
+      "probes": {
+        "warm_activate": {
+          "unit": "ms",
+          "value": 1252.6442916423548
+        },
+        "nav_work_to_today": {
+          "unit": "ms",
+          "value": 3316.098208335461
+        },
+        "nav_today_to_doc": {
+          "unit": "ms",
+          "value": 3295.6438749970403
+        },
+        "nav_doc_to_usage": {
+          "unit": "ms",
+          "value": 5058.583083329722
+        },
+        "nav_usage_to_chat": {
+          "unit": "ms",
+          "value": 3980.125041678548
+        },
+        "nav_chat_to_work": {
+          "unit": "ms",
+          "value": 3133.0343750014435
+        },
+        "nav_work_to_doc": {
+          "unit": "ms",
+          "value": 3121.033166651614
+        },
+        "nav_doc_to_chat": {
+          "unit": "ms",
+          "value": 3127.3117083183024
+        },
+        "nav_chat_to_today": {
+          "unit": "ms",
+          "value": 3142.9021249932703
+        },
+        "nav_today_to_usage": {
+          "unit": "ms",
+          "value": 4924.467041651951
+        },
+        "nav_usage_to_work": {
+          "unit": "ms",
+          "value": 1768.1752083299216
+        },
+        "nav_work_to_usage": {
+          "unit": "ms",
+          "value": 1739.3441250023898
+        },
+        "nav_usage_to_today": {
+          "unit": "ms",
+          "value": 3806.729791656835
+        },
+        "nav_today_to_chat": {
+          "unit": "ms",
+          "value": 3132.3597083392087
+        },
+        "nav_chat_to_doc": {
+          "unit": "ms",
+          "value": 3169.6645416668616
+        },
+        "nav_doc_to_work": {
+          "unit": "ms",
+          "value": 3161.5015833522193
+        },
+        "nav_work_to_chat": {
+          "unit": "ms",
+          "value": 3117.161958332872
+        },
+        "nav_chat_to_usage": {
+          "unit": "ms",
+          "value": 4909.083166683558
+        },
+        "nav_usage_to_doc": {
+          "unit": "ms",
+          "value": 3807.528666657163
+        },
+        "nav_doc_to_today": {
+          "unit": "ms",
+          "value": 3166.93658332224
+        },
+        "nav_today_to_work": {
+          "unit": "ms",
+          "value": 3202.756708342349
+        },
+        "doc_open_long": {
+          "unit": "ms",
+          "value": 1833.5722083575092
+        },
+        "work_open_long_history": {
+          "unit": "ms",
+          "value": 2900.107333320193
+        },
+        "cold_launch_first_usable": {
+          "unit": "ms",
+          "value": 2754.681208,
+          "source": "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration"
+        },
+        "chat_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 2400.9037500000004,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "work_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 834.0438340000001,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "chat_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 24.29533200624709,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 5,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 3,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 48.960499989334494,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 58.6078252205907,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 16.305672457628663,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 1,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 1,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 34.13995835580863,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 59.055816288722426,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        }
+      },
+      "unavailable": {
+        "chat_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)",
+        "work_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)"
+      }
+    },
+    {
+      "attempt": 4,
+      "before": {
+        "at": "2026-11-23T19:49:25+00:00",
+        "load1": 3.5,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "wait_observations": [
+        {
+          "at": "2026-11-23T19:49:25+00:00",
+          "load1": 3.5,
+          "other_xcodebuild": 0,
+          "other_simulators": 0
+        }
+      ],
+      "exit": 0,
+      "after": {
+        "at": "2026-11-23T19:52:08+00:00",
+        "load1": 4.578,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "interference": [],
+      "wall_seconds": 163.26,
+      "state": "quiet",
+      "probes": {
+        "warm_activate": {
+          "unit": "ms",
+          "value": 1243.8494583184365
+        },
+        "nav_work_to_today": {
+          "unit": "ms",
+          "value": 3343.1161666521803
+        },
+        "nav_today_to_doc": {
+          "unit": "ms",
+          "value": 3383.356291684322
+        },
+        "nav_doc_to_usage": {
+          "unit": "ms",
+          "value": 4972.03558331239
+        },
+        "nav_usage_to_chat": {
+          "unit": "ms",
+          "value": 3875.658291653963
+        },
+        "nav_chat_to_work": {
+          "unit": "ms",
+          "value": 3154.228500003228
+        },
+        "nav_work_to_doc": {
+          "unit": "ms",
+          "value": 3129.442958335858
+        },
+        "nav_doc_to_chat": {
+          "unit": "ms",
+          "value": 3122.402791661443
+        },
+        "nav_chat_to_today": {
+          "unit": "ms",
+          "value": 3135.442166676512
+        },
+        "nav_today_to_usage": {
+          "unit": "ms",
+          "value": 4880.874708323972
+        },
+        "nav_usage_to_work": {
+          "unit": "ms",
+          "value": 1785.292999993544
+        },
+        "nav_work_to_usage": {
+          "unit": "ms",
+          "value": 1777.2225833323319
+        },
+        "nav_usage_to_today": {
+          "unit": "ms",
+          "value": 3827.6202916749753
+        },
+        "nav_today_to_chat": {
+          "unit": "ms",
+          "value": 3112.4360833491664
+        },
+        "nav_chat_to_doc": {
+          "unit": "ms",
+          "value": 3124.8982083343435
+        },
+        "nav_doc_to_work": {
+          "unit": "ms",
+          "value": 3136.23999999254
+        },
+        "nav_work_to_chat": {
+          "unit": "ms",
+          "value": 3132.2490833408665
+        },
+        "nav_chat_to_usage": {
+          "unit": "ms",
+          "value": 4923.4733333287295
+        },
+        "nav_usage_to_doc": {
+          "unit": "ms",
+          "value": 3853.349791665096
+        },
+        "nav_doc_to_today": {
+          "unit": "ms",
+          "value": 3170.9544166806154
+        },
+        "nav_today_to_work": {
+          "unit": "ms",
+          "value": 3156.18012502091
+        },
+        "doc_open_long": {
+          "unit": "ms",
+          "value": 1792.283333314117
+        },
+        "work_open_long_history": {
+          "unit": "ms",
+          "value": 2778.5771250200924
+        },
+        "cold_launch_first_usable": {
+          "unit": "ms",
+          "value": 2730.1985000000004,
+          "source": "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration"
+        },
+        "chat_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 2350.838875,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "work_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 867.298209,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "chat_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 18.82610855746367,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 3,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 3,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 44.21529168030247,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 58.91522775623713,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 41.14335555059613,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 4,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 3,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 48.4217916673515,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 57.60054197679226,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        }
+      },
+      "unavailable": {
+        "chat_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)",
+        "work_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)"
+      }
+    },
+    {
+      "attempt": 5,
+      "before": {
+        "at": "2026-11-23T19:52:08+00:00",
+        "load1": 4.578,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "wait_observations": [
+        {
+          "at": "2026-11-23T19:52:08+00:00",
+          "load1": 4.578,
+          "other_xcodebuild": 0,
+          "other_simulators": 0
+        }
+      ],
+      "exit": 0,
+      "after": {
+        "at": "2026-11-23T19:54:51+00:00",
+        "load1": 4.258,
+        "other_xcodebuild": 0,
+        "other_simulators": 0
+      },
+      "interference": [],
+      "wall_seconds": 162.49,
+      "state": "quiet",
+      "probes": {
+        "warm_activate": {
+          "unit": "ms",
+          "value": 1241.926416667411
+        },
+        "nav_work_to_today": {
+          "unit": "ms",
+          "value": 3330.0542083452456
+        },
+        "nav_today_to_doc": {
+          "unit": "ms",
+          "value": 3253.299625008367
+        },
+        "nav_doc_to_usage": {
+          "unit": "ms",
+          "value": 5057.217875000788
+        },
+        "nav_usage_to_chat": {
+          "unit": "ms",
+          "value": 3992.3332083562855
+        },
+        "nav_chat_to_work": {
+          "unit": "ms",
+          "value": 3136.012833332643
+        },
+        "nav_work_to_doc": {
+          "unit": "ms",
+          "value": 3125.5238333251327
+        },
+        "nav_doc_to_chat": {
+          "unit": "ms",
+          "value": 3115.226416673977
+        },
+        "nav_chat_to_today": {
+          "unit": "ms",
+          "value": 3181.415166676743
+        },
+        "nav_today_to_usage": {
+          "unit": "ms",
+          "value": 4952.897624985781
+        },
+        "nav_usage_to_work": {
+          "unit": "ms",
+          "value": 1792.288083350286
+        },
+        "nav_work_to_usage": {
+          "unit": "ms",
+          "value": 1781.8727916455828
+        },
+        "nav_usage_to_today": {
+          "unit": "ms",
+          "value": 3843.5232083138544
+        },
+        "nav_today_to_chat": {
+          "unit": "ms",
+          "value": 3156.321124988608
+        },
+        "nav_chat_to_doc": {
+          "unit": "ms",
+          "value": 3164.435874990886
+        },
+        "nav_doc_to_work": {
+          "unit": "ms",
+          "value": 3138.3953749900684
+        },
+        "nav_work_to_chat": {
+          "unit": "ms",
+          "value": 3111.231874994701
+        },
+        "nav_chat_to_usage": {
+          "unit": "ms",
+          "value": 4911.583958310075
+        },
+        "nav_usage_to_doc": {
+          "unit": "ms",
+          "value": 3800.324541691225
+        },
+        "nav_doc_to_today": {
+          "unit": "ms",
+          "value": 3186.6426249907818
+        },
+        "nav_today_to_work": {
+          "unit": "ms",
+          "value": 3148.2869166648015
+        },
+        "doc_open_long": {
+          "unit": "ms",
+          "value": 1827.4144583265297
+        },
+        "work_open_long_history": {
+          "unit": "ms",
+          "value": 2885.9874166664667
+        },
+        "cold_launch_first_usable": {
+          "unit": "ms",
+          "value": 2607.588625,
+          "source": "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration"
+        },
+        "chat_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 2433.3092500000002,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "work_scroll_signpost_duration": {
+          "unit": "ms",
+          "value": 867.554208,
+          "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+        },
+        "chat_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 28.8948369630062,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 7,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 5,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 37.6011666667182,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "chat_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 58.33036500914116,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_hitch_ratio": {
+          "unit": "ms/s",
+          "value": 43.6464683565436,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_1_5x": {
+          "unit": "frames",
+          "value": 4,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_late_2x": {
+          "unit": "frames",
+          "value": 2,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_worst_frame": {
+          "unit": "ms",
+          "value": 50.81458334461786,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_expected_hz": {
+          "unit": "Hz",
+          "value": 60.00000001396984,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        },
+        "work_scroll_proxy_observed_hz": {
+          "unit": "Hz",
+          "value": 57.65475853822129,
+          "source": "cadisplaylink-simulator-proxy-v1"
+        }
+      },
+      "unavailable": {
+        "chat_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)",
+        "work_scroll_hitch_ratio": "XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration)"
+      }
+    }
+  ],
+  "probes": {
+    "chat_scroll_hitch_ratio": {
+      "state": "unavailable",
+      "count": 0,
+      "reason": "Need 5 samples: XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration) (5)"
+    },
+    "chat_scroll_proxy_expected_hz": {
+      "state": "measured",
+      "unit": "Hz",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 60.00000001396984,
+      "min": 60.00000001396984,
+      "max": 60.00000001396984,
+      "spread": 0.0,
+      "samples": [
+        60.00000001396984,
+        60.00000001396984,
+        60.00000001396984,
+        60.00000001396984,
+        60.00000001396984
+      ]
+    },
+    "chat_scroll_proxy_hitch_ratio": {
+      "state": "measured",
+      "unit": "ms/s",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 28.301810894295944,
+      "min": 18.82610855746367,
+      "max": 28.945766167795917,
+      "spread": 10.119657610332247,
+      "samples": [
+        28.945766167795917,
+        28.301810894295944,
+        24.29533200624709,
+        18.82610855746367,
+        28.8948369630062
+      ]
+    },
+    "chat_scroll_proxy_late_1_5x": {
+      "state": "measured",
+      "unit": "frames",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 6,
+      "min": 3,
+      "max": 7,
+      "spread": 4,
+      "samples": [
+        7,
+        6,
+        5,
+        3,
+        7
+      ]
+    },
+    "chat_scroll_proxy_late_2x": {
+      "state": "measured",
+      "unit": "frames",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 3,
+      "min": 3,
+      "max": 5,
+      "spread": 2,
+      "samples": [
+        3,
+        4,
+        3,
+        3,
+        5
+      ]
+    },
+    "chat_scroll_proxy_observed_hz": {
+      "state": "measured",
+      "unit": "Hz",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 58.33036500914116,
+      "min": 58.265650393651896,
+      "max": 58.91522775623713,
+      "spread": 0.6495773625852337,
+      "samples": [
+        58.265650393651896,
+        58.322721665663785,
+        58.6078252205907,
+        58.91522775623713,
+        58.33036500914116
+      ]
+    },
+    "chat_scroll_proxy_worst_frame": {
+      "state": "measured",
+      "unit": "ms",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 41.6794583434239,
+      "min": 37.6011666667182,
+      "max": 48.960499989334494,
+      "spread": 11.359333322616294,
+      "samples": [
+        39.832083333749324,
+        41.6794583434239,
+        48.960499989334494,
+        44.21529168030247,
+        37.6011666667182
+      ]
+    },
+    "chat_scroll_signpost_duration": {
+      "state": "measured",
+      "unit": "ms",
+      "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration",
+      "count": 5,
+      "median": 2366.72825,
+      "min": 2350.1853330000004,
+      "max": 2433.3092500000002,
+      "spread": 83.12391699999989,
+      "samples": [
+        2366.72825,
+        2350.1853330000004,
+        2400.9037500000004,
+        2350.838875,
+        2433.3092500000002
+      ]
+    },
+    "cold_launch_first_usable": {
+      "state": "measured",
+      "unit": "ms",
+      "source": "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration",
+      "count": 5,
+      "median": 2730.1985000000004,
+      "min": 2603.5932080000002,
+      "max": 2817.476209,
+      "spread": 213.8830009999997,
+      "samples": [
+        2817.476209,
+        2603.5932080000002,
+        2754.681208,
+        2730.1985000000004,
+        2607.588625
+      ]
+    },
+    "doc_open_long": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 1827.4144583265297,
+      "min": 1792.283333314117,
+      "max": 1966.3290833414067,
+      "spread": 174.0457500272896,
+      "samples": [
+        1966.3290833414067,
+        1818.5365416866262,
+        1833.5722083575092,
+        1792.283333314117,
+        1827.4144583265297
+      ]
+    },
+    "nav_chat_to_doc": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3134.3011666613165,
+      "min": 3124.8982083343435,
+      "max": 3169.6645416668616,
+      "spread": 44.766333332518116,
+      "samples": [
+        3134.3011666613165,
+        3133.685874985531,
+        3169.6645416668616,
+        3124.8982083343435,
+        3164.435874990886
+      ]
+    },
+    "nav_chat_to_today": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3148.0871250096243,
+      "min": 3135.442166676512,
+      "max": 3210.947166691767,
+      "spread": 75.50500001525506,
+      "samples": [
+        3148.0871250096243,
+        3210.947166691767,
+        3142.9021249932703,
+        3135.442166676512,
+        3181.415166676743
+      ]
+    },
+    "nav_chat_to_usage": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 4911.583958310075,
+      "min": 4879.4769999803975,
+      "max": 4963.649958343012,
+      "spread": 84.17295836261474,
+      "samples": [
+        4963.649958343012,
+        4879.4769999803975,
+        4909.083166683558,
+        4923.4733333287295,
+        4911.583958310075
+      ]
+    },
+    "nav_chat_to_work": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3154.228500003228,
+      "min": 3133.0343750014435,
+      "max": 3198.7238333094865,
+      "spread": 65.68945830804296,
+      "samples": [
+        3166.9797916547395,
+        3198.7238333094865,
+        3133.0343750014435,
+        3154.228500003228,
+        3136.012833332643
+      ]
+    },
+    "nav_doc_to_chat": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3121.175458334619,
+      "min": 3115.226416673977,
+      "max": 3127.3117083183024,
+      "spread": 12.08529164432548,
+      "samples": [
+        3121.175458334619,
+        3115.5675833288115,
+        3127.3117083183024,
+        3122.402791661443,
+        3115.226416673977
+      ]
+    },
+    "nav_doc_to_today": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3170.9544166806154,
+      "min": 3163.146625010995,
+      "max": 3191.0522083344404,
+      "spread": 27.90558332344517,
+      "samples": [
+        3191.0522083344404,
+        3163.146625010995,
+        3166.93658332224,
+        3170.9544166806154,
+        3186.6426249907818
+      ]
+    },
+    "nav_doc_to_usage": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 5057.217875000788,
+      "min": 4962.665583356284,
+      "max": 5117.795500002103,
+      "spread": 155.12991664581932,
+      "samples": [
+        5117.795500002103,
+        4962.665583356284,
+        5058.583083329722,
+        4972.03558331239,
+        5057.217875000788
+      ]
+    },
+    "nav_doc_to_work": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3136.23999999254,
+      "min": 3098.3666666725185,
+      "max": 3161.5015833522193,
+      "spread": 63.13491667970084,
+      "samples": [
+        3098.3666666725185,
+        3124.697583320085,
+        3161.5015833522193,
+        3136.23999999254,
+        3138.3953749900684
+      ]
+    },
+    "nav_today_to_chat": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3132.3597083392087,
+      "min": 3112.4360833491664,
+      "max": 3156.321124988608,
+      "spread": 43.885041639441624,
+      "samples": [
+        3117.0057083072606,
+        3153.865833330201,
+        3132.3597083392087,
+        3112.4360833491664,
+        3156.321124988608
+      ]
+    },
+    "nav_today_to_doc": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3380.134333332535,
+      "min": 3253.299625008367,
+      "max": 3423.8129166769795,
+      "spread": 170.5132916686125,
+      "samples": [
+        3423.8129166769795,
+        3380.134333332535,
+        3295.6438749970403,
+        3383.356291684322,
+        3253.299625008367
+      ]
+    },
+    "nav_today_to_usage": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 4924.467041651951,
+      "min": 4880.874708323972,
+      "max": 4952.897624985781,
+      "spread": 72.02291666180827,
+      "samples": [
+        4941.5969166730065,
+        4920.34758333466,
+        4924.467041651951,
+        4880.874708323972,
+        4952.897624985781
+      ]
+    },
+    "nav_today_to_work": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3156.18012502091,
+      "min": 3148.2869166648015,
+      "max": 3202.756708342349,
+      "spread": 54.46979167754762,
+      "samples": [
+        3151.722625014372,
+        3156.275708315661,
+        3202.756708342349,
+        3156.18012502091,
+        3148.2869166648015
+      ]
+    },
+    "nav_usage_to_chat": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3980.125041678548,
+      "min": 3854.282416665228,
+      "max": 4016.0466250090394,
+      "spread": 161.76420834381133,
+      "samples": [
+        4016.0466250090394,
+        3854.282416665228,
+        3980.125041678548,
+        3875.658291653963,
+        3992.3332083562855
+      ]
+    },
+    "nav_usage_to_doc": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3805.652791663306,
+      "min": 3800.324541691225,
+      "max": 3853.349791665096,
+      "spread": 53.025249973870814,
+      "samples": [
+        3802.8684166783933,
+        3805.652791663306,
+        3807.528666657163,
+        3853.349791665096,
+        3800.324541691225
+      ]
+    },
+    "nav_usage_to_today": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3834.981791675091,
+      "min": 3806.729791656835,
+      "max": 3843.5232083138544,
+      "spread": 36.79341665701941,
+      "samples": [
+        3840.9139583527576,
+        3834.981791675091,
+        3806.729791656835,
+        3827.6202916749753,
+        3843.5232083138544
+      ]
+    },
+    "nav_usage_to_work": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 1792.288083350286,
+      "min": 1768.1752083299216,
+      "max": 1808.6800416640472,
+      "spread": 40.50483333412558,
+      "samples": [
+        1808.6800416640472,
+        1799.9758333317004,
+        1768.1752083299216,
+        1785.292999993544,
+        1792.288083350286
+      ]
+    },
+    "nav_work_to_chat": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3111.231874994701,
+      "min": 3105.223708320409,
+      "max": 3132.2490833408665,
+      "spread": 27.02537502045743,
+      "samples": [
+        3105.223708320409,
+        3111.1035000067204,
+        3117.161958332872,
+        3132.2490833408665,
+        3111.231874994701
+      ]
+    },
+    "nav_work_to_doc": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3121.033166651614,
+      "min": 3110.317208309425,
+      "max": 3129.442958335858,
+      "spread": 19.125750026432797,
+      "samples": [
+        3120.329249999486,
+        3110.317208309425,
+        3121.033166651614,
+        3129.442958335858,
+        3125.5238333251327
+      ]
+    },
+    "nav_work_to_today": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 3330.0542083452456,
+      "min": 3227.8348749969155,
+      "max": 3403.330958331935,
+      "spread": 175.49608333501965,
+      "samples": [
+        3403.330958331935,
+        3227.8348749969155,
+        3316.098208335461,
+        3343.1161666521803,
+        3330.0542083452456
+      ]
+    },
+    "nav_work_to_usage": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 1777.2225833323319,
+      "min": 1720.1809583348222,
+      "max": 1783.36358332308,
+      "spread": 63.182624988257885,
+      "samples": [
+        1720.1809583348222,
+        1783.36358332308,
+        1739.3441250023898,
+        1777.2225833323319,
+        1781.8727916455828
+      ]
+    },
+    "warm_activate": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 1242.7834583213553,
+      "min": 1202.241666673217,
+      "max": 1252.6442916423548,
+      "spread": 50.40262496913783,
+      "samples": [
+        1202.241666673217,
+        1242.7834583213553,
+        1252.6442916423548,
+        1243.8494583184365,
+        1241.926416667411
+      ]
+    },
+    "work_open_long_history": {
+      "state": "measured",
+      "unit": "ms",
+      "count": 5,
+      "median": 2885.9874166664667,
+      "min": 2753.239041659981,
+      "max": 3082.762375008315,
+      "spread": 329.52333334833384,
+      "samples": [
+        3082.762375008315,
+        2753.239041659981,
+        2900.107333320193,
+        2778.5771250200924,
+        2885.9874166664667
+      ]
+    },
+    "work_scroll_hitch_ratio": {
+      "state": "unavailable",
+      "count": 0,
+      "reason": "Need 5 samples: XCTest did not export a single matching sample; exported: Duration (Scroll_DraggingAndDeceleration) (5)"
+    },
+    "work_scroll_proxy_expected_hz": {
+      "state": "measured",
+      "unit": "Hz",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 60.00000001396984,
+      "min": 60.00000001396984,
+      "max": 60.00000001396984,
+      "spread": 0.0,
+      "samples": [
+        60.00000001396984,
+        60.00000001396984,
+        60.00000001396984,
+        60.00000001396984,
+        60.00000001396984
+      ]
+    },
+    "work_scroll_proxy_hitch_ratio": {
+      "state": "measured",
+      "unit": "ms/s",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 39.24927980509433,
+      "min": 16.305672457628663,
+      "max": 43.6464683565436,
+      "spread": 27.340795898914937,
+      "samples": [
+        39.24927980509433,
+        32.924161468795866,
+        16.305672457628663,
+        41.14335555059613,
+        43.6464683565436
+      ]
+    },
+    "work_scroll_proxy_late_1_5x": {
+      "state": "measured",
+      "unit": "frames",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 4,
+      "min": 1,
+      "max": 4,
+      "spread": 3,
+      "samples": [
+        4,
+        2,
+        1,
+        4,
+        4
+      ]
+    },
+    "work_scroll_proxy_late_2x": {
+      "state": "measured",
+      "unit": "frames",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 2,
+      "min": 1,
+      "max": 3,
+      "spread": 2,
+      "samples": [
+        2,
+        2,
+        1,
+        3,
+        2
+      ]
+    },
+    "work_scroll_proxy_observed_hz": {
+      "state": "measured",
+      "unit": "Hz",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 57.65475853822129,
+      "min": 57.60054197679226,
+      "max": 59.055816288722426,
+      "spread": 1.455274311930168,
+      "samples": [
+        57.64320331460073,
+        58.03110676133966,
+        59.055816288722426,
+        57.60054197679226,
+        57.65475853822129
+      ]
+    },
+    "work_scroll_proxy_worst_frame": {
+      "state": "measured",
+      "unit": "ms",
+      "source": "cadisplaylink-simulator-proxy-v1",
+      "count": 5,
+      "median": 49.09291668445803,
+      "min": 34.13995835580863,
+      "max": 52.52399999881163,
+      "spread": 18.384041643003002,
+      "samples": [
+        52.52399999881163,
+        49.09291668445803,
+        34.13995835580863,
+        48.4217916673515,
+        50.81458334461786
+      ]
+    },
+    "work_scroll_signpost_duration": {
+      "state": "measured",
+      "unit": "ms",
+      "source": "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration",
+      "count": 5,
+      "median": 867.554208,
+      "min": 834.0438340000001,
+      "max": 884.0227500000001,
+      "spread": 49.97891600000003,
+      "samples": [
+        867.9669590000001,
+        884.0227500000001,
+        834.0438340000001,
+        867.298209,
+        867.554208
+      ]
+    }
+  },
+  "lost_baseline_probes": []
+}
