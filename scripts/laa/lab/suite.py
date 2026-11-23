@@ -81,11 +81,34 @@ def classes(target):
     return sorted(n for n in found if is_test(n))
 
 
-def select(suite, target_key):
+def inventory(out, target):
+    """The tests the built bundle really holds (`xcodebuild -enumerate-tests`), or None.
+
+    The build decides what exists: LAA-only and Catalyst-only classes are
+    compiled out of some builds, which a source scan cannot see.
+    """
+    path = Path(out) / f"inventory-{target}.json"
+    if not path.exists():
+        return None
+    values = json.loads(path.read_text()).get("values", [])
+    return sorted({t["identifier"].replace("()", "") for v in values for t in v.get("enabledTests", [])})
+
+
+def enumerate_tests(derived, out, target):
+    path = Path(out) / f"inventory-{target}.json"
+    subprocess.run(["rm", "-f", str(path)])
+    rc = xcodebuild("test-without-building", derived, [f"-only-testing:{target}", "-enumerate-tests", "-test-enumeration-style", "flat",
+                    "-test-enumeration-format", "json", "-test-enumeration-output-path", f"'{path}'"], Path(out) / f"inventory-{target}.log")
+    if rc != 0 or not inventory(out, target):
+        raise SystemExit(f"could not enumerate {target} ({rc}); log: {Path(out) / f'inventory-{target}.log'}")
+
+
+def select(suite, target_key, out=None):
     spec = suite[target_key]
     target = "ConduitTests" if target_key == "unit" else "ConduitUITests"
     if spec == "all":
-        names = classes(target)
+        listed = inventory(out, target) if out else None
+        names = sorted({i.split("/")[1] for i in listed}) if listed else classes(target)
     elif isinstance(spec, str) and spec.startswith("smoke-plan"):
         with tempfile.NamedTemporaryFile(suffix=".json") as tmp:
             subprocess.run([sys.executable, "scripts/plan-tests.py", "smoke", "--repo-root", ".", "--suite", "scripts/smoke-suite.json",
@@ -173,6 +196,9 @@ def cmd_run(args):
         if rc != 0:
             (out / "run.json").write_text(json.dumps(meta, indent=1))
             raise SystemExit(f"build-for-testing failed ({rc}); log: {out / 'build.log'}")
+    for key, target in (("unit", "ConduitTests"), ("ui", "ConduitUITests")):
+        if suite[key] and inventory(out, target) is None and ("build" in phases or key in phases):
+            enumerate_tests(derived, out, target)
 
     def batch(kind, names, size):
         if args.only:
@@ -181,7 +207,7 @@ def cmd_run(args):
         return [[f"-only-testing:{target}/{n}" for n in names[i:i + size]] for i in range(0, len(names), size)]
 
     if "unit" in phases:
-        batches = [["-only-testing:ConduitTests"]] if suite["unit"] == "all" and not args.only else batch("ConduitTests", select(suite, "unit"), 400)
+        batches = [["-only-testing:ConduitTests"]] if suite["unit"] == "all" and not args.only else batch("ConduitTests", select(suite, "unit", out), 400)
         for i, only in enumerate(batches):
             bundle = out / f"unit-{i}.xcresult"
             subprocess.run(["rm", "-rf", str(bundle)])
@@ -189,7 +215,7 @@ def cmd_run(args):
     if "ui" in phases:
         fixtures = start_fixtures(suite, out)
         try:
-            for i, only in enumerate(batch("ConduitUITests", select(suite, "ui"), suite.get("ui_batch", 6))):
+            for i, only in enumerate(batch("ConduitUITests", select(suite, "ui", out), suite.get("ui_batch", 6))):
                 bundle = out / f"ui-{i}.xcresult"
                 subprocess.run(["rm", "-rf", str(bundle)])
                 meta["phases"][f"ui-{i}"] = xcodebuild("test-without-building", derived, only, out / f"ui-{i}.log", bundle)
@@ -283,11 +309,19 @@ def cmd_check(args):
         for ident in known:
             if ident not in tests:
                 problems.append(f"LISTED BUT DID NOT RUN: {ident}")
-        ran = {ident.split("/")[1] for ident in tests if ident.count("/") >= 2}
-        for key in ("unit", "ui"):
-            for name in select(suite, key):
-                if name not in ran:
-                    problems.append(f"CLASS DID NOT RUN: {name}")
+        for key, target in (("unit", "ConduitTests"), ("ui", "ConduitUITests")):
+            if not suite[key]:
+                continue
+            listed = inventory(args.out, target)
+            if listed is None:
+                problems.append(f"NO INVENTORY for {target}: run the build phase (inventory-{target}.json)")
+                continue
+            wanted = set(select(suite, key, args.out))
+            for ident in listed:
+                if ident.split("/")[1] in wanted and ident not in tests:
+                    problems.append(f"IN THE BUILD BUT DID NOT RUN: {ident}")
+            for name in wanted - {i.split("/")[1] for i in listed}:
+                problems.append(f"SELECTED CLASS IS NOT IN THE BUILD: {name}")
     for ident, listed in known.items():
         if not listed.get("reason") or listed.get("class") not in ("stale-expectation", "environment", "real-bug", "not-applicable"):
             problems.append(f"LISTED WITHOUT A REASON OR CLASS: {ident}")
