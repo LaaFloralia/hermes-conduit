@@ -40,7 +40,11 @@ final class LAAWorkRefUITests: XCTestCase {
         if value == "projects" {
             app.buttons["work.section.projects"].tap()
         } else if value == "skills" {
-            app.buttons["Settings"].tap(); app.buttons["settings.skills"].tap()
+            app.buttons["laa.settings.open"].tap()
+            let skills = app.buttons["settings.skills"]
+            XCTAssertTrue(skills.waitForExistence(timeout: 10))
+            if !skills.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            skills.tap()
         } else { app.buttons["work.section.\(value)"].tap() }
     }
 
@@ -166,8 +170,16 @@ final class LAAWorkRefSnapshotTests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
-        XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 20))
+        // Projects is now the initial section (9602ddcc), and the task
+        // title is exposed in the accessible row button (d3288e4d).
+        let tasks = app.buttons["work.section.tasks"]
+        XCTAssertTrue(tasks.waitForExistence(timeout: 20)); tasks.tap()
+        XCTAssertTrue(firstTask(app).waitForExistence(timeout: 20))
         return app
+    }
+
+    private func firstTask(_ app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
     }
 
     func testWorkScreensLight() throws { try capture("light") }
@@ -184,7 +196,7 @@ final class LAAWorkRefSnapshotTests: XCTestCase {
 
         let tasks = app.buttons["work.section.tasks"]
         tasks.tap()
-        XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForExistence(timeout: 20))
+        XCTAssertTrue(firstTask(app).waitForExistence(timeout: 20))
         // The phone's search only exists from this candidate on; master shows
         // the same list, so the capture still names the state.
         let field = LAAWorkRefUITests.openSearch(app)
