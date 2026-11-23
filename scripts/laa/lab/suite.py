@@ -14,8 +14,16 @@ scripts/laa/lab/known-failures.json.
   suite.py seed integration <dir>            # print known-failures entries for the unlisted ones
 
 Every xcodebuild holds the shared build slot and boots the simulator only for
-its own run. Real-Bridge opt-ins are removed from the environment, so a suite
-run never talks to production.
+its own run. The simulator is shared with other sessions, so each test phase
+erases it inside its own slot hold (English (US), read back) unless --no-erase.
+Real-Bridge opt-ins are removed from the environment, so a suite run never
+talks to production.
+
+A phase whose runner never started (no test ran) is repeated once. A failure
+that is not in known-failures.json is run once more on its own (at most
+RERUN_LIMIT per target, --no-rerun to skip); a test that passes only there
+stays marked in results.json and `check` prints it, so it is never silently
+green.
 """
 import argparse
 import fcntl
@@ -37,6 +45,7 @@ PHONE = "DFFD3966-F54E-4C7A-A161-59201C7EA105"  # LAA 16 Pro Max, iOS 27.0
 SIGNING = ["CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", "DEVELOPMENT_TEAM=", "GIT_TERMINAL_PROMPT=0"]
 # Opt-ins that point a test at the production Bridge. Never inherited.
 FORBIDDEN_ENV = ("LAA_UI_TEST_REAL_BRIDGE", "LAA_REAL_BRIDGE_TEST")
+RERUN_LIMIT = 10  # more unexpected failures than this is a broken change, not noise
 CLASS_RE = re.compile(r"^\s*(?:final\s+)?class\s+(\w+)\s*:\s*([\w.]+)", re.M)
 
 
@@ -120,19 +129,16 @@ def select(suite, target_key, out=None):
     return [n for n in names if n not in set(suite.get("exclude_classes", {}))]
 
 
-def prepare_simulator(log):
-    """Erase the phone, set English (US) and read it back, shut down (handoff: the smoke device).
-
-    Runs inside the build slot: another session's test may be using the same simulator.
-    """
-    inner = (f"set -e; xcrun simctl shutdown {PHONE} 2>/dev/null || true; xcrun simctl erase {PHONE}; "
-             f"xcrun simctl boot {PHONE}; xcrun simctl bootstatus {PHONE} >/dev/null; "
-             f"xcrun simctl spawn {PHONE} defaults write -g AppleLanguages -array en-US; "
-             f"xcrun simctl spawn {PHONE} defaults write -g AppleLocale en_US; "
-             f"xcrun simctl spawn {PHONE} defaults read -g AppleLanguages | grep -q en-US; "
-             f"xcrun simctl shutdown {PHONE}")
-    if sh(["/bin/bash", SLOT, "/bin/bash", "-c", inner], log) != 0:
-        raise SystemExit(f"simulator was not erased and set to en-US; log: {log}")
+# Erase the phone, set English (US), read it back and shut it down (handoff: the
+# smoke device; -AppleLanguages alone did not take). Always inside a slot hold:
+# other sessions use the same simulator between our holds and leave data behind
+# (saved connections in the Keychain skipped the login screen, 2026-11-24).
+ERASE = (f"xcrun simctl shutdown {PHONE} 2>/dev/null; xcrun simctl erase {PHONE} && "
+         f"xcrun simctl boot {PHONE} && xcrun simctl bootstatus {PHONE} >/dev/null && "
+         f"xcrun simctl spawn {PHONE} defaults write -g AppleLanguages -array en-US && "
+         f"xcrun simctl spawn {PHONE} defaults write -g AppleLocale en_US && "
+         f"xcrun simctl spawn {PHONE} defaults read -g AppleLanguages | grep -q en-US && "
+         f"xcrun simctl shutdown {PHONE} || {{ echo 'simulator was not erased and set to en-US'; exit 97; }}; ")
 
 
 def start_fixtures(suite, out):
@@ -177,14 +183,44 @@ def stop_fixtures(fixture):
                 os.environ[key] = value
 
 
-def xcodebuild(action, derived, extra, log, bundle=None):
+def xcodebuild(action, derived, extra, log, bundle=None, erase=False):
     # A build needs no booted simulator; booting one beside the compile only adds load.
-    boot = "" if action == "build-for-testing" else f"xcrun simctl boot {PHONE} 2>/dev/null; xcrun simctl bootstatus {PHONE} >/dev/null; "
+    boot = "" if action == "build-for-testing" else (ERASE if erase else "") + f"xcrun simctl boot {PHONE} 2>/dev/null; xcrun simctl bootstatus {PHONE} >/dev/null; "
     inner = (boot + f"xcodebuild {action} -project Conduit.xcodeproj -scheme Conduit -destination 'platform=iOS Simulator,id={PHONE}' "
              f"-derivedDataPath {derived} -jobs 4 -packageAuthorizationProvider netrc {' '.join(extra)} "
              + (f"-resultBundlePath '{bundle}' " if bundle else "") + " ".join(SIGNING)
              + ("" if action == "build-for-testing" else f"; rc=$?; xcrun simctl shutdown {PHONE}; exit $rc"))
     return sh(["/bin/bash", SLOT, "/bin/bash", "-c", inner], log)
+
+
+def real(ident):
+    """A test case, not xcodebuild's pseudo entry for a runner that failed to start."""
+    return ident.count("/") >= 2
+
+
+def ran(bundle):
+    """True when the bundle holds at least one real test case."""
+    if not Path(bundle).exists():
+        return False
+    raw = subprocess.run(["xcrun", "xcresulttool", "get", "test-results", "tests", "--path", str(bundle), "--compact"],
+                         capture_output=True, text=True, env=env())
+    if raw.returncode != 0:
+        return False
+    found = {}
+    for node in json.loads(raw.stdout).get("testNodes", []):
+        walk(node, "", found)
+    return any(real(i) for i in found)
+
+
+def explained(listed, entry):
+    return bool(listed) and listed.get("result") == entry["result"] and (
+        entry["result"] != "Failed" or listed.get("fingerprint") == entry.get("fingerprint"))
+
+
+def unexpected(suite_name, tests, target):
+    known = json.loads((LAB / "known-failures.json").read_text()).get(suite_name, {})
+    return sorted(i for i, e in tests.items()
+                  if i.startswith(target + "/") and real(i) and e["result"] == "Failed" and not explained(known.get(i), e))
 
 
 def cmd_run(args):
@@ -207,8 +243,6 @@ def cmd_run(args):
         raise SystemExit(f"another suite run holds {REPO}/.lab-suite.lock; use a separate worktree")
     sh(["xcodegen", "generate", "--spec", suite["spec"]], out / "xcodegen.log", check=True)
     if "build" in phases:
-        if not args.no_erase:
-            prepare_simulator(out / "simulator.log")
         rc = xcodebuild("build-for-testing", derived, [], out / "build.log")
         meta["phases"]["build"] = rc
         if rc != 0:
@@ -224,20 +258,43 @@ def cmd_run(args):
         target = "ConduitTests" if kind == "ConduitTests" else "ConduitUITests"
         return [[f"-only-testing:{target}/{n}" for n in names[i:i + size]] for i in range(0, len(names), size)]
 
+    def phase(name, only):
+        """One slot hold. Repeated once when the runner never started (no test ran)."""
+        bundle, log = out / f"{name}.xcresult", out / f"{name}.log"
+        for attempt in (1, 2):
+            subprocess.run(["rm", "-rf", str(bundle)])
+            rc = xcodebuild("test-without-building", derived, only, log, bundle, erase=not args.no_erase)
+            if rc == 0 or attempt == 2 or ran(bundle):
+                break
+            meta.setdefault("retried", {})[name] = f"exit {rc}, no test ran"
+            subprocess.run(["rm", "-rf", f"{bundle}.attempt1"])
+            if bundle.exists():
+                bundle.rename(f"{bundle}.attempt1")  # kept as evidence; not a *.xcresult, so parse ignores it
+        meta["phases"][name] = rc
+        (out / "run.json").write_text(json.dumps(meta, indent=1))
+
+    def rerun(kind, target):
+        """Run the failures known-failures.json does not explain once more, alone."""
+        if args.no_rerun:
+            return
+        cmd_parse(args)
+        ids = unexpected(args.suite, load(out), target)
+        if not ids or len(ids) > RERUN_LIMIT:
+            return
+        meta.setdefault("rerun", {})[kind] = ids
+        phase(f"rerun-{kind}", [f"-only-testing:{i}" for i in ids])
+
     if "unit" in phases:
         batches = [["-only-testing:ConduitTests"]] if suite["unit"] == "all" and not args.only else batch("ConduitTests", select(suite, "unit", out), 400)
         for i, only in enumerate(batches):
-            bundle = out / f"unit-{i}.xcresult"
-            subprocess.run(["rm", "-rf", str(bundle)])
-            meta["phases"][f"unit-{i}"] = xcodebuild("test-without-building", derived, only, out / f"unit-{i}.log", bundle)
+            phase(f"unit-{i}", only)
+        rerun("unit", "ConduitTests")
     if "ui" in phases:
         fixtures = start_fixtures(suite, out)
         try:
             for i, only in enumerate(batch("ConduitUITests", select(suite, "ui", out), suite.get("ui_batch", 6))):
-                bundle = out / f"ui-{i}.xcresult"
-                subprocess.run(["rm", "-rf", str(bundle)])
-                meta["phases"][f"ui-{i}"] = xcodebuild("test-without-building", derived, only, out / f"ui-{i}.log", bundle)
-                (out / "run.json").write_text(json.dumps(meta, indent=1))
+                phase(f"ui-{i}", only)
+            rerun("ui", "ConduitUITests")
         finally:
             stop_fixtures(fixtures)
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -256,7 +313,7 @@ def fingerprint(message):
     return hashlib.sha1(text.encode()).hexdigest()[:12]
 
 
-def walk(node, target, found):
+def walk(node, target, found, rerun=False):
     kind = node.get("nodeType")
     if kind in ("Unit test bundle", "UI test bundle"):
         target = node.get("name", target)
@@ -277,11 +334,15 @@ def walk(node, target, found):
             entry["message"] = first[:400]
             entry["fingerprint"] = fingerprint(first) if result == "Failed" else None
             entry["failures"] = len(messages)
-        # A test that ran in two bundles (a rerun) keeps the later result.
+        # A test that ran in two bundles keeps the later result; a pass that
+        # needed the isolated rerun keeps what failed first.
+        before = found.get(ident)
+        if rerun and before and result == "Passed" and (before["result"] == "Failed" or before.get("rerun")):
+            entry["rerun"] = before.get("rerun") or {k: before.get(k) for k in ("result", "fingerprint", "message")}
         found[ident] = entry
         return
     for child in node.get("children", []):
-        walk(child, target, found)
+        walk(child, target, found, rerun)
 
 
 def cmd_parse(args):
@@ -294,7 +355,7 @@ def cmd_parse(args):
             print(f"unreadable result bundle: {bundle.name}: {raw.stderr.strip()[:200]}", file=sys.stderr)
             continue
         for node in json.loads(raw.stdout).get("testNodes", []):
-            walk(node, "", found)
+            walk(node, "", found, rerun=bundle.name.startswith("rerun-"))
     counts = {}
     for entry in found.values():
         counts[entry["result"]] = counts.get(entry["result"], 0) + 1
@@ -319,7 +380,7 @@ def cmd_check(args):
             problems.append(f"NEW {entry['result'].upper()}: {ident} [{entry.get('fingerprint')}] {entry.get('message', '')[:160]}")
         elif bad and listed.get("result") != entry["result"]:
             problems.append(f"CHANGED RESULT: {ident} is {entry['result']}, listed as {listed.get('result')}")
-        elif bad and entry["result"] == "Failed" and listed.get("fingerprint") not in (entry["fingerprint"], "*"):
+        elif bad and entry["result"] == "Failed" and listed.get("fingerprint") != entry["fingerprint"]:
             problems.append(f"DIFFERENT FAILURE: {ident} [{entry['fingerprint']}], listed [{listed.get('fingerprint')}] {entry.get('message', '')[:160]}")
         elif not bad and listed:
             problems.append(f"NOW PASSES, remove from known-failures.json: {ident}")
@@ -351,9 +412,12 @@ def cmd_check(args):
     counts = {}
     for entry in tests.values():
         counts[entry["result"]] = counts.get(entry["result"], 0) + 1
-    print(f"{args.suite}: {counts}; listed exceptions {len(known)}; problems {len(problems)}")
+    reruns = {ident: e["rerun"] for ident, e in tests.items() if e.get("rerun")}
+    print(f"{args.suite}: {counts}; listed exceptions {len(known)}; problems {len(problems)}; passed only on rerun {len(reruns)}")
     for line in problems:
         print("  " + line)
+    for ident, first in reruns.items():
+        print(f"  PASSED ONLY ON RERUN (record it; fix it if it repeats): {ident} first [{first.get('fingerprint')}] {(first.get('message') or '')[:160]}")
     return 1 if problems else 0
 
 
@@ -371,7 +435,8 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run"); run.add_argument("suite"); run.add_argument("--out", required=True)
     run.add_argument("--phase", default="all", choices=["all", "build", "unit", "ui"]); run.add_argument("--only", nargs="*", default=[])
-    run.add_argument("--no-erase", action="store_true", help="keep the simulator's data (a unit run beside another session's UI run)")
+    run.add_argument("--no-erase", action="store_true", help="keep the simulator's data (quick reruns while narrowing down; not for a gate)")
+    run.add_argument("--no-rerun", action="store_true", help="do not run unexplained failures once more on their own")
     parse = sub.add_parser("parse"); parse.add_argument("out")
     for name in ("check", "seed"):
         p = sub.add_parser(name); p.add_argument("suite"); p.add_argument("out")
