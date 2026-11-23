@@ -99,10 +99,10 @@ def busy_snapshot(udid, allowed_pid=None):
     found = subprocess.run(["pgrep", "-x", "xcodebuild"], capture_output=True, text=True, timeout=10)
     if found.returncode not in (0, 1):
         raise RuntimeError("Unable to check xcodebuild processes")
-    others = sorted(int(p) for p in found.stdout.split() if int(p) != allowed_pid)
-    sims = [d["name"] for group in simulator_inventory().values() for d in group
-            if d["state"] != "Shutdown" and d["udid"] != udid]
-    return {"at": utc(), "load1": round(os.getloadavg()[0], 3), "other_xcodebuild": others, "other_simulators": sorted(sims)}
+    others = sum(int(p) != allowed_pid for p in found.stdout.split())
+    sims = sum(d["state"] != "Shutdown" and d["udid"] != udid
+               for group in simulator_inventory().values() for d in group)
+    return {"at": utc(), "load1": round(os.getloadavg()[0], 3), "other_xcodebuild": others, "other_simulators": sims}
 
 
 def wait_quiet(udid, deadline):
@@ -373,7 +373,7 @@ def run_locked(args):
     result = {"schema": 1, "protocol": "laa-simulator-perf-v1", "sha": head, "configuration": CONFIG,
               "environment": {"device": phone["name"], "device_type": phone["deviceTypeIdentifier"],
                               "os": runtime["version"], "runtime": runtime["identifier"], "runtime_build": runtime["buildversion"],
-                              "xcode": build["xcode"], "quiet_max_load1": LOAD_LIMIT}, "udid": phone["udid"],
+                              "xcode": build["xcode"], "quiet_max_load1": LOAD_LIMIT},
               "build_products": build["build_products"], "completed_at": utc(),
               "wall_seconds": round(time.monotonic() - started, 2), "noise_rule": NOISE_RULE,
               "runs": attempts, "probes": aggregate(attempts)}

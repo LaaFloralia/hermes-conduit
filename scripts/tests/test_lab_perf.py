@@ -90,10 +90,10 @@ class Collection(unittest.TestCase):
             self.assertFalse({"LAA_UI_TEST_REAL_BRIDGE", "LAA_BRIDGE_DEFAULT_ADDRESS", "TEST_RUNNER_LAA_PERF_RUN"} & perf.lab_env().keys())
 
     def test_quiet_gate_waits_until_xcode_sim_and_load_clear(self):
-        readings = [{"load1": 1, "other_simulators": ["other"], "other_xcodebuild": []},
-                    {"load1": 1, "other_simulators": [], "other_xcodebuild": [2]},
-                    {"load1": perf.LOAD_LIMIT + 1, "other_simulators": [], "other_xcodebuild": []},
-                    {"load1": perf.LOAD_LIMIT, "other_simulators": [], "other_xcodebuild": []}]
+        readings = [{"load1": 1, "other_simulators": 1, "other_xcodebuild": 0},
+                    {"load1": 1, "other_simulators": 0, "other_xcodebuild": 1},
+                    {"load1": perf.LOAD_LIMIT + 1, "other_simulators": 0, "other_xcodebuild": 0},
+                    {"load1": perf.LOAD_LIMIT, "other_simulators": 0, "other_xcodebuild": 0}]
         with patch.object(perf, "busy_snapshot", side_effect=readings), patch.object(perf.time, "sleep", return_value=None):
             self.assertEqual(perf.wait_quiet("phone", float("inf")), (True, readings))
         with patch.object(perf, "busy_snapshot", return_value=readings[0]):
