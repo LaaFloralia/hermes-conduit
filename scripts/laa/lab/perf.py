@@ -3,6 +3,7 @@
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import hashlib
 import json
 import math
 import os
@@ -19,7 +20,7 @@ import uuid
 
 from suite import REPO, SLOT
 from watch import (DERIVED, PHONE_APP, PHONE_NAME, boot_devices, capture, lab_env, log_json,
-                   named_device, simulator_inventory, test_states, xcode_base)
+                   named_device, require_build_headroom, simulator_inventory, test_states, xcode_base)
 
 SCHEME = "ConduitPerfLab"
 SETTINGS = ("SWIFT_OPTIMIZATION_LEVEL=-O", "SWIFT_COMPILATION_MODE=incremental",
@@ -247,10 +248,8 @@ def prepare_build(out, phone, head, reuse):
     stamp = DERIVED / "perf-build.json"
     signature = {"sha": head, "configuration": CONFIG, "runtime": phone["runtime"],
                  "xcode": capture("xcodebuild", "-version")}
-    if reuse:
-        if not stamp.exists() or json.loads(stamp.read_text()) != signature:
-            raise RuntimeError("--reuse-build needs a prior build of the exact same SHA/settings/runtime")
-    else:
+    if not reuse:
+        require_build_headroom()
         DERIVED.mkdir(parents=True, exist_ok=True)
         stamp.unlink(missing_ok=True)
         spec = DERIVED / "perf-project.yml"
@@ -275,10 +274,18 @@ targets:
         log_run(["xcodegen", "generate", "--spec", str(spec), "--project", str(REPO)], out / "build.log")
         cmd = xcode_base(SCHEME, "iOS", phone["udid"], DERIVED)
         log_run([*cmd, *SETTINGS, "build-for-testing"], out / "build.log", timeout=1800)
-        log_json(stamp, signature)
     matches = list(product.glob(f"{SCHEME}*.xctestrun"))
     if len(matches) != 1:
         raise RuntimeError(f"Missing or ambiguous {SCHEME} .xctestrun")
+    debug = product / "Debug-iphonesimulator"
+    binaries = [debug / "Conduit.app/Conduit",
+                debug / "ConduitUITests-Runner.app/PlugIns/ConduitUITests.xctest/ConduitUITests", matches[0]]
+    signature["build_products"] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in binaries}
+    if reuse:
+        if not stamp.exists() or json.loads(stamp.read_text()) != signature:
+            raise RuntimeError("--reuse-build needs the exact same build SHA/settings/runtime and binaries")
+    else:
+        log_json(stamp, signature)
     return matches[0], signature
 
 
@@ -367,7 +374,8 @@ def run_locked(args):
               "environment": {"device": phone["name"], "device_type": phone["deviceTypeIdentifier"],
                               "os": runtime["version"], "runtime": runtime["identifier"], "runtime_build": runtime["buildversion"],
                               "xcode": build["xcode"], "quiet_max_load1": LOAD_LIMIT}, "udid": phone["udid"],
-              "completed_at": utc(), "wall_seconds": round(time.monotonic() - started, 2), "noise_rule": NOISE_RULE,
+              "build_products": build["build_products"], "completed_at": utc(),
+              "wall_seconds": round(time.monotonic() - started, 2), "noise_rule": NOISE_RULE,
               "runs": attempts, "probes": aggregate(attempts)}
     log_json(out / "perf.json", result)
     (out / "perf.md").write_text(report_md(result))

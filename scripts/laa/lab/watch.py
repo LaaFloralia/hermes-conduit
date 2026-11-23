@@ -5,8 +5,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
-import plistlib
 import os
+import plistlib
 from pathlib import Path
 import re
 import shutil
@@ -83,7 +83,9 @@ def boot_devices(devices, log):
                 raise RuntimeError(f"{device['name']} already {inventory[udid]}; refusing to take over")
         for device in devices:
             owned.append(device["udid"])
-            sh(["xcrun", "simctl", "boot", device["udid"]], log, check=True, timeout=60)
+            rc = sh(["xcrun", "simctl", "boot", device["udid"]], log, timeout=60)
+            if rc and named_device(device["name"])["state"] not in ("Booting", "Booted"):
+                raise RuntimeError(f"Could not boot {device['name']}; see {log}")
         for udid in owned:
             sh(["xcrun", "simctl", "bootstatus", udid], log, check=True, timeout=300)
         yield
@@ -122,6 +124,12 @@ def xcode_base(scheme, platform, udid, derived, config="Debug"):
             "-destination", f"platform={platform} Simulator,id={udid}", "-configuration", config,
             "-derivedDataPath", str(derived), "-jobs", "4", "-packageAuthorizationProvider", "netrc",
             "-parallel-testing-enabled", "NO", *SIGNING]
+
+
+def require_build_headroom():
+    free = shutil.disk_usage(REPO).free / (1 << 30)
+    if free < 86:
+        raise RuntimeError(f"Only {free:.1f} GiB free; need 6 GiB build headroom above the 80 GiB floor")
 
 
 def test_states(bundle):
@@ -222,6 +230,7 @@ def export_variant(bundle, out, variant, expected, device, sha, log):
 
 def run_tests(out, phone, watch):
     started = time.monotonic()
+    require_build_headroom()
     phone_id, watch_id = phone["udid"], watch["udid"]
     sha = capture("git", "rev-parse", "HEAD")
     if capture("git", "status", "--porcelain", "-uno"):

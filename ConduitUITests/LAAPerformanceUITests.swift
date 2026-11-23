@@ -24,8 +24,8 @@ final class LAAPerformanceUITests: XCTestCase {
                                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://perf-lab.invalid",
                                "-laa-brain-local-fixture", "-laa-brain-document-fixture"]
         if chatFixture {
-            app.launchArguments += ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
-                                    "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper"]
+            app.launchArguments += ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "long120",
+                                    "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT"]
         }
         app.launchEnvironment = ["LAA_PERF_KEYCHAIN_NAMESPACE": namespace.uuidString,
                                  "LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:\(port)"]
@@ -157,12 +157,23 @@ final class LAAPerformanceUITests: XCTestCase {
     func testScrollChat() throws {
         let app = try application(chatFixture: true)
         app.launch()
-        let scroller = app.scrollViews["chat.transcript"].firstMatch
+        XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
+        let scroller = item("chat.transcript", app)
         XCTAssertTrue(scroller.waitForExistence(timeout: 20))
-        // Entry is parked at the end of the rich, multi-screen reply. Move up
-        // and back down rather than timing an inert swipe against the end.
+        let tail = scroller.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "長い会話の120件目")).firstMatch
+        XCTAssertTrue(tail.waitForExistence(timeout: 10))
+        func towardEarlier() {
+            scroller.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+                .press(forDuration: 0.05, thenDragTo: scroller.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)),
+                       withVelocity: .fast, thenHoldForDuration: 0)
+        }
+        let tailY = tail.frame.minY
+        towardEarlier()
+        XCTAssertTrue(!tail.exists || tail.frame.minY > tailY + 10, "Long Chat must actually scroll")
+        scroller.swipeUp(velocity: .fast)
         measure(metrics: [XCTOSSignpostMetric.scrollingAndDecelerationMetric], options: options) {
-            scroller.swipeDown(velocity: .fast)
+            towardEarlier()
             scroller.swipeUp(velocity: .fast)
         }
         app.terminate()
@@ -172,8 +183,12 @@ final class LAAPerformanceUITests: XCTestCase {
         let app = try application()
         app.launch()
         openSessionList(app)
-        let scroller = app.scrollViews.firstMatch
-        XCTAssertTrue(scroller.waitForExistence(timeout: 15))
+        let scroller = try XCTUnwrap(app.scrollViews.allElementsBoundByIndex.first { $0.frame.height > 400 })
+        let anchor = app.staticTexts[longID].firstMatch
+        let before = anchor.frame.minY
+        scroller.swipeUp(velocity: .fast)
+        XCTAssertTrue(!anchor.exists || anchor.frame.minY < before - 10, "Work list must actually scroll")
+        scroller.swipeDown(velocity: .fast)
         measure(metrics: [XCTOSSignpostMetric.scrollingAndDecelerationMetric], options: options) {
             scroller.swipeUp(velocity: .fast)
             scroller.swipeDown(velocity: .fast)
