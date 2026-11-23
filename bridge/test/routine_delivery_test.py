@@ -112,10 +112,13 @@ class RoutineDeliveryTests(unittest.TestCase):
         with patch('builtins.__import__', side_effect=gateway_import), \
              patch.object(module, 'store_report') as store, \
              patch.object(store_module, 'CronStore'):
-            error = module.show({'id': 'namespace-test', 'execution_id': 'run-a', 'model': 'model-test'},
+            error = module.show({'id': 'namespace-test', 'execution_id': 'run-a', 'model': 'model-test',
+                                 '_laa_routine_route': {'provider': 'laa-agy', 'model': 'gemini-4-hydrogen',
+                                                        'effort': 'high', 'reason': 'quota_monthly'}},
                                 'Gateway report', 'laa-monet')
             self.assertIsNone(error)
             store.assert_called_once()
+            self.assertEqual(store.call_args.kwargs['model'], 'laa-agy / gemini-4-hydrogen / high（枠切れ: 月間）')
         for name in list(sys.modules):
             if name == namespace or name.startswith(namespace + '.'):
                 sys.modules.pop(name, None)
@@ -125,7 +128,9 @@ class RoutineDeliveryTests(unittest.TestCase):
         state = self.root / 'watcher.json'
         state.write_text(json.dumps({'since': 0}))
         job = {'id': 'a', 'name': 'Original', 'target': {'config': {'model': 'model-a'}},
-            'runs': [{'id': 'run-a', 'status': 'succeeded', 'endedAt': '2026-11-16T00:00:00Z', 'output': 'report'}]}
+            'runs': [{'id': 'run-a', 'status': 'succeeded', 'endedAt': '2026-11-16T00:00:00Z', 'output': 'report',
+                      'modelRoute': {'provider': 'antigravity', 'model': 'gemini-4-hydrogen',
+                                     'effort': 'xhigh', 'reason': 'usage_unavailable'}}]}
         jobs.write_text(json.dumps([job]))
         with patch.object(delivery, 'show', side_effect=['push pending', None]) as show:
             self.assertEqual(len(delivery.scan_work(jobs, state)['errors']), 1)
@@ -136,6 +141,8 @@ class RoutineDeliveryTests(unittest.TestCase):
             self.assertEqual(delivery.scan_work(jobs, state)['errors'], [])
             self.assertEqual(show.call_count, 2)
             self.assertEqual(show.call_args_list[0].args[0], show.call_args_list[1].args[0])
+            self.assertEqual(show.call_args.args[0]['model'],
+                             'antigravity / gemini-4-hydrogen / xhigh（残量不明）')
 
 
 if __name__ == '__main__': unittest.main()
