@@ -38,14 +38,12 @@ final class WatchVoiceLink: ObservableObject {
     private init() {}
 
     func activate() {
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        guard !LAALabNetworkPolicy.current.isActive || Self.labContext != nil else { return }
+        #endif
         guard WCSession.isSupported() else { return }
         proxy.link = self
         WCSession.default.delegate = proxy
-        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
-        // Only the lab installation supplies this nonce and mode. The regular
-        // WatchPhoneContext encoder, sender and receiving delegate stay in use.
-        if let fixture = Self.labContext { context = fixture }
-        #endif
         WCSession.default.activate()
     }
 
@@ -73,20 +71,31 @@ final class WatchVoiceLink: ObservableObject {
     /// is up and the Watch app installed.
     func share(_ context: WatchPhoneContext) {
         #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
-        if Self.labContext != nil { return }
+        if Self.labContext != nil || LAALabNetworkPolicy.current.isActive { return }
         #endif
         self.context = context
         sendContext()
     }
 
     #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
-    private static var labContext: WatchPhoneContext? {
-        let env = ProcessInfo.processInfo.environment
-        guard let nonce = env["LAA_WATCH_LAB_CONTEXT"], UUID(uuidString: nonce) != nil,
+    /// The isolated launch uses the regular encoder and WCSession sender,
+    /// but only for an explicitly opted-in, synthetic application context.
+    static func activateLabContextSender() {
+        guard let context = labContext else { return }
+        shared.context = context
+        shared.activate()
+    }
+
+    private static let labContext: WatchPhoneContext? = {
+        let process = ProcessInfo.processInfo
+        let env = process.environment
+        guard process.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE"),
+              process.arguments.contains("-LAA_WATCH_LAB_SEND_CONTEXT"),
+              let nonce = env["LAA_WATCH_LAB_CONTEXT"], UUID(uuidString: nonce) != nil,
               let mode = env["LAA_WATCH_LAB_CALLABLE"], ["yes", "no"].contains(mode) else { return nil }
         return WatchPhoneContext(activeDashboardID: nonce,
             laaCallableProfiles: mode == "yes" ? ["laa-\(LAAStaff.allCases[0].rawValue)"] : [])
-    }
+    }()
     #endif
 
     private func sendContext() {
@@ -121,6 +130,9 @@ final class WatchVoiceLink: ObservableObject {
     }
 
     fileprivate func received(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        guard !LAALabNetworkPolicy.current.isActive else { reply?([:]); return }
+        #endif
         switch message {
         #if LAA_BUILD
         case .bridgeStartFor:
@@ -205,6 +217,9 @@ private final class PhoneWatchSessionProxy: NSObject, WCSessionDelegate {
     #if LAA_BUILD
     func session(_ session: WCSession, didReceive file: WCSessionFile) {
         defer { try? FileManager.default.removeItem(at: file.fileURL) }
+        #if DEBUG && targetEnvironment(simulator)
+        guard !LAALabNetworkPolicy.current.isActive else { return }
+        #endif
         guard let request = LAAWatchAsk.request(fromMetadata: file.metadata) else { return }
         let size = (try? file.fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let data = size > 0 && size <= LAAWatchAsk.maxAudioBytes ? (try? Data(contentsOf: file.fileURL)) ?? Data() : Data()

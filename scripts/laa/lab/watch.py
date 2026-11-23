@@ -160,9 +160,10 @@ def start_phone(udid, nonce, callable_, log):
     # other test dashboards. Neither the sender nor the Watch UI makes a call.
     command = ["xcrun", "simctl", "launch", "--terminate-running-process", udid, PHONE_APP,
                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://watch-lab.invalid",
-               "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture"]
+               "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_WATCH_LAB_SEND_CONTEXT", "-laa-brain-no-vault-fixture"]
     e = dict(env(), SIMCTL_CHILD_LAA_WATCH_LAB_CONTEXT=nonce,
              SIMCTL_CHILD_LAA_WATCH_LAB_CALLABLE="yes" if callable_ else "no",
+             SIMCTL_CHILD_LAA_LAB_KEYCHAIN_NAMESPACE=nonce,
              SIMCTL_CHILD_LAA_BRIDGE_DEFAULT_ADDRESS="http://127.0.0.1:9")
     with log.open("a") as f:
         print(f"Launch phone WCSession sender; Call={'available' if callable_ else 'hidden'}", file=f, flush=True)

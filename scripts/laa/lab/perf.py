@@ -337,13 +337,27 @@ targets:
 
 
 def clear_credentials(udid, namespace, log):
+    container = frame_container(udid)
+    if not container:
+        raise RuntimeError("Cannot verify perf Keychain cleanup: app container not found")
+    receipt = Path(container) / "Library/Caches" / f"laa-perf-cleanup-{namespace}.txt"
+    receipt.unlink(missing_ok=True)
     log_run(["xcrun", "simctl", "launch", "--terminate-running-process", udid, PHONE_APP,
              "-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture",
              "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://perf-lab.invalid"], log, timeout=30,
-            extra={"SIMCTL_CHILD_LAA_PERF_KEYCHAIN_NAMESPACE": namespace, "SIMCTL_CHILD_LAA_PERF_CLEAR_KEYCHAIN": "1",
-                   "SIMCTL_CHILD_LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:9"})
-    # The app reads and clears its own synthetic namespace after its root is mounted.
-    time.sleep(3)
+            extra={"SIMCTL_CHILD_LAA_PERF_KEYCHAIN_NAMESPACE": namespace, "SIMCTL_CHILD_LAA_LAB_KEYCHAIN_NAMESPACE": namespace,
+                   "SIMCTL_CHILD_LAA_PERF_CLEAR_KEYCHAIN": "1", "SIMCTL_CHILD_LAA_BRIDGE_DEFAULT_ADDRESS": "http://127.0.0.1:9"})
+    deadline = time.monotonic() + 10
+    while not receipt.is_file() and time.monotonic() < deadline:
+        time.sleep(.25)
+    if not receipt.is_file():
+        raise RuntimeError("Perf Keychain cleanup not acknowledged by app")
+    result = receipt.read_text().strip()
+    receipt.unlink()
+    with log.open("a") as f:
+        print(f"Perf namespaced Keychain cleanup: {result}", file=f)
+    if result not in ("deleted", "absent"):
+        raise RuntimeError(f"Perf Keychain cleanup failed: {result}")
 
 
 def frame_container(udid):
@@ -404,6 +418,7 @@ def run_locked(args):
                   f"platform=iOS Simulator,id={phone['udid']}", "-jobs", "4", "-parallel-testing-enabled", "NO"]
         shared += [f"-only-testing:{TEST_CLASS}/{name}" for name in TESTS]
         accepted = 0
+        launched = False
         with work_fixture(out) as port:
             extra = {"TEST_RUNNER_LAA_PERF_RUN": "1", "TEST_RUNNER_LAA_PERF_NAMESPACE": namespace,
                      "TEST_RUNNER_LAA_PERF_PORT": str(port)}
@@ -422,6 +437,7 @@ def run_locked(args):
                     bundle = run_out / "perf.xcresult"
                     trial = str(uuid.uuid4()).upper()
                     tick = time.monotonic()
+                    launched = True
                     rc, interference = measured_test([*shared, "-resultBundlePath", str(bundle)], run_out / "test.log", phone["udid"],
                                                       {**extra, "TEST_RUNNER_LAA_PERF_FRAME_TRIAL": trial})
                     row.update(exit=rc, after=busy_snapshot(phone["udid"]), interference=interference,
@@ -454,7 +470,8 @@ def run_locked(args):
                     if accepted >= args.runs and not needs_retry:
                         break
             finally:
-                clear_credentials(phone["udid"], namespace, out / "simulator.log")
+                if launched:
+                    clear_credentials(phone["udid"], namespace, out / "simulator.log")
     if accepted < args.runs:
         raise RuntimeError(f"Insufficient quiet runs: {accepted}/{args.runs}; see {out / 'attempts.json'}")
     result = {"schema": 2, "protocol": PROTOCOL, "sha": head, "configuration": CONFIG,
