@@ -14,6 +14,7 @@ import socket
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import uuid
@@ -252,9 +253,10 @@ def prepare_build(out, phone, head, reuse):
         require_build_headroom()
         DERIVED.mkdir(parents=True, exist_ok=True)
         stamp.unlink(missing_ok=True)
-        spec = DERIVED / "perf-project.yml"
-        spec.write_text("""include:
-  - path: ../project-laa.yml
+        # A root-relative spec preserves XcodeGen's folder reference paths.
+        with tempfile.NamedTemporaryFile(mode="w", dir=REPO, prefix=".lab-perf-", suffix=".yml") as spec:
+            spec.write("""include:
+  - path: project-laa.yml
 schemes:
   ConduitPerfLab:
     build:
@@ -269,9 +271,10 @@ schemes:
 targets:
   ConduitUITests:
     sources:REPLACE:
-      - path: ../ConduitUITests/LAAPerformanceUITests.swift
+      - path: ConduitUITests/LAAPerformanceUITests.swift
 """)
-        log_run(["xcodegen", "generate", "--spec", str(spec), "--project", str(REPO)], out / "build.log")
+            spec.flush()
+            log_run(["xcodegen", "generate", "--spec", spec.name], out / "build.log")
         cmd = xcode_base(SCHEME, "iOS", phone["udid"], DERIVED)
         log_run([*cmd, *SETTINGS, "build-for-testing"], out / "build.log", timeout=1800)
     matches = list(product.glob(f"{SCHEME}*.xctestrun"))
