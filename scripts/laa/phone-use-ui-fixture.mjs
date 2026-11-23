@@ -7,6 +7,7 @@
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createLaneFixtureServer, listenLaneFixture, reportFixturePort } from '../../bridge/src/lane/fixture.mjs';
 import { assertTestStateDir, laneEnabled, PRODUCTION_PORTS, validateLane } from '../../bridge/src/lane/guard.mjs';
 import { laneRecorder } from '../../bridge/src/lane/adapters.mjs';
@@ -58,6 +59,23 @@ const push = async ({ kind, payload }) => {
         reject(new Error(reason));
       });
     });
+  } catch (error) {
+    const requestID = payload?.aps?.attributes?.requestID;
+    // On iOS 27 foreground delivery can create the activity even though
+    // SpringBoard subsequently refuses to save the transport alert (no
+    // notification permission). Do not grant permission or treat the error
+    // alone as success: require the real client to register this activity.
+    if (kind !== 'start' || !/^pu_[a-f0-9]{16}$/.test(requestID ?? '') ||
+        !String(error.message).includes('code=2003') || !String(error.message).includes('Source is not authorized')) throw error;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if (phoneUse.status(requestID).hasActivityToken) {
+        process.stderr.write('Phone Use fixture: ActivityKit acknowledged foreground delivery despite alert persistence refusal\n');
+        return { sent: true };
+      }
+      await sleep(100);
+    }
+    throw error;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
