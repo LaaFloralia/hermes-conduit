@@ -34,7 +34,10 @@ const push = async ({ kind, payload }) => {
   if (!simulator) return { sent: true }; // recorder-only node smoke
   // simctl supports application pushes only, not the APNs liveactivity push
   // type or topic. Preserve the service's payload inside a local app push.
-  const body = { aps: { 'content-available': 1 }, laa_lab_lane: lane.id, laa_lab_phone_use: payload };
+  // iOS 27's simulator rejects content-available alone (UNError 1401).
+  // The foreground lab delegate consumes this transport alert without a banner.
+  const body = { aps: { 'content-available': 1, alert: { title: 'Lab Phone Use', body: 'Simulator fixture' } },
+    laa_lab_lane: lane.id, laa_lab_phone_use: payload };
   // Use a regular .apns file, not Node's socket-backed child stdin. Keep the
   // temporary payload out of logs and remove it even on a simctl refusal.
   const scratch = mkdtempSync(join(dir, 'local-push-'));
