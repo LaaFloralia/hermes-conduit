@@ -49,5 +49,4 @@ AGENTS.md
 *.xcresult
 
 # Lab suite runs (scripts/laa/lab)
-.deriveddata*/
 .lab-suite.lock
