@@ -80,7 +80,11 @@ final class LAALabCaptureUITests: XCTestCase {
             }
             shot("work-projects", after: project, app)
             if selected.contains("work-requirements") {
-                tap(project, app)
+                // The swipe row sits inside a context-menu host at the same
+                // identifier. Its progress line gives a point inside the row
+                // even when the host has no XCTest hit point.
+                if let row = hitTarget(project, app) { row.tap() }
+                else { tapFrame("laa.work.project.progress.proj_laa_fixture", app) }
                 shot("work-requirements", after: requirement, app)
                 back(to: "work.section.projects", app)
             }
@@ -192,8 +196,14 @@ final class LAALabCaptureUITests: XCTestCase {
 
     private func needs(_ ids: String...) -> Bool { ids.contains(where: selected.contains) }
 
-    private func element(_ id: String, _ app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", id)).firstMatch
+    private func query(_ id: String, _ app: XCUIApplication) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", id))
+    }
+
+    private func element(_ id: String, _ app: XCUIApplication) -> XCUIElement { query(id, app).firstMatch }
+
+    private func hitTarget(_ id: String, _ app: XCUIApplication) -> XCUIElement? {
+        query(id, app).allElementsBoundByIndex.first { $0.isHittable }
     }
 
     @discardableResult private func wait(_ id: String, _ app: XCUIApplication) -> XCUIElement {
@@ -203,9 +213,17 @@ final class LAALabCaptureUITests: XCTestCase {
     }
 
     private func tap(_ id: String, _ app: XCUIApplication) {
-        let item = wait(id, app)
-        XCTAssertTrue(item.isHittable, "No hit point for \(id)")
+        wait(id, app)
+        guard let item = hitTarget(id, app) else { return XCTFail("No hit point for \(id)") }
         item.tap()
+    }
+
+    private func tapFrame(_ id: String, _ app: XCUIApplication) {
+        let frame = wait(id, app).frame
+        let point = CGPoint(x: frame.midX, y: frame.midY)
+        guard !frame.isEmpty, app.frame.contains(point) else { return XCTFail("No visible row frame for \(id)") }
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: point.x - app.frame.minX, dy: point.y - app.frame.minY)).tap()
     }
 
     private func swipe(_ app: XCUIApplication, from: CGVector, to: CGVector) {
