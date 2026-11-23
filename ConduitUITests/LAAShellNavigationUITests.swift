@@ -82,6 +82,12 @@ final class LAAShellNavigationUITests: XCTestCase {
     /// simulator's pasteboard. The code is pasted into SecureField, never
     /// passed as a test argument or printed by the test.
     func testRealBridgePairingWhenExplicitlyEnabled() throws {
+        if LabUI.active {
+            let app = WorkLaneUI.launch()
+            try WorkLaneUI.pair(app)
+            WorkLaneUI.sessions(app)
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_REAL_BRIDGE_TEST"] == "1" else {
             throw XCTSkip("Live Bridge pairing requires the dedicated simulator and an operator-issued code.")
         }
@@ -107,6 +113,15 @@ final class LAAShellNavigationUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["この画面は準備中です。"].waitForExistence(timeout: 30))
     }
     func testRealBridgeRevocationWhenExplicitlyEnabled() throws {
+        if LabUI.active {
+            let app = WorkLaneUI.launch()
+            let tag = try WorkLaneUI.pair(app)
+            WorkLaneUI.sessions(app)
+            XCTAssertEqual(try WorkLaneUI.setup("revoke", ["tag": tag])["revoked"] as? Bool, true)
+            app.terminate(); app.launchInLab()
+            XCTAssertTrue(app.staticTexts["この端末の接続は失効しています。新しいコードで接続してください。"].waitForExistence(timeout: 30))
+            return
+        }
         guard ProcessInfo.processInfo.environment["LAA_REAL_BRIDGE_TEST"] == "1" else {
             throw XCTSkip("Live Bridge revocation requires the dedicated simulator.")
         }

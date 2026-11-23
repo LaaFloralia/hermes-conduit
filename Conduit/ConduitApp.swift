@@ -29,7 +29,16 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         #if DEBUG
         // No production push/Watch registration, queued answers, or OS-driven
         // sync (Calendar, mic, location, etc.) in a fixture process.
-        if LAALabNetworkPolicy.current.isActive { return true }
+        if LAALabNetworkPolicy.current.isActive {
+            #if LAA_BUILD && targetEnvironment(simulator)
+            // The local Phone Use fixture still needs the ordinary activity
+            // observers and intent handler, but never OS push registration.
+            MainActor.assumeIsolated {
+                if LAAPhoneUseService.usesSimulatedPush { LAAPhoneUseService.shared.start() }
+            }
+            #endif
+            return true
+        }
         #endif
         UNUserNotificationCenter.current().delegate = self
         // A "Hermes wants to talk" notification's Talk button (#449).

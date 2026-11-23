@@ -111,7 +111,14 @@ async function supervise(root, names) {
     const device = randomDeviceId();
     const token = randomToken();
     const store = createStore({ dir: env.LAA_BRIDGE_STATE_DIR, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
-    store.mutate((s) => { s.devices[device] = { ...newDevice({ id: device, name: 'Lab runner', scopes: [...ALL_SCOPES], platform: 'lab', now: Date.now() }), tokenHash: hashToken(token) }; });
+    const setupToken = names.includes('work') ? randomToken() : null;
+    store.mutate((s) => {
+      function register(id, name, bearer, scopes) {
+        s.devices[id] = { ...newDevice({ id, name, scopes, platform: 'lab', now: Date.now() }), tokenHash: hashToken(bearer) };
+      }
+      register(device, 'Lab runner', token, [...ALL_SCOPES]);
+      if (setupToken) register(randomDeviceId(), 'Lab Work setup', setupToken, ['sessions:read', 'sessions:write']);
+    });
     const ports = {};
     const pids = { supervisor: process.pid, work: work.pid };
     const bridge = child(join(repo, 'bridge/src/main.mjs'), ['serve'], { ...env, LAA_WORK_SOCKET: socket }, root, 'bridge', { pipe: true });
@@ -135,7 +142,8 @@ async function supervise(root, names) {
     for (const name of names) {
       const [path, expected] = fixtures.get(name);
       const args = name === 'phone-use' ? [join(root, 'phone-state')] : [];
-      const proc = child(join(repo, path), args, env, root, `fixture-${name}`, { ipc: true });
+      const fixtureEnv = name === 'work' ? { ...env, LAA_LANE_BRIDGE: at(ports.bridge), LAA_LAB_SETUP_TOKEN: setupToken } : env;
+      const proc = child(join(repo, path), args, fixtureEnv, root, `fixture-${name}`, { ipc: true });
       owned.push(proc);
       pids[`fixture-${name}`] = proc.pid;
       proc.on('message', (message) => {

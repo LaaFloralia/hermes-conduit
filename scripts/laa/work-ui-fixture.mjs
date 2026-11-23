@@ -1,5 +1,6 @@
 // Local, synthetic Work UI fixture. Never calls Linear or reads personal data.
 import { createLaneFixtureServer, listenLaneFixture } from '../../bridge/src/lane/fixture.mjs';
+import { workUIControl } from './lab/work-ui-control.mjs';
 let tasks;
 // The Bridge's run record (contract 2026-11-09). One row is running so the
 // completion is refused; the rest cover every label the list draws, plus the
@@ -584,7 +585,18 @@ const api = createLaneFixtureServer(async (req, res) => {
   res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'fixture_unavailable', message: 'Fixture unavailable', retryable: false }, requestId: 'fixture' }));
 });
 let advanced = 0;
-const control = createLaneFixtureServer((req, res) => {
+const labSetup = workUIControl();
+const control = createLaneFixtureServer(async (req, res) => {
+  if (req.url?.startsWith('/lab/')) {
+    if (!labSetup || req.method !== 'POST') return send(res, 404, {});
+    try {
+      const result = await labSetup(new URL(req.url, 'http://127.0.0.1'));
+      return send(res, result ? 200 : 404, result ?? {}, { 'cache-control': 'no-store' });
+    } catch (error) {
+      process.stderr.write(`Work UI setup failed: ${error.message}\n`);
+      return send(res, 500, {});
+    }
+  }
   if (req.url === '/reset') {
     resetGeneration += 1;
     releaseImages();

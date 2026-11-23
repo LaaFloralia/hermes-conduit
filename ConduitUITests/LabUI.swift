@@ -35,8 +35,9 @@ enum LabUI {
         return id.map { response.value(forHTTPHeaderField: "X-LAA-Lane") == $0 } ?? true
     }
 
-    static func data(_ origin: String?, _ path: String) throws -> Data {
-        let request = try request(origin, path)
+    static func data(_ origin: String?, _ path: String, method: String = "GET") throws -> Data {
+        var request = try request(origin, path)
+        request.httpMethod = method
         let done = DispatchSemaphore(value: 0)
         let result = ResultBox()
         let task = session.dataTask(with: request) { data, response, _ in
