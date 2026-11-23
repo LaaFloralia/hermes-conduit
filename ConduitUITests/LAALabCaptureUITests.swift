@@ -132,10 +132,19 @@ final class LAALabCaptureUITests: XCTestCase {
             }
             if needs("usage", "usage-capacity") {
                 tap("work.usage", app)
-                shot("usage", after: "laa.capacity.capacity.mac-mini.memory", app)
+                let updated = wait("laa.usage.updated", app)
+                // Capacity is below the initial viewport on the phone. First
+                // prove that the usage fetch finished without waiting on it.
+                let fetched = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    guard let value = updated.value as? String else { return false }
+                    return value != "未取得" && !value.isEmpty
+                }, object: updated)
+                XCTAssertEqual(XCTWaiter.wait(for: [fetched], timeout: 15), .completed)
+                shot("usage", after: "laa.usage.updated", app)
                 if selected.contains("usage-capacity") {
-                    reveal("laa.capacity", app)
-                    shot("usage-capacity", after: "laa.capacity", app)
+                    let memory = "laa.capacity.capacity.mac-mini.memory"
+                    reveal(memory, app)
+                    shot("usage-capacity", after: memory, app)
                 }
             }
         }
