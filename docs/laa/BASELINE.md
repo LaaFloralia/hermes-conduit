@@ -113,20 +113,14 @@ Tailscale Serveの実体：8443 → `/`=8081、`/auday`=8082、`/overview`=4318�
 
 ## 13. 操作性能の計測（BUS-392、2026-11-11）
 
-Release・専用「LAA 16 Pro Max」で5回ずつ採り、中央値と全サンプルを保存する。
-再計測はrepoルートの絶対パスを指定して次の1コマンド。実Bridgeは読取専用の一時端末をペアリングし、終了時にその端末だけ失効、ペーストボードを空にしてシミュレーターを停止する。既存端末やTestFlightは変更しない。
+2026-11-24から、アプリの操作性能は本番のBridge・Hermesへ接続しないローカルfixtureで測る。手順・指標・静穏の判定・比較の規則は `docs/laa/LAB.md`「Performance」、採用済みの基準は `scripts/laa/lab/perf-baseline.json`。
 
 ```sh
-LAA_PERF_PROXY_URL=https://YOUR_PROXY python3 /absolute/path/to/repo/scripts/laa/perf/run.py --output /absolute/local/work/perf-after
+python3 scripts/laa/lab/perf.py run --out /absolute/local/work/perf-after --runs 5
+python3 scripts/laa/lab/perf.py compare /absolute/local/work/perf-before/perf.json /absolute/local/work/perf-after/perf.json
 ```
 
-計測専用のUUIDでBridgeのKeychain領域を分け、最後の試験でその領域だけ消去する。通常の接続情報は変更しない。
-
-同じ外部ビルド領域を使う場合は `--build-root /absolute/build/run`。再ビルド不要の同じ成果物の計測には `--skip-build`。共有ビルド枠を必ず使い、Releaseのテスト用importには `ENABLE_TESTABILITY=YES` を指定する。UIの経過時間にはXCTestの操作・待機コストが含まれ、フレーム時間ではない。各タブは選択/マウント、Workの詳細は現時点ではタイトル表示（shell）まで。本文readyと長文スクロールはWORKのmarker追加後に別指標として採る。端末再起動・アプリ再インストールを伴うOSキャッシュ消去はせず、ここでのcoldはプロセス終了後の再起動。
-
-同じコマンドで9119直結と指定したproxy経由のstatusを前後5回ずつ読む。URLと応答本文は保存しない。
-
-出力は `build.log`、`test.log`、`results.xcresult`、`summary.json`。取得不能・権限外の項目は `unavailable` とし、0msや成功に換算しない。初回/空キャッシュと保存済みの状態、OS・Revision・Release最適化、試行数を照合して比較する。長い会話は合成120メッセージのキャッシュ読込みも5回測る。実会話の送信→表示は未承認の送信を行わず未計測とする。
+旧手順（実Bridgeへ読取専用の一時端末をペアリングして測る `scripts/laa/perf/run.py`）は廃止した。同じ名前のコマンドは上のfixture計測を呼ぶ。以下の2026-11-11の実測は旧手順の値で、新しい基準とは比較しない。UIの経過時間にはXCTestの操作・待機が含まれ、フレーム時間ではない。取得できない指標は `unavailable` とし、0msや成功に換算しない。
 
 サーバー側の読取専用計測（URL/応答本文は出力しない）:
 
