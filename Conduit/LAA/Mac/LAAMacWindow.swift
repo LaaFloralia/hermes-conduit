@@ -94,11 +94,26 @@ struct LAAMacWindowConstraints: UIViewRepresentable {
             #if DEBUG
             scheduleSnapshot()
             guard let size = LAAMacWindow.requestedFrame else { return }
-            scene.requestGeometryUpdate(.Mac(systemFrame: CGRect(origin: CGPoint(x: 80, y: 80), size: size)))
+            let tallCapture = LAALabCaptureFixture.enabled && size.height >= 1050
+            if tallCapture { autoHideDockForCapture() }
+            let y = tallCapture ? min(80, max(0, scene.screen.bounds.height - size.height)) : 80
+            scene.requestGeometryUpdate(.Mac(systemFrame: CGRect(origin: CGPoint(x: 80, y: y), size: size)))
             #endif
         }
 
         #if DEBUG
+        /// Presentation options apply only while this dev process is in
+        /// front; do not change the real Dock setting or the installed app.
+        private func autoHideDockForCapture() {
+            guard let type = NSClassFromString("NSApplication") as? NSObject.Type,
+                  let app = type.perform(NSSelectorFromString("sharedApplication"))?.takeUnretainedValue() as? NSObject else { return }
+            let selector = NSSelectorFromString("setPresentationOptions:")
+            guard let method = app.method(for: selector) else { return }
+            typealias SetPresentation = @convention(c) (AnyObject, Selector, UInt) -> Void
+            // AppKit NSApplication.PresentationOptions.autoHideDock.
+            unsafeBitCast(method, to: SetPresentation.self)(app, selector, 1)
+        }
+
         private var snapshotScheduled = false
 
         /// Once, after the geometry request and the first content have

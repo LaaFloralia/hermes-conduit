@@ -73,6 +73,7 @@ SPEC="$ROOT/project-macdev.yml"
 APP=""
 FIXTURE_PID=""
 APP_PID=""
+PREVIOUS_FRONT_PID=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -96,7 +97,7 @@ while [ $# -gt 0 ]; do
 done
 
 cleanup() {
-  [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
+  [ -z "$APP_PID" ] || stop_app
   [ -n "$FIXTURE_PID" ] && kill "$FIXTURE_PID" 2>/dev/null
   rm -f "$SPEC"
   exit "${1:-0}"
@@ -111,10 +112,18 @@ window_info() {
   if [ ! -x "$helper" ]; then
     mkdir -p "$DERIVED"
     cat > "$DERIVED/window-id.swift" <<'SWIFT'
+import AppKit
 import CoreGraphics
 import Foundation
 
-guard CommandLine.arguments.count > 1, let pid = Int32(CommandLine.arguments[1]) else { exit(1) }
+let args = Array(CommandLine.arguments.dropFirst())
+if args == ["--frontmost"] {
+    print(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)
+    exit(0)
+}
+if args.count == 2, args[0] == "--activate", let pid = Int32(args[1]),
+   let app = NSRunningApplication(processIdentifier: pid), app.activate() { exit(0) }
+guard let first = args.first, let pid = Int32(first) else { exit(1) }
 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                          kCGNullWindowID) as? [[String: Any]] ?? []
 for window in windows {
@@ -133,7 +142,7 @@ SWIFT
     DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
       xcrun swiftc -O -o "$helper" "$DERIVED/window-id.swift" >/dev/null 2>&1 || return 1
   fi
-  "$helper" "$1"
+  "$helper" "$@"
 }
 
 # The dev spec: same project, another identity, no entitlements the machine
@@ -204,6 +213,11 @@ launch() {
 
 stop_app() {
   [ -n "$APP_PID" ] || return 0
+  local restore=""
+  if [ -n "$PREVIOUS_FRONT_PID" ] && [ "$(window_info --frontmost)" = "$APP_PID" ]; then
+    restore=$PREVIOUS_FRONT_PID
+  fi
+  PREVIOUS_FRONT_PID=""
   kill "$APP_PID" 2>/dev/null
   for _ in $(seq 1 40); do
     kill -0 "$APP_PID" 2>/dev/null || break
@@ -211,6 +225,9 @@ stop_app() {
   done
   kill -9 "$APP_PID" 2>/dev/null
   APP_PID=""
+  if [ -n "$restore" ] && [ "$(window_info --frontmost)" != "$restore" ]; then
+    window_info --activate "$restore" >/dev/null 2>&1 || true
+  fi
   sleep 1
 }
 
@@ -238,11 +255,23 @@ for section in "${section_list[@]}"; do
     for size in "${size_list[@]}"; do
       file="$OUT/$OWNER/$section-${size}-$scheme.png"
       rm -f "$file"
-      launch "$section" "$scheme" "$size" "$file"
-      # Wait for the window, then for it to take the requested size: the
-      # geometry request lands a moment after the window appears.
       want_w=${size%x*}
       want_h=${size#*x}
+      tall=0
+      if [ -n "$LAB_FIXTURE_MODE" ] && [ "$want_h" -ge 1050 ]; then
+        tall=1
+        PREVIOUS_FRONT_PID=$(window_info --frontmost)
+      fi
+      launch "$section" "$scheme" "$size" "$file"
+      if [ "$tall" = 1 ]; then
+        # The AppKit presentation option only applies to the foreground app.
+        # Activate the exact process we launched, then restore focus on exit.
+        for _ in $(seq 1 20); do
+          window_info --activate "$APP_PID" >/dev/null 2>&1 && break
+          sleep 0.1
+        done
+      fi
+      # Wait for the window and the requested geometry after it appears.
       id=""
       for _ in $(seq 1 120); do
         info=$(window_info "$APP_PID")
