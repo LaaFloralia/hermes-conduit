@@ -16,19 +16,10 @@ enum LAAStaff: String, CaseIterable {
     /// then the groups.
     enum Placement: String, CaseIterable {
         case monet, employee, contractor
-
-        /// A group the Bridge or Hermes names (`group` on a roster row).
-        init?(reported: String?) {
-            switch reported?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            case "monet", "secretary": self = .monet
-            case "employee", "employees", "staff", "社員": self = .employee
-            case "contractor", "contractors", "dispatch", "dispatched", "派遣社員": self = .contractor
-            default: return nil
-            }
-        }
     }
 
-    /// The fixed placement. A group reported by the host wins (`placement(reported:)`).
+    /// Fixed here: Hermes' `/api/profiles` carries no group, and the list
+    /// does not pass through the Bridge.
     var placement: Placement {
         switch self {
         case .monet, .monetUncensored: return .monet
@@ -36,9 +27,6 @@ enum LAAStaff: String, CaseIterable {
         case .argus, .cfo, .cio, .cos, .cso, .cto: return .employee
         }
     }
-
-    /// The host's placement when it names one, else the fixed one.
-    func placement(reported: String?) -> Placement { Placement(reported: reported) ?? placement }
 
     /// The people of one group, in the list's order.
     static func members(of placement: Placement) -> [LAAStaff] { allCases.filter { $0.placement == placement } }

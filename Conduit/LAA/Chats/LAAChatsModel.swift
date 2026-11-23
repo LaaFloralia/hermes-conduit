@@ -8,13 +8,11 @@ struct LAAChatsPerson: Identifiable, Equatable {
     let available: Bool
     var lastMessage: String? = nil
     var lastMessageAt: Date? = nil
-    /// The group the host reported for this person, if any (LAAStaff.Placement).
-    var reportedGroup: String? = nil
     var id: String { profile }
 
     var staff: LAAStaff? { LAAStaff(profile: profile) }
     /// Where the list puts this person; nil for a profile LAA does not know.
-    var placement: LAAStaff.Placement? { staff?.placement(reported: reportedGroup) }
+    var placement: LAAStaff.Placement? { staff?.placement }
 }
 
 /// The Chat list's sections, in order: Monet (with its uncensored variant),

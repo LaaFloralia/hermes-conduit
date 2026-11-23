@@ -6,9 +6,8 @@ import XCTest
 /// then the contractors (派遣社員: Muse and Monet（Dots）), then the groups;
 /// and a new Session always goes into a project.
 final class LAAStaffPlacementTests: XCTestCase {
-    private func person(_ staff: LAAStaff, available: Bool = true, group: String? = nil) -> LAAChatsPerson {
-        LAAChatsPerson(profile: "laa-\(staff.rawValue)", name: staff.name, role: staff.role, available: available,
-                       reportedGroup: group)
+    private func person(_ staff: LAAStaff, available: Bool = true) -> LAAChatsPerson {
+        LAAChatsPerson(profile: "laa-\(staff.rawValue)", name: staff.name, role: staff.role, available: available)
     }
 
     func testEveryPersonHasOnePlaceInTheListsOrder() {
@@ -25,16 +24,14 @@ final class LAAStaffPlacementTests: XCTestCase {
         XCTAssertEqual(LAAChatsPlacement.people(people, in: .contractor).map(\.staff), [.monetDots, .soap])
     }
 
-    /// A group the host reports wins over the fixed one; an unknown word does not.
-    func testAReportedGroupWins() {
-        XCTAssertEqual(LAAStaff.soap.placement(reported: "employee"), .employee)
-        XCTAssertEqual(LAAStaff.cto.placement(reported: "contractor"), .contractor)
-        XCTAssertEqual(LAAStaff.cto.placement(reported: "派遣社員"), .contractor)
-        XCTAssertEqual(LAAStaff.cto.placement(reported: "board"), .employee)
-        XCTAssertEqual(LAAStaff.cto.placement(reported: nil), .employee)
-        let people = [person(.monet), person(.cto, group: "contractor"), person(.soap)]
-        XCTAssertEqual(LAAChatsPlacement.people(people, in: .contractor).map(\.staff), [.cto, .soap])
-        XCTAssertTrue(LAAChatsPlacement.people(people, in: .employee).isEmpty)
+    /// The profile IDs decide the place (Hermes names no group), so Muse
+    /// reads as a contractor even when Hermes lists laa-soap without a name.
+    func testTheProfileIDDecidesThePlace() {
+        XCTAssertEqual(LAAStaff(profile: "laa-monet")?.placement, .monet)
+        XCTAssertEqual(LAAStaff(profile: "laa-soap")?.placement, .contractor)
+        XCTAssertEqual(LAAStaff(profile: "laa-monet-dots")?.placement, .contractor)
+        let unnamed = LAAChatsPerson(profile: "laa-soap", name: "", role: "", available: true)
+        XCTAssertEqual(unnamed.placement, .contractor)
     }
 
     /// The new group's member choice shows the same sections, Monet's
