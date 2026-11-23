@@ -73,10 +73,10 @@ def now():
 
 
 @contextmanager
-def boot_devices(devices, log):
+def boot_devices(devices, log, *, shutdown_wait=25):
     owned = []
     try:
-        deadline = time.monotonic() + 25
+        deadline = time.monotonic() + shutdown_wait
         while True:
             inventory = {d["udid"]: d["state"] for group in simulator_inventory().values() for d in group}
             busy = {d["name"]: inventory[d["udid"]] for d in devices if inventory[d["udid"]] != "Shutdown"}
@@ -84,10 +84,11 @@ def boot_devices(devices, log):
                 print(f"{now()} preflight: {busy or 'all requested simulators Shutdown'}", file=f)
             if not busy:
                 break
-            if time.monotonic() >= deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise RuntimeError(f"Simulator still busy {busy}; refusing to take over (see {log})")
             # A preceding slot may have requested an asynchronous shutdown.
-            time.sleep(3)
+            time.sleep(min(3, remaining))
         for device in devices:
             owned.append(device["udid"])
             rc = sh(["xcrun", "simctl", "boot", device["udid"]], log, timeout=60)

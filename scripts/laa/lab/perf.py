@@ -346,7 +346,7 @@ def run_locked(args):
         raise RuntimeError("Commit source changes first so the recorded build SHA is exact")
     phone = named_device(PHONE_NAME)
     attempts = []
-    with boot_devices((phone,), out / "simulator.log"):
+    with boot_devices((phone,), out / "simulator.log", shutdown_wait=30):
         spec, build = prepare_build(out, phone, head, args.reuse_build)
         runtime = next(row for row in json.loads(capture("xcrun", "simctl", "list", "runtimes", "--json"))["runtimes"]
                        if row["identifier"] == phone["runtime"])
@@ -441,8 +441,12 @@ def main():
     args.out = args.out.resolve()
     if os.environ.get("LAA_BUILD_SLOT_HELD") != "1":
         args.out.mkdir(parents=True, exist_ok=True)
-        return subprocess.run(["/bin/bash", SLOT, sys.executable, str(Path(__file__).resolve()), "run",
-                               "--out", str(args.out), "--runs", str(args.runs)] + (["--reuse-build"] if args.reuse_build else []),
+        # This wrapper starts only after lock_run hands over the slot. Log
+        # local time before starting Python so it can be matched to the watcher.
+        stamp = 'printf "PERF slot acquired: %s\\n" "$(/bin/date +%Y-%m-%dT%H:%M:%S%z)"; exec "$@"'
+        return subprocess.run(["/bin/bash", SLOT, "/bin/bash", "-c", stamp, "perf-slot",
+                               sys.executable, str(Path(__file__).resolve()), "run", "--out", str(args.out),
+                               "--runs", str(args.runs)] + (["--reuse-build"] if args.reuse_build else []),
                               cwd=REPO, env=lab_env()).returncode
     if (args.out / "attempts.json").exists() or (args.out / "perf.json").exists():
         raise RuntimeError("Choose a new output directory; prior measurements are evidence")
