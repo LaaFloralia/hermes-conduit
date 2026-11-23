@@ -73,6 +73,7 @@ SPEC="$ROOT/project-macdev.yml"
 APP=""
 FIXTURE_PID=""
 APP_PID=""
+APP_LOG=""
 PREVIOUS_FRONT_PID=""
 
 while [ $# -gt 0 ]; do
@@ -206,8 +207,12 @@ launch() {
   # build has no sandbox, so the fixtures' file reads would otherwise reach the
   # real Documents folder and wait on the system's permission prompt.
   mkdir -p "$DERIVED/home"
+  APP_LOG="$DERIVED/app.log"
+  if [ -n "$LAB_FIXTURE_MODE" ]; then
+    APP_LOG=$(mktemp "$DERIVED/lab-app.XXXXXX") || return 1
+  fi
   CFFIXED_USER_HOME="$DERIVED/home" \
-    "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$DERIVED/app.log" 2>&1 &
+    "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$APP_LOG" 2>&1 &
   APP_PID=$!
 }
 
@@ -225,6 +230,7 @@ stop_app() {
   done
   kill -9 "$APP_PID" 2>/dev/null
   APP_PID=""
+  if [ -n "$LAB_FIXTURE_MODE" ]; then rm -f "$APP_LOG"; fi
   if [ -n "$restore" ] && [ "$(window_info --frontmost)" != "$restore" ]; then
     window_info --activate "$restore" >/dev/null 2>&1 || true
   fi
@@ -262,7 +268,7 @@ for section in "${section_list[@]}"; do
         tall=1
         PREVIOUS_FRONT_PID=$(window_info --frontmost)
       fi
-      launch "$section" "$scheme" "$size" "$file"
+      launch "$section" "$scheme" "$size" "$file" || exit 1
       if [ "$tall" = 1 ]; then
         # The AppKit presentation option only applies to the foreground app.
         # Activate the exact process we launched, then restore focus on exit.
@@ -276,10 +282,13 @@ for section in "${section_list[@]}"; do
       polls=120
       [ "$tall" != 1 ] || polls=24
       id=""
+      last_window="not visible"
       for _ in $(seq 1 "$polls"); do
+        kill -0 "$APP_PID" 2>/dev/null || break
         info=$(window_info "$APP_PID")
         if [ -n "$info" ]; then
           read -r wid ww wh <<< "$info"
+          last_window="${ww}x${wh}"
           # The geometry request sets the content size, so the window frame is
           # that plus the title bar. Anything in that range is the window asked
           # for, at the requested content size.
@@ -291,7 +300,7 @@ for section in "${section_list[@]}"; do
         sleep 0.5
       done
       if [ -z "$id" ]; then
-        echo "no ${want_w}x${want_h} window for $section $scheme" >&2
+        echo "no ${want_w}x${want_h} window for $section $scheme (last WindowServer size: $last_window)" >&2
         stop_app
         continue
       fi
@@ -302,8 +311,15 @@ for section in "${section_list[@]}"; do
         # Fixture data may arrive just after the window's geometry settles.
         [ "$SETTLE" = 0 ] || sleep "$SETTLE"
         if [ -n "$LAB_FIXTURE_MODE" ]; then
-          observed=$(grep '^LAA_LAB_WINDOW_TRAITS ' "$DERIVED/app.log" | tail -1)
-          if [ "$observed" != "LAA_LAB_WINDOW_TRAITS $scheme $LAB_FIXTURE_MODE" ]; then
+          expected_traits="LAA_LAB_WINDOW_TRAITS $scheme $LAB_FIXTURE_MODE"
+          observed=""
+          for _ in $(seq 1 25); do
+            observed=$(grep '^LAA_LAB_WINDOW_TRAITS ' "$APP_LOG" | tail -1)
+            [ "$observed" != "$expected_traits" ] || break
+            kill -0 "$APP_PID" 2>/dev/null || break
+            sleep 0.2
+          done
+          if [ "$observed" != "$expected_traits" ]; then
             echo "wrong Mac appearance/fixture for $section $size: $observed" >&2
             stop_app
             continue
