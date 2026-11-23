@@ -29,7 +29,7 @@ export function routineState(job, reading) {
   if (reading.enabled === false || reading.schedulerState === 'paused' || job.expected === 'stopped' ||
       (reading.source === 'launchd' && reading.loaded === false)) return 'paused';
   if (['read_unavailable', 'schedule_overdue', 'launchd_failed'].includes(reading.reasonCode)) return 'error';
-  if (reading.schedulerResult === 'error' || ['failed', 'partial'].includes(reading.businessStatus)) return 'error';
+  if (reading.schedulerResult === 'error' || ['failed', 'partial', 'needs_attention'].includes(reading.businessStatus)) return 'error';
   if (reading.enabled === true) return 'scheduled';
   return 'unknown';
 }

@@ -67,6 +67,7 @@ test('routine states use current scheduler and business observations with explic
   assert.equal(routineState({}, { source: 'launchd', loaded: true, running: false, reasonCode: 'launchd_failed' }), 'error');
   assert.equal(routineState({}, { enabled: true, schedulerResult: 'error' }), 'error');
   assert.equal(routineState({}, { enabled: true, businessStatus: 'partial' }), 'error');
+  assert.equal(routineState({}, { enabled: true, schedulerResult: 'success', businessStatus: 'needs_attention' }), 'error');
   assert.equal(routineState({}, { enabled: true, businessStatus: 'failed' }), 'error');
   assert.equal(routineState({}, { enabled: true, result: 'timeout', schedulerResult: 'success', businessStatus: 'success' }), 'scheduled');
   assert.equal(routineState({}, {}), 'unknown');
