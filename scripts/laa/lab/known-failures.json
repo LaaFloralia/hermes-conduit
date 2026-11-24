@@ -1,5 +1,90 @@
 {
- "integration": {},
+ "integration": {
+  "ConduitUITests/LAABridgeRealUITests/testPairAndVerify": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "Opt-in to the production Bridge (LAA_UI_TEST_REAL_BRIDGE), which an automated run never sets (PROJECT-RULES). The same pairing and revocation run against a lab lane in LAAShellNavigationUITests."
+  },
+  "ConduitUITests/LAABridgeRealUITests/testRevocation": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "Opt-in to the production Bridge (LAA_UI_TEST_REAL_BRIDGE), which an automated run never sets (PROJECT-RULES). The same pairing and revocation run against a lab lane in LAAShellNavigationUITests."
+  },
+  "ConduitUITests/LAAFullTaskUITests/testDarkTaskAndInbox": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "The tests skip without LAA_TASK_UI_ADDRESS and two per-style codes from the dedicated local personal-task fixture. This is synthetic Linear, not the forbidden production Bridge opt-in (ui-3.log; bridge/docs/personal-tasks.md). A's launchInLab conversion does not yet supply this server or the three values."
+  },
+  "ConduitUITests/LAAFullTaskUITests/testLightTaskAndInbox": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "The tests skip without LAA_TASK_UI_ADDRESS and two per-style codes from the dedicated local personal-task fixture. This is synthetic Linear, not the forbidden production Bridge opt-in (ui-3.log; bridge/docs/personal-tasks.md). A's launchInLab conversion does not yet supply this server or the three values."
+  },
+  "ConduitUITests/LAAWorkDesktopUITests/testTaskListSelectsIntoDetailColumn": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "Needs the Mac Catalyst destination; the suites run on the iPhone simulator. The Mac window is covered by the real-window capture lane (docs/laa/LAB.md), not by a behavior test yet."
+  },
+  "ConduitUITests/LAAWorkDesktopUITests/testTodayEventSelectsIntoDetailColumn": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "Needs the Mac Catalyst destination; the suites run on the iPhone simulator. The Mac window is covered by the real-window capture lane (docs/laa/LAB.md), not by a behavior test yet."
+  },
+  "ConduitUITests/LAAWorkUITests/testCaptureSessionsAndProjectsDesign": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "The design capture requires a pinned session, a named project and its named file, none of which are part of the generic Echo seed (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testEmptyAndWaitingDecisionSessionsOpenInPlace": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "Echo creates an immediate reply and never waits for a decision, unlike the dedicated Work Session fixture's empty and waiting modes (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testLiveBridgeFailureIsVisible": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "Needs upstream 503/offline injection after enrollment; the ordinary lab lane does not interrupt its shared Bridge (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testLiveScratchHistoryRecovery": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "The case requires cursor-gap/expiry/resync injection, not supported by the Work/Echo lane (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testLiveScratchResume": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "The current product does not offer resuming stopped sessions; legacy trigger is not a supported acceptance path (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testLiveScratchStop": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "The legacy test expects Stop in review; product now offers Interrupt only during an active turn (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testLiveScratchStopSuccessor": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "Requires a successor made through retired Resume and Stop-in-review actions (lane/r3/skip-audit.md)."
+  },
+  "ConduitUITests/LAAWorkUITests/testSessionOpensAtTheComposerAndStopsFollowingWhileReadingHistory": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "environment",
+   "reason": "Requires long controlled history and a timed new arrival, which the dedicated Work Session fixture provides but the generic Echo lane does not (lane/r3/skip-audit.md)."
+  }
+ },
  "smoke": {},
- "upstream-unit": {}
+ "upstream": {}
 }

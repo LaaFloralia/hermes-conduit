@@ -1,14 +1,25 @@
 {
   "integration": {
-    "about": "The LAA build (project-laa.yml): every unit class and every UI class, against the synthetic fixtures.",
+    "about": "The LAA build (project-laa.yml): every unit class and every UI class, in a private lab lane (real Bridge, isolated Work engine, synthetic fixtures).",
     "spec": "project-laa.yml",
     "unit": "all",
     "ui": "all",
     "ui_batch": 6,
     "exclude_classes": {
-      "LAALabCaptureUITests": "Capture tool, not a behavior test: it runs only from scripts/laa/lab/capture.py, which supplies its own fixtures and environment. Its pass/fail is capture.py's exit code."
+      "LAALabCaptureUITests": "Capture tool, not a behavior test: it runs only from scripts/laa/lab/capture.py, which supplies its own fixtures and environment. Its pass/fail is capture.py's exit code.",
+      "LAAPerformanceUITests": "Measurement tool, not a behavior test: it runs only from scripts/laa/lab/perf.py, which supplies its own fixture, quiet-machine rule and baseline comparison.",
+      "ConnectionRepairUITests": "Upstream-only entry point: the LAA build replaces this screen with its own shell, so the class cannot reach it. It runs where it applies, in the default build (upstream suite).",
+      "ConnectionSetupSettingsUITests": "Upstream-only entry point: the LAA build replaces this screen with its own shell, so the class cannot reach it. It runs where it applies, in the default build (upstream suite).",
+      "ProfilePickerUITests": "Upstream-only entry point: the LAA build replaces this screen with its own shell, so the class cannot reach it. It runs where it applies, in the default build (smoke and upstream suite)."
     },
-    "fixtures": ["work", "paseo", "studio", "habits", "usage", "phone-use"]
+    "fixtures": [
+      "work",
+      "paseo",
+      "studio",
+      "habits",
+      "usage",
+      "phone-use"
+    ]
   },
   "smoke": {
     "about": "The default Conduit build (project.yml): the merge gate's selection from scripts/smoke-suite.json.",
@@ -19,12 +30,17 @@
     "fixtures": {},
     "derived": ".deriveddata-lab-default"
   },
-  "upstream-unit": {
-    "about": "The default Conduit build (project.yml): every unit class. It proves that a test listed as not-applicable in the LAA build (it asserts upstream copy the LAA brand layer replaces) still passes where it applies.",
+  "upstream": {
+    "about": "The default Conduit build (project.yml): every unit class and the upstream-only UI classes. It proves that a test listed as not-applicable in the LAA build (upstream copy the LAA brand layer replaces, upstream screens the LAA shell replaces) still passes where it applies.",
     "spec": "project.yml",
     "derived": ".deriveddata-lab-default",
     "unit": "all",
-    "ui": [],
-    "fixtures": {}
+    "ui": [
+      "ConnectionRepairUITests",
+      "ConnectionSetupSettingsUITests",
+      "ProfilePickerUITests"
+    ],
+    "fixtures": {},
+    "ui_batch": 6
   }
 }
