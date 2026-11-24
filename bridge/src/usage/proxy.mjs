@@ -25,6 +25,8 @@ import {
 
 export const USAGE_FEED_VERSION = 1;
 const GOOGLE_AI_PRO = Object.freeze({ id: 'google-ai-pro', name: 'Google AI Pro' });
+const FABLE_ID = 'claude-weekly-scoped-fable';
+const WEEKLY_MINUTES = 10080;
 // Automatic readings: CodexBar's (no source, `live`, `local`, `codexbar-cli`) and the
 // Antigravity pool's own `/usage` reading (`agy-usage`, usage-meters).
 const AUTO_SOURCES = Object.freeze(['live', 'local', 'codexbar-cli', 'agy-usage']);
@@ -154,7 +156,7 @@ export async function readUsageFeed({
 }
 
 function normalizeWindows(row) {
-  // Do not discard a bad/extra window: it may be the limiting quota.
+  // Do not discard a bad ordinary window: it may be the limiting quota.
   for (const key of ['windows', 'extraWindows']) {
     if (row[key] !== undefined && (!Array.isArray(row[key]) || row[key].length > MAX_WINDOWS)) return null;
   }
@@ -162,6 +164,8 @@ function normalizeWindows(row) {
   const windows = [];
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    // Also keep explicitly scoped entries from older feeds out of the ordinary quota.
+    if (row.id === 'claude' && (entry.id === FABLE_ID || entry.scoped === true || entry.scope === 'model')) continue;
     const remaining = finiteNumber(entry.remaining, { max: 100 });
     if (remaining === null) return null;
     const window = {
@@ -175,6 +179,15 @@ function normalizeWindows(row) {
       && old.resetsAt === window.resetsAt && old.windowMinutes === window.windowMinutes)) windows.push(window);
   }
   return windows;
+}
+
+function normalizeFableWeekly(entry, now) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+      || entry.id !== FABLE_ID || entry.windowMinutes !== WEEKLY_MINUTES) return null;
+  const remainingPercent = finiteNumber(entry.remaining, { max: 100 });
+  const resetsAt = isoTime(entry.resetsAt);
+  if (remainingPercent === null || resetsAt === null || Date.parse(resetsAt) <= now) return null;
+  return { id: FABLE_ID, label: 'Fable', windowMinutes: WEEKLY_MINUTES, remainingPercent, resetsAt };
 }
 
 function normalizeComponents(row) {
@@ -237,6 +250,10 @@ function quotaItem(row, provider, context) {
   ));
   const expired = binding.resetsAt !== null && Date.parse(binding.resetsAt) <= context.now;
   const detail = { windows };
+  if (provider.id === 'claude') {
+    const fableWeekly = normalizeFableWeekly(row.fableWeekly, context.now);
+    if (fableWeekly !== null) detail.fableWeekly = fableWeekly;
+  }
   if (row.source === 'verified') detail.sourceKind = 'verified';
   const extraCredits = finiteNumber(row.credits?.remaining);
   const creditsTime = isoTime(row.credits?.updatedAt);
