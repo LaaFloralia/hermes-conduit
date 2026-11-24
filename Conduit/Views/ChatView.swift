@@ -255,6 +255,38 @@ struct ChatView: View {
     /// The minimised call bar and the composer, below the transcript.
     @ViewBuilder
     private var bottomBar: some View {
+#if LAA_BUILD
+        // The working pill and the jump button float above the composer, in
+        // its glass group (LAAWorkingCluster).
+        LAAChatWorkingBar(chrome: scrollEngine.chrome, status: laaWorkingStatus,
+                          jump: { requestLatest(animated: true) }, open: openLAAWorkingChild) {
+            bottomBarStack
+        }
+        .sheet(item: $laaOpenedAgent) { agent in
+            LAADelegateAgentTail(agent: agent).environmentObject(appState)
+        }
+#else
+        bottomBarStack
+#endif
+    }
+
+#if LAA_BUILD
+    /// The pill while a turn runs: its word, the turn's stable start, and
+    /// the delegate agents Hermes reports for this conversation.
+    private var laaWorkingStatus: LAAWorkingStatus? {
+        LAAChatWorking.status(isBusy: appState.isBusy, startedAt: turnStartedAt,
+                              toolRunning: runningToolName != nil || runningToolTitle != nil,
+                              agents: appState.delegateAgents)
+    }
+
+    /// A child opens its live output in the app.
+    private func openLAAWorkingChild(_ child: LAAWorkingChild) {
+        guard child.resolvable, let agent = appState.delegateAgents.first(where: { $0.id == child.id }) else { return }
+        laaOpenedAgent = agent
+    }
+#endif
+
+    private var bottomBarStack: some View {
         VStack(spacing: 0) {
             // A live call swiped down keeps running; its bar sits here
             // (in V2, not while someone types in the composer).
@@ -275,6 +307,16 @@ struct ChatView: View {
         viewportInputs.renderedScrollScope
     }
 
+    /// The transcript's last row. In LAA it keeps the working pill's room
+    /// free while a turn runs, so the pill never covers the latest line.
+    private var laaBottomRoom: CGFloat {
+#if LAA_BUILD
+        appState.isBusy ? LAAWorkingControlMetrics.coverage : 1
+#else
+        1
+#endif
+    }
+
     /// Test-only seam for the dormancy fixtures (PR #201 review): ChatView
     /// re-writes `\.chatTextSize` at its own root from the shared
     /// @AppStorage preference — an environment write no OUTER harness pin
@@ -283,6 +325,11 @@ struct ChatView: View {
     /// leak into (or churn) a measured fixture. Production never sets it
     /// (nil) and the preference decides exactly as before.
     var chatTextSizeOverride: ChatTextSize? = nil
+
+#if LAA_BUILD
+    /// The delegate agent whose live output is open, from the working pill.
+    @State private var laaOpenedAgent: DelegateAgentActivity?
+#endif
 
     /// The chat-only text-size preference (issue #85). Local, device-only
     /// @AppStorage like ComposerReturnKey — never synced to Hermes or the
@@ -546,7 +593,7 @@ struct ChatView: View {
                 // empty space over the composer. OfflineChatTranscriptView
                 // ends with the same row.
                 Color.clear
-                    .frame(height: 1)
+                    .frame(height: laaBottomRoom)
                     .id(bottomAnchor)
             }
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
@@ -1081,7 +1128,7 @@ private struct ChatJumpControls: View {
             Color.clear.frame(width: 0, height: 0)
             // Both actions share this overlay slot; the offscreen pending
             // question takes priority, and latest reappears when it is visible.
-            if inputs.showsJumpToLatest || hasPendingClarify {
+            if showsLatest(inputs) || hasPendingClarify {
                 Button {
                     ChatViewportTrace.shared.log(
                         hasPendingClarify
@@ -1130,6 +1177,16 @@ private struct ChatJumpControls: View {
             }
         }
         .onChange(of: inputs.isFollowingLatest) { _, _ in followingChanged() }
+    }
+
+    /// LAA: the jump to the latest message floats beside the working pill,
+    /// above the composer (LAAChatWorkingBar); this slot keeps the question.
+    private func showsLatest(_ inputs: ChatScrollChromeInputs) -> Bool {
+#if LAA_BUILD
+        false
+#else
+        inputs.showsJumpToLatest
+#endif
     }
 }
 

@@ -405,6 +405,23 @@ private struct DelegateAgentCard: View {
     }
 }
 
+#if LAA_BUILD
+/// LAA: one delegate agent's live output, opened from the working pill or
+/// its card in the transcript.
+struct LAADelegateAgentTail: View {
+    @EnvironmentObject private var appState: AppState
+    let agent: DelegateAgentActivity
+
+    var body: some View {
+        DelegateAgentTailSheet(
+            title: agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal,
+            isRunning: { appState.delegateAgents.first(where: { $0.id == agent.id && $0.sessionId == agent.sessionId })?.status.isActive ?? false },
+            load: { await appState.tailDelegateAgent(agent) }
+        )
+    }
+}
+#endif
+
 /// The end of one delegate agent's live transcript, read again every two
 /// seconds while the agent runs (#820).
 private struct DelegateAgentTailSheet: View {

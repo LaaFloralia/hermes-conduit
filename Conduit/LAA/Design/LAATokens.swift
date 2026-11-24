@@ -25,6 +25,10 @@ enum LAAColor {
     static let filledControl = filledButton
     static let filledControlText = filledButtonText
     static let attention = adaptive(light: 0x6C244C, dark: LAAColorValues.attentionDark)
+    /// `color.semantic.caution` / `.critical` (provisional v2.1 delta): a
+    /// child that needs the owner, and one that failed.
+    static let caution = adaptive(light: 0x8A5A0B, dark: 0xE2B45C)
+    static let critical = adaptive(light: 0xA23B2A, dark: 0xEE8E7C)
     static let end = Color.red
     static let decorativeTan = adaptive(light: 0xB99B7A, dark: 0xB99B7A)
     /// The brand ivory in both appearances: the paper disc under Claude's Spark.
