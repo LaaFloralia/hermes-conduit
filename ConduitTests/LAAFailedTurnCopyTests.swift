@@ -2,43 +2,40 @@
 import XCTest
 @testable import Conduit
 
-/// Hermes' fixed notice for a turn that failed before any reply is shown to
-/// the owner in Japanese, live and from the saved transcript (owner's
-/// Merlin chat, 2026-11-15). A reply that merely quotes it stays as written.
+/// R2 intentionally stopped inferring failures from English assistant text.
 @MainActor
 final class LAAFailedTurnCopyTests: XCTestCase {
-    private func rows(_ json: String) -> [AnyCodable] {
-        let data = json.data(using: .utf8)!
-        let array = try! JSONSerialization.jsonObject(with: data) as! [Any]
-        return array.map { AnyCodable.from($0) }
-    }
-
-    func testSavedFailedTurnRowReadsInJapanese() {
-        let messages = MessageNormalizer.normalizeMessages(rows(#"""
-        [
-          {"role": "user", "text": "あなたは？"},
-          {"role": "assistant", "text": "Your request was not processed. Send it again if you still want me to carry it out.", "display_kind": "failed_turn"},
-          {"role": "assistant", "text": "This turn did not complete. Some actions may already have run; verify their effects before resending."},
-          {"role": "assistant", "text": "He wrote: Your request was not processed. Send it again if you still want me to carry it out."}
+    func testSavedFailedTurnUsesDisplayMetadataOnly() {
+        let prose = "This turn did not complete. Some actions may already have run; verify their effects before resending."
+        let rows: [[String: Any]] = [
+            ["role": "assistant", "text": prose, "display_kind": "failed_turn", "failure_class": "model_unavailable"],
+            // Hermes types every boundary row it writes; one without a class still reads in Japanese.
+            ["role": "assistant", "text": prose, "display_kind": "failed_turn"],
+            ["role": "assistant", "text": prose]
         ]
-        """#))
-        XCTAssertEqual(messages.map(\.content), [
-            "あなたは？",
-            LAAFailedTurnCopy.failedJapanese,
-            LAAFailedTurnCopy.partialJapanese,
-            "He wrote: Your request was not processed. Send it again if you still want me to carry it out.",
-        ])
+        XCTAssertEqual(MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from)).map(\.content),
+                       [ChatRuntimeFailure(.modelUnavailable).localizedDescription,
+                        ChatRuntimeFailure(.internal).localizedDescription, prose])
     }
 
-    func testLiveFailedTurnCompletionReadsInJapanese() throws {
-        let frame: [String: Any] = ["type": "message.complete", "session_id": "s",
-            "payload": ["text": "Your request was not processed. Send it again if you still want me to carry it out."]]
-        let event = try XCTUnwrap(StreamEventParser.parse(params: AnyCodable.from(frame)))
-        guard case .messageComplete(_, _, let content, _, _) = event else { return XCTFail("not a completion") }
-        XCTAssertEqual(content, LAAFailedTurnCopy.failedJapanese)
-        let reply: [String: Any] = ["type": "message.complete", "session_id": "s", "payload": ["text": "解。COSのMerlinです。"]]
-        guard case .messageComplete(_, _, let kept, _, _)? = StreamEventParser.parse(params: AnyCodable.from(reply)) else { return XCTFail() }
-        XCTAssertEqual(kept, "解。COSのMerlinです。")
+    func testLiveFailureUsesStatusAndCodeInsteadOfText() {
+        let prose = "Your request was not processed. Send it again if you still want me to carry it out."
+        func parse(_ payload: [String: Any]) -> StreamEvent? {
+            StreamEventParser.parse(params: AnyCodable.from(["type": "message.complete", "session_id": "fixture", "payload": payload]))
+        }
+        guard case .messageError(_, let message) = parse(["status": "failed", "failure_class": "tool_failed", "text": prose]) else {
+            return XCTFail("Expected the structured failure")
+        }
+        XCTAssertEqual(message, ChatRuntimeFailure(.toolFailed).localizedDescription)
+        // The gateway's own terminal status for a failed turn is "error" (prompt_turn.py).
+        guard case .messageError(_, let untyped) = parse(["status": "error", "text": prose]) else {
+            return XCTFail("Expected the status-only failure")
+        }
+        XCTAssertEqual(untyped, ChatRuntimeFailure(.internal).localizedDescription)
+        guard case .messageComplete(_, _, let retained, _, _) = parse(["text": prose]) else {
+            return XCTFail("Unmarked prose must stay a normal reply")
+        }
+        XCTAssertEqual(retained, prose)
     }
 }
 #endif

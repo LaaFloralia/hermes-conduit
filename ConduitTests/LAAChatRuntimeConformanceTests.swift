@@ -2,13 +2,6 @@
 import XCTest
 @testable import Conduit
 
-// Temporary build-only symbols for the out-of-scope legacy test file. Not a
-// translation shim: no production code can access these fixture constants.
-enum LAAFailedTurnCopy {
-    static let failedJapanese = ChatRuntimeFailure(.internal).localizedDescription
-    static let partialJapanese = "This turn did not complete. Some actions may already have run; verify their effects before resending."
-}
-
 @MainActor final class LAAChatRuntimeConformanceTests: XCTestCase {
     private let durable = "fixture-durable-conversation"
     private let transport = "fixture-writer-a"
