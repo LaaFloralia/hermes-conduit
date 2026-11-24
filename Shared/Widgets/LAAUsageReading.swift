@@ -12,6 +12,37 @@ struct LAAUsageItem: Codable, Identifiable {
         let remainingPercent: Double?
         let resetsAt: String?
         let windowMinutes: Double?
+        /// Optional on the wire: a newer Bridge may name a window and mark a
+        /// model-scoped one. Older payloads carry neither.
+        var id: String? = nil
+        var scoped: Bool? = nil
+
+        /// A general quota window: never a model-scoped one such as Fable,
+        /// whichever array or duration it arrives with.
+        var isOrdinary: Bool { scoped != true && id != LAAUsageItem.fableWindowID }
+    }
+    /// A model-scoped weekly window carried beside the ordinary ones
+    /// (`detail.fableWeekly`). It never enters `windows`, so it cannot drive a
+    /// headline, a gauge, an alert or task admission.
+    struct ScopedWindow: Codable, Equatable {
+        let id: String?
+        let label: String?
+        let windowMinutes: Double?
+        let remainingPercent: Double?
+        let resetsAt: String?
+    }
+    /// Decodes a value the feed may send malformed without failing the item
+    /// around it: a bad optional field reads as absent.
+    struct Lenient<Value: Codable>: Codable {
+        let value: Value?
+        init(_ value: Value?) { self.value = value }
+        init(from decoder: Decoder) throws { value = try? Value(from: decoder) }
+        func encode(to encoder: Encoder) throws {
+            if let value { try value.encode(to: encoder) } else {
+                var container = encoder.singleValueContainer()
+                try container.encodeNil()
+            }
+        }
     }
     struct Component: Codable {
         let kind: String
@@ -55,7 +86,12 @@ struct LAAUsageItem: Codable, Identifiable {
         let status: String?
         let warningFreeBytes: Double?
         let criticalFreeBytes: Double?
+        /// Claude's Fable-only weekly quota. Absent from older Bridges and
+        /// snapshots; a malformed value reads as absent.
+        let fableWeekly: Lenient<ScopedWindow>?
     }
+    static let fableWindowID = "claude-weekly-scoped-fable"
+
     let id: String
     let kind: String
     let label: String
@@ -85,6 +121,40 @@ struct LAAUsageItem: Codable, Identifiable {
     }
 
     var availableValue: Double? { availability == "available" ? value : nil }
+
+    /// The general quota windows, in feed order. Model-scoped windows are
+    /// never among them.
+    var ordinaryWindows: [Window] { (detail?.windows ?? []).filter(\.isOrdinary) }
+
+    /// The ordinary window of `minutes` (300: 5 hours, 10 080: 7 days), else
+    /// the one the feed names that way when it reports no duration.
+    func ordinaryWindow(minutes: Double) -> Window? {
+        let windows = ordinaryWindows
+        if let exact = windows.first(where: { $0.windowMinutes == minutes }) { return exact }
+        return windows.first { window in
+            guard window.windowMinutes == nil else { return false }
+            return minutes == 10_080 ? LAAUsageLabel.isWeekly(window.label) : LAAUsageLabel.isFiveHour(window.label)
+        }
+    }
+
+    /// The general weekly window: the 7-day quota when the feed names its
+    /// duration, otherwise the window the feed itself calls Weekly. Fable
+    /// never answers here, even with the same 10 080 minutes.
+    var weeklyWindow: Window? { ordinaryWindow(minutes: 10_080) }
+
+    /// Claude's Fable weekly reading when the feed sent a usable one: the
+    /// right id, a finite share in 0...100 and a reset still ahead (a reset
+    /// already passed, or none parseable when one is given, is unknown). A
+    /// measured 0% stays 0%. Nil means unknown, never zero.
+    func fableWeekly(at now: Date = Date()) -> ScopedWindow? {
+        guard id.hasPrefix("provider.claude."), let fable = detail?.fableWeekly?.value,
+              fable.id == Self.fableWindowID,
+              let remaining = fable.remainingPercent, remaining.isFinite, (0...100).contains(remaining) else { return nil }
+        if let reset = fable.resetsAt {
+            guard let date = Self.date(reset), now < date else { return nil }
+        }
+        return fable
+    }
 
     static func date(_ text: String?) -> Date? {
         guard let text else { return nil }
@@ -187,6 +257,38 @@ enum LAAUsageMeterRule {
         guard let remaining, remaining.isFinite else { return nil }
         if !(remaining > 0) { return 0 }
         return grantFraction(remaining: remaining, granted: granted)
+    }
+}
+
+/// One naming rule for the quota windows, shared by the app list and the widget.
+enum LAAUsageLabel {
+    static func isWeekly(_ label: String) -> Bool {
+        ["weekly", "週間", "週次", "週刊", "ウィークリー", "7d"].contains(label.lowercased()) || label.hasPrefix("週次")
+    }
+
+    static func isFiveHour(_ label: String) -> Bool {
+        ["session", "5時間", "5h", "5-hour", "5 hours"].contains(label.lowercased())
+    }
+
+    /// Display name for one window. A duration the feed reports wins, so a 7-day
+    /// pool reads 週間 whatever the proxy calls it.
+    static func window(_ window: LAAUsageItem.Window) -> String {
+        if let minutes = window.windowMinutes {
+            if minutes == 10_080 { return "週間" }
+            if minutes == 43_200 { return "月間" }
+        }
+        if isWeekly(window.label) { return "週間" }
+        if ["monthly", "月間", "マンスリー"].contains(window.label.lowercased()) {
+            return "月間"
+        }
+        return window.label
+    }
+
+    /// The short period name on the cards and the widget: 5h, 7d, Fable.
+    static func period(_ window: LAAUsageItem.Window) -> String {
+        if window.windowMinutes == 300 || (window.windowMinutes == nil && isFiveHour(window.label)) { return "5h" }
+        if window.windowMinutes == 10_080 || (window.windowMinutes == nil && isWeekly(window.label)) { return "7d" }
+        return Self.window(window)
     }
 }
 

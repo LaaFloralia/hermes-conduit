@@ -18,6 +18,9 @@ extension LAACopy {
         static let windows = "5時間・週間"
         static let expanded = "開いています"
         static let collapsed = "閉じています"
+        static let others = "そのほか"
+        static let accounts = "アカウント"
+        static let updated = "更新"
     }
 }
 
@@ -50,7 +53,8 @@ struct LAAUsageView: View {
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
     @State private var evaluatedAt = Date()
-    /// Grouped services the owner opened (`provider.google-ai-pro`), kept across launches.
+    /// Grouped services the owner opened (`provider.google-ai-pro`, and
+    /// `others` for the folded rows below the cards), kept across launches.
     @AppStorage("laa.usage.expandedGroups") private var expandedGroups = ""
     private let automaticallyRefresh: Bool
 
@@ -119,7 +123,7 @@ struct LAAUsageView: View {
             Text(verbatim: state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 .monospacedDigit()
-                .accessibilityLabel(Text(verbatim: "最終取得"))
+                .accessibilityLabel(Text(verbatim: LAACopy.Usage.updated))
                 .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "未取得")
                 .accessibilityIdentifier("laa.usage.updated")
             Spacer(minLength: 0)
@@ -179,88 +183,155 @@ struct LAAUsageView: View {
 
     private var groups: [LAAUsageGroup] {
         let reported = LAAUsageGroup.consoleGroups(state.usage.value ?? [])
-        return LAAWidgetUsageBuilder.slots.map { slot in
+        return LAAWidgetUsageBuilder.otherSlots.map { slot in
             reported.first(where: { $0.id == "provider.\(slot.provider)" })
                 ?? LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.name, items: [])
         }
     }
 
+    private func isOpen(_ id: String) -> Bool { expandedGroups.split(separator: ",").contains { $0 == id } }
+
+    private func toggle(_ id: String) {
+        var open = Set(expandedGroups.split(separator: ",").map(String.init))
+        if open.contains(id) { open.remove(id) } else { open.insert(id) }
+        withAnimation(.smooth(duration: 0.25)) { expandedGroups = open.sorted().joined(separator: ",") }
+    }
+
+    /// The three provider cards in one column (Codex, Claude, Google), then
+    /// the other services folded into ruled rows below them.
     private var services: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionTitle("AI")
-            VStack(spacing: 0) {
-                if state.usage.value == nil && state.isRefreshing {
-                    LAALoadingDots()
-                } else {
-                    ForEach(groups) { group in
-                        VStack(spacing: 0) {
-                            if LAAUsageGroup.isAccountGroup(group.id), !group.items.isEmpty {
-                                accountGroup(group)
-                            } else if LAAUsageGroup.isAPI(group.id + ".") {
-                                apiBalanceRow(group.items.first { $0.id == group.id + ".balance" },
-                                              groupID: group.id, name: group.label)
-                            } else if group.items.isEmpty {
-                                readingRow(name: group.label, result: LAACopy.notFetched, age: nil, fraction: nil, note: nil)
-                            } else {
-                                ForEach(group.items) { item in serviceRow(item, name: group.label) }
-                            }
-                        }
-                        .accessibilityIdentifier("laa.usage.service.\(group.id)")
+        VStack(alignment: .leading, spacing: 12) {
+            if state.usage.value == nil && state.isRefreshing {
+                LAALoadingDots()
+            } else {
+                let items = state.usage.value ?? []
+                ForEach(LAAWidgetUsageBuilder.cardSlots, id: \.provider) { slot in
+                    if slot.reading == .accountGroup {
+                        googleCard(slot, accounts: LAAUsageCardModel.accounts(items))
+                    } else {
+                        let item = LAAUsageCardModel.item(slot.provider, in: items)
+                        LAAUsageProviderCard(provider: slot.provider, name: slot.name,
+                                             windows: LAAUsageCardModel.windows(provider: slot.provider, item: item, now: evaluatedAt),
+                                             note: item.flatMap(age), now: evaluatedAt) { EmptyView() }
                     }
                 }
+                others
             }
-
         }
     }
 
-    /// One account per row group (Google AI Pro's Sub2・Sub3・Sub4). Closed,
-    /// the header names the account in use and its two windows follow; open,
-    /// every account shows its own windows under its name.
-    @ViewBuilder private func accountGroup(_ group: LAAUsageGroup) -> some View {
-        let expanded = expandedGroups.split(separator: ",").contains { $0 == group.id }
-        let lead = LAAUsageGroup.leadingAccount(group.items)
-        Button {
-            var open = Set(expandedGroups.split(separator: ",").map(String.init))
-            if expanded { open.remove(group.id) } else { open.insert(group.id) }
-            withAnimation(.smooth(duration: 0.25)) { expandedGroups = open.sorted().joined(separator: ",") }
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                Text(verbatim: group.label).font(.body).foregroundStyle(LAAColor.text)
-                Spacer(minLength: LAASpacing.x2)
-                if !expanded, let lead {
-                    Text(verbatim: lead.active == true ? LAACopy.Usage.inUse + " " + lead.label : lead.label)
-                        .laaTextStyle(.secondary).foregroundStyle(lead.active == true ? LAAColor.link : LAAColor.secondaryText)
-                }
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
-                    .rotationEffect(.degrees(expanded ? 180 : 0))
-                    .accessibilityHidden(true)
-            }
-            .padding(.vertical, LAASpacing.x3)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
-            .contentShape(Rectangle())
+    /// Google: the account in use (the one the feed marks active), its 5h
+    /// and 7d with their resets. Accounts are never averaged and no address
+    /// is shown; opening the card lists every account's windows.
+    @ViewBuilder private func googleCard(_ slot: LAAWidgetUsageBuilder.Slot, accounts: [LAAUsageItem]) -> some View {
+        let id = "provider.\(slot.provider)"
+        let open = isOpen(id)
+        let active = LAAWidgetUsageBuilder.activeAccount(accounts)
+        let note = active.map { account in
+            LAAUsageCardModel.accountName(account) + (age(account).map { " · " + $0 } ?? "")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: group.label))
-        .accessibilityValue(Text(verbatim: expanded ? LAACopy.Usage.expanded : LAACopy.Usage.collapsed))
-        .accessibilityIdentifier("laa.usage.group.\(group.id)")
-        if expanded {
-            ForEach(group.items) { item in
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: LAASpacing.x2) {
-                        Text(verbatim: item.label).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        if item.active == true {
-                            Text(verbatim: LAACopy.Usage.inUse).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+        LAAUsageProviderCard(provider: slot.provider, name: slot.name,
+                             windows: LAAUsageCardModel.windows(provider: slot.provider, item: active, now: evaluatedAt),
+                             note: note, now: evaluatedAt) {
+            if !accounts.isEmpty {
+                Button { toggle(id) } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                        .rotationEffect(.degrees(open ? 180 : 0))
+                        .frame(width: 32, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: slot.name + " " + LAACopy.Usage.accounts))
+                .accessibilityValue(Text(verbatim: open ? LAACopy.Usage.expanded : LAACopy.Usage.collapsed))
+                .accessibilityIdentifier("laa.usage.group.\(id)")
+            }
+        } extra: {
+            if open {
+                ForEach(accounts) { account in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Rectangle().fill(LAAColor.separator).frame(height: 1)
+                        HStack(spacing: LAASpacing.x2) {
+                            Text(verbatim: LAAUsageCardModel.accountName(account))
+                                .font(.footnote.weight(.medium)).foregroundStyle(LAAColor.text)
+                            if account.active == true {
+                                Text(verbatim: LAACopy.Usage.inUse).font(.caption).foregroundStyle(LAAColor.link)
+                            }
+                            Spacer(minLength: 0)
+                            if let age = age(account) {
+                                Text(verbatim: age).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                            }
+                        }
+                        LAAUsageWindowGrid(windows: LAAUsageCardModel.windows(provider: slot.provider, item: account, now: evaluatedAt),
+                                           now: evaluatedAt)
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("laa.usage.account.\(account.id)")
+                }
+            }
+        }
+    }
+
+    /// OpenCode, Magnific, the API balances, Liquid AI and Venice: folded
+    /// under one ruled header below the cards. A row that needs a look
+    /// marks the closed header with ▲.
+    @ViewBuilder private var others: some View {
+        let open = isOpen("others")
+        let groups = self.groups
+        VStack(alignment: .leading, spacing: 0) {
+            Button { toggle("others") } label: {
+                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                    Text(verbatim: LAACopy.Usage.others).font(.body).foregroundStyle(LAAColor.text)
+                    if !open, groups.contains(where: needsLook) {
+                        Text(verbatim: "▲").font(.caption).foregroundStyle(LAAUsageBar.caution)
+                    }
+                    Spacer(minLength: LAASpacing.x2)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                        .rotationEffect(.degrees(open ? 180 : 0))
+                        .accessibilityHidden(true)
+                }
+                .padding(.vertical, LAASpacing.x3)
+                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: LAACopy.Usage.others))
+            .accessibilityValue(Text(verbatim: (open ? LAACopy.Usage.expanded : LAACopy.Usage.collapsed)
+                                     + (!open && groups.contains(where: needsLook) ? "、要確認" : "")))
+            .accessibilityIdentifier("laa.usage.others")
+            if open {
+                ForEach(groups) { group in
+                    VStack(spacing: 0) {
+                        Rectangle().fill(LAAColor.separator).frame(height: 1)
+                        if LAAUsageGroup.isAPI(group.id + ".") {
+                            apiBalanceRow(group.items.first { $0.id == group.id + ".balance" },
+                                          groupID: group.id, name: group.label)
+                        } else if group.items.isEmpty {
+                            readingRow(name: group.label, result: LAACopy.notFetched, age: nil, fraction: nil, note: nil)
+                        } else {
+                            ForEach(group.items) { item in serviceRow(item, name: group.label) }
                         }
                     }
-                    .padding(.top, LAASpacing.x2)
-                    serviceRow(item, name: item.label, windowsOnly: true)
+                    .accessibilityIdentifier("laa.usage.service.\(group.id)")
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("laa.usage.account.\(item.id)")
             }
-        } else if let lead {
-            serviceRow(lead, name: lead.label, windowsOnly: true)
+        }
+        .overlay(alignment: .top) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
+        .padding(.top, LAASpacing.x2)
+    }
+
+    /// A folded row worth opening for: an empty or lapsed balance, or a
+    /// quota window under a quarter left.
+    private func needsLook(_ group: LAAUsageGroup) -> Bool {
+        group.items.contains { item in
+            if item.kind == "quota" {
+                return item.availability == "available" && item.ordinaryWindows.contains {
+                    [.caution, .critical].contains(LAAUsageBarLevel(remainingPercent: $0.remainingPercent))
+                }
+            }
+            guard item.kind == "balance", item.id.hasSuffix(".balance"), let amount = item.availableValue else { return false }
+            return !(amount > 0) || item.isExpired(now: evaluatedAt)
         }
     }
 
@@ -276,7 +347,7 @@ struct LAAUsageView: View {
                 readingRow(name: label, result: value(window.remainingPercent, unit: "percent"), age: age,
                            fraction: window.remainingPercent.map { $0 / 100 }, countsDown: true,
                            note: item.retainedReason.map { Self.unavailableReason($0) }
-                               ?? (reset ? "リセット済み" : LAAUsageItem.date(window.resetsAt).map { resetTime($0) }))
+                               ?? (reset ? "リセット済み" : LAAUsageItem.date(window.resetsAt).map { LAAUsageResetText.full($0, now: evaluatedAt) }))
             }
         } else {
             let amount = item.kind == "usage" ? item.detail?.recordedCostUsd : item.availableValue
@@ -454,10 +525,6 @@ struct LAAUsageView: View {
         return nil
     }
 
-    private func resetTime(_ date: Date) -> String {
-        LAADateText.string(date, .weekday) + " " + LAADateText.string(date, .time) + "に戻る"
-    }
-
     private func refresh() async {
         await state.refreshAndPublish(bridge: bridge)
         evaluatedAt = Date()
@@ -472,7 +539,7 @@ struct LAAUsageView: View {
         case "not_configured": return kind == "cost" ? "管理者キー未設定" : "利用不可・未設定"
         case "not_auto": return "自動取得なし"
         case "freshness_unknown": return "使用額を確認できません"
-        case "fetch_failed": return "取得できません"
+        case "fetch_failed": return "取得失敗"
         case "unsupported": return "取得経路なし"
         case "auth_required": return "認証が必要"
         default: return "未取得"

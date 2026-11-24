@@ -11,10 +11,9 @@ enum LAAUsageGauge {
         return items.compactMap { item -> Double? in
             guard item.kind == "quota", item.availableValue != nil,
                   quotas.contains(where: { item.id.hasPrefix($0) }) else { return nil }
-            let weekly = (item.detail?.windows ?? []).first { window in
-                window.windowMinutes.map { $0 == 10_080 } ?? LAAUsageLabel.isWeekly(window.label)
-            }
-            guard let remaining = weekly?.remainingPercent, remaining.isFinite else { return nil }
+            // The general weekly window only: Fable (`detail.fableWeekly`,
+            // or a window marked scoped) never moves the needle.
+            guard let remaining = item.weeklyWindow?.remainingPercent, remaining.isFinite else { return nil }
             return min(max(remaining, 0), 100)
         }.min()
     }
