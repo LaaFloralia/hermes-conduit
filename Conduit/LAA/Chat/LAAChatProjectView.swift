@@ -192,9 +192,9 @@ struct LAAChatProjectDetail: View {
         Task { @MainActor in
             defer { store.endTurn(in: id); live = "" }
             do {
-                let answer: String? = if case .verified(let reference) = lookup { reference } else { nil }
+                let answer: String? = if case .reference(let reference) = lookup { reference } else { nil }
                 let reply = try await LAAChatProjectRunner.run(runtime: runtime, project: project, question: question,
-                                                               verifiedAnswer: answer) { live = $0 }
+                                                               referenceAnswer: answer) { live = $0 }
                 do { try store.complete(question, answer: reply, in: id) }
                 catch { issue = .init(.localStorage) }
             } catch let error as LAAChatProjectFailure {
@@ -221,9 +221,10 @@ struct LAAChatProjectDetail: View {
                 guard events.first == .started(pin), case .completed(let output) = events.last else {
                     issue = .init(.unknownDelivery); return
                 }
-                let answer: String = if case .verified(let verified) = guidance(pending.text, project: project) {
-                    verified
-                } else { output }
+                let answer = switch guidance(pending.text, project: project) {
+                case .reference(let reference), .local(let reference): reference
+                case nil: output
+                }
                 guard !answer.isEmpty else { issue = .init(.internalError); return }
                 try store.complete(pending, answer: answer, in: id)
                 issue = nil

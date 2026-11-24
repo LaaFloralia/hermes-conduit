@@ -65,9 +65,9 @@ enum LAAChatProjectPrompt {
     static let contextLimit = 24_000
 
     static func assemble(project: LAAChatProject, route: LAAChatProjectRoute, question: LAAChatProject.Message,
-                         verifiedAnswer: String?) throws -> LAAChatProjectSubmit {
-        let system = if let verifiedAnswer {
-            project.context + "\n\n" + LAACopy.ChatProjects.pokemonRender(verifiedAnswer)
+                         referenceAnswer: String?) throws -> LAAChatProjectSubmit {
+        let system = if let referenceAnswer {
+            project.context + "\n\n" + LAACopy.ChatProjects.pokemonRender(referenceAnswer)
         } else {
             project.context
         }
@@ -97,7 +97,7 @@ enum LAAChatProjectPrompt {
     /// Pokémon facts are deterministic; a model edit cannot change them, or
     /// add a guarantee that the evidence doesn't support.
     static func run(runtime: any LAAChatProjectRuntime, project: LAAChatProject, question: LAAChatProject.Message,
-                    verifiedAnswer: String? = nil, onVisibleText: (String) -> Void = { _ in }) async throws -> String {
+                    referenceAnswer: String? = nil, onVisibleText: (String) -> Void = { _ in }) async throws -> String {
         let began = ContinuousClock.now
         var accepted: Duration?, firstEvent: Duration?, firstText: Duration?, firstVisible: Duration?
         var status = "failed"
@@ -109,7 +109,7 @@ enum LAAChatProjectPrompt {
             log.info("project_turn model=\(project.model.rawValue, privacy: .public) outcome=\(status, privacy: .public) accepted_ms=\(milliseconds(accepted)) first_event_ms=\(milliseconds(firstEvent)) first_text_ms=\(milliseconds(firstText)) first_visible_update_ms=\(milliseconds(firstVisible)) total_ms=\(milliseconds(began.duration(to: .now)))")
         }
         let route = try LAAChatProjectRoute(project.model)
-        let submit = try LAAChatProjectPrompt.assemble(project: project, route: route, question: question, verifiedAnswer: verifiedAnswer)
+        let submit = try LAAChatProjectPrompt.assemble(project: project, route: route, question: question, referenceAnswer: referenceAnswer)
         try await runtime.create(.init(conversationID: project.id, route: route, title: project.name))
         var sawStart = false
         var output = ""
@@ -130,13 +130,13 @@ enum LAAChatProjectPrompt {
                 guard !delta.isEmpty else { continue }
                 if firstText == nil { firstText = elapsed }
                 output += delta
-                if verifiedAnswer == nil || verifiedAnswer?.hasPrefix(output) == true {
+                if referenceAnswer == nil || referenceAnswer?.hasPrefix(output) == true {
                     if firstVisible == nil, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { firstVisible = elapsed }
                     onVisibleText(output)
                 }
             case .completed(let final):
                 guard sawStart else { throw LAAChatProjectFailure(.unknownDelivery) }
-                let answer = verifiedAnswer ?? (final.isEmpty ? output : final)
+                let answer = referenceAnswer ?? (final.isEmpty ? output : final)
                 guard !answer.isEmpty else { throw LAAChatProjectFailure(.internalError) }
                 if firstVisible == nil { firstVisible = elapsed; onVisibleText(answer) }
                 status = "completed"

@@ -100,6 +100,8 @@ import XCTest
     func testLookupNormalizesLanguageAndFormsWithoutGuessing() throws {
         let table = try XCTUnwrap(LAAChatPokemon.bundled)
         XCTAssertEqual(table.count, 1_579)
+        XCTAssertEqual(table.auditCount, 10)
+        XCTAssertGreaterThan(table.estimableFormCount, 1_300)
         for name in ["ピカチュウ", "ぴかちゅう", "Pikachu", "皮卡丘", "Ｐｉｋａｃｈｕ"] {
             guard case .exact(let row) = table.match(name) else { return XCTFail("Missed \(name)") }
             XCTAssertEqual(row.national_dex_id, 25)
@@ -113,28 +115,95 @@ import XCTest
         guard case .ambiguous = table.match("ナッシー") else { return XCTFail("Ambiguous regional form guessed") }
         guard case .ambiguous = table.match("フラベベ") else { return XCTFail("Ambiguous colour guessed") }
         XCTAssertEqual(table.match("not-a-pokemon"), .unknown)
-        guard case .verified(let answer) = table.guidance("ピカチュウ", route: .go) else { return XCTFail("Missing audited row") }
-        XCTAssertTrue(answer.contains("メートル表示だけでは証を保証しません"))
-        XCTAssertTrue(answer.contains("Scale 255"))
         XCTAssertEqual(LAAChatPokemon.Route(context: "route: sv-native\n\n# Preset"), .native)
-        guard case .local = table.guidance("コイキング", route: .go) else { return XCTFail("Unaudited metres shown") }
-        guard case .verified(let native) = table.guidance("ピカチュウ", route: .native) else { return XCTFail("Missing native rule") }
+        guard case .reference(let native) = table.guidance("ピカチュウ", route: .native) else { return XCTFail("Missing native rule") }
         XCTAssertFalse(native.contains("HOME"))
         XCTAssertTrue(native.contains("255"))
+        for (name, expected) in [("Nidoran♀", 29), ("ニドラン♂", 32)] {
+            guard case .exact(let row) = table.match(name) else { return XCTFail("Missing distinct name \(name)") }
+            XCTAssertEqual(row.national_dex_id, expected)
+        }
+        guard case .ambiguous = table.match("Nidoran") else { return XCTFail("Missing gender question") }
     }
 
-    func testModelCannotChangeAuditedSizeAnswer() async throws {
+    func testPKFiveWorkedRowsDigitForDigit() throws {
+        typealias E = LAAChatPokemon.Estimate
+        let table = try XCTUnwrap(LAAChatPokemon.bundled)
+        let samples: [(String, [String])] = [
+            ("Pikachu", ["0.40", "0.196", "0.200", "0.600", "0.700", "0.23", "0.24", "0.57", "0.56"]),
+            ("Alolan Exeggutor", ["10.90", "5.341", "5.450", "16.350", "21.800", "6.56", "6.57", "15.27", "15.26"]),
+            ("フラベベ（赤い花）", ["0.10", "0.049", "0.050", "0.150", "0.175", "0.05", "0.06", "0.15", "0.14"]),
+            ("Vaporeon", ["1.00", "0.490", "0.500", "1.500", "1.550", "0.59", "0.60", "1.41", "1.40"]),
+            ("Dondozo", ["12.00", "5.880", "6.000", "18.000", "21.000", "7.23", "7.24", "16.81", "16.80"])
+        ]
+        for (name, numbers) in samples {
+            guard case .exact(let row) = table.match(name), case .reference(let answer) = table.guidance(name, route: .go) else {
+                return XCTFail("Missing audited row \(name)")
+            }
+            let estimate = try XCTUnwrap(row.estimate)
+            let tags = try XCTUnwrap(estimate.tags)
+            let actual = [E.metres(cm: estimate.baseCentimetres)] + [tags.xxsLow, tags.xxsHigh, tags.xxlLow, tags.xxlHigh].map(E.metres(mm:))
+                + [estimate.miniAll, estimate.miniPossible, estimate.jumboAll, estimate.jumboPossible].map(E.metres(cm:))
+            XCTAssertEqual(actual, numbers, name)
+            for number in numbers { XCTAssertTrue(answer.contains(number), "\(name) is missing \(number)") }
+            XCTAssertTrue(answer.contains("照合済み（GO設定と一致）"))
+            XCTAssertTrue(answer.contains("XXS \(numbers[1])–\(numbers[2]) m（上端を除く）"))
+            XCTAssertTrue(answer.contains("XXL \(numbers[3])–\(numbers[4]) m"))
+        }
+    }
+
+    func testUnauditedOrdinaryAndRegionalFormsGetConditionalEstimatesWithoutTagRanges() throws {
+        let table = try XCTUnwrap(LAAChatPokemon.bundled)
+        for (name, base, mini, jumbo) in [("コイキング", "0.90", "0.54", "1.26"), ("Kantonian Exeggutor", "2.00", "1.21", "2.80")] {
+            guard case .reference(let answer) = table.guidance(name, route: .go) else { return XCTFail("Missing conditional estimate \(name)") }
+            let tags = try XCTUnwrap(answer.range(of: "高さタグ"))
+            let estimates = try XCTUnwrap(answer.range(of: "表示身長の推定"))
+            XCTAssertLessThan(tags.lowerBound, estimates.lowerBound)
+            XCTAssertTrue(answer.contains("基準 \(base) m"))
+            XCTAssertTrue(answer.contains("\(mini) m は一部のみ"))
+            XCTAssertTrue(answer.contains("\(jumbo) m は一部のみ"))
+            XCTAssertTrue(answer.contains("図鑑の高さから計算（GOの基準身長が図鑑と同じ前提・未照合）"))
+            XCTAssertFalse(answer.contains("実値範囲"))
+            XCTAssertTrue(answer.contains("XS・XLも対象"))
+            XCTAssertTrue(answer.contains("重さのタグは別"))
+            XCTAssertTrue(answer.contains(LAACopy.ChatProjects.pokemonCaveat))
+        }
+    }
+
+    func testExceptionsDoNotBorrowOrdinaryHeightOrAssumeSVTransferability() throws {
+        let table = try XCTUnwrap(LAAChatPokemon.bundled)
+        let cases = [("Wailord", "判定対象になりません"), ("pumpkaboo-super", "判定対象になりません"),
+                     ("gourgeist-small", "判定対象になりません"), ("Scatterbug", "通常の換算は使えません"),
+                     ("Spewpa", "通常の換算は使えません"), ("vivillon-meadow", "通常の換算は使えません"),
+                     ("Mega Charizard X", "特殊な姿"), ("groudon-primal", "特殊な姿"),
+                     ("Pikachu Rock Star", "特殊な姿"), ("Kantonian Zorua", "通常の換算は使えません"),
+                     ("ナッシー", "どの姿ですか"), ("not-a-pokemon", "どのポケモンですか")]
+        for (name, reason) in cases {
+            guard case .local(let answer) = table.guidance(name, route: .go) else { return XCTFail("Guessed at \(name)") }
+            XCTAssertTrue(answer.contains(reason), "\(name): \(answer)")
+            XCTAssertFalse(answer.contains("表示身長の推定"), name)
+            XCTAssertTrue(answer.contains(LAACopy.ChatProjects.pokemonCaveat), name)
+            if name == "Wailord" {
+                XCTAssertTrue(answer.contains("照合済み（GO設定と一致）"))
+                XCTAssertTrue(answer.contains("GOの高さタグの実値範囲"))
+            } else {
+                XCTAssertFalse(answer.contains("実値範囲"), name)
+            }
+        }
+    }
+
+    func testModelCannotChangeConditionalSizeAnswer() async throws {
         let project = try XCTUnwrap(LAAChatProjectStore.seeds.last)
         let table = try XCTUnwrap(LAAChatPokemon.bundled)
-        guard case .verified(let verified) = table.guidance("Bulbasaur", route: .go) else { return XCTFail("No audited line") }
+        guard case .reference(let reference) = table.guidance("Magikarp", route: .go) else { return XCTFail("No estimate") }
         let fixture = Runtime()
         var updates: [String] = []
         let result = try await LAAChatProjectRunner.run(runtime: fixture, project: project,
-                                                        question: .init(role: .user, text: "Bulbasaur"),
-                                                        verifiedAnswer: verified) { updates.append($0) }
-        XCTAssertEqual(result, verified)
-        XCTAssertEqual(updates, [verified])
-        XCTAssertTrue(fixture.submitted.first?.system.contains(verified) == true)
+                                                        question: .init(role: .user, text: "Magikarp"),
+                                                        referenceAnswer: reference) { updates.append($0) }
+        XCTAssertEqual(result, reference)
+        XCTAssertEqual(updates, [reference])
+        XCTAssertTrue(fixture.submitted.first?.system.contains(reference) == true)
         XCTAssertFalse(fixture.submitted.first?.system.contains("Pikachu") == true)
     }
 
@@ -204,11 +273,26 @@ import XCTest
 
 @MainActor final class LAAChatProjectSnapshotTests: XCTestCase {
     func testPhoneAndDesktopProjectsSection() throws {
-        try capture(width: 440, height: 956, desktop: false)
-        try capture(width: 1280, height: 800, desktop: true)
+        try capture(width: 440, height: 956, name: "chat-projects-440x956") { list(desktop: false) }
+        try capture(width: 1280, height: 800, name: "chat-projects-1280x800") { list(desktop: true) }
     }
 
-    private func capture(width: Int, height: Int, desktop: Bool) throws {
+    func testPokemonAuditedAndConditionalReplySnapshots() throws {
+        let table = try XCTUnwrap(LAAChatPokemon.bundled)
+        for (query, name, width, height) in [("ピカチュウ", "pokemon-audited-440x956", 440, 956),
+                                            ("コイキング", "pokemon-conditional-1280x800", 1280, 800)] {
+            guard case .reference(let answer) = table.guidance(query, route: .go) else { return XCTFail("Missing \(query)") }
+            let store = LAAChatProjectStore(fileURL: nil)
+            let id = LAAChatProjectStore.pokemonID
+            try store.complete(.init(role: .user, text: query), answer: answer, in: id, localOnly: true)
+            try capture(width: width, height: height, name: name) {
+                LAAChatProjectDetail(store: store, id: id, runtime: LAAChatProjectFixtureRuntime())
+                    .environment(\.laaDesktop, width > 440)
+            }
+        }
+    }
+
+    @ViewBuilder private func list(desktop: Bool) -> some View {
         let store = LAAChatProjectStore(fileURL: nil)
         let list = LAAChatsContent(snapshot: .init(people: [], rooms: [], groupsState: .ready,
                                                   canCreateChat: false, canCreateGroup: false),
@@ -216,21 +300,23 @@ import XCTest
                                    openPerson: { _ in }, openRoom: { _ in }, newChat: {}, newGroup: {},
                                    openSettings: {}, retry: {}, searchChanged: {}, publishesMacCommands: false,
                                    projects: store.projects, openProject: { _ in }, newProject: {})
+        if desktop {
+            LAAMacListDetail {
+                list.environment(\.laaDesktop, true)
+            } detail: {
+                LAAColor.background
+            }
+        } else { list }
+    }
+
+    private func capture<V: View>(width: Int, height: Int, name: String, @ViewBuilder view: () -> V) throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.traitOverrides.horizontalSizeClass = .compact
         window.traitOverrides.userInterfaceStyle = .light
-        window.rootViewController = UIHostingController(rootView: NavigationStack {
-            if desktop {
-                LAAMacListDetail {
-                    list.environment(\.laaDesktop, true)
-                } detail: {
-                    LAAColor.background
-                }
-            } else { list }
-        })
+        window.rootViewController = UIHostingController(rootView: NavigationStack { view() })
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
         window.layoutIfNeeded()
@@ -242,7 +328,7 @@ import XCTest
         XCTAssertEqual(image.cgImage?.width, width)
         XCTAssertEqual(image.cgImage?.height, height)
         let attachment = XCTAttachment(image: image)
-        attachment.name = "chat-projects-\(width)x\(height)"
+        attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
     }

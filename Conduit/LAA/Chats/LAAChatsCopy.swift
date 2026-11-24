@@ -76,16 +76,52 @@ extension LAACopy {
         GOからHOMEを経由し、SVのサイズ鑑定を前提にする。メートル表示だけでは証を保証しない。
         SVでの判定だけに切り替えるには、先頭行を `route: sv-native` に変更。
         """
-        static let pokemonUnknown = "どのポケモンですか？名前をもう一度入力してください。"
-        static let pokemonDataUnavailable = "サイズ表を読み取れません。証の判定は保留します。"
-        static func pokemonAmbiguous(_ forms: String) -> String { "どの姿ですか？　\(forms)" }
-        static func pokemonUnsupported(_ name: String) -> String { "\(name) はこの姿のままSVの証の判定対象になりません。" }
-        static func pokemonUnaudited(_ name: String) -> String { "\(name) のGOからSVへの参考値は未確認です。メートル表示だけでは証は確定せず、対応する個体はSVのサイズ鑑定で確認できます。" }
-        static func pokemonNative(_ name: String) -> String { "\(name)：SVで鑑定できる個体なら、Scale 0は「ちっちゃいあかし」、255は「でっかいあかし」です。名前やメートル表示だけでは確定せず、SVのサイズ鑑定で確認します。" }
-        static func pokemonEstimate(_ name: String, mini: String, jumbo: String) -> String {
-            "\(name)（GO → HOME → SV）\n\nちっちゃいあかし：\(mini) m 以下が目安（Scale 0）\nでっかいあかし：\(jumbo) m 以上が目安（Scale 255）\n\n境界は推定です。メートル表示だけでは証を保証しません。GOの高さのXXS・XXLは有力な目安で、対応する個体はSVのサイズ鑑定で確定します。"
+        static let pokemonCaveat = "メートル表示だけでは証を保証しません。確定はSVのサイズ鑑定です。希少個体を境界値の確認だけのために送らないでください。"
+        static let pokemonAudited = "照合済み（GO設定と一致）"
+        static let pokemonInferred = "図鑑の高さから計算（GOの基準身長が図鑑と同じ前提・未照合）"
+        static let pokemonUnknown = "どのポケモンですか？名前をもう一度入力してください。\n\n\(pokemonCaveat)"
+        static let pokemonDataUnavailable = "サイズ表を読み取れません。証の判定は保留します。\n\n\(pokemonCaveat)"
+        static func pokemonAmbiguous(_ forms: String) -> String { "どの姿ですか？　\(forms)\n\n\(pokemonCaveat)" }
+        static func pokemonUnsupported(_ name: String, tags: LAAChatPokemon.Estimate.TagRanges?) -> String {
+            var text = "\(name)はこの姿のままSVの証の判定対象になりません。"
+            if let tags { text += "\n\n\(pokemonAudited)\n\n\(pokemonTagRanges(tags))" }
+            return text + "\n\n" + pokemonCaveat
         }
-        static func pokemonRender(_ answer: String) -> String { "この照合結果だけを改変せず返してください。数値・条件・注意書きは変更しないでください。\n\n\(answer)" }
+        static func pokemonSpecialForm(_ name: String) -> String {
+            "\(name)は特殊な姿のため通常の換算は使えません。別の姿の数値では判定しません。\n\n\(pokemonCaveat)"
+        }
+        static func pokemonSpecialSize(_ name: String) -> String {
+            "\(name)はGOで高さの決まりが異なるため、通常の換算は使えません。\n\n\(pokemonCaveat)"
+        }
+        static func pokemonNoBase(_ name: String) -> String {
+            "\(name)の基準身長は未確認のため、数値の目安は出しません。\n\n\(pokemonCaveat)"
+        }
+        static func pokemonNative(_ name: String) -> String {
+            "\(name)：SVで鑑定できる個体なら、Scale 0は「ちっちゃいあかし」、255は「でっかいあかし」です。\n\n\(pokemonCaveat)"
+        }
+        static func pokemonEstimate(_ name: String, estimate: LAAChatPokemon.Estimate) -> String {
+            typealias E = LAAChatPokemon.Estimate
+            let source = estimate.tags == nil ? pokemonInferred : pokemonAudited
+            var text = """
+            \(name)（GO → HOME → SV）
+
+            直接移せる通常個体では、実際のGOの**高さタグ**が **XXS** → ちっちゃいあかし（Scale 0）、**XXL** → でっかいあかし（Scale 255）。複数の実例が一致しています。一部のXS・XLも対象で、重さのタグは別です。
+
+            **表示身長の推定**（基準 \(E.metres(cm: estimate.baseCentimetres)) m）
+
+            \(source)
+
+            - ちっちゃい：\(E.metres(cm: estimate.miniAll)) m以下は丸め幅全体、\(E.metres(cm: estimate.miniPossible)) m は一部のみ該当。
+            - でっかい：\(E.metres(cm: estimate.jumboAll)) m以上は丸め幅全体、\(E.metres(cm: estimate.jumboPossible)) m は一部のみ該当。
+            """
+            if let tags = estimate.tags { text += "\n\n" + pokemonTagRanges(tags) }
+            return text + "\n\n" + pokemonCaveat
+        }
+        private static func pokemonTagRanges(_ tags: LAAChatPokemon.Estimate.TagRanges) -> String {
+            typealias E = LAAChatPokemon.Estimate
+            return "GOの高さタグの実値範囲：XXS \(E.metres(mm: tags.xxsLow))–\(E.metres(mm: tags.xxsHigh)) m（上端を除く）、XXL \(E.metres(mm: tags.xxlLow))–\(E.metres(mm: tags.xxlHigh)) m。"
+        }
+        static func pokemonRender(_ answer: String) -> String { "この判定資料だけを改変せず返してください。数値・条件・注意書きは変更しないでください。\n\n\(answer)" }
     }
 }
 #endif
