@@ -459,7 +459,7 @@ def mac_capture(entries, proof, work, logs, sha, cells, ports, screens):
         owner = f'{screen}-{variant}'
         run(['/bin/bash', MAC_SH, '--skip-build', '--out', base, '--owner', owner, '--sections', mac['section'],
              '--sizes', ','.join(SIZES), '--schemes', theme, '--settle', '1.5',
-             '--lab-fixture-mode', mode, '--app-args', ' '.join(settings), '--app-env', 'CONDUIT_UITEST=1'], log)
+             '--lab-fixture-mode', mode, '--app-args', ' '.join(settings), '--app-env', f'CONDUIT_UITEST=1 LAA_BRIDGE_DEFAULT_ADDRESS=http://127.0.0.1:{port}'], log)
         for size in SIZES:
             raw = base / owner / f'{mac["section"]}-{size}-{theme}.png'
             if not raw.is_file():

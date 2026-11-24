@@ -35,6 +35,8 @@ final class LAALabCaptureUITests: XCTestCase {
                                    "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"] + flags
             if env["LAA_LAB_LONG_JAPANESE"] == "1" { app.launchArguments += ["-LAA_LAB_LONG_JAPANESE"] }
             app.launchEnvironment["CONDUIT_UITEST"] = "1"
+            // The lab network policy only lets a declared loopback origin through.
+            app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(env[portName]!)"
             app.launch()
             defer { app.terminate() }
             let probe = wait("laa.lab.capture.traits", app)
