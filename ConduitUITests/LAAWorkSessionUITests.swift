@@ -121,8 +121,33 @@ final class LAAWorkSessionUITests: XCTestCase {
         // A draft makes Send live; it must be reachable without scrolling.
         field(app).tap()
         field(app).typeText("x")
+        assertReachableSend(send, in: app, run: run)
+    }
+
+    private func assertReachableSend(_ send: XCUIElement, in app: XCUIApplication, run: String) {
         XCTAssertTrue(wait(send, hittable: true, timeout: 5), "Send is not reachable: " + run)
         XCTAssertTrue(send.isEnabled, "Send did not become ready: " + run)
+        // The 36 pt circle's 44 pt accessibility target must stay in the
+        // photo row rather than extend down into the keyboard (BUS-504).
+        let photo = app.buttons["work.composer.photo"].firstMatch
+        XCTAssertTrue(photo.exists, run)
+        XCTAssertLessThanOrEqual(send.frame.height, 46, "Send AX frame: \(send.frame) in \(run)")
+        XCTAssertEqual(send.frame.midY, photo.frame.midY, accuracy: 2, run)
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.exists { XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY + 2, run) }
+    }
+
+    func testFollowUpSendKeepsQueueActionOnLongPressWithKeyboard() throws {
+        let app = try launchFixture()
+        open(runningID, app)
+        let composer = field(app)
+        XCTAssertTrue(wait(composer, hittable: true))
+        composer.tap()
+        composer.typeText("queue test")
+        let send = app.buttons["work.composer.send"].firstMatch
+        assertReachableSend(send, in: app, run: "queue context menu")
+        send.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["work.composer.sendAfterTurn"].firstMatch.waitForExistence(timeout: 5))
     }
 
     /// A new message arriving while the owner reads older turns must not pull
