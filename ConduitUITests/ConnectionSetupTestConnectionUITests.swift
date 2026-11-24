@@ -73,7 +73,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         let failure = app.staticTexts["setup.test.failure"]
         XCTAssertEqual(
             failure.label,
-            "Hermes rejected that username or password. Check your dashboard credentials and try again."
+            "\(XCUIApplication.firstLoginDashboardName) rejected that username or password. Check your dashboard credentials and try again."
         )
         XCTAssertTrue(app.buttons["setup.test.edit-credentials"].waitForExistence(timeout: 5))
         // Retry exists but is never the primary action after rejected

@@ -355,7 +355,7 @@ final class ConnectionSetupUITests: XCTestCase {
         // 4. Access-method card: its leading padding, left of the title.
         tapCardWhitespace(app, on: app.buttons["setup.method-lan"], side: .leading)
         XCTAssertTrue(
-            app.staticTexts["Same network as Hermes"].waitForExistence(timeout: 5),
+            app.staticTexts["Same network as \(XCUIApplication.firstLoginDashboardName)"].waitForExistence(timeout: 5),
             "Tapping the card's padding must select the method. Tree:\n\(app.debugDescription)"
         )
     }
