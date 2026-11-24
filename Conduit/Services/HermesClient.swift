@@ -1108,6 +1108,15 @@ final class HermesClient: ObservableObject {
 
     // Callback for stream events (set by AppState)
     var onEvent: ((StreamEvent) -> Void)?
+#if LAA_BUILD
+    // Logical Chat Projects are not staff sessions. Their contract events
+    // must never mutate AppState's active staff transcript.
+    var laaProjectEventHandlers: [UUID: ([String: AnyCodable]) -> Void] = [:]
+
+    func laaProjectRPC(_ method: String, params: [String: Any]) async throws -> AnyCodable {
+        try await rpc(method, params: params, timeout: 12, scoped: false)
+    }
+#endif
     var onDisconnected: (() -> Void)?
 
     static let requestTimeout: TimeInterval = 30
@@ -1579,6 +1588,13 @@ final class HermesClient: ObservableObject {
         // Handle stream event notification
         if json.method == "event", let params = json.params {
             let eventObject = params.objectValue
+#if LAA_BUILD
+            if let eventObject, let rawID = eventObject["turn_id"]?.stringValue, let id = UUID(uuidString: rawID),
+               let handler = laaProjectEventHandlers[id] {
+                handler(eventObject)
+                return
+            }
+#endif
             switch eventObject?["type"]?.stringValue {
             case "gateway.ready":
                 advertiseClientCapabilities()

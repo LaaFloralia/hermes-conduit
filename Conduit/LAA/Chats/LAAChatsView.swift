@@ -10,10 +10,15 @@ struct LAAChatsView: View {
     /// The Mac's list column asks for a highlighted row and forwards the
     /// menu bar's search, reload and new-chat requests. The phone passes none.
     var selection: LAAChatsListSelection? = nil
+    @State private var projects = LAAChatProjectStore.shared
+    @State private var selectedProject: UUID?
+    @State private var sheetProject: LAAChatProject?
+    @State private var showingProjectCreator = false
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaSettingsAction) private var settings
     @State private var showingGroupCreator = false
+    @State private var createdProject: UUID?
     @State private var groupReadID = UUID()
     @State private var groupReadDashboard: UUID?
     @State private var groupReadState: LAAChatsLoadState = .loading
@@ -80,7 +85,9 @@ struct LAAChatsView: View {
     var body: some View {
         Group {
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CHATS") {
+            if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CHAT_PROJECTS") {
+                LAAChatProjectsFixtureScreen()
+            } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CHATS") {
                 LAAChatsFixtureView()
             } else {
                 liveContent
@@ -115,7 +122,22 @@ struct LAAChatsView: View {
             Task { await refresh() }
         }, searchChanged: {
             if shown { appState.noteChatListInteraction() }
-        })
+        }, projects: projects.projects, projectsUnavailable: projects.unavailable,
+                        openProject: openProject, newProject: { showingProjectCreator = true })
+        .navigationDestination(item: $selectedProject) { id in
+            LAAChatProjectDetail(store: projects, id: id, runtime: HermesChatProjectRuntime { [weak appState] in appState?.client })
+        }
+        .sheet(item: $sheetProject) { project in
+            NavigationStack {
+                LAAChatProjectDetail(store: projects, id: project.id,
+                                     runtime: HermesChatProjectRuntime { [weak appState] in appState?.client })
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.ChatProjects.done) { sheetProject = nil } } }
+            }
+            .laaSheetSize(.form)
+        }
+        .sheet(isPresented: $showingProjectCreator, onDismiss: openNewProject) {
+            LAAChatProjectEditor(store: projects) { id in createdProject = id }
+        }
         .sheet(isPresented: $showingGroupCreator) {
             NavigationStack {
                 LAAGroupCreateView(roster: appState.botRoster) { name, bots, roomID in
@@ -230,6 +252,16 @@ struct LAAChatsView: View {
         guard !Task.isCancelled, request == previewRequest else { return }
         previewDashboard = dashboard
         cachedPreviews = result
+    }
+
+    private func openProject(_ id: UUID) {
+        if selection != nil { sheetProject = projects.project(id) } else { selectedProject = id }
+    }
+
+    private func openNewProject() {
+        guard let id = createdProject else { return }
+        createdProject = nil
+        openProject(id)
     }
 
     private func openPerson(_ person: LAAChatsPerson) {
