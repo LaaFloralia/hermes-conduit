@@ -19,6 +19,9 @@ import { assertLaneParent, PRODUCTION_PORTS, validateLane } from '../../../bridg
 const self = fileURLToPath(import.meta.url);
 const repo = resolve(dirname(self), '../../..');
 const workInstall = join(userInfo().homedir, '.local/share/laa-work/engine/current');
+// The engine's own packages. Provider SDKs are left out on purpose: inside a
+// lane they must not resolve, so only the built-in Echo provider can run.
+const engineDeps = ['ajv'];
 const fixtures = new Map([
   ['habits', ['bridge/test/habits-ui-fixture.mjs', ['habits']]],
   ...['work', 'studio', 'phone-use'].map((name) => [name, [`scripts/laa/${name}-ui-fixture.mjs`, [name, `${name}-control`]]]),
@@ -95,6 +98,16 @@ async function supervise(root, names) {
     // Copy only executable source needed by the built-in engine/client. No
     // provider dependencies, CLI router, user config, credentials or agents.
     for (const path of ['engine', 'client']) cpSync(join(installed, path), join(runtime, path), { recursive: true });
+    // Copies, not links: the lane guard refuses links under the lane root.
+    for (const queue = [...engineDeps], seen = new Set(); queue.length;) {
+      const name = queue.pop();
+      const from = join(installed, 'node_modules', name);
+      // A package nested inside its parent came along with the parent's copy.
+      if (seen.has(name) || !existsSync(from)) continue;
+      seen.add(name);
+      cpSync(from, join(runtime, 'node_modules', name), { recursive: true });
+      queue.push(...Object.keys(json(join(from, 'package.json')).dependencies ?? {}));
+    }
     const provider = join(runtime, 'lane-provider.mjs');
     copyFileSync(join(dirname(self), 'lane-provider.mjs'), provider);
     const config = join(runtime, 'config.json');
@@ -105,7 +118,12 @@ async function supervise(root, names) {
     const work = child(join(runtime, 'engine/main.mjs'), [], { ...privateEnv(root), LAA_WORK_SOCKET: socket,
       LAA_WORK_STATE: join(root, 'work'), LAA_WORK_CONFIG: config, LAA_WORK_CATALOG: catalog }, root, 'work-engine');
     owned.push(work);
-    await until(() => existsSync(join(root, 'work/engine.pid')), 'isolated Work engine did not start', () => work.exitCode === null);
+    await until(() => existsSync(join(root, 'work/engine.pid')), 'isolated Work engine did not start', () => work.exitCode === null)
+      .catch((error) => {
+        const log = join(root, 'logs/work-engine.log');
+        const missing = existsSync(log) && /Cannot find package '([^']+)'/.exec(readFileSync(log, 'utf8'))?.[1];
+        throw missing ? new Error(`isolated Work engine needs the package ${missing}: add it to engineDeps in lane.mjs unless it is a provider SDK`) : error;
+      });
 
     if (names.includes('usage')) writeFileSync(usageModePath(env.LAA_BRIDGE_STATE_DIR), 'normal', { mode: 0o600 });
     const device = randomDeviceId();

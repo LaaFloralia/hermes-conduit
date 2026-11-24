@@ -17,6 +17,8 @@ Hortensia（LAAアプリ）を、本番の判断ボード・Session・通知へ�
 
 統合試験は `python3 scripts/laa/lab/suite.py run integration --out <結果フォルダ>`。Work・Paseo・Studio・習慣・Usage・iPhone Useのfixtureと実Bridgeをランナーが同じレーンで起動し、UIバッチ後に停止・削除する。個別起動・ポート指定・1Passwordは不要。ビルドと実行は共有スロットを使い、終了時にシミュレーターを停止する。結果は `.xcresult` から `results.json` に採取される。レーンは `--out` の下に作るため、Unixソケットの上限に収まる短い絶対パスを使う。
 
+隔離したWorkエンジンは導入済みの `engine`・`client` と、エンジン自身の依存（`lane.mjs` の `engineDeps`、現在は `ajv` とその依存）だけをレーンへ複製して動かす。提供元のSDKは複製しないため、レーンの中では内蔵のEcho提供元しか動かない。エンジンが新しい依存を持つとレーンは起動せず、足すべきパッケージ名を表示する（2026-11-24のエンジン更新で発生）。
+
 レーン単体の検証には `scripts/laa/lab/lane.mjs` で実Bridgeを立てる。本番のBridge・Work・Hermesに接続せず、アプリはDebugビルドを使う。Node 20.11+、追加パッケージ不要。
 
 ```sh
