@@ -116,9 +116,9 @@ struct LAAWorkMessageForm: View {
                         .accessibilityIdentifier("\(composerPrefix).sendAfterTurn")
                 }
             }
-            // Keep the AX target on the visible circle, not the context-menu
-            // region that can extend into the keyboard during a cached reopen.
-            .contentShape(.accessibility, Circle())
+            // Keep the AX target on the button rather than the context-menu
+            // host that can extend into the keyboard during a cached reopen.
+            .contentShape(.accessibility, Circle().inset(by: -(LAAGlassActionButton.touch - LAAGlassActionButton.size) / 2))
     }
 
     /// Attached pictures stay above the field as thumbnails (owner,
