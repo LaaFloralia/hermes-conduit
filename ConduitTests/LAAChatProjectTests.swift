@@ -224,9 +224,9 @@ import XCTest
         window.traitOverrides.userInterfaceStyle = .light
         window.rootViewController = UIHostingController(rootView: NavigationStack {
             if desktop {
-                HStack(spacing: 0) {
-                    list.frame(width: LAADesktopMetrics.listIdealWidth)
-                    Divider()
+                LAAMacListDetail {
+                    list.environment(\.laaDesktop, true)
+                } detail: {
                     LAAColor.background
                 }
             } else { list }
