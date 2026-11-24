@@ -333,7 +333,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
 #if LAA_BUILD
-        let measuredText = LAAReadingStyle.lineBoxed(styledText)
+        let measuredText = LAAFileLinks.decorated(LAAReadingStyle.lineBoxed(styledText), color: linkColor)
 #else
         let measuredText = styledText
 #endif
@@ -595,8 +595,9 @@ struct SelectableTextView: UIViewRepresentable {
             }
         }
 #if LAA_BUILD
-        // Reading paragraphs take their fixed line box (LAAReadingStyle).
-        return LAAReadingStyle.lineBoxed(styledText)
+        // Reading paragraphs take their fixed line box (LAAReadingStyle);
+        // a file link takes its glyph and mono (LAAFileLinks).
+        return LAAFileLinks.decorated(LAAReadingStyle.lineBoxed(styledText), color: linkColor)
 #else
         return styledText
 #endif

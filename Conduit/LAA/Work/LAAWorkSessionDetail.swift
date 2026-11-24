@@ -297,7 +297,7 @@ struct LAAWorkSessionDetail: View {
                                           model: LAAWorkSpeaker.replyModel(message, session: session),
                                           onQuote: { text in
                                               quote = LAAWorkQuoteRequest(text: text, token: (quote?.token ?? 0) &+ 1)
-                                          })
+                                          }, cwd: session.cwd)
                         .id(message.id)
                         ForEach(placements.filter { $0.afterMessageID == message.id }, id: \.id) { placement in
                             subagentGroup(placement)

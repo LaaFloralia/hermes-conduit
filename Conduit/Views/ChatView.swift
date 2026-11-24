@@ -2868,6 +2868,8 @@ struct AssistantBubble: View {
                 // 2026-11-16); copy, reply, reactions, good and read aloud
                 // are the row below. Good is the 👍 reaction Hermes keeps.
                 reply.accessibilityIdentifier("chat.message.assistant")
+                    // A Drive file a reply names opens in the app's Drive viewer.
+                    .modifier(LAADriveLinkOpener())
                 if message.role == .assistant {
                     LAAMessageActionBar(
                         text: text,

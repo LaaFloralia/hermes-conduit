@@ -51,6 +51,9 @@ struct LAAWorkMessageRow: View {
     var model: LAAWorkModel? = nil
     /// Puts this message into the follow-up field as a quote.
     var onQuote: ((String) -> Void)? = nil
+    /// The session's folder on the Mac: a relative path a reply names is
+    /// read from there.
+    var cwd: String? = nil
 
     private var isOwner: Bool { message.role == "user" }
 
@@ -92,7 +95,7 @@ struct LAAWorkMessageRow: View {
                     // Mac paths become links a tap opens; the AI's `MEDIA:`
                     // files and `::preview` pages are read from the Mac
                     // through the Bridge (`LAAWorkFiles`), not from Hermes.
-                    MarkdownText(source: LAAWorkFiles.linkified(message.text),
+                    MarkdownText(source: LAAFileLinks.linkified(message.text) { [cwd] in LAAFileLinks.workLink($0, cwd: cwd) },
                                  foregroundStyle: LAAColor.text,
                                  gatewayMediaDataURL: isOwner ? nil : { [bridge, sessionID] path in
                                      await LAAWorkFiles.dataURL(bridge: bridge, sessionID: sessionID, path: path)
