@@ -174,6 +174,9 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
     /// Hermes' one-line explanation from `data.detail`, e.g. what to use
     /// instead of a command `slash.exec` refuses.
     var detail: String? = nil
+#if LAA_BUILD
+    var chatFailureFields: [String: AnyCodable] = [:]
+#endif
 
     var errorDescription: String? { message }
 
@@ -208,6 +211,9 @@ extension RpcError {
             reason: data?.objectValue?["reason"]?.stringValue,
             detail: data?.objectValue?["detail"]?.stringValue
         )
+#if LAA_BUILD
+        chatFailureFields = data?.objectValue ?? [:]
+#endif
     }
 
     init(from decoder: Decoder) throws {
@@ -219,6 +225,9 @@ extension RpcError {
             reason: data?.objectValue?["reason"]?.stringValue,
             detail: data?.objectValue?["detail"]?.stringValue
         )
+#if LAA_BUILD
+        chatFailureFields = data?.objectValue ?? [:]
+#endif
     }
 }
 
@@ -722,6 +731,15 @@ struct SessionCompressResult {
     /// `host_ack.output`; rendered when the response has no summary lines
     /// (upstream Desktop falls back to it before the removed-count text).
     let hostOutput: String?
+#if LAA_BUILD
+    struct ChatNumbers {
+        let before: Int?, after: Int?, fixed: Int?, recent: Int?
+        let failureClass: String?, noop: Bool, refusedWouldGrow: Bool
+        let failure: ChatRuntimeFailure
+    }
+    let chatNumbers: ChatNumbers
+    var chatPresentation: ContextCompactResult?
+#endif
 
     var isPending: Bool { status == .pending }
     var isAborted: Bool { status == .aborted || summaryAborted }
@@ -749,6 +767,13 @@ struct SessionCompressResult {
         summaryTokenLine = summary["token_line"]?.stringValue
         summaryNote = summary["note"]?.stringValue
         summaryAborted = summary["aborted"]?.boolValue == true
+#if LAA_BUILD
+        chatNumbers = .init(before: Self.exactIntValue(object["before_tokens"]), after: Self.exactIntValue(object["after_tokens"]),
+                            fixed: Self.exactIntValue(object["fixed_tokens"]), recent: Self.exactIntValue(object["recent_tokens"]),
+                            failureClass: (object["failure_class"] ?? summary["failure_class"])?.stringValue,
+                            noop: summary["noop"]?.boolValue == true, refusedWouldGrow: summary["refused_would_grow"]?.boolValue == true,
+                            failure: HermesChatFailure.failure(object.merging(summary) { old, _ in old }))
+#endif
         hostOutput = object["host_ack"]?.objectValue?["output"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -1027,6 +1052,17 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
 
 @MainActor
 final class HermesClient: ObservableObject {
+#if LAA_BUILD
+    lazy var chatRuntime = HermesChatRuntime(client: self)
+
+    func chatRPC(_ method: String, _ params: [String: Any]) async throws -> AnyCodable {
+        try await rpc(method, params: params)
+    }
+
+    func chatResumeObject(_ id: String, profile: String?, compact: Bool) async throws -> [String: AnyCodable] {
+        try await resumeSessionObject(id, omitMessages: compact, profile: profile)
+    }
+#endif
 
     private let logger = Logger(subsystem: "com.milim.relay", category: "HermesClient")
 
@@ -1596,6 +1632,9 @@ final class HermesClient: ObservableObject {
                         return
                     }
                     if let approval = approvalQueueIDs.removeValue(forKey: id) {
+#if LAA_BUILD
+                        chatRuntime.requestClosed(runtimeID: approval.sessionId, requestID: approval.queueID)
+#endif
                         let envelopeSession = eventObject?["session_id"]?.stringValue ?? ""
                         onEvent?(.approvalWithdrawn(
                             sessionId: envelopeSession.isEmpty ? approval.sessionId : envelopeSession,
@@ -1607,6 +1646,9 @@ final class HermesClient: ObservableObject {
             default:
                 break
             }
+#if LAA_BUILD
+            chatRuntime.observeWire(params, parsed: frame.event)
+#endif
             if let event = frame.event {
                 onEvent?(event)
             }
@@ -1688,6 +1730,9 @@ final class HermesClient: ObservableObject {
             if let queueID = activity.requestId {
                 approvalQueueIDs[requestID] = (queueID, sessionId)
             }
+#if LAA_BUILD
+            chatRuntime.requestOpened(runtimeID: sessionId, requestID: activity.requestId ?? requestID, kind: .approval)
+#endif
             onEvent?(.approval(sessionId: sessionId, activity: activity))
         case "clarify":
             guard let activity = MessageNormalizer.pendingClarifyActivity(
@@ -1698,6 +1743,9 @@ final class HermesClient: ObservableObject {
             }
             openServerRequestIDs.insert(requestID)
             clarifySessions[requestID] = sessionId
+#if LAA_BUILD
+            chatRuntime.requestOpened(runtimeID: sessionId, requestID: requestID, kind: .clarify)
+#endif
             onEvent?(.clarify(sessionId: sessionId, activity: activity))
         case _ where InputPromptActivity.Kind(rawValue: method) != nil:
             guard let activity = InputPromptActivity.from(requestId: requestID, method: method, params: params) else {
@@ -1706,6 +1754,9 @@ final class HermesClient: ObservableObject {
             }
             openServerRequestIDs.insert(requestID)
             clarifySessions[requestID] = sessionId
+#if LAA_BUILD
+            chatRuntime.requestOpened(runtimeID: sessionId, requestID: requestID, kind: .secret)
+#endif
             onEvent?(.inputPrompt(sessionId: sessionId, activity: activity))
         default:
             declineServerRequest(id: id, method: method)
@@ -1846,9 +1897,11 @@ final class HermesClient: ObservableObject {
     }
 
     private func handleStreamEvent(params: AnyCodable) {
-        if let event = StreamEventParser.parse(params: params) {
-            onEvent?(event)
-        }
+        let event = StreamEventParser.parse(params: params)
+#if LAA_BUILD
+        chatRuntime.observeWire(params, parsed: event)
+#endif
+        if let event { onEvent?(event) }
     }
 
     func disconnect() {
@@ -2826,6 +2879,11 @@ final class HermesClient: ObservableObject {
                 questionId: questionId
             )
         }
+#if LAA_BUILD
+        // The installed gateway only accepts server requests. Push relay ids
+        // are handled by AppState before they reach this method.
+        return .expired
+#else
         var params: [String: Any] = [
             "request_id": requestId,
             "answer": answer
@@ -2844,6 +2902,7 @@ final class HermesClient: ObservableObject {
             $0.compactMap(\.stringValue)
         }
         return .accepted(remaining: remaining)
+#endif
     }
 
     /// Answers a `clarify` server request (Hermes #110521). A batch
@@ -3184,8 +3243,24 @@ final class HermesClient: ObservableObject {
         sessionId: String,
         targetMessageID: Int,
         snapshot: SessionRewindSnapshot,
-        profile: String? = nil
+        profile: String? = nil,
+        retry: Bool = false
     ) async throws -> SessionRewindReceipt {
+#if LAA_BUILD
+        // The installed `session.undo` can only target the current last user
+        // turn and has no fence arguments. Never simulate a multi-turn rewind
+        // by issuing multiple destructive or uncertain requests.
+        guard let target = snapshot.turns.last, target.rowID == targetMessageID else {
+            throw ChatRuntimeFailure(.rejected)
+        }
+        let current = try await rewindSnapshot(sessionId: sessionId, profile: profile)
+        guard current == snapshot else { throw ChatRuntimeFailure(.rejected) }
+        var params: [String: Any] = ["session_id": sessionId, "intent": retry ? "retry" : "undo"]
+        if let profile, !profile.isEmpty { params["profile"] = profile }
+        let result = try await rpc("session.undo", params: params)
+        guard let removed = Self.exactIntValue(result.objectValue?["removed"]) else { throw HermesError.invalidResponse }
+        return .init(rewoundCount: removed, text: target.text)
+#else
         var params: [String: Any] = [
             "session_id": sessionId,
             "request_id": UUID().uuidString.lowercased(),
@@ -3199,6 +3274,7 @@ final class HermesClient: ObservableObject {
         }
         let result = try await rpc("session.mutate", params: params)
         return SessionRewindReceipt(result: result)
+#endif
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
@@ -3362,6 +3438,7 @@ final class HermesClient: ObservableObject {
         let skipped: Int
     }
 
+    // Upstream compatibility and transport tests only; LAA uses Dashboard REST.
     func listCronJobs() async throws -> [CronJob] {
         try await listCronJobsPage().jobs
     }
@@ -3378,11 +3455,13 @@ final class HermesClient: ObservableObject {
         return CronJobsPage(jobs: jobs, skipped: arr.count - jobs.count)
     }
 
+#if !LAA_BUILD
     func cronRuns() async throws -> [CronRun] {
         let result = try await rpc("cron.runs")
         let arr = result.objectValue?["runs"]?.arrayValue ?? result.arrayValue ?? []
         return arr.compactMap { try? JSONDecoder().decode(CronRun.self, from: JSONSerialization.data(withJSONObject: $0.anyValue)) }
     }
+#endif
 
     // MARK: - Group Chats
 
@@ -4229,8 +4308,8 @@ enum MessageNormalizer {
                 rawContent = steerText(fromMarker: rawContent)
             }
 #if LAA_BUILD
-            if role == .assistant, let notice = LAAFailedTurnCopy.japanese(for: rawContent) {
-                rawContent = notice
+            if role == .assistant, obj["display_kind"]?.stringValue == "failed_turn" {
+                rawContent = HermesChatFailure.failure(obj).localizedDescription
             }
 #endif
             #if LAA_BUILD
