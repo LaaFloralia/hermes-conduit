@@ -158,6 +158,8 @@ struct LAAWorkFileLinkOpener: ViewModifier {
     @State private var opening = false
     @State private var failed = false
     @State private var page: Page?
+    @State private var document: LAAFileDocumentSheet?
+    @State private var drive: LAADriveLinkSheet?
     @State private var task: Task<Void, Never>?
 
     struct Page: Identifiable { let id = UUID(); let name: String; let html: String }
@@ -165,11 +167,21 @@ struct LAAWorkFileLinkOpener: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.openURL, OpenURLAction { url in
+                // A file the reply names (LAAFileLinks): Drive in the app's
+                // Drive viewer, a Mac path read through the Bridge.
+                if let reference = LAAFileLinks.reference(for: url) {
+                    switch reference.location {
+                    case .drive(let id): drive = LAADriveLinkSheet(fileID: id)
+                    case .path(let path):
+                        if path.hasPrefix("/") { open(path, reference: reference) } else { failed = true }
+                    }
+                    return .handled
+                }
                 guard let path = LAAWorkFiles.localPath(url) else {
                     outerOpenURL(url)
                     return .handled
                 }
-                open(path)
+                open(path, reference: nil)
                 return .handled
             })
             .overlay(alignment: .topTrailing) {
@@ -181,10 +193,12 @@ struct LAAWorkFileLinkOpener: ViewModifier {
                 Text(verbatim: "Macにないか、開けない場所のファイルです。")
             }
             .sheet(item: $page) { page in HTMLPreviewSheet(name: page.name, html: page.html) }
+            .sheet(item: $document) { $0 }
+            .sheet(item: $drive) { $0 }
             .onDisappear { task?.cancel(); task = nil; opening = false }
     }
 
-    private func open(_ path: String) {
+    private func open(_ path: String, reference: LAAFileReference?) {
         guard !opening else { return }
         opening = true
         task = Task { @MainActor in
@@ -197,6 +211,13 @@ struct LAAWorkFileLinkOpener: ViewModifier {
             let name = (path as NSString).lastPathComponent
             if TranscriptDirectives.isHTML(path), let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) {
                 page = Page(name: name, html: html)
+                return
+            }
+            // Markdown as a document, code at its line; pictures, films, PDF
+            // and 3D in Quick Look below.
+            let file = reference ?? LAAFileReference(location: .path(path))
+            if [.markdown, .code].contains(file.kind), let text = LAAFileDocumentSheet.text(fromDataURL: dataURL) {
+                document = LAAFileDocumentSheet(name: name, text: text, reference: file)
                 return
             }
             if !(await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: name)), !Task.isCancelled {

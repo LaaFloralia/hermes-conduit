@@ -68,7 +68,13 @@ enum ReadableWidth {
     /// Mac or iPad window up to `chatMax`, so the text doesn't sit in a
     /// narrow strip in the middle of it.
     static func chat(available: CGFloat) -> CGFloat {
-        min(chatMax, max(chat, (available * chatShare).rounded(.down)))
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        // LAA on a Mac: the chat pane is a Work Session pane's width, its
+        // reading column centred in the window (HO-30).
+        return min(available, LAADesktopMetrics.readingWidth)
+        #else
+        return min(chatMax, max(chat, (available * chatShare).rounded(.down)))
+        #endif
     }
 
     /// How many text sizes a chat's column of `column` points steps up
@@ -79,9 +85,9 @@ enum ReadableWidth {
     /// 1040 pt column steps up three.
     static func chatTextSteps(column: CGFloat) -> Int {
         #if LAA_BUILD && targetEnvironment(macCatalyst)
-        // One step of LAA's type scale, and only on a wide window: a
-        // normal window keeps its look. The step is `macWideTextScale`.
-        return column >= chatWideColumn ? 1 : 0
+        // The pane keeps the Session pane's width and its type (HO-30):
+        // no wide-window step.
+        return 0
         #else
         let growth = column / chat
         return chatTextGrowth.filter { growth >= $0 }.count

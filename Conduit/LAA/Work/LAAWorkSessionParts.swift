@@ -5,48 +5,20 @@ import UIKit
 // MARK: - Progress while the turn runs
 
 /// The one line at the end of a running session (owner, 2026-11-12): what the
-/// provider is doing in a word, in place of the tool traffic. Compacting has
-/// its own mark (two arrows meeting); everything else is "thinking...". The
-/// words are English, as the owner chose. Fixed height, so the transcript
-/// above never jumps when it changes; Reduce Motion keeps the mark still.
+/// provider is doing in a word, in place of the tool traffic: "Compacting..."
+/// or "thinking...". The words are English, as the owner chose. Fixed
+/// height, so the transcript above never jumps when it changes; Reduce
+/// Motion keeps the orb still.
 struct LAAWorkProgressLine: View {
     let compacting: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    static let height: CGFloat = 28
+    static var height: CGFloat { LAATranscriptMetrics.thoughtMinHeight }
 
     var body: some View {
-        HStack(spacing: LAASpacing.x2) {
-            mark
-                .frame(width: 22, height: 22)
-            Text(verbatim: compacting ? "Compacting..." : "thinking...")
-                .laaTextStyle(.secondary)
-                .foregroundStyle(LAAColor.secondaryText)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .frame(height: Self.height)
-        // Under the AI's picture, where its next reply will start.
-        .padding(.leading, (LAASender.avatarSize - 22) / 2)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: compacting ? "Compacting..." : "thinking..."))
-        .accessibilityIdentifier(compacting ? "work.session.progress.compacting" : "work.session.progress.thinking")
-    }
-
-    @ViewBuilder private var mark: some View {
-        if compacting {
-            let image = Image(systemName: "arrow.down.right.and.arrow.up.left")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(LAAColor.secondaryText)
-            if reduceMotion {
-                image
-            } else {
-                image.symbolEffect(.pulse, options: .repeating)
-            }
-        } else {
-            // The same working mark as the chats; it holds a still frame under Reduce Motion.
-            LAAOrbView(state: .thinking, diameter: 22)
-        }
+        // The shared thinking row (LAAThoughtLine), as in Chat.
+        LAAThoughtLine(text: compacting ? "Compacting..." : "thinking...")
+            .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
+            .accessibilityIdentifier(compacting ? "work.session.progress.compacting" : "work.session.progress.thinking")
     }
 }
 
@@ -131,13 +103,13 @@ struct LAAWorkSentEchoRow: View {
     @State private var preview: LAAWorkImagePreview.Request?
 
     var body: some View {
-        LAAOwnerMessageRow(continues: false) {
+        LAATranscriptOwnerTurn(continues: false) {
             VStack(alignment: .trailing, spacing: 4) {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     if !echo.text.isEmpty {
                         Text(verbatim: echo.text)
-                            .laaTextStyle(.body)
-                            .foregroundStyle(LAAColor.ownBubbleText)
+                            .font(.laaReading())
+                            .foregroundStyle(LAAColor.text)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     let images = echo.attachments.compactMap(LAAWorkAttachmentImage.image)
@@ -156,8 +128,7 @@ struct LAAWorkSentEchoRow: View {
                         }
                     }
                 }
-                .padding(LAASpacing.x4)
-                .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+                .laaTranscriptOwnerBubble()
                 .opacity(0.86)
                 Label { Text(verbatim: queued ? "順番待ち・この手番の後に届けます" : "送信済み・会話への反映を確認中") }
                     icon: { Image(systemName: queued ? "clock" : "checkmark") }

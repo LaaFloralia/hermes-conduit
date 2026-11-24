@@ -113,6 +113,12 @@ struct LAAWorkSessionDetail: View {
     @State private var snapshotInFlight = false
     @State private var cacheIdentity: String?
     @State private var followsConversation = true
+    /// This session's children (`parentId`), for the working pill and the
+    /// subagent cards; read at most every `childrenInterval` seconds.
+    @State private var workChildren: [LAAWorkSession] = []
+    @State private var childrenReadAt: Date?
+    @State private var openedChildID: String?
+    @State private var showingChildren = false
     @State private var didInitialScroll = false
     /// True once the transcript can be placed: the cached copy counts, so a
     /// remembered conversation opens at its bottom without waiting for the Mac.
@@ -179,7 +185,12 @@ struct LAAWorkSessionDetail: View {
         })
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let session {
-                followUp(session)
+                // The working pill and the jump button float above the field,
+                // in its glass group (LAAWorkingCluster).
+                LAAWorkingCluster(status: workingStatus(session), showsJump: didInitialScroll && !followsConversation,
+                                  jump: returnToEnd, openChildren: openChildren, identifier: "work.working") {
+                    followUp(session)
+                }
                     .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, 8)
                     .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720)
                     .frame(maxWidth: .infinity)
@@ -210,6 +221,18 @@ struct LAAWorkSessionDetail: View {
                         .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
                 }
             }
+        }
+        .navigationDestination(item: $openedChildID) { childID in
+            LAAWorkSessionDetail(id: childID, projects: projects, workspaces: workspaces, drafts: drafts)
+        }
+        .sheet(isPresented: $showingChildren) {
+            LAASubagentSheet(children: childRows, open: { child in
+                showingChildren = false
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    openedChildID = child.id
+                }
+            }, done: { showingChildren = false })
         }
         .sheet(isPresented: $showingInitialInstruction) {
             LAAWorkInitialInstruction(sessionID: id, sessionName: session?.name ?? "", session: session,
@@ -247,7 +270,7 @@ struct LAAWorkSessionDetail: View {
     private var page: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             // The bottom sentinel stays outside the lazy transcript.
-            LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
+            LazyVStack(alignment: .leading, spacing: LAATranscriptMetrics.rowGap) {
                 Color.clear.frame(height: 0).id("top-start")
                 if let session {
                     if session.modelMismatch { mismatchLabel(session) }
@@ -271,6 +294,12 @@ struct LAAWorkSessionDetail: View {
                     }
                     let shown = messages
                     let speakers = shown.map(LAAWorkSpeaker.speaker)
+                    // The children, one card per spawn batch, after the
+                    // message each batch followed (LAASubagentGroup).
+                    let placements = LAAWorkChildren.placements(workChildren, messages: shown)
+                    ForEach(placements.filter { $0.afterMessageID == nil }, id: \.id) { placement in
+                        subagentGroup(placement)
+                    }
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
                         LAAWorkMessageRow(message: message, sessionID: id,
                                           agentName: LAAWorkSpeaker.replyName(message, session: session, options: options),
@@ -279,8 +308,11 @@ struct LAAWorkSessionDetail: View {
                                           model: LAAWorkSpeaker.replyModel(message, session: session),
                                           onQuote: { text in
                                               quote = LAAWorkQuoteRequest(text: text, token: (quote?.token ?? 0) &+ 1)
-                                          })
+                                          }, cwd: session.cwd)
                         .id(message.id)
+                        ForEach(placements.filter { $0.afterMessageID == message.id }, id: \.id) { placement in
+                            subagentGroup(placement)
+                        }
                     }
                     ForEach(sentEchoes) { echo in
                         LAAWorkSentEchoRow(echo: echo, queued: (session.queue?.count ?? 0) > 0)
@@ -297,7 +329,8 @@ struct LAAWorkSessionDetail: View {
             .accessibilityIdentifier(historyReady ? "work.session.history.ready" : "work.session.history.loading")
             // The end of the page, outside the lazy transcript. New arrivals
             // follow only while this sentinel is on screen.
-            Color.clear.frame(height: 1).id("bottom-end")
+            // Keeps the working pill's room free while the turn runs.
+            Color.clear.frame(height: session.map(canStop) == true ? LAAWorkingControlMetrics.coverage : 1).id("bottom-end")
                 .onAppear {
                     followsConversation = true
                     userDragged = false
@@ -312,6 +345,52 @@ struct LAAWorkSessionDetail: View {
         .background(GeometryReader { proxy in
             Color.clear.preference(key: LAAWorkContentHeightKey.self, value: proxy.size.height)
         })
+    }
+
+    // MARK: - Working control and children
+
+    /// How often the children list is read again while the page is open.
+    private static let childrenInterval: TimeInterval = 10
+
+    private var childRows: [LAAWorkingChild] {
+        workChildren.map { LAAWorkChildren.child($0, options: options) }
+    }
+
+    /// The pill while the turn runs: the phase, the time since the owner's
+    /// last message, and the children.
+    private func workingStatus(_ session: LAAWorkSession) -> LAAWorkingStatus? {
+        guard canStop(session) else { return nil }
+        let start = LAAWorkChildren.turnStart(messages)
+        let children = workChildren.filter { child in
+            ["running", "created", "awaiting_decision", "stop_unconfirmed", "error"].contains(child.phase)
+                || (start.map { start in (LAAWorkChildren.date(child.updatedAt)?.timeIntervalSince(start) ?? 0) > 0 } ?? false)
+        }
+        return LAAWorkingStatus(word: compacting ? "圧縮中" : LAAWorkPresentation.phase(session.phase), startedAt: start,
+                                orb: .thinking, children: children.map { LAAWorkChildren.child($0, options: options) })
+    }
+
+    /// A spawn batch's card; a row opens that child's session here.
+    private func subagentGroup(_ placement: LAAWorkChildren.Placement) -> some View {
+        LAASubagentGroup(children: placement.children.map { LAAWorkChildren.child($0, options: options) },
+                         open: { openedChildID = $0.id }, identifier: "work.session.subagents")
+            .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
+            .id("children-" + placement.id)
+    }
+
+    /// One child opens itself; two or more open the list.
+    private func openChildren() {
+        guard let session, let children = workingStatus(session)?.children, !children.isEmpty else { return }
+        if children.count == 1 { openedChildID = children[0].id } else { showingChildren = true }
+    }
+
+    @MainActor private func refreshChildren() async {
+        if let last = childrenReadAt, Date().timeIntervalSince(last) < Self.childrenInterval { return }
+        childrenReadAt = Date()
+        let query = [URLQueryItem(name: "parentId", value: id)]
+        if let loaded: [LAAWorkSession] = try? await LAAWorkPaging.all(bridge, "/v1/sessions", query: query) {
+            // An older Bridge ignores the query and lists every session.
+            workChildren = loaded.filter { $0.parentId == id }
+        }
     }
 
     /// The one row under the field: picture, model, Fast, stop, Send.
@@ -505,6 +584,7 @@ struct LAAWorkSessionDetail: View {
                 method: "GET", path: "/v1/sessions/\(id)")
             try Task.checkCancellation()
             let detail = response.data
+            await refreshChildren()
             let detailData = try? snapshotData(detail)
             if detailData != lastDetailData {
                 session = detail; lastDetailData = detailData

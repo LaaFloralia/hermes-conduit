@@ -176,7 +176,8 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         guard let cgImage = image.cgImage else { return nil }
         let width = Int(canvas.width), height = Int(canvas.height), components = 4
         var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-        guard UIColor(LAAColor.ownBubble).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        // The shared transcript's owner bubble is the soft `wash` (LAATranscript).
+        guard UIColor(LAAColor.subtleSurface).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
             .getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return nil }
         let expected = [red, green, blue].map { Int(($0 * 255).rounded()) }
         var pixels = [UInt8](repeating: 0, count: width * height * components)

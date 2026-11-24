@@ -255,6 +255,38 @@ struct ChatView: View {
     /// The minimised call bar and the composer, below the transcript.
     @ViewBuilder
     private var bottomBar: some View {
+#if LAA_BUILD
+        // The working pill and the jump button float above the composer, in
+        // its glass group (LAAWorkingCluster).
+        LAAChatWorkingBar(chrome: scrollEngine.chrome, status: laaWorkingStatus,
+                          jump: { requestLatest(animated: true) }, open: openLAAWorkingChild) {
+            bottomBarStack
+        }
+        .sheet(item: $laaOpenedAgent) { agent in
+            LAADelegateAgentTail(agent: agent).environmentObject(appState)
+        }
+#else
+        bottomBarStack
+#endif
+    }
+
+#if LAA_BUILD
+    /// The pill while a turn runs: its word, the turn's stable start, and
+    /// the delegate agents Hermes reports for this conversation.
+    private var laaWorkingStatus: LAAWorkingStatus? {
+        LAAChatWorking.status(isBusy: appState.isBusy, startedAt: turnStartedAt,
+                              toolRunning: runningToolName != nil || runningToolTitle != nil,
+                              agents: appState.delegateAgents)
+    }
+
+    /// A child opens its live output in the app.
+    private func openLAAWorkingChild(_ child: LAAWorkingChild) {
+        guard child.resolvable, let agent = appState.delegateAgents.first(where: { $0.id == child.id }) else { return }
+        laaOpenedAgent = agent
+    }
+#endif
+
+    private var bottomBarStack: some View {
         VStack(spacing: 0) {
             // A live call swiped down keeps running; its bar sits here
             // (in V2, not while someone types in the composer).
@@ -275,6 +307,16 @@ struct ChatView: View {
         viewportInputs.renderedScrollScope
     }
 
+    /// The transcript's last row. In LAA it keeps the working pill's room
+    /// free while a turn runs, so the pill never covers the latest line.
+    private var laaBottomRoom: CGFloat {
+#if LAA_BUILD
+        appState.isBusy ? LAAWorkingControlMetrics.coverage : 1
+#else
+        1
+#endif
+    }
+
     /// Test-only seam for the dormancy fixtures (PR #201 review): ChatView
     /// re-writes `\.chatTextSize` at its own root from the shared
     /// @AppStorage preference — an environment write no OUTER harness pin
@@ -283,6 +325,11 @@ struct ChatView: View {
     /// leak into (or churn) a measured fixture. Production never sets it
     /// (nil) and the preference decides exactly as before.
     var chatTextSizeOverride: ChatTextSize? = nil
+
+#if LAA_BUILD
+    /// The delegate agent whose live output is open, from the working pill.
+    @State private var laaOpenedAgent: DelegateAgentActivity?
+#endif
 
     /// The chat-only text-size preference (issue #85). Local, device-only
     /// @AppStorage like ComposerReturnKey — never synced to Hermes or the
@@ -299,11 +346,16 @@ struct ChatView: View {
     @Environment(\.sizeCategory) private var columnSizeCategory
 
     private var chatTextSize: ChatTextAppearance {
-        ChatTextAppearance(
+        let appearance = ChatTextAppearance(
             size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
         )
         .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, category: columnSizeCategory)
+#if LAA_BUILD
+        return LAAReadingStyle.reading(appearance)
+#else
+        return appearance
+#endif
     }
 
     var body: some View {
@@ -446,10 +498,18 @@ struct ChatView: View {
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
 
+    /// LAA: rows inside a turn sit 12 apart; a new speaker's turn adds its
+    /// own top so turns are 24 apart (LAATranscriptMetrics).
+#if LAA_BUILD
+    static var transcriptRowSpacing: CGFloat { LAATranscriptMetrics.rowGap }
+#else
+    static var transcriptRowSpacing: CGFloat { ChatStepStyle.transcriptRowSpacing }
+#endif
+
     private func chatScrollView(proxy: ScrollViewProxy) -> some View {
         let visibleTargets = drawnMessageScrollTargets
         return ScrollView {
-            LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
+            LazyVStack(spacing: Self.transcriptRowSpacing) {
                 Color.clear
                     .frame(height: 1)
                     .id(topAnchor)
@@ -520,6 +580,18 @@ struct ChatView: View {
                     repliesElsewhere: appState.activeChatRepliesElsewhere
                 )
 
+#if LAA_BUILD
+                // The turn's delegate agents as one card in the transcript
+                // (LAASubagentGroup); a row opens the agent's live output.
+                if let children = laaWorkingStatus?.children, !children.isEmpty {
+                    LAASubagentGroup(children: children, open: openLAAWorkingChild, identifier: "chat.subagents")
+                        .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
+                        .laaChatColumn(.leading)
+                        .id("subagents")
+                        .reportsLiveRowFrame(id: "subagents")
+                }
+#endif
+
                 if let pending = livePendingComposerSend {
                     PendingComposerSendBubble(pending: pending)
                         .reportsLiveRowFrame(id: "pending-send")
@@ -533,7 +605,7 @@ struct ChatView: View {
                 // empty space over the composer. OfflineChatTranscriptView
                 // ends with the same row.
                 Color.clear
-                    .frame(height: 1)
+                    .frame(height: laaBottomRoom)
                     .id(bottomAnchor)
             }
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
@@ -1068,7 +1140,7 @@ private struct ChatJumpControls: View {
             Color.clear.frame(width: 0, height: 0)
             // Both actions share this overlay slot; the offscreen pending
             // question takes priority, and latest reappears when it is visible.
-            if inputs.showsJumpToLatest || hasPendingClarify {
+            if showsLatest(inputs) || hasPendingClarify {
                 Button {
                     ChatViewportTrace.shared.log(
                         hasPendingClarify
@@ -1117,6 +1189,16 @@ private struct ChatJumpControls: View {
             }
         }
         .onChange(of: inputs.isFollowingLatest) { _, _ in followingChanged() }
+    }
+
+    /// LAA: the jump to the latest message floats beside the working pill,
+    /// above the composer (LAAChatWorkingBar); this slot keeps the question.
+    private func showsLatest(_ inputs: ChatScrollChromeInputs) -> Bool {
+#if LAA_BUILD
+        false
+#else
+        inputs.showsJumpToLatest
+#endif
     }
 }
 
@@ -1410,16 +1492,18 @@ struct UserBubble: View {
     @Environment(\.chatRowState) private var laaRowState
 
     var body: some View {
-        // The owner's picture, name and role, as in groups and Work.
-        LAAOwnerMessageRow(continues: continuesRun, timestamp: message.timestamp) {
+        // The owner's turn in the shared transcript (LAATranscript), as in Work.
+        LAATranscriptOwnerTurn(continues: continuesRun, timestamp: message.timestamp) {
             let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
-            // A hold on the text selects it; the actions are the row below.
-            stack.accessibilityIdentifier("chat.message.user")
-            HStack(spacing: 2) {
-                LAAChatDelivery(message: message)
-                LAAMessageActionBar(text: text, onQuote: nil,
-                                    onReply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
-                    .padding(.trailing, -8)
+            VStack(alignment: .trailing, spacing: 0) {
+                // A hold on the text selects it; the actions are the row below.
+                stack.accessibilityIdentifier("chat.message.user")
+                HStack(spacing: 2) {
+                    LAAChatDelivery(message: message)
+                    LAAMessageActionBar(text: text, onQuote: nil,
+                                        onReply: laaRowState.isOffline ? nil : { laaRowActions.required.replyInComposer(to: message) })
+                        .padding(.trailing, -8)
+                }
             }
         }.laaChatColumn(.trailing)
     }
@@ -1807,6 +1891,15 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
+#if LAA_BUILD
+    /// The LAA owner's bubble is the soft `wash`, not the accent: its text is ink.
+    static let onAccent = false
+    static var ink: Color { LAAColor.text }
+#else
+    static let onAccent = true
+    static var ink: Color { .white }
+#endif
+
     @ViewBuilder private var attachmentViews: some View {
         if let attachments = message.attachments {
             ForEach(attachments) { attachment in
@@ -1828,7 +1921,7 @@ struct UserMessageContent: View, Equatable {
         let voice = VoiceMessage.parse(text)
         VStack(alignment: .leading, spacing: 9) {
             if let reply {
-                ReplyReferenceQuoteCard(quote: reply.quote,
+                ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: Self.onAccent,
                                         authorName: reply.isOwnMessage ? AppLocalization.string("You") : nil)
             }
 
@@ -1838,7 +1931,7 @@ struct UserMessageContent: View, Equatable {
                     HugsIdealWidth {
                         Text(verbatim: voice.transcript)
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.88))
+                            .foregroundStyle(Self.onAccent ? Color.white.opacity(0.88) : Self.ink)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .accessibilityLabel(AppLocalization.string("Transcript: \(voice.transcript)"))
@@ -1847,7 +1940,8 @@ struct UserMessageContent: View, Equatable {
                 // The text fills the column for its own layout; a sent
                 // bubble fits a short message instead.
                 HugsIdealWidth {
-                    MarkdownText(source: text, foregroundStyle: .white, usesAccentSurface: true)
+                    MarkdownText(source: text, foregroundStyle: Self.onAccent ? .white : Self.ink,
+                                 usesAccentSurface: Self.onAccent)
                 }
             }
 
@@ -1856,7 +1950,8 @@ struct UserMessageContent: View, Equatable {
             }
         }
 #if LAA_BUILD
-        .laaOwnBubbleSurface()
+        // The owner's soft `wash` bubble (LAATranscript), ink on it.
+        .laaTranscriptOwnerBubble()
 #else
         .padding(.horizontal, 17)
         .padding(.vertical, 11)
@@ -2757,13 +2852,15 @@ struct AssistantBubble: View {
         // builds compile the note out.
         let _ = TranscriptPerf.note(.settledBubbleBody)
 #if LAA_BUILD
-        // The employee's picture and name, as in groups and Work.
-        LAAAgentMessageRow(name: LAAChatPerson.name(LAASender.agentName(profile: appState.conversationIdentityProfile,
-                                                     identity: rowState.agentIdentity)),
-                           continues: continuesRun,
-                           role: LAAChatPerson.role(profile: appState.conversationIdentityProfile),
-                           timestamp: message.timestamp) {
-            StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name, size: 30, scrolling: true)
+        // The employee's turn in the shared transcript (LAATranscript): the
+        // speaker line, then the prose on the paper, no bubble.
+        LAATranscriptAgentTurn(name: LAAChatPerson.name(LAASender.agentName(profile: appState.conversationIdentityProfile,
+                                                         identity: rowState.agentIdentity)),
+                               continues: continuesRun,
+                               role: LAAChatPerson.role(profile: appState.conversationIdentityProfile),
+                               timestamp: message.timestamp) {
+            StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name,
+                            size: LAATranscriptMetrics.avatar, scrolling: true)
         } content: {
             let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
             VStack(alignment: .leading, spacing: 0) {
@@ -2771,6 +2868,8 @@ struct AssistantBubble: View {
                 // 2026-11-16); copy, reply, reactions, good and read aloud
                 // are the row below. Good is the 👍 reaction Hermes keeps.
                 reply.accessibilityIdentifier("chat.message.assistant")
+                    // A Drive file a reply names opens in the app's Drive viewer.
+                    .modifier(LAADriveLinkOpener())
                 if message.role == .assistant {
                     LAAMessageActionBar(
                         text: text,
@@ -2780,7 +2879,7 @@ struct AssistantBubble: View {
                         liked: rowState.canReact(to: message)
                             ? message.reactions.contains { $0.isFromUser && $0.emoji == "👍" } : nil,
                         onLike: { Task { await appState.react(to: message.id, with: "👍") } },
-                        onRead: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
+                        onRead: laaReadAloud)
                     .padding(.leading, -8)
                 }
             }
@@ -2790,6 +2889,19 @@ struct AssistantBubble: View {
         reply
 #endif
     }
+
+#if LAA_BUILD
+    /// Read aloud, under an employee's reply on the iPhone. The Mac's chat
+    /// has no read-aloud button (HO-29).
+    private var laaReadAloud: (() -> Void)? {
+        #if targetEnvironment(macCatalyst)
+        return nil
+        #else
+        guard !rowState.isOffline, !rowState.readAloudUnavailable else { return nil }
+        return { appState.toggleReadAloud(message: message) }
+        #endif
+    }
+#endif
 
     private var reply: some View {
         let identity = rowState.agentIdentity
@@ -2802,7 +2914,9 @@ struct AssistantBubble: View {
                 chatTextSize: chatTextSize
             )
             .equatable()
+#if !LAA_BUILD
             .laaAssistantSurface()
+#endif
             // Pin sits in the reply's long-press menu, not its action row
             // (#918): Pin for the selected passage, Pin reply for all of it
             // (#1147). A pinned passage's jump flashes it in this text.
@@ -2817,7 +2931,7 @@ struct AssistantBubble: View {
                     onTap: rowState.canReact(to: message) ? { showsTapback = true } : nil
                 )
 #if LAA_BUILD
-                .padding(.top, -14)
+                // No bubble edge to sit on: the chips follow the prose.
                 .zIndex(1)
 #endif
             }
@@ -4921,22 +5035,18 @@ struct StreamingBubble: View {
 
     var body: some View {
 #if LAA_BUILD
-        LAAAgentMessageRow(name: LAAChatPerson.name(rowState.agentIdentity.name),
+        // The same turn the settled reply draws (LAATranscriptAgentTurn), so
+        // the reply settling in does not move the transcript. The working
+        // control above the composer says the turn is running.
+        LAATranscriptAgentTurn(name: LAAChatPerson.name(LAASender.agentName(profile: appState.conversationIdentityProfile,
+                                                         identity: rowState.agentIdentity)),
             continues: appState.messages.last(where: LAAChatVisibility.shows)?.role == .assistant,
             role: LAAChatPerson.role(profile: appState.conversationIdentityProfile),
             timestamp: startedAt.map { ISO8601DateFormatter().string(from: $0) }) {
-                StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name, size: 30, scrolling: true)
+                StaffAvatarView(profile: appState.conversationIdentityProfile, name: rowState.agentIdentity.name,
+                                size: LAATranscriptMetrics.avatar, scrolling: true)
             } content: {
-                // The working orb hangs below the bubble without taking room,
-                // so the reply settling in does not move the transcript.
-                streamingContent.laaAssistantSurface()
-                    .overlay(alignment: .bottomLeading) {
-                        if active {
-                            LAAOrbView(state: .thinking, diameter: 18)
-                                .offset(y: 18 + LAASpacing.x2)
-                                .accessibilityHidden(true)
-                        }
-                    }
+                streamingContent
             }.laaChatColumn(.leading)
 #else
         let identity = rowState.agentIdentity
@@ -4974,10 +5084,17 @@ struct StreamingBubble: View {
 #endif
     }
 
-    private var streamingContent: some View {
+    @ViewBuilder private var streamingContent: some View {
+#if LAA_BUILD
+        // 50 ms commits, frozen blocks and a live tail (LAAStreamingText).
+        LAAStreamingText(text: text, active: active, gatewayMediaDataURL: { path in
+            await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
+        })
+#else
         StreamingText(text: text, active: active, gatewayMediaDataURL: { path in
             await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
         }).frame(maxWidth: .infinity, alignment: .leading)
+#endif
     }
 }
 
