@@ -149,6 +149,17 @@ private struct LAAChatLiveDelivery: View {
 }
 #endif
 #if LAA_BUILD
+/// Read aloud under a chat message: the iPhone's, not the Mac's (HO-29).
+enum LAAChatReadAloud {
+    static var offered: Bool {
+        #if targetEnvironment(macCatalyst)
+        false
+        #else
+        true
+        #endif
+    }
+}
+
 struct LAAChatTypingRow: View {
     var startedAt: Date?
     @ObservedObject var projection: LiveTurnProjection
@@ -259,7 +270,8 @@ struct LAAGroupMemberMessage: View {
                 LAAMessageActionBar(text: GroupRoomMentions.refanged(ownText),
                     onQuote: nil,
                     onReply: appState.canQuoteIntoRoom() ? { appState.replyInRoomComposer(text: text, authorName: name, authorHandle: member?.handle) } : nil,
-                    onRead: appState.isConnected ? eventID.map { id in { appState.toggleRoomReadAloud(eventID: id, text: ownText, memberProfile: member?.profile) } } : nil,
+                    onRead: LAAChatReadAloud.offered && appState.isConnected
+                        ? eventID.map { id in { appState.toggleRoomReadAloud(eventID: id, text: ownText, memberProfile: member?.profile) } } : nil,
                     identifierPrefix: "room.message")
                     .padding(.leading, -8)
                 }

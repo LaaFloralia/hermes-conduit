@@ -2879,7 +2879,7 @@ struct AssistantBubble: View {
                         liked: rowState.canReact(to: message)
                             ? message.reactions.contains { $0.isFromUser && $0.emoji == "👍" } : nil,
                         onLike: { Task { await appState.react(to: message.id, with: "👍") } },
-                        onRead: rowState.isOffline || rowState.readAloudUnavailable ? nil : { appState.toggleReadAloud(message: message) })
+                        onRead: laaReadAloud)
                     .padding(.leading, -8)
                 }
             }
@@ -2889,6 +2889,19 @@ struct AssistantBubble: View {
         reply
 #endif
     }
+
+#if LAA_BUILD
+    /// Read aloud, under an employee's reply on the iPhone. The Mac's chat
+    /// has no read-aloud button (HO-29).
+    private var laaReadAloud: (() -> Void)? {
+        #if targetEnvironment(macCatalyst)
+        return nil
+        #else
+        guard !rowState.isOffline, !rowState.readAloudUnavailable else { return nil }
+        return { appState.toggleReadAloud(message: message) }
+        #endif
+    }
+#endif
 
     private var reply: some View {
         let identity = rowState.agentIdentity
