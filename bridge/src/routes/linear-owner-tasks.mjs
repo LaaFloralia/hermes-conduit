@@ -144,7 +144,7 @@ function checkIfMatch(raw) {
 // The ledger's own 409s are raised before the handler and never reach this.
 const beforeWrite = (error) => error?.writeStarted === false;
 
-export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } = {}) {
+export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null, proposals = dispatch?.proposals } = {}) {
   const tasks = source ?? createLinearOwnerTaskSource();
 
   function decorate(task) {
@@ -198,6 +198,7 @@ export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } =
   async function create({ rawBody, device }) {
     let input;
     let assignment;
+    let staffIntent;
     try {
       const body = parseObjectBody(rawBody);
       checkFields(body, CREATE_FIELDS);
@@ -224,6 +225,9 @@ export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } =
       if (Object.hasOwn(body, 'dueDate') && body.dueDate !== null) {
         input.dueDate = checkDueDate(body.dueDate);
       }
+      // Reserve the explicit intent before Linear makes the issue visible to
+      // the monitor. An uncertain write must keep that reservation.
+      if (assignment?.assignee.kind === 'staff') staffIntent = proposals?.stageStaffTask(input.id);
     } catch (error) {
       throw markBeforeWrite(error);
     }
@@ -231,12 +235,18 @@ export function linearOwnerTaskRoutes({ source, refs = null, dispatch = null } =
     try {
       task = await tasks.createOwnerTask(input);
     } catch (error) {
+      if (staffIntent && error?.writeStarted === false) proposals.releaseStaffTask(input.id, staffIntent);
       throw toBridgeError(error);
     }
     assign(task);
     if (dispatch) {
       dispatch.accept({ task, deviceId: device.id, ...assignment });
+    }
+    if (assignment?.assignee.kind === 'staff') {
+      if (proposals !== dispatch.proposals) proposals?.suppressStaffTask(task.id);
       dispatch.schedule(task.id);
+    } else {
+      proposals?.recordOwnerTask(task);
     }
     return { status: 201, data: decorate(task) };
   }

@@ -15,9 +15,23 @@ import { assignSessionProject, projectSessionViews, resolveProject } from './ses
 
 export const PROJECTS_USAGE = `laa-bridge projects assign <project name|id> <Work agent UUID|Bridge session ID>
   laa-bridge projects list|get [project] [--json]
+  laa-bridge projects sessions [--json]      export Work session project membership
   laa-bridge projects rpc                 read an internal project-tool request from stdin`;
 
 const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function sessionMembership(sessionStore) {
+  const byAgent = new Map();
+  const updated = (row) => row.sourceUpdatedAt || row.updatedAt || '';
+  const rows = sessionStore.all().sort((a, b) => updated(a).localeCompare(updated(b)) || a.id.localeCompare(b.id));
+  for (const row of rows) {
+    const id = row.delegate?.sessionId;
+    if (!UUID.test(id)) continue;
+    const agentId = id.toLowerCase();
+    byAgent.set(agentId, { agentId, sessionId: row.id, projectId: row.projectId ?? null });
+  }
+  return { items: [...byAgent.values()].sort((a, b) => a.agentId.localeCompare(b.agentId)) };
+}
 
 async function readInput() {
   const chunks = [];
@@ -38,11 +52,18 @@ export async function projectsCommand(positional, flags, { stateDir = resolveSta
   const [command, target, sessionId] = positional;
   try {
     if (flags.help) { console.log(PROJECTS_USAGE); return 0; }
+    const sessionStore = createSessionStore({ file: join(stateDir, 'sessions.json') });
+    if (command === 'sessions') {
+      if (target !== undefined || Object.keys(flags).some((flag) => flag !== 'json')) {
+        throw badRequest('project_operation_invalid', PROJECTS_USAGE);
+      }
+      console.log(JSON.stringify({ ok: true, data: sessionMembership(sessionStore) }));
+      return 0;
+    }
     const request = command === 'rpc' ? await input()
       : command === 'assign' ? { op: 'assign', project: target, sessionId }
       : { op: command, project: target, cursor: flags.cursor ?? null };
     const projects = createProjectStore({ file: join(stateDir, 'projects.json') });
-    const sessionStore = createSessionStore({ file: join(stateDir, 'sessions.json') });
     const decisions = createDecisionStore({ dir: stateDir });
     const routes = createProjectRoutes({ projects, choices: sessionOptionsReader(),
       projectSessions: (id) => projectSessionViews(sessionStore, id,

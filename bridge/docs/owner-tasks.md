@@ -2,16 +2,14 @@
 
 2026-11-01 / Bridge 担当（branch `laa/owner-tasks-bridge`）/ 計画 `PLAN-TASKS.md` M1・M4
 
-社長タスクの正本は Mac の Bridge が持つ。iPhone（iOS 担当）とエージェントの CLI は同じ保存サービスを使う。Linear はエージェント課題の正本として残し、`/v1/tasks` の読取り専用表示はそのまま。本書は新しい端点と CLI の契約だけで、既存の端点・scope・認証・`state.json` の台帳は変えない。
-
-**この文書が iOS と CLI の唯一の契約**。実装と食い違ったら、実装を直すか、この文書を直して親へ報告する。両方を黙って変えない。
+LAAアプリとMonetが参照する社長タスクの正本は **Linear BUS**。アプリは `/v1/linear-owner-tasks`、Monetは `laa-bridge tasks list --source linear --limit 10 --json` を使う。以下の `/v1/owner-tasks` と既定の `tasks list` はMac内のローカルタスクを扱う。Linear連携の契約は [BRIDGE.md](../../docs/laa/BRIDGE.md) を参照。
 
 ## 0. 親の決定（計画からの変更点）
 
 1. 状態は `todo` / `doing` / `done` / `canceled` の4種。**物理削除は無い**（取消は状態）。取消から他の状態へ戻せる。
 2. 同じ `Idempotency-Key`・同じ本文の再送には記録済みの結果を返す。`by-key` 照合と `abandon-unsent` の端点は作らない。結果確認は元の `POST` / `PATCH` の再送に統一する。
 3. 一覧の既定の並び: 未完了（`todo`・`doing`）を先に、期限の近い順、期限なしは更新の新しい順。完了・取消は後ろ。`status` クエリで除外できる。
-4. 正本なので、日次の世代バックアップと Mac 外の候補、復元手順を持つ（§11）。
+4. ローカルタスクには日次の世代バックアップと Mac 外の候補、復元手順を持つ（§11）。
 
 ## 1. 範囲
 
@@ -233,6 +231,10 @@ laa-bridge tasks add   --request-id <id> (--title <text> | --input <file|->) [--
                        [--status todo|doing|done|canceled] [--due YYYY-MM-DD] [--link <url>]…
                        [--source owner|agent] [--id <uuid>] [--json]
 laa-bridge tasks list  [--status all|open|closed|<list>] [--limit N] [--cursor C] [--json]
+laa-bridge tasks list  --source linear [--limit N] [--json]
+laa-bridge tasks proposals --pending [--sync-linear] [--json]
+laa-bridge tasks proposals mark --id <uuid> --state proposed|dismissed [--comment-id <id>] [--json]
+laa-bridge projects sessions --json
 laa-bridge tasks get   --id <uuid> [--json]
 laa-bridge tasks update --id <uuid> --if-match <revision> --request-id <id>
                        [--title <text>] [--memo <text>] [--status <state>]
@@ -246,12 +248,16 @@ laa-bridge tasks backup [--keep N] [--out <dir>] [--json]
 laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [--expect-state <sha256>] [--json]
 ```
 
-- CLI は HTTP を通らず、Bridge と同じ保存サービス（検証・競合制御・台帳・ロック）を直接使う。主体は固定の `cli`。**`--request-id` は書込みで必須**で、再試行でも同じ値を使う。
+- ローカルタスクのCLIはBridgeと同じ保存サービスを使い、主体は固定の `cli`。**`add`・`update` は `--request-id` が必須**で、再試行でも同じ値を使う。
 - 長い本文は `--input -`（標準入力の JSON）か `--input <file>` で渡す。コマンド履歴・プロセス引数へ本文を残さない。`--json` のとき stdout は1行の JSON だけ。
 - `--json` の成功形は `{"ok":true,…}`。失敗形は `{"ok":false,"error":{"code","message","details"?}}` を stdout に出し、`laa-bridge: <code>: <message>` を stderr にも出す（`--json` なしでは stderr だけ）。
 - `get` は1件を本文・リンクつきで返す（一覧は要約だけなので、書いた本文を読み戻す経路）。
 - `list` の既定出力は1行1件の読みやすい形（`<revision>  <status>  <due|->  <id>  <title>`）。`--json` は HTTP の一覧と同じ形。
 - `--input` を使った `add` でも `source` の既定は `agent`（JSON に `source` があればそれに従う）。
+- `list --source linear` は認証済みのアプリと同じ未完了一覧を読み、UUID、`BUS-*`、題名、状態、担当、実行状態を返す。`--limit` は1〜100件で、`total` は取得できた全件数。資格情報や一覧の取得に失敗した場合は終了コード7とエラーを返す。
+- `proposals --pending --json` は `pending`、`totalSeen`、`newestCreatedAt`、`digest` を返す。UUIDで重複を防ぎ、AI社員を明示的に割り当てた課題を除外する。初回の `--sync-linear` で基準時刻を記録する。以後は基準時刻より後に社長がLinearで作成し、本人が担当しているBUS課題を取り込む。ページ上限や取得の失敗で読み切れなければ、前回の時刻から再試行する。提案済み・見送りへの変更で `digest` は変わらない。
+- `mark` はBridgeの記録だけを更新する。Monetが提案コメントを送る前に課題と `pending` を再取得し、再試行時は同じ課題の提案コメントを確認する。送信が確認できたら `proposed` とコメントIDを記録する。提案の検知・記録から会話や判断を起動しない。
+- `projects sessions --json` は `data.items` に `{agentId, sessionId, projectId}` を返す。アーカイブ済みを含むWorkのUUIDごとに最新のBridge記録を選び、所属未設定は `projectId: null` とする。
 
 終了コード:
 

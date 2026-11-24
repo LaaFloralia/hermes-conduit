@@ -72,7 +72,7 @@ function fail(message, code = 1) {
 // Flags that take no value, and flags that may repeat (each occurrence is
 // appended). Everything else takes exactly one value; a missing value is a usage
 // error rather than a silent `true`.
-const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'clear-minutes', 'clear-minimum', 'force', 'allow-live', 'help', 'no-other']);
+const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'clear-minutes', 'clear-minimum', 'force', 'allow-live', 'help', 'no-other', 'pending', 'sync-linear']);
 const REPEATED_FLAGS = new Set(['link', 'option']);
 
 function parseArgs(argv) {
