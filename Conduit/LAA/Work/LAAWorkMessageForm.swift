@@ -3,7 +3,22 @@ import SwiftUI
 import PhotosUI
 
 struct LAAWorkMessageForm: View {
-    enum Mode { case followUp, resume }
+    enum Mode: Equatable { case followUp, resume }
+    enum Readiness: Equatable {
+        case send, queue, resume, confirmStop, successor, refresh
+
+        static func resolve(phase: String, needsDecision: Bool, stopPending: Bool, hasSuccessor: Bool) -> Self {
+            if hasSuccessor { return .successor }
+            if stopPending || phase == "stop_unconfirmed" { return .confirmStop }
+            if phase == "stopped" { return .resume }
+            if needsDecision || phase == "awaiting_decision" { return .queue }
+            if ["awaiting_review", "running"].contains(phase) { return .send }
+            return .refresh
+        }
+
+        var mode: Mode { self == .resume ? .resume : .followUp }
+        var canSend: Bool { self == .send || self == .queue || self == .resume }
+    }
     /// `delivery` is how a follow-up meets a running turn: "now" interrupts it
     /// and delivers at once (the default, owner 2026-11-15), "queue" waits for
     /// the turn to end and is chosen explicitly from Send's menu.
@@ -13,8 +28,11 @@ struct LAAWorkMessageForm: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let sessionID: String
-    let mode: Mode
-    let canStart: Bool
+    let readiness: Readiness
+    let onCheckState: () -> Void
+    let onDecision: () -> Void
+    private var mode: Mode { readiness.mode }
+    private var canStart: Bool { readiness.canSend && (mode != .resume || attachments.isEmpty) }
     /// The model · Fast pills, from the session's controls: the follow-up row
     /// keeps them beside the picture, Send and the stop button.
     let settingsRow: AnyView?
@@ -34,17 +52,20 @@ struct LAAWorkMessageForm: View {
     @State private var sending = false
     @State private var showResolution = false
     @State private var error: String?
+    @State private var held: String?
+    @State private var refusedForDecision = false
     @State private var preview: LAAWorkImagePreview.Request?
 
-    init(sessionID: String, mode: Mode, drafts: ComposerDraftStore, canStart: Bool,
+    init(sessionID: String, readiness: Readiness, drafts: ComposerDraftStore,
          settingsRow: AnyView? = nil, interrupt: AnyView? = nil, actionNotice: String? = nil,
-         quote: LAAWorkQuoteRequest? = nil,
+         quote: LAAWorkQuoteRequest? = nil, onCheckState: @escaping () -> Void, onDecision: @escaping () -> Void,
          onSent: ((String, [Attachment]) -> Void)? = nil,
          onSuccess: @escaping (LAAWorkSession) -> Void) {
         self.sessionID = sessionID
-        self.mode = mode
+        self.readiness = readiness
         self.drafts = drafts
-        self.canStart = canStart
+        self.onCheckState = onCheckState
+        self.onDecision = onDecision
         self.settingsRow = settingsRow
         self.interrupt = interrupt
         self.actionNotice = actionNotice
@@ -54,12 +75,17 @@ struct LAAWorkMessageForm: View {
     }
 
     private var draftKey: ComposerDraftKey? {
-        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "\(mode == .resume ? "resume" : "message"):\(sessionID)") }
+        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "message:\(sessionID)") }
     }
     private var pending: ComposerDraftStore.Submission? {
         draftKey.flatMap { LAAWorkDrafts.pending(drafts, key: $0) }
     }
-    private var path: String { "/v1/sessions/\(sessionID)/\(mode == .resume ? "resume" : "messages")" }
+    private func pendingMode(_ item: ComposerDraftStore.Submission) -> Mode? {
+        guard let (body, _) = LAAWorkDrafts.request(item), let payload = try? JSONDecoder().decode(Payload.self, from: body) else {
+            return nil
+        }
+        return payload.requestId == nil ? .followUp : .resume
+    }
     private var promptPlaceholder: String { mode == .resume ? "続きの指示" : "追加の指示" }
     private var composerPrefix: String { mode == .resume ? "work.resume.composer" : "work.composer" }
     private var canSubmit: Bool {
@@ -184,7 +210,7 @@ struct LAAWorkMessageForm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if mode == .resume {
-                Text(verbatim: "会話履歴は引き継がれません。続きを進めるための情報を入力してください。")
+                Text(verbatim: LAACopy.WorkTab.resumeNewConversation)
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             if let pending {
@@ -192,7 +218,7 @@ struct LAAWorkMessageForm: View {
                     Label(LAAWorkPresentation.japanese("送信結果は未確認"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
                     Text(verbatim: "状態を確認したうえで、同じ内容とIDで再照合できます。新しい送信は始めません。")
                     Text(verbatim: pending.draft.text).laaTextStyle(.secondary).lineLimit(4)
-                    if mode == .resume {
+                    if pendingMode(pending) == .resume {
                         Button(LAACopy.WorkTab.checkSuccessor) { Task { await reconcile(pending) } }.disabled(sending)
                     } else {
                         Button(LAACopy.WorkTab.resolveSend) { showResolution = true }.disabled(sending)
@@ -200,14 +226,23 @@ struct LAAWorkMessageForm: View {
                 }.workCard()
             }
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention) }
-            if !canStart && mode == .followUp {
-                Text(verbatim: "判断待ち・停止中は追加送信できません。状態を確認してください。")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            if let held {
+                Text(verbatim: held).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityIdentifier("work.composer.queued")
             }
-            if mode == .followUp && !attachments.isEmpty { chips }
+            if refusedForDecision {
+                Button(LAACopy.WorkTab.openPendingDecision, action: onDecision).foregroundStyle(LAAColor.link)
+            } else if !readiness.canSend && readiness != .successor {
+                Button(LAACopy.WorkTab.checkStop, action: onCheckState).foregroundStyle(LAAColor.link)
+            }
+            if !attachments.isEmpty { chips }
+            if mode == .resume && !attachments.isEmpty {
+                Text(verbatim: LAACopy.WorkTab.resumeRemoveImages).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
             LAAWorkComposer(text: $text, revision: $revision, placeholder: promptPlaceholder,
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
                             onChange: saveDraft, onSubmit: { submit() },
+                            submitLabel: mode == .resume ? LAACopy.WorkTab.startSuccessor : LAACopy.WorkTab.send,
                             accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer",
                             onImage: mode == .followUp ? addImage : nil,
                             compact: mode == .followUp, focusRequest: focusRequest)
@@ -313,14 +348,15 @@ struct LAAWorkMessageForm: View {
     }
 
     private func submit(queue: Bool = false) {
-        guard let key = draftKey, pending == nil, canStart else { return }
+        guard let key = draftKey, canSubmit else { return }
+        held = nil; refusedForDecision = false
         let message = text
         let images = attachments.compactMap { attachment -> LAAWorkImagePayload? in
             guard let value = attachment.uri.components(separatedBy: ",").last else { return nil }
             return LAAWorkImagePayload(data: value, mimeType: attachment.mimeType ?? "image/jpeg")
         }
         let payload = Payload(message: message, requestId: mode == .resume ? UUID().uuidString.lowercased() : nil, images: images.isEmpty ? nil : images,
-                              delivery: Self.delivery(mode: mode, queue: queue))
+                              delivery: Self.delivery(mode: mode, queue: queue || readiness == .queue))
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(payload),
@@ -340,12 +376,18 @@ struct LAAWorkMessageForm: View {
         sending = true
         defer { sending = false }
         do {
+            guard let requestMode = pendingMode(item) else { error = "送信記録を読み取れません。"; return }
+            let path = "/v1/sessions/\(sessionID)/\(requestMode == .resume ? "resume" : "messages")"
             let result: LAAWorkSession = try await LAAWorkHTTP.write(bridge, path: path, body: body, key: key)
             guard drafts.finishSubmission(item.id, restoring: false) else {
                 error = "送信結果を端末に保存できません。再送せず状態を確認してください。"; return
             }
             error = nil
-            if mode == .followUp { onSent?(item.draft.text, item.draft.attachments) }
+            refusedForDecision = false
+            if requestMode == .followUp {
+                if result.queued == true { held = LAACopy.WorkTab.followUpQueued }
+                onSent?(item.draft.text, item.draft.attachments)
+            }
             onSuccess(result)
         } catch let failure as LAABridgeHTTPError {
             if LAAWorkHTTP.outcomeUnknown(failure) { drafts.markSubmissionUnknown(item.id) }
@@ -353,7 +395,11 @@ struct LAAWorkMessageForm: View {
                 revision &+= 1; text = drafts.draft(for: draftKey).text
             attachments = drafts.draft(for: draftKey).attachments
             }
-            error = LAAWorkHTTP.message(failure)
+            refusedForDecision = failure.code == "pending_decision_requires_reply"
+            error = refusedForDecision ? LAACopy.WorkTab.followUpDecisionDraft : LAAWorkHTTP.message(failure)
+            if ["pending_decision_requires_reply", "session_stopped", "stop_unconfirmed"].contains(failure.code ?? "") {
+                onCheckState()
+            }
         } catch let failure as LAABridgeError {
             drafts.markSubmissionUnknown(item.id)
             error = failure.japaneseText
@@ -364,7 +410,7 @@ struct LAAWorkMessageForm: View {
     }
 
     @MainActor private func reconcile(_ item: ComposerDraftStore.Submission) async {
-        guard mode == .resume, let (body, _) = LAAWorkDrafts.request(item),
+        guard let (body, _) = LAAWorkDrafts.request(item),
               let payload = try? JSONDecoder().decode(Payload.self, from: body), let requestID = payload.requestId else {
             error = "再開要求の記録を読み取れません。"; return
         }

@@ -35871,7 +35871,13 @@ final class AppState: ObservableObject {
     /// session (issue #140). Response feedback falls back to the UIKit
     /// pattern in that state.
     var responseHapticsMayUseCoreHaptics: Bool {
+#if LAA_BUILD
+        // A streamed text reply must not start even a haptics-only engine
+        // over music. UIKit's feedback generators need no audio engine.
+        !voiceConversationController.hasLiveVoiceSession && !wakeOtherAudioProbe()
+#else
         !voiceConversationController.hasLiveVoiceSession
+#endif
     }
 
     /// Internal for testing: the response-haptic forwarding seam is the

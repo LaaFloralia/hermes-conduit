@@ -17,6 +17,10 @@ struct LAAChatsContent: View {
     var retry: () -> Void
     var searchChanged: () -> Void
     var publishesMacCommands = true
+    var projects: [LAAChatProject] = []
+    var projectsUnavailable = false
+    var openProject: ((UUID) -> Void)? = nil
+    var newProject: (() -> Void)? = nil
 
     @Environment(\.laaDesktop) private var laaDesktop
     @State private var query = ""
@@ -38,8 +42,11 @@ struct LAAChatsContent: View {
     private var matchingMonet: LAAChatsPerson? {
         monet.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
     }
+    private var matchingProjects: [LAAChatProject] {
+        projects.filter { !searching || $0.name.localizedStandardContains(query) }
+    }
     private var hasResults: Bool {
-        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !contractors.isEmpty || !rooms.isEmpty
+        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !contractors.isEmpty || !rooms.isEmpty || !matchingProjects.isEmpty
     }
 
     private var failure: String? {
@@ -82,6 +89,7 @@ struct LAAChatsContent: View {
                         peopleSection(LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, contractors,
                                       identifier: "laa.chats.contractors")
                     }
+                    if openProject != nil, !searching || !matchingProjects.isEmpty { projectSection }
                     if !searching || !rooms.isEmpty { groupSection }
                     if searching { searchIncomplete }
                 }
@@ -128,6 +136,7 @@ struct LAAChatsContent: View {
         ids += monetVariants.filter(\.available).map { "person.\($0.profile)" }
         ids += employees.filter(\.available).map { "person.\($0.profile)" }
         ids += contractors.filter(\.available).map { "person.\($0.profile)" }
+        ids += matchingProjects.map { "project.\($0.id.uuidString)" }
         if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
         return ids
     }
@@ -147,6 +156,9 @@ struct LAAChatsContent: View {
             let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees + contractors)
             return people.first { $0.profile == profile }.map(LAAChatsRowTarget.person)
         }
+        if id.hasPrefix("project."), let projectID = UUID(uuidString: String(id.dropFirst("project.".count))) {
+            return matchingProjects.contains { $0.id == projectID } ? .project(projectID) : nil
+        }
         let roomID = String(id.dropFirst("room.".count))
         return rooms.first { $0.roomID == roomID }.map(LAAChatsRowTarget.room)
     }
@@ -158,6 +170,7 @@ struct LAAChatsContent: View {
         switch target {
         case .person(let person): openPerson(person)
         case .room(let room): openRoom(room)
+        case .project(let id): openProject?(id)
         }
         return .handled
     }
@@ -300,6 +313,43 @@ struct LAAChatsContent: View {
         .accessibilityHint(Text(verbatim: snapshot.canCreateGroup ? "" : LAACopy.chatsNewUnavailable))
         .accessibilityIdentifier("laa.chats.new")
         .macTooltip(LAACopy.chatsNew)
+    }
+
+    private var projectSection: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            HStack {
+                sectionHeader(LAACopy.ChatProjects.title)
+                Spacer(minLength: 0)
+                if !searching, let newProject, !projectsUnavailable {
+                    Button(LAACopy.ChatProjects.new, action: newProject)
+                        .buttonStyle(.borderless).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                        .frame(minHeight: LAASpacing.minimumTouchTarget)
+                        .accessibilityIdentifier("laa.chatProject.new")
+                }
+            }
+            if projectsUnavailable { note(LAACopy.ChatProjects.storageReadError) }
+            else if matchingProjects.isEmpty { note(LAACopy.ChatProjects.empty) }
+            ForEach(matchingProjects) { project in
+                let id = "project.\(project.id.uuidString)"
+                Button { openProject?(project.id) } label: {
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                        Text(verbatim: project.name).laaTextStyle(.rowTitle).foregroundStyle(LAAColor.text)
+                        Text(verbatim: project.model.name).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, LAASpacing.x2)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .modifier(rowChrome(id))
+                .onHover(perform: hover(id))
+                .focused($focusedRow, equals: id)
+                .accessibilityIdentifier("laa.chatProject.row.\(project.id.uuidString)")
+                Divider()
+            }
+        }
+        .accessibilityIdentifier("laa.chatProject.section")
     }
 
     private var groupSection: some View {
@@ -530,6 +580,7 @@ private enum LAAChatsAvatarCache {
 private enum LAAChatsRowTarget {
     case person(LAAChatsPerson)
     case room(GroupRoom)
+    case project(UUID)
 }
 
 /// Mac only: a row's selected and hovered fill. `active` is false on the

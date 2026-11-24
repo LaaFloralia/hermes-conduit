@@ -341,6 +341,8 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     let pending: Pending?
     let resumedFrom: String?
     let resumedTo: String?
+    /// Present on the Bridge message response when it reports outbox acceptance.
+    var queued: Bool? = nil
     let instructionVersion: Int?
     let instructionHash: String?
     let createdAt: String

@@ -63,8 +63,16 @@ extension AppState {
 
     /// Another app's music or podcast pauses wake unless the user keeps it
     /// listening over other audio.
+    private var wakeMayListenOverOtherAudio: Bool {
+#if LAA_BUILD
+        false // An idle listener never takes a record route from a music app.
+#else
+        wakeConfiguration.listensOverOtherAudio
+#endif
+    }
+
     private var isWakeOtherAudioAllowed: Bool {
-        wakeConfiguration.listensOverOtherAudio || !isWakeOtherAudioPlaying
+        wakeMayListenOverOtherAudio || !isWakeOtherAudioPlaying
     }
 
     private var isVoiceIdleForWake: Bool {
@@ -133,7 +141,7 @@ extension AppState {
                 let rawType = notification.userInfo?[AVAudioSessionSilenceSecondaryAudioHintTypeKey] as? UInt
                 let began = rawType.flatMap(AVAudioSession.SilenceSecondaryAudioHintType.init(rawValue:)) == .begin
                 Task { @MainActor [weak self] in
-                    guard let self, !self.wakeConfiguration.listensOverOtherAudio else { return }
+                    guard let self, !self.wakeMayListenOverOtherAudio else { return }
                     self.noteWakeOtherAudio(playing: began || self.wakeOtherAudioProbe())
                 }
             }
@@ -162,7 +170,7 @@ extension AppState {
         if snapshot.canArm, !wakeWordService.isArmed, snapshot != lastAppliedWakeSnapshot {
             isWakeRouteCarPlay = WakeRoutePolicy.currentRouteIsCarPlay()
             snapshot.isRouteSuitable = isWakeRouteAllowed
-            if !wakeConfiguration.listensOverOtherAudio {
+            if !wakeMayListenOverOtherAudio {
                 isWakeOtherAudioPlaying = wakeOtherAudioProbe()
                 snapshot.otherAudioAllowsListening = isWakeOtherAudioAllowed
             }
@@ -186,7 +194,7 @@ extension AppState {
     /// again). Off whenever wake could not listen anyway, and when the user
     /// keeps it listening over other audio.
     func updateWakeOtherAudioMonitor(for snapshot: WakeLifecycleSnapshot) {
-        guard snapshot.canArmIgnoringOtherAudio, !wakeConfiguration.listensOverOtherAudio else {
+        guard snapshot.canArmIgnoringOtherAudio, !wakeMayListenOverOtherAudio else {
             stopWakeOtherAudioMonitor()
             return
         }

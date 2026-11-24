@@ -1145,6 +1145,15 @@ final class HermesClient: ObservableObject {
 
     // Callback for stream events (set by AppState)
     var onEvent: ((StreamEvent) -> Void)?
+#if LAA_BUILD
+    // Logical Chat Projects are not staff sessions. Their contract events
+    // must never mutate AppState's active staff transcript.
+    var laaProjectEventHandlers: [UUID: ([String: AnyCodable]) -> Void] = [:]
+
+    func laaProjectRPC(_ method: String, params: [String: Any]) async throws -> AnyCodable {
+        try await rpc(method, params: params, timeout: 12, scoped: false)
+    }
+#endif
     var onDisconnected: (() -> Void)?
 
     #if LAA_BUILD
@@ -1655,6 +1664,13 @@ final class HermesClient: ObservableObject {
         // Handle stream event notification
         if json.method == "event", let eventObject = json.params?.objectValue {
             #if LAA_BUILD
+            // Logical Chat Projects are not staff sessions: their scoped
+            // events never reach the staff transcript or its replay gate.
+            if let rawID = eventObject["turn_id"]?.stringValue, let id = UUID(uuidString: rawID),
+               let handler = laaProjectEventHandlers[id] {
+                handler(eventObject)
+                return
+            }
             if let sessionID = laaReplayFlight?.sessionID,
                eventObject["session_id"]?.stringValue == sessionID,
                LAAChatEventReplay.identity(eventObject) != nil {

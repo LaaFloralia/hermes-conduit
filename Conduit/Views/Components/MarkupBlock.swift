@@ -335,6 +335,9 @@ struct MarkupWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+#if LAA_BUILD
+        configuration.mediaTypesRequiringUserActionForPlayback = .all
+#endif
         configuration.userContentController.add(
             MarkupMessageProxy(context.coordinator),
             name: MarkupHTML.messageHandlerName
@@ -478,6 +481,9 @@ struct SafeMarkupWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+#if LAA_BUILD
+        configuration.mediaTypesRequiringUserActionForPlayback = .all
+#endif
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.isOpaque = false
         view.backgroundColor = .clear

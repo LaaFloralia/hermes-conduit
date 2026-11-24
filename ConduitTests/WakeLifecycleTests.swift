@@ -154,7 +154,12 @@ extension WakeLifecycleTests {
         let revision = appState.wakeSettingsRevision
         appState.setWakeListensOverOtherAudio(true)
         XCTAssertNotEqual(appState.wakeSettingsRevision, revision, "the change must publish")
+        #if LAA_BUILD
+        // LAA: an idle listener never takes the record route from a music app (HO-27).
+        XCTAssertFalse(appState.wakeLifecycleSnapshot.otherAudioAllowsListening, "music keeps wake paused in LAA")
+        #else
         XCTAssertTrue(appState.wakeLifecycleSnapshot.otherAudioAllowsListening, "kept listening over other audio")
+        #endif
 
         otherAudioPlaying = false
         appState.setWakeListensOverOtherAudio(false)
@@ -211,8 +216,15 @@ extension WakeLifecycleTests {
         let restarted = try XCTUnwrap(appState.wakeOtherAudioMonitor, "polling resumes after the call")
         appState.setWakeListensOverOtherAudio(true)
         appState.updateWakeOtherAudioMonitor(for: ready)
+        #if LAA_BUILD
+        // LAA keeps watching: music must still pause wake whatever the legacy setting says (HO-27).
+        XCTAssertEqual(appState.wakeOtherAudioMonitor, restarted, "LAA keeps polling for other audio")
+        XCTAssertFalse(restarted.isCancelled)
+        appState.stopWakeOtherAudioMonitor()
+        #else
         XCTAssertNil(appState.wakeOtherAudioMonitor, "no polling when wake keeps listening over other audio")
         XCTAssertTrue(restarted.isCancelled)
+        #endif
     }
 
     /// Lets the main actor run until `condition` holds, capped at 10 seconds

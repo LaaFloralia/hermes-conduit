@@ -100,6 +100,9 @@ struct RootView: View {
             // closes itself (the primary window releases its claim on close).
             if ConduitWindowClaimKeeper.claimPrimaryWindow() {
                 isPrimaryWindow = true
+#if LAA_BUILD && DEBUG && !targetEnvironment(macCatalyst)
+                LAALaunchAudioDiagnostic.begin()
+#endif
                 appState.startWakeListeningLifecycle()
                 // The Mac's window comes up already active and stays active
                 // behind other apps, so no change would ever report it, and

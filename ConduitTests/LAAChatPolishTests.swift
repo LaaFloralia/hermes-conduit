@@ -149,11 +149,11 @@ final class LAAChatPolishTests: XCTestCase {
                 }
                 Spacer(minLength: 0)
                 LAAWorkMessageForm(
-                    sessionID: running.id, mode: .followUp, drafts: store, canStart: true,
+                    sessionID: running.id, readiness: .send, drafts: store,
                     settingsRow: AnyView(LAAWorkSessionControls(session: running, options: opts,
                                                                 changing: .constant(false), changingFast: .constant(false),
                                                                 notice: .constant(nil)) {}),
-                    interrupt: AnyView(stopReplica)
+                    interrupt: AnyView(stopReplica), onCheckState: {}, onDecision: {}
                 ) { _ in }
             }
             .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, 60)
