@@ -344,9 +344,9 @@ struct LAAUsageView: View {
         }
     }
 
-    private var storage: some View {
+    @ViewBuilder private var storage: some View {
         let items = LAACapacity.items(state.usage.value ?? [])
-        return VStack(alignment: .leading, spacing: LAASpacing.x2) {
+        let rows = VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionTitle("Storage")
             VStack(spacing: 0) {
                 if items.isEmpty {
@@ -366,7 +366,17 @@ struct LAAUsageView: View {
             }
 
         }
-        .accessibilityIdentifier("laa.capacity")
+        #if DEBUG
+        if LAALabCaptureFixture.enabled {
+            // Keep the storage group and its individual capacity rows
+            // addressable after scrolling in the capture XCTest.
+            rows.accessibilityElement(children: .contain).accessibilityIdentifier("laa.capacity")
+        } else {
+            rows.accessibilityIdentifier("laa.capacity")
+        }
+        #else
+        rows.accessibilityIdentifier("laa.capacity")
+        #endif
     }
 
     private func sectionTitle(_ text: String) -> some View {

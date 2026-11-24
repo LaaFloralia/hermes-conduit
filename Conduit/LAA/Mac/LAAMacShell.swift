@@ -34,7 +34,14 @@ struct LAAMacShell: View {
     @State private var seededDailyFixture = false
     #endif
 
-    private var section: LAAMacSection { LAAMacSection(rawValue: storedSection) ?? .chats }
+    private var section: LAAMacSection {
+        #if DEBUG
+        // The capture process opens a single named section. Resolve it before
+        // SwiftUI lays out the restored (often Chat) section on first render.
+        if LAALabCaptureFixture.enabled, let launched = LAAMacSection.launched { return launched }
+        #endif
+        return LAAMacSection(rawValue: storedSection) ?? .chats
+    }
     private var sectionBinding: Binding<LAAMacSection> {
         Binding(get: { section }, set: { storedSection = $0.rawValue })
     }

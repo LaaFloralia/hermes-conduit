@@ -143,8 +143,11 @@ struct MainView: View {
         if let fixture = arguments.firstIndex(of: "-LAA_UI_TEST_WORK_FIXTURE_PORT"),
            arguments.indices.contains(fixture + 1), let port = UInt16(arguments[fixture + 1]), port > 1024,
            let url = URL(string: "http://127.0.0.1:\(port)") {
+            // Cache scopes differ between fixture servers: a successful
+            // normal read cannot supply an empty, loading or long capture.
+            let deviceID = LAALabCaptureFixture.enabled ? "capture-\(port)" : "work-fixture"
             return LAABridgeSession(credentialsForTesting: LAABridgeCredentials(
-                baseURL: url, deviceID: "work-fixture", token: "fixture-token"))
+                baseURL: url, deviceID: deviceID, token: "fixture-token"))
         }
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BRIDGE_OFFLINE") {
             return LAABridgeSession(credentialsForTesting: LAABridgeCredentials(
@@ -563,6 +566,11 @@ struct MainView: View {
     private var laaShell: AnyView? {
         #if LAA_BUILD
         AnyView(shellSurface
+            #if DEBUG
+            .overlay(alignment: .topLeading) {
+                if LAALabCaptureFixture.enabled { LAALabCaptureProbe() }
+            }
+            #endif
             .environmentObject(laaBridge)
             .onChange(of: laaScenePhase, initial: true) { _, phase in
                 if phase == .active { laaBridge.retryReadingCredentialsIfNeeded() }

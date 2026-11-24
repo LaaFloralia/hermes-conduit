@@ -357,6 +357,9 @@ struct LAALoadingDots: View {
             .overlay { if visible { LAAActivityDots() } }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: "読み込み中"))
+            #if DEBUG
+            .accessibilityIdentifier("laa.lab.loading")
+            #endif
             .accessibilityHidden(!visible)
             .task {
                 do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
@@ -381,6 +384,9 @@ struct LAAEmptyState: View {
     var body: some View {
         Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
             .multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 112)
+            #if DEBUG
+            .accessibilityIdentifier("laa.lab.empty")
+            #endif
     }
 }
 #endif

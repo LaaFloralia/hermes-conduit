@@ -7,6 +7,8 @@
 #                              [--sizes 900x600,1280x820,1680x1050]
 #                              [--schemes light,dark] [--skip-build] [--self-render]
 #                              [--app-args "-flag value"] [--app-env "K=V K2=V2"]
+#                              [--build-only] [--settle SECONDS] [--build-log FILE]
+#                              [--lab-fixture-mode normal|long]
 #
 # --app-args adds launch arguments, --app-env adds environment variables. The
 # Chat split needs a dashboard and an open conversation, which the DEBUG
@@ -59,6 +61,10 @@ SCHEMES=light,dark
 APP_ARGS=""
 APP_ENV=""
 SKIP_BUILD=0
+BUILD_ONLY=0
+SETTLE=0
+BUILD_LOG=""
+LAB_FIXTURE_MODE=""
 SELF_RENDER=0
 DEV_ID=com.laa-inc.laa.macdev
 DEV_NAME="LAA"
@@ -67,6 +73,8 @@ SPEC="$ROOT/project-macdev.yml"
 APP=""
 FIXTURE_PID=""
 APP_PID=""
+APP_LOG=""
+PREVIOUS_FRONT_PID=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -80,13 +88,17 @@ while [ $# -gt 0 ]; do
     --app-args) APP_ARGS=$2; shift 2 ;;
     --app-env) APP_ENV=$2; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --build-only) BUILD_ONLY=1; shift ;;
+    --settle) SETTLE=$2; shift 2 ;;
+    --build-log) BUILD_LOG=$2; shift 2 ;;
+    --lab-fixture-mode) LAB_FIXTURE_MODE=$2; shift 2 ;;
     --self-render) SELF_RENDER=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
 cleanup() {
-  [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
+  [ -z "$APP_PID" ] || stop_app
   [ -n "$FIXTURE_PID" ] && kill "$FIXTURE_PID" 2>/dev/null
   rm -f "$SPEC"
   exit "${1:-0}"
@@ -101,10 +113,18 @@ window_info() {
   if [ ! -x "$helper" ]; then
     mkdir -p "$DERIVED"
     cat > "$DERIVED/window-id.swift" <<'SWIFT'
+import AppKit
 import CoreGraphics
 import Foundation
 
-guard CommandLine.arguments.count > 1, let pid = Int32(CommandLine.arguments[1]) else { exit(1) }
+let args = Array(CommandLine.arguments.dropFirst())
+if args == ["--frontmost"] {
+    print(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)
+    exit(0)
+}
+if args.count == 2, args[0] == "--activate", let pid = Int32(args[1]),
+   let app = NSRunningApplication(processIdentifier: pid), app.activate() { exit(0) }
+guard let first = args.first, let pid = Int32(first) else { exit(1) }
 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                          kCGNullWindowID) as? [[String: Any]] ?? []
 for window in windows {
@@ -123,7 +143,7 @@ SWIFT
     DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
       xcrun swiftc -O -o "$helper" "$DERIVED/window-id.swift" >/dev/null 2>&1 || return 1
   fi
-  "$helper" "$1"
+  "$helper" "$@"
 }
 
 # The dev spec: same project, another identity, no entitlements the machine
@@ -152,17 +172,17 @@ build() {
   write_spec || { echo "could not write $SPEC" >&2; exit 1; }
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate --spec "$SPEC" >/dev/null || exit 1
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  /Users/laa/hq/harness/build-slot.sh \
+  /bin/bash /Users/laa/hq/harness/build-slot.sh \
     xcodebuild build -project Conduit.xcodeproj -scheme Conduit -configuration Debug \
       -destination 'platform=macOS,variant=Mac Catalyst' \
-      -derivedDataPath "$DERIVED" -jobs 4 \
+      -derivedDataPath "$DERIVED" -jobs 4 -packageAuthorizationProvider netrc \
       CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual \
       DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
-      CONDUIT_DISPLAY_NAME="$DEV_NAME" >"$DERIVED/build.log" 2>&1
+      CONDUIT_DISPLAY_NAME="$DEV_NAME" >"${BUILD_LOG:-$DERIVED/build.log}" 2>&1
   local status=$?
   if [ $status -ne 0 ]; then
-    echo "build failed; see $DERIVED/build.log" >&2
-    grep -m5 "error:" "$DERIVED/build.log" >&2
+    echo "build failed; see ${BUILD_LOG:-$DERIVED/build.log}" >&2
+    grep -m5 "error:" "${BUILD_LOG:-$DERIVED/build.log}" >&2
     exit 1
   fi
   APP="$DERIVED/Build/Products/Debug-maccatalyst/Conduit.app"
@@ -187,13 +207,22 @@ launch() {
   # build has no sandbox, so the fixtures' file reads would otherwise reach the
   # real Documents folder and wait on the system's permission prompt.
   mkdir -p "$DERIVED/home"
+  APP_LOG="$DERIVED/app.log"
+  if [ -n "$LAB_FIXTURE_MODE" ]; then
+    APP_LOG=$(mktemp "$DERIVED/lab-app.XXXXXX") || return 1
+  fi
   CFFIXED_USER_HOME="$DERIVED/home" \
-    "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$DERIVED/app.log" 2>&1 &
+    "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$APP_LOG" 2>&1 &
   APP_PID=$!
 }
 
 stop_app() {
   [ -n "$APP_PID" ] || return 0
+  local restore=""
+  if [ -n "$PREVIOUS_FRONT_PID" ] && [ "$(window_info --frontmost)" = "$APP_PID" ]; then
+    restore=$PREVIOUS_FRONT_PID
+  fi
+  PREVIOUS_FRONT_PID=""
   kill "$APP_PID" 2>/dev/null
   for _ in $(seq 1 40); do
     kill -0 "$APP_PID" 2>/dev/null || break
@@ -201,6 +230,10 @@ stop_app() {
   done
   kill -9 "$APP_PID" 2>/dev/null
   APP_PID=""
+  if [ -n "$LAB_FIXTURE_MODE" ]; then rm -f "$APP_LOG"; fi
+  if [ -n "$restore" ] && [ "$(window_info --frontmost)" != "$restore" ]; then
+    window_info --activate "$restore" >/dev/null 2>&1 || true
+  fi
   sleep 1
 }
 
@@ -210,6 +243,7 @@ if [ "$SKIP_BUILD" = 1 ] && [ -d "$DERIVED/Build/Products/Debug-maccatalyst/Cond
 else
   build
 fi
+[ "$BUILD_ONLY" = 0 ] || cleanup
 
 if [ -n "$FIXTURE" ]; then
   node "$ROOT/scripts/laa/$FIXTURE-ui-fixture.mjs" >"$DERIVED/fixture.log" 2>&1 &
@@ -227,16 +261,34 @@ for section in "${section_list[@]}"; do
     for size in "${size_list[@]}"; do
       file="$OUT/$OWNER/$section-${size}-$scheme.png"
       rm -f "$file"
-      launch "$section" "$scheme" "$size" "$file"
-      # Wait for the window, then for it to take the requested size: the
-      # geometry request lands a moment after the window appears.
       want_w=${size%x*}
       want_h=${size#*x}
+      tall=0
+      if [ -n "$LAB_FIXTURE_MODE" ] && [ "$want_h" -ge 1050 ]; then
+        tall=1
+        PREVIOUS_FRONT_PID=$(window_info --frontmost)
+      fi
+      launch "$section" "$scheme" "$size" "$file" || exit 1
+      if [ "$tall" = 1 ]; then
+        # The AppKit presentation option only applies to the foreground app.
+        # Activate the exact process we launched, then restore focus on exit.
+        for _ in $(seq 1 20); do
+          window_info --activate "$APP_PID" >/dev/null 2>&1 && break
+          sleep 0.1
+        done
+      fi
+      # A tall lab window is briefly frontmost; don't keep it there if the
+      # display cannot fit the request.
+      polls=120
+      [ "$tall" != 1 ] || polls=24
       id=""
-      for _ in $(seq 1 120); do
+      last_window="not visible"
+      for _ in $(seq 1 "$polls"); do
+        kill -0 "$APP_PID" 2>/dev/null || break
         info=$(window_info "$APP_PID")
         if [ -n "$info" ]; then
           read -r wid ww wh <<< "$info"
+          last_window="${ww}x${wh}"
           # The geometry request sets the content size, so the window frame is
           # that plus the title bar. Anything in that range is the window asked
           # for, at the requested content size.
@@ -248,7 +300,7 @@ for section in "${section_list[@]}"; do
         sleep 0.5
       done
       if [ -z "$id" ]; then
-        echo "no ${want_w}x${want_h} window for $section $scheme" >&2
+        echo "no ${want_w}x${want_h} window for $section $scheme (last WindowServer size: $last_window)" >&2
         stop_app
         continue
       fi
@@ -256,6 +308,24 @@ for section in "${section_list[@]}"; do
         # The window writes the file a few seconds after it settles.
         for _ in $(seq 1 60); do [ -s "$file" ] && break; sleep 0.5; done
       else
+        # Fixture data may arrive just after the window's geometry settles.
+        [ "$SETTLE" = 0 ] || sleep "$SETTLE"
+        if [ -n "$LAB_FIXTURE_MODE" ]; then
+          expected_traits="LAA_LAB_WINDOW_TRAITS $scheme $LAB_FIXTURE_MODE"
+          observed=""
+          for _ in $(seq 1 25); do
+            observed=$(grep '^LAA_LAB_WINDOW_TRAITS ' "$APP_LOG" | tail -1)
+            [ "$observed" != "$expected_traits" ] || break
+            kill -0 "$APP_PID" 2>/dev/null || break
+            sleep 0.2
+          done
+          if [ "$observed" != "$expected_traits" ]; then
+            echo "wrong Mac appearance/fixture for $section $size: $observed" >&2
+            stop_app
+            continue
+          fi
+          echo "$section $size ${ww}x${wh} $observed"
+        fi
         screencapture -x -o -l "$id" "$file"
       fi
       if [ -s "$file" ]; then

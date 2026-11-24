@@ -15,7 +15,7 @@ final class LAABackgroundFixture: ObservableObject {
             GroupMember(memberID: "laa-monet", profile: "laa-monet", handle: "monet", displayName: "Monet", target: nil, extra: [:]),
             GroupMember(memberID: "laa-cto", profile: "laa-cto", handle: "ada", displayName: "Ada", target: nil, extra: [:]),
         ]
-        let room = GroupRoom(roomID: "fixture-room", name: "企画チーム", members: members,
+        let room = GroupRoom(roomID: "fixture-room", name: LAALabCaptureFixture.expanded("企画チーム"), members: members,
                              authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1,
                              createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: 2)
         self.room = room
@@ -43,7 +43,7 @@ final class LAABackgroundFixture: ObservableObject {
                            authorityEpoch: 1, payload: ["text": .string("今日の予定を整理して、次の一手を教えて。")], createdAt: now - 60),
                 GroupEvent(roomID: room.roomID, seq: 2, eventID: "two", kind: "message.member",
                            actor: GroupActor(kind: "member", id: "laa-monet", profile: "laa-monet", displayName: "Monet", connectionID: nil),
-                           authorityEpoch: 1, payload: ["text": .string(Self.richMessage)], createdAt: now),
+                           authorityEpoch: 1, payload: ["text": .string(Self.captureReply)], createdAt: now),
             ]
         }
         if chatFixture == "empty" { events = [] }
@@ -109,7 +109,7 @@ final class LAABackgroundFixture: ObservableObject {
             } else {
                 app.messages = [
                     ChatMessage(id: "user", role: .user, content: "今日の予定を整理して、次の一手を教えて。", timestamp: String(now - 60), rowId: 1),
-                    ChatMessage(id: "assistant", role: .assistant, content: Self.richMessage, timestamp: String(now),
+                    ChatMessage(id: "assistant", role: .assistant, content: Self.captureReply, timestamp: String(now),
                                 rowId: 2, reactions: [MessageReaction(emoji: "❤️", author: "user", at: now)])
                 ]
             }
@@ -223,6 +223,11 @@ final class LAABackgroundFixture: ObservableObject {
         }
         self.state = app
         self.bots = bots
+    }
+
+    private static var captureReply: String {
+        guard LAALabCaptureFixture.longJapanese else { return richMessage }
+        return "# " + LAALabCaptureFixture.name + "\n\n" + LAALabCaptureFixture.paragraph + "\n\n" + richMessage
     }
 
     private static let richMessage = """
@@ -356,7 +361,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                 captureReady = true
                 return
             }
-            if argument("-LAA_CAPTURE_SURFACE") != nil {
+            if argument("-LAA_CAPTURE_SURFACE") != nil && !LAALabCaptureFixture.enabled {
                 if UserDefaults.standard.string(forKey: previousThemeKey) == nil {
                     UserDefaults.standard.set(rootState.themePreference.rawValue, forKey: previousThemeKey)
                 }
@@ -365,6 +370,7 @@ struct LAABackgroundUITestFixtureScreen: View {
             if argument("-LAA_CAPTURE_SURFACE") == "group" || args.contains("-LAA_FIXTURE_PUSH_GROUP") {
                 await fake.openGroup()
             }
+            if LAALabCaptureFixture.enabled { captureReady = true }
             if let raw = argument("-LAA_CAPTURE_KIND") {
                 guard let kind = LAABackground.Kind(rawValue: raw), let key = LAAConversationScope.current(fake.state) else { return }
                 do {
@@ -419,6 +425,7 @@ struct LAABackgroundUITestFixtureScreen: View {
     }
 
     private var fixtureColorScheme: ColorScheme? {
+        if LAALabCaptureFixture.enabled { return nil }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-LAA_V2_DARK") { return .dark }
         return args.contains("-LAA_V2_CHAT_FIXTURE") ? .light : nil

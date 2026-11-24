@@ -171,6 +171,9 @@ struct LAALinearTasksView: View {
                 })
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
                         Button { detail = nil } label: { Text(verbatim: LAACopy.close) }
+                        #if DEBUG
+                        .accessibilityIdentifier("work.task.detail.close")
+                        #endif
                     } }
             }
             .environmentObject(bridge)

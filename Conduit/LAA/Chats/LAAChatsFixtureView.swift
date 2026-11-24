@@ -35,12 +35,12 @@ struct LAAChatsFixtureView: View {
     }
     private var snapshot: LAAChatsSnapshot {
         let people = LAAStaff.allCases.map {
-            LAAChatsPerson(profile: "laa-\($0.rawValue)", name: $0.name, role: $0.role, available: mode != "offline",
+            LAAChatsPerson(profile: "laa-\($0.rawValue)", name: LAALabCaptureFixture.expanded($0.name), role: $0.role, available: mode != "offline",
                            lastMessage: $0 == .monet ? "午前の予定と、判断が必要な項目をまとめました。"
                                : ($0 == .cto ? "資料を更新しました。公開前に見出しを確認してください。" : nil),
                            lastMessageAt: $0 == .cto ? Date().addingTimeInterval(-180) : nil)
         }
-        let rooms = mode == "normal" ? [GroupRoom(roomID: "team", name: "LAA team", members: members,
+        let rooms = mode == "normal" ? [GroupRoom(roomID: "team", name: LAALabCaptureFixture.expanded("LAA team"), members: members,
             authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1, createdAt: 1, updatedAt: 2,
             disbandedAt: nil, latestSeq: 1)] : []
         return LAAChatsSnapshot(people: people, rooms: rooms, groupsState: state,
