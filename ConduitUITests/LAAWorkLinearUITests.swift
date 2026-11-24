@@ -183,7 +183,7 @@ final class LAAWorkLinearUITests: XCTestCase {
                 app.navigationBars.buttons.firstMatch.tap()
                 app.navigationBars.buttons.firstMatch.tap()
                 XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
-                app.buttons["閉じる"].tap()
+                app.buttons["laa.settings.done"].tap()
             } else if section == "routines" {
                 attach("work-routine-paused-closed-\(appearance)")
                 app.buttons["work.routines.services"].tap()
@@ -212,11 +212,7 @@ final class LAAWorkLinearUITests: XCTestCase {
     private func selectSection(_ app: XCUIApplication, _ section: String) {
         if section == "skills" {
             // Skills moved into Settings (2b5760d5).
-            app.buttons["laa.settings.open"].tap()
-            let skills = app.buttons["settings.skills"]
-            XCTAssertTrue(skills.waitForExistence(timeout: 10))
-            if !skills.isHittable { app.scrollViews.firstMatch.swipeUp() }
-            skills.tap()
+            LAASettingsSkillsUI.open(in: app)
         } else {
             app.buttons["work.section.\(section)"].tap()
         }

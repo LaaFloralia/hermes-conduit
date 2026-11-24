@@ -40,11 +40,7 @@ final class LAAWorkRefUITests: XCTestCase {
         if value == "projects" {
             app.buttons["work.section.projects"].tap()
         } else if value == "skills" {
-            app.buttons["laa.settings.open"].tap()
-            let skills = app.buttons["settings.skills"]
-            XCTAssertTrue(skills.waitForExistence(timeout: 10))
-            if !skills.isHittable { app.scrollViews.firstMatch.swipeUp() }
-            skills.tap()
+            LAASettingsSkillsUI.open(in: app)
         } else { app.buttons["work.section.\(value)"].tap() }
     }
 
