@@ -1149,6 +1149,9 @@ final class HermesClient: ObservableObject {
     // Logical Chat Projects are not staff sessions. Their contract events
     // must never mutate AppState's active staff transcript.
     var laaProjectEventHandlers: [UUID: ([String: AnyCodable]) -> Void] = [:]
+    /// Advertised on `gateway.ready` by a gateway that serves `laa.projects.*`.
+    /// An older gateway is refused before any prompt leaves the app.
+    private(set) var laaHasChatProjects = false
 
     func laaProjectRPC(_ method: String, params: [String: Any]) async throws -> AnyCodable {
         try await rpc(method, params: params, timeout: 12, scoped: false)
@@ -1691,6 +1694,7 @@ final class HermesClient: ObservableObject {
             laaReplay.epoch = payload?["replay_epoch"]?.stringValue
             laaAdmitReasoningAdvertisement(payload?["reasoning_delta_optin"]?.boolValue)
             laaHasClientTurnID = payload?["client_turn_id"]?.boolValue == true
+            laaHasChatProjects = payload?["laa_chat_projects"]?.boolValue == true
         }
         guard laaReplay.admit(eventObject) else { return }
         #endif

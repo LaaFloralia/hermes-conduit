@@ -5,7 +5,9 @@ import Foundation
     let connectedClient: () -> HermesClient?
 
     func create(_ request: LAAChatProjectCreate) async throws {
-        guard let client = connectedClient() else { throw LAAChatProjectFailure(.runtimeUnavailable) }
+        guard let client = connectedClient(), client.laaHasChatProjects else {
+            throw LAAChatProjectFailure(.runtimeUnavailable)
+        }
         let wire: AnyCodable
         do {
             wire = try await client.laaProjectRPC("laa.projects.create", params: identity(request.route).merging([
@@ -19,7 +21,7 @@ import Foundation
 
     func submit(_ request: LAAChatProjectSubmit) -> AsyncThrowingStream<LAAChatProjectEvent, Error> {
         AsyncThrowingStream { continuation in
-            guard let client = connectedClient() else {
+            guard let client = connectedClient(), client.laaHasChatProjects else {
                 continuation.finish(throwing: LAAChatProjectFailure(.runtimeUnavailable)); return
             }
             let relay = Relay(request: request, continuation: continuation)
