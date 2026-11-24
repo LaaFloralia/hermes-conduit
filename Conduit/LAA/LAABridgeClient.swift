@@ -212,7 +212,19 @@ struct LAABridgeClient {
               let health = URL(string: "/v1/health", relativeTo: url)?.absoluteURL else { throw LAABridgeError.laneMismatch }
         var probe = URLRequest(url: health, timeoutInterval: 5)
         try policy.stampBridgeRequest(&probe)
-        let (bytes, response) = try await session.bytes(for: probe)
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: probe)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            // Nothing answered: the request was not sent, and the caller sees
+            // the same error an unreachable Mac gives outside a lane.
+            throw LAABridgeError.networkUnreachable
+        }
         defer { bytes.task.cancel() }
         try policy.verifyBridgeResponse(response)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw LAABridgeError.laneMismatch }
