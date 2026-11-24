@@ -17,24 +17,30 @@ final class LAADecisionUITests: XCTestCase {
     private func fixture(_ path: String) -> [String: Any]? {
         let done = expectation(description: "fixture \(path)")
         var payload: [String: Any]?
-        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:\(port + 1)\(path)")!) { data, _, _ in
-            if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
+        guard let request = try? LabUI.request(LabUI.origin("work-control", legacyPort: port + 1), "\(path)") else { return nil }
+        LabUI.session.dataTask(with: request) { data, response, _ in
+            if LabUI.matches(response), let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
             done.fulfill()
         }.resume()
         wait(for: [done], timeout: 10)
         return payload
     }
 
+    private func resetFixture() throws {
+        if LabUI.active { _ = try XCTUnwrap(fixture("/reset"), "lane Work fixture is not responding") }
+        else if fixture("/reset") == nil { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
+    }
+
     private func launch(board mode: String, dark: Bool = false, root: Bool = false) throws -> XCUIApplication {
-        guard fixture("/reset") != nil else { throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs") }
-        fixture("/decisions/\(mode)")
+        try resetFixture()
+        _ = try XCTUnwrap(fixture("/decisions/\(mode)"))
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", dark ? "dark" : "light",
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:\(port)"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
@@ -215,13 +221,13 @@ final class LAADecisionUITests: XCTestCase {
     }
 
     func testColdLaunchToInteractiveWorkTiming() throws {
-        guard fixture("/reset") != nil else { throw XCTSkip("Start the Work fixture") }
+        try resetFixture()
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-tab", "work"]
         for run in 1...3 {
             let start = Date()
-            app.launch()
+            app.launchInLab()
             XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
             print("LAA_COLD_LAUNCH run=\(run) interactive_seconds=\(Date().timeIntervalSince(start))")
             app.terminate()

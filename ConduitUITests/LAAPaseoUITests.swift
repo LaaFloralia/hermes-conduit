@@ -8,8 +8,9 @@ final class LAAPaseoUITests: XCTestCase {
         func control(_ path: String) throws -> [String: Any] {
             let done = expectation(description: path)
             var result: [String: Any]?
-            URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19596\(path)")!) { data, _, _ in
-                if let data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let request = try LabUI.request(LabUI.origin("paseo", legacyPort: 19596), path)
+            LabUI.session.dataTask(with: request) { data, response, _ in
+                if LabUI.matches(response), let data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     result = object["data"] as? [String: Any]
                 }
                 done.fulfill()
@@ -62,7 +63,7 @@ final class LAAPaseoUITests: XCTestCase {
         let app = try launchFixture("light")
         defer { app.terminate() }
         func control(_ path: String) throws -> [String: Any] {
-            let data = try Data(contentsOf: URL(string: "http://127.0.0.1:19596\(path)")!)
+            let data = try LabUI.data(LabUI.origin("paseo", legacyPort: 19596), "\(path)")
             let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             return try XCTUnwrap(object?["data"] as? [String: Any])
         }
@@ -292,7 +293,7 @@ final class LAAPaseoUITests: XCTestCase {
 
     private func waitForFavorite(_ value: Bool) -> Bool {
         let match = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            guard let data = try? Data(contentsOf: URL(string: "http://127.0.0.1:19596/state")!),
+            guard let data = try? LabUI.data(LabUI.origin("paseo", legacyPort: 19596), "/state"),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let state = json["data"] as? [String: Any] else { return false }
             return state["favorite"] as? Bool == value
@@ -301,7 +302,7 @@ final class LAAPaseoUITests: XCTestCase {
     }
 
     private func launchFixture(_ appearance: String, longList: Bool = false) throws -> XCUIApplication {
-        guard (try? Data(contentsOf: URL(string: "http://127.0.0.1:19596/reset?long=\(longList ? "1" : "0")")!)) != nil else {
+        guard (try? LabUI.data(LabUI.origin("paseo", legacyPort: 19596), "/reset?long=\(longList ? "1" : "0")")) != nil else {
             throw XCTSkip("Start scripts/laa/paseo-ui-fixture.mjs")
         }
         continueAfterFailure = false
@@ -310,8 +311,8 @@ final class LAAPaseoUITests: XCTestCase {
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
                                // Each run starts with no project remembered.
                                "-laa.work.lastProject", ""]
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19596"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("paseo", legacyPort: 19596)
+        app.launchInLab()
         let connect = app.buttons["work.connect"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: connect)

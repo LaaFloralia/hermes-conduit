@@ -81,7 +81,12 @@ enum NotifierPluginLatestVersion {
     static func refresh(
         defaults: UserDefaults,
         now: Date = Date(),
-        fetch: (URL) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(from: $0) }
+        fetch: (URL) async throws -> (Data, URLResponse) = {
+            #if DEBUG
+            guard !LAALabNetworkPolicy.current.isActive else { throw URLError(.unsupportedURL) }
+            #endif
+            return try await URLSession.shared.data(from: $0)
+        }
     ) async -> Answer? {
         if let checked = defaults.object(forKey: checkedKey) as? Date, now.timeIntervalSince(checked) < interval {
             return nil

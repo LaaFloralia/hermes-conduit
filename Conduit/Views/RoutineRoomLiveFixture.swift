@@ -35,6 +35,8 @@ struct RoutineRoomLiveFixture: View {
     }
 
     private static func read(_ path: String) async throws -> AnyCodable {
+        // This adapter reads a real hosted-room log, not synthetic data.
+        guard !LAALabNetworkPolicy.current.isActive else { throw URLError(.unsupportedURL) }
         let (data, response) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:19739/" + path)!)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         return try JSONDecoder().decode(AnyCodable.self, from: data)

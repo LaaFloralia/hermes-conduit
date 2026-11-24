@@ -139,6 +139,9 @@ enum DashboardCookiePersistence {
     /// dashboard can ever read it. A nil dashboard (legacy/test construction)
     /// falls back to the default store.
     static func webKitStore(for dashboardID: UUID?) -> WKWebsiteDataStore {
+        #if DEBUG
+        if LAALabNetworkPolicy.current.isActive { return .nonPersistent() }
+        #endif
         guard let dashboardID else { return .default() }
         return WKWebsiteDataStore(forIdentifier: dashboardID)
     }
@@ -1340,6 +1343,11 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func loadDashboardSession() {
+        #if DEBUG
+        // WebKit subresources do not go through URLSession or the navigation
+        // delegate. No network-backed page in a test process.
+        guard !LAALabNetworkPolicy.current.isActive else { return }
+        #endif
         guard nativeOAuthSession == nil else {
             isReady = !isInvalidated
             return

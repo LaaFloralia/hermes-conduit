@@ -56,7 +56,7 @@ final class LAAOwnerShotsUITests: XCTestCase {
             app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
                                    "-LAA_CAPTURE_SURFACE", surface, "-LAA_CAPTURE_KIND", kind]
                 + (dark ? ["-LAA_V2_DARK"] : []) + (avatar ? ["-LAA_UI_TEST_OWNER_AVATAR"] : [])
-            app.launch()
+            app.launchInLab()
             XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 25))
             if surface == "group" {
                 XCTAssertTrue(app.textViews["room.composer.field"].waitForExistence(timeout: 20))
@@ -83,8 +83,9 @@ final class LAAOwnerShotsUITests: XCTestCase {
     private func fixture(_ path: String) -> [String: Any]? {
         let done = expectation(description: "fixture \(path)")
         var payload: [String: Any]?
-        URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:19585\(path)")!) { data, _, _ in
-            if let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
+        guard let request = try? LabUI.request(LabUI.origin("work-control", legacyPort: 19585), "\(path)") else { return nil }
+        LabUI.session.dataTask(with: request) { data, response, _ in
+            if LabUI.matches(response), let data { payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] }
             done.fulfill()
         }.resume()
         wait(for: [done], timeout: 10)
@@ -99,8 +100,8 @@ final class LAAOwnerShotsUITests: XCTestCase {
                                "-conduit.themePreference", theme,
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
             + (avatar ? ["-LAA_UI_TEST_OWNER_AVATAR"] : [])
-        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19584"
-        app.launch()
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: 19584)
+        app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
         let code = app.secureTextFields["laa.bridge.code"]

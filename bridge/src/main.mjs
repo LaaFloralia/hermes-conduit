@@ -13,27 +13,30 @@ import {
   resolveVoiceWorkerPath,
   testEndpointsEnabled,
 } from './config.mjs';
-import { createStore } from './store.mjs';
-import { createBridge } from './http.mjs';
-import { createVoiceWorker } from './voice/worker.mjs';
-import { startWorkReports } from './routines/work-reports.mjs';
-
-const port = resolvePort();
-const stateDir = resolveStateDir();
-const store = createStore({ dir: stateDir, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
-
-// Voice stays off unless the operator names the worker binary. The Bridge
-// starts it on the first request and never passes the transcript or the audio
-// as an argument: both go over the child's stdin only.
-const voiceWorkerPath = resolveVoiceWorkerPath();
-const voiceWorker = voiceWorkerPath === '' ? null : createVoiceWorker({
-  command: voiceWorkerPath,
-  requestTimeoutMs: VOICE_REQUEST_TIMEOUT_MS,
-  coldTimeoutMs: VOICE_COLD_TIMEOUT_MS,
-});
+import { laneEnabled, validateLane } from './lane/guard.mjs';
 
 let bridge;
+let voiceWorker;
+let stopWorkReports = () => {};
+const isLane = laneEnabled();
 try {
+  const port = resolvePort();
+  const stateDir = resolveStateDir();
+  // Static ESM imports run before this point. Keep the HTTP graph (all
+  // routes/adapters) and state store behind the startup boundary.
+  validateLane(process.env, { stateDir, port });
+  const [{ createStore }, { createBridge }] = await Promise.all([import('./store.mjs'), import('./http.mjs')]);
+  const startWorkReports = isLane ? null : (await import('./routines/work-reports.mjs')).startWorkReports;
+  const store = createStore({ dir: stateDir, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS });
+
+  // Voice stays off unless the operator names the worker binary, and a lane
+  // never constructs the production worker.
+  const voiceWorkerPath = isLane ? '' : resolveVoiceWorkerPath();
+  voiceWorker = voiceWorkerPath === '' ? null : (await import('./voice/worker.mjs')).createVoiceWorker({
+    command: voiceWorkerPath,
+    requestTimeoutMs: VOICE_REQUEST_TIMEOUT_MS,
+    coldTimeoutMs: VOICE_COLD_TIMEOUT_MS,
+  });
   // Fail before listening if the state file is unreadable or corrupt: serving
   // with a lost device or ledger row would be worse than being down.
   store.read();
@@ -44,6 +47,9 @@ try {
     routeOptions: { sessions: { live: true }, voice: { worker: voiceWorker } },
   });
   const address = await bridge.listen({ port, host: HOST });
+  if (startWorkReports) {
+    stopWorkReports = startWorkReports({ stateDir, log: (event) => process.stderr.write(JSON.stringify({ event }) + '\n') });
+  }
   process.stdout.write(`${JSON.stringify({
     event: 'listening',
     version: VERSION,
@@ -62,8 +68,6 @@ try {
   })}\n`);
   process.exit(1);
 }
-
-const stopWorkReports = startWorkReports({ stateDir, log: (event) => process.stderr.write(JSON.stringify({ event }) + '\n') });
 
 let shuttingDown = false;
 async function shutdown(signal) {

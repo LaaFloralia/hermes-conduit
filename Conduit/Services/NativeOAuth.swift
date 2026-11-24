@@ -357,6 +357,9 @@ final class NativeOAuthAPIClient {
               ConnectionURLPolicy.originMatches(url, expected: URL(string: normalized)) else {
             throw NativeOAuthError.invalidURL
         }
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(url) else { throw URLError(.unsupportedURL) }
+        #endif
         return URLRequest(url: url).applyingProxyHeaders(cloudflare: cloudflareAccess)
     }
 
@@ -1106,6 +1109,13 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
 
         private func startSessionIfReady() {
             guard let url, viewIfLoaded?.window != nil, session == nil, !ended else { return }
+            #if DEBUG
+            if LAALabNetworkPolicy.current.isActive {
+                ended = true
+                onFailure(NativeOAuthError.browserFailed)
+                return
+            }
+            #endif
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: Self.unusedCallbackScheme

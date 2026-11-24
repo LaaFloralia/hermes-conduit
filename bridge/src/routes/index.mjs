@@ -34,6 +34,7 @@ import { createOwnerTaskStore } from '../tasks/owner-store.mjs';
 import { createOwnerTaskService } from '../tasks/owner-service.mjs';
 import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
+import { laneUsageRoutes } from '../lane/usage.mjs';
 import { studioRoutes } from './studio.mjs';
 import { createGoogleCalendar } from '../calendar/google.mjs';
 import { createCalendarReminders } from '../calendar/reminders.mjs';
@@ -54,7 +55,7 @@ import { phoneUseRoutes } from '../phone-use/routes.mjs';
 import { deviceReportRoutes } from './device-reports.mjs';
 import { campaignRoutes } from './campaigns.mjs';
 
-export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
+export function businessRoutes({ store, now = () => Date.now(), options = {}, lane = null } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
   const workspaceStore = createWorkspaceStore({ file: `${store.dir}/workspaces.json`, now });
   const workspaceOptions = options.workspaces ?? {};
@@ -144,9 +145,9 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   const ownerTaskService = ownerTasks.service ?? createOwnerTaskService({ store: ownerTaskStore, now });
 
   const calendarOptions = options.calendar ?? {};
-  const calendarService = calendarOptions.service ?? createGoogleCalendar();
+  const calendarService = lane ? null : calendarOptions.service ?? createGoogleCalendar();
   // Opt-in until the parent has completed Google consent and notification setup.
-  if (calendarOptions.remindersEnabled ?? process.env.LAA_GOOGLE_REMINDERS_ENABLED === '1') {
+  if (!lane && (calendarOptions.remindersEnabled ?? process.env.LAA_GOOGLE_REMINDERS_ENABLED === '1')) {
     const reminders = createCalendarReminders({ service: calendarService, now,
       file: `${store.dir}/calendar-reminders.json`, ...calendarOptions.reminders });
     const tick = () => { reminders.tick().catch(() => {}); };
@@ -162,8 +163,8 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   if (!sessionOptions.service) sessionOptions.registerCleanup?.(() => sessionService.close?.());
 
   const linearOptions = options.linearOwnerTasks ?? {};
-  const linearTasks = linearOptions.source ?? createLinearOwnerTaskSource();
-  const taskDispatch = linearOptions.dispatch ?? createTaskDispatchService({
+  const linearTasks = lane ? null : linearOptions.source ?? createLinearOwnerTaskSource();
+  const taskDispatch = lane ? null : linearOptions.dispatch ?? createTaskDispatchService({
     ...linearOptions, store: linearOptions.runStore ?? createTaskRunStore({ dir: store.dir, now }), tasks: linearTasks,
     sessions: sessionService, sessionStore, decisionStore, sessionOptions: sessionChoices, refs, daemon, now,
     cleanup: linearOptions.cleanup ?? (() => taskCleanup({ log: options.log })), log: options.log,
@@ -177,13 +178,15 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   const routes = [
     ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
     ...createDecisionRoutes({ service: decisions }),
-    ...taskRoutes({ ...(options.tasks ?? {}), now }),
-    ...linearOwnerTaskRoutes({ ...linearOptions, source: linearTasks, dispatch: taskDispatch, refs }),
-    ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
+    ...(!lane ? [
+      ...taskRoutes({ ...(options.tasks ?? {}), now }),
+      ...linearOwnerTaskRoutes({ ...linearOptions, source: linearTasks, dispatch: taskDispatch, refs }),
+      ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
+    ] : []),
     ...skillRoutes({ ...(options.skills ?? {}), refs }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...habitRoutes({ dir: store.dir, now, ...options.habits }),
-    ...brainRoutes({ store, now, options: options.brain ?? {} }),
+    ...(!lane ? brainRoutes({ store, now, options: options.brain ?? {} }) : []),
     ...createProjectRoutes({ projects: projectStore, now, refs, choices: sessionChoices,
       projectSessions: (id) => projectSessionViews(sessionStore, id,
         decisionStore.all().filter((row) => row.status === 'open' || isWaiting(row)
@@ -203,20 +206,23 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       sessionOptions: sessionChoices,
       daemon,
     }),
-    ...usageRoutes({ ...(options.usage ?? {}), now }),
-    ...studioRoutes({ store, now, registerCleanup: sessionOptions.registerCleanup, ...options.studio }),
-    ...routineRoutes({ ...(options.routines ?? {}), refs }),
-    ...calendarRoutes({ ...calendarOptions, service: calendarService }),
-    // Disabled in production pending independent review; explicit injection is for tests.
-    ...(options.instructions?.enabled === true
-      ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
-      : []),
-    ...voiceRoutes(options.voice ?? {}),
+    ...(lane ? laneUsageRoutes(lane, store.dir, now) : []),
+    ...(!lane ? [
+      ...usageRoutes({ ...(options.usage ?? {}), now }),
+      ...studioRoutes({ store, now, registerCleanup: sessionOptions.registerCleanup, ...options.studio }),
+      ...routineRoutes({ ...(options.routines ?? {}), refs }),
+      ...calendarRoutes({ ...calendarOptions, service: calendarService }),
+      // Disabled in production pending independent review; explicit injection is for tests.
+      ...(options.instructions?.enabled === true
+        ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
+        : []),
+      ...voiceRoutes(options.voice ?? {}),
+      ...campaignRoutes(options.campaigns ?? {}),
+    ] : []),
     ...deviceRoutes({ store, now }),
     ...refRoutes({ refs }),
     ...ownerProfileRoutes({ dir: store.dir }),
     ...deviceReportRoutes({ dir: store.dir, now }),
-    ...campaignRoutes(options.campaigns ?? {}),
     ...phoneUseRoutes({ service: options.phoneUse?.service ?? createPhoneUse({ dir: store.dir, now, devices: (id) => store.read().devices?.[id] ?? null }) }),
   ];
   // Start after every factory has registered its source: the first live pass

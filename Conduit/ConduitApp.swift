@@ -26,6 +26,23 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         UITabBar.appearance().standardAppearance = tabAppearance
         #endif
+        #if DEBUG
+        // No production push/Watch registration, queued answers, or OS-driven
+        // sync (Calendar, mic, location, etc.) in a fixture process.
+        if LAALabNetworkPolicy.current.isActive {
+            #if LAA_BUILD && targetEnvironment(simulator)
+            // The local Phone Use fixture still needs the ordinary activity
+            // observers and intent handler, but never OS push registration.
+            MainActor.assumeIsolated {
+                if LAAPhoneUseService.usesSimulatedPush {
+                    UNUserNotificationCenter.current().delegate = self
+                    LAAPhoneUseService.shared.start()
+                }
+            }
+            #endif
+            return true
+        }
+        #endif
         UNUserNotificationCenter.current().delegate = self
         // A "Hermes wants to talk" notification's Talk button (#449).
         HermesCallNotifications.registerCategory()
@@ -113,6 +130,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         Task { @MainActor in
             PushNotificationService.shared.didReceiveDeviceToken(deviceToken)
             #if LAA_BUILD && !targetEnvironment(macCatalyst)
@@ -137,6 +157,19 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        #if DEBUG
+        if !LAALabNetworkPolicy.current.allowsPush {
+            #if LAA_BUILD && targetEnvironment(simulator)
+            Task { @MainActor in
+                let handled = await LAAPhoneUseService.shared.receiveSimulatedPush(userInfo)
+                completionHandler(handled ? .newData : .noData)
+            }
+            #else
+            completionHandler(.noData)
+            #endif
+            return
+        }
+        #endif
         #if LAA_BUILD
         // Any push that wakes the app is a chance to send a waiting answer.
         Task { @MainActor in await LAAQuickAnswerCenter.shared.retryPending() }
@@ -181,6 +214,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { return }
+        #endif
         Task { @MainActor in
             PushNotificationService.shared.didFailToRegister(error)
             #if LAA_BUILD && !targetEnvironment(macCatalyst)
@@ -194,6 +230,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsPush else { completionHandler(); return }
+        #endif
         let request = response.notification.request
         #if LAA_BUILD
         // An answer button on a Bridge notification (tapped here, on the Mac
@@ -244,6 +283,16 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        #if DEBUG
+        if !LAALabNetworkPolicy.current.allowsPush {
+            #if LAA_BUILD && targetEnvironment(simulator)
+            let info = notification.request.content.userInfo
+            Task { @MainActor in _ = await LAAPhoneUseService.shared.receiveSimulatedPush(info) }
+            #endif
+            completionHandler([])
+            return
+        }
+        #endif
         // The active conversation is already visible while Conduit is in the
         // foreground. Keep remote pushes quiet here and reserve banners/sound
         // for when the app is not being actively used. A call from Hermes

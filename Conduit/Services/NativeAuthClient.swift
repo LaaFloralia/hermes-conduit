@@ -442,6 +442,9 @@ final class NativeAuthClient {
     }
 
     private func perform(_ request: URLRequest) async throws -> NativeAuthHTTPResult {
+        #if DEBUG
+        guard LAALabNetworkPolicy.current.allowsHermes(request.url) else { throw URLError(.unsupportedURL) }
+        #endif
         let holder = URLSessionTaskHolder()
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in

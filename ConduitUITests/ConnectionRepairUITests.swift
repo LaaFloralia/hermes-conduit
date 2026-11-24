@@ -34,7 +34,7 @@ final class ConnectionRepairUITests: XCTestCase {
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "server:hostNotFound"
         ]
-        app.launch()
+        app.launchInLab()
 
         let repair = app.buttons[Identity.repairButton]
         XCTAssertTrue(repair.waitForExistence(timeout: 10), "Repair Connection did not appear. Tree:\n\(app.debugDescription)")
@@ -56,7 +56,7 @@ final class ConnectionRepairUITests: XCTestCase {
             "-CONNECTION_SETUP_TEST_RESULT", "auth:password",
             "-CONDUIT_REPAIR_ACTIVATION", "success"
         ]
-        app.launch()
+        app.launchInLab()
 
         let repair = app.buttons[Identity.repairButton]
         XCTAssertTrue(repair.waitForExistence(timeout: 10))
@@ -111,7 +111,7 @@ final class ConnectionRepairUITests: XCTestCase {
             "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
             "-CONNECTION_SETUP_TEST_RESULT", "auth:credentialsRequired"
         ]
-        app.launch()
+        app.launchInLab()
 
         let repair = app.buttons[Identity.repairButton]
         XCTAssertTrue(repair.waitForExistence(timeout: 10))
@@ -142,7 +142,7 @@ final class ConnectionRepairUITests: XCTestCase {
             "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
             "-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"
         ]
-        app.launch()
+        app.launchInLab()
 
         let repair = app.buttons[Identity.repairButton]
         XCTAssertTrue(repair.waitForExistence(timeout: 10))
@@ -170,7 +170,7 @@ final class ConnectionRepairUITests: XCTestCase {
             "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
             "-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"
         ]
-        app.launch()
+        app.launchInLab()
 
         let repair = app.buttons[Identity.repairButton]
         XCTAssertTrue(repair.waitForExistence(timeout: 10))
@@ -207,7 +207,7 @@ final class ConnectionRepairUITests: XCTestCase {
             "-CONNECTION_SETUP_TEST_RESULT", "auth:password",
             "-CONDUIT_REPAIR_ACTIVATION", "transportFailure"
         ]
-        app.launch()
+        app.launchInLab()
 
         let repair = app.buttons[Identity.repairButton]
         XCTAssertTrue(repair.waitForExistence(timeout: 10))

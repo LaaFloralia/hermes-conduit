@@ -57,9 +57,15 @@ extension LAABridgeClient {
         request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
         request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
         if let expectedVersion { request.setValue(expectedVersion, forHTTPHeaderField: "x-laa-drive-version") }
+        #if DEBUG
+        request = try await prepareLabRequest(request)
+        #endif
         do {
             let (bytes, response) = try await rangeSession.bytes(for: request)
             defer { bytes.task.cancel() }
+            #if DEBUG
+            try LAALabNetworkPolicy.current.verifyBridgeResponse(response)
+            #endif
             guard let http = response as? HTTPURLResponse else { throw LAABridgeError.invalidResponse }
             if http.statusCode == 416 { throw LAADriveRangeError.unsatisfiable }
             if http.statusCode == 200 { throw LAADriveRangeError.rangeUnsupported }

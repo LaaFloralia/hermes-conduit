@@ -8,7 +8,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         if let mode { app.launchArguments += ["-laa-brain-fixture", mode] }
-        app.launch()
+        app.launchInLab()
         return app
     }
 
@@ -67,7 +67,7 @@ final class LAABrainUITests: XCTestCase {
     private func checklistOnly(style: String) {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-daily-fixture", "-AppleInterfaceStyle", style, "-conduit.themePreference", style.lowercased()]
-        app.launch()
+        app.launchInLab()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
         focusLocalEditor(editor)
         app.buttons["laa.markdown.format.checkbox"].tap()
@@ -84,7 +84,7 @@ final class LAABrainUITests: XCTestCase {
     func testAutosaveKeepsEditingAndReloadsTheSavedText() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-daily-fixture"]
-        app.launch()
+        app.launchInLab()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
         focusLocalEditor(editor)
         editor.typeText("AUTOSAVED")
@@ -115,7 +115,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-daily-fixture", "-AppleInterfaceStyle", style, "-conduit.themePreference", style.lowercased()]
-        app.launch()
+        app.launchInLab()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 20), "an empty note is ready to type immediately")
         focusLocalEditor(editor)
@@ -144,7 +144,7 @@ final class LAABrainUITests: XCTestCase {
     private func manageRenameTrashAndGallery(style: String) {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-AppleInterfaceStyle", style, "-conduit.themePreference", style.lowercased()]
-        app.launch()
+        app.launchInLab()
         let filters = app.buttons["laa.brain.localOptions"]
         XCTAssertTrue(filters.waitForExistence(timeout: 30))
         filters.tap()
@@ -348,7 +348,7 @@ final class LAABrainUITests: XCTestCase {
     func testLocalFixtureCanBeBrowsedWithoutMac() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.descendants(matching: .any)["laa.brain.title"].waitForExistence(timeout: 30))
         openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
@@ -364,7 +364,7 @@ final class LAABrainUITests: XCTestCase {
     func testDailyShortcutCreatesEmptyNoteAndOpensEditor() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-daily-fixture"]
-        app.launch()
+        app.launchInLab()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 30))
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: editor)
@@ -387,7 +387,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                 "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         let note = app.staticTexts["Table"]
         XCTAssertTrue(note.waitForExistence(timeout: 30))
@@ -430,7 +430,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                 "-laa-brain-local-fixture", "-laa-brain-table-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         let note = app.staticTexts["Table"]
         XCTAssertTrue(note.waitForExistence(timeout: 30))
@@ -474,21 +474,21 @@ final class LAABrainUITests: XCTestCase {
     func testDailyShortcutWithoutVaultOffersFolderSelection() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture", "-laa-brain-daily-fixture"]
-        app.launch()
+        app.launchInLab()
         let folder = app.buttons["laa.brain.chooseFolder"]
         XCTAssertTrue(folder.waitForExistence(timeout: 30))
         XCTAssertTrue(folder.isHittable, "a shortcut cannot use the default Mac source to open today's local note")
         XCTAssertFalse(app.textViews["laa.brain.edit.text"].exists)
         app.terminate()
         app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.textViews["laa.brain.edit.text"].waitForExistence(timeout: 30))
     }
 
     func testDailyShortcutOpensExistingTextWithoutReplacingIt() {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-daily-fixture", "-laa-brain-daily-existing-fixture"]
-        app.launch()
+        app.launchInLab()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 30))
         let hasExisting = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'EXISTING-DAILY-FIXTURE'"), object: editor)
@@ -499,7 +499,7 @@ final class LAABrainUITests: XCTestCase {
     func testLocalFixtureSearchTagsAndPin() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
-        app.launch()
+        app.launchInLab()
         let display = app.buttons["laa.brain.localOptions"]
         XCTAssertTrue(display.waitForExistence(timeout: 30))
         display.tap()
@@ -529,7 +529,7 @@ final class LAABrainUITests: XCTestCase {
     func testLocalFixtureEmbedsAndQuickSwitch() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
@@ -544,7 +544,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-conflict-copy-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         let copy = app.staticTexts["Start.sync-conflict-20261101-ABC"]
         XCTAssertTrue(copy.waitForExistence(timeout: 30))
@@ -561,7 +561,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-unsafe-ignore-fixture", "-laa-brain-force-fallback-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
@@ -579,7 +579,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-save-race-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
@@ -620,7 +620,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-save-missing-stage-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
@@ -664,7 +664,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-history-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalRecovery(app)
         let deleted = app.staticTexts["Company/Deleted.md"]
         XCTAssertTrue(deleted.waitForExistence(timeout: 15))
@@ -686,7 +686,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-history-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalRecovery(app)
         let renamed = app.staticTexts["Company/Renamed.md"]
         XCTAssertTrue(renamed.waitForExistence(timeout: 15))
@@ -705,7 +705,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
                                 "-laa-brain-save-fixture", "-laa-brain-history-fixture", "-laa-brain-history-force-export-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalRecovery(app)
         let renamed = app.staticTexts["Company/Renamed.md"]
         XCTAssertTrue(renamed.waitForExistence(timeout: 15))
@@ -724,7 +724,7 @@ final class LAABrainUITests: XCTestCase {
     func testLocalCreateFolderNoteAndEdit() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-save-fixture"]
-        app.launch()
+        app.launchInLab()
         openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Empty"].waitForExistence(timeout: 10))
         app.staticTexts["Empty"].tap()
@@ -767,7 +767,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-review-fixture",
                                "-conduit.themePreference", style]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["laa.brain.daily"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["最近"].exists)
         XCTAssertFalse(app.staticTexts["ピン留め"].exists)
@@ -786,7 +786,7 @@ final class LAABrainUITests: XCTestCase {
         app.buttons["laa.brain.rawToggle"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.raw"].label.contains("追記"))
         app.terminate()
-        app.launch()
+        app.launchInLab()
         let dateNote = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@",
                                                          "laa.brain.note", "11月11日")).firstMatch
         XCTAssertTrue(dateNote.waitForExistence(timeout: 10))
@@ -800,7 +800,7 @@ final class LAABrainUITests: XCTestCase {
     func testMetadataIsHiddenAndRetainedThroughAutomaticSave() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-document-fixture"]
-        app.launch()
+        app.launchInLab()
         let start = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 30)); start.tap()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch

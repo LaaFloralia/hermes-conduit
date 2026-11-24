@@ -6,7 +6,7 @@ final class LAAChatsUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://chats-ui-test.invalid",
                                "-LAA_UI_TEST_CHATS", "-LAA_CHATS_STATE", mode] + extra
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["laa.chats.heading"].waitForExistence(timeout: 30))
         return app
     }

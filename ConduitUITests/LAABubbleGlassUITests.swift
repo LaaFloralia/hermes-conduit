@@ -14,7 +14,7 @@ final class LAABubbleGlassUITests: XCTestCase {
                                "-LAA_FIXTURE_PUSH_CHAT", "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
             + (bubble.map { ["-LAA_CAPTURE_BUBBLE", $0] } ?? [])
             + (dark ? ["-LAA_V2_DARK"] : []) + (white ? ["-LAA_CAPTURE_WHITE"] : []) + extra
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 15))
         return app

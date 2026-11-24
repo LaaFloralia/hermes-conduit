@@ -142,7 +142,10 @@ struct LAAHabitsHistoryView: View {
 
 #if DEBUG
 struct LAAHabitsUITestScreen: View {
-    @StateObject private var bridge = LAABridgeSession(credentialsForTesting: LAABridgeCredentials(baseURL: URL(string: "http://127.0.0.1:19684")!, deviceID: "habits-ui", token: "fixture"))
+    @StateObject private var bridge: LAABridgeSession = {
+        let fixture = ProcessInfo.processInfo.environment["LAA_LANE_FIXTURE_HABITS"] ?? "http://127.0.0.1:19684"
+        return LAABridgeSession(credentialsForTesting: LAABridgeCredentials(baseURL: URL(string: fixture)!, deviceID: "habits-ui", token: "fixture"))
+    }()
     var body: some View {
         NavigationStack { LAATodayView(openBrain: {}, onRequestSettings: {}) }.environmentObject(bridge)
     }

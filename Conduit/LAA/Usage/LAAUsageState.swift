@@ -427,6 +427,11 @@ enum LAAUsageBackground {
     }
 
     static func schedule() {
+        #if DEBUG
+        // The lab app delegate deliberately skips task registration. The
+        // scene can still become active (e.g. after a Live Activity action).
+        guard !LAALabNetworkPolicy.current.isActive else { return }
+        #endif
         let request = BGAppRefreshTaskRequest(identifier: identifier)
         request.earliestBeginDate = Date().addingTimeInterval(15 * 60)
         try? BGTaskScheduler.shared.submit(request)

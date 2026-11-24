@@ -14,7 +14,7 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launch()
+        app.launchInLab()
 
         let anchor = try pressAnchor(in: app)
         let destination = try dragDestination(in: app)
@@ -38,7 +38,7 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launch()
+        app.launchInLab()
 
         let cellAnchor = app.textViews.matching(NSPredicate(format: "label CONTAINS %@", "alpha cell")).firstMatch
         XCTAssertTrue(cellAnchor.waitForExistence(timeout: 5), "Table cell text view not found. Tree:\n\(app.debugDescription)")
@@ -64,7 +64,7 @@ final class SelectionObserverUITests: XCTestCase {
     func testPlainDragDoesNotSelectOrCopy() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
-        app.launch()
+        app.launchInLab()
 
         let top = app.descendants(matching: .any).matching(identifier: "fixture.top").firstMatch
         XCTAssertTrue(top.waitForExistence(timeout: 5))
@@ -106,7 +106,7 @@ final class SelectionObserverUITests: XCTestCase {
         for attempt in 0..<3 {
             if attempt > 0 {
                 app.terminate()
-                app.launch()
+                app.launchInLab()
             }
             performDrag()
             if anchorHandle.waitForExistence(timeout: 4), focusHandle.waitForExistence(timeout: 4) {
@@ -144,7 +144,7 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launch()
+        app.launchInLab()
 
         let anchor = try pressAnchor(in: app)
         let destination = try dragDestination(in: app)
@@ -170,7 +170,7 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launch()
+        app.launchInLab()
 
         let anchor = try pressAnchor(in: app)
         let destination = try dragDestination(in: app)
@@ -207,7 +207,7 @@ final class SelectionObserverUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launch()
+        app.launchInLab()
 
         let anchor = try pressAnchor(in: app)
         let destination = try dragDestination(in: app)

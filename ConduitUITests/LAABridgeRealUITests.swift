@@ -8,7 +8,7 @@ final class LAABridgeRealUITests: XCTestCase {
         }
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_REAL_BRIDGE"]
-        app.launch()
+        app.launchInLab()
         XCTAssertTrue(app.buttons["fixture.bridge"].waitForExistence(timeout: 20))
         return app
     }

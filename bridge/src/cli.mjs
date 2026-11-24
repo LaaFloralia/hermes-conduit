@@ -26,6 +26,8 @@ import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
 import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 import { PROJECTS_USAGE, projectsCommand } from './cli-projects.mjs';
+import { assertTestStateDir, laneEnabled, laneMissing, PRODUCTION_PORTS } from './lane/guard.mjs';
+import { laneClient } from './lane/client.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -200,9 +202,12 @@ function commandRevoke(positional, flags) {
 
 async function commandStatus(flags) {
   const port = resolvePort();
-  const url = `http://127.0.0.1:${port}/v1/health`;
+  const url = `http://127.0.0.1:${port}`;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    if (process.env.NODE_TEST_CONTEXT !== undefined && PRODUCTION_PORTS.includes(port)) throw laneMissing('production Bridge status');
+    const response = laneEnabled()
+      ? await laneClient(url, process.env.LAA_LANE_ID)('/v1/health')
+      : await fetch(`${url}/v1/health`, { signal: AbortSignal.timeout(3000) });
     const body = await response.json();
     if (flags.json) {
       process.stdout.write(`${JSON.stringify({ reachable: true, port, status: response.status, ...body.data })}\n`);
@@ -225,6 +230,17 @@ function commandServe() {
 
 const { positional, flags } = parseArgs(process.argv.slice(2));
 const command = positional.shift();
+
+// Gate even CLI commands that open independent stores instead of createStore.
+if (!flags.help && command && !['help', '--help', 'version'].includes(command)) {
+  try {
+    assertTestStateDir(resolveStateDir());
+    if (laneEnabled() && (['phone-use', 'ref', 'refs'].includes(command)
+        || (command === 'tasks' && !['add', 'list', 'get', 'update', 'status', 'report'].includes(positional[0])))) {
+      throw laneMissing(`CLI ${command}`);
+    }
+  } catch (err) { fail(`${err.code ?? 'lane_config_unsafe'}: ${err.message}`); }
+}
 
 // Help must exit before any subcommand can issue credentials or mutate state.
 if (flags.help) {

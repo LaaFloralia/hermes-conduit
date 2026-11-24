@@ -5,6 +5,7 @@
 import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { badRequest } from '../errors.mjs';
+import { assertTestStateDir } from '../lane/guard.mjs';
 
 export function parseObjectBody(raw) {
   if (raw === undefined || raw.length === 0) return {};
@@ -35,6 +36,7 @@ export class StateFileError extends Error {
 export function createJsonFile({ file, schema = 1, initial = () => ({}), migrate = (doc) => doc }) {
   const dir = dirname(file);
   const lockFile = `${file}.lock`;
+  assertTestStateDir(dir, process.env, [file, lockFile]);
   // In-process listeners for "this document was written", tagged with the
   // record the write belonged to. A long-poll waits on this instead of
   // re-reading the file on a timer. Only this process's writes are announced; a
