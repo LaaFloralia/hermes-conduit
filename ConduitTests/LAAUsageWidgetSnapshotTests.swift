@@ -10,13 +10,13 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
     func testOldWidgetSnapshotDoesNotDisplayRetiredProviders() {
         let now = Date()
         let meters = ["fal", "venice", "jev", "google-cloud", "google-flow", "claude"].map { id in
-            WidgetUsageMeter(id: "provider.\(id).quota.0", label: id, unit: .percent, amount: 42,
+            WidgetUsageMeter(id: "provider.\(id).quota.weekly", label: id, unit: .percent, amount: 42,
                 observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
         }
         let usage = WidgetUsageSnapshot(meters: meters, checkedAt: now)
         let snapshot = WidgetSnapshot(appLanguage: "en", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
         let entry = LAAEmployeeWidgetEntry.make(employee: .monet, snapshot: snapshot, date: now)
-        XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
+        XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.weekly"])
     }
 
     func testLateRenderingKeepsHistoricalNumberAndElapsedTime() {
@@ -164,11 +164,11 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: The owner's seven rows at real medium sizes
+    // MARK: The six rows at real medium sizes
 
-    /// Bridge's /v1/usage items for the seven widget providers, as the live
-    /// feed produced them on 2026-11-11 (spend items included: they must never
-    /// fill a balance row).
+    /// Bridge's /v1/usage items as the live feed produced them on 2026-11-11,
+    /// before Fable and Google reached the feed (spend and balances included:
+    /// none of them reaches the widget).
     static let liveNow = LAAUsageItem.date("2026-11-11T22:45:00Z")!
     static let liveItemsJSON = """
     [
@@ -189,35 +189,24 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try JSONDecoder().decode([LAAUsageItem].self, from: Data(liveItemsJSON.utf8))
     }
 
-    static let ownerRows = ["Codex", "OpenCode", "Claude", "Magnific", "GPT API", "Claude API", "Venice"]
+    static let ownerRows = ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Fable"]
     /// iPhone Pro Max and the smallest current iPhone, medium family.
     static let proMaxMedium = CGSize(width: 364, height: 170)
     static let compactMedium = CGSize(width: 329, height: 155)
 
-    func testLiveFeedDrawsAllSevenRowsOnAProMax() throws {
+    func testLiveFeedDrawsAllSixRowsOnAProMax() throws {
         let usage = LAAWidgetUsageBuilder.make(items: try Self.liveItems(), receivedAt: Self.liveNow)
-        XCTAssertEqual(usage.meters.map(\.label), Self.ownerRows)
-        XCTAssertEqual(usage.meters.map(\.amount), [0, 72, 82, 220523, 0, -0.19, 10.27082039])
         let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
             snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
             date: Self.liveNow)
+        // Codex and Claude read; Fable and Google had no reading then.
         XCTAssertEqual(entry.usage?.meters.map(\.label), Self.ownerRows)
-        let claudeAPI = try XCTUnwrap(entry.usage?.meters.first { $0.label == "Claude API" })
-        XCTAssertEqual(LAAEmployeeWidgetView.valueText(claudeAPI), "-$0.19")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(claudeAPI, entryDate: Self.liveNow, renderedAt: Self.liveNow), "-$0.19 · 6日前")
-        let venice = try XCTUnwrap(entry.usage?.meters.first { $0.label == "Venice" })
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(venice, entryDate: Self.liveNow, renderedAt: Self.liveNow), "$10.27")
-        // Every row draws a meter, the API balances included (owner,
-        // 2026-11-12): an unpaid balance is an empty bar, Venice what is left
-        // of its last top-up.
-        XCTAssertEqual(entry.usage?.meters.compactMap(\.remainingFraction).count, 7)
-        XCTAssertEqual(claudeAPI.remainingFraction, 0)
-        XCTAssertEqual(venice.remainingFraction ?? 0, 0.5135, accuracy: 0.0001)
+        XCTAssertEqual(entry.usage?.meters.map(\.remainingPercent), [0, 84, 82, nil])
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "live-\(tag)-\(style == .dark ? "dark" : "light")"
                 let rows = try render(entry, size: size, style: style, name: name).rows
-                XCTAssertEqual(rows, 7, name)
+                XCTAssertEqual(rows, 6, name)
             }
         }
         try render(entry, size: Self.proMaxMedium, style: .light, mode: .accented, name: "live-364x170-tinted")
@@ -228,32 +217,23 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
                 date: Self.liveNow)
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "employee-\(employee.rawValue)-364x170-\(style == .dark ? "dark" : "light")"
-                XCTAssertEqual(try render(other, size: Self.proMaxMedium, style: style, name: name).rows, 7, name)
+                XCTAssertEqual(try render(other, size: Self.proMaxMedium, style: style, name: name).rows, 6, name)
             }
             let compact = "employee-\(employee.rawValue)-329x155-light"
-            XCTAssertEqual(try render(other, size: Self.compactMedium, style: .light, name: compact).rows, 7, compact)
+            XCTAssertEqual(try render(other, size: Self.compactMedium, style: .light, name: compact).rows, 6, compact)
         }
     }
 
-    /// The rows without a reading keep their names and say so.
-    func testSevenRowsWithoutReadings() throws {
+    /// With no reading at all the six rows keep their places as empty tracks.
+    func testSixRowsWithoutReadings() throws {
         let usage = LAAWidgetUsageBuilder.make(items: [], receivedAt: Self.liveNow)
-        // Only the API rows stay listed with no feed at all.
-        XCTAssertEqual(usage.meters.map(\.label), ["GPT API", "Claude API"])
-        let all = LAAWidgetUsageBuilder.widgetSlots.map { slot in
-            WidgetUsageMeter.missing(id: "provider.\(slot.provider).balance", label: slot.name)
-        }
+        XCTAssertTrue(usage.meters.isEmpty)
         let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
-            snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
-                .withUsage(WidgetUsageSnapshot(meters: all, checkedAt: nil)),
+            snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
             date: Self.liveNow)
-        XCTAssertEqual(entry.usage?.meters.count, 7)
-        XCTAssertTrue(entry.usage?.meters.allSatisfy {
-            LAAEmployeeWidgetView.displayValue($0, entryDate: Self.liveNow, renderedAt: Self.liveNow) == "未取得"
-        } == true)
         for style in [UIUserInterfaceStyle.light, .dark] {
             let name = "missing-364x170-\(style == .dark ? "dark" : "light")"
-            XCTAssertEqual(try render(entry, size: Self.proMaxMedium, style: style, name: name).rows, 7, name)
+            XCTAssertEqual(try render(entry, size: Self.proMaxMedium, style: style, name: name).rows, 6, name)
         }
     }
 
@@ -264,9 +244,9 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
             snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
             date: Self.liveNow)
-        var previous = 7
+        var previous = 6
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
-            previous = 7
+            previous = 6
             for type in [DynamicTypeSize.large, .xLarge, .xxLarge, .xxxLarge, .accessibility1, .accessibility3] {
                 let name = "type-\(tag)-\(type)"
                 let rows = try XCTUnwrap(try render(entry, size: size, style: .light, dynamicTypeSize: type, name: name).rows, name)

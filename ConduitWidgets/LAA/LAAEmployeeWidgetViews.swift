@@ -32,8 +32,11 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
     let usage: WidgetUsageSnapshot?
 
     static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?, date: Date = Date(), freshnessAnchor: Date? = nil) -> Self {
+        // Only the six fixed rows render; a snapshot an older build saved is
+        // reprojected onto them (its Codex and Claude weekly rows keep their
+        // ids), and anything without a place there is dropped.
         let usage = snapshot?.usage.map { usage in
-            WidgetUsageSnapshot(meters: usage.displayableMeters, checkedAt: usage.checkedAt,
+            WidgetUsageSnapshot(meters: LAAWidgetUsageBuilder.widgetMeters(usage), checkedAt: usage.checkedAt,
                                 hasOtherUsage: usage.hasOtherUsage ?? false)
         }
         return Self(date: date, freshnessAnchor: freshnessAnchor ?? date, employee: employee,
@@ -131,9 +134,9 @@ struct LAAEmployeeWidgetView: View {
 
     private var medium: some View {
         GeometryReader { frame in
-            // The Usage column takes a little more than half: a name and a
-            // value share one line in each of its seven rows.
-            let employeeWidth = max(0, (frame.size.width - LAASpacing.x3 * 2 - 1) * 0.48)
+            // The employee keeps about 46% on the left; the quota rows take
+            // the rest (T3's subscription list, 2026-11-25).
+            let employeeWidth = max(0, (frame.size.width - LAASpacing.x3 * 2 - 1) * 0.46)
             HStack(spacing: LAASpacing.x3) {
                 VStack(spacing: LAASpacing.x1) {
                     GeometryReader { geometry in
@@ -194,7 +197,10 @@ struct LAAEmployeeWidgetView: View {
     /// Its own view, so its text sizes read the medium widget's capped
     /// Dynamic Type rather than the environment above the cap.
     private var usageSummary: some View {
+        // Six readings with their numbers need the column's width: past
+        // xxLarge the names and periods alone would fill it.
         LAAWidgetUsageColumn(entry: entry, renderedAt: renderedAt)
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
     static func timeText(_ observation: Date, at date: Date) -> String {
@@ -355,114 +361,129 @@ struct LAAEmployeeWidgetView: View {
     }
 }
 
-/// The medium widget's Usage column: the owner's rows in priority order.
-private struct LAAWidgetUsageColumn: View {
+/// The medium widget's Usage column: six single-line readings in the owner's
+/// order (Codex 7d, Claude 5h / 7d / Fable, Google 5h / 7d), each a label,
+/// a value in tabular digits, a reset time on the weekly rows and a 4pt bar.
+/// Room runs short in this order: the reset time shortens, then goes, and
+/// only then does larger text give up rows (five-hour readings first).
+struct LAAWidgetUsageColumn: View {
     let entry: LAAEmployeeWidgetEntry
     let renderedAt: Date
-    // The medium Usage column: one size for names and values, so seven rows
-    // fit a Pro Max with the heading; the count of hidden rows is a step smaller.
-    @ScaledMetric(relativeTo: .footnote) private var usageHeadingSize: CGFloat = 13
-    @ScaledMetric(relativeTo: .caption) private var usageLabelSize: CGFloat = 12
-    @ScaledMetric(relativeTo: .caption2) private var usageNoteSize: CGFloat = 11
-    @ScaledMetric(relativeTo: .caption) private var usageRowPitch: CGFloat = 20
+    @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var noteSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption) private var providerWidth: CGFloat = 46
+    @ScaledMetric(relativeTo: .caption) private var periodWidth: CGFloat = 31
+    @ScaledMetric(relativeTo: .caption) private var rowPitch: CGFloat = 22
+
+    private typealias Row = LAAWidgetUsageBuilder.Row
+
+    /// How the weekly rows' reset reads; one form for the whole column, so
+    /// the times line up.
+    enum ResetForm: CaseIterable { case full, short, hidden }
 
     var body: some View {
-        let meters = entry.usage?.meters ?? []
-        // The rows are already in the owner's priority order. All seven fit
-        // a Pro Max under the heading; a smaller phone keeps the seven and
-        // lets the heading go. Larger text then drops rows from the bottom,
-        // and the heading says how many are left for the Usage screen.
-        ViewThatFits(in: .vertical) {
-            usageList(meters: meters, limit: meters.count, heading: true)
-            if meters.count > 1 {
-                usageList(meters: meters, limit: meters.count, heading: false)
-            }
-            ForEach((0..<max(meters.count, 1)).reversed(), id: \.self) { limit in
-                usageList(meters: meters, limit: limit, heading: true)
+        let rows = LAAWidgetUsageBuilder.widgetRows
+        // The first layout whose natural width and height fit: all six rows
+        // with the full reset, then shorter resets, then fewer rows.
+        ViewThatFits(in: [.horizontal, .vertical]) {
+            // One flat list: ViewThatFits needs each candidate's id unique.
+            let forms = ResetForm.allCases
+            ForEach(0..<(rows.count * forms.count), id: \.self) { candidate in
+                usageList(rows: Self.rows(dropping: candidate / forms.count), reset: forms[candidate % forms.count])
             }
         }
     }
 
-    private func usageList(meters: [WidgetUsageMeter], limit: Int, heading: Bool) -> some View {
-        let shown = min(limit, meters.count)
+    /// The rows left once `count` have given way, still in widget order.
+    static func rows(dropping count: Int) -> [LAAWidgetUsageBuilder.Row] {
+        let gone = Set(LAAWidgetUsageBuilder.dropOrder.prefix(count))
+        return LAAWidgetUsageBuilder.widgetRows.filter { !gone.contains($0.id) }
+    }
+
+    private func usageList(rows: [Row], reset form: ResetForm) -> some View {
+        let hidden = LAAWidgetUsageBuilder.widgetRows.count - rows.count
         return VStack(alignment: .leading, spacing: 0) {
-            if heading {
-                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-                    Text(verbatim: "Usage").font(.system(size: usageHeadingSize, weight: .bold))
-                        .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
-                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                    Spacer(minLength: 0)
-                    if shown < meters.count {
-                        // Large text leaves room only for the count.
-                        ViewThatFits(in: .horizontal) {
-                            Text(verbatim: "ほか\(meters.count - shown)件")
-                            Text(verbatim: "+\(meters.count - shown)")
-                        }
-                        .font(.system(size: usageNoteSize, weight: .medium))
-                        .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                // The provider is named once, on its first row.
+                let named = index == 0 || rows[index - 1].provider != row.provider
+                usageRow(row, named: named, reset: form).frame(maxHeight: rowPitch)
             }
-            if meters.isEmpty {
-                Text(verbatim: LAACopy.notFetched)
-                    .font(.system(size: usageLabelSize, weight: .medium)).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(2).minimumScaleFactor(0.8)
-            } else {
-                ForEach(Array(meters.prefix(shown))) { meter in
-                    // Each row may open up a little to fill the column, so
-                    // seven rows and five rows keep the same rhythm.
-                    usageRow(meter).frame(maxHeight: usageRowPitch, alignment: .center)
-                }
+            if hidden > 0 {
+                Text(verbatim: "+\(hidden)")
+                    .font(.system(size: noteSize, weight: .medium)).monospacedDigit()
+                    .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
             }
             Spacer(minLength: 0)
         }
-        .preference(key: LAAWidgetUsageRowsKey.self, value: shown)
+        .preference(key: LAAWidgetUsageRowsKey.self, value: rows.count)
     }
 
-    /// One line per provider: the name, then the value right-aligned so the
-    /// numbers form a column, and a hairline meter under quotas, Magnific's
-    /// grant and the money balances. No age is drawn (owner, 2026-11-12: no
-    /// 「6日前」 in the widget); VoiceOver still reads it, and the Usage
-    /// screen shows when each value was read. Every row keeps the meter's
-    /// room, so rows with and without one share the same pitch.
-    private func usageRow(_ meter: WidgetUsageMeter) -> some View {
-        let hasValue = meter.hasRecordedValue(at: renderedAt)
-        let fraction = hasValue ? meter.remainingFraction : nil
-        return VStack(alignment: .leading, spacing: LAASpacing.x1 / 2) {
+    /// The reading a row shows now: a recorded value whose reset is still
+    /// ahead. Past the reset, or with nothing recorded, the row is unknown
+    /// until a fresh observation arrives.
+    static func shown(_ meter: WidgetUsageMeter?, at date: Date) -> WidgetUsageMeter? {
+        guard let meter, meter.unit == .percent, meter.hasRecordedValue(at: date) else { return nil }
+        if let reset = meter.resetsAt, !(date < reset) { return nil }
+        return meter
+    }
+
+    private func usageRow(_ row: Row, named: Bool, reset form: ResetForm) -> some View {
+        let meter = entry.usage?.meters.first { $0.id == row.id }
+        let value = Self.shown(meter, at: renderedAt)
+        let reset = row.showsReset ? value?.resetsAt : nil
+        return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-                Text(verbatim: meter.label.replacingOccurrences(of: " Weekly", with: ""))
-                    .font(.system(size: usageLabelSize, weight: .medium))
-                    // Truncates before it pushes the value out of the column.
-                    .lineLimit(1).layoutPriority(1)
-                Spacer(minLength: LAASpacing.x1)
-                Text(verbatim: hasValue ? LAAEmployeeWidgetView.valueText(meter) : LAACopy.notFetched)
-                    .font(.system(size: usageLabelSize, weight: hasValue ? .semibold : .regular))
-                    .monospacedDigit().lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                Text(verbatim: named ? row.name : "")
+                    .font(.system(size: labelSize, weight: .medium)).foregroundStyle(LAAColor.text)
+                    .lineLimit(1).frame(width: providerWidth, alignment: .leading)
+                Text(verbatim: row.period.abbreviation)
+                    .font(.system(size: labelSize)).foregroundStyle(LAAColor.secondaryText)
+                    .lineLimit(1).frame(width: periodWidth, alignment: .leading)
+                Spacer(minLength: 2)
+                reading(value, reset: reset.flatMap { date in
+                    switch form {
+                    case .full: LAAUsageResetText.full(date, now: renderedAt)
+                    case .short: LAAUsageResetText.short(date, now: renderedAt)
+                    case .hidden: nil
+                    }
+                })
             }
             // A line never gives up height: squeezing it would shrink the
             // text and let ViewThatFits accept a list that does not fit.
             .fixedSize(horizontal: false, vertical: true)
-            ZStack(alignment: .leading) {
-                if let fraction {
-                    // The bar turns to the attention colour below a fifth, as in the app.
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(LAAColor.separator)
-                            Capsule().fill(LAAUsageMeterRule.needsAttention(fraction, countsDown: true)
-                                           ? LAAColor.attention : LAAColor.link)
-                                .frame(width: max(geometry.size.width * fraction, fraction > 0 ? 2 : 0))
-                        }
-                    }
-                }
-            }
-            .frame(height: 2)
-            .accessibilityHidden(true)
+            LAAUsageBar(remainingPercent: value?.amount, animates: false)
+                .padding(.leading, providerWidth + LAASpacing.x1)
         }
-        .foregroundStyle(hasValue ? LAAColor.text : LAAColor.secondaryText)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(meter.label), \(LAAEmployeeWidgetView.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))")
+        .accessibilityLabel(Text(verbatim: row.label))
+        .accessibilityValue(Text(verbatim: accessibilityValue(value, reset: reset)))
+        .accessibilityIdentifier("laa.widget.usage.\(row.id)")
+    }
+
+    private func reading(_ value: WidgetUsageMeter?, reset: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
+            if let reset {
+                Text(verbatim: reset).font(.system(size: labelSize)).monospacedDigit()
+                    .foregroundStyle(LAAColor.secondaryText)
+            }
+            // Unknown: the track alone and an open circle, no words.
+            Text(verbatim: value.map { LAAEmployeeWidgetView.percentageText($0.amount) } ?? "○")
+                .font(.system(size: labelSize, weight: value == nil ? .regular : .semibold)).monospacedDigit()
+                .foregroundStyle(value == nil ? LAAColor.secondaryText : LAAColor.text)
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    private func accessibilityValue(_ value: WidgetUsageMeter?, reset: Date?) -> String {
+        guard let value else { return LAACopy.notFetched }
+        let text = LAAEmployeeWidgetView.displayValue(value, entryDate: entry.date, renderedAt: renderedAt,
+                                                     anchor: entry.freshnessAnchor)
+        return reset.map { text + "、リセット " + LAAUsageResetText.full($0, now: renderedAt) } ?? text
     }
 }
 #endif

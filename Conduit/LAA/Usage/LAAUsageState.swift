@@ -36,7 +36,7 @@ enum LAAUsageProblem: Error, Equatable {
         case .bridge(.networkUnreachable), .bridge(.unavailable): return "Macに接続できません"
         case .bridge(.forbidden): return "利用枠を表示する権限がありません"
         case .bridge(let error): return error.japaneseText
-        case .failed: return "利用枠を取得できません"
+        case .failed: return "利用枠を読めませんでした。再試行できます"
         }
     }
 }
