@@ -12,11 +12,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { HOST_ITEM_KINDS, ITEM_KINDS, ITEM_UNITS, NULL_REASONS } from '../src/usage/items.mjs';
+import { usageItemsFromFeed } from '../src/usage/proxy.mjs';
 import { startBridge } from './helpers.mjs';
 
 const FIXTURE_DIR = new URL('../../docs/laa/fixtures/usage/', import.meta.url);
 const NOW = Date.parse('2026-10-29T04:52:00Z');
 const usageRead = { scopes: ['usage:read'] };
+const FABLE_ID = 'claude-weekly-scoped-fable';
+const FABLE = { id: FABLE_ID, label: 'Fable', windowMinutes: 10080, remaining: 0, resetsAt: '2026-11-02T00:00:00Z' };
+const FABLE_DETAIL = { id: FABLE_ID, label: 'Fable', windowMinutes: 10080, remainingPercent: 0, resetsAt: FABLE.resetsAt };
 
 function fixture(name) {
   return readFile(new URL(name, FIXTURE_DIR), 'utf8').then((text) => JSON.parse(text));
@@ -212,6 +216,92 @@ test('the HTTP response contains fresh readings only, with reasons for other sou
   }
   assert.equal(byId.get('provider.claude-api.cost-today').value, null);
   for (const item of items) assertItemShape(item, 'usage');
+});
+
+function claudeFrom(payload, now = NOW) {
+  return usageItemsFromFeed(payload, { now }).find((item) => item.id === 'provider.claude.quota');
+}
+
+test('old proxy payload is unchanged and zero Fable stays display-only over HTTP', async (t) => {
+  const payload = feed();
+  const ordinary = claudeFrom(payload);
+  assert.equal(ordinary.value, 62);
+  assert.equal(ordinary.detail.fableWeekly, undefined);
+  payload.providers[0].fableWeekly = { ...FABLE, label: 'private@example.test', raw: 'PRIVATE' };
+  const api = await bridgeWithFeed(payload);
+  t.after(() => api.close());
+  const token = await api.token(usageRead.scopes);
+  const response = await api.request('/v1/usage', { token });
+  assert.equal(response.status, 200);
+  const claude = response.body.data.items.find((item) => item.id === ordinary.id);
+  assert.deepEqual(claude, { ...ordinary, detail: { ...ordinary.detail, fableWeekly: FABLE_DETAIL } });
+});
+
+test('malformed or expired fableWeekly leaves the ordinary item byte-for-byte unchanged', () => {
+  const payload = feed();
+  const ordinary = claudeFrom(payload);
+  const row = payload.providers[0];
+  for (const field of [null, 0, [FABLE], {}, { ...FABLE, id: 'other' },
+    { ...FABLE, windowMinutes: '10080' }, { ...FABLE, windowMinutes: 300 },
+    ...[null, NaN, Infinity, -1, 101, true, '0'].map((remaining) => ({ ...FABLE, remaining })),
+    ...[null, 'invalid', '2026-11-02T00:00:00', new Date(NOW).toISOString(), '2026-10-28T00:00:00Z']
+      .map((resetsAt) => ({ ...FABLE, resetsAt }))]) {
+    row.fableWeekly = field;
+    assert.deepEqual(claudeFrom(payload), ordinary);
+  }
+  row.fableWeekly = { ...FABLE, resetsAt: new Date(NOW + 1000).toISOString() };
+  assert.equal(claudeFrom(payload).detail.fableWeekly.remainingPercent, 0);
+  delete row.fableWeekly;
+  const afterReset = claudeFrom(payload, NOW + 1000);
+  row.fableWeekly = { ...FABLE, resetsAt: new Date(NOW + 1000).toISOString() };
+  assert.deepEqual(claudeFrom(payload, NOW + 1000), afterReset);
+});
+
+test('equal-duration windows use scope, not order; ordinary legacy extras still bind', () => {
+  const payload = feed();
+  const row = payload.providers[0];
+  const [session, weekly] = row.windows;
+  const ordinaryWeekly = { ...weekly, windowMinutes: 10080, remaining: 49 };
+  const scoped = { ...FABLE, remaining: 'malformed', resetsAt: new Date(NOW).toISOString() };
+  const ordinaryExtra = { ...ordinaryWeekly, label: 'Another weekly quota', remaining: 40 };
+  row.extraWindows = [{ ...scoped, id: 'other-model', scoped: true }, ordinaryExtra, { ...scoped, scope: 'model' }];
+  row.fableWeekly = FABLE;
+  for (const windows of [[scoped, ordinaryWeekly, session], [session, scoped, ordinaryWeekly]]) {
+    row.windows = windows;
+    const claude = claudeFrom(payload);
+    assert.equal(claude.value, 40);
+    assert.deepEqual(claude.detail.windows.map(({ label }) => label),
+      [...windows.filter((entry) => entry !== scoped), ordinaryExtra].map(({ label }) => label));
+    assert.deepEqual(claude.detail.fableWeekly, FABLE_DETAIL);
+  }
+});
+
+test('fableWeekly cannot rescue an unavailable, stale or expired ordinary Claude quota', () => {
+  const payload = feed();
+  const original = payload.providers[0];
+  for (const change of [{ available: false }, { windows: [] }, { windows: [FABLE] },
+    { updatedAt: '2026-10-29T04:42:00Z' }, { updatedAt: '2026-10-29T04:55:00Z' },
+    { windows: [{ ...original.windows[0], resetsAt: new Date(NOW).toISOString() }] }]) {
+    payload.providers[0] = { ...original, fableWeekly: FABLE, ...change };
+    const claude = claudeFrom(payload);
+    assert.equal(claude.value, null);
+    assert.equal(claude.availability, 'unavailable');
+    assert.equal(claude.detail, undefined);
+  }
+});
+
+test('Google keeps each account and the exact active flag; fableWeekly is Claude only', () => {
+  const payload = feed();
+  for (const [id, remaining, active] of [['sub2', 15, false], ['sub3', 92, true], ['sub4', 50, false]]) {
+    payload.providers.push({ ...payload.providers[0], id: `google-ai-pro-${id}`, active, fableWeekly: FABLE,
+      windows: [{ ...payload.providers[0].windows[0], remaining }] });
+  }
+  const google = usageItemsFromFeed(payload, { now: NOW }).filter((item) => item.group === 'google-ai-pro');
+  assert.deepEqual(google.map((item) => [item.id, item.value, item.active, item.detail.fableWeekly]), [
+    ['provider.google-ai-pro-sub2.quota', 15, false, undefined],
+    ['provider.google-ai-pro-sub3.quota', 92, true, undefined],
+    ['provider.google-ai-pro-sub4.quota', 50, false, undefined],
+  ]);
 });
 
 test('after ten minutes neither live nor manually verified readings retain numbers', async (t) => {
