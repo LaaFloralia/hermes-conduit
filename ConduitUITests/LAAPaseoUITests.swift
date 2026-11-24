@@ -166,17 +166,23 @@ final class LAAPaseoUITests: XCTestCase {
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         let y = row.frame.midY
-        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width - 55, dy: y))
+        // Stay to the left of the child disclosure, which is not part of the
+        // swipe row. The old start at x=385 hit that control.
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width - 110, dy: y))
         // Slow enough that the row settles at the reveal width instead of
         // committing the way a fast flick does.
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -90, dy: 0)),
                     withVelocity: XCUIGestureVelocity(120), thenHoldForDuration: 0.3)
+        let unpin = app.buttons["ピンを外す"]
+        XCTAssertTrue(unpin.waitForExistence(timeout: 5), "A short swipe reveals the unpin action")
+        XCTAssertTrue(unpin.isHittable)
         capture(app, "partial-swipe", "light")
         XCTAssertFalse(app.descendants(matching: .any)["work.session.detail.title"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["work.create"].isHittable, "A partial swipe must not open the session")
         XCTAssertTrue(waitForFavorite(true), "A partial swipe must not change the pin")
 
-        let fullStart = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width / 2, dy: y))
+        // The gesture must travel past 200 pt, not land exactly on it (4f2eda58).
+        let fullStart = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * 0.54, dy: y))
         let fullEnd = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: y))
         fullStart.press(forDuration: 0.1, thenDragTo: fullEnd, withVelocity: XCUIGestureVelocity(900), thenHoldForDuration: 0.1)
         capture(app, "full-swipe", "light")
@@ -207,6 +213,12 @@ final class LAAPaseoUITests: XCTestCase {
                         withVelocity: XCUIGestureVelocity(900), thenHoldForDuration: 0.1)
         }
         swipeRight(row)
+        // A full swipe asks first since 4f2eda58; only confirmation archives.
+        let confirmation = app.alerts["このプロジェクトをアーカイブしますか？"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        XCTAssertTrue(row.exists, "The project remains until archive is confirmed")
+        let confirm = confirmation.buttons["work.archive.confirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(row.waitForNonExistence(timeout: 10), "Archiving must take the project out of the list")
         capture(app, "project-archived", "light")
         app.buttons["work.projects.archiveToggle"].tap()

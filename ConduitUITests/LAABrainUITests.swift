@@ -315,7 +315,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        let acknowledge = app.buttons["Check Inbox and start again"]
+        let acknowledge = app.buttons["Inboxを確認する"]
         XCTAssertTrue(acknowledge.waitForExistence(timeout: 10))
         app.swipeUp()
         XCTAssertTrue(save.waitForExistence(timeout: 10))
@@ -475,7 +475,9 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-no-vault-fixture", "-laa-brain-daily-fixture"]
         app.launchInLab()
-        XCTAssertTrue(app.buttons["laa.brain.chooseFolder"].waitForExistence(timeout: 30))
+        let folder = app.buttons["laa.brain.chooseFolder"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 30))
+        XCTAssertTrue(folder.isHittable, "a shortcut cannot use the default Mac source to open today's local note")
         XCTAssertFalse(app.textViews["laa.brain.edit.text"].exists)
         app.terminate()
         app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
@@ -638,9 +640,12 @@ final class LAABrainUITests: XCTestCase {
         draft.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'SAVED-DRAFT'")).firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["laa.brain.history.use"].isEnabled)
-        let backToHistory = app.navigationBars["下書き"].buttons["履歴"]
+        // The detail title (Draft on this simulator) and native back label
+        // come from different localization paths. The bar has only Back here.
+        let backToHistory = app.navigationBars.firstMatch.buttons.firstMatch
         XCTAssertTrue(backToHistory.waitForExistence(timeout: 10))
         backToHistory.tap()
+        XCTAssertTrue(draft.waitForExistence(timeout: 10), "Back returns to the version list")
         app.buttons["laa.brain.history.close"].tap()
         app.buttons["laa.brain.recovery.clearMissing"].tap()
         app.alerts.firstMatch.buttons["laa.brain.recovery.confirmClearMissing"].firstMatch.tap()

@@ -121,31 +121,17 @@ final class LAADecisionUITests: XCTestCase {
 
     private func paste(_ text: String, into field: XCUIElement, _ app: XCUIApplication, replacing: Bool) {
         UIPasteboard.general.string = text
-        field.tap()
-        func item(_ labels: [String]) -> XCUIElement {
-            app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", labels)).firstMatch
-        }
-        // The focused field shows its edit menu on a second tap; a long press
-        // is the fallback (it can bring the loupe instead).
-        func menu(_ labels: [String]) -> XCUIElement {
-            let entry = item(labels)
-            for attempt in 0..<3 where !entry.exists {
-                if attempt == 1 { field.press(forDuration: 1.2) } else { field.tap() }
-                _ = entry.waitForExistence(timeout: 3)
-            }
-            XCTAssertTrue(entry.waitForExistence(timeout: 2), "\(labels[0]) in the edit menu")
-            return entry
-        }
-        if replacing {
-            // Select all and delete, then paste into the empty field.
-            menu(["すべてを選択", "Select All"]).tap()
-            field.typeText(XCUIKeyboardKey.delete.rawValue)
-        }
-        menu(["ペースト", "Paste"]).tap()
+        defer { UIPasteboard.general.items = [] }
+        if !app.keyboards.firstMatch.exists { field.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        // Use the system's edit commands without depending on iOS exposing
+        // its transient touch menu (or the current language) to XCTest.
+        if replacing { field.typeKey("a", modifierFlags: .command) }
+        field.typeKey("v", modifierFlags: .command)
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            ((field.value as? String) ?? "").count == text.count
+            field.value as? String == text
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed, "pasted")
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed, "pasted the full answer")
     }
 
     private func screenshot(_ name: String, _ app: XCUIApplication) {

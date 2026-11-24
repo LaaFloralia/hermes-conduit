@@ -247,7 +247,7 @@ final class LAAChromeUITests: XCTestCase {
             if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
             voice.tap()
             XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["Macの音声設定を取得できません。テキストの会話は引き続き使えます。"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.staticTexts["音声設定を取得できません"].waitForExistence(timeout: 15))
             capture("remnants-voice-\(appearance)")
             let advanced = app.buttons["voice.advancedToggle"]
             for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }
@@ -268,7 +268,7 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertTrue(app.buttons["laa.employee.call"].waitForExistence(timeout: 30))
             app.buttons["laa.employee.call"].tap()
             XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
-            XCTAssertEqual(app.buttons["laa.call.end"].label, "End")
+            XCTAssertEqual(app.buttons["laa.call.end"].label, "終了")
             try assertBackground(capture("chrome-call-\(appearance)"), appearance: appearance)
             app.terminate()
         }

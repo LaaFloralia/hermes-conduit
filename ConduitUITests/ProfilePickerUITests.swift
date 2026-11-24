@@ -88,7 +88,8 @@ final class ProfilePickerUITests: XCTestCase {
         // the probe is row-specific without depending on the card's bounds.
         // Saved dashboards above the profiles can push the target row off
         // screen; the probe must land inside the window.
-        let scroller = pickerScroller(app)
+        let scroller = app.scrollViews.containing(.button, identifier: photoControl.label).firstMatch
+        XCTAssertTrue(scroller.waitForExistence(timeout: 5), "The photo control must be in the picker scroller")
         for _ in 0..<4 where !photoControl.isHittable {
             scroller.swipeUp()
         }
@@ -266,16 +267,6 @@ final class ProfilePickerUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 5), "Select button for \(displayName) missing. Tree:\n\(app.debugDescription)")
         return button
-    }
-
-    /// The picker is a sheet over the chat list, and both scroll: scope every
-    /// swipe to the sheet so the list behind it never moves.
-    private func pickerScroller(_ app: XCUIApplication) -> XCUIElement {
-        let sheet = app.sheets.firstMatch
-        if sheet.exists, sheet.scrollViews.firstMatch.exists { return sheet.scrollViews.firstMatch }
-        let titled = app.scrollViews.containing(.staticText, identifier: Identity.pickerTitle).firstMatch
-        if titled.exists { return titled }
-        return app.scrollViews.firstMatch
     }
 
     /// Taps an absolute point in the app's window — the card's padding has no

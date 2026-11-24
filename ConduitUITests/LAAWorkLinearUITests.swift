@@ -151,11 +151,15 @@ final class LAAWorkLinearUITests: XCTestCase {
         let app = try launch(appearance)
         for section in ["tasks", "sessions", "projects", "routines", "skills"] {
             selectSection(app, section)
-            let ready = section == "routines" ? "朝の確認" : section == "skills" ? "weekly-report" : "次の打ち合わせを確認する"
-            if section == "sessions" || section == "projects" {
+            switch section {
+            case "sessions", "projects":
                 XCTAssertTrue(app.buttons["work.section.\(section)"].isSelected)
-            } else {
-                XCTAssertTrue(app.staticTexts[ready].waitForExistence(timeout: 10))
+            case "tasks":
+                XCTAssertTrue(taskRow(app, "次の打ち合わせを確認する").waitForExistence(timeout: 10))
+            case "routines":
+                XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
+            default:
+                XCTAssertTrue(app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.waitForExistence(timeout: 10))
             }
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             shot.name = "work-\(section)-\(appearance)"; shot.lifetime = .keepAlways; add(shot)
@@ -177,6 +181,9 @@ final class LAAWorkLinearUITests: XCTestCase {
                 XCTAssertTrue(app.staticTexts["社長の指定内容に沿って現職の週報を入力します。"].waitForExistence(timeout: 5))
                 attach("work-skill-detail-\(appearance)")
                 app.navigationBars.buttons.firstMatch.tap()
+                app.navigationBars.buttons.firstMatch.tap()
+                XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
+                app.buttons["laa.settings.done"].tap()
             } else if section == "routines" {
                 attach("work-routine-paused-closed-\(appearance)")
                 app.buttons["work.routines.services"].tap()
@@ -184,14 +191,13 @@ final class LAAWorkLinearUITests: XCTestCase {
                 attach("work-routine-paused-open-\(appearance)")
             }
         }
-        app.buttons["laa.settings.open"].firstMatch.tap()
-        let usage = app.buttons["settings.ai-usage"]
+        // Usage has one entry, in the Work toolbar, since 5babcbac.
+        let usage = app.buttons["work.usage"]
         XCTAssertTrue(usage.waitForExistence(timeout: 10))
-        XCTAssertEqual(app.buttons.matching(identifier: "settings.ai-usage").count, 1)
+        XCTAssertEqual(app.buttons.matching(identifier: "work.usage").count, 1)
         usage.tap()
         XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 10))
-        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        shot.name = "settings-ai-usage-\(appearance)"; shot.lifetime = .keepAlways; add(shot)
+        attach("work-usage-\(appearance)")
     }
     func testWorkScreensLight() throws { try capture("light") }
     func testWorkScreensDark() throws { try capture("dark") }
@@ -204,10 +210,12 @@ final class LAAWorkLinearUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
     }
     private func selectSection(_ app: XCUIApplication, _ section: String) {
-        let button = app.buttons["work.section.\(section)"]
-        // Selecting a visible middle section lets the hub's ScrollViewReader
-        // bring the right-hand sections into view before the next tap.
-        button.tap()
+        if section == "skills" {
+            // Skills moved into Settings (2b5760d5).
+            LAASettingsSkillsUI.open(in: app)
+        } else {
+            app.buttons["work.section.\(section)"].tap()
+        }
     }
     private func attach(_ name: String) {
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

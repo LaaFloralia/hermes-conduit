@@ -27,7 +27,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     }
 
     func testStagedTestSuccessShowsAllStagesAndEnablesHandoff() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.firstLoginFixture()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:password"]
         app.launchInLab()
 
@@ -56,7 +56,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     }
 
     func testAuthenticationFailureKeepsPriorStagesAndOffersEditCredentials() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.firstLoginFixture()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:authenticationRejected"]
         app.launchInLab()
 
@@ -73,7 +73,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         let failure = app.staticTexts["setup.test.failure"]
         XCTAssertEqual(
             failure.label,
-            "Hermes rejected that username or password. Check your dashboard credentials and try again."
+            "\(XCUIApplication.firstLoginDashboardName) rejected that username or password. Check your dashboard credentials and try again."
         )
         XCTAssertTrue(app.buttons["setup.test.edit-credentials"].waitForExistence(timeout: 5))
         // Retry exists but is never the primary action after rejected
@@ -87,7 +87,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     }
 
     func testRateLimitedTestOffersNoRetryAction() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.firstLoginFixture()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:rateLimited"]
         app.launchInLab()
 
@@ -112,7 +112,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // handoff back to LoginView — where the user taps Connect and the
         // existing WebView flow runs. No real browser login is automated
         // here.
-        let app = XCUIApplication()
+        let app = XCUIApplication.firstLoginFixture()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"]
         app.launchInLab()
 
@@ -166,7 +166,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // Password and browser sign-in both work and no credentials were
         // tested: Review authorizes the address-only handoff and offers
         // Enter Credentials to test the password method instead.
-        let app = XCUIApplication()
+        let app = XCUIApplication.firstLoginFixture()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:signInChoice"]
         app.launchInLab()
 
@@ -299,11 +299,8 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))
-        for _ in 0..<6 {
-            if element.isHittable { break }
-            app.swipeUp()
-        }
-        XCTAssertTrue(element.isHittable)
+        ConnectionSetupPasswordOffer.reveal(element, in: app, test: self)
+        XCTAssertTrue(element.isHittable, element.debugDescription)
         element.tap()
     }
 

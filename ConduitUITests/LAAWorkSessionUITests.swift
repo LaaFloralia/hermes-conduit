@@ -376,7 +376,8 @@ final class LAAWorkSessionUITests: XCTestCase {
 
     // MARK: - The row and the heading
 
-    /// One row under the field: picture, model, Fast, stop while running, Send.
+    /// Keep the historical ratchet ID. On this phone, the long model and
+    /// active-turn controls intentionally use two rows (57864c01).
     func testFollowUpRowKeepsEveryControlOnOneLine() throws {
         let app = try launchFixture()
         open(runningID, app)
@@ -390,11 +391,15 @@ final class LAAWorkSessionUITests: XCTestCase {
             XCTAssertTrue(element.waitForExistence(timeout: 15), element.debugDescription)
             XCTAssertTrue(element.isHittable, element.debugDescription)
         }
-        // One line: every control shares the row's centre.
-        let midY = photo.frame.midY
-        for element in [model, effort, fast, stop, send] {
-            XCTAssertEqual(element.frame.midY, midY, accuracy: 2, "not on the row: \(element.debugDescription)")
+        // The overflow rule moves only the settings group. Each group must
+        // remain aligned and the upper row must not encroach on the actions.
+        for element in [effort, fast] {
+            XCTAssertEqual(element.frame.midY, model.frame.midY, accuracy: 2, "settings row: \(element.debugDescription)")
         }
+        for element in [stop, send] {
+            XCTAssertEqual(element.frame.midY, photo.frame.midY, accuracy: 2, "action row: \(element.debugDescription)")
+        }
+        XCTAssertLessThanOrEqual(max(model.frame.maxY, effort.frame.maxY, fast.frame.maxY), photo.frame.minY)
         // The model name is the only thing that gives way; the effort stays whole.
         XCTAssertLessThanOrEqual(model.frame.maxX, effort.frame.minX + 1)
         XCTAssertLessThanOrEqual(effort.frame.maxX, fast.frame.minX + 1)

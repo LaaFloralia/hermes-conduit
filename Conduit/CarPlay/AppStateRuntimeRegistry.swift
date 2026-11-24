@@ -12,6 +12,8 @@
 //  a reference/lifecycle seam only — it owns no business logic.
 //
 
+import Foundation
+
 @MainActor
 final class AppStateRuntimeRegistry {
     static let shared = AppStateRuntimeRegistry()
@@ -28,6 +30,12 @@ final class AppStateRuntimeRegistry {
 #if DEBUG
         if let fixture = WidgetLaunchUITestFixture.createAppStateIfEnabled() {
             created = fixture
+        } else if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+                  ProcessInfo.processInfo.arguments.contains("-CONDUIT_UI_TEST_FRESH_LOGIN") {
+            // Login and Connection Setup exercise first-run behavior even if
+            // hosted tests have left a dashboard roster in simulator Keychain.
+            // Substitute an in-memory empty registry; never delete that roster.
+            created = AppState(loadSavedConnection: false, dashboardRegistry: SavedDashboardRegistry())
         } else {
             created = AppState()
         }

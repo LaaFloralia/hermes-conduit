@@ -266,11 +266,8 @@ final class ConnectionRepairUITests: XCTestCase {
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))
-        for _ in 0..<6 {
-            if element.isHittable { break }
-            app.swipeUp()
-        }
-        XCTAssertTrue(element.isHittable)
+        ConnectionSetupPasswordOffer.reveal(element, in: app, test: self)
+        XCTAssertTrue(element.isHittable, element.debugDescription)
         element.tap()
     }
 

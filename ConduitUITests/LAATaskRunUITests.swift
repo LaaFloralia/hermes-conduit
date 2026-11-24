@@ -463,14 +463,17 @@ final class LAATaskRunUITests: XCTestCase {
         tasks(app)
         XCTAssertTrue(row(app, "次の打ち合わせを確認する").waitForExistence(timeout: 15))
         shot(app, "c-tasks-list-\(suffix)")
-        app.scrollViews.firstMatch.swipeUp()
+        // The grouped task screen is a List (d3288e4d), not a ScrollView.
+        let list = app.descendants(matching: .any)["work.tasks.list"].firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        list.swipeUp()
         shot(app, "c-tasks-states-\(suffix)")
-        app.scrollViews.firstMatch.swipeDown()
+        list.swipeDown()
 
         app.buttons["work.linear.add"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.linear.model"].firstMatch.waitForExistence(timeout: 10))
         shot(app, "c-task-create-\(suffix)")
-        app.buttons["Close"].tap()
+        app.navigationBars.buttons["閉じる"].tap()
 
         let target = row(app, "見積りを送る")
         scrollTo(app, target)
@@ -487,6 +490,8 @@ final class LAATaskRunUITests: XCTestCase {
     private func decisionShots(dark: Bool) throws {
         let suffix = dark ? "dark" : "light"
         let app = try launch(dark: dark, board: "long")
+        // The selected Work section is Projects on launch (9602ddcc).
+        app.buttons["work.section.decisions"].tap()
         let card = app.buttons["work.decision.\(longDecisionID)"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 20))
         card.tap()
