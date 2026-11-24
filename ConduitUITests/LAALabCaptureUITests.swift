@@ -96,8 +96,11 @@ final class LAALabCaptureUITests: XCTestCase {
                 for (id, row, ready) in [("work-session-history", history, "work.session.history.ready"),
                                         ("work-session-running", run, "work.session.progress.thinking"),
                                         ("work-session-waiting", waiting, "work.session.decision.note.0")] where selected.contains(id) {
-                    reveal(row, app)
-                    tap(row, app)
+                    // Capture the detail through the app's real session URL.
+                    // This does not depend on whether the preceding list row
+                    // has an on-screen hit point at this Dynamic Type size.
+                    let session = row.dropFirst("work.session.".count)
+                    app.open(URL(string: "laa://work/sessions/\(session)")!)
                     shot(id, after: ready, app)
                     back(to: "work.section.sessions", app)
                 }
@@ -118,9 +121,18 @@ final class LAALabCaptureUITests: XCTestCase {
             }
             if needs("work-tasks", "work-task-detail") {
                 segment("tasks", app)
-                shot("work-tasks", after: task, app)
+                let filter = wait("work.tasks.quick", app)
+                let loaded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    filter.label.contains("28件")
+                }, object: filter)
+                XCTAssertEqual(XCTWaiter.wait(for: [loaded], timeout: 15), .completed, "Fixture task count did not load")
+                shot("work-tasks", after: "work.tasks.list", app)
                 if selected.contains("work-task-detail") {
-                    reveal(task, app)
+                    // This row can fall outside the materialized list at
+                    // larger text sizes. Find it through the real search UI.
+                    let search = wait("laa.work.search", app)
+                    search.tap()
+                    search.typeText("T30")
                     tap(task, app)
                     shot("work-task-detail", after: "work.task.detail.title", app)
                     tap("work.task.detail.close", app)
