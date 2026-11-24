@@ -33695,12 +33695,16 @@ final class AppState: ObservableObject {
             )
             return
         }
-        // Compaction lifecycle edges are session-scoped bookkeeping, not
-        // transcript projection: they must run for background conversations
-        // too (clearing state, driving the active conversation's refresh)
-        // and are never buffered into a reconcile.
+        // Compaction lifecycle bookkeeping also runs for background chats.
+        // Active progress can additionally start the foreground working row.
         if case .statusUpdate(let sessionId, let kind, let text) = event {
             applyStatusUpdate(sessionId: sessionId, kind: kind, text: text)
+            #if LAA_BUILD
+            if Self.laaStatusShowsTurnProgress(kind, text: text) {
+                let status = StreamEvent.thinkingStatus(sessionId: sessionId, text: LAACopy.chatThinking)
+                if !bufferIfReconciling(status) { applyStreamEvent(status) }
+            }
+            #endif
             return
         }
         // Signals that another client or process changed a chat: they ask
@@ -33748,6 +33752,20 @@ final class AppState: ObservableObject {
             break
         }
     }
+
+    #if LAA_BUILD
+    private static func laaStatusShowsTurnProgress(_ kind: StatusUpdateKind, text: String?) -> Bool {
+        // Manual compaction has its own indicator. Ready/idle and one-shot
+        // notices must not make an otherwise idle composer stay busy.
+        guard case .other(let kind) = kind, let text,
+              !Self.isCompressionDiagnosticStatus(text) else { return false }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let terminal: Set<String> = ["ready", "idle", "done", "finished", "complete", "completed", "stopped", "error"]
+        guard !body.isEmpty, !terminal.contains(body) else { return false }
+        return ["status", "lifecycle", "working", "running", "thinking", "busy", "progress", "waiting"]
+            .contains(kind.lowercased())
+    }
+    #endif
 
     /// Upstream one-shot compression diagnostics are warnings (`⚠`, possibly
     /// after the agent's log prefix, e.g. "Session compressed N times") or
@@ -34065,10 +34083,10 @@ final class AppState: ObservableObject {
             appendReasoning(text)
             setRunning(true)
 
-        case .thinkingStatus(_, let text):
+        case .thinkingStatus:
             #if LAA_BUILD
             finalizePendingStreamingCompletion()
-            if liveTurn.thinkingStatus != text { liveTurn.thinkingStatus = text }
+            if liveTurn.thinkingStatus == nil { liveTurn.thinkingStatus = LAACopy.chatThinking }
             setRunning(true)
             #endif
 

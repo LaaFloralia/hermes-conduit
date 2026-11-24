@@ -1118,9 +1118,9 @@ final class HermesClient: ObservableObject {
         let profile: String?
     }
     private var laaAttachments: [String: LAAAttachment] = [:]
-    private var laaHasSessionReasoning = false
+    private var laaReasoningDeltaOptIn: Bool?
+    private var laaReasoningAdvertisementDeadline: ContinuousClock.Instant?
     private var laaHasClientTurnID = false
-    private var laaReasoningRequested: Set<String> = []
     private struct LAAReplayFlight {
         let sessionID: String
         var events: [[String: AnyCodable]] = []
@@ -1260,8 +1260,8 @@ final class HermesClient: ObservableObject {
         closedIntentionally = false
         #if LAA_BUILD
         laaAttachments.removeAll()
-        laaReasoningRequested.removeAll()
-        laaHasSessionReasoning = false
+        laaReasoningDeltaOptIn = nil
+        laaReasoningAdvertisementDeadline = nil
         laaHasClientTurnID = false
         laaReplay = LAAChatEventReplay()
         laaReplayFlight = nil
@@ -1273,6 +1273,11 @@ final class HermesClient: ObservableObject {
         let request = try await upgradeRequest(ticket: connection.ticket, generation: generation)
         let socket = try await openSocket(with: request, generation: generation)
         isConnected = true
+        #if LAA_BUILD
+        // Ready normally arrives before the host processes its first RPC.
+        // Give either advertisement a short chance without blocking an old host.
+        laaReasoningAdvertisementDeadline = ContinuousClock.now.advanced(by: .milliseconds(200))
+        #endif
         logger.notice("WebSocket handshake completed")
 
         // Start listening for messages
@@ -1632,11 +1637,8 @@ final class HermesClient: ObservableObject {
         if eventObject["type"]?.stringValue == "gateway.ready" {
             let payload = eventObject["payload"]?.objectValue
             laaReplay.epoch = payload?["replay_epoch"]?.stringValue
-            laaHasSessionReasoning = payload?["session_reasoning_stream"]?.boolValue == true
+            laaAdmitReasoningAdvertisement(payload?["reasoning_delta_optin"]?.boolValue)
             laaHasClientTurnID = payload?["client_turn_id"]?.boolValue == true
-            if laaHasSessionReasoning {
-                for id in laaAttachments.keys { laaEnableReasoning(for: id) }
-            }
         }
         guard laaReplay.admit(eventObject) else { return }
         #endif
@@ -1696,11 +1698,17 @@ final class HermesClient: ObservableObject {
                 let result = try await self.rpc("client.capabilities", params: ["server_requests": true], scoped: false)
                 guard self.socket === socket else { return }
                 self.backendCountsDeclines = result.objectValue?["declines_not_shown"]?.boolValue == true
+                #if LAA_BUILD
+                self.laaAdmitReasoningAdvertisement(result.objectValue?["reasoning_delta_optin"]?.boolValue ?? false)
+                #endif
                 self.logger.notice("Advertised server_requests capability")
             } catch {
                 self.logger.notice("client.capabilities not accepted: \(LogRedaction.message(error), privacy: .public)")
                 // Let a later gateway.ready on this socket try again.
                 if self.advertisedSocket === socket { self.advertisedSocket = nil }
+                #if LAA_BUILD
+                if self.socket === socket { self.laaAdmitReasoningAdvertisement(false) }
+                #endif
             }
             guard self.socket === socket else { return }
             self.capabilityReplyPending = false
@@ -2083,14 +2091,18 @@ final class HermesClient: ObservableObject {
     /// params (upstream behavior). The stored row is lazy until the eager
     /// `session.title` write lands.
     func createBotChatSession(profile: String) async throws -> (sessionId: String, storedSessionId: String?) {
-        let result = try await rpc("session.create", params: [
+        var params: [String: Any] = [
             "cols": 96,
             "source": "desktop",
             "profile": profile,
             "title": BotMode.canonicalChatTitle,
             "hidden": true,
             "follow_profile_config": true
-        ])
+        ]
+        #if LAA_BUILD
+        if try await laaReasoningOptInOnCurrentSocket() { params["include_reasoning_deltas"] = true }
+        #endif
+        let result = try await rpc("session.create", params: params)
         let object = result.objectValue ?? [:]
         let sessionId = object["session_id"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -2438,6 +2450,9 @@ final class HermesClient: ObservableObject {
         if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             params["profile"] = profile
         }
+        #if LAA_BUILD
+        if try await laaReasoningOptInOnCurrentSocket() { params["include_reasoning_deltas"] = true }
+        #endif
         let result = try await rpc(
             "session.resume",
             params: params,
@@ -2589,6 +2604,9 @@ final class HermesClient: ObservableObject {
         if let reasoningEffort { params["reasoning_effort"] = reasoningEffort }
         if let fast, fast { params["fast"] = true }
         if let cwd, !cwd.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["cwd"] = cwd }
+        #if LAA_BUILD
+        if inProfile == nil, try await laaReasoningOptInOnCurrentSocket() { params["include_reasoning_deltas"] = true }
+        #endif
         let result = try await rpc("session.create", params: params)
         let object = result.objectValue ?? [:]
         let sid = object["session_id"]?.stringValue ?? ""
@@ -2620,6 +2638,9 @@ final class HermesClient: ObservableObject {
             params["profile"] = profile
         }
         if let cwd, !cwd.isEmpty { params["cwd"] = cwd }
+        #if LAA_BUILD
+        if try await laaReasoningOptInOnCurrentSocket() { params["include_reasoning_deltas"] = true }
+        #endif
         let result = try await rpc("session.create", params: params)
         let object = result.objectValue ?? [:]
         let sessionId = object["session_id"]?.stringValue ?? ""
@@ -3213,7 +3234,6 @@ final class HermesClient: ObservableObject {
             return try await readContextBreakdown(sessionId)
         } catch let error as RpcError where Self.isSessionNotFoundError(error) || error.message.localizedCaseInsensitiveContains("not in memory") {
             laaAttachments[sessionId] = nil
-            laaReasoningRequested.remove(sessionId)
             guard let storedID = attachment.storedID, canReattach?() == true, let adoptReattached else { throw error }
             let resumed = try await openSession(storedID, profile: attachment.profile)
             guard laaAttachments[resumed.sessionId] != nil, adoptReattached(resumed) else { throw HermesError.notConnected }
@@ -3243,23 +3263,24 @@ final class HermesClient: ObservableObject {
     private func laaNoteAttached(_ sessionID: String, storedID: String?, profile: String?) {
         guard !sessionID.isEmpty, isConnected else { return }
         laaAttachments[sessionID] = LAAAttachment(storedID: storedID, profile: profile)
-        laaEnableReasoning(for: sessionID)
     }
 
-    private func laaEnableReasoning(for sessionID: String) {
-        // Stock config.set reasoning show persists two display settings. Only
-        // use the strictly session-local variant when the host guarantees it.
-        guard laaHasSessionReasoning, laaReasoningRequested.insert(sessionID).inserted else { return }
-        Task { @MainActor [weak self] in
-            guard let self, self.laaHasAttachment(sessionID) else { return }
-            do {
-                _ = try await self.rpc("config.set", params: [
-                    "session_id": sessionID, "key": "reasoning", "value": "show", "scope": "session"
-                ])
-            } catch {
-                self.laaReasoningRequested.remove(sessionID)
+    private func laaAdmitReasoningAdvertisement(_ supported: Bool?) {
+        if laaReasoningDeltaOptIn != true, let supported { laaReasoningDeltaOptIn = supported }
+    }
+
+    /// Only the same socket can advertise and consume the private opt-in.
+    /// Unknown, absent, or slow advertisements fail closed; never write a
+    /// profile display setting or send a speculative opt-in.
+    private func laaReasoningOptInOnCurrentSocket() async throws -> Bool {
+        guard let socket, isConnected else { return false }
+        if let deadline = laaReasoningAdvertisementDeadline {
+            while laaReasoningDeltaOptIn == nil, self.socket === socket, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(5))
             }
         }
+        guard self.socket === socket, isConnected else { throw HermesError.connectionClosed }
+        return laaReasoningDeltaOptIn == true
     }
 
     private func laaDispatchRecoveryEvents(_ events: [[String: AnyCodable]]) {
@@ -3293,7 +3314,18 @@ final class HermesClient: ObservableObject {
         var target: [String: Any] = ["session_id": sessionID, "omit_messages": true]
         if let profile { target["profile"] = profile }
         do {
-            guard let activation = try await rpc("session.activate", params: target, timeout: 4).objectValue,
+            let optsIn = try await laaReasoningOptInOnCurrentSocket()
+            guard isCurrent(), laaReplay.epoch == nil || laaReplay.epoch == cursor.epoch else { return nil }
+            if optsIn {
+                // Only create/resume can grant thought to this transport.
+                // A compact resume preserves replay only if it returns the
+                // same runtime; a replacement takes the durable fallback.
+                target["session_id"] = storedID ?? sessionID
+                target["source"] = "desktop"
+                target["include_reasoning_deltas"] = true
+            }
+            let attachMethod = optsIn ? "session.resume" : "session.activate"
+            guard let activation = try await rpc(attachMethod, params: target, timeout: 4).objectValue,
                   activation["session_id"]?.stringValue == sessionID, isCurrent() else { return nil }
             let result = try await rpc("session.events.since", params: [
                 "session_id": sessionID, "last_seen": cursor.sequence

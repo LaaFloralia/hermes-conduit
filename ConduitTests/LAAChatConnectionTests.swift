@@ -90,33 +90,33 @@ final class LAAChatConnectionTests: XCTestCase {
         XCTAssertEqual(state.messages.filter { $0.role == .user }.count, 1)
     }
 
-    func testReasoningEnableRequiresSafeCapabilityAndDoesNotRepeatTheRPC() async throws {
-        let (legacy, legacySocket) = try await connect()
-        try await attach(legacy, legacySocket)
-        XCTAssertFalse(legacySocket.methods.contains("config.set"))
-        legacy.disconnect()
-
-        let (client, socket) = try await connect(capabilities: ["session_reasoning_stream": true])
-        try await attach(client, socket)
-        let setting = try await request("config.set", socket)
-        let params = try XCTUnwrap(setting["params"] as? [String: Any])
-        XCTAssertEqual(params["session_id"] as? String, session)
-        XCTAssertEqual(params["key"] as? String, "reasoning")
-        XCTAssertEqual(params["value"] as? String, "show")
-        XCTAssertEqual(params["scope"] as? String, "session")
-        try socket.reply(setting, [:])
-        let id = stored
-        let second = Task { try await client.openSession(id) }
-        try socket.reply(try await request("session.resume", socket, occurrence: 2),
-                         ["session_id": session, "stored_session_id": stored])
-        _ = try await second.value
-        XCTAssertEqual(socket.methods.filter { $0 == "config.set" }.count, 1)
-        client.disconnect()
+    func testReasoningOptsInOnlyOnCreateAndEveryResumeWhenAdvertised() async throws {
+        let capability = ["reasoning_delta_optin": true]
+        for (ready, reply, expected) in [([:], [:], false), (capability, [:], true), ([:], capability, true)] {
+            let (client, socket) = try await connect(capabilities: ready, capabilityReply: reply)
+            defer { client.disconnect() }
+            let create = Task { try await client.createSession() }
+            let createRequest = try await request("session.create", socket)
+            XCTAssertEqual((createRequest["params"] as? [String: Any])?["include_reasoning_deltas"] as? Bool,
+                           expected ? true : nil)
+            try socket.reply(createRequest, ["session_id": session, "stored_session_id": stored])
+            _ = try await create.value
+            for occurrence in 1...2 {
+                let id = stored
+                let resume = Task { try await client.openSession(id) }
+                let resumeRequest = try await request("session.resume", socket, occurrence: occurrence)
+                XCTAssertEqual((resumeRequest["params"] as? [String: Any])?["include_reasoning_deltas"] as? Bool,
+                               expected ? true : nil)
+                try socket.reply(resumeRequest, ["session_id": session, "stored_session_id": stored])
+                _ = try await resume.value
+            }
+            XCTAssertFalse(socket.methods.contains("config.set"))
+        }
     }
 
     func testFirstWireEventImmediatelyPublishesReasoningOrWork() async throws {
         for (event, text) in [("reasoning.delta", "first thought"), ("thinking.delta", "working"),
-                              ("message.start", ""), ("tool.start", "")] {
+                              ("status.update", "preparing fixture turn"), ("message.start", ""), ("tool.start", "")] {
             let defaults = makeScratchDefaults("LAAChatConnectionTests")
             let state = AppState(defaults: defaults, loadSavedConnection: false,
                                  sessionPresentationCache: SessionPresentationCache(defaults: defaults))
@@ -129,7 +129,10 @@ final class LAAChatConnectionTests: XCTestCase {
                 state.handleStreamEvent(streamEvent)
                 XCTAssertTrue(state.isBusy, event)
                 if event == "reasoning.delta" { XCTAssertEqual(state.liveReasoningSegment?.content, text) }
-                if event == "thinking.delta" { XCTAssertEqual(state.liveTurn.thinkingStatus, text) }
+                else { XCTAssertNil(state.liveReasoningSegment, "status must not render as thought") }
+                if event == "thinking.delta" || event == "status.update" {
+                    XCTAssertEqual(state.liveTurn.thinkingStatus, LAACopy.chatThinking)
+                }
                 let now = ContinuousClock.now
                 let elapsed = wireArrival.duration(to: now)
                 XCTAssertLessThan(elapsed, .milliseconds(50))
@@ -141,6 +144,22 @@ final class LAAChatConnectionTests: XCTestCase {
             try await wait { observed }
             client.disconnect()
         }
+    }
+
+    func testReadyStatusDoesNotStartWorkAndProgressYieldsToThought() async throws {
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-status")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        state.activeSessionId = session
+        state.handleStreamEvent(.statusUpdate(sessionId: session, kind: .other("status"), text: "ready"))
+        XCTAssertFalse(state.isBusy)
+        state.handleStreamEvent(.statusUpdate(sessionId: "different-chat", kind: .other("lifecycle"), text: "working"))
+        XCTAssertFalse(state.isBusy)
+        state.handleStreamEvent(.statusUpdate(sessionId: session, kind: .other("lifecycle"), text: "working"))
+        XCTAssertTrue(state.isBusy)
+        XCTAssertNil(state.liveReasoningSegment)
+        state.handleStreamEvent(.reasoningDelta(sessionId: session, text: "first private thought"))
+        XCTAssertEqual(state.liveReasoningSegment?.content, "first private thought")
     }
 
     func testReconnectMergesBufferedAndReplayedDeltasAndOpenRequestsOnce() async throws {
@@ -158,7 +177,8 @@ final class LAAChatConnectionTests: XCTestCase {
             let cursor = try XCTUnwrap(old.laaReplayCursor(for: session))
             XCTAssertEqual(cursor.sequence, cut)
 
-            let (next, second) = try await connect()
+            let optedIn = cut == 2
+            let (next, second) = try await connect(capabilities: optedIn ? ["reasoning_delta_optin": true] : [:])
             var clarify = 0
             next.onEvent = {
                 if case .messageDelta(_, let delta) = $0 { text += delta }
@@ -168,8 +188,11 @@ final class LAAChatConnectionTests: XCTestCase {
             let durableID = stored
             let reattach = Task { await next.laaReplaySession(runtimeID, from: cursor, storedID: durableID,
                                                                profile: nil, isCurrent: { true }) }
-            let activate = try await request("session.activate", second)
-            XCTAssertEqual((activate["params"] as? [String: Any])?["omit_messages"] as? Bool, true)
+            let activate = try await request(optedIn ? "session.resume" : "session.activate", second)
+            let attachParams = try XCTUnwrap(activate["params"] as? [String: Any])
+            XCTAssertEqual(attachParams["omit_messages"] as? Bool, true)
+            XCTAssertEqual(attachParams["include_reasoning_deltas"] as? Bool, optedIn ? true : nil)
+            XCTAssertEqual(attachParams["session_id"] as? String, optedIn ? stored : session)
             try second.reply(activate, ["session_id": session, "running": true])
             let since = try await request("session.events.since", second)
             XCTAssertEqual((since["params"] as? [String: Any])?["last_seen"] as? Int, cut)
@@ -190,6 +213,7 @@ final class LAAChatConnectionTests: XCTestCase {
             XCTAssertEqual(text, "123456", "disconnect after \(cut)")
             XCTAssertEqual(clarify, 1)
             XCTAssertFalse(second.methods.contains("prompt.submit"))
+            XCTAssertFalse(second.methods.contains("config.set"))
             next.disconnect()
         }
     }
@@ -240,10 +264,10 @@ final class LAAChatConnectionTests: XCTestCase {
 
     private func frame(_ type: String, at sequence: Int, text: String) -> [String: Any] {
         ["type": type, "session_id": session, "seq": sequence,
-         "payload": ["text": text, "tool": "fixture", "tool_use_id": "fixture-tool"]]
+         "payload": ["text": text, "kind": "lifecycle", "tool": "fixture", "tool_use_id": "fixture-tool"]]
     }
 
-    private func connect(capabilities: [String: Any] = [:]) async throws -> (HermesClient, LaneR1Socket) {
+    private func connect(capabilities: [String: Any] = [:], capabilityReply: [String: Any] = [:]) async throws -> (HermesClient, LaneR1Socket) {
         let transport = LaneR1Transport()
         let client = HermesClient(connection: .init(baseUrl: "https://r1.invalid", ticket: "fixture"),
                                   transportFactory: { transport }, monitorsPath: false)
@@ -256,7 +280,7 @@ final class LAAChatConnectionTests: XCTestCase {
         try transport.socket.event(["type": "gateway.ready", "payload": payload])
         // Capabilities is the observable acknowledgement that ready was parsed.
         let handshake = try await request("client.capabilities", transport.socket)
-        try transport.socket.reply(handshake, [:])
+        try transport.socket.reply(handshake, capabilityReply)
         return (client, transport.socket)
     }
 

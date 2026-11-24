@@ -155,7 +155,7 @@ struct LAAChatTypingRow: View {
     @Environment(\.chatRowState) private var rowState
     var body: some View {
         LAAChatLiveThoughtRow(startedAt: startedAt, records: records, state: orbState,
-            phrase: phrase, detail: repliesElsewhere ? nil : (projection.reasoningSegment?.content ?? projection.thinkingStatus))
+            phrase: phrase, detail: repliesElsewhere ? nil : projection.reasoningSegment?.content)
             .laaChatColumn(.leading)
     }
     private var orbState: LAAOrbState {
