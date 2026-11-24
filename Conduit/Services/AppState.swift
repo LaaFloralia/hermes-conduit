@@ -2246,11 +2246,6 @@ final class AppState: ObservableObject {
         return id
     }
 
-    private func laaContextBreakdown(using client: HermesClient, runtimeID: String) async throws -> ContextBreakdown {
-        guard let id = laaBindChatRuntime(client, runtimeID: runtimeID) else { return try await client.contextBreakdown(runtimeID) }
-        return try await client.chatRuntime.breakdownForExistingUI(conversationID: id)
-    }
-
     private func laaRecordVisibleSettlement(runtimeID: String, hasContent: Bool) {
         if hasContent { client?.chatRuntime.visible(runtimeID: runtimeID) }
         client?.chatRuntime.settled(runtimeID: runtimeID)
@@ -6337,6 +6332,7 @@ final class AppState: ObservableObject {
         #if LAA_BUILD
         if let link, link.action == .employeeChat, !isVoiceCallInProgress,
            let workspace = link.workspace {
+            if laaEmployeeChatPreview.workspace != workspace { laaReleaseEmployeeOpeningSend() }
             laaOpeningEmployeeChat = workspace.profile
             laaEmployeeChatPreview.begin(workspace: workspace, directory: offlineChatCache.laaPreviewDirectory,
                 preferredSessionID: chatResumeWidgetReference(for: workspace.profile)?.sessionID)
@@ -13883,6 +13879,9 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            #if LAA_BUILD
+            if laaOpeningEmployeeChat == nil { laaSchedulePostConnectReads(using: client) }
+            #else
             await loadChatResumeBusyInputMode(using: client)
             guard let continuation = transportContinuation(
                     purpose: continuationPurpose,
@@ -13904,6 +13903,7 @@ final class AppState: ObservableObject {
                 || continuation.handedOffAutomaticIntent
             Task { await loadChatResumeSlashCommands() }
             Task { await refreshNotifierPluginStatus() }
+            #endif
         } catch {
             guard let continuation = transportContinuation(
                     purpose: syncPurpose,
@@ -14957,10 +14957,17 @@ final class AppState: ObservableObject {
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self] event in
+            #if LAA_BUILD
+            // The client dispatches on MainActor. Applying here preserves
+            // replay/live order and makes its watermark mean applied, not queued.
+            guard let self, self.activeClientEpoch == epoch else { return }
+            self.handleStreamEvent(event)
+            #else
             Task { @MainActor in
                 guard let self, self.activeClientEpoch == epoch else { return }
                 self.handleStreamEvent(event)
             }
+            #endif
         }
         client.onDisconnected = { [weak self] in
             Task { @MainActor in
@@ -17227,7 +17234,15 @@ final class AppState: ObservableObject {
                 return false
             }
             schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
+            #if LAA_BUILD
+            // An employee preview makes this ancillary read after its lease
+            // finishes; an ordinary refresh keeps its layout ordering fence.
+            if laaOpeningEmployeeChat == nil {
+                await refreshChatResumeContext(sessionId: result.sessionId, using: client)
+            }
+            #else
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
+            #endif
 
             guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
             guard automaticChatResumeWorkIsCurrent(
@@ -18711,12 +18726,28 @@ final class AppState: ObservableObject {
     @discardableResult
     private func refreshContextUsage(sessionId: String, using client: HermesClient) async -> ContextBreakdown? {
         do {
-#if LAA_BUILD
-            let breakdown = try await laaContextBreakdown(using: client, runtimeID: sessionId)
-#else
+            #if LAA_BUILD
+            var admittedID = sessionId
+            let viewport = chatViewportTransitionGeneration
+            let canReattach = {
+                self.client === client && self.activeSessionId == sessionId
+                    && self.chatViewportTransitionGeneration == viewport
+                    && self.reconciliation == nil && !self.isBusy && !Task.isCancelled
+            }
+            let breakdown = try await client.contextBreakdown(sessionId, canReattach: canReattach) { result in
+                guard canReattach() else { return false }
+                // Never leave the composer on the reaped process-local handle.
+                if result.sessionId != sessionId {
+                    guard self.applyChatResume(result) else { return false }
+                    admittedID = result.sessionId
+                }
+                return true
+            }
+            guard self.client === client, activeSessionId == admittedID else { return nil }
+            #else
             let breakdown = try await client.contextBreakdown(sessionId)
-#endif
             guard self.client === client, activeSessionId == sessionId else { return nil }
+            #endif
             applyContextBreakdown(breakdown)
             return breakdown
         } catch {
@@ -19114,6 +19145,28 @@ final class AppState: ObservableObject {
             lastConnectionFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
+            #if LAA_BUILD
+            if continuationPurpose == .preserveCurrent, activeRoomSurface == nil, !isVoiceCallInProgress,
+               reconciliation == nil, let previousClient, let sessionID = activeSessionId,
+               let cursor = previousClient.laaReplayCursor(for: sessionID) {
+                let viewport = chatViewportTransitionGeneration
+                let storedID = durableComposerSessionID(for: sessionID)
+                let restored = await client.laaReplaySession(sessionID, from: cursor, storedID: storedID,
+                    profile: conversationIdentityProfile) {
+                    self.client === client && self.activeSessionId == sessionID
+                        && self.chatViewportTransitionGeneration == viewport && !Task.isCancelled
+                }
+                guard refreshTransportContinuation(), self.client === client,
+                      chatViewportTransitionGeneration == viewport else { return }
+                if let restored {
+                    if turnState == .reconnecting { setRunning(restored.running == true) }
+                    owedPostConnectBootstrap = nil
+                    laaSchedulePostConnectReads(using: client)
+                    schedulePendingComposerSendCheck()
+                    return
+                }
+            }
+            #endif
             // Bot Mode evidence before the sync: a reconnect re-runs the same
             botRosterVerifiedForCurrentConnection = false
             // resume decision as a cold launch, and a server-identity boundary
@@ -19133,6 +19186,13 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
+            #if LAA_BUILD
+            if laaOpeningEmployeeChat == nil { laaSchedulePostConnectReads(using: client) }
+            Task { [weak self, weak client] in
+                guard let self, let client, self.client === client else { return }
+                await self.loadChatResumeProfiles()
+            }
+            #else
             await loadChatResumeBusyInputMode(using: client)
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
@@ -19143,6 +19203,7 @@ final class AppState: ObservableObject {
             guard refreshTransportContinuation() else { return }
             Task { await loadChatResumeSlashCommands() }
             Task { await refreshNotifierPluginStatus() }
+            #endif
         } catch {
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
@@ -19296,6 +19357,19 @@ final class AppState: ObservableObject {
         // trailing `botRoster.isEmpty` guard that used to sit here returned to
         // the end of the function either way).
     }
+
+    #if LAA_BUILD
+    private func laaSchedulePostConnectReads(using client: HermesClient) {
+        Task { [weak self, weak client] in
+            guard let self, let client, self.client === client else { return }
+            async let busy: Void = self.loadChatResumeBusyInputMode(using: client)
+            async let display: Void = self.loadChatResumeProfileDisplayPreferences()
+            async let slash: Void = self.loadChatResumeSlashCommands()
+            async let notifier: Void = self.refreshNotifierPluginStatus()
+            _ = await (busy, display, slash, notifier)
+        }
+    }
+    #endif
 
     private func loadChatResumeBusyInputMode(using client: HermesClient) async {
         if let loadBusyInputMode = chatResumeLifecycleOperations.loadBusyInputMode {
@@ -19933,12 +20007,16 @@ final class AppState: ObservableObject {
             )
             guard stillOwns() else { return }
         }
+        #if LAA_BUILD
+        if laaOpeningEmployeeChat == nil { laaSchedulePostConnectReads(using: client) }
+        #else
         await loadChatResumeBusyInputMode(using: client)
         guard stillOwns() else { return }
         await loadChatResumeProfileDisplayPreferences()
         guard stillOwns() else { return }
         Task { await loadChatResumeSlashCommands() }
         Task { await refreshNotifierPluginStatus() }
+        #endif
     }
 
     /// A healthy foreground transition must be observational, not a session
@@ -24833,6 +24911,75 @@ final class AppState: ObservableObject {
         laaEmployeeChatPreview.finish(outcome)
         if case .failed = outcome { return }
         laaOpeningEmployeeChat = nil
+        if case .handled = outcome, let workspace = link.workspace,
+           workspace.dashboardID == activeDashboardID, workspace.profile == activeProfile,
+           let client, let sessionID = activeSessionId {
+            laaAdmitEmployeeOpeningSend(workspace: workspace, sessionID: sessionID, client: client)
+            laaSchedulePostConnectReads(using: client)
+            // The employee's own attach, not a previously visible runtime.
+            Task { [weak self, weak client] in
+                guard let self, let client, self.client === client, self.activeSessionId == sessionID else { return }
+                await self.refreshChatResumeContext(sessionId: sessionID, using: client)
+            }
+        } else {
+            laaReleaseEmployeeOpeningSend()
+        }
+    }
+
+    /// A queued preview send is durable before clearing the draft; it is
+    /// handed to the existing one-shot sender only after the widget lease
+    /// finishes opening this employee's actual conversation.
+    func laaQueueEmployeeOpeningSend(_ text: String, draftKey: ComposerDraftKey) -> Bool {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = laaEmployeeChatPreview
+        guard let workspace = preview.workspace, laaOpeningEmployeeChat == workspace.profile,
+              draftKey.dashboardID == workspace.dashboardID, draftKey.profile == workspace.profile,
+              preview.queuedSend == nil, !text.isEmpty, Self.parseSlashCommand(text) == nil else { return false }
+        let targetID = preview.presentation?.composerSessionID
+        let pending = PendingComposerSend(draftText: text, replyReference: nil, dashboardID: workspace.dashboardID,
+            profile: workspace.profile, sessionIDs: preview.presentation?.chatSessionIDs ?? [],
+            draftSessionID: targetID ?? ComposerDraftKey.newConversationSessionID,
+            isNewChat: targetID == nil, title: LAAStaff(profile: workspace.profile)?.name ?? "")
+        let transfer = ComposerDraftStore.Submission(id: pending.id, key: draftKey, dashboardID: workspace.dashboardID,
+            draft: pending.draft, pendingSendID: pending.id)
+        // Do not register an auto-sendable file until its target is admitted.
+        // A process kill during the preview leaves an editable reservation,
+        // not a file that could create a different chat on the next launch.
+        guard composerDraftStore.beginSubmission(transfer, clearingDraft: true) else { return false }
+        preview.queuedSend = pending
+        return true
+    }
+
+    private func laaAdmitEmployeeOpeningSend(workspace: WidgetWorkspaceID, sessionID: String, client: HermesClient) {
+        guard let queued = laaEmployeeChatPreview.queuedSend else { return }
+        guard queued.profile == workspace.profile, queued.dashboardID == workspace.dashboardID,
+              queued.isNewChat || queued.chatSessionIDs.contains(where: liveChatOwnsComposerDraftSessionID),
+              client.laaHasAttachment(sessionID), pendingComposerSend == nil else {
+            laaReleaseEmployeeOpeningSend()
+            return
+        }
+        let key = durableComposerDraftKeyOnScreen
+        let live = PendingComposerSend(id: queued.id, draftText: queued.draftText, replyReference: nil,
+            dashboardID: queued.dashboardID, profile: queued.profile, sessionIDs: liveChatSessionIDs(),
+            draftSessionID: key.sessionID, isNewChat: false, title: activeSessionTitle, queuedAt: queued.queuedAt)
+        guard recordPendingComposerSendFile(live) else { laaReleaseEmployeeOpeningSend(); return }
+        guard composerDraftStore.finishSubmission(queued.id, restoring: false) else {
+            _ = removePendingComposerSendFile(live)
+            composerDraftStore.markSubmissionUnknown(queued.id)
+            laaEmployeeChatPreview.queuedSend = nil
+            return
+        }
+        laaEmployeeChatPreview.queuedSend = nil
+        pendingComposerSend = live
+        schedulePendingComposerSendCheck()
+    }
+
+    func laaReleaseEmployeeOpeningSend() {
+        guard let pending = laaEmployeeChatPreview.queuedSend else { return }
+        if !composerDraftStore.finishSubmission(pending.id, restoring: true) {
+            composerDraftStore.markSubmissionUnknown(pending.id)
+        }
+        laaEmployeeChatPreview.queuedSend = nil
     }
 
     func laaRetryEmployeeChat() {
@@ -24845,6 +24992,7 @@ final class AppState: ObservableObject {
         if widgetLaunchCoordinator.pendingLink?.action == .employeeChat {
             widgetLaunchCoordinator.supersede()
         }
+        laaReleaseEmployeeOpeningSend()
         laaEmployeeChatPreview.clear()
         laaOpeningEmployeeChat = nil
     }
@@ -26874,8 +27022,15 @@ final class AppState: ObservableObject {
         // and any change it asked for since: never holding up the send.
         Task { await runPhoneSync(reason: .messageSent) }
 
+        #if LAA_BUILD
+        let clientTurnID = LAAChatTurnIdentity.pendingID ?? UUID()
+        let localMessageID = "local-\(clientTurnID.uuidString)"
+        #else
+        let clientTurnID: UUID? = nil
+        let localMessageID = "local-\(Date().timeIntervalSince1970)"
+        #endif
         let userMessage = ChatMessage(
-            id: "local-\(Date().timeIntervalSince1970)",
+            id: localMessageID,
             role: .user,
             content: outboundText,
             rawContent: nil,
@@ -26988,8 +27143,15 @@ final class AppState: ObservableObject {
             runtimeSessionID: sessionId,
             text: promptText
         )
+        #if !LAA_BUILD
         await locationShare?.value
         await surfaceReport?.value
+        #else
+        // Authoritative chat state and uploads are essential; optional
+        // location/turn-surface reporting must not hold the prompt RPC.
+        _ = locationShare
+        _ = surfaceReport
+        #endif
         // Events that arrive while prompt.submit is in flight are held for
         // the turn's Live Activity (#605), which starts once it's accepted.
         if !joinsRunningTurn {
@@ -27009,7 +27171,7 @@ final class AppState: ObservableObject {
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,
                     voiceTurn: surface == Self.spokenPromptSurface,
-                    queued: queued
+                    queued: queued, clientTurnID: clientTurnID
                 )
 #endif
             }
@@ -31344,6 +31506,14 @@ final class AppState: ObservableObject {
                     generation: transitionGeneration
                 )
             }
+            #if LAA_BUILD
+            if laaOpeningEmployeeChat == target {
+                // The widget will open the selected live chat next. Starting
+                // auxiliary reads here could queue them ahead of attach on
+                // the gateway's serial RPC dispatcher.
+                return true
+            }
+            #endif
             await loadChatResumeBusyInputMode(using: nextClient)
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
@@ -33660,12 +33830,16 @@ final class AppState: ObservableObject {
             )
             return
         }
-        // Compaction lifecycle edges are session-scoped bookkeeping, not
-        // transcript projection: they must run for background conversations
-        // too (clearing state, driving the active conversation's refresh)
-        // and are never buffered into a reconcile.
+        // Compaction lifecycle bookkeeping also runs for background chats.
+        // Active progress can additionally start the foreground working row.
         if case .statusUpdate(let sessionId, let kind, let text) = event {
             applyStatusUpdate(sessionId: sessionId, kind: kind, text: text)
+            #if LAA_BUILD
+            if Self.laaStatusShowsTurnProgress(kind, text: text) {
+                let status = StreamEvent.thinkingStatus(sessionId: sessionId, text: LAACopy.chatThinking)
+                if !bufferIfReconciling(status) { applyStreamEvent(status) }
+            }
+            #endif
             return
         }
         // Signals that another client or process changed a chat: they ask
@@ -33713,6 +33887,20 @@ final class AppState: ObservableObject {
             break
         }
     }
+
+    #if LAA_BUILD
+    private static func laaStatusShowsTurnProgress(_ kind: StatusUpdateKind, text: String?) -> Bool {
+        // Manual compaction has its own indicator. Ready/idle and one-shot
+        // notices must not make an otherwise idle composer stay busy.
+        guard case .other(let kind) = kind, let text,
+              !Self.isCompressionDiagnosticStatus(text) else { return false }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let terminal: Set<String> = ["ready", "idle", "done", "finished", "complete", "completed", "stopped", "error"]
+        guard !body.isEmpty, !terminal.contains(body) else { return false }
+        return ["status", "lifecycle", "working", "running", "thinking", "busy", "progress", "waiting"]
+            .contains(kind.lowercased())
+    }
+    #endif
 
     /// Upstream one-shot compression diagnostics are warnings (`⚠`, possibly
     /// after the agent's log prefix, e.g. "Session compressed N times") or
@@ -33934,7 +34122,7 @@ final class AppState: ObservableObject {
     private func sessionID(for event: StreamEvent) -> String {
         switch event {
         case .messageStart(let sessionId), .messageDelta(let sessionId, _),
-                .reasoningDelta(let sessionId, _),
+                .reasoningDelta(let sessionId, _), .thinkingStatus(let sessionId, _),
                 .messageComplete(let sessionId, _, _, _, _), .messageInterim(let sessionId, _, _),
                 .messageError(let sessionId, _),
                 .messageReaction(let sessionId, _, _, _),
@@ -34030,6 +34218,13 @@ final class AppState: ObservableObject {
             appendReasoning(text)
             setRunning(true)
 
+        case .thinkingStatus:
+            #if LAA_BUILD
+            finalizePendingStreamingCompletion()
+            if liveTurn.thinkingStatus == nil { liveTurn.thinkingStatus = LAACopy.chatThinking }
+            setRunning(true)
+            #endif
+
         case .messageComplete(_, let messageId, let content, let reasoning, let alreadyShown):
             scheduleStreamingCompletion(
                 sessionId: streamSessionId,
@@ -34113,6 +34308,11 @@ final class AppState: ObservableObject {
             break
 
         case .toolStart(_, let name, let input, let eventToolID):
+            #if LAA_BUILD
+            finalizePendingStreamingCompletion()
+            if liveTurn.thinkingStatus != nil { liveTurn.thinkingStatus = nil }
+            setRunning(true)
+            #endif
             if name.lowercased() == "conduit_present" {
                 // The tool may wait for the answer: show it once stored.
                 Task {
@@ -34189,7 +34389,12 @@ final class AppState: ObservableObject {
             // Hermes asked to open Apple Maps from the chat on screen.
             // Only a result seen for the first time: a replay after a
             // reconnect finds its card already complete.
-            if name.lowercased() == "conduit_maps", let promptID = Self.mapsNavigatePromptID(output),
+            #if LAA_BUILD
+            let allowsMapsSideEffect = !LAAChatEventReplay.isRecoveryDelivery
+            #else
+            let allowsMapsSideEffect = true
+            #endif
+            if allowsMapsSideEffect, name.lowercased() == "conduit_maps", let promptID = Self.mapsNavigatePromptID(output),
                let callID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines), !callID.isEmpty,
                !messages.contains(where: { $0.role == .tool && $0.tool?.id == callID && $0.tool?.status == .complete }) {
                 noteMapsNavigateExpected(promptID)
@@ -35282,6 +35487,9 @@ final class AppState: ObservableObject {
     private func resetReasoningTurn() {
         resetReasoningSegment()
         receivedReasoningForCurrentTurn = false
+        #if LAA_BUILD
+        if liveTurn.thinkingStatus != nil { liveTurn.thinkingStatus = nil }
+        #endif
     }
 
     private func mergedReasoning(existing: String, incoming: String) -> String {
@@ -38033,6 +38241,9 @@ final class AppState: ObservableObject {
 final class LiveTurnProjection: ObservableObject {
     @Published fileprivate(set) var streamingText = ""
     @Published fileprivate(set) var reasoningSegment: AppState.LiveReasoningSegment?
+    #if LAA_BUILD
+    @Published fileprivate(set) var thinkingStatus: String?
+    #endif
 }
 
 // MARK: - Keychain Helper

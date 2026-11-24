@@ -8,7 +8,14 @@ import os
 final class LAAEmployeeChatPreview: ObservableObject {
     @Published private(set) var presentation: OfflineChatPresentation?
     @Published private(set) var failure: String?
+    @Published var queuedSend: PendingComposerSend?
     private(set) var workspace: WidgetWorkspaceID?
+
+    func canQueue(_ text: String, isComposing: Bool) -> Bool {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return workspace != nil && queuedSend == nil && !isComposing && !text.isEmpty
+            && AppState.parseSlashCommand(text) == nil
+    }
     private var generation = 0
     private var read: Task<Void, Never>?
     private static let log = OSLog(subsystem: "com.laa.performance", category: .pointsOfInterest)

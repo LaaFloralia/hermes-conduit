@@ -135,7 +135,7 @@ private struct LAAChatReadMark: View {
 private struct LAAChatLiveDelivery: View {
     @ObservedObject var projection: LiveTurnProjection
     var body: some View {
-        if !projection.streamingText.isEmpty || projection.reasoningSegment != nil {
+        if !projection.streamingText.isEmpty || projection.reasoningSegment != nil || projection.thinkingStatus != nil {
             LAAChatReadMark()
         }
     }
@@ -154,13 +154,9 @@ struct LAAChatTypingRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.chatRowState) private var rowState
     var body: some View {
-        HStack(spacing: LAASpacing.x3) {
-            StaffAvatarView(profile: appState.conversationIdentityProfile,
-                name: appState.conversationAgentIdentity.name, size: 30, scrolling: true)
-                .frame(width: 30, height: 30)
-            LAATypingDots(startedAt: startedAt, records: records, state: orbState, phrase: phrase)
-                .laaAssistantSurface()
-        }.laaChatColumn(.leading)
+        LAAChatLiveThoughtRow(startedAt: startedAt, records: records, state: orbState,
+            phrase: phrase, detail: repliesElsewhere ? nil : projection.reasoningSegment?.content)
+            .laaChatColumn(.leading)
     }
     private var orbState: LAAOrbState {
         if repliesElsewhere { return .idle }
@@ -172,7 +168,7 @@ struct LAAChatTypingRow: View {
         if let currentToolName {
             return ChatStepLabel(toolName: currentToolName, input: currentToolInput, catalog: rowState.toolCatalog).runningTitle
         }
-        return "Thinking"
+        return LAACopy.chatThinking
     }
     private var records: [ChatMessage] {
         var result = appState.messages.filter { $0.role == .tool || $0.role == .reasoning }

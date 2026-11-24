@@ -223,6 +223,12 @@ extension AppState {
     /// The bubble's Edit: the waiting message goes back into the composer,
     /// to change or delete.
     func editPendingComposerSend() {
+        #if LAA_BUILD
+        if laaEmployeeChatPreview.queuedSend != nil {
+            laaReleaseEmployeeOpeningSend()
+            return
+        }
+        #endif
         guard let pending = pendingComposerSendOnScreen else { return }
         cancelPendingComposerSendRecheck()
         pendingComposerSend = nil
@@ -342,7 +348,13 @@ extension AppState {
         let context = composerSubmissionContext()
         Task { @MainActor [weak self] in
             guard let self else { return }
+            #if LAA_BUILD
+            let sent = await LAAChatTurnIdentity.$pendingID.withValue(pending.id) {
+                await self.submitComposer(text: pending.outboundText, context: context)
+            }
+            #else
             let sent = await self.submitComposer(text: pending.outboundText, context: context)
+            #endif
             self.deliveringPendingComposerSendIDs.remove(pending.id)
             if sent {
                 if self.removePendingComposerSendFile(pending) {
