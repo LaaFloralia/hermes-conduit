@@ -106,6 +106,12 @@ struct LAAWorkSessionDetail: View {
     @State private var stopping = false
     @State private var historyGapSeen = false
     @State private var observationEpoch = 0
+    @State private var appliedObservationEpoch = 0
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var transcriptVisible = false
+    @State private var poll = LAAWorkTranscriptPoll()
+    @State private var snapshotInFlight = false
+    @State private var cacheIdentity: String?
     @State private var followsConversation = true
     @State private var didInitialScroll = false
     /// True once the transcript can be placed: the cached copy counts, so a
@@ -225,7 +231,12 @@ struct LAAWorkSessionDetail: View {
         .onChange(of: messages.count) { _, _ in followNewArrival() }
         .onChange(of: sentEchoes.count) { _, _ in followNewArrival() }
         .onChange(of: messages.last?.text) { _, _ in followNewArrival() }
-        .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
+        .onAppear { transcriptVisible = true }
+        .onDisappear { transcriptVisible = false }
+        .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)-\(scenePhase)-\(transcriptVisible)") {
+            guard transcriptVisible, scenePhase == .active else { return }
+            await observe()
+        }
         .task {
             if options == nil { options = try? await bridge.read("/v1/session-options") }
         }
@@ -469,18 +480,35 @@ struct LAAWorkSessionDetail: View {
         }.workCard()
     }
 
-    @discardableResult @MainActor private func refreshSnapshot() async -> Bool {
+    @discardableResult @MainActor private func refreshSnapshot(
+        _ trigger: LAAWorkTranscriptPoll.Trigger = .user
+    ) async -> Bool {
+        guard !Task.isCancelled, transcriptVisible, scenePhase == .active,
+              !snapshotInFlight, poll.allows(trigger) else { return session != nil }
+        snapshotInFlight = true
+        defer { snapshotInFlight = false }
         do {
-            async let detailRead: LAAWorkSession = bridge.read("/v1/sessions/\(id)")
-            async let historyRead: LAAWorkConversationPage = bridge.read(LAAWorkTranscriptPages.latestPath(id))
-            let detail = try await detailRead
+            let response: LAABridgeResponse<LAAWorkSession> = try await bridge.request(
+                method: "GET", path: "/v1/sessions/\(id)")
+            try Task.checkCancellation()
+            let detail = response.data
             let detailData = try? snapshotData(detail)
             if detailData != lastDetailData {
                 session = detail; lastDetailData = detailData
                 LAAWorkSessionCache.save(detail, store: drafts, device: bridge.deviceID, target: id)
             }
+            let retired = detail.isArchived || ["retired", "closed"].contains(detail.phase) || detail.resumedTo != nil
+            if retired { poll.complete(.stopped) }
+            else if poll.isStopped { poll = LAAWorkTranscriptPoll() }
+            // Opening or explicitly refreshing an archived conversation is a
+            // one-shot read, not an automated transcript poll.
+            if retired && trigger != .user { failure = nil; return true }
             do {
-                let history = try await historyRead
+                let response: LAABridgeResponse<LAAWorkConversationPage> = try await bridge.request(
+                    method: "GET", path: LAAWorkTranscriptPages.latestPath(id))
+                try Task.checkCancellation()
+                let history = response.data
+                if !retired { poll.complete(.success) }
                 compacting = history.compacting == true
                 // An older Bridge still sends tool rows; they are not part of
                 // the conversation the owner reads.
@@ -501,7 +529,11 @@ struct LAAWorkSessionDetail: View {
                 sentEchoes = LAAWorkSentEcho.pending(sentEchoes, in: messages)
                 historyReady = true
                 conversationUnavailable = false
+            } catch is CancellationError {
+                return false
             } catch {
+                guard !Task.isCancelled else { return false }
+                if !retired { poll.complete(Self.pollOutcome(for: error)) }
                 conversationUnavailable = true
             }
             failure = nil
@@ -514,9 +546,21 @@ struct LAAWorkSessionDetail: View {
             }
             return true
         } catch is CancellationError {
-        } catch let error as LAABridgeError { failure = error.japaneseText }
-        catch { failure = "セッションを読み取れませんでした。" }
+        } catch let error as LAABridgeError {
+            poll.complete(Self.pollOutcome(for: error))
+            failure = error.japaneseText
+        } catch {
+            poll.complete(Self.pollOutcome(for: error))
+            failure = (error as? LAABridgeHTTPError).map(LAAWorkHTTP.message) ?? "セッションを読み取れませんでした。"
+        }
         return false
+    }
+
+    private static func pollOutcome(for error: Error) -> LAAWorkTranscriptPoll.Outcome {
+        if let status = (error as? LAABridgeHTTPError)?.status, [401, 403, 404, 410].contains(status) {
+            return .stopped
+        }
+        return .unavailable
     }
 
     private var shownPages: LAAWorkTranscriptPages.Shown {
@@ -559,6 +603,70 @@ struct LAAWorkSessionDetail: View {
     }
 
     @MainActor private func observe() async {
+        let identity = "\(bridge.revision)-\(id)"
+        let opening = cacheIdentity != identity
+        if opening {
+            cacheIdentity = identity
+            poll = LAAWorkTranscriptPoll()
+            restoreTranscriptCache()
+        }
+        let retry = observationEpoch != appliedObservationEpoch
+        appliedObservationEpoch = observationEpoch
+        let loaded = await refreshSnapshot(opening || retry ? .user : .heartbeat)
+        guard !poll.isStopped else { return }
+        var afterSeq: Int? = cursor == nil ? max(0, (session?.events.oldestSeq ?? 1) - 1) : nil
+        var consecutiveGaps = 0
+        if !loaded { try? await Task.sleep(for: .seconds(2)) }
+        while !Task.isCancelled && !poll.isStopped {
+            do {
+                var query = [URLQueryItem(name: "wait", value: "2"), URLQueryItem(name: "limit", value: "100")]
+                if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+                else if let afterSeq { query.append(URLQueryItem(name: "afterSeq", value: String(afterSeq))) }
+                let response: LAABridgeResponse<LAAWorkEventPage> = try await bridge.request(
+                    method: "GET", path: LAAWorkPresentation.path("/v1/sessions/\(id)/events", query: query), timeout: 20)
+                try Task.checkCancellation()
+                let page = response.data
+                let known = Set(events.map(\.seq))
+                let fresh = page.items.filter { !known.contains($0.seq) }
+                // Existing events on initial catch-up aren't a change signal.
+                let changed = cursor != nil && !fresh.isEmpty
+                consecutiveGaps = 0
+                events.append(contentsOf: fresh)
+                events.sort { $0.seq < $1.seq }
+                cursor = page.nextCursor
+                afterSeq = nil
+                if page.resyncRequired {
+                    notice = "委譲先を観測できず再同期が必要です。詳細と成果物を読み直しています。"
+                    await refreshSnapshot(changed ? .changed : .heartbeat)
+                    try await Task.sleep(for: .seconds(5))
+                } else {
+                    await refreshSnapshot(changed ? .changed : .heartbeat)
+                    if !historyGapSeen && session?.observation?.available != false { notice = nil }
+                    // Archived/finished feeds may return empty immediately.
+                    if fresh.isEmpty { try await Task.sleep(for: .seconds(1)) }
+                }
+            } catch is CancellationError { return }
+            catch let error as LAABridgeHTTPError where error.status == 410 {
+                historyGapSeen = true
+                notice = "記録の取得位置が期限切れか、履歴に欠落があります。詳細と成果物を読み直しています。"
+                await refreshSnapshot(consecutiveGaps == 0 ? .changed : .heartbeat)
+                cursor = nil
+                afterSeq = max(0, (session?.events.oldestSeq ?? 1) - 1)
+                events.removeAll()
+                consecutiveGaps += 1
+                if consecutiveGaps >= 2 { return }
+            } catch {
+                guard !Task.isCancelled else { return }
+                guard Self.pollOutcome(for: error) != .stopped else { poll.complete(.stopped); return }
+                // Losing the event feed shouldn't prevent the deadline from
+                // reopening the transcript once the Bridge becomes reachable.
+                await refreshSnapshot(.heartbeat)
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    private func restoreTranscriptCache() {
         session = LAAWorkSessionCache.read(LAAWorkSession.self, store: drafts, device: bridge.deviceID, target: id)
         let cachedHistory = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages")
         // A copy saved before paging may hold the whole history: open on its
@@ -576,54 +684,6 @@ struct LAAWorkSessionDetail: View {
         // the Mac here left a long transcript at its top, and a touch in that
         // window stopped it from ever following to the bottom.
         openingReady = true
-        let loaded = await refreshSnapshot()
-        // Even when the detail or history read failed, opening is done: the
-        // view can now place itself at the bottom instead of staying at the top.
-        openingReady = true
-        guard loaded, let initial = session else { return }
-        var afterSeq: Int? = max(0, initial.events.oldestSeq - 1)
-        var consecutiveGaps = 0
-        while !Task.isCancelled {
-            do {
-                var query = [URLQueryItem(name: "wait", value: "2"), URLQueryItem(name: "limit", value: "100")]
-                if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
-                else if let afterSeq { query.append(URLQueryItem(name: "afterSeq", value: String(afterSeq))) }
-                let response: LAABridgeResponse<LAAWorkEventPage> = try await bridge.request(
-                    method: "GET", path: LAAWorkPresentation.path("/v1/sessions/\(id)/events", query: query), timeout: 20)
-                let page = response.data
-                consecutiveGaps = 0
-                let known = Set(events.map(\.seq))
-                events.append(contentsOf: page.items.filter { !known.contains($0.seq) })
-                events.sort { $0.seq < $1.seq }
-                cursor = page.nextCursor
-                afterSeq = nil
-                if page.resyncRequired {
-                    notice = "委譲先を観測できず再同期が必要です。詳細と成果物を読み直しています。"
-                    await refreshSnapshot()
-                    try await Task.sleep(for: .seconds(5))
-                } else {
-                    await refreshSnapshot()
-                    if !historyGapSeen && session?.observation?.available != false { notice = nil }
-                }
-            } catch is CancellationError { return }
-            catch let error as LAABridgeHTTPError where error.status == 410 {
-                historyGapSeen = true
-                notice = "記録の取得位置が期限切れか、履歴に欠落があります。詳細と成果物を読み直しています。"
-                guard await refreshSnapshot() else { return }
-                notice = "記録の取得位置が期限切れか、履歴に欠落しました。詳細と成果物を読み直しました。"
-                cursor = nil
-                afterSeq = max(0, (session?.events.oldestSeq ?? 1) - 1)
-                events.removeAll()
-                consecutiveGaps += 1
-                if consecutiveGaps >= 2 { return }
-            } catch let error as LAABridgeError {
-                failure = error.japaneseText
-                return
-            } catch let error as LAABridgeHTTPError {
-                failure = LAAWorkHTTP.message(error)
-                return
-            } catch { failure = "経過を取得できませんでした。"; return }
-        }
     }
 
     private func beginStop() {
