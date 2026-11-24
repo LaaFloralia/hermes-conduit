@@ -304,10 +304,22 @@ struct LAAWorkSessionDetail: View {
     }
 
     /// The one row under the field: picture, model, Fast, stop, Send.
-    private func followUp(_ session: LAAWorkSession) -> some View {
+    @ViewBuilder private func followUp(_ session: LAAWorkSession) -> some View {
+        let pendingMessage = bridge.deviceID.flatMap {
+            LAAWorkDrafts.pending(drafts, key: LAAWorkDrafts.key(deviceID: $0, target: "message:\(id)"))
+        }
+        if let nextID = session.resumedTo, pendingMessage == nil {
+            successorLink(nextID)
+        } else {
+            messageForm(session)
+        }
+    }
+
+    private func messageForm(_ session: LAAWorkSession) -> some View {
         LAAWorkMessageForm(
-            sessionID: id, mode: .followUp, drafts: drafts,
-            canStart: ["awaiting_review", "running"].contains(session.phase) && !session.needsDecision,
+            sessionID: id,
+            readiness: .resolve(phase: session.phase, needsDecision: session.needsDecision,
+                                stopPending: pendingStop != nil, hasSuccessor: session.resumedTo != nil), drafts: drafts,
             settingsRow: AnyView(
                 LAAWorkSessionControls(session: session, options: options,
                                        changing: $changingEffort, changingFast: $changingFast,
@@ -317,6 +329,8 @@ struct LAAWorkSessionDetail: View {
             interrupt: canStop(session) ? AnyView(stopButton) : nil,
             actionNotice: effortNotice,
             quote: quote,
+            onCheckState: { Task { await refreshSnapshot() } },
+            onDecision: { parkedOnDecision = true; scrollRequest.move(to: .decision) },
             onSent: { text, attachments in
                 sentEchoes.append(LAAWorkSentEcho(text: text, attachments: attachments, after: messages.last?.id))
                 returnToEnd()
@@ -324,6 +338,13 @@ struct LAAWorkSessionDetail: View {
         ) { _ in
             Task { await refreshSnapshot() }
         }
+    }
+
+    private func successorLink(_ id: String) -> some View {
+        NavigationLink(LAACopy.WorkTab.openSuccessor) {
+            LAAWorkSessionDetail(id: id, projects: projects, workspaces: workspaces, drafts: drafts)
+        }
+        .accessibilityIdentifier("work.session.successor")
     }
 
     private var legacyScroll: some View {
@@ -457,14 +478,6 @@ struct LAAWorkSessionDetail: View {
                 Label(LAAWorkPresentation.japanese("停止はまだ確認できていません。"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
                 Button(LAACopy.WorkTab.checkStop) { Task { await refreshSnapshot() } }
-            } else if session.phase == "stopped" {
-                Text(verbatim: "停止したセッションの再開は現在利用できません。")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            }
-            if let nextID = session.resumedTo {
-                NavigationLink(LAACopy.WorkTab.openSuccessor) {
-                    LAAWorkSessionDetail(id: nextID, projects: projects, workspaces: workspaces, drafts: drafts)
-                }
             }
         }.workCard()
     }
