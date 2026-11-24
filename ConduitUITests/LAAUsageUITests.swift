@@ -155,7 +155,8 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(enabled(refresh))
         _ = try helper("mode/degraded")
         refresh.tap()
-        XCTAssertTrue(text(containing: "取得できません", app: app).waitForExistence(timeout: 30))
+        // A failed read keeps the last numbers on the cards, marked by their age.
+        XCTAssertTrue(app.descendants(matching: .any)["laa.usage.card.claude"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(enabled(refresh))
 
@@ -179,7 +180,8 @@ final class LAAUsageUITests: XCTestCase {
         app.launchInLab()
         openUsage(app)
         XCTAssertFalse(app.buttons["laa.bridge.openPairing"].exists)
-        XCTAssertTrue(app.staticTexts["取得できません"].firstMatch.waitForExistence(timeout: 30))
+        // Nothing read: the cards draw empty tracks and ○, no words.
+        XCTAssertTrue(app.staticTexts["○"].firstMatch.waitForExistence(timeout: 30))
         screenshot("usage-ui-empty")
 
         _ = try helper("mode/slow")
