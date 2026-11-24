@@ -283,6 +283,12 @@ struct LAAWorkSessionDetail: View {
                     }
                     let shown = messages
                     let speakers = shown.map(LAAWorkSpeaker.speaker)
+                    // The children, one card per spawn batch, after the
+                    // message each batch followed (LAASubagentGroup).
+                    let placements = LAAWorkChildren.placements(workChildren, messages: shown)
+                    ForEach(placements.filter { $0.afterMessageID == nil }, id: \.id) { placement in
+                        subagentGroup(placement)
+                    }
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, message in
                         LAAWorkMessageRow(message: message, sessionID: id,
                                           agentName: LAAWorkSpeaker.replyName(message, session: session, options: options),
@@ -293,6 +299,9 @@ struct LAAWorkSessionDetail: View {
                                               quote = LAAWorkQuoteRequest(text: text, token: (quote?.token ?? 0) &+ 1)
                                           })
                         .id(message.id)
+                        ForEach(placements.filter { $0.afterMessageID == message.id }, id: \.id) { placement in
+                            subagentGroup(placement)
+                        }
                     }
                     ForEach(sentEchoes) { echo in
                         LAAWorkSentEchoRow(echo: echo, queued: (session.queue?.count ?? 0) > 0)
@@ -347,6 +356,14 @@ struct LAAWorkSessionDetail: View {
         }
         return LAAWorkingStatus(word: compacting ? "圧縮中" : LAAWorkPresentation.phase(session.phase), startedAt: start,
                                 orb: .thinking, children: children.map { LAAWorkChildren.child($0, options: options) })
+    }
+
+    /// A spawn batch's card; a row opens that child's session here.
+    private func subagentGroup(_ placement: LAAWorkChildren.Placement) -> some View {
+        LAASubagentGroup(children: placement.children.map { LAAWorkChildren.child($0, options: options) },
+                         open: { openedChildID = $0.id }, identifier: "work.session.subagents")
+            .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
+            .id("children-" + placement.id)
     }
 
     /// One child opens itself; two or more open the list.

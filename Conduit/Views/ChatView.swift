@@ -580,6 +580,18 @@ struct ChatView: View {
                     repliesElsewhere: appState.activeChatRepliesElsewhere
                 )
 
+#if LAA_BUILD
+                // The turn's delegate agents as one card in the transcript
+                // (LAASubagentGroup); a row opens the agent's live output.
+                if let children = laaWorkingStatus?.children, !children.isEmpty {
+                    LAASubagentGroup(children: children, open: openLAAWorkingChild, identifier: "chat.subagents")
+                        .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
+                        .laaChatColumn(.leading)
+                        .id("subagents")
+                        .reportsLiveRowFrame(id: "subagents")
+                }
+#endif
+
                 if let pending = livePendingComposerSend {
                     PendingComposerSendBubble(pending: pending)
                         .reportsLiveRowFrame(id: "pending-send")
