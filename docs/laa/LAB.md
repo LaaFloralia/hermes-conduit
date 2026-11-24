@@ -134,7 +134,7 @@ python3 scripts/laa/lab/capture.py diff <変更前> <変更後>
 - 画面の追加: `scripts/laa/lab/capture-screens.json` に ID・題名・経路・見本を登録し、iPhone は `ConduitUITests/LAALabCaptureUITests.swift` で安定したアクセシビリティ識別子から開いて同じ ID を添付する。Mac 対象なら `mac` の起動先を登録する。不足・重複・設定の不一致があれば失敗し、完成版の索引は出さない。
 - 連続比較でビルドを温存する場合だけ `--keep-build` を使う。既定は DerivedData と xcresult を消し、PNG・索引・検証ログを残す。共有ビルド枠の待機は画面撮影時間と区別して読む。
 
-既定の撮影表は iPhone 31画面・248枚、Mac 12画面・108枚、計356枚。Mac mini上でiPhoneの社員一覧を8条件で撮ると約7分51秒、計3.9 MiB（ビルドと枠待ち別、起動・設定復元と書き出し込み）。PNGは1320×2868 px。ビルド済みのMac版は108枚で約9分20秒、PNG計22.6 MiB（ビルドと枠待ち別）。900×600等の指定は撮影時に窓枠の実寸も検証し、PNGにはタイトルバーを含む。iPhone全条件を含む実測は撮影完了後に追記する。
+Mac miniでの既定一括実測は356枚・計111.4 MiB（iPhone 31画面×8条件＝248枚・88.8 MiB、Mac 12画面×3条件×3サイズ＝108枚・22.6 MiB）。共有ビルド枠待ち込みで3時間28分6秒、iPhoneのXCTest本体は合計26分23秒、Macは初回から最終撮影まで9分34秒（ビルド別）。900×600等の指定は実窓の寸法でも検証し、PNGにはタイトルバーを含む。
 
 ## Watch
 
