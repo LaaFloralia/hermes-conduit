@@ -256,9 +256,17 @@ final class LAALabCaptureUITests: XCTestCase {
 
     private func reveal(_ id: String, _ app: XCUIApplication) {
         let item = element(id, app)
-        for _ in 0..<9 {
-            if item.exists && item.isHittable && item.frame.midY < app.frame.height - 100 { return }
-            swipe(app, from: CGVector(dx: 0.65, dy: 0.73), to: CGVector(dx: 0.65, dy: 0.43))
+        let viewport = app.frame
+        let top = viewport.minY + 116, bottom = viewport.maxY - 100
+        for attempt in 0..<12 {
+            let frame = item.exists ? item.frame : .zero
+            if !frame.isEmpty, item.isHittable, (top..<bottom).contains(frame.midY) { return }
+            // Returning from a detail preserves the list's earlier position.
+            // An AX row above the viewport must be brought down, not swiped
+            // farther away. If the lazy row has no frame, scan both ways.
+            let goBack = frame.isEmpty ? attempt >= 6 : frame.midY < top
+            let upper = CGVector(dx: 0.65, dy: 0.43), lower = CGVector(dx: 0.65, dy: 0.73)
+            swipe(app, from: goBack ? upper : lower, to: goBack ? lower : upper)
         }
     }
 
