@@ -384,6 +384,7 @@ enum StreamEvent {
     case messageStart(sessionId: String)
     case messageDelta(sessionId: String, text: String)
     case reasoningDelta(sessionId: String, text: String)
+    case thinkingStatus(sessionId: String, text: String)
     /// `alreadyShown`: Hermes says the final text is one this turn already
     /// delivered as `message.interim` (`response_previewed` /
     /// `response_reused`), so it adds no new text.
@@ -1110,6 +1111,24 @@ final class HermesClient: ObservableObject {
     var onEvent: ((StreamEvent) -> Void)?
     var onDisconnected: (() -> Void)?
 
+    #if LAA_BUILD
+    private var laaReplay = LAAChatEventReplay()
+    private struct LAAAttachment {
+        let storedID: String?
+        let profile: String?
+    }
+    private var laaAttachments: [String: LAAAttachment] = [:]
+    private var laaHasSessionReasoning = false
+    private var laaHasClientTurnID = false
+    private var laaReasoningRequested: Set<String> = []
+    private struct LAAReplayFlight {
+        let sessionID: String
+        var events: [[String: AnyCodable]] = []
+        var requests: [(JsonRpcID, String, [String: AnyCodable])] = []
+    }
+    private var laaReplayFlight: LAAReplayFlight?
+    #endif
+
     static let requestTimeout: TimeInterval = 30
     /// An upload's budget: two minutes, or about 1 s for every 64 KB of
     /// request (about 0.5 Mbit/s) if that is longer, the rate a group room's
@@ -1239,6 +1258,14 @@ final class HermesClient: ObservableObject {
         deferredWindowOwnedDeclines = []
 
         closedIntentionally = false
+        #if LAA_BUILD
+        laaAttachments.removeAll()
+        laaReasoningRequested.removeAll()
+        laaHasSessionReasoning = false
+        laaHasClientTurnID = false
+        laaReplay = LAAChatEventReplay()
+        laaReplayFlight = nil
+        #endif
         socketHasOpened = false
         connectGeneration &+= 1
         let generation = connectGeneration
@@ -1555,7 +1582,15 @@ final class HermesClient: ObservableObject {
                 logger.debug("Ignored server request \(method, privacy: .public) with a non-string id")
                 return
             }
-            handleServerRequest(id: requestID, method: method, params: json.params?.objectValue ?? [:])
+            let requestParams = json.params?.objectValue ?? [:]
+            #if LAA_BUILD
+            if let sessionID = laaReplayFlight?.sessionID,
+               requestParams["session_id"]?.stringValue == sessionID {
+                laaReplayFlight?.requests.append((requestID, method, requestParams))
+                return
+            }
+            #endif
+            handleServerRequest(id: requestID, method: method, params: requestParams)
             return
         }
 
@@ -1577,42 +1612,63 @@ final class HermesClient: ObservableObject {
         }
 
         // Handle stream event notification
-        if json.method == "event", let params = json.params {
-            let eventObject = params.objectValue
-            switch eventObject?["type"]?.stringValue {
-            case "gateway.ready":
-                advertiseClientCapabilities()
-            case "request.cancel":
-                // Bookkeeping only: the request is closed whatever the
-                // reason. What the card shows is decided by the event.
-                let payload = eventObject?["payload"]?.objectValue
-                if let id = payload?["id"]?.stringValue {
-                    openServerRequestIDs.remove(id)
-                    if let session = clarifySessions.removeValue(forKey: id),
-                       (eventObject?["session_id"]?.stringValue ?? "").isEmpty,
-                       var patched = eventObject {
-                        patched["session_id"] = .string(session)
-                        handleStreamEvent(params: .object(patched))
-                        return
-                    }
-                    if let approval = approvalQueueIDs.removeValue(forKey: id) {
-                        let envelopeSession = eventObject?["session_id"]?.stringValue ?? ""
-                        onEvent?(.approvalWithdrawn(
-                            sessionId: envelopeSession.isEmpty ? approval.sessionId : envelopeSession,
-                            requestId: approval.queueID,
-                            reason: payload?["reason"]?.stringValue ?? ""
-                        ))
-                    }
-                }
-            default:
-                break
+        if json.method == "event", let eventObject = json.params?.objectValue {
+            #if LAA_BUILD
+            if let sessionID = laaReplayFlight?.sessionID,
+               eventObject["session_id"]?.stringValue == sessionID,
+               LAAChatEventReplay.identity(eventObject) != nil {
+                laaReplayFlight?.events.append(eventObject)
+                return
             }
-            if let event = frame.event {
-                onEvent?(event)
-            }
+            #endif
+            dispatchEvent(eventObject, parsed: frame.event)
         } else {
             logger.debug("Received non-event WebSocket notification without an RPC id")
         }
+    }
+
+    private func dispatchEvent(_ eventObject: [String: AnyCodable], parsed: StreamEvent?) {
+        #if LAA_BUILD
+        if eventObject["type"]?.stringValue == "gateway.ready" {
+            let payload = eventObject["payload"]?.objectValue
+            laaReplay.epoch = payload?["replay_epoch"]?.stringValue
+            laaHasSessionReasoning = payload?["session_reasoning_stream"]?.boolValue == true
+            laaHasClientTurnID = payload?["client_turn_id"]?.boolValue == true
+            if laaHasSessionReasoning {
+                for id in laaAttachments.keys { laaEnableReasoning(for: id) }
+            }
+        }
+        guard laaReplay.admit(eventObject) else { return }
+        #endif
+        switch eventObject["type"]?.stringValue {
+        case "gateway.ready":
+            advertiseClientCapabilities()
+        case "request.cancel":
+            // Bookkeeping only: the request is closed whatever the
+            // reason. What the card shows is decided by the event.
+            let payload = eventObject["payload"]?.objectValue
+            if let id = payload?["id"]?.stringValue {
+                openServerRequestIDs.remove(id)
+                if let session = clarifySessions.removeValue(forKey: id),
+                   (eventObject["session_id"]?.stringValue ?? "").isEmpty {
+                    var patched = eventObject
+                    patched["session_id"] = .string(session)
+                    handleStreamEvent(params: .object(patched))
+                    return
+                }
+                if let approval = approvalQueueIDs.removeValue(forKey: id) {
+                    let envelopeSession = eventObject["session_id"]?.stringValue ?? ""
+                    onEvent?(.approvalWithdrawn(
+                        sessionId: envelopeSession.isEmpty ? approval.sessionId : envelopeSession,
+                        requestId: approval.queueID,
+                        reason: payload?["reason"]?.stringValue ?? ""
+                    ))
+                }
+            }
+        default:
+            break
+        }
+        if let parsed { onEvent?(parsed) }
     }
 
     // MARK: - Server→client requests
@@ -2042,6 +2098,9 @@ final class HermesClient: ObservableObject {
         let stored = ["stored_session_id", "storedSessionId", "session_key"]
             .compactMap { object[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+        #if LAA_BUILD
+        laaNoteAttached(sessionId, storedID: stored, profile: profile)
+        #endif
         return (sessionId, stored)
     }
 
@@ -2385,6 +2444,13 @@ final class HermesClient: ObservableObject {
             timeout: Self.resumeTimeout(omitMessages: omitMessages)
         )
         let object = result.objectValue ?? [:]
+        #if LAA_BUILD
+        if let id = object["session_id"]?.stringValue {
+            laaNoteAttached(id, storedID: object["stored_session_id"]?.stringValue
+                ?? object["storedSessionId"]?.stringValue ?? object["session_key"]?.stringValue ?? sessionId,
+                profile: profile ?? self.profile)
+        }
+        #endif
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
         }
@@ -2528,6 +2594,9 @@ final class HermesClient: ObservableObject {
         let sid = object["session_id"]?.stringValue ?? ""
         let stored = object["stored_session_id"]?.stringValue
         let profile = object["profile"]?.stringValue ?? object["profile_id"]?.stringValue
+        #if LAA_BUILD
+        laaNoteAttached(sid, storedID: stored, profile: profile ?? inProfile ?? self.profile)
+        #endif
         return (sid, stored, profile)
     }
 
@@ -2555,6 +2624,9 @@ final class HermesClient: ObservableObject {
         let object = result.objectValue ?? [:]
         let sessionId = object["session_id"]?.stringValue ?? ""
         guard !sessionId.isEmpty else { throw HermesError.invalidResponse }
+        #if LAA_BUILD
+        laaNoteAttached(sessionId, storedID: object["stored_session_id"]?.stringValue, profile: profile)
+        #endif
         return (
             sessionId,
             object["stored_session_id"]?.stringValue,
@@ -2668,13 +2740,17 @@ final class HermesClient: ObservableObject {
         surface: String? = nil,
         voiceTurn: Bool = false,
         queued: Bool = false,
-        hidden: Bool = false
+        hidden: Bool = false,
+        clientTurnID: UUID? = nil
     ) async throws -> PromptSubmissionOutcome {
         var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
         ]
         if let surface { params["surface"] = surface }
+        #if LAA_BUILD
+        if laaHasClientTurnID, let clientTurnID { params["client_turn_id"] = clientTurnID.uuidString }
+        #endif
         // Seen by the model, never shown as the user's (Predictive follow-ups).
         if hidden {
             guard !gatewayRefusesHiddenPrompts else { throw HiddenPromptUnsupportedError() }
@@ -3126,12 +3202,129 @@ final class HermesClient: ObservableObject {
         ])
     }
 
-    func contextBreakdown(_ sessionId: String) async throws -> ContextBreakdown {
-        let result = try await rpc("session.context_breakdown", params: [
-            "session_id": sessionId
-        ])
+    func contextBreakdown(
+        _ sessionId: String,
+        canReattach: (() -> Bool)? = nil,
+        adoptReattached: ((SessionResumeResult) -> Bool)? = nil
+    ) async throws -> ContextBreakdown {
+        #if LAA_BUILD
+        guard let attachment = laaAttachments[sessionId] else { throw HermesError.notConnected }
+        do {
+            return try await readContextBreakdown(sessionId)
+        } catch let error as RpcError where Self.isSessionNotFoundError(error) || error.message.localizedCaseInsensitiveContains("not in memory") {
+            laaAttachments[sessionId] = nil
+            laaReasoningRequested.remove(sessionId)
+            guard let storedID = attachment.storedID, canReattach?() == true, let adoptReattached else { throw error }
+            let resumed = try await openSession(storedID, profile: attachment.profile)
+            guard laaAttachments[resumed.sessionId] != nil, adoptReattached(resumed) else { throw HermesError.notConnected }
+            return try await readContextBreakdown(resumed.sessionId)
+        }
+        #else
+        return try await readContextBreakdown(sessionId)
+        #endif
+    }
+
+    private func readContextBreakdown(_ sessionId: String) async throws -> ContextBreakdown {
+        let result = try await rpc("session.context_breakdown", params: ["session_id": sessionId])
         return ContextBreakdown(from: result)
     }
+
+    #if LAA_BUILD
+    func laaHasAttachment(_ sessionID: String) -> Bool {
+        laaAttachments[sessionID] != nil && isConnected
+    }
+
+    func laaReplayCursor(for sessionID: String) -> LAAChatEventReplay.Cursor? {
+        guard laaAttachments[sessionID] != nil, let cursor = laaReplay.cursor(for: sessionID),
+              cursor.sequence > 0 else { return nil }
+        return cursor
+    }
+
+    private func laaNoteAttached(_ sessionID: String, storedID: String?, profile: String?) {
+        guard !sessionID.isEmpty, isConnected else { return }
+        laaAttachments[sessionID] = LAAAttachment(storedID: storedID, profile: profile)
+        laaEnableReasoning(for: sessionID)
+    }
+
+    private func laaEnableReasoning(for sessionID: String) {
+        // Stock config.set reasoning show persists two display settings. Only
+        // use the strictly session-local variant when the host guarantees it.
+        guard laaHasSessionReasoning, laaReasoningRequested.insert(sessionID).inserted else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.laaHasAttachment(sessionID) else { return }
+            do {
+                _ = try await self.rpc("config.set", params: [
+                    "session_id": sessionID, "key": "reasoning", "value": "show", "scope": "session"
+                ])
+            } catch {
+                self.laaReasoningRequested.remove(sessionID)
+            }
+        }
+    }
+
+    private func laaDispatchRecoveryEvents(_ events: [[String: AnyCodable]]) {
+        LAAChatEventReplay.$isRecoveryDelivery.withValue(true) {
+            for object in events { dispatchEvent(object, parsed: StreamEventParser.parse(params: .object(object))) }
+        }
+    }
+
+    /// Rebind without rehydrating the transcript or opening another turn.
+    /// Frames arriving between activate and the since reply are held and
+    /// merged with the replay batch before using the normal dispatch path.
+    func laaReplaySession(
+        _ sessionID: String, from cursor: LAAChatEventReplay.Cursor,
+        storedID: String?, profile: String?, isCurrent: () -> Bool
+    ) async -> SessionRuntimeSnapshot? {
+        guard laaReplay.epoch == nil || laaReplay.epoch == cursor.epoch,
+              laaReplayFlight == nil, isCurrent() else { return nil }
+        laaReplayFlight = LAAReplayFlight(sessionID: sessionID)
+        defer {
+            // A fallback resume restores the durable prefix and open
+            // requests. Don't silently lose any already delivered live
+            // frames if the tentative replay cannot supply that prefix.
+            if let flight = laaReplayFlight {
+                laaReplayFlight = nil
+                if isCurrent() {
+                    laaDispatchRecoveryEvents(flight.events)
+                    for (id, method, params) in flight.requests { handleServerRequest(id: id, method: method, params: params) }
+                }
+            }
+        }
+        var target: [String: Any] = ["session_id": sessionID, "omit_messages": true]
+        if let profile { target["profile"] = profile }
+        do {
+            guard let activation = try await rpc("session.activate", params: target, timeout: 4).objectValue,
+                  activation["session_id"]?.stringValue == sessionID, isCurrent() else { return nil }
+            let result = try await rpc("session.events.since", params: [
+                "session_id": sessionID, "last_seen": cursor.sequence
+            ], timeout: 4)
+            guard isCurrent(), let flight = laaReplayFlight, let payload = result.objectValue else { return nil }
+            if laaReplay.epoch == nil { laaReplay.epoch = payload["epoch"]?.stringValue }
+            guard let events = laaReplay.recover(sessionID: sessionID, cursor: cursor, result: payload,
+                                                 buffered: flight.events) else { return nil }
+            laaReplayFlight = nil
+            laaNoteAttached(sessionID, storedID: activation["stored_session_id"]?.stringValue ?? storedID, profile: profile)
+            laaDispatchRecoveryEvents(events)
+
+            var seen = Set(events.compactMap { object in
+                object["type"]?.stringValue == "request.cancel" ? object["payload"]?.objectValue?["id"]?.stringValue : nil
+            })
+            for entry in payload["open_requests"]?.arrayValue ?? [] {
+                guard let request = entry.objectValue, let id = request["id"]?.stringValue,
+                      let method = request["method"]?.stringValue, let params = request["params"]?.objectValue,
+                      params["session_id"]?.stringValue == sessionID, seen.insert(id).inserted else { continue }
+                handleServerRequest(id: .string(id), method: method, params: params)
+            }
+            for (id, method, params) in flight.requests {
+                guard case .string(let idString) = id, seen.insert(idString).inserted else { continue }
+                handleServerRequest(id: id, method: method, params: params)
+            }
+            return resumeResult(from: activation, sessionId: sessionID).snapshot
+        } catch {
+            return nil
+        }
+    }
+    #endif
 
     // MARK: - Slash Commands
 

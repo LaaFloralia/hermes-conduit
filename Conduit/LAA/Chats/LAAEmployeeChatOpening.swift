@@ -13,6 +13,7 @@ struct LAAConversationRoute: View {
             if let profile = appState.laaOpeningEmployeeChat ?? composingProfile {
                 LAAEmployeeChatOpeningView(profile: profile, preview: appState.laaEmployeeChatPreview,
                     compositionChanged: { composingProfile = $0 ? profile : nil })
+                    .id(profile)
             } else { V2ConversationScreen() }
         }.toolbar(.hidden, for: .tabBar)
     }
@@ -38,10 +39,19 @@ struct LAAEmployeeChatOpeningView: View {
             sessionID: preview.presentation?.composerSessionID ?? ComposerDraftKey.newConversationSessionID,
             dashboardID: workspace.dashboardID)
     }
+    private var canQueue: Bool {
+        appState.laaOpeningEmployeeChat == profile && preview.canQueue(draft, isComposing: composing)
+    }
+    private func queueSend() -> Bool {
+        guard canQueue, let key = savedKey ?? draftKey,
+              appState.laaQueueEmployeeOpeningSend(draft, draftKey: key) else { return false }
+        draft = ""
+        return true
+    }
     private var previewComposer: some View {
         var field = ReturnKeyTextEditor(text: $draft, isFocused: $focused,
             accessibilityLabel: "メッセージ", accessibilityIdentifier: "laa.chats.preview.composer",
-            maxLines: 8, canSubmitFromReturn: false, onSubmitFromReturn: { false })
+            maxLines: 8, canSubmitFromReturn: canQueue, onSubmitFromReturn: queueSend)
         field.onCompositionChanged = { value in
             composing = value
             handoffIfReady()
@@ -78,8 +88,16 @@ struct LAAEmployeeChatOpeningView: View {
                         }
                     }
                 }
+                if let pending = preview.queuedSend {
+                    PendingComposerSendBubble(pending: pending)
+                }
             }.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
             }.defaultScrollAnchor(.bottom)
+                .onChange(of: preview.queuedSend?.id) { old, new in
+                    if old != nil, new == nil, let savedKey, draft.isEmpty {
+                        draft = appState.composerDraftStore.draft(for: savedKey).text
+                    }
+                }
         }
             // The same heading, in the same place and size as the connected
             // conversation's, so nothing moves when it takes over.
@@ -111,11 +129,11 @@ struct LAAEmployeeChatOpeningView: View {
                             LAAMenuReason(text: "接続後に推論の強さを変更できます")
                         }
                         Spacer(minLength: 0)
-                        Button { focused = false } label: {
+                        Button { _ = queueSend() } label: {
                             Image(systemName: "arrow.up").frame(width: ComposerShared.rowControlSize, height: ComposerShared.rowControlSize)
                         }.buttonStyle(.plain)
-                            .disabled(appState.laaOpeningEmployeeChat != nil)
-                            .accessibilityLabel(Text(verbatim: appState.laaOpeningEmployeeChat == nil ? "入力を確定してチャットへ" : "接続後に送信できます"))
+                            .disabled(!canQueue)
+                            .accessibilityLabel(Text(verbatim: LAACopy.chatSend))
                             .accessibilityIdentifier("laa.chats.preview.send")
                     }
                 }.fixedSize(horizontal: false, vertical: true).padding(.horizontal, 20).padding(.vertical, 8)

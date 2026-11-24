@@ -22,6 +22,12 @@ enum StreamEventParser {
             if text.isEmpty { return nil }
             return .messageDelta(sessionId: sessionId, text: text)
 
+        #if LAA_BUILD
+        case "thinking.delta":
+            let text = payload?["text"]?.stringValue ?? obj["text"]?.stringValue ?? ""
+            return .thinkingStatus(sessionId: sessionId, text: text)
+        #endif
+
         case "reasoning.delta", "message.reasoning", "message.reasoning.delta":
             let text: String
             if let reasoning = payload?["reasoning"]?.stringValue {
