@@ -327,6 +327,8 @@ for section in "${section_list[@]}"; do
           echo "$section $size ${ww}x${wh} $observed"
         fi
         screencapture -x -o -l "$id" "$file"
+        # WindowServer now and then has no image for a window it just resized.
+        [ -s "$file" ] || { echo "capture retry: $file" >&2; sleep 1; screencapture -x -o -l "$id" "$file"; }
       fi
       if [ -s "$file" ]; then
         shots=$((shots + 1))
