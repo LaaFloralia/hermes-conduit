@@ -220,7 +220,9 @@ extension WakeLifecycleTests {
         // LAA keeps watching: music must still pause wake whatever the legacy setting says (HO-27).
         XCTAssertEqual(appState.wakeOtherAudioMonitor, restarted, "LAA keeps polling for other audio")
         XCTAssertFalse(restarted.isCancelled)
-        appState.stopWakeOtherAudioMonitor()
+        var idleElsewhere = ready
+        idleElsewhere.isVoiceIdle = false
+        appState.updateWakeOtherAudioMonitor(for: idleElsewhere)
         #else
         XCTAssertNil(appState.wakeOtherAudioMonitor, "no polling when wake keeps listening over other audio")
         XCTAssertTrue(restarted.isCancelled)
