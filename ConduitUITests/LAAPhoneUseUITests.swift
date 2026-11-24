@@ -58,7 +58,8 @@ final class LAAPhoneUseUITests: XCTestCase {
         let simulator = try XCTUnwrap(LabUI.environment["LAA_LAB_SIMULATOR"])
         // App-originated Activity.request must run in the foreground. The
         // activity's buttons are then exercised outside the app as before.
-        XCTAssertEqual(app.state, .runningForeground)
+        // activate() returns before the state settles after the Home press.
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         let asked = try XCTUnwrap(control("/ask?timeout=\(timeout)&simulator=\(simulator)"))
         XCTAssertEqual(asked["ok"] as? Bool, true, "local push failed: \(asked)")
         let id = try XCTUnwrap((asked["request"] as? [String: Any])?["id"] as? String)
