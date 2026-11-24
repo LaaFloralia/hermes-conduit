@@ -2,11 +2,12 @@
 // the task record; this locked file records who accepted it and resumable work.
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createJsonFile } from '../routes/state-file.mjs';
 import { BridgeError, badRequest, conflict } from '../errors.mjs';
 import { normalizeRefInput } from '../refs/registry.mjs';
 import { sessionRefItem } from '../refs/items.mjs';
+import { createTaskProposalStore } from './proposals.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SESSION = /^ses_[0-9a-f]{16}$/;
@@ -194,7 +195,8 @@ export function taskCleanup({ log = null, spawnImpl = spawn } = {}) {
 }
 
 export function createTaskDispatchService({ store, tasks, sessions = null, sessionStore = null, decisionStore = null,
-  sessionOptions = () => ({ profiles: [] }), refs = null, daemon = null, now = () => Date.now(), cleanup = () => taskCleanup(), log = null } = {}) {
+  sessionOptions = () => ({ profiles: [] }), refs = null, daemon = null, now = () => Date.now(), cleanup = () => taskCleanup(), log = null,
+  proposals = store?.file ? createTaskProposalStore({ dir: dirname(store.file), now }) : null } = {}) {
   const picking = new Map(), completing = new Map();
   const stamp = () => new Date(now()).toISOString();
   const records = () => sessionStore?.all() ?? [];
@@ -209,17 +211,34 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
   function view(taskId) {
     const r = store.get(taskId.toLowerCase());
     if (!r) return null;
-    const tree = treeFor(r), root = tree[0];
-    const decision = decisionStore?.all().find((d) => relatedDecision(d, tree));
-    let state = null;
-    if (r.assignee.kind === 'staff') {
-      state = r.report || r.phase === 'completed' ? 'done' : r.phase === 'failed' ? 'failed' : !r.sessionId ? 'queued'
-        : decision || tree.some((s) => s.phase === 'awaiting_decision') ? 'awaiting_decision'
-          : !root || root.daemonDeletedAt || ['error', 'failed', 'stopped', 'stop_unconfirmed', 'closed'].includes(root.phase) ? 'stopped' : 'running';
-    }
+    const tree = treeFor(r);
+    const decision = tree.length ? decisionStore?.all().find((d) => relatedDecision(d, tree)) : null;
+    const state = runState(r, tree, decision);
     return { creator: 'owner', assignee: r.assignee, profile: r.profile, profileLabel: labelFor(r), state,
       sessionId: r.sessionId, sessionRef: r.sessionId ? refs?.refFor('session', r.sessionId) ?? null : null,
       decisionRef: decision ? refs?.refFor('decision', decision.id) ?? null : null, report: r.report, error: r.lastError };
+  }
+  function runState(r, tree, decision) {
+    if (r.assignee.kind !== 'staff') return null;
+    const root = tree[0];
+    if (r.report || r.phase === 'completed') return 'done';
+    if (r.phase === 'failed') return 'failed';
+    if (!r.sessionId) return 'queued';
+    if (decision || tree.some((s) => s.phase === 'awaiting_decision')) return 'awaiting_decision';
+    if (!root || root.daemonDeletedAt || ['error', 'failed', 'stopped', 'stop_unconfirmed', 'closed'].includes(root.phase)) return 'stopped';
+    return 'running';
+  }
+  function runSummaries(taskIds) {
+    const wanted = new Set(taskIds.map((id) => id.toLowerCase()));
+    const runs = store.all().filter((run) => wanted.has(run.taskId));
+    const withSessions = runs.some((run) => run.sessionId);
+    const sessionRows = withSessions ? records() : [];
+    const decisions = withSessions ? decisionStore?.all() ?? [] : [];
+    return new Map(runs.map((run) => {
+      const tree = run.sessionId ? taskSessionTree(run.sessionId, sessionRows) : [];
+      const state = runState(run, tree, decisions.some((decision) => relatedDecision(decision, tree)));
+      return [run.taskId, { assignee: run.assignee, state }];
+    }));
   }
   async function pick(id) {
     let r = store.get(id);
@@ -260,6 +279,7 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
   // receives: an issue edit made in Linear before the pickup never reaches it.
   function accept({ task, deviceId, assignee, profile }) {
     const r = store.record({ task, deviceId, assignee, profile });
+    if (r.assignee.kind === 'staff') proposals?.suppressStaffTask(r.taskId);
     const p = r.assignee.kind === 'staff' && sessionOptions().profiles.find((v) => v.id === r.profile);
     if (p && !store.pickup(r.taskId)) store.preparePickup(r.taskId, taskSessionRequest(task, r, profileLabel(p), refs?.refFor('task', r.taskId)), profileLabel(p));
     return r;
@@ -368,6 +388,6 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
     if (completing.has(input.id)) throw conflict('idempotency_key_in_flight', 'the task completion is still executing');
     const work = finish(input).finally(() => completing.delete(input.id)); completing.set(input.id, work); return work;
   }
-  return { store, view, accept, pickup, schedule, tick, report, complete,
+  return { store, proposals, view, runSummaries, accept, pickup, schedule, tick, report, complete,
     validateAssignment: (body) => taskAssignee(body, body.assignee?.kind === 'staff' && typeof body.profile === 'string' ? sessionOptions() : null) };
 }

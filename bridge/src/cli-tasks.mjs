@@ -13,7 +13,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveStateDir } from './config.mjs';
 import { BridgeError } from './errors.mjs';
+import { createDecisionStore } from './decisions/store.mjs';
 import { TaskSourceError } from './tasks/errors.mjs';
+import { createLinearOwnerTaskSource } from './tasks/linear-owner.mjs';
+import { createLinearProposalSource, createTaskProposalStore, syncLinearTaskProposals } from './tasks/proposals.mjs';
 import { DEFAULT_BACKUP_GENERATIONS, createOwnerTaskStore } from './tasks/owner-store.mjs';
 import { createOwnerTaskService } from './tasks/owner-service.mjs';
 import { createTaskRunStore, createTaskDispatchService } from './tasks/dispatch.mjs';
@@ -34,6 +37,9 @@ export const TASKS_USAGE = `laa-bridge tasks — 社長タスク（保存先は 
               [--status todo|doing|done|canceled] [--due YYYY-MM-DD] [--link <url>]…
               [--source owner|agent] [--id <uuid>] [--json]
   tasks list  [--status all|open|closed|<list>] [--limit N] [--cursor C] [--json]
+  tasks list  --source linear [--limit N] [--json]
+  tasks proposals --pending [--sync-linear] [--json]
+  tasks proposals mark --id <uuid> --state proposed|dismissed [--comment-id <id>] [--json]
   tasks get   --id <uuid> [--json]          one task with its memo and links
   tasks update --id <uuid> --if-match <revision> --request-id <id>
               [--title <text>] [--memo <text>] [--status <state>]
@@ -193,6 +199,69 @@ function commandList(flags, io) {
   }
   io.write(`\n${data.total} task(s): open ${data.counts.open}, done ${data.counts.done}, canceled ${data.counts.canceled}\n`);
   if (data.nextCursor) io.write(`next: --cursor ${data.nextCursor}\n`);
+  return 0;
+}
+
+async function commandLinearList(flags, io) {
+  if (flags.status !== undefined || flags.cursor !== undefined) usage('Linear lists open tasks and does not accept --status or --cursor');
+  const limit = flags.limit === undefined ? 25 : Number(flags.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) usage('--limit must be an integer between 1 and 100');
+  const source = io.linearSource ?? createLinearOwnerTaskSource();
+  let items;
+  try {
+    ({ items } = await source.listOwnerTasks({ archived: false }));
+    if (!Array.isArray(items) || items.some((task) => typeof task?.id !== 'string')) throw new Error();
+  } catch (error) {
+    if (error instanceof TaskSourceError) throw error;
+    throw new TaskSourceError('linear_unavailable', 'could not read the Linear owner task list');
+  }
+  const dir = io.stateDir;
+  const dispatch = createTaskDispatchService({
+    store: createTaskRunStore({ dir }),
+    sessionStore: createSessionStore({ file: join(dir, 'sessions.json') }),
+    decisionStore: createDecisionStore({ dir }),
+  });
+  const page = items.slice(0, limit);
+  const runs = dispatch.runSummaries(page.map((task) => task.id));
+  const tasks = page.map(({ id, identifier, title, status, dueDate, updatedAt }) => {
+    const run = runs.get(id.toLowerCase());
+    return { id, identifier, title, status, dueDate: dueDate ?? null, updatedAt,
+      assignee: run?.assignee ?? { kind: 'owner' }, run: run ? { state: run.state } : null };
+  });
+  if (io.json) io.write(`${JSON.stringify({ ok: true, items: tasks, total: items.length })}\n`);
+  else {
+    for (const task of tasks) io.write(`${task.identifier}  ${task.status}  ${task.title}\n`);
+    io.write(`\n${tasks.length} of ${items.length} task(s)\n`);
+  }
+  return 0;
+}
+
+async function commandProposals(action, flags, io) {
+  const proposals = createTaskProposalStore({ dir: io.stateDir, now: io.now });
+  const runs = createTaskRunStore({ dir: io.stateDir, now: io.now });
+  const staffIds = () => runs.all().filter((run) => run.assignee.kind === 'staff').map((run) => run.taskId);
+  if (action === 'mark') {
+    const commentId = flags['comment-id'] === undefined ? null : requireFlag(flags, 'comment-id');
+    const proposal = proposals.mark(requireFlag(flags, 'id'), requireFlag(flags, 'state'), commentId,
+      (id) => runs.get(id)?.assignee.kind === 'staff');
+    if (io.json) io.write(`${JSON.stringify({ ok: true, proposal })}\n`);
+    else io.write(`${proposal.identifier ?? proposal.id}  ${proposal.state}\n`);
+    return 0;
+  }
+  if (flags.pending !== true && flags.pending !== 'true') usage('--pending is required');
+  if (flags['sync-linear'] !== undefined) {
+    if (flags['sync-linear'] !== true && flags['sync-linear'] !== 'true') usage('--sync-linear is a switch');
+    await syncLinearTaskProposals({ proposals, staffIds, now: io.now,
+      candidates: io.proposalSource ?? createLinearProposalSource() });
+  }
+  const data = proposals.pending();
+  const suppressed = new Set(staffIds());
+  data.pending = data.pending.filter(({ id }) => !suppressed.has(id));
+  if (io.json) io.write(`${JSON.stringify({ ok: true, ...data })}\n`);
+  else {
+    for (const row of data.pending) io.write(`${row.identifier}  ${row.id}\n`);
+    io.write(`\n${data.pending.length} pending / ${data.totalSeen} seen  ${data.digest}\n`);
+  }
   return 0;
 }
 
@@ -450,23 +519,29 @@ export async function tasksCommand(argv, flags, io = {}) {
   const write = io.write ?? ((text) => process.stdout.write(text));
   const writeErr = io.writeErr ?? ((text) => process.stderr.write(text));
   const json = Boolean(flags.json);
-  const context = { write, writeErr, json };
+  const context = { ...io, write, writeErr, json, stateDir: io.stateDir ?? resolveStateDir() };
   const sub = argv[0];
+  const proposalMark = sub === 'proposals' && argv[1] === 'mark';
   try {
     const allowed = {
       add: 'request-id title input memo status due link source id json',
-      list: 'status limit cursor json', get: 'id json',
+      list: 'source status limit cursor json', get: 'id json',
+      proposals: proposalMark ? 'id state comment-id json' : 'pending sync-linear json',
       update: 'id if-match request-id title input memo status due clear-due link json',
       status: 'json', report: 'summary json', 'import-linear': 'dry-run assignee include-closed out manifest approve json',
       backup: 'keep out json', restore: 'from to allow-live force expect-state json', help: 'json help',
     };
-    if (sub === 'report' ? argv.length !== 2 : argv.length > 1) usage('unexpected positional argument');
+    if (sub === 'report' || proposalMark ? argv.length !== 2 : argv.length > 1) usage('unexpected positional argument');
     if (allowed[sub]) for (const flag of Object.keys(flags)) {
       if (!allowed[sub].split(' ').includes(flag)) usage(`unknown flag --${flag} for ${sub}`);
     }
     switch (sub) {
       case 'add': return commandAdd(flags, context);
-      case 'list': return commandList(flags, context);
+      case 'list':
+        if (flags.source === 'linear') return await commandLinearList(flags, context);
+        if (flags.source !== undefined) usage('--source must be linear');
+        return commandList(flags, context);
+      case 'proposals': return await commandProposals(argv[1], flags, context);
       case 'get': return commandGet(flags, context);
       case 'update': return commandUpdate(flags, context);
       case 'status': return commandStatus(flags, context);
