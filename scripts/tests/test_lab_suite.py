@@ -153,6 +153,18 @@ class ResultTests(unittest.TestCase):
         suite.walk(self.case("AlphaTests/testOne()", "Failed", "boom"), "", found, rerun=True)
         self.assertEqual(found[A]["result"], "Failed")
 
+    def test_a_listing_from_a_runner_that_did_not_launch_is_no_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "inventory-ConduitTests.json"
+            good = {"values": [{"enabledTests": [{"identifier": "ConduitTests/AlphaTests/testOne()"}]}], "errors": []}
+            path.write_text(json.dumps(good))
+            self.assertEqual(suite.inventory(tmp, "ConduitTests"), [A])
+            for bad in ({"values": [{"enabledTests": [{"identifier": "ConduitTests"}]}], "errors": []},
+                        dict(good, errors=["Failed to install or launch the test runner"]),
+                        {"values": [], "errors": []}):
+                path.write_text(json.dumps(bad))
+                self.assertIsNone(suite.inventory(tmp, "ConduitTests"))
+
     def test_only_unexplained_failures_are_rerun(self):
         tests = {A: failed("aaaaaaaaaaaa"), B: failed("bbbbbbbbbbbb"), C: {"result": "Skipped", "fingerprint": None},
                  "ConduitTests/Conduit encountered an error": failed("dddddddddddd"),

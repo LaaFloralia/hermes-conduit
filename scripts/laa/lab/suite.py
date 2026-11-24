@@ -99,17 +99,25 @@ def inventory(out, target):
     path = Path(out) / f"inventory-{target}.json"
     if not path.exists():
         return None
-    values = json.loads(path.read_text()).get("values", [])
-    return sorted({t["identifier"].replace("()", "") for v in values for t in v.get("enabledTests", [])})
+    listing = json.loads(path.read_text())
+    found = sorted({t["identifier"].replace("()", "") for v in listing.get("values", []) for t in v.get("enabledTests", [])})
+    # A runner that failed to launch still exits 0 and lists only the bundle
+    # itself (2026-11-24): errors or anything but Target/Class/test is no inventory.
+    if listing.get("errors") or not found or not all(real(i) for i in found):
+        return None
+    return found
 
 
 def enumerate_tests(derived, out, target):
     path = Path(out) / f"inventory-{target}.json"
-    subprocess.run(["rm", "-f", str(path)])
-    rc = xcodebuild("test-without-building", derived, [f"-only-testing:{target}", "-enumerate-tests", "-test-enumeration-style", "flat",
-                    "-test-enumeration-format", "json", "-test-enumeration-output-path", f"'{path}'"], Path(out) / f"inventory-{target}.log")
-    if rc != 0 or not inventory(out, target):
-        raise SystemExit(f"could not enumerate {target} ({rc}); log: {Path(out) / f'inventory-{target}.log'}")
+    for attempt in (1, 2):  # once more when the runner did not launch
+        if path.exists():
+            path.rename(f"{path}.attempt1")
+        rc = xcodebuild("test-without-building", derived, [f"-only-testing:{target}", "-enumerate-tests", "-test-enumeration-style", "flat",
+                        "-test-enumeration-format", "json", "-test-enumeration-output-path", f"'{path}'"], Path(out) / f"inventory-{target}.log")
+        if rc == 0 and inventory(out, target):
+            return
+    raise SystemExit(f"could not enumerate {target} ({rc}); log: {Path(out) / f'inventory-{target}.log'}")
 
 
 def select(suite, target_key, out=None):
