@@ -50,3 +50,4 @@ AGENTS.md
 
 # Lab suite runs (scripts/laa/lab)
 .lab-suite.lock
+.lab-*.yml

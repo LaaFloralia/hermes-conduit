@@ -13,6 +13,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -125,6 +126,40 @@ def check_connected(pair_id, phone, watch, log):
         sh(["xcrun", "simctl", "spawn", d["udid"], "log", "show", "--last", "4m", "--style", "compact",
             "--predicate", 'process IN {"companiond","nanoregistryd","rapportd","identityservicesd"} AND (eventMessage CONTAINS[c] "pair" OR eventMessage CONTAINS[c] "compatib")'], log, timeout=45)
     raise RuntimeError(f"Pair {pair_id} stayed {state}; diagnostics: {log}")
+
+
+LAB_SPEC = """include:
+  - path: project-laa.yml
+schemes:
+  ConduitWatchLabPhone:
+    build:
+      targets:
+        Conduit: all
+  ConduitWatchLab:
+    build:
+      targets:
+        ConduitWatch: all
+        ConduitWatchUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - name: ConduitWatchUITests
+          parallelizable: false
+targets:
+  ConduitWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources: [ConduitWatchUITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchuitests
+        TARGETED_DEVICE_FAMILY: "4"
+        TEST_TARGET_NAME: ConduitWatch
+    dependencies:
+      - target: ConduitWatch
+"""
 
 
 def xcode_base(scheme, platform, udid, derived, config="Debug"):
@@ -245,7 +280,13 @@ def run_tests(out, phone, watch):
     if capture("git", "status", "--porcelain", "-uno"):
         raise RuntimeError("Commit sources before generating verifiable screenshots")
     log = out / "build.log"
-    sh(["xcodegen", "generate", "--spec", "project-laa.yml"], log, check=True)
+    # The lab schemes and the Watch UI-test target live in a throwaway spec.
+    # A shared scheme in project-laa.yml itself stops xcodebuild from creating
+    # the "Conduit" scheme that the suites, capture and the release scripts use.
+    with tempfile.NamedTemporaryFile(mode="w", dir=REPO, prefix=".lab-watch-", suffix=".yml") as spec:
+        spec.write(LAB_SPEC)
+        spec.flush()
+        sh(["xcodegen", "generate", "--spec", spec.name], log, check=True)
     ios = [*xcode_base("ConduitWatchLabPhone", "iOS", phone_id, DERIVED),
            "CONDUIT_DEFAULT_RELAY_URL=http://127.0.0.1:9"]
     watch_base = [*xcode_base("ConduitWatchLab", "watchOS", watch_id, DERIVED),
