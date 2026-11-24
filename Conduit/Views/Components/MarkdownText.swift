@@ -3354,6 +3354,25 @@ struct ChatCodeBlock: View {
     private var codeFont: UIFont {
         ChatTypography.font(for: .blockCode, appearance: chatTextSize)
     }
+    /// LAA's reading register sets code on a 13/20 line box.
+    private var codeLineSpacing: CGFloat {
+#if LAA_BUILD
+        if chatTextSize.laaReading, LAAReadingStyle.isEnabled { return LAAReadingStyle.codeBlockLineSpacing(for: codeFont) }
+#endif
+        return 3
+    }
+    private var codeRadius: CGFloat {
+#if LAA_BUILD
+        if chatTextSize.laaReading, highlightedInLAA { return 12 }
+#endif
+        return highlightedInLAA ? 10 : MarkdownRichMetrics.radius
+    }
+    private var codeBorderRadius: CGFloat {
+#if LAA_BUILD
+        if chatTextSize.laaReading, highlightedInLAA { return 12 }
+#endif
+        return MarkdownRichMetrics.radius
+    }
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
 
@@ -3391,7 +3410,7 @@ struct ChatCodeBlock: View {
                             text: source,
                             font: codeFont,
                             textColor: UIColor.white.withAlphaComponent(0.96),
-                            lineSpacing: 3,
+                            lineSpacing: codeLineSpacing,
                             wrapsLines: false,
                             selectionCoordinator: selectionCoordinator,
                             selectionSegment: selectionSegment
@@ -3402,7 +3421,7 @@ struct ChatCodeBlock: View {
                                                                         usesLAARichContentStyle: highlightedInLAA),
                             font: codeFont,
                             textColor: .label,
-                            lineSpacing: 3,
+                            lineSpacing: codeLineSpacing,
                             wrapsLines: false,
                             selectionCoordinator: selectionCoordinator,
                             selectionSegment: selectionSegment
@@ -3414,10 +3433,10 @@ struct ChatCodeBlock: View {
         }
         .background(
             codeFill,
-            in: RoundedRectangle(cornerRadius: highlightedInLAA ? 10 : MarkdownRichMetrics.radius, style: .continuous)
+            in: RoundedRectangle(cornerRadius: codeRadius, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
+            RoundedRectangle(cornerRadius: codeBorderRadius, style: .continuous)
                 .strokeBorder(codeBorder, lineWidth: 1)
         }
     }

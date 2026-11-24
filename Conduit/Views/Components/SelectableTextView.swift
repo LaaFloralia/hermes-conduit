@@ -332,7 +332,12 @@ struct SelectableTextView: UIViewRepresentable {
             }
         }
 
-        let measured = styledText.boundingRect(
+#if LAA_BUILD
+        let measuredText = LAAReadingStyle.lineBoxed(styledText)
+#else
+        let measuredText = styledText
+#endif
+        let measured = measuredText.boundingRect(
             with: CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             context: nil
@@ -589,7 +594,12 @@ struct SelectableTextView: UIViewRepresentable {
                 }
             }
         }
+#if LAA_BUILD
+        // Reading paragraphs take their fixed line box (LAAReadingStyle).
+        return LAAReadingStyle.lineBoxed(styledText)
+#else
         return styledText
+#endif
     }
 
     /// Until a drawn host mounts its text view, its selection segment waits
@@ -723,7 +733,12 @@ struct SelectableTextView: UIViewRepresentable {
                     runFont = runFont.withTraits(.traitItalic)
                 }
                 if intent.contains(.code) {
+#if LAA_BUILD
+                    runFont = LAAReadingStyle.inlineCodeFont(for: defaultFont)
+                        ?? .monospacedSystemFont(ofSize: defaultFont.pointSize, weight: .regular)
+#else
                     runFont = .monospacedSystemFont(ofSize: defaultFont.pointSize, weight: .regular)
+#endif
                 }
                 bridged.addAttribute(.font, value: runFont, range: range)
                 if intent.contains(.strikethrough) {
@@ -1533,6 +1548,10 @@ extension UIFont {
     /// existing set, so chained calls (e.g. bold then italic) accumulate
     /// rather than replacing the entire trait collection.
     func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
+#if LAA_BUILD
+        // The reading faces have their own 600 and italic; none is synthesized.
+        if let reading = LAAReadingStyle.withTraits(self, traits) { return reading }
+#endif
         guard let descriptor = fontDescriptor.withSymbolicTraits(
             fontDescriptor.symbolicTraits.union(traits)
         ) else { return self }

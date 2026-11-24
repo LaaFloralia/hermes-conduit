@@ -299,11 +299,16 @@ struct ChatView: View {
     @Environment(\.sizeCategory) private var columnSizeCategory
 
     private var chatTextSize: ChatTextAppearance {
-        ChatTextAppearance(
+        let appearance = ChatTextAppearance(
             size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
         )
         .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, category: columnSizeCategory)
+#if LAA_BUILD
+        return LAAReadingStyle.reading(appearance)
+#else
+        return appearance
+#endif
     }
 
     var body: some View {

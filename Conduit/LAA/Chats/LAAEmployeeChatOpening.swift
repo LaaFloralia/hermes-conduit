@@ -82,6 +82,9 @@ struct LAAEmployeeChatOpeningView: View {
                 }
             }.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
             }.defaultScrollAnchor(.bottom)
+            // The live chat's typography, so the hand-over keeps every line.
+            .environment(\.chatTextSize, LAAReadingStyle.reading(ChatTextAppearance(size: ChatTypography.stored(),
+                style: ChatTypography.resolveStyle(rawValue: UserDefaults.standard.string(forKey: ChatTypography.fontStylePreferenceKey)))))
         }
             // The same heading, in the same place and size as the connected
             // conversation's, so nothing moves when it takes over.

@@ -98,7 +98,7 @@ struct LAAWorkMessageRow: View {
                                      await LAAWorkFiles.dataURL(bridge: bridge, sessionID: sessionID, path: path)
                                  })
                 }
-                .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
+                .environment(\.chatTextSize, LAAReadingStyle.reading(ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard)))
             }
             ForEach(message.images ?? [], id: \.self) { imageID in
                 LAAWorkSessionImage(sessionID: sessionID, imageID: imageID)

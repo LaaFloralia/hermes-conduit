@@ -136,6 +136,11 @@ struct ChatTextAppearance: Hashable {
     var widthScale: CGFloat = 1
     /// The actual SwiftUI category at the Markdown root, already widened by the column.
     var resolvedCategory: UIContentSizeCategory? = nil
+#if LAA_BUILD
+    /// LAA's reading register (`LAAReadingStyle`): transcript prose in
+    /// Newsreader and Shippori Mincho on a fixed line box.
+    var laaReading = false
+#endif
 
     func resolving(_ category: ContentSizeCategory) -> ChatTextAppearance {
         var appearance = self
@@ -173,6 +178,9 @@ struct ChatTextAppearance: Hashable {
         if widthSteps > 0, let widthCategory { identity += "-w\(widthCategory.rawValue)" }
         if widthScale != 1 { identity += "-x\(Int((widthScale * 100).rounded()))" }
         if let resolvedCategory { identity += "-d\(resolvedCategory.rawValue)" }
+#if LAA_BUILD
+        if laaReading { identity += "-r" }
+#endif
         return identity
     }
 }
@@ -195,6 +203,14 @@ enum ChatTypography {
     }
 
     static func inputFont(for traits: UITraitCollection?, size: ChatTextSize) -> UIFont {
+#if LAA_BUILD
+        // The composer writes in the reading face, so the words sent rise
+        // into the bubble in the same glyphs.
+        if let reading = LAAReadingStyle.uiFont(size: LAAReadingStyle.bodySize(chatScale: size.scale, traits: traits),
+                                                traits: traits) {
+            return reading
+        }
+#endif
         let base = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
         return base.withSize(base.pointSize * size.scale)
     }
@@ -346,6 +362,12 @@ enum ChatTypography {
                 traits = UITraitCollection(preferredContentSizeCategory: widthCategory)
             }
         }
+#if LAA_BUILD
+        if appearance.laaReading,
+           let reading = LAAReadingStyle.font(for: role, chatScale: appearance.size.scale, traits: traits) {
+            return reading
+        }
+#endif
         let font = styled(font(for: role, chatSize: appearance.size, compatibleWith: traits), role: role, style: appearance.style)
         return appearance.widthScale == 1 ? font : font.withSize(font.pointSize * appearance.widthScale)
     }

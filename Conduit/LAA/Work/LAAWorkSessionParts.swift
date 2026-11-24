@@ -108,7 +108,7 @@ struct LAAWorkSentEchoRow: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     if !echo.text.isEmpty {
                         Text(verbatim: echo.text)
-                            .laaTextStyle(.body)
+                            .font(.laaReading())
                             .foregroundStyle(LAAColor.text)
                             .fixedSize(horizontal: false, vertical: true)
                     }
