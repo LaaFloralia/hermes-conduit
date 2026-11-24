@@ -196,10 +196,24 @@ final class LAAChatSendScrollUITests: XCTestCase {
 
     private func dismissKeyboard(_ app: XCUIApplication) {
         // A tap, rather than a drag that would itself change the scroll position.
-        transcript(app).coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+        // A row's copy and reply buttons reach the trailing edge, and where
+        // they rest depends on how far the drags carried: tap beside them.
+        let list = transcript(app)
+        let frame = list.frame
+        let buttons = ((try? app.snapshot()).map { Self.frames(of: .button, in: $0) } ?? [])
+            .map { $0.insetBy(dx: -24, dy: -24) }
+        let height = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2].first { dy in
+            let point = CGPoint(x: frame.minX + frame.width * 0.98, y: frame.minY + frame.height * dy)
+            return !buttons.contains { $0.contains(point) }
+        }
+        list.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: height ?? 0.5)).tap()
         let gone = NSPredicate(format: "exists == false")
         expectation(for: gone, evaluatedWith: app.keyboards.firstMatch)
         waitForExpectations(timeout: 5)
+    }
+
+    private static func frames(of type: XCUIElement.ElementType, in node: XCUIElementSnapshot) -> [CGRect] {
+        (node.elementType == type ? [node.frame] : []) + node.children.flatMap { frames(of: type, in: $0) }
     }
 
     /// Leaving the app and coming back: a reader scrolled up finds their

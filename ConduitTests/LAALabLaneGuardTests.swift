@@ -14,6 +14,11 @@ final class LAALabLaneGuardTests: XCTestCase {
         XCTAssertTrue(policy.allowsBridge(origin))
         XCTAssertTrue(policy.allowsBridge(URL(string: "http://127.0.0.1:25002/v1/habits")))
         XCTAssertFalse(policy.allowsBridge(URL(string: "http://127.0.0.1:25003")))
+        // The offline fixture (-LAA_UI_TEST_BRIDGE_OFFLINE) must stay a refused
+        // connection inside a lane; every other legacy fixture port stays closed.
+        XCTAssertTrue(policy.allowsBridge(URL(string: "http://127.0.0.1:1")))
+        XCTAssertFalse(policy.allowsBridge(URL(string: "http://localhost:1")))
+        XCTAssertFalse(policy.allowsBridge(URL(string: "http://127.0.0.1:19414")))
         XCTAssertFalse(policy.allowsBridge(URL(string: "http://user@127.0.0.1:25001")))
         XCTAssertFalse(policy.allowsBridge(URL(string: "http://127.1:25001")))
         XCTAssertFalse(policy.allowsBridge(URL(string: "https://test.example.ts.net:8445")))

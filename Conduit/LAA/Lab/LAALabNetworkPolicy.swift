@@ -19,7 +19,8 @@ struct LAALabNetworkPolicy {
     }
 
     private static let productionPorts: Set<Int> = [9137, 9119, 8443, 8444, 8445, 8384, 8081]
-    private static let legacyBridgePorts: Set<Int> = [1, 19414, 19491, 19492, 19582, 19584, 19593, 19596, 19684]
+    private static let unreachablePort = 1
+    private static let legacyBridgePorts: Set<Int> = [unreachablePort, 19414, 19491, 19492, 19582, 19584, 19593, 19596, 19684]
 
     private func loopbackPort(_ url: URL?, websocket: Bool = false) -> Int? {
         guard let url, let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
@@ -41,7 +42,10 @@ struct LAALabNetworkPolicy {
         guard isActive else { return true }
         guard let port = loopbackPort(url) else { return false }
         if laneID != nil {
-            return sameEndpoint(url, environment["LAA_LANE_BRIDGE"])
+            // Port 1 is the "Mac is unreachable" fixture: nothing listens there,
+            // so the request ends as a refused connection, not as a lane error.
+            return (port == Self.unreachablePort && url?.host == "127.0.0.1")
+                || sameEndpoint(url, environment["LAA_LANE_BRIDGE"])
                 || environment.contains { key, value in
                     key.hasPrefix("LAA_LANE_FIXTURE_") && sameEndpoint(url, value)
                 }
