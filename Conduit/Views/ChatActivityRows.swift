@@ -38,7 +38,13 @@ struct ChatStepStyle: Equatable {
 
     /// The transcript's gap between rows (ChatView's stack spacing). The
     /// rows of one run of steps close it to read as one card.
+#if LAA_BUILD
+    /// LAA: rows inside a turn sit 12 apart (LAATranscriptMetrics.rowGap);
+    /// the offline copy and a chat on its way keep the live chat's gaps.
+    static var transcriptRowSpacing: CGFloat { LAATranscriptMetrics.rowGap }
+#else
     static let transcriptRowSpacing: CGFloat = 18
+#endif
 
     static let cardCornerRadius: CGFloat = 22
 
