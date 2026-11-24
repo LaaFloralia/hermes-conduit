@@ -27132,7 +27132,7 @@ final class AppState: ObservableObject {
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
 #if LAA_BUILD
         let chatRequest = laaBindChatRuntime(client, runtimeID: sessionId, durableID: submissionContext.durableSessionID).map {
-            ChatSubmitRequest(conversationID: $0, turnID: UUID(), text: promptText,
+            ChatSubmitRequest(conversationID: $0, turnID: clientTurnID, text: promptText,
                               mode: queued ? .queued : .normal, surface: surface, voiceTurn: surface == Self.spokenPromptSurface)
         }
 #endif
@@ -27166,7 +27166,13 @@ final class AppState: ObservableObject {
             } else {
 #if LAA_BUILD
                 if let chatRequest { outcome = try await client.chatRuntime.submitForExistingUI(chatRequest) }
-                else { outcome = try await client.sendPrompt(sessionId, text: promptText, surface: surface, voiceTurn: surface == Self.spokenPromptSurface, queued: queued) }
+                else {
+                    outcome = try await client.sendPrompt(
+                        sessionId, text: promptText, surface: surface,
+                        voiceTurn: surface == Self.spokenPromptSurface,
+                        queued: queued, clientTurnID: clientTurnID
+                    )
+                }
 #else
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,

@@ -30,7 +30,7 @@ import Foundation
             guard let client else { throw ChatRuntimeFailure(.runtimeUnavailable) }
             return try await client.sendPrompt(runtimeID, text: request.text, surface: request.surface,
                                                voiceTurn: request.voiceTurn, queued: request.mode == .queued,
-                                               hidden: request.mode == .hidden)
+                                               hidden: request.mode == .hidden, clientTurnID: request.turnID)
         }
         self.client = client
     }
