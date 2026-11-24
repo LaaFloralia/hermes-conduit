@@ -141,7 +141,9 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual(canvas.width - headerTrailing, bar.directionalLayoutMargins.trailing, accuracy: 3,
                        "The header controls must keep the bar's margin, as Back does")
         XCTAssertEqual(bar.directionalLayoutMargins.leading, bar.directionalLayoutMargins.trailing, accuracy: 0.5)
-        let header = try XCTUnwrap(principalContentSpan(image, rows: 56..<106), "The employee header must be visible")
+        // The centered overlay hangs below the toolbar; isolate its lower
+        // mascot and nameplate, not the Call and Background glass above.
+        let header = try XCTUnwrap(employeeHeaderSpan(image, rows: 110..<187), "The employee header must be visible")
         // The transparent mascot artwork does not fill its layout frame.
         XCTAssertEqual((header.lowerBound + header.upperBound) / 2, canvas.width / 2, accuracy: 8,
                        "The employee header \(header) must sit on the screen's center")
@@ -234,9 +236,9 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         }
     }
 
-    /// The first control from the leading edge in the bar's rows: the
-    /// columns that differ from the paper, up to the first wide gap.
-    private func principalContentSpan(_ image: UIImage, rows: Range<Int>) -> ClosedRange<CGFloat>? {
+    /// The employee overlay's occupied columns, measured across the full
+    /// width so a shifted or clipped overlay still fails the center check.
+    private func employeeHeaderSpan(_ image: UIImage, rows: Range<Int>) -> ClosedRange<CGFloat>? {
         guard let cgImage = image.cgImage else { return nil }
         let width = Int(canvas.width), height = rows.count, components = 4
         let crop = CGRect(x: 0, y: CGFloat(rows.lowerBound) * image.scale,
@@ -259,10 +261,8 @@ final class LAACompactChatSnapshotTests: XCTestCase {
                 }
             }
         }
-        let reserve = Int(LAAConversationHeaderLayout.sideReserve)
-        let principal = reserve..<(width - reserve)
-        guard let start = principal.first(where: { occupied[$0] }),
-              let end = principal.last(where: { occupied[$0] }) else { return nil }
+        guard let start = occupied.firstIndex(of: true),
+              let end = occupied.lastIndex(of: true) else { return nil }
         return CGFloat(start)...CGFloat(end + 1)
     }
 

@@ -18,10 +18,8 @@ enum MarkdownProseRun {
     /// Spacing the block views put between and around prose blocks.
     enum Spacing {
         static let betweenBlocks: CGFloat = 10
-        static let betweenListItems: CGFloat = 7
         static let paragraphLineSpacing: CGFloat = 4
         static let listItemLineSpacing: CGFloat = 3
-        static let listMarkerToText: CGFloat = 9
 
         static func aboveHeading(level: Int) -> CGFloat {
             level <= 2 ? 6 : 2
@@ -231,7 +229,7 @@ enum MarkdownProseRun {
                 // Wrapped lines start there too. A marker wider than its
                 // column ("10." at a large text size) moves its item's
                 // text along rather than past the next tab interval.
-                let textStart = max(markerColumn, markerWidth) + Spacing.listMarkerToText
+                let textStart = max(markerColumn, markerWidth) + MarkdownRichMetrics.markerGap
                 style.firstLineHeadIndent = max(0, markerColumn - markerWidth)
                 style.headIndent = textStart
                 style.tabStops = [NSTextTab(textAlignment: .natural, location: textStart, options: [:])]
@@ -248,7 +246,7 @@ enum MarkdownProseRun {
                     style: style,
                     spacingAfter: isLast
                         ? 0
-                        : gap(Spacing.betweenListItems, above: Spacing.listItemLineSpacing)
+                        : gap(MarkdownRichMetrics.listGap, above: Spacing.listItemLineSpacing)
                 )
             }
         }

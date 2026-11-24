@@ -4,7 +4,8 @@ import XCTest
 
 final class SecurityBoundaryTests: XCTestCase {
     func testAppTransportSecurityAllowsLocalNetworkingAndTailscale() throws {
-        let appInfo = try XCTUnwrap(Bundle(identifier: "com.milim.relay")?.infoDictionary)
+        // The host app, whatever its bundle id (the LAA build is com.laa-inc.laa).
+        let appInfo = try XCTUnwrap(Bundle.main.infoDictionary)
         let appTransportSecurity = try XCTUnwrap(
             appInfo["NSAppTransportSecurity"] as? [String: Any]
         )

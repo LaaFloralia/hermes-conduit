@@ -2,10 +2,10 @@ import Foundation
 import XCTest
 
 final class InterfaceOrientationTests: XCTestCase {
-    private let appBundleIdentifier = "com.milim.relay"
-
     private func appInfoDictionary() throws -> [String: Any] {
-        let bundle = try XCTUnwrap(Bundle(identifier: appBundleIdentifier))
+        // The host app, whatever its bundle id: the LAA build signs the same
+        // Info.plist keys under com.laa-inc.laa.
+        let bundle = Bundle.main
         let infoData = try Data(contentsOf: bundle.bundleURL.appendingPathComponent("Info.plist"))
         return try XCTUnwrap(
             PropertyListSerialization.propertyList(from: infoData, options: [], format: nil) as? [String: Any]

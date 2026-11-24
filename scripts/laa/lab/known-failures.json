@@ -1,5 +1,263 @@
 {
  "integration": {
+  "ConduitTests/AppStateDecisionFenceTests/testSameClientApprovalFailureStillReportsOnError": {
+   "result": "Failed",
+   "fingerprint": "677211f57097",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStatePendingLoginFailureTests/testSilentRenewal401And503DoNotSurfaceRawErrorDescription": {
+   "result": "Failed",
+   "fingerprint": "2181640b73e7",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStatePendingLoginFailureTests/testSilentRenewal429ClassifiesAsRateLimitedWithoutRawErrorDescription": {
+   "result": "Failed",
+   "fingerprint": "19aedb72e8a3",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStatePendingLoginFailureTests/testSilentRenewalWithoutReauthAttemptClassifiesBridgeSignInRequiredAsLoginRequired": {
+   "result": "Failed",
+   "fingerprint": "4c217f2b962c",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStateReadAloudTests/testTTSOnlyAvailabilityIsIndependentOfTranscription": {
+   "result": "Failed",
+   "fingerprint": "8f9376dcf1a9",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStateSessionCompressTests/testRefusedCommandShowsHermesHintNotAFailure": {
+   "result": "Failed",
+   "fingerprint": "5e74a7a1503a",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStateSessionCompressTests/testRetryFailureAfterRebindSurfacesAgainstRecoveredRuntime": {
+   "result": "Failed",
+   "fingerprint": "8e1d1242cac4",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: shared /compress timeout formatter, retry xcresult, and LAA runtime probe."
+  },
+  "ConduitTests/AppStateSessionCompressTests/testSlashExecTimeoutDoesNotFallBackToCommandDispatch": {
+   "result": "Failed",
+   "fingerprint": "5d74d38492c1",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/AppStateSessionCompressTests/testTimeoutNeverTriggersSessionRecovery": {
+   "result": "Failed",
+   "fingerprint": "ee003a856a75",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: shared /compress timeout formatter, retry xcresult, and LAA runtime probe."
+  },
+  "ConduitTests/AppStateVoiceCapabilityTests/testAppleOnDeviceModeStillHonorsItsOwnPermissionGate": {
+   "result": "Failed",
+   "fingerprint": "ba9c7144aba2",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/CarPlayVoiceCoordinatorTests/testListenWithVoiceOffShowsWhereToTurnItOn": {
+   "result": "Failed",
+   "fingerprint": "053532942597",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/CarPlayVoiceCoordinatorTests/testVoiceOffSaysWhereToTurnItOn": {
+   "result": "Failed",
+   "fingerprint": "053532942597",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: VoiceSetupIssue exact LAA runtime probe; baseline xcresult equality."
+  },
+  "ConduitTests/CarPlayVoicePrepareOutcomeTests/testFreshSessionCreationFailureFailsPreparation": {
+   "result": "Failed",
+   "fingerprint": "82eff13e5f0a",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/CarPlayVoicePrepareOutcomeTests/testMissingSessionFailsPreparation": {
+   "result": "Failed",
+   "fingerprint": "5da496bced2b",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/ClarifyBatchStateTests/testFailedRespondRestoresOnlyTheRelevantQuestion": {
+   "result": "Failed",
+   "fingerprint": "f2ec7f25a1d5",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/CompactResumeTranscriptTests/testOversizedLegacyOneShotSurfacesCompatibilityCopy": {
+   "result": "Failed",
+   "fingerprint": "b0bdfa97ebff",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: compatibility copy source and baseline xcresult."
+  },
+  "ConduitTests/ConnectionSetupTestTests/testAccessibilityLabelsCarryStateWordsNotJustIcons": {
+   "result": "Failed",
+   "fingerprint": "3715c2c76a75",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/ConnectionSetupTestTests/testStageCopyMatchesTheShippedContract": {
+   "result": "Failed",
+   "fingerprint": "7ee2ecb38565",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/GatewayRestartTests/testAFailedUpdateOnAnOldPluginAsksForTheOneTimeManualUpdate": {
+   "result": "Failed",
+   "fingerprint": "157412acb689",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/HermesVoiceConfigurationServiceTests/testDisabledSTTConfigStillDisablesHermesTranscription": {
+   "result": "Failed",
+   "fingerprint": "fb41e14ed23c",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/HermesVoiceGatewayTimeoutTests/testEveryLiveModeAcknowledgesHandoffsBrieflyWithoutRepeatingHermes": {
+   "result": "Failed",
+   "fingerprint": "3c1e9739788e",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: six LAA runtime prompt variants, exact rule occurrence (Swift static-copy path)."
+  },
+  "ConduitTests/HermesVoiceGatewayTimeoutTests/testGPTLiveAvailabilityKeepsHostExplanationsAndExplainsMissingNotifierSetup": {
+   "result": "Failed",
+   "fingerprint": "73233f83c8d2",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/HermesVoiceGatewayTimeoutTests/testGeminiLiveNoAPIKeyStatusHasActionablePresentationWhilePreservingOtherHostReasons": {
+   "result": "Failed",
+   "fingerprint": "0a6fcbaf60b7",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/KanbanTests/testCapabilityOutcomeMappingIsRequestScoped": {
+   "result": "Failed",
+   "fingerprint": "0c3dbb6abfa5",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/KanbanV3ATests/testDecomposeTapRequiresExplicitConfirmation": {
+   "result": "Failed",
+   "fingerprint": "46c1f3531ab9",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/KanbanV3BTests/testArchiveDefaultBoardRefusedUpFront": {
+   "result": "Failed",
+   "fingerprint": "0891a8140ced",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/KanbanV3CTests/testDuplicateOutcomeFirstWinsAndUnexpectedIDsIgnored": {
+   "result": "Failed",
+   "fingerprint": "272a5cf9d39d",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/KanbanV3CTests/testMissingOutcomeNeverCountsAsSuccess": {
+   "result": "Failed",
+   "fingerprint": "7ab202b02158",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/LAABridgeSimulatorCleanupTests/testRemoveOnlyTheExpectedSimulatorCredential": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "Opt-in live-Bridge simulator credential removal. The dedicated LAA_REAL_BRIDGE_DEVICE_ID is intentionally absent in the fixture-only suite; no credential is read or removed."
+  },
+  "ConduitTests/LAABridgeSimulatorCleanupTests/testVerifyOnlyTheExpectedSimulatorCredential": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "Opt-in live-Bridge credential verification. The dedicated LAA_REAL_BRIDGE_DEVICE_ID is intentionally absent in the fixture-only suite; no production request is made."
+  },
+  "ConduitTests/LAAStaffCallBriefingDump/testDumpEmployeeBriefings": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "An opt-in persona/briefing export tool, not an assertion of call behavior. The suite does not provide LAA_BRIEFING_DUMP_DIR or private personas."
+  },
+  "ConduitTests/MessageReadAloudControllerTests/testTTSONlyAvailabilityDoesNotRequireTranscription": {
+   "result": "Failed",
+   "fingerprint": "8f9376dcf1a9",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/ModelPickerTests/testGuardWithoutAMessageNamesTheModel": {
+   "result": "Failed",
+   "fingerprint": "35611d5267e6",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/SessionRenameTests/testArchiveWithoutHermesSaysToReconnect": {
+   "result": "Failed",
+   "fingerprint": "c1352fe691a6",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/SessionRenameTests/testRefusedArchiveKeepsTheChatAndSaysWhy": {
+   "result": "Failed",
+   "fingerprint": "f7c1a63dfbe7",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/SessionRenameTests/testRefusedDeleteKeepsTheChatAndSaysWhy": {
+   "result": "Failed",
+   "fingerprint": "3f0c5ffebfca",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/StreamEventParserTests/testErrorWithoutMessageUsesDefault": {
+   "result": "Failed",
+   "fingerprint": "a2d73a2adcfb",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/VoiceConversationControllerTests/testOnDevicePermissionPreparationRefusesWhileTheApplicationIsBackgrounded": {
+   "result": "Failed",
+   "fingerprint": "228bbda0ab5f",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/VoiceConversationControllerTests/testOnDevicePermissionPreparationReportsMicrophoneDenial": {
+   "result": "Failed",
+   "fingerprint": "d1640ef568da",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/VoiceConversationControllerTests/testPermissionDenialDoesNotStartCapture": {
+   "result": "Failed",
+   "fingerprint": "683a27c9cb8e",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/VoiceConversationControllerTests/testProviderTestsRefuseWhileTheApplicationIsBackgrounded": {
+   "result": "Failed",
+   "fingerprint": "00df02753afa",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/VoiceConversationControllerTests/testTranscriptionTestReportsMicrophonePermissionFailure": {
+   "result": "Failed",
+   "fingerprint": "d1640ef568da",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
+  "ConduitTests/VoiceConversationLifecycleSuspensionTests/testFailedOrphanCancellationRetainsFlagAndBlocksSubmissionUntilRetry": {
+   "result": "Failed",
+   "fingerprint": "e6397131133d",
+   "class": "not-applicable",
+   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
+  },
   "ConduitUITests/LAABridgeRealUITests/testPairAndVerify": {
    "result": "Skipped",
    "fingerprint": null,
@@ -86,5 +344,12 @@
   }
  },
  "smoke": {},
- "upstream": {}
+ "upstream": {
+  "ConduitTests/LAANotificationPairAllTests/testOnlyAvailableInLAABuild": {
+   "result": "Skipped",
+   "fingerprint": null,
+   "class": "not-applicable",
+   "reason": "The default-build sentinel skips because the LAA Bridge notification-pairing feature is not compiled; the feature tests run in integration."
+  }
+ }
 }

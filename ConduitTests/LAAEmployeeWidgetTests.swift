@@ -135,7 +135,11 @@ final class LAAEmployeeWidgetTests: XCTestCase {
         state.widgetLaunchPendingLinkChanged(chat)
         XCTAssertEqual(state.laaOpeningEmployeeChat, "laa-argus")
         XCTAssertNil(state.pendingNewChat)
+        // The launch's result arrives after the pending link clears: the
+        // opening screen keeps its employee until that result is known.
         state.widgetLaunchPendingLinkChanged(nil)
+        XCTAssertEqual(state.laaOpeningEmployeeChat, "laa-argus")
+        state.laaEmployeeChatLaunchEnded(chat, outcome: .handled)
         XCTAssertNil(state.laaOpeningEmployeeChat)
         // Nothing pending: there is no launch to drop.
         state.laaCancelOpeningEmployeeChat()

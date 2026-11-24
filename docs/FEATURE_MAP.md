@@ -327,6 +327,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Host reads for live modes: `Conduit/Voice/VoiceHostTools.swift` (VoiceHostTool, gptLiveRules), `Conduit/Services/AppState+VoiceHostTools.swift`
 - Declarations: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (declarations, watchDeclarations); GPT-Live markers: `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`
 - Chats by voice: `Conduit/Voice/VoiceChatFinder.swift`, `Shared/WatchVoice/VoiceChatToolText.swift`
+- Asking-first instructions (runtime and Settings preview): `Conduit/Voice/LiveVoiceStyle.swift`; brand and rule tests: `ConduitTests/LAABuildBrandTests.swift`, `ConduitTests/GeminiLiveVoiceTests.swift`
 - Provider consent: `Conduit/Voice/LiveVoiceProviderConsent.swift`, `Conduit/Services/AppState+LiveVoiceConsent.swift`, `Conduit/Views/LiveVoiceConsentViews.swift`
 - Consent for reads, per mode: `Conduit/Views/HealthSettingsViews.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
 - Watch: `Conduit/Watch/WatchDirectBroker.swift` (directToken: consent checked again once the token is minted), `Conduit/Watch/WatchToolGrantClient.swift`, `Shared/WatchVoice/WatchToolRelay.swift`
@@ -346,7 +347,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-26, #1305 (VoiceChatFinder's search leaves Kanban workers out; see Kanban workers' transcripts); 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
+**Checked:** 2026-11-24, BUS-504 (the single asking-first rule uses the LAA name in live prompts and Settings; no consent, tool, or default-build changes); 2026-10-26, #1305 (VoiceChatFinder's search leaves Kanban workers out; see Kanban workers' transcripts); 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Acknowledging work handed to Hermes
 
@@ -2237,7 +2238,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Code**
 - Parser and block views: `Conduit/Views/Components/MarkdownText.swift` (MarkdownParser, MarkdownList, MarkdownSelectionFormatter)
-- Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift`
+- Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift` (shared list and marker gaps from MarkdownRichMetrics); hosted parity: `ConduitTests/ChatTypographyTests+ProseRuns.swift`
 - Long replies: `Conduit/Views/Components/MarkdownLargeDocument.swift` (splitListItems; LargeStreamPromotion while streaming), `Conduit/Views/Components/MarkdownLargeDocumentView.swift`, `Conduit/Views/Components/StreamingText.swift` (largeStableChunks)
 - Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift`
 - Copy response (copies the source): `Conduit/Views/ChatView.swift` (copyResponse)
@@ -2259,7 +2260,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-23, at #1175.
+**Checked:** 2026-11-24, BUS-504 (a prose run uses the same list and marker gaps as separately rendered blocks, including the LAA token values; numbering, Copy and spoken source unchanged); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -4211,6 +4212,7 @@ on top
 - Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare, chatTextSteps(column:), readableChatColumn, chatColumnWidth; LAA Mac: chatWideColumn, macWideTextScale, macBubbleShare), LAA's bubbles `Conduit/LAA/Owner/LAAMessageSender.swift` (LAASender.bubbleMaxWidth(column:)), the Mac window's fixture `Conduit/LAA/Mac/LAAMacChatsSection.swift` (-LAA_MAC_CHAT_FIXTURE, DEBUG)
 - Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableChatColumn()), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
 - Text on a wide column: `Conduit/Views/Components/ChatTypography.swift` (ChatTextAppearance.widthSteps, ChatTypography.boosted, font(for:appearance:environmentCategory:), chatWidthTextSteps), read at the chat's root in `Conduit/Views/ChatView.swift` (chatTextSize) and a room's in `Conduit/Views/GroupChatView.swift` (chatTextSize); the spots that resolve against the column's already-stepped size: `Conduit/Views/Components/MarkdownText.swift` (markerFont), `Conduit/Views/ChatView.swift` (bodyLineHeight; the cards' UIKit text through `UIFont.preferredFont(forTextStyle:in:)`: ReviewSummaryCard, ModelChangeSummaryCard, ToolRawTextSection, ClarifyCard, ClarifyQuestionRow, ApprovalCard, InputPromptCard), `Conduit/Views/GroupChatView.swift` (GroupApprovalCard)
+- Markdown receives the current SwiftUI size category at its root, including any column size step, and keys its render cache on that appearance: `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/ChatTypography.swift`; tests: `ConduitTests/SettledMessageIsolationTests.swift`.
 - List shown alone: `Conduit/Views/V2/V2Shell.swift` (ReadableWidth.list)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ReadableWidth.settings)
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
@@ -4230,7 +4232,7 @@ on top
 - The Mac Catalyst window's actual dimensions, safe area and title bar still need measurement on the Mac; the unit test checks constants only.
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-11-15, laa/mac-wide-chat (LAA Mac: the column to 1600 pt, bubbles to 80% of it, the transcript one type step larger from a 1200 pt column: the Mac window self-rendered at 1280×820 and 2560×1356, light and dark, with the chat fixture; the 1280×820 shot matches master's); 2026-11-09, laa/app-polish-1109 (the LAA Mac Chat column takes the chat's own readable column; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
+**Checked:** 2026-11-24, BUS-504 (the mounted Markdown heading uses the new size after a Dynamic Type change; the shared root covers chat, rooms and rich replies without applying the wide-column step twice); 2026-11-15, laa/mac-wide-chat (LAA Mac: the column to 1600 pt, bubbles to 80% of it, the transcript one type step larger from a 1200 pt column: the Mac window self-rendered at 1280×820 and 2560×1356, light and dark, with the chat fixture; the 1280×820 shot matches master's); 2026-11-09, laa/app-polish-1109 (the LAA Mac Chat column takes the chat's own readable column; on the LAA 16 Pro Max simulator (en-US) the LAA unit and UI classes ran 481 and the fixed classes again, failing only LAAAssetsUITests.testBrowsePlaySeekAndBack (master's three-second sample ends before Play); LAAMacCatalystTests 9/9 on Catalyst; Mac shots self-rendered at 900×600, 1024×768 and 1280×820; smoke 1513/1518 with only ConnectionSetupUITests' five, as on master; personal Release built); 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 

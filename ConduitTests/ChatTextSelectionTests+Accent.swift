@@ -67,7 +67,10 @@ extension ChatTextSelectionTests {
     @MainActor
     func testAccentPickUpdatesTraitsAndUsesBuildColor() throws {
         let model = AccentProbeModel()
-        let host = UIHostingController(rootView: AccentProbeView(model: model))
+        // The dark UIWindow trait reaches UIKit, but a hosted SwiftUI fill
+        // can still inherit the simulator's light color scheme.
+        let host = UIHostingController(rootView: AccentProbeView(model: model)
+            .environment(\.colorScheme, .dark))
         let window = Self.window(hosting: host)
         defer { Self.close(window) }
 
@@ -78,16 +81,19 @@ extension ChatTextSelectionTests {
         let initial = ConduitAccentChoice.amber.color(dark: true)
         let changed = ConduitAccentChoice.blue.color(dark: true)
         #endif
-        XCTAssertTrue(Self.isClose(try Self.centerColor(of: host.view), initial, tolerance: 0.05))
+        let initialColor = try Self.centerColor(of: host.view)
+        XCTAssertTrue(Self.isClose(initialColor, initial, tolerance: 0.05),
+                      "Initial dark fill \(initialColor), expected \(initial)")
         let swatch = try XCTUnwrap(Self.subviews(of: AccentProbeUIView.self, in: host.view).first)
         XCTAssertEqual(swatch.traitCollection.conduitAccent, .preset(.amber))
 
         model.choice = .blue
         Self.settle(host)
 
+        let changedColor = try Self.centerColor(of: host.view)
         XCTAssertTrue(
-            Self.isClose(try Self.centerColor(of: host.view), changed, tolerance: 0.05),
-            "SwiftUI fills redraw in the new accent"
+            Self.isClose(changedColor, changed, tolerance: 0.05),
+            "SwiftUI fills redraw in the new accent: got \(changedColor), expected \(changed)"
         )
         XCTAssertEqual(swatch.traitCollection.conduitAccent, .preset(.blue), "UIKit views see the new accent too")
     }

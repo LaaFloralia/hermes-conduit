@@ -134,6 +134,14 @@ struct ChatTextAppearance: Hashable {
     /// LAA on a Mac: the wide window's step as a scale of every transcript
     /// font (`ReadableWidth.macWideTextScale`); 1 elsewhere.
     var widthScale: CGFloat = 1
+    /// The actual SwiftUI category at the Markdown root, already widened by the column.
+    var resolvedCategory: UIContentSizeCategory? = nil
+
+    func resolving(_ category: ContentSizeCategory) -> ChatTextAppearance {
+        var appearance = self
+        appearance.resolvedCategory = UIContentSizeCategory(category)
+        return appearance
+    }
 
     /// This appearance in a column that stepped its text up `steps` sizes,
     /// to `category` (the column's environment size).
@@ -164,6 +172,7 @@ struct ChatTextAppearance: Hashable {
         var identity = style == .standard ? size.cacheIdentity : "\(size.cacheIdentity)-\(style.rawValue)"
         if widthSteps > 0, let widthCategory { identity += "-w\(widthCategory.rawValue)" }
         if widthScale != 1 { identity += "-x\(Int((widthScale * 100).rounded()))" }
+        if let resolvedCategory { identity += "-d\(resolvedCategory.rawValue)" }
         return identity
     }
 }
@@ -328,7 +337,9 @@ enum ChatTypography {
         compatibleWith traits: UITraitCollection? = nil
     ) -> UIFont {
         var traits = traits
-        if appearance.widthSteps > 0 {
+        if traits == nil, let category = appearance.resolvedCategory {
+            traits = UITraitCollection(preferredContentSizeCategory: category)
+        } else if appearance.widthSteps > 0 {
             if let given = traits {
                 traits = UITraitCollection(preferredContentSizeCategory: boosted(given.preferredContentSizeCategory, by: appearance.widthSteps))
             } else if let widthCategory = appearance.widthCategory {

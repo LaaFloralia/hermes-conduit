@@ -120,9 +120,9 @@ struct LiveVoiceStyle: Equatable {
     /// say how it works. Per call, not per style: the call's own switch can
     /// change it. Not UI copy.
     static func askFirstInstructions(on: Bool) -> String {
-        on
+        LAAProductBrand.display(on
             ? "\n\nAsking first is on for this call: a new request goes to Hermes only once the user OKs it."
-            : "\n\nAsking first is off for this call: new requests go to Hermes straight away."
+            : "\n\nAsking first is off for this call: new requests go to Hermes straight away.")
     }
 
     /// The turn that makes the model greet the user when the call connects.

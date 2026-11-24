@@ -579,7 +579,7 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         let cellTextView = try XCTUnwrap(
             allSubviews(of: host.view)
                 .compactMap { $0 as? UITextView }
-                .first { $0.attributedText.string == "Docs" },
+                .first { MarkdownProseRun.copyableText($0.attributedText).string == "Docs" },
             "The table cell's selectable text view must exist in the rendered hierarchy"
         )
 
@@ -660,7 +660,7 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         let cellTextViews = allSubviews(of: host.view).compactMap { $0 as? UITextView }
 
         let inlineCell = try XCTUnwrap(
-            cellTextViews.first { $0.attributedText.string == "inline" },
+            cellTextViews.first { MarkdownProseRun.copyableText($0.attributedText).string == "inline" },
             "The inline-link cell must render standalone"
         )
         let inlineLink = try XCTUnwrap(
