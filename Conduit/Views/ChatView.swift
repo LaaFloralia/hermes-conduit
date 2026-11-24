@@ -5071,10 +5071,17 @@ struct StreamingBubble: View {
 #endif
     }
 
-    private var streamingContent: some View {
+    @ViewBuilder private var streamingContent: some View {
+#if LAA_BUILD
+        // 50 ms commits, frozen blocks and a live tail (LAAStreamingText).
+        LAAStreamingText(text: text, active: active, gatewayMediaDataURL: { path in
+            await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
+        })
+#else
         StreamingText(text: text, active: active, gatewayMediaDataURL: { path in
             await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
         }).frame(maxWidth: .infinity, alignment: .leading)
+#endif
     }
 }
 
