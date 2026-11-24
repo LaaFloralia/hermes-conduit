@@ -599,6 +599,17 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
         }
     }
 
+#if DEBUG && !targetEnvironment(macCatalyst)
+    func recordLaunchAudio(before: Bool, after: Bool, begin: Date, end: Date) {
+        queue.async { [self] in
+            guard let json = try? JSONSerialization.data(withJSONObject: [
+                "diagnostic": "launch_audio", "isOtherAudioPlayingBefore": before, "isOtherAudioPlayingAfter": after
+            ]) else { return }
+            if store.save(json, kind: .diagnostics, begin: begin, end: end) { sendPendingDiagnostics() }
+        }
+    }
+#endif
+
     /// Oldest first; stops at the first that doesn't go (offline), so the
     /// rest wait for the next launch or return to the app.
     private func sendPendingDiagnostics() {

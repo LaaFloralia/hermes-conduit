@@ -1957,6 +1957,7 @@ private struct WakePhraseSettingsSection: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 #endif
+                #if !LAA_BUILD
                 Toggle("Listen while other audio plays", isOn: Binding(
                     get: { listensOverOtherAudio },
                     set: { value in
@@ -1969,6 +1970,7 @@ private struct WakePhraseSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                #endif
                 if model.isPausedForOtherAudio {
                     Label("Paused while another app plays audio. Wake listens again when it stops.", systemImage: "pause.circle")
                         .font(.caption)

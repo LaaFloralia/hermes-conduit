@@ -324,6 +324,13 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         onTakenOver: (@MainActor () -> Void)? = nil
     ) throws -> VoiceAudioLease {
         guard !placedCallRequiresActivation || isNativeCallAudioActive else { throw CancellationError() }
+#if LAA_BUILD
+        // Mixing does not prevent routing interruption when an idle listener
+        // grabs a microphone (notably with Bluetooth). Recheck at the session
+        // seam, immediately before any setCategory/setActive; explicit capture
+        // and playback do not go through this restriction.
+        if intent == .wakeListening && session.isOtherAudioPlaying { throw CancellationError() }
+#endif
         // Before this acquisition touches any state, so the listener's own
         // release is an ordinary one.
         if intent != .wakeListening, leases.values.contains(.wakeListening) {
@@ -636,6 +643,10 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
                 try session.setActive(true, options: [])
                 appliedPolicy = .standalonePlayback
             case .wakeListening:
+#if LAA_BUILD
+                // Also covers a route-change recovery with an existing lease.
+                guard !session.isOtherAudioPlaying else { throw CancellationError() }
+#endif
                 let configuration = VoiceAudioSessionConfiguration.wakeListening
                 try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
                 try session.setActive(true, options: [])
