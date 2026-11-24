@@ -85,16 +85,23 @@ struct LAAChatModelOperations {
         self.options = options; self.setModel = setModel; self.setReasoning = setReasoning; self.setSpeed = setSpeed
     }
 
-    @MainActor init(client: HermesClient) {
-        options = { sessionID in
-            let result = try await client.modelOptions(sessionId: sessionID)
-            return (result.model, result.provider, result.providers ?? [])
+    @MainActor init(runtime: any ChatRuntime, conversationID: String,
+                    setSpeed: @escaping @MainActor (ModelSpeed) async throws -> Void) {
+        options = { _ in
+            let result = try await runtime.capabilities(conversationID: conversationID)
+            return (result.model, result.provider, result.models)
         }
-        setModel = { sessionID, model, provider, confirmed in
-            try await client.setModel(sessionID, model: model, provider: provider, confirmed: confirmed)
+        setModel = { _, model, provider, confirmed in
+            let result = try await runtime.set(conversationID: conversationID, model: model, provider: provider,
+                                               effort: nil, confirmed: confirmed)
+            return .init(model: result.model ?? model, confirmRequired: result.confirmRequired,
+                         confirmMessage: result.confirmation ?? "", deferred: result.deferred)
         }
-        setReasoning = nil
-        setSpeed = { sessionID, speed in try await client.setSpeed(sessionID, speed: speed) }
+        setReasoning = { _, effort in
+            _ = try await runtime.set(conversationID: conversationID, model: nil, provider: nil,
+                                      effort: effort, confirmed: false)
+        }
+        self.setSpeed = { _, speed in try await setSpeed(speed) }
     }
 }
 
@@ -334,6 +341,44 @@ extension LAAChatModelCatalog {
 }
 
 import SwiftUI
+
+/// LAA owner copy is selected solely from ChatRuntime's machine result.
+enum LAAChatRuntimeCopy {
+    static let retryDraftReady = "入力欄に戻しました。実行済みの操作を確かめてから送信してください。"
+
+    static func compactionNotice(_ result: ContextCompactResult) -> String? {
+        switch result.status {
+        case .compacted:
+            if let before = result.beforeTokens, let after = result.afterTokens { return "圧縮しました（\(before)→\(after)）" }
+            return "圧縮しました。"
+        case .nothingToCompact:
+            let fixed = result.fixedTokens.map(String.init) ?? "不明"
+            let recent = result.recentTokens.map(String.init) ?? "不明"
+            return "圧縮できる部分がありません（固定 \(fixed)・直近 \(recent)）"
+        case .inProgress: return nil
+        case .failed: return failureNotice(result.failure ?? .init(.internal))
+        }
+    }
+
+    static func failureNotice(_ failure: ChatRuntimeFailure) -> String {
+        switch failure.code {
+        case .quotaExhausted:
+            if let retryAt = failure.retryAt {
+                let localTime = retryAt.formatted(.dateTime.month().day().hour().minute().locale(Locale(identifier: "ja_JP")))
+                return "利用上限に達しました。再開：\(localTime)"
+            }
+            return "利用上限に達しました。再開時刻は不明です。"
+        case .modelUnavailable: return "選択中のモデルは利用できません。"
+        case .interrupted: return "処理を中断しました。実行済みの操作がないか確認してください。"
+        case .timeout: return "応答を確認できませんでした。"
+        case .contextOverflow: return "会話がモデルの上限を超えました。"
+        case .toolFailed: return "操作を完了できませんでした。"
+        case .runtimeUnavailable: return "接続できませんでした。"
+        case .rejected: return "現在の状態では受け付けられません。"
+        case .internal: return "処理を完了できませんでした。実行済みの操作がないか確認してください。"
+        }
+    }
+}
 import UIKit
 import Combine
 
@@ -598,12 +643,13 @@ struct LAAChatModelPickers: View {
         writingEffort = true
         Task { @MainActor in
             defer { writingEffort = false }
+            guard appState.activeSessionId == sessionID else { return }
             if let setReasoning = appState.laaChatModelOperations?.setReasoning {
                 do {
                     try await setReasoning(sessionID, effort)
                     appState.laaApplyChatModelReport(sessionID: sessionID, model: nil, provider: nil, effort: effort)
                 } catch {
-                    notify(UserFacingError.message(for: error), symbol: "exclamationmark.triangle")
+                    notify((error as? ChatRuntimeFailure ?? .init(.internal)).localizedDescription, symbol: "exclamationmark.triangle")
                 }
             } else if case .failed(let message) = await appState.setReasoningEffort(effort) {
                 notify(message, symbol: "exclamationmark.triangle")
@@ -624,7 +670,7 @@ struct LAAChatModelPickers: View {
                 appState.laaApplyChatSpeed(sessionID: sessionID, speed: speed)
             } catch {
                 guard appState.activeSessionId == sessionID else { return }
-                notify(UserFacingError.message(for: error), symbol: "exclamationmark.triangle")
+                notify((error as? ChatRuntimeFailure ?? .init(.internal)).localizedDescription, symbol: "exclamationmark.triangle")
             }
         }
     }

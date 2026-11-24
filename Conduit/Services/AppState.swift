@@ -2222,7 +2222,51 @@ final class AppState: ObservableObject {
 #if DEBUG
         if let laaChatModelOperationsForTesting { return laaChatModelOperationsForTesting }
 #endif
-        return client.map(LAAChatModelOperations.init(client:))
+        guard let client, let sessionID = activeSessionId,
+              let id = laaBindChatRuntime(client, runtimeID: sessionID) else { return nil }
+        return LAAChatModelOperations(runtime: client.chatRuntime, conversationID: id) { speed in
+            try await client.chatRuntime.setSpeed(conversationID: id, speed: speed)
+        }
+    }
+
+    @discardableResult private func laaBindChatRuntime(
+        _ client: HermesClient, runtimeID: String, durableID: String? = nil
+    ) -> String? {
+        let profile = botScopeProfile(forSessionIDs: [runtimeID], workspaceProfile: activeProfile) ?? activeProfile
+        guard let id = durableID ?? captureConversationIdentity(for: runtimeID, scopeProfile: profile)?.durableSessionID else { return nil }
+        client.chatRuntime.bind(conversationID: id, runtimeID: runtimeID,
+                                identity: (profile, runtime.model, runtime.provider, runtime.reasoningEffort))
+        if let bridge = dashboardTicketBridge {
+            client.chatRuntime.http = { path in try await bridge.requestJSON(path: path) }
+            client.chatRuntime.mutate = { [weak self] id, profile, patch in
+                guard let self else { throw ChatRuntimeFailure(.runtimeUnavailable) }
+                try await self.sendSessionMutation(id, body: patch, profile: profile, bridge: bridge)
+            }
+        }
+        return id
+    }
+
+    private func laaContextBreakdown(using client: HermesClient, runtimeID: String) async throws -> ContextBreakdown {
+        guard let id = laaBindChatRuntime(client, runtimeID: runtimeID) else { return try await client.contextBreakdown(runtimeID) }
+        return try await client.chatRuntime.breakdownForExistingUI(conversationID: id)
+    }
+
+    private func laaRecordVisibleSettlement(runtimeID: String, hasContent: Bool) {
+        if hasContent { client?.chatRuntime.visible(runtimeID: runtimeID) }
+        client?.chatRuntime.settled(runtimeID: runtimeID)
+    }
+
+    private func laaResolveChatSubmitProbe(_ request: ChatSubmitRequest?, client: HermesClient,
+                                           resolution: AmbiguousPromptResolution, error: Error) {
+        guard let request else { return }
+        switch resolution {
+        case .acceptedRunning, .acceptedUnsettled:
+            client.chatRuntime.resolveSubmitProbe(request, accepted: true, settled: false, error: error)
+        case .acceptedSettled:
+            client.chatRuntime.resolveSubmitProbe(request, accepted: true, settled: true, error: error)
+        case .notAccepted, .unresolved:
+            client.chatRuntime.resolveSubmitProbe(request, accepted: false, settled: false, error: error)
+        }
     }
 
     /// What Hermes reported for a chat after a picker's change (its
@@ -18667,7 +18711,11 @@ final class AppState: ObservableObject {
     @discardableResult
     private func refreshContextUsage(sessionId: String, using client: HermesClient) async -> ContextBreakdown? {
         do {
+#if LAA_BUILD
+            let breakdown = try await laaContextBreakdown(using: client, runtimeID: sessionId)
+#else
             let breakdown = try await client.contextBreakdown(sessionId)
+#endif
             guard self.client === client, activeSessionId == sessionId else { return nil }
             applyContextBreakdown(breakdown)
             return breakdown
@@ -26927,6 +26975,12 @@ final class AppState: ObservableObject {
         // The bubble keeps the typed text; Hermes gets the files' references
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
+#if LAA_BUILD
+        let chatRequest = laaBindChatRuntime(client, runtimeID: sessionId, durableID: submissionContext.durableSessionID).map {
+            ChatSubmitRequest(conversationID: $0, turnID: UUID(), text: promptText,
+                              mode: queued ? .queued : .normal, surface: surface, voiceTurn: surface == Self.spokenPromptSurface)
+        }
+#endif
         // Where in Conduit this was sent from, for its turn's line (#888).
         let surfaceReport = reportTurnSurface(
             submissionTurnSurface.flatMap { $0.text == text ? $0.surface : nil }
@@ -26948,11 +27002,16 @@ final class AppState: ObservableObject {
             } else if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
                 outcome = try await sendPrompt(client, sessionId, promptText)
             } else {
+#if LAA_BUILD
+                if let chatRequest { outcome = try await client.chatRuntime.submitForExistingUI(chatRequest) }
+                else { outcome = try await client.sendPrompt(sessionId, text: promptText, surface: surface, voiceTurn: surface == Self.spokenPromptSurface, queued: queued) }
+#else
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,
                     voiceTurn: surface == Self.spokenPromptSurface,
                     queued: queued
                 )
+#endif
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a
@@ -27122,6 +27181,9 @@ final class AppState: ObservableObject {
                 // Every write below is submission-owned: the guard is
                 // re-checked inside each branch so a handoff during the
                 // recovery awaits cannot leak state into the new session.
+#if LAA_BUILD
+                laaResolveChatSubmitProbe(chatRequest, client: client, resolution: resolution, error: error)
+#endif
                 switch resolution {
                 case .acceptedRunning:
                     // Hermes accepted the submission and the turn is still
@@ -27241,7 +27303,11 @@ final class AppState: ObservableObject {
                 // failed send must not paint an error onto the session the
                 // user switched to while recovery was suspended.
                 if isCurrentComposerSubmission(submissionContext) {
+#if LAA_BUILD
+                    errorMessage = HermesChatFailure.failure(error).localizedDescription
+#else
                     errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+#endif
                 }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
@@ -27259,7 +27325,11 @@ final class AppState: ObservableObject {
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
                 } else {
+#if LAA_BUILD
+                    errorMessage = HermesChatFailure.failure(error).localizedDescription
+#else
                     errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+#endif
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
@@ -28240,13 +28310,23 @@ final class AppState: ObservableObject {
                     sessionId: sessionID,
                     targetMessageID: target.rowID,
                     snapshot: snapshot,
-                    profile: profile
+                    profile: profile,
+                    retry: retry
                 )
             }
         } catch where HermesClient.isMissingRPCMethod(error) {
+#if LAA_BUILD
+            appendSlashOutput(ChatRuntimeFailure(.rejected).localizedDescription, context: context)
+            return true
+#else
             return false
+#endif
         } catch {
+#if LAA_BUILD
+            appendSlashOutput(HermesChatFailure.failure(error).localizedDescription, context: context)
+#else
             appendSlashOutput(Self.rewindFailureNote(command: retry ? "retry" : "undo", error: error), context: context)
+#endif
             return true
         }
         guard receipt.rewoundCount > 0 else {
@@ -28275,6 +28355,15 @@ final class AppState: ObservableObject {
             if !text.isEmpty { prefillComposer(text) }
             return true
         }
+#if LAA_BUILD
+        if retry {
+            // Rewinding local history cannot undo a tool's external effects.
+            // Restore the draft; only a new explicit send may submit it.
+            prefillComposer(text)
+            appendSlashOutput(LAAChatRuntimeCopy.retryDraftReady, context: current)
+            return true
+        }
+#else
         if retry, !composerIsEnabled {
             // Taken back, but nothing can be sent right now: keep the words.
             appendSlashOutput(
@@ -28295,6 +28384,7 @@ final class AppState: ObservableObject {
             )
             return true
         }
+#endif
         guard !text.isEmpty else {
             // A turn that held more than text has nothing to put back.
             appendSlashOutput(
@@ -28606,7 +28696,9 @@ final class AppState: ObservableObject {
     ) async {
         guard isCurrentComposerSubmission(context) else { return }
         if compressingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, sessionID) }) {
+#if !LAA_BUILD
             errorMessage = AppLocalization.string("Compression is already in progress for this conversation.")
+#endif
             return
         }
         var activeClaimID = sessionID
@@ -28680,12 +28772,16 @@ final class AppState: ObservableObject {
                     context: reportingContext
                 )
             } else {
+#if LAA_BUILD
+                appendSlashOutput(HermesChatFailure.failure(errorForReporting).localizedDescription, context: reportingContext)
+#else
                 appendSlashOutput(
                     AppLocalization.string(
                         "⚠️ Compression failed: \(UserFacingError.message(for: errorForReporting))"
                     ),
                     context: reportingContext
                 )
+#endif
             }
         }
     }
@@ -28893,7 +28989,18 @@ final class AppState: ObservableObject {
         if let compressSession = chatResumeLifecycleOperations.compressSession {
             return try await compressSession(client, sessionID, focusTopic)
         }
+#if LAA_BUILD
+        if let id = laaBindChatRuntime(client, runtimeID: sessionID) {
+            var (receipt, presentation) = try await client.chatRuntime.compactForExistingUI(conversationID: id, focus: focusTopic)
+            receipt.chatPresentation = presentation
+            return receipt
+        }
+        var receipt = try await client.compressSession(sessionId: sessionID, focusTopic: focusTopic)
+        receipt.chatPresentation = HermesChatCompaction.resolve(receipt, before: nil, after: nil)
+        return receipt
+#else
         return try await client.compressSession(sessionId: sessionID, focusTopic: focusTopic)
+#endif
     }
 
     /// Older gateways predate `session.compress`; keep today's generic slash
@@ -28953,6 +29060,14 @@ final class AppState: ObservableObject {
         invocationGeneration: Int,
         context: ComposerSubmissionContext
     ) -> CompressionTranscriptDisposition {
+#if LAA_BUILD
+        if result.chatPresentation?.status == .inProgress {
+            if terminalServerCompactionGeneration(for: sessionID) == invocationGeneration {
+                establishServerCompactionClaim(sessionId: sessionID, generation: invocationGeneration)
+            }
+            return .untouched
+        }
+#endif
         if result.lockHeld {
             // Another compression — this device, another client, or an
             // automatic one — already holds the compression lock. Not an
@@ -29033,6 +29148,9 @@ final class AppState: ObservableObject {
     /// Desktop keeps an aborted run out of the success path); the host's own
     /// feedback or the removed-count text as the remaining fallbacks.
     private static func compressionRecord(for result: SessionCompressResult) -> String {
+#if LAA_BUILD
+        if let message = result.chatPresentation?.message { return message }
+#endif
         if result.isAborted {
             let detail = result.summaryHeadline ?? result.summaryNote ?? result.message
             return detail.map { "⚠️ \($0)" }
@@ -29200,7 +29318,13 @@ final class AppState: ObservableObject {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionId, outboundText)
             } else {
+#if LAA_BUILD
+                if let id = laaBindChatRuntime(client, runtimeID: sessionId, durableID: submissionContext.durableSessionID) {
+                    try await client.chatRuntime.steerForExistingUI(conversationID: id, text: outboundText)
+                } else { try await client.steer(sessionId, text: outboundText) }
+#else
                 try await client.steer(sessionId, text: outboundText)
+#endif
             }
             // A successful steer proves Hermes applied the session's busy
             // policy — the session was RUNNING when the steer landed. That is
@@ -29489,13 +29613,23 @@ final class AppState: ObservableObject {
             if let interrupt = chatResumeLifecycleOperations.interrupt {
                 try await interrupt(client, sessionId)
             } else {
+#if LAA_BUILD
+                if let id = laaBindChatRuntime(client, runtimeID: sessionId, durableID: currentContext.durableSessionID) {
+                    _ = try await client.chatRuntime.interrupt(conversationID: id)
+                } else { try await client.cancel(sessionId) }
+#else
                 try await client.cancel(sessionId)
+#endif
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
         } catch {
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
+#if LAA_BUILD
+            errorMessage = HermesChatFailure.failure(error).localizedDescription
+#else
             errorMessage = AppLocalization.string("Could not interrupt the active response: \(UserFacingError.message(for: error))")
+#endif
             await recoverComposerSubmission(using: currentContext)
             return false
         }
@@ -32445,7 +32579,9 @@ final class AppState: ObservableObject {
                     jobs = decoded
                     skipped = partial
                 }
-            } else if let client {
+            } else {
+#if !LAA_BUILD
+                guard let client else { settleCronJobsRead(token: token); return }
                 let page = try await client.listCronJobsPage()
                 guard token == cronJobsLoadToken else { return }
                 guard mayPublish() else {
@@ -32454,9 +32590,10 @@ final class AppState: ObservableObject {
                 }
                 jobs = page.jobs
                 skipped = page.skipped
-            } else {
+#else
                 settleCronJobsRead(token: token)
                 return
+#endif
             }
             cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             cronJobsSkipped = skipped
@@ -32509,6 +32646,9 @@ final class AppState: ObservableObject {
                     guard let owner = run.profile, !owner.isEmpty else { return true }
                     return profilesMatch(owner, profile)
                 }
+#if LAA_BUILD
+                cronRuns = decoded
+#else
                 if decoded.isEmpty, let client {
                     let fallback = (try? await client.cronRuns()) ?? []
                     guard profile == activeProfile, self.client === client else { return }
@@ -32519,13 +32659,17 @@ final class AppState: ObservableObject {
                 } else {
                     cronRuns = decoded
                 }
-            } else if let client {
+#endif
+            } else {
+#if !LAA_BUILD
+                guard let client else { return }
                 let runs = try await client.cronRuns()
                 guard profile == activeProfile, self.client === client else { return }
                 cronRuns = runs.filter { run in
                     guard let owner = run.profile, !owner.isEmpty else { return true }
                     return profilesMatch(owner, profile)
                 }
+#endif
             }
         } catch {
             guard profile == activeProfile else { return }
@@ -33905,6 +34049,9 @@ final class AppState: ObservableObject {
             clearStreamingText()
             errorMessage = message
             setRunning(false)
+#if LAA_BUILD
+            client?.chatRuntime.settled(runtimeID: streamSessionId)
+#endif
             // A follow-up that failed wrote nothing to tag.
             predictiveTurnEnded(sessionId: streamSessionId)
             notifyVoiceAssistant(.failed(sessionID: streamSessionId, message: message))
@@ -33914,6 +34061,9 @@ final class AppState: ObservableObject {
             resetReasoningTurn()
             clearStreamingText()
             setRunning(false)
+#if LAA_BUILD
+            client?.chatRuntime.settled(runtimeID: streamSessionId)
+#endif
             predictiveTurnEnded(sessionId: streamSessionId)
             notifyVoiceAssistant(.interrupted(sessionID: streamSessionId))
 
@@ -35042,6 +35192,9 @@ final class AppState: ObservableObject {
         TranscriptPerf.note(.reasoningProjectionPublish)
         segment.content = reasoningBuffer
         liveReasoningSegment = segment
+#if LAA_BUILD
+        if !segment.content.isEmpty { client?.chatRuntime.visible(runtimeID: activeSessionId) }
+#endif
     }
 
     /// Publish any coalesced reasoning into the live projection immediately.
@@ -37611,6 +37764,9 @@ final class AppState: ObservableObject {
             )
             self.lastStreamingPublishDate = Date()
             self.streamingText = projectedText
+#if LAA_BUILD
+            if !projectedText.isEmpty { self.client?.chatRuntime.visible(runtimeID: self.activeSessionId) }
+#endif
             self.hasScheduledStreamingPublish = false
             self.streamingPublishTask = nil
         }
@@ -37649,6 +37805,9 @@ final class AppState: ObservableObject {
         let charactersToDrain = max(newlyPublishedCharacters, recentPublishBurst)
         if !finalProjection.isEmpty {
             streamingText = finalProjection
+#if LAA_BUILD
+            client?.chatRuntime.visible(runtimeID: sessionId)
+#endif
         }
         pendingStreamingCompletion = PendingStreamingCompletion(
             sessionId: sessionId,
@@ -37766,6 +37925,9 @@ final class AppState: ObservableObject {
         resetReasoningTurn()
         setRunning(false)
         // The turn has settled, its reply in place.
+#if LAA_BUILD
+        laaRecordVisibleSettlement(runtimeID: sessionId, hasContent: !displayContent.isEmpty || reasoning?.isEmpty == false)
+#endif
         requestStepSummaryIfWanted(sessionId: sessionId)
         // Suggested replies and the follow-up clock for the new reply; a
         // system notice merged into the last row isn't one.
@@ -37834,6 +37996,9 @@ final class AppState: ObservableObject {
             author: activeProfile
         ))
         interimRowID = id
+#if LAA_BUILD
+        if !content.isEmpty { client?.chatRuntime.visible(runtimeID: activeSessionId) }
+#endif
     }
 
     private func clearStreamingText() {
