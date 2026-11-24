@@ -347,39 +347,6 @@ struct LAABackgroundPicker: View {
     #endif
 }
 
-/// A message bubble: the opaque surface (the owner's teal, the reply's
-/// paper card), or Liquid Glass when the conversation's bubbles are
-/// `glass` (by choice, or by default over a picture). The glass is clear,
-/// so the background shows through, tinted with the reply's night surface
-/// or the owner's teal: lightly over the dark backgrounds (every picture
-/// among them), densely on the paper, where the owner's light text needs
-/// the teal. The text keeps its colours; its contrast comes from the tint
-/// and the photo's own dimming (`LAABackground.safeDim`), never from an
-/// opaque layer. Each bubble's glass sits in its own container, so a
-/// streaming reply's growing text redraws one glass shape. Reduce
-/// Transparency and iOS 17–25 keep the opaque surface.
-private struct LAABubbleSurface: ViewModifier {
-    let own: Bool
-    @Environment(\.laaBubble) private var bubble
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorScheme) private var colorScheme
-
-    @ViewBuilder func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous)
-        let padded = content.padding(.horizontal, 14).padding(.vertical, 10)
-            .modifier(LAAAssistantInk(applies: !own))
-        if #available(iOS 26.0, *), bubble == .glass, !reduceTransparency {
-            let dark = colorScheme == .dark
-            GlassEffectContainer {
-                padded.glassEffect(LAABubbleGlass.glass(own: own, dark: dark), in: shape)
-            }
-            .overlay { shape.strokeBorder(LAABubbleGlass.rim(own: own, dark: dark), lineWidth: 1) }
-        } else {
-            padded.background(own ? LAAColor.ownBubble : LAAColor.surface, in: shape)
-        }
-    }
-}
-
 private struct LAAAssistantInk: ViewModifier {
     let applies: Bool
     @ViewBuilder func body(content: Content) -> some View {
@@ -470,8 +437,11 @@ private struct LAAToolbarGlass: ViewModifier {
 extension View {
     func laaConversationBackground() -> some View { modifier(LAAConversationBackgroundModifier()) }
     func laaConversationFeatures() -> some View { modifier(LAAConversationFeaturesModifier()) }
-    func laaAssistantSurface() -> some View { modifier(LAABubbleSurface(own: false)) }
-    func laaOwnBubbleSurface() -> some View { modifier(LAABubbleSurface(own: true)) }
+    /// The shared transcript draws no bubble for an employee or agent
+    /// (LAATranscript, 2026-11-24): the reply is set on the paper in ink.
+    func laaAssistantSurface() -> some View { modifier(LAAAssistantInk(applies: true)) }
+    /// The owner's soft bubble, the transcript's one bubble.
+    func laaOwnBubbleSurface() -> some View { laaTranscriptOwnerBubble() }
     func laaPhotoSupportingText() -> some View { modifier(LAAPhotoSupportingText()) }
     func laaGroupSurface() -> some View { modifier(LAAGroupSurface()) }
     func laaComposerGlassScope() -> some View { modifier(LAAPhotoGlassScope()) }

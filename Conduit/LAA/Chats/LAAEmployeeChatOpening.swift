@@ -53,7 +53,7 @@ struct LAAEmployeeChatOpeningView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-            LazyVStack(spacing: 20) {
+            LazyVStack(spacing: LAATranscriptMetrics.rowGap) {
                 if messages.isEmpty {
                     VStack(spacing: 8) {
                         StaffAvatarView(profile: profile, name: name, size: 132)
@@ -61,21 +61,23 @@ struct LAAEmployeeChatOpeningView: View {
                     }.padding(.top, 100)
                 }
                 ForEach(messages) { message in
+                    // The live conversation's own rows (LAATranscript), so the
+                    // preview hands over to it without a jump.
                     if message.role == .user {
-                        LAAOwnerMessageRow(timestamp: message.timestamp) {
+                        LAATranscriptOwnerTurn(timestamp: message.timestamp) {
                             // Selectable text, as in the conversation: a hold selects it.
-                            MarkdownText(source: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
-                                         foregroundStyle: LAAColor.filledButtonText, usesAccentSurface: true)
-                                .padding(.horizontal, 14).padding(.vertical, 10)
-                                .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: 18))
-                        }
+                            HugsIdealWidth {
+                                MarkdownText(source: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
+                                             foregroundStyle: LAAColor.text)
+                            }
+                            .laaTranscriptOwnerBubble()
+                        }.laaChatColumn(.trailing)
                     } else if message.role == .assistant || message.role == .partial {
-                        LAAAgentMessageRow(name: LAAChatPerson.name(name), role: LAAChatPerson.role(profile: profile), timestamp: message.timestamp) {
-                            StaffAvatarView(profile: profile, name: name, size: 30, scrolling: true).frame(width: 30, height: 30)
+                        LAATranscriptAgentTurn(name: LAAChatPerson.name(name), role: LAAChatPerson.role(profile: profile), timestamp: message.timestamp) {
+                            StaffAvatarView(profile: profile, name: name, size: LAATranscriptMetrics.avatar, scrolling: true)
                         } content: {
-                            MarkdownText(source: message.content).padding(.horizontal, 14).padding(.vertical, 10)
-                                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 18))
-                        }
+                            MarkdownText(source: message.content)
+                        }.laaChatColumn(.leading)
                     }
                 }
             }.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)

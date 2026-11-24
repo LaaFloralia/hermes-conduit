@@ -82,20 +82,27 @@ struct LAATypingDots: View {
             .accessibilityLabel(String("入力中、作業の記録を表示"))
             .accessibilityValue(phrase ?? "")
             .accessibilityIdentifier("chat.typing")
-            .sheet(isPresented: $showingRecords) {
-                NavigationStack {
-                    List {
-                        if records.isEmpty { Text(verbatim: "記録はありません").foregroundStyle(LAAColor.secondaryText) }
-                        ForEach(records) { record in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(verbatim: record.role == .reasoning ? "Thinking" : "Running tool").font(.caption).foregroundStyle(LAAColor.secondaryText)
-                                Text(verbatim: record.content).font(.body).textSelection(.enabled)
-                            }
-                        }
-                    }.navigationTitle(String("作業の記録")).navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { showingRecords = false } } }
-                }.laaSheetSize(.page)
-            }
+            .sheet(isPresented: $showingRecords) { LAAWorkRecordsSheet(records: records) { showingRecords = false } }
+    }
+}
+
+/// The turn's thinking and tool records, from the thinking row.
+struct LAAWorkRecordsSheet: View {
+    let records: [ChatMessage]
+    let done: () -> Void
+    var body: some View {
+        NavigationStack {
+            List {
+                if records.isEmpty { Text(verbatim: "記録はありません").foregroundStyle(LAAColor.secondaryText) }
+                ForEach(records) { record in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(verbatim: record.role == .reasoning ? "Thinking" : "Running tool").font(.caption).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: record.content).font(.body).textSelection(.enabled)
+                    }
+                }
+            }.navigationTitle(String("作業の記録")).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了"), action: done) } }
+        }.laaSheetSize(.page)
     }
 }
 
@@ -153,14 +160,23 @@ struct LAAChatTypingRow: View {
     var repliesElsewhere = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.chatRowState) private var rowState
+    @State private var showingRecords = false
     var body: some View {
-        HStack(spacing: LAASpacing.x3) {
-            StaffAvatarView(profile: appState.conversationIdentityProfile,
-                name: appState.conversationAgentIdentity.name, size: 30, scrolling: true)
-                .frame(width: 30, height: 30)
-            LAATypingDots(startedAt: startedAt, records: records, state: orbState, phrase: phrase)
-                .laaAssistantSurface()
-        }.laaChatColumn(.leading)
+        // The thinking row of the shared transcript (HO-05): the orb and one
+        // muted line on the paper, as in Work. How long the turn has run is
+        // the working control's, above the composer.
+        Button { showingRecords = true } label: {
+            LAAThoughtLine(text: phrase, isLive: !repliesElsewhere, state: orbState)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: LAASpacing.minimumTouchTarget)
+        .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
+        .accessibilityLabel(String("入力中、作業の記録を表示"))
+        .accessibilityValue(phrase)
+        .accessibilityIdentifier("chat.typing")
+        .sheet(isPresented: $showingRecords) { LAAWorkRecordsSheet(records: records) { showingRecords = false } }
+        .laaChatColumn(.leading)
     }
     private var orbState: LAAOrbState {
         if repliesElsewhere { return .idle }
@@ -227,10 +243,10 @@ struct LAAGroupMemberMessage: View {
         let parts = GroupMessageParts(text)
         let reply = GroupRoomReplyQuote.parse(parts.text)
         let ownText = reply?.message ?? parts.text
-        LAAAgentMessageRow(name: LAAChatPerson.name(name), continues: continues,
+        LAATranscriptAgentTurn(name: LAAChatPerson.name(name), continues: continues,
             role: LAAChatPerson.role(profile: member?.profile, name: name),
             timestamp: timestamp.map { ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0)) }) {
-                GroupMemberAvatar(member: member, name: name, size: 30)
+                GroupMemberAvatar(member: member, name: name, size: LAATranscriptMetrics.avatar)
             } content: {
                 VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -238,8 +254,7 @@ struct LAAGroupMemberMessage: View {
                     HugsIdealWidth { MarkdownText(source: GroupRoomMentions.linkingMarkdown(ownText, members: members)) }
                     // Preserve attachment rendering through the original component.
                     if !parts.files.isEmpty { GroupMessageFilesForLAA(text: text) }
-                }.padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 18))
+                }
                 // A hold on the text selects it; the actions are this row.
                 LAAMessageActionBar(text: GroupRoomMentions.refanged(ownText),
                     onQuote: nil,

@@ -236,7 +236,7 @@ struct LAAWorkSessionDetail: View {
     private var page: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             // The bottom sentinel stays outside the lazy transcript.
-            LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
+            LazyVStack(alignment: .leading, spacing: LAATranscriptMetrics.rowGap) {
                 Color.clear.frame(height: 0).id("top-start")
                 if let session {
                     if session.modelMismatch { mismatchLabel(session) }

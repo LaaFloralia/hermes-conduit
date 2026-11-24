@@ -28,7 +28,7 @@ struct PendingComposerSendBubble: View {
 
     var body: some View {
 #if LAA_BUILD
-        LAAOwnerMessageRow(timestamp: message.timestamp) {
+        LAATranscriptOwnerTurn(timestamp: message.timestamp) {
             VStack(alignment: .trailing, spacing: 4) {
                 UserMessageContent(message: message, gatewayResolver: nil,
                     sizeCategory: sizeCategory, chatTextSize: chatTextSize)
