@@ -1,6 +1,6 @@
 # Usage・Mac状態のデータ契約
 
-2026-11-23更新。UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
+2026-11-25 — Chat / Usage integration.UsageはAI利用量と端末・Google共有容量の自動取得値を扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
 
 ## 1. 指標と取得元
 
@@ -50,13 +50,15 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- Google AI Pro（2026-11-23）: IDは `provider.google-ai-pro-sub2.quota`・`-sub3`・`-sub4`（プールが使う順）。項目は全状態で `group: google-ai-pro`・`groupName: Google AI Pro`（コード所有）を持ち、上流行の真偽値 `active`（プールが次に使うアカウント）だけを `active` として渡す。windowsは「5時間」（300分）と「週間」（10080分）。上流の理由文は渡さず、既知の理由コード以外は `fetch_failed`。Usage画面はこの3行を1群「Google AI Pro」にまとめ、閉じた状態は使用中アカウントの5時間・週、開くと各アカウントの2枠と回復時刻を出す。開閉は端末に保存する。ウィジェットと週間の計器には入れない（大7行の上限、2026-11-23）。
-- 表示順はCodex、OpenCode、Claude、Magnific、GPT API、Claude API、Liquid AI、Venice（nanoGPTは2026-11-11に外した）。複数の枠がある時は期間を「週間」「月間」と添える。アプリはAIを先、Storageを後に、節ごとに1枚の面で表示する。題の横に最後に取得できた時刻の相対表記と「今すぐ更新」ボタンを置き、ボタンで即時に再取得する（取得中は矢印が回り「更新中」）。行は名前・値・比率のメーター・補助1行に絞る。ウィジェットはLiquid AIを除いた7行を表示し、利用枠・クレジット・残高に細いメーターを付ける。ウィジェットには「6日前」などの経過を出さない（2026-11-12 社長指摘。読み上げとUsage画面には残す）。
+- Google AI Pro（2026-11-23）: IDは `provider.google-ai-pro-sub2.quota`・`-sub3`・`-sub4`（プールが使う順）。項目は全状態で `group: google-ai-pro`・`groupName: Google AI Pro`（コード所有）を持ち、上流行の真偽値 `active`（プールが次に使うアカウント）だけを `active` として渡す。windowsは「5時間」（300分）と「週間」（10080分）。上流の理由文は渡さず、既知の理由コード以外は `fetch_failed`。Usage画面はこの3行を1群「Google AI Pro」にまとめ、閉じた状態は使用中アカウントの5時間・週、開くと各アカウントの2枠と回復時刻を出す。開閉は端末に保存する。The medium widget shows only the single active account; none or several active accounts means unknown. Google remains outside Work's weekly gauge.
+- Usage shows Codex, Claude and Google as stacked quota cards above Storage. OpenCode, Magnific, GPT API, Claude API, Liquid AI and Venice are under the collapsed Other section. The title row shows observation age and a refresh button for the feed; there is no per-card refresh.
+- Claude's optional `detail.fableWeekly` (`claude-weekly-scoped-fable`) is a separate display-only weekly reading, not an ordinary Claude window, headline value, alert source or Work gauge input. A missing, malformed or reset-expired value is unknown; a measured 0% remains 0%.
+- The medium Employee widget keeps the selected employee and Call/Chat actions on the left and six quota rows on the right: Codex 7d, Claude 5h / 7d / Fable, and Google 5h / 7d for the single active account. OpenCode, Magnific and balances stay in Usage. Each row shows the period, a 4 pt bar and a tabular value; weekly rows show their reset time when space permits. A missing reading shows ○ and an empty track. The widget shows no visual observation age. It shortens and then hides resets before dropping rows (5h first, then Google 7d, then Fable), using +N for omitted rows. Older snapshots can still populate Codex 7d and Claude 7d using their existing IDs.
 - メーターは値に連動する。行が現れると値まで伸び、更新のたびに新しい値へ滑らかに移る（視差効果を減らす設定では即時）。利用枠とクレジットは残りを表し、残り2割未満で要確認の色にする。容量は使用量を表し、9割以上か警告水準で要確認の色にする。Magnificは付与量（`grantedAmount`、なければ `monthlyGrantedAmount`）に対する残りを描き、補助行に付与量と残りの割合を出す。残高（GPT API・Claude API・Venice）は、最後に補充した直後の額（`grantedAmount`）に対する残りを描き、補助行に「補充後 $X · 残り N%」を出す（2026-11-12 社長指摘）。補充後の額はどの提供元も返さないため、usage-metersが残高の増加を観測して `~/.local/state/laa-usage/balance-marks.json` に記録する（最初に見た正の残高、以後は前回より増えた時の残高）。残高が0以下なら空のメーター、補充を一度も観測していない正の残高はメーターを描かない。請求画面が付与額を示すクレジット（`catalog.verifiedMoney` の `creditComponents`）は、その付与額を分母にする。同じ内訳に期限があれば `detail.expiresOnUtc`（請求画面の日付、UTC）として渡し、Usage画面は補助行に「期限 12月13日」を出して、その日を過ぎたら「期限切れ」にする（2026-11-13 社長指摘。ウィジェットには出さない）。WorkのUsageボタンの計器も、一覧の週間枠で最も残りが少ない値を指す。
 - GPT API・Claude APIは残高だけを表示する。残高が未取得でも行を残し、「未取得」と「自動取得できる残高がありません」を出す。補助行は請求画面へのリンクを兼ねる。今日・今月の費用を残高に代用しない。App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
 - アプリは起動・復帰・Usageを開いた時（60秒の重複抑止）・明示更新で取得し、前面では120秒ごとにも取得する。Usage自身も表示中の取得を持ち、別の状態を持つWorkから開いても止まらない。画面を離れるかアプリが非アクティブになると画面側の取得を止める。値を取得した時刻と、更新を試みた時刻を分ける。表示の鮮度は毎分判定する。
 - **表示の期限は数値の削除期限ではない。** アプリとウィジェットは、最後に正常取得した数値と元の観測時刻を保持する。10分超・取得失敗・一部欠測でも「更新待ち」に置き換えない。アプリのUsage画面は古い値の横に「12分前」のように経過を出す（ウィジェットは出さない）。未取得は0で埋めず「未取得」。既知の取得失敗・認証不足は理由を1行だけ添える。Bridgeが返すunavailable/nullは新たな観測値ではなく、クライアントに保存した前回値を消す指示にはしない。
-- 枠のresetを過ぎた場合も前回の数値を残し、「リセット済み」と明示する。この数値はリセット前の取得値で、現在の残量ではない。100%への回復や新たなreset時刻を推測しない。次の正常な観測で数値と時刻を置き換える。
+- The new provider cards and medium widget show ○ when a displayed window reaches its reset, rather than displaying the prior percentage or assuming 100%. The saved observation is not erased; the next successful observation replaces it.
 - アプリとウィジェットはApp Groupのlauncher-v1.jsonで要約を共有する。アプリの表示用項目は同Groupのusage-items-v1.jsonに保存し、再起動時も前回値を読める。これらのJSONには認証情報を入れない。ウィジェットはタイムラインの再読込時に、認証付きのGET /v1/usageを直接実行する（要求8秒、全体10秒、リダイレクトなし、ディスクキャッシュなし）。接続情報は既存App GroupのKeychainに端末限定・初回ロック解除後で共有する。端末の既存トークンとusage:readの権限判定を使い、Tailscaleを認証の代わりにはしない。
 - 接続解除・接続先変更・401・403では、表示用キャッシュと共有接続情報を消す。飛行中のウィジェット取得は接続情報を読戻してから保存し、接続が変わっていたら破棄する。アプリとウィジェットの共有JSONの書込はプロセス間ロックで直列化する。Magnificの単位はAI creditsで、USDに換算しない。
 - Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。
@@ -76,7 +78,7 @@ Tailscaleは輸送であり認証の代替ではない。
 
 ## 6. 統合時の確認事項
 
-各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット（`results` が空で返るか、バケット自体が無いか）、最終ページの `has_more: false` と `next_page`（値または欠落）、UTC日付と金額を照合する。OpenAIは§1の期間で確認済み。Anthropic従来Cost APIの空バケットは未確認で、鍵の保存後に同じ観測を行う。WidgetKitのタイムラインは期限を過ぎた値を過去の取得値として表示し、数値と取得時刻を残す。iOSの背景更新は実行時刻を保証しない。ウィジェットはアプリを開かずに再取得できるが、OSによる遅延中は最後の値と経過を示す。アプリ配信・実機での切替は別途確認する。
+各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット（`results` が空で返るか、バケット自体が無いか）、最終ページの `has_more: false` と `next_page`（値または欠落）、UTC日付と金額を照合する。OpenAIは§1の期間で確認済み。Anthropic従来Cost APIの空バケットは未確認で、鍵の保存後に同じ観測を行う。WidgetKit receives entries at freshness and reset boundaries. The last recorded percentage can stay visible until its reset, without an on-screen age label. The widget can read the Bridge without opening the app, but iOS determines when background refresh and timeline updates run.アプリ配信・実機での切替は別途確認する。
 
 SwiftBarは毎分feedの期限を判定するが、MacのスリープやSwiftBar停止中は最後の描画が残りうる。ウィジェットは、更新前に置いた上流Workspaceの2種が更新後も古い表示のままタップしても開かず、旧ウィジェットの削除とLAA Employeeへの置き換えが必要。systemSmallはChatとCall、systemMediumはUsageを開く経路を確認し、ロック画面用の円形・長方形は通知センターの画面からLAAを開いて未接続案内まで確認した。実際にロックされた状態での遷移は未確認。
 
@@ -115,7 +117,7 @@ MacBookは既存SSH認証ラッパーで固定の読み取り専用コマンド�
 | ウィジェットの通信 | OSがタイムラインを要求するたびBridgeを直接読む | オフライン・タイムアウトは最後の値を保持 |
 | アプリの前面取得 | 既存の起動・復帰・120秒タイマー・手動更新で保存し、差分があればreloadTimelines | 前面の定期取得はアプリ稼働中だけ |
 | BGAppRefreshTask | 15分以降でOSに要求。保存後にreloadTimelines。通常のKeychainがロック中ならウィジェット用経路で取得 | 実行の保証なし。省電力・利用状況に依存 |
-| 通常のプッシュ | 既存のphone.changes経路は端末設定同期用。Usage取得は現時点では呼ばない | 対応にはConduitApp.swiftの受信処理への追加が必要 |
+| `phone.changes` push | Refreshes the shared Usage snapshot through the app's existing background path | Delivery is controlled by the OS |
 | iOS 26のWidgetKit push | 今回は未接続。通常タイムラインと同じ取得処理を起動できる | WidgetPushHandler、拡張のAPNs entitlement、専用トークンの登録・送信経路が必要。既存の会話通知トークンと混用しない |
 
 [Appleの更新予算](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date)は利用状況に応じて決まり、日常的に見るウィジェットでも1日40〜70回が目安で、15分後の指定は保証ではない。[拡張からの通信](https://developer.apple.com/documentation/widgetkit/making-network-requests-in-a-widget-extension)はタイムライン提供時に行える。[WidgetKit push](https://developer.apple.com/documentation/widgetkit/updating-widgets-with-widgetkit-push-notifications)も更新予算の管理を受けるため、プッシュだけに依存しない。Context7ではAppleのライブラリが削除済みだったため、Appleの現行一次文書を直接確認した。
