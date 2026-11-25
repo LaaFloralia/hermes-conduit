@@ -167,15 +167,22 @@ the exact same encoded value. A link that exceeds 512 bytes even without metadat
 is rejected as `invalid_notification`, preserving the plugin limit.
 
 `GET /v1/notifications/preferences` (`sessions:read`) returns
-`{kinds:{decision,question,approval,error,finished,task,calendar},updatedAt}`.
+`{kinds:{decision,question,approval,error,finished,task,calendar,report},updatedAt}`.
 `PUT` on that path (`sessions:write`, `Idempotency-Key`) partially merges
 `{kinds:{key:value}}`. Values are `alert`, `quiet` or `off`; unknown keys/values
 and `off` for decision/question/approval return 400
-`notification_preferences_invalid`. Defaults are alert except finished=quiet;
-`updatedAt` is ISO or null. Preferences use locked atomic 0600
-`notification-preferences.json`. Quiet adds `lv:"p"` for silent notification-center
+`notification_preferences_invalid`. Defaults are alert except `finished=off`;
+`updatedAt` is ISO or null. Only stored overrides persist in locked atomic 0600
+`notification-preferences.json`; legacy `finished: quiet` is preserved because
+it can be an explicit choice. Quiet adds `lv:"p"` for silent notification-center
 delivery. Off returns `{delivered:false,reason:"muted"}` without sending or queuing;
 callers mark it processed. Unknown notification kinds use alert.
+
+The `report` preference governs `monet.report`, keyed by
+`monet.report:<projectId>:<requestId>` with a separate 10,000-entry delivered
+ledger. The staged completion producer has no live caller or public route. It
+requires a trusted top-level Monet caller, verified requirements for the request,
+and no pending decision for the project.
 
 | method / path | 認証 | 応答 |
 |---|---|---|
