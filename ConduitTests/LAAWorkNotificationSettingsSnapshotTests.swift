@@ -9,10 +9,14 @@ import XCTest
 /// comparison, and the states before the Mac answers.
 @MainActor
 final class LAAWorkNotificationSettingsSnapshotTests: XCTestCase {
-    private func model(_ phase: LAAWorkNotificationSettingsModel.Phase = .loaded) -> LAAWorkNotificationSettingsModel {
+    /// The Bridge's defaults with Monet's report lane; `legacy` is an older
+    /// Bridge that lists no `report` and kept the old `finished` default.
+    private func model(_ phase: LAAWorkNotificationSettingsModel.Phase = .loaded, legacy: Bool = false) -> LAAWorkNotificationSettingsModel {
         let model = LAAWorkNotificationSettingsModel()
-        model.setForTesting(.init(kinds: ["decision": .alert, "question": .alert, "approval": .alert, "error": .alert,
-                                          "finished": .quiet, "task": .alert, "calendar": .alert]), phase: phase)
+        var kinds: [String: LAAWorkNotificationPreferences.Level] = ["decision": .alert, "question": .alert, "approval": .alert, "error": .alert,
+                                                                      "finished": .off, "report": .alert, "task": .alert, "calendar": .alert]
+        if legacy { kinds["report"] = nil; kinds["finished"] = .quiet }
+        model.setForTesting(.init(kinds: kinds), phase: phase)
         return model
     }
 
@@ -20,6 +24,7 @@ final class LAAWorkNotificationSettingsSnapshotTests: XCTestCase {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let suffix = style == .dark ? "dark" : "light"
             try capture(screen(model(), reference: true), style: style, name: "notifications-work-\(suffix)")
+            try capture(screen(model(legacy: true), reference: false), style: style, name: "notifications-work-legacy-\(suffix)")
             try capture(screen(model(.unsupported), reference: false), style: style, name: "notifications-work-unsupported-\(suffix)")
             try capture(screen(model(.unpaired), reference: false), style: style, name: "notifications-work-unpaired-\(suffix)")
         }

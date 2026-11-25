@@ -33,6 +33,11 @@ struct GroupChatView: View {
     /// Bumped to build the transcript's scroll view again when SwiftUI left
     /// it blank (GroupRoomFollow.isBlank).
     @State private var transcriptScrollID = 0
+#if LAA_BUILD
+    /// Bumped after a Voice / Talk / Stop tap so the bar re-reads the
+    /// chaired binding, which is not observable on its own.
+    @State private var chairedVoiceRevision = 0
+#endif
     /// The chat text size and style, and a wide window's steps
     /// (`readableChatColumn`): the room's messages draw as a chat's do.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
@@ -105,6 +110,17 @@ struct GroupChatView: View {
         VStack(spacing: 0) {
             pendingApprovals
             MinimisedLiveVoiceBar()
+#if LAA_BUILD
+            LAAChairedVoiceBar(state: chairedVoiceState, actions: chairedVoiceActions) {
+                chairedVoiceRevision &+= 1
+            }
+            // A staff call / Voice starting stops an engaged room (no
+            // preemption, no auto-resume) and redraws the bar.
+            .onChange(of: appState.isVoiceInUse) { _, _ in
+                appState.chairedVoiceAudioOwnerMayHaveChanged()
+                chairedVoiceRevision &+= 1
+            }
+#endif
             GroupRoomComposer(members: members)
         }
         .overlay(alignment: .topTrailing) {
@@ -131,6 +147,40 @@ struct GroupChatView: View {
     }
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
+
+#if LAA_BUILD
+    /// Shown only for the room the chaired binding holds (AppState binds a
+    /// 「壁打ち」 room on open and leaves any other), never on its own.
+    private var chairedVoiceState: LAAChairedVoiceSurfaceState {
+        _ = chairedVoiceRevision
+        let core = appState.chairedVoice.core
+        return .make(
+            roomID: surface?.room.roomID,
+            boundRoomID: core.roomID,
+            phase: core.phase,
+            owner: appState.chairedVoiceAudioOwner,
+            playbackWired: LAAChairedVoiceSurface.playbackWired
+        )
+    }
+
+    /// Real binding calls, each value read from AppState at tap time.
+    private var chairedVoiceActions: LAAChairedVoiceActions {
+        let appState = appState
+        let mapped = LAAChairedVoiceActions.binding(
+            appState.chairedVoice,
+            generation: { appState.groupRoomEpoch },
+            backlogThroughSeq: { appState.activeRoomReplay.events.last?.seq },
+            owner: { appState.chairedVoiceAudioOwner }
+        )
+        // Talk also starts the room composer's real dictation.
+        return LAAChairedVoiceActions(
+            engage: mapped.engage,
+            talk: { mapped.talk(); appState.requestChairedVoiceTalk() },
+            talkEnded: { appState.requestChairedVoiceListen() },
+            stop: mapped.stop
+        )
+    }
+#endif
 
     /// Named as the bots are now, not as they were when they joined.
     private var members: [GroupMember] {
