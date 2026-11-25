@@ -221,9 +221,10 @@ final class LAAWorkShotsUITests: XCTestCase {
     private func usageShots(_ theme: String) throws {
         let app = try launch(theme)
         openUsage(app)
-        XCTAssertTrue(app.staticTexts["AI"].waitForExistence(timeout: 25))
+        let refresh = app.buttons["laa.usage.refresh"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 25))
         // The screen's own refresh, which does not wait for the tab-open throttle.
-        app.buttons["laa.usage.refresh"].tap()
+        refresh.tap()
         Thread.sleep(forTimeInterval: 3)
         capture(app, "usage-top-\(theme)")
         app.scrollViews.firstMatch.swipeUp()
@@ -248,7 +249,7 @@ final class LAAWorkShotsUITests: XCTestCase {
 
         app.navigationBars.buttons.firstMatch.tap()
         openUsage(app)
-        XCTAssertTrue(app.staticTexts["AI"].waitForExistence(timeout: 25))
+        XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 25))
         Thread.sleep(forTimeInterval: 3)
         capture(app, "usage-top-\(theme)")
         app.scrollViews.firstMatch.swipeUp()

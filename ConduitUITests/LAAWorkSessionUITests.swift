@@ -296,8 +296,18 @@ final class LAAWorkSessionUITests: XCTestCase {
     func testWaitingDecisionOpensAtTheComposer() throws {
         let app = try launchFixture()
         open(decisionID, app)
-        XCTAssertTrue(wait(field(app), hittable: true))
-        XCTAssertTrue(app.staticTexts["判断待ち・停止中は追加送信できません。状態を確認してください。"].exists)
+        let composer = field(app)
+        XCTAssertTrue(wait(composer, hittable: true))
+        XCTAssertTrue(headerContaining("判断待ち", app).exists)
+
+        composer.tap()
+        composer.typeText("queued follow-up")
+        let send = app.buttons["work.composer.send"].firstMatch
+        assertReachableSend(send, in: app, run: "waiting decision")
+        send.tap()
+        let queued = app.descendants(matching: .any)["work.session.echo"].firstMatch
+        XCTAssertTrue(queued.waitForExistence(timeout: 10))
+        XCTAssertTrue(queued.label.contains("順番待ち"), "A pending decision queues a follow-up without answering it")
         XCTAssertTrue(headerContaining("判断待ち", app).exists)
     }
 
@@ -537,7 +547,7 @@ final class LAAWorkSessionUITests: XCTestCase {
             moves += 1
         }
         usage.tap()
-        XCTAssertTrue(app.staticTexts["AI"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 20))
         let gears = app.buttons.matching(identifier: "laa.settings.open")
         XCTAssertEqual(gears.count, 0, "Usage must keep the reviewed detail toolbar")
         let back = app.buttons["BackButton"]
