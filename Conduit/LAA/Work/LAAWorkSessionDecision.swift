@@ -43,10 +43,15 @@ struct LAAWorkSessionDecision: View {
                                     }.frame(minHeight: LAASpacing.minimumTouchTarget)
                                 }
                             }
+                            // The Studio input treatment (wash fill, rule, card
+                            // radius), not `.roundedBorder`, whose system fill is
+                            // pure white/black and hides the placeholder in dark.
                             TextField("", text: answer(request.id, index),
-                                      prompt: Text(verbatim: "選択肢以外で答える"), axis: .vertical)
-                                .textFieldStyle(.roundedBorder)
+                                      prompt: Text(verbatim: "選択肢以外で答える").foregroundStyle(LAAColor.secondaryText),
+                                      axis: .vertical)
                                 .accessibilityIdentifier("work.session.decision.note.\(index)")
+                                .padding(.vertical, LAASpacing.x2)
+                                .studioInputField()
                             Text(verbatim: "選ばずに書くと、その内容で答えます。")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }

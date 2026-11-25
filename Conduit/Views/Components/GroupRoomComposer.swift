@@ -250,6 +250,23 @@ struct GroupRoomComposer: View {
             // Voice took the microphone: dictation steps aside.
             if inUse { dictation.cancel() }
         }
+#if LAA_BUILD
+        // Chaired Voice: the bar's Talk starts this dictation; its start and
+        // end (send, stop, cancel) hold and resume meeting lines.
+        .onChange(of: appState.chairedVoiceTalkRequest) { _, _ in
+            if !appState.isVoiceInUse, !isDictationActive { beginDictation() }
+            // M2c: a bar Talk that could not start dictation returns to listening.
+            if !isDictationActive { appState.chairedVoiceDictationChanged(active: false) }
+        }
+        // M3: Listen stops dictation keeping the words (never cancel/discard).
+        .onChange(of: appState.chairedVoiceListenRequest) { _, _ in
+            if dictation.isCapturing { dictation.stop() }
+            appState.chairedVoiceDictationChanged(active: false)
+        }
+        .onChange(of: isDictationActive) { _, active in
+            appState.chairedVoiceDictationChanged(active: active)
+        }
+#endif
         .onDisappear {
             // A send whose files were still going up stops here; they stay
             // in the room's draft for the next visit.
@@ -990,6 +1007,11 @@ struct GroupRoomComposer: View {
 
     private func beginDictation() {
         guard let token = dictation.reserveStart() else { return }
+        #if LAA_BUILD
+        // M2a: same main-actor turn as reserveStart, so the room releases its
+        // leases before the Task below can acquire capture (no takeover).
+        appState.chairedVoiceDictationChanged(active: true)
+        #endif
         composerError = nil
         dictationPrefix = draft
         dictatedDraft = nil
@@ -1019,6 +1041,10 @@ struct GroupRoomComposer: View {
             } catch {
                 composerError = UserFacingError.message(for: error)
             }
+            #if LAA_BUILD
+            // M2b: acquisition failed (possibly coalesced in one render pass): back to listening.
+            if !isDictationActive { appState.chairedVoiceDictationChanged(active: false) }
+            #endif
         }
     }
 

@@ -11771,6 +11771,105 @@ final class AppState: ObservableObject {
     /// a dashboard switch, and when a session open takes the viewport back.
     private(set) var groupRoomEpoch = 0
     private var groupRoomPollTask: Task<Void, Never>?
+#if LAA_BUILD
+    /// Chaired-room (壁打ち) Voice, bound to `groupRoomEpoch`. Silent until
+    /// the bar's explicit Voice tap (`engage`); the bar stays hidden while
+    /// `LAAChairedVoiceSurface.playbackWired` is false.
+    let chairedVoice = LAAChairedVoiceBinding()
+
+    /// Strong owner: the binding holds its handler weakly. Created only for a
+    /// bound chaired room (openGroupRoom), never at launch or scenePhase.
+    private(set) lazy var chairedVoiceExecutor: LAAChairedVoiceEffectExecutor = {
+        let executor = LAAChairedVoiceEffectExecutor(
+            leasing: LAAChairedVoiceCoordinatorLeasing(),
+            speaker: LAAChairedVoiceReadAloudSpeaker(gateway: { [weak self] speaker in
+                self?.makeVoiceGateway(profile: speaker)
+            }),
+            audioOwner: { [weak self] in self?.chairedVoiceAudioOwner ?? .staffCall })
+        executor.sink = chairedVoice
+        chairedVoice.setHandler(executor)
+        return executor
+    }()
+
+    /// Bumped by the bar's Talk tap; the room composer starts its own
+    /// dictation on it (the one capture path, no second mic).
+    @Published private(set) var chairedVoiceTalkRequest = 0
+
+    /// Talk tapped in the bar: hand the mic to the composer's dictation.
+    func requestChairedVoiceTalk() {
+        guard chairedVoice.core.phase != .silent else { return }
+        chairedVoiceTalkRequest &+= 1
+    }
+
+    /// The room composer's dictation began or ended (send, stop, cancel,
+    /// typing, disappear). Engaged rooms hold lines meanwhile; a silent
+    /// room is untouched (both calls are no-ops in the core).
+    func chairedVoiceDictationChanged(active: Bool) {
+        if active {
+            // M2d: idempotent. A second Talk edge must not re-flush lines held since the first.
+            guard chairedVoice.core.phase != .ownerTalking else { return }
+            chairedVoice.talk(generation: groupRoomEpoch)
+        } else {
+            chairedVoice.talkEnded(generation: groupRoomEpoch)
+        }
+    }
+
+    /// A staff call / Voice started or ended: an engaged room stops and stays
+    /// silent until a new explicit engage. Never takes audio back.
+    func chairedVoiceAudioOwnerMayHaveChanged() {
+        guard chairedVoice.core.phase != .silent else { return }
+        chairedVoice.audioOwnerChanged(chairedVoiceYieldOwner, generation: groupRoomEpoch)
+    }
+
+    /// Bumped by the bar's Listen; the composer stops (keeps) its dictation.
+    @Published private(set) var chairedVoiceListenRequest = 0
+
+    /// Listen tapped: stop dictation keeping its words, then resume the room.
+    /// No capture running (composer absent, or Talk never started one): resume now.
+    func requestChairedVoiceListen() {
+        chairedVoiceListenRequest &+= 1
+        if !VoiceAudioSessionCoordinator.shared.hasCaptureOwner {
+            chairedVoice.talkEnded(generation: groupRoomEpoch)
+        }
+    }
+
+    /// M1 rule, pure for tests. Stop side only: while the owner talks, the
+    /// room's own dictation applies the conversation policy, so the policy
+    /// alone is not a staff call. A native call or staff Voice always is.
+    nonisolated static func chairedVoiceYieldOwner(
+        ownerTalking: Bool, nativeCall: Bool, conversationPolicy: Bool, voiceInUse: Bool
+    ) -> LAAChairedVoiceAudioOwner {
+        if nativeCall || voiceInUse { return .staffCall }
+        if ownerTalking { return .none }
+        return conversationPolicy ? .staffCall : .none
+    }
+
+    /// Stop-side owner (ingest, owner changes). The executor and engage keep
+    /// the strict `chairedVoiceAudioOwner`.
+    var chairedVoiceYieldOwner: LAAChairedVoiceAudioOwner {
+        let audio = VoiceAudioSessionCoordinator.shared
+        return Self.chairedVoiceYieldOwner(
+            ownerTalking: chairedVoice.core.phase == .ownerTalking,
+            nativeCall: audio.isInNativeCall,
+            conversationPolicy: audio.appliedPolicy == .conversation,
+            voiceInUse: isVoiceInUse)
+    }
+
+    /// A staff Voice Conversation or a native call owns audio: chaired Voice
+    /// never takes it over.
+    var chairedVoiceAudioOwner: LAAChairedVoiceAudioOwner {
+        let audio = VoiceAudioSessionCoordinator.shared
+        return audio.isInNativeCall || audio.appliedPolicy == .conversation ? .staffCall : .none
+    }
+
+    /// Re-feed the whole current replay; the core dedupes. A silent core
+    /// never speaks, so the audio owner is read only once Voice is engaged.
+    private func feedChairedVoice(epoch: Int) {
+        guard groupRoomEpoch == epoch else { return }
+        let owner: LAAChairedVoiceAudioOwner = chairedVoice.core.phase == .silent ? .none : chairedVoiceYieldOwner
+        chairedVoice.ingest(activeRoomReplay.events, generation: epoch, owner: owner)
+    }
+#endif
 
     // Group Chat RPC routing: the injectable seam first (tests), then the
     // production client call.
@@ -12133,6 +12232,9 @@ final class AppState: ObservableObject {
         if parkingPendingSend {
             parkActiveRoomSend()
         }
+#if LAA_BUILD
+        chairedVoice.leaveRoom()
+#endif
         groupRoomEpoch &+= 1
         groupRoomPollTask?.cancel()
         groupRoomPollTask = nil
@@ -12249,6 +12351,14 @@ final class AppState: ObservableObject {
 
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
+#if LAA_BUILD
+        if room.name.contains("壁打ち") {
+            chairedVoice.bind(roomID: room.roomID, generation: epoch)
+            _ = chairedVoiceExecutor
+        } else {
+            chairedVoice.leaveRoom()
+        }
+#endif
         groupRoomPollTask?.cancel()
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
@@ -12317,6 +12427,9 @@ final class AppState: ObservableObject {
                 roomNotificationFocusEventID = report.eventID
             }
             settlePendingRoomSend(from: replay.events)
+#if LAA_BUILD
+            feedChairedVoice(epoch: epoch)
+#endif
             startRoomPolling()
         } catch is CancellationError {
             return
@@ -12382,6 +12495,9 @@ final class AppState: ObservableObject {
             if !fresh.isEmpty {
                 activeRoomReplay.adopt(page: page, preserving: roomNotificationFocusEventID)
                 settlePendingRoomSend(from: fresh)
+#if LAA_BUILD
+                feedChairedVoice(epoch: epoch)
+#endif
             }
             // Driver status tracks the DRIVER, not the log: refresh even on
             // an eventless tick, or a settled room keeps offering Stop and
@@ -12607,6 +12723,9 @@ final class AppState: ObservableObject {
             fresh.adoptInitialTail(page: tail)
             activeRoomReplay = fresh
             settlePendingRoomSend(from: fresh.events)
+#if LAA_BUILD
+            feedChairedVoice(epoch: epoch)
+#endif
         } catch {
             // A failed resync keeps the current transcript; the next poll's
             // gap flag retries.
