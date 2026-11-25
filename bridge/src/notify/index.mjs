@@ -53,6 +53,9 @@ export function deliverWithPlugin(event) {
 }
 export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(resolveStateDir(), 'owner-notifications.json'), now = () => Date.now(), preferences = createNotificationPreferences({ file: join(dirname(file), 'notification-preferences.json'), now }) } = {}) {
   const state = createJsonFile({ file, initial: () => ({ delivered: {}, pending: {} }) });
+  // Monet reports are at most once per key for good (C-2.2), so they get their own ledger
+  // outside the 7-day / 2000-row window that bounds every other kind's dedupe.
+  const REPORT = 'monet.report', REPORT_LEDGER_MAX = 10_000;
   const inflight = new Map();
   async function deliverPending(key, event) {
     if (inflight.has(key)) return inflight.get(key);
@@ -62,6 +65,7 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
       try { result = await deliver(event); } catch { result = { delivered: false, reason: "delivery_unavailable" }; }
       if (result.delivered) state.mutate((s) => {
         s.delivered[key] = now();
+        if (s.pending?.[key]?.kind === REPORT) s.reports = Object.fromEntries([...Object.entries(s.reports ?? {}), [key, now()]].slice(-REPORT_LEDGER_MAX));
         delete s.pending?.[key];
         s.delivered = Object.fromEntries(Object.entries(s.delivered).filter(([, at]) => now() - at < 7 * 86400_000).slice(-2000));
       });
@@ -74,10 +78,14 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
     if (typeof kind !== 'string' || typeof title !== 'string' || typeof body !== 'string'
       || typeof deepLink !== 'string' || !/^laa:\/\/(work|today|brain|assets)(\/|$)/.test(deepLink) || deepLink.length > 400
       || typeof dedupeKey !== 'string' || !dedupeKey) return { delivered: false, reason: 'invalid_notification' };
+    // A report's key is derived from its request, so a replay can never mint a second key.
+    if (kind === REPORT && !(typeof meta?.projectId === 'string' && meta.projectId && typeof meta?.requestId === 'string' && meta.requestId
+      && dedupeKey === `${REPORT}:${meta.projectId}:${meta.requestId}`)) return { delivered: false, reason: 'invalid_notification' };
     const level = notificationLevel(kind, preferences);
     if (level === 'off') return { delivered: false, reason: 'muted' };
     const key = createHash('sha256').update(dedupeKey).digest('hex');
-    if (state.read().delivered[key]) return { delivered: false, reason: 'duplicate' };
+    const seen = state.read();
+    if (seen.delivered[key] || (kind === REPORT && seen.reports?.[key])) return { delivered: false, reason: 'duplicate' };
     const sessionId = encodeNotificationSessionId(deepLink, kind, { ...meta, ...(level === 'quiet' ? { lv: 'p' } : {}) });
     if (sessionId === null) return { delivered: false, reason: 'invalid_notification' };
     const event = { type: 'response.ready', event_id: `laa-bridge:${key}`, profile: 'laa-monet',
