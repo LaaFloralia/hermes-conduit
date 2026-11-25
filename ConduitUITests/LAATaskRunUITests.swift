@@ -36,6 +36,10 @@ final class LAATaskRunUITests: XCTestCase {
                                "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
         app.launchInLab()
+        // On a reused simulator, the saved Chat login can take focus on launch.
+        // Select Work explicitly without connecting to a Hermes dashboard.
+        let workTab = app.tabBars.buttons["Work"].firstMatch
+        if workTab.waitForExistence(timeout: 10), !workTab.isSelected { workTab.tap() }
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
         app.buttons["work.connect"].tap()
         let code = app.secureTextFields["laa.bridge.code"]
