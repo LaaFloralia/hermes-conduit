@@ -72,8 +72,18 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
     /// The timeline has an entry at Fable's reset; from then the Fable row
     /// is unknown while the other Claude rows keep their numbers.
     func testTimelineHandlesFableResetAndExpiry() throws {
-        let fableReset = now.addingTimeInterval(1800)
-        let usage = LAAWidgetUsageBuilder.make(items: try F.items(fable: F.fable(32.0, reset: 1800)), receivedAt: now)
+        // XCTest can construct all test cases long before this method runs.
+        // Match the timeline's wall clock at execution, not discovery time.
+        let age = Date().timeIntervalSince(now).rounded(.down)
+        let timelineStart = now.addingTimeInterval(age)
+        let fableReset = timelineStart.addingTimeInterval(1800)
+        let items = try F.decode([
+            F.quota("claude", label: "Claude", windows: [
+                F.window("Session", 80, minutes: 300, reset: age + 7200),
+                F.window("Weekly", 49, minutes: 10_080, reset: age + 4 * 86_400)
+            ], fable: F.fable(32.0, reset: age + 1800), observed: age - 60)
+        ])
+        let usage = LAAWidgetUsageBuilder.make(items: items, receivedAt: timelineStart)
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
         let timeline = LAAEmployeeTimelineProvider.makeTimeline(configuration: LAAEmployeeWidgetIntent(), snapshot: snapshot)
         let entries = timeline.entries
@@ -84,7 +94,8 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
         XCTAssertNil(LAAWidgetUsageColumn.shown(fable, at: atReset.date))
         XCTAssertEqual(LAAWidgetUsageColumn.shown(weekly, at: atReset.date)?.amount, 49)
         // The freshness deadline (observed + 10 minutes) also has an entry.
-        XCTAssertTrue(entries.contains { abs($0.date.timeIntervalSince(now.addingTimeInterval(540))) < 0.5 })
+        let freshnessDeadline = timelineStart.addingTimeInterval(540)
+        XCTAssertTrue(entries.contains { abs($0.date.timeIntervalSince(freshnessDeadline)) < 0.5 })
         try render(atReset, size: Self.compactMedium, style: .light, name: "v2-widget-after-fable-reset", renderedAt: atReset.date)
     }
 
