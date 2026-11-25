@@ -1,31 +1,10 @@
-// The voice endpoints: POST /v1/voice/{polish,summarize,transcribe}.
+// Voice requires opt-in scopes: `voice:polish` for polish, summarize and
+// keyboard candidates, `voice:transcribe` for PCM. Only polish and summary
+// accept a model choice, and only from the allowlist. Unknown fields are
+// rejected so this cannot serve as a general model proxy.
 //
-// These are the only Bridge endpoints that accept the owner's speech, so their
-// contract is deliberately narrow:
-//
-//   * Each route is opened by its own opt-in scope (`voice:polish`,
-//     `voice:transcribe`), and neither is part of the default grant (BRIDGE §9).
-//     A device gets one only when an operator pairs or re-pairs it with
-//     `--scopes voice:polish` / `--scopes voice:transcribe`.
-//   * The polish and summary body is `{text, language?}`; the transcribe body is
-//     `{pcm16, sampleRate, language?}`. A model name, chat messages, a prompt or
-//     an unknown field is refused, so neither endpoint can be turned into a
-//     general model proxy.
-//   * Neither request is idempotent (nothing is stored), so the idempotency
-//     ledger never sees the text or the audio. The Bridge access log records
-//     method, path, status and device id only — never the body.
-//   * Errors are fixed strings. They never quote the input, the worker's
-//     diagnostics or a filesystem path.
-//
-// Responses repeat no part of the request:
-//
-//   polish      {text, model: 'qwen3-4b'} or {text: '', nothing: true, model}
-//   summarize   {text, model: 'qwen3-4b'}; same opt-in text scope, Japanese only
-//   transcribe  {text, model: 'haas-ja-v1.0-q8_0'}
-//
-// `nothing` is additive for polish: existing clients that only read `text`
-// still decode the response unchanged. Transcribe returns an empty `text` as a
-// successful result when the recording held no speech.
+// None of these requests is idempotent. The access log and idempotency ledger
+// never see the request body or worker output; errors use fixed strings.
 
 import {
   VOICE_POLISH_MAX_CHARS,
@@ -35,17 +14,25 @@ import {
   VOICE_TRANSCRIBE_SAMPLE_RATE,
 } from '../config.mjs';
 import { BridgeError, badRequest } from '../errors.mjs';
-import { VoiceWorkerError } from '../voice/worker.mjs';
+import {
+  CANDIDATES_TIMEOUT_MS, VoiceWorkerError, candidateStringWithinLimit, validCandidateItems,
+} from '../voice/worker.mjs';
 
 const POLISH_MODEL = 'qwen3-4b';
 const SUMMARY_MAX_CHARS = 2000;
 const TRANSCRIBE_MODEL = 'haas-ja-v1.0-q8_0';
+const POLISH_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-terra']);
+const REPLY_MODEL = /^[a-z0-9.\-]{1,40}$/;
 const LANGUAGES = new Set(['ja', 'zh', 'en', 'auto']);
 // The recogniser is Japanese-only; accepting another language would silently
 // transcribe with the wrong model.
 const TRANSCRIBE_LANGUAGES = new Set(['ja']);
-const POLISH_FIELDS = new Set(['text', 'language']);
+const POLISH_FIELDS = new Set(['text', 'language', 'model']);
 const TRANSCRIBE_FIELDS = new Set(['pcm16', 'sampleRate', 'language']);
+const CANDIDATES_FIELDS = new Set(['reading', 'candidates']);
+// Same allowed scalars as WorkerProtocol.swift: kana and ASCII/full-width romaji.
+const INVALID_READING = /[^A-Za-z\u3041-\u3096\u3099-\u309f\u30a1-\u30fa\u30fc-\u30ff\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]/u;
+const INVALID_CANDIDATE = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 function parseObject(rawBody, allowed) {
@@ -72,7 +59,10 @@ function parseObject(rawBody, allowed) {
 }
 
 function validatePolish(payload, maxChars) {
-  const { text } = payload;
+  const { text, model } = payload;
+  if (model !== undefined && !POLISH_MODELS.has(model)) {
+    throw badRequest('payload_invalid', 'model is not supported');
+  }
   if (typeof text !== 'string') {
     throw badRequest('payload_invalid', 'text must be a string');
   }
@@ -89,7 +79,18 @@ function validatePolish(payload, maxChars) {
   if (typeof language !== 'string' || !LANGUAGES.has(language)) {
     throw badRequest('payload_invalid', 'language must be one of ja, zh, en, auto');
   }
-  return { text, language };
+  return model === undefined ? { text, language } : { text, language, model };
+}
+
+function validateCandidates({ reading, candidates = [] }) {
+  if (!candidateStringWithinLimit(reading, 32) || reading === '' || INVALID_READING.test(reading)) {
+    throw badRequest('payload_invalid', 'reading must be 1 to 32 kana or Latin characters');
+  }
+  if (!Array.isArray(candidates) || candidates.length > 10 || !candidates.every((item) =>
+    candidateStringWithinLimit(item, 40) && item !== '' && !INVALID_CANDIDATE.test(item))) {
+    throw badRequest('payload_invalid', 'candidates must be an array of at most 10 strings of 1 to 40 characters without control characters or line breaks');
+  }
+  return { reading, candidates };
 }
 
 // The audio is validated here, not in the worker: the Bridge must refuse an
@@ -172,6 +173,12 @@ function badReply() {
   });
 }
 
+function replyModel(model, fallback) {
+  if (typeof model === 'string' && REPLY_MODEL.test(model)) return model;
+  if (fallback !== undefined) return fallback;
+  throw badReply();
+}
+
 // Runs one request against the worker and cancels it only if this request's own
 // client goes away. The controller is per request, so a caller that was refused
 // as busy cannot stop the generation that was already running.
@@ -220,14 +227,15 @@ export function voiceRoutes({
           throw new BridgeError(503, 'voice_not_configured', 'voice polish is not configured on this Mac');
         }
         const result = await run(worker, payload, { res, timeoutMs });
+        const model = replyModel(result?.model, POLISH_MODEL);
         if (result?.nothing === true) {
           // A contradictory payload is a protocol fault, not a no-op.
           if (result.text !== undefined && result.text !== '') throw badReply();
-          return { status: 200, data: { text: '', nothing: true, model: POLISH_MODEL } };
+          return { status: 200, data: { text: '', nothing: true, model } };
         }
         const text = typeof result?.text === 'string' ? result.text.trim() : '';
         if (text === '' || text.length > maxOutputChars) throw badReply();
-        return { status: 200, data: { text, model: POLISH_MODEL } };
+        return { status: 200, data: { text, model } };
       },
     },
     {
@@ -242,7 +250,20 @@ export function voiceRoutes({
         const result = await run(worker, { kind: 'summarize', ...payload }, { res, timeoutMs });
         const text = typeof result?.text === 'string' ? result.text.trim() : '';
         if (result?.nothing === true || text === '' || text.length > maxOutputChars) throw badReply();
-        return { status: 200, data: { text, model: POLISH_MODEL } };
+        return { status: 200, data: { text, model: replyModel(result.model, POLISH_MODEL) } };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/v1/voice/candidates',
+      auth: true,
+      scope: 'voice:polish',
+      idempotent: false,
+      async handler({ rawBody, res }) {
+        const payload = validateCandidates(parseObject(rawBody, CANDIDATES_FIELDS));
+        const result = await run(worker, { kind: 'candidates', ...payload }, { res, timeoutMs: CANDIDATES_TIMEOUT_MS });
+        if (!validCandidateItems(result?.items)) throw badReply();
+        return { status: 200, data: { items: result.items, model: replyModel(result.model) } };
       },
     },
     {
@@ -264,7 +285,7 @@ export function voiceRoutes({
         // decides whether an empty transcript means "say that again".
         const text = typeof result?.text === 'string' ? result.text.trim() : null;
         if (text === null || text.length > maxOutputChars) throw badReply();
-        return { status: 200, data: { text, model: TRANSCRIBE_MODEL } };
+        return { status: 200, data: { text, model: replyModel(result.model, TRANSCRIBE_MODEL) } };
       },
     },
   ];

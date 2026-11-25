@@ -1,5 +1,4 @@
-// Contract tests for POST /v1/voice/polish, POST /v1/voice/transcribe and
-// POST /v1/devices/self/revoke.
+// Contract tests for POST /v1/voice/* and POST /v1/devices/self/revoke.
 //
 // The worker is a stub that speaks the real stdio protocol, so these tests
 // exercise the Bridge's parsing, authorization, single-flight rules, process
@@ -15,7 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startBridge } from './helpers.mjs';
 import { revokeDevice } from '../src/pairing.mjs';
-import { createLineFramer, createVoiceWorker } from '../src/voice/worker.mjs';
+import { VoiceWorkerError, createLineFramer, createVoiceWorker } from '../src/voice/worker.mjs';
 import { errorForLog } from '../src/http.mjs';
 import { voiceRoutes } from '../src/routes/voice.mjs';
 import { ALL_SCOPES, DEFAULT_SCOPES, VOICE_TRANSCRIBE_MAX_BYTES } from '../src/config.mjs';
@@ -36,10 +35,12 @@ function stubWorker(env = {}, options = {}) {
   });
 }
 
+const withReply = (reply) => stubWorker({ STUB_REPLY: JSON.stringify(reply) });
+
 async function bridge(t, { worker = null, scopes = ['voice:polish'], timeoutMs = 2000, log = null } = {}) {
   const api = await startBridge({ voice: { worker, timeoutMs }, log });
   t.after(async () => {
-    await worker?.stop();
+    await worker?.stop?.();
     await api.close();
   });
   const token = await api.token(scopes);
@@ -114,7 +115,7 @@ test('polished text comes back alone, and the request leaves no ledger row', asy
   assert.deepEqual(api.store.read().idempotency, {});
 });
 
-test('the body is text-only: a model, audio or chat messages are refused', async (t) => {
+test('the body is text-only: an arbitrary model, audio or chat messages are refused', async (t) => {
   const { api, token } = await bridge(t, { worker: stubWorker() });
   for (const body of [
     { text: 'x', model: 'gpt' },
@@ -125,6 +126,82 @@ test('the body is text-only: a model, audio or chat messages are refused', async
     const res = await api.request('/v1/voice/polish', { method: 'POST', token, body });
     assert.equal(res.status, 400);
     assert.equal(res.body.error.code, 'payload_invalid');
+  }
+});
+
+test('polish and summarize pass both allowed models through to the worker', async (t) => {
+  const { api, token } = await bridge(t, { worker: stubWorker() });
+  for (const kind of ['polish', 'summarize']) {
+    for (const model of ['gpt-6-luna', 'gpt-6.1-terra']) {
+      const res = await api.request(`/v1/voice/${kind}`, { method: 'POST', token, body: { text: 'sample', model } });
+      assert.equal(res.status, 200);
+      // The stub only reports this value if it saw it on stdin.
+      assert.equal(res.body.data.model, model);
+    }
+  }
+});
+
+test('polish and summarize reject any model outside the exact allowlist before dispatch', async (t) => {
+  const { api, token } = await bridge(t, { worker: { request() { assert.fail('invalid model reached worker'); } } });
+  for (const kind of ['polish', 'summarize']) {
+    for (const model of [null, 1, {}, [], '', 'gpt-6.2-sol', 'GPT-6-LUNA', 'gpt-6-luna\n']) {
+      const res = await api.request(`/v1/voice/${kind}`, { method: 'POST', token, body: { text: 'sample', model } });
+      assert.equal(res.status, 400);
+      assert.equal(res.body.error.code, 'payload_invalid');
+    }
+  }
+});
+
+test('responses report the actual worker model, including a polish no-op and transcribe', async (t) => {
+  const { api, token } = await bridge(t, { worker: withReply({ text: 'sample', model: 'passthrough' }) });
+  for (const kind of ['polish', 'summarize']) {
+    const res = await api.request(`/v1/voice/${kind}`, {
+      method: 'POST', token, body: { text: 'sample', model: 'gpt-6-luna' },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.model, 'passthrough');
+  }
+  const noop = await bridge(t, {
+    worker: withReply({ text: '', nothing: true, model: 'gpt-6.1-terra' }),
+  });
+  const polished = await noop.api.request('/v1/voice/polish', {
+    method: 'POST', token: noop.token, body: { text: 'sample' },
+  });
+  assert.equal(polished.status, 200);
+  assert.deepEqual(polished.body.data, { text: '', nothing: true, model: 'gpt-6.1-terra' });
+  const asr = await bridge(t, {
+    worker: withReply({ text: 'sample', model: 'gemini-4-hydrogen' }),
+    scopes: ['voice:transcribe'],
+  });
+  const transcribed = await asr.api.request('/v1/voice/transcribe', {
+    method: 'POST', token: asr.token, body: { pcm16: pcm(), sampleRate: 16000 },
+  });
+  assert.equal(transcribed.status, 200);
+  assert.deepEqual(transcribed.body.data, { text: 'sample', model: 'gemini-4-hydrogen' });
+});
+
+test('text routes preserve legacy model labels for missing or malformed reply models', async (t) => {
+  const { api, token } = await bridge(t, { worker: withReply({ text: 'sample' }), scopes: ['voice:polish', 'voice:transcribe'] });
+  const eachRoute = [
+    ['polish', { text: 'sample', model: 'gpt-6-luna' }, 'qwen3-4b'],
+    ['summarize', { text: 'sample', model: 'gpt-6-luna' }, 'qwen3-4b'],
+    ['transcribe', { pcm16: pcm(), sampleRate: 16000 }, 'haas-ja-v1.0-q8_0'],
+  ];
+  for (const [kind, body, fallback] of eachRoute) {
+    const path = `/v1/voice/${kind}`;
+    const legacy = await api.request(path, { method: 'POST', token, body });
+    assert.equal(legacy.status, 200);
+    assert.equal(legacy.body.data.model, fallback);
+    const invalidModels = [null, 123, '', 'UPPER', 'a_b', 'abc\n', 'a'.repeat(41)];
+    const validModels = ['a', 'a'.repeat(40)];
+    for (const [model, expected] of [
+      ...invalidModels.map((value) => [value, fallback]), ...validModels.map((value) => [value, value]),
+    ]) {
+      const route = voiceRoutes({ worker: { request: async () => ({ text: 'sample', model }) } })
+        .find((route) => route.path === path);
+      const result = await route.handler({ rawBody: Buffer.from(JSON.stringify(body)) });
+      assert.equal(result.data.model, expected);
+    }
   }
 });
 
@@ -616,6 +693,125 @@ test('the access log records no body, no text and no error detail', async (t) =>
     assert.equal(JSON.stringify(entry).includes(secret), false);
   }
   assert.equal(entries.some((entry) => entry.status === 503), true);
+});
+
+// --- candidates -----------------------------------------------------------
+
+const candidatesPath = '/v1/voice/candidates';
+
+const candidateRequest = (api, token, body, key) => api.request(candidatesPath, { method: 'POST', token, body, key });
+
+test('candidates need voice:polish and pass the reading and optional candidate list to the worker', async (t) => {
+  const { api, token } = await bridge(t, { worker: stubWorker() });
+  assert.equal((await candidateRequest(api, undefined, { reading: 'sample' })).status, 401);
+  const transcribeOnly = await api.token(['voice:transcribe']);
+  const refused = await candidateRequest(api, transcribeOnly, { reading: 'sample' });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.error.code, 'insufficient_scope');
+
+  const reading = 'は\u3099'.repeat(32);
+  const existing = Array.from({ length: 10 }, (_, i) => i === 9 ? '😀'.repeat(40) : `候補${i}`);
+  const first = await candidateRequest(api, token, { reading, candidates: existing }, 'same-key');
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.body.data, { items: [reading, ...existing.slice(-4)], model: 'gpt-6.1-terra' });
+  const second = await candidateRequest(api, token, { reading: 'Ｋanaカナーｶﾅ' }, 'same-key');
+  assert.equal(second.status, 200);
+  assert.deepEqual(second.body.data, { items: ['Ｋanaカナーｶﾅ'], model: 'gpt-6.1-terra' });
+  assert.deepEqual(api.store.read().idempotency, {});
+});
+
+test('candidates reject invalid bodies before dispatch and keep the default HTTP body cap', async (t) => {
+  const { api, token } = await bridge(t, { worker: { request() { assert.fail('invalid body reached worker'); } } });
+  for (const body of [
+    [], null, {}, { reading: '' }, { reading: 5 }, { reading: 'は\u3099'.repeat(33) },
+    { reading: '漢字' }, { reading: 'a\n' }, { reading: 'a b' }, { reading: 'a', model: 'gpt-6-luna' },
+    { reading: 'a', candidates: null }, { reading: 'a', candidates: 'x' },
+    { reading: 'a', candidates: Array(11).fill('x') }, { reading: 'a', candidates: [''] },
+    { reading: 'a', candidates: [5] }, { reading: 'a', candidates: ['😀'.repeat(41)] },
+    { reading: 'a', candidates: ['bad\u0000item'] }, { reading: 'a', candidates: ['bad\u2028item'] },
+    { reading: 'a', candidates: ['\ud800'] },
+  ]) {
+    const res = await candidateRequest(api, token, body);
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.equal(res.body.error.code, 'payload_invalid');
+  }
+  const oversized = await candidateRequest(api, token, { reading: 'x'.repeat(64 * 1024) });
+  assert.equal(oversized.status, 400);
+  assert.equal(oversized.body.error.code, 'payload_too_large');
+});
+
+test('candidates can be empty, but a malformed items success is rejected by the worker parser', async (t) => {
+  const model = 'gpt-6.1-terra';
+  const payload = { kind: 'candidates', reading: 'sample', candidates: [] };
+  const empty = withReply({ items: [], model });
+  t.after(() => empty.stop());
+  assert.deepEqual(await empty.request(payload), { items: [], model });
+  for (const fields of [
+    { text: 'not items' }, { nothing: true }, { items: null }, { items: 'x' },
+    { items: [1] }, { items: Array(6).fill('x') }, { items: ['😀'.repeat(41)] }, { items: ['x'], text: '' },
+  ]) {
+    const worker = withReply({ ...fields, model });
+    try {
+      await assert.rejects(worker.request(payload), { kind: 'bad_reply' });
+    } finally {
+      await worker.stop();
+    }
+  }
+});
+
+test('items are rejected on all text worker requests, even alongside a text field', async () => {
+  for (const kind of ['polish', 'summarize', 'transcribe']) {
+    const worker = withReply({ text: 'sample', items: ['x'], model: 'gpt-6.1-terra' });
+    try {
+      await assert.rejects(worker.request({ kind }), { kind: 'bad_reply' });
+    } finally {
+      await worker.stop();
+    }
+  }
+});
+
+test('candidates uses the 15 s deadline and existing worker error mapping without exposing the body', async (t) => {
+  const entries = [];
+  const reading = 'readingPrivateSample';
+  const candidate = 'candidatePrivateSample';
+  let answer;
+  const worker = { async request(payload, { timeoutMs }) {
+    assert.equal(timeoutMs, 15_000);
+    assert.deepEqual(payload, { kind: 'candidates', reading, candidates: [candidate] });
+    if (answer instanceof Error) throw answer;
+    return answer;
+  } };
+  const { api, token } = await bridge(t, { worker, log: (entry) => entries.push(entry) });
+  for (const [kind, status, code, retryable] of [
+    ['busy', 429, 'voice_busy', true], ['timeout', 504, 'voice_timeout', true],
+    ['unavailable', 503, 'voice_unavailable', true], ['failed', 503, 'voice_failed', true],
+    ['bad_reply', 503, 'voice_bad_reply', false],
+  ]) {
+    answer = new VoiceWorkerError(kind);
+    const res = await candidateRequest(api, token, { reading, candidates: [candidate] });
+    assert.equal(res.status, status);
+    assert.equal(res.body.error.code, code);
+    assert.equal(res.body.error.retryable, retryable);
+    assert.equal(JSON.stringify(res.body).includes(candidate), false);
+  }
+  answer = { items: [candidate], model: 'gpt-6.1-terra' };
+  assert.equal((await candidateRequest(api, token, { reading, candidates: [candidate] })).status, 200);
+  answer = { items: [], model: 'BAD MODEL' };
+  assert.equal((await candidateRequest(api, token, { reading, candidates: [candidate] })).body.error.code, 'voice_bad_reply');
+  const log = JSON.stringify(entries.filter(({ path }) => path === candidatesPath));
+  assert.equal(log.includes(candidatesPath), true);
+  assert.equal(log.includes(reading), false);
+  assert.equal(log.includes(candidate), false);
+});
+
+test('a cold worker does not use the long cold-start budget for candidates', async (t) => {
+  const worker = stubWorker({ STUB_ONCE: 'hang', STUB_ONCE_FILE: join(markerDir(t), 'first') });
+  t.after(() => worker.stop());
+  await assert.rejects(
+    worker.request({ kind: 'candidates', reading: 'sample', candidates: [] },
+      { timeoutMs: 25, signal: AbortSignal.timeout(500) }),
+    { kind: 'timeout' },
+  );
 });
 
 // --- transcribe -----------------------------------------------------------

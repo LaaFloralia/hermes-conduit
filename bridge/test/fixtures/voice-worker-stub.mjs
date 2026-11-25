@@ -9,6 +9,7 @@
 //   STUB_ONCE=exit|hang|garbage
 //                     misbehave on the first request only, then behave
 //   STUB_ONCE_FILE    marker used to make "first" survive a restart
+//   STUB_REPLY        JSON object replacing the usual success fields
 //
 // A transcribe request is answered with a short synthetic sentence unless every
 // PCM byte is zero, which stands for silence and answers with empty text.
@@ -25,6 +26,7 @@ const slowMs = Number(process.env.STUB_SLOW_MS ?? 260);
 const staleMs = Number(process.env.STUB_STALE_MS ?? 120);
 const termFile = process.env.STUB_TERM_FILE ?? '';
 const hangAfter = Number(process.env.STUB_HANG_AFTER ?? 0);
+const replyFields = JSON.parse(process.env.STUB_REPLY ?? 'null');
 let served = 0;
 
 // A registered SIGTERM handler keeps Node alive, which is how `ignore_term`
@@ -128,6 +130,15 @@ lines.on('line', (line) => {
     return;
   }
 
+  if (replyFields) {
+    process.stdout.write(`${JSON.stringify({ id: message.id, ok: true, ...replyFields })}\n`);
+    return;
+  }
+  if (message.kind === 'candidates') {
+    const items = [message.reading, ...message.candidates.slice(-4)];
+    process.stdout.write(`${JSON.stringify({ id: message.id, ok: true, items, model: 'gpt-6.1-terra' })}\n`);
+    return;
+  }
   // A missing `kind` is a polish request, as in the text-only worker.
   if (message.kind === 'transcribe') {
     const pcm = Buffer.from(typeof message.pcm16 === 'string' ? message.pcm16 : '', 'base64');
@@ -145,6 +156,7 @@ lines.on('line', (line) => {
       id: message.id,
       ok: true,
       text: `${message.kind === 'summarize' ? 'summary' : 'polished'}: ${message.text}`,
+      model: message.model,
     })}\n`);
   }, wait);
 });
