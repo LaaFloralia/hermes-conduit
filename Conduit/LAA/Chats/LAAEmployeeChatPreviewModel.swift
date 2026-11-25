@@ -13,7 +13,7 @@ final class LAAEmployeeChatPreview: ObservableObject {
 
     func canQueue(_ text: String, isComposing: Bool) -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return workspace != nil && queuedSend == nil && !isComposing && !text.isEmpty
+        return workspace != nil && failure == nil && queuedSend == nil && !isComposing && !text.isEmpty
             && AppState.parseSlashCommand(text) == nil
     }
     private var generation = 0

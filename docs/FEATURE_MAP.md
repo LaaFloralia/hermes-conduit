@@ -49,7 +49,9 @@ maintainer decides (2026-10-20).
 The cached opening view keeps its model/effort menus and send state visible
 above the keyboard. Until the target employee is connected, the menus explain
 why values are unavailable. The preview can journal one send and show its pending
-echo before attach; Retry reconnects without submitting an unsent draft. The header is a top bar over the transcript (2026-11-13,
+echo during attach. After a terminal open failure, the draft remains editable;
+the user must retry the connection before queueing a new send. Retry does not
+submit an unsent draft. The header is a top bar over the transcript (2026-11-13,
 owner request: it took too much room): a 78 pt mascot on the row of the back and call buttons with the name
 directly under it, the same size and position
 in the opening preview and the live chat, and the transcript scrolls beneath
@@ -77,14 +79,14 @@ keyboard controls, draft handoff, the eight-second boundary and final expiry.
 - Attach and replay: `Conduit/Services/AppState+WidgetLaunch.swift`, `Conduit/Services/AppState+PendingSend.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/HermesClient.swift`, `Conduit/LAA/Chat/LAAChatEventReplay.swift`
 - Tests: `ConduitTests/LAAChatConnectionTests.swift`, `ConduitTests/LAAConversationHeaderSnapshotTests.swift`, `ConduitTests/LAAEmployeeChatPreviewTests.swift`,
   `ConduitUITests/LAAChatsUITests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`,
-  `ConduitUITests/LAAChatComposerUITests.swift`
+  `ConduitUITests/LAAChatComposerUITests.swift`, `ConduitUITests/LAAChatRuntimeChipUITests.swift`
 
 **Rulings**
 - The header overlays the transcript and is the same in the preview and the live chat (owner, 2026-11-13).
 - Monet's row on the Chat tab is the common employee row (owner, 2026-11-13).
 - No suggestion row above the composer (owner, 2026-11-13). Upstream's opt-in `PredictiveRow` is a separate
   feature and stays off by default.
-- The preview's cached transcript, draft and queued send are employee- and dashboard-scoped. The pending UUID carries through the matching live attach; leaving or switching cannot deliver it to a different chat. An uncertain submission uses the durable probe instead of automatically resending. Nonessential metadata does not block employee admission; context waits for attach and can retry once after an ownership-checked resume on a definitive reaped-session reply.
+- The preview's cached transcript, draft and queued send are employee- and dashboard-scoped. The pending UUID carries through the matching live attach; leaving or switching cannot deliver it to a different chat. An uncertain submission uses the durable probe instead of automatically resending. Nonessential metadata does not block employee admission; context waits for attach and can retry once after an ownership-checked resume on a definitive reaped-session reply. The live model menu offers a read retry instead of an indefinite spinner when the transport exists but chat runtime operations are unavailable.
 - Preserve-current socket recovery uses the prior session, process epoch and sequence cursor. It merges contiguous replay with live frames buffered during rebind, deduplicates events and redelivers open requests. Incompatible, truncated or gapped replay falls back to durable reconciliation, not another prompt submission.
 - Live reasoning text is opt-in on the current socket: only a host advertising `reasoning_delta_optin` receives `include_reasoning_deltas` on create or resume (including compact reconnect). No reasoning display preference is written. Without it, work status is still shown but no reasoning text is requested.
 
@@ -92,7 +94,7 @@ keyboard controls, draft handoff, the eight-second boundary and final expiry.
 - Host support for opt-in reasoning and replay is a separate deployment requirement.
 - The preview's first message sits about 7 pt lower than the live chat's.
 
-**Checked:** 2026-11-25, laa/v2-chat (source and fake-socket test coverage for preview send, attach, reasoning opt-in and replay); 2026-11-15, laa/selection-style (header mascot 78 pt, 66 pt at accessibility sizes: header snapshots at 375/440, `LAACompactChatSnapshotTests`, `LAAChatDesignTests` on the 440×956 simulator, light and dark); 2026-11-14, laa/final-chat-visual (header mascot 66 pt, 56 pt at accessibility sizes: header snapshots at 375/440, LAACompactChatSnapshotTests, LAAChatDesignUITests on the 440×956 simulator, light and dark; Mac window shots); 2026-11-13, 3ef5680d (laa/chat-ui-layout): 42 tests on the 440×956 simulator (header snapshots at 375/440,
+**Checked:** 2026-11-25, laa/v2-chat (preview send and failed-open retry, model menu, attach, reasoning opt-in and replay); 2026-11-15, laa/selection-style (header mascot 78 pt, 66 pt at accessibility sizes: header snapshots at 375/440, `LAACompactChatSnapshotTests`, `LAAChatDesignTests` on the 440×956 simulator, light and dark); 2026-11-14, laa/final-chat-visual (header mascot 66 pt, 56 pt at accessibility sizes: header snapshots at 375/440, LAACompactChatSnapshotTests, LAAChatDesignUITests on the 440×956 simulator, light and dark; Mac window shots); 2026-11-13, 3ef5680d (laa/chat-ui-layout): 42 tests on the 440×956 simulator (header snapshots at 375/440,
 normal and accessibility sizes, light and dark; Chat list, conversation, preview, composer and send-scroll UI tests).
 
 ## Hermes is waiting on you

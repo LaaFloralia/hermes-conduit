@@ -582,8 +582,13 @@ struct LAAChatModelPickers: View {
     }
 
     @MainActor private func load() async {
-        guard fixed == nil, let sessionID = activeSessionID, let operations = appState.laaChatModelOperations else {
+        guard fixed == nil, let sessionID = activeSessionID else {
             phase = .idle; capability = nil; return
+        }
+        guard let operations = appState.laaChatModelOperations else {
+            // A transport can exist before the chat runtime binds. Do not
+            // issue a runtime-only model read, or leave a permanent spinner.
+            phase = connected ? .failed : .idle; capability = nil; return
         }
         phase = .loading
         // The lineup is read beside Hermes' list, never in its way: this

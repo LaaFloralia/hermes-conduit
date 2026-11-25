@@ -52,6 +52,26 @@ final class LAAChatConnectionTests: XCTestCase {
         }
     }
 
+    func testFailedOpeningKeepsDraftEditableButCannotQueueUntilRetry() throws {
+        let dashboard = UUID()
+        let profile = "laa-monet"
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let key = ComposerDraftKey(profile: profile, sessionID: ComposerDraftKey.newConversationSessionID, dashboardID: dashboard)
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-failed")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        state.widgetLaunchPendingLinkChanged(link)
+        state.laaEmployeeChatLaunchEnded(link, outcome: .failed("fixture unavailable"))
+        XCTAssertFalse(state.laaEmployeeChatPreview.canQueue("draft", isComposing: false))
+        XCTAssertFalse(state.laaQueueEmployeeOpeningSend("draft", draftKey: key))
+        XCTAssertNil(state.laaEmployeeChatPreview.queuedSend)
+
+        state.widgetLaunchPendingLinkChanged(link)
+        XCTAssertTrue(state.laaEmployeeChatPreview.canQueue("draft", isComposing: false))
+        state.laaDismissEmployeeChatPreview()
+    }
+
     func testQueuedPreviewSubmitsOnceAfterItsOwnLiveAttach() async throws {
         let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
         let profile = "laa-monet"

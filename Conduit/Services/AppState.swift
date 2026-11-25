@@ -24934,7 +24934,7 @@ final class AppState: ObservableObject {
         let preview = laaEmployeeChatPreview
         guard let workspace = preview.workspace, laaOpeningEmployeeChat == workspace.profile,
               draftKey.dashboardID == workspace.dashboardID, draftKey.profile == workspace.profile,
-              preview.queuedSend == nil, !text.isEmpty, Self.parseSlashCommand(text) == nil else { return false }
+              preview.canQueue(text, isComposing: false) else { return false }
         let targetID = preview.presentation?.composerSessionID
         let pending = PendingComposerSend(draftText: text, replyReference: nil, dashboardID: workspace.dashboardID,
             profile: workspace.profile, sessionIDs: preview.presentation?.chatSessionIDs ?? [],
