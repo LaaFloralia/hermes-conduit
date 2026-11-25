@@ -36,23 +36,11 @@
    "class": "not-applicable",
    "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
   },
-  "ConduitTests/AppStateSessionCompressTests/testRetryFailureAfterRebindSurfacesAgainstRecoveredRuntime": {
-   "result": "Failed",
-   "fingerprint": "8e1d1242cac4",
-   "class": "not-applicable",
-   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: shared /compress timeout formatter, retry xcresult, and LAA runtime probe."
-  },
   "ConduitTests/AppStateSessionCompressTests/testSlashExecTimeoutDoesNotFallBackToCommandDispatch": {
    "result": "Failed",
    "fingerprint": "5d74d38492c1",
    "class": "not-applicable",
    "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
-  },
-  "ConduitTests/AppStateSessionCompressTests/testTimeoutNeverTriggersSessionRecovery": {
-   "result": "Failed",
-   "fingerprint": "ee003a856a75",
-   "class": "not-applicable",
-   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: shared /compress timeout formatter, retry xcresult, and LAA runtime probe."
   },
   "ConduitTests/AppStateVoiceCapabilityTests/testAppleOnDeviceModeStillHonorsItsOwnPermissionGate": {
    "result": "Failed",
@@ -207,12 +195,6 @@
   "ConduitTests/SessionRenameTests/testRefusedDeleteKeepsTheChatAndSaysWhy": {
    "result": "Failed",
    "fingerprint": "3f0c5ffebfca",
-   "class": "not-applicable",
-   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
-  },
-  "ConduitTests/StreamEventParserTests/testErrorWithoutMessageUsesDefault": {
-   "result": "Failed",
-   "fingerprint": "a2d73a2adcfb",
    "class": "not-applicable",
    "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
   },

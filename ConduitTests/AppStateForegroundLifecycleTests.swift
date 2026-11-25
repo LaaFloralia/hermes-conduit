@@ -3493,9 +3493,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             harness.appState.messages.map(\.id), ["persisted"],
             "The optimistic row is restored away exactly once by the authoritative transcript"
         )
-        XCTAssertTrue(
-            harness.appState.errorMessage?.contains("Failed to send") == true
-        )
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.errorMessage, "応答を確認できませんでした。")
+#else
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to send") == true)
+#endif
         XCTAssertEqual(harness.appState.turnState, .idle)
         box.client.disconnect()
     }
@@ -3934,7 +3936,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             "A provably undelivered prompt must not pay for an authoritative probe"
         )
         XCTAssertEqual(catalogCount, 1, "The ordinary failed-send restoration runs exactly once")
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.errorMessage, "接続できませんでした。")
+#else
         XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to send") == true)
+#endif
     }
 
     func testStaleIdleWithUnavailableProbeFallsThroughToOrdinarySend() async {
@@ -4381,7 +4387,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             harness.appState.messages.map(\.id), ["100", "101"],
             "The optimistic row is restored away exactly once by the authoritative transcript"
         )
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.errorMessage, "応答を確認できませんでした。")
+#else
         XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to send") == true)
+#endif
         box.client.disconnect()
     }
 
@@ -8196,9 +8206,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             harness.appState.messages.map(\.id), ["100", "101"],
             "The optimistic row is restored away exactly once"
         )
-        XCTAssertTrue(
-            harness.appState.errorMessage?.contains("Failed to send") == true
-        )
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.errorMessage, "応答を確認できませんでした。")
+#else
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to send") == true)
+#endif
         box.client.disconnect()
     }
 

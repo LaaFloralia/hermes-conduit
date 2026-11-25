@@ -188,7 +188,12 @@ final class StreamEventParserTests: XCTestCase {
         guard case .messageError(_, let message) = event else {
             return XCTFail("Expected messageError")
         }
+#if LAA_BUILD
+        // English prose cannot classify a failure; only machine fields can.
+        XCTAssertEqual(message, "処理を完了できませんでした。実行済みの操作がないか確認してください。")
+#else
         XCTAssertEqual(message, "Rate limited")
+#endif
     }
 
     func testErrorWithoutMessageUsesDefault() {
@@ -198,7 +203,11 @@ final class StreamEventParserTests: XCTestCase {
         guard case .messageError(_, let message) = event else {
             return XCTFail("Expected messageError")
         }
+#if LAA_BUILD
+        XCTAssertEqual(message, "処理を完了できませんでした。実行済みの操作がないか確認してください。")
+#else
         XCTAssertEqual(message, "Hermes reported an error.")
+#endif
     }
 
     // MARK: - session.busy

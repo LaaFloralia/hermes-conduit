@@ -277,10 +277,14 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.dispatchCount, 0)
         let lastRow = try XCTUnwrap(harness.appState.messages.last)
         XCTAssertEqual(lastRow.role, .system)
+#if LAA_BUILD
+        XCTAssertEqual(lastRow.content, "応答を確認できませんでした。")
+#else
         XCTAssertTrue(
             lastRow.content.hasPrefix("⚠️ Compression failed:"),
             "Expected a visible compression failure row, got: \(lastRow.content)"
         )
+#endif
     }
 
     func testSessionBusyRejectionIsNotTreatedAsMissingMethod() async throws {
@@ -303,7 +307,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         _ = await harness.appState.submitComposer(text: "/compress")
         XCTAssertEqual(recorder.slashExecCount, 0, "A busy rejection must not be retried through the legacy path")
         XCTAssertEqual(recorder.dispatchCount, 0)
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.messages.last?.content, "現在の状態では受け付けられません。")
+#else
         XCTAssertTrue(harness.appState.messages.last?.content.hasPrefix("⚠️ Compression failed:") == true)
+#endif
     }
 
     // MARK: - Response semantics
@@ -549,7 +557,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         _ = await first.value
 
         XCTAssertEqual(recorder.compressCalls.count, 1, "A second /compress while one is pending must not launch another compression")
+#if LAA_BUILD
+        XCTAssertNil(harness.appState.errorMessage, "The existing spinner is the only pending-state indication")
+#else
         XCTAssertNotNil(harness.appState.errorMessage)
+#endif
         XCTAssertTrue(harness.appState.compressingSessionIDs.isEmpty)
     }
 
@@ -885,7 +897,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.resumeCalls.count, 1)
         // The ORIGINAL compression error is the meaningful one to surface.
         let lastRow = try XCTUnwrap(harness.appState.messages.last)
+#if LAA_BUILD
+        XCTAssertEqual(lastRow.content, "接続できませんでした。")
+#else
         XCTAssertTrue(lastRow.content.contains("session not found"), "Expected the original error, got: \(lastRow.content)")
+#endif
     }
 
     func testTimeoutNeverTriggersSessionRecovery() async throws {
@@ -914,7 +930,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         // signal, and never retried.
         XCTAssertTrue(recorder.resumeCalls.isEmpty)
         XCTAssertEqual(recorder.compressCalls.count, 1)
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.messages.last?.content, "応答を確認できませんでした。")
+#else
         XCTAssertTrue(harness.appState.messages.last?.content.contains("Hermes didn't answer in time") == true)
+#endif
     }
 
     // MARK: - Compaction lifecycle (`status.update`)
@@ -1200,7 +1220,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         _ = await first.value
 
         XCTAssertEqual(recorder.compressCalls.count, 1, "Equivalent runtime ids must coalesce into one compression")
+#if LAA_BUILD
+        XCTAssertNil(harness.appState.errorMessage, "Equivalent runtimes share the existing spinner")
+#else
         XCTAssertNotNil(harness.appState.errorMessage)
+#endif
     }
 
     func testDoubleSessionNotFoundResumesOnlyOnce() async throws {
@@ -1229,7 +1253,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         _ = await harness.appState.submitComposer(text: "/compress")
         XCTAssertEqual(recorder.compressCalls.count, 2, "Initial attempt plus exactly one recovered retry")
         XCTAssertEqual(recorder.resumeCalls.count, 1, "A second 4001 is a real error, never a second resume")
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.messages.last?.content, "接続できませんでした。")
+#else
         XCTAssertTrue(harness.appState.messages.last?.content.hasPrefix("⚠️ Compression failed:") == true)
+#endif
     }
 
     func testRetryFailureAfterRebindSurfacesAgainstRecoveredRuntime() async throws {
@@ -1262,10 +1290,14 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.compressCalls.map { $0.sessionID }, ["composer-origin", "runtime-new"])
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-new", "The rebind survives a failed retry")
         let lastRow = try XCTUnwrap(harness.appState.messages.last)
+#if LAA_BUILD
+        XCTAssertEqual(lastRow.content, "応答を確認できませんでした。", "The retry's own failure must surface")
+#else
         XCTAssertTrue(
             lastRow.content.contains("Hermes didn't answer in time"),
             "The retry's own failure is the meaningful one to surface, got: \(lastRow.content)"
         )
+#endif
     }
 
     func testAliasedCompactedEdgeClearsPendingServerState() async throws {
@@ -1423,7 +1455,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.compressCalls.count, 1)
         XCTAssertEqual(recorder.resumeCalls.count, 1)
         XCTAssertEqual(harness.appState.activeSessionId, "composer-origin", "No rebind from a blank runtime id")
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.messages.last?.content, "接続できませんでした。")
+#else
         XCTAssertTrue(harness.appState.messages.last?.content.contains("session not found") == true)
+#endif
     }
 
     func testSessionNotFoundForeignIdentityPreventsRecovery() async throws {
@@ -1456,7 +1492,11 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(recorder.compressCalls.count, 1)
         XCTAssertEqual(recorder.resumeCalls.count, 1)
         XCTAssertEqual(harness.appState.activeSessionId, "composer-origin", "A rejected admission must not rebind the active runtime")
+#if LAA_BUILD
+        XCTAssertEqual(harness.appState.messages.last?.content, "接続できませんでした。")
+#else
         XCTAssertTrue(harness.appState.messages.last?.content.contains("session not found") == true)
+#endif
     }
 
     func testValidRecoveryRecordsAuthoritativeRuntimeMapping() async throws {
