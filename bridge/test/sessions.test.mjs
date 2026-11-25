@@ -344,31 +344,19 @@ test('a send while the agent is busy is held, not refused, and drains when the t
   assert.ok(Number.isFinite(sent.payload.queuedMs));
 });
 
-test('a waiting decision is refused, and an idle session takes the message at once', async (t) => {
+test('an idle follow-up keeps the legacy response shape and explicitly reports queued: false', async (t) => {
   const ctx = await boot(t, { sessions: { outboxPollMs: 0 } });
   const created = await createSession(ctx);
   const id = created.body.data.id;
   const requestId = `laa-bridge-${createHash('sha256').update('req-1').digest('hex').slice(0, 40)}`;
 
-  ctx.adapter.setPending(requestId, [{ id: 'p1', kind: 'question', name: 'AskUserQuestion' }]);
-  const waiting = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
-    method: 'POST', token: ctx.token, key: 'k-m2', body: { message: 'next' },
-  });
-  assert.equal(waiting.status, 409);
-  assert.equal(waiting.body.error.code, 'pending_decision_requires_reply');
-  // The refusal still records the waiting question for the client.
-  const detail = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
-  assert.equal(detail.body.data.phase, 'awaiting_decision');
-  assert.deepEqual(detail.body.data.pending.kinds, ['question']);
-  assert.equal(detail.body.data.queue.count, 0);
-
-  ctx.adapter.setPending(requestId, []);
   ctx.adapter.setIdle(requestId, { text: 'ok' });
   const sent = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
     method: 'POST', token: ctx.token, key: 'k-m3', body: { message: 'and again' },
   });
   assert.equal(sent.status, 202);
   assert.equal(sent.body.data.phase, 'running');
+  assert.equal(sent.body.data.queued, false);
   assert.equal(sent.body.data.queue.count, 0);
   assert.equal(ctx.adapter.agent(requestId).messages.length, 1);
 
@@ -439,10 +427,13 @@ test('stop confirms, records an event, and refuses further sends', async (t) => 
   assert.equal(stopped.body.data.daemonStatus, 'idle');
 
   const sendAfterStop = await ctx.bridge.request(`/v1/sessions/${id}/messages`, {
-    method: 'POST', token: ctx.token, key: 'k-after-stop', body: { message: 'hello' },
+    method: 'POST', token: ctx.token, key: 'k-after-stop', body: { message: 'hello', delivery: 'queue' },
   });
   assert.equal(sendAfterStop.status, 409);
   assert.equal(sendAfterStop.body.error.code, 'session_stopped');
+  assert.equal((await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token })).body.data.queue.count, 0);
+  assert.equal(ctx.adapter.calls.filter(({ op }) => op === 'create').length, 1);
+  assert.equal(ctx.adapter.agent(requestId).messages.length, 0);
 
   const events = await ctx.bridge.request(`/v1/sessions/${id}/events?afterSeq=0`, { token: ctx.token });
   assert.ok(events.body.data.items.some((event) => event.type === 'session.stopped'));
@@ -462,6 +453,13 @@ test('an unconfirmed stop is surfaced as such, not as stopped', async (t) => {
   assert.equal(stopped.body.error.code, 'stop_unconfirmed');
   const detail = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
   assert.equal(detail.body.data.phase, 'stop_unconfirmed');
+  for (const [route, code] of [['messages', 'session_stopped'], ['resume', 'stop_unconfirmed']]) {
+    const refusal = await ctx.bridge.request(`/v1/sessions/${id}/${route}`, {
+      method: 'POST', token: ctx.token, key: `unconfirmed-${route}`, body: { message: 'continue' },
+    });
+    assert.equal(refusal.status, 409);
+    assert.equal(refusal.body.error.code, code);
+  }
 });
 
 test('resume creates a linked successor with the same profile and never changes the model', async (t) => {
@@ -500,6 +498,9 @@ test('resume creates a linked successor with the same profile and never changes 
 
   const original = await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token });
   assert.equal(original.body.data.resumedTo, resumed.body.data.id);
+  assert.equal(original.body.data.phase, 'stopped');
+  assert.equal(ctx.adapter.calls.filter(({ op }) => op === 'create').length, 2);
+  assert.equal(ctx.adapter.calls.filter(({ op }) => op === 'send').length, 0);
   const events = await ctx.bridge.request(`/v1/sessions/${id}/events?afterSeq=0`, { token: ctx.token });
   assert.ok(events.body.data.items.some((event) => event.type === 'session.resumed'));
 
