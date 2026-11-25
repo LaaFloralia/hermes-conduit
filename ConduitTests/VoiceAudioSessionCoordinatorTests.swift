@@ -379,6 +379,17 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
 @MainActor
 extension VoiceAudioSessionCoordinatorTests {
     func testWakeListeningMixesWithOtherAudio() throws {
+#if LAA_BUILD
+        // HO-27: a mixable category still changes the route when it starts
+        // the mic. Reject the idle listener before touching the audio session.
+        XCTAssertTrue(session.isOtherAudioPlaying)
+        XCTAssertThrowsError(try coordinator.acquire(.wakeListening)) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertEqual(session.activationCount, 0)
+        session.isOtherAudioPlaying = false
+#endif
         _ = try coordinator.acquire(.wakeListening)
 
         XCTAssertEqual(coordinator.appliedPolicy, .wakeListening)
@@ -394,6 +405,9 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testAnyOtherOwnerOutranksWakeListening() throws {
+#if LAA_BUILD
+        session.isOtherAudioPlaying = false
+#endif
         _ = try coordinator.acquire(.wakeListening)
         let playback = try coordinator.acquire(.standalonePlayback)
         XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
@@ -435,6 +449,9 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testWakeListeningYieldsBeforeAnotherOwnerAcquires() throws {
+#if LAA_BUILD
+        session.isOtherAudioPlaying = false
+#endif
         var wake: VoiceAudioLease? = try coordinator.acquire(.wakeListening)
         var yields = 0
         coordinator.onWakeListenerMustYield = { [weak self] in
