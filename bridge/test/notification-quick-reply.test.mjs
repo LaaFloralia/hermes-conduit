@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { encodeNotificationSessionId, createOwnerNotifier } from '../src/notify/index.mjs';
@@ -55,6 +55,34 @@ test('preferences: defaults, partial updates, 0600, validation, quiet and muted 
   preferences.update({ kinds: { error: 'off' } });
   await notify.flush(); assert.equal(events.length, 3);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'notifications.json'))).pending, {});
+});
+
+test('schema-less notification preferences retain all kinds and persist the schema on the next update', (t) => {
+  const file = join(dirFor(t), 'notification-preferences.json');
+  const legacy = { kinds: { ...DEFAULT_KINDS, decision: 'quiet', finished: 'off' }, updatedAt: new Date(1000).toISOString() };
+  const original = JSON.stringify(legacy);
+  writeFileSync(file, original);
+  const preferences = createNotificationPreferences({ file, now: () => 2000 });
+  assert.deepEqual(preferences.get(), legacy);
+  assert.equal(readFileSync(file, 'utf8'), original, 'a read must not rewrite the stored preferences');
+  const updated = preferences.update({ kinds: { error: 'quiet' } });
+  assert.deepEqual(updated, { kinds: { ...legacy.kinds, error: 'quiet' }, updatedAt: new Date(2000).toISOString() });
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { schema: 1, ...updated });
+});
+
+test('preferences migration rejects unknown schemas and malformed schema-less documents without writing', (t) => {
+  const file = join(dirFor(t), 'notification-preferences.json');
+  const preferences = createNotificationPreferences({ file });
+  const valid = { kinds: { decision: 'quiet' }, updatedAt: null };
+  for (const invalid of [{ ...valid, schema: 2 }, { ...valid, schema: null }, { ...valid, other: true },
+    { ...valid, kinds: { decision: 'off' } }, { ...valid, kinds: { task: 'unknown' } },
+    { ...valid, kinds: { unknown: 'alert' } }, { ...valid, kinds: [] }, { ...valid, updatedAt: 'invalid' }, {}]) {
+    const original = JSON.stringify(invalid);
+    writeFileSync(file, original);
+    assert.throws(() => preferences.get(), code('state_corrupt'));
+    assert.throws(() => preferences.update({ kinds: { task: 'quiet' } }), code('state_corrupt'));
+    assert.equal(readFileSync(file, 'utf8'), original);
+  }
 });
 
 test('preferences API: scope, partial update, invalid and idempotent replay', async (t) => {

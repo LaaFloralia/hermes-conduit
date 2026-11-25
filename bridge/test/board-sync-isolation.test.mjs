@@ -10,6 +10,7 @@ import { BridgeError } from '../src/errors.mjs';
 import { createBridge, errorForLog } from '../src/http.mjs';
 import { laneClient } from '../src/lane/client.mjs';
 import { createOwnerNotifier } from '../src/notify/index.mjs';
+import { DEFAULT_KINDS } from '../src/notify/preferences.mjs';
 import { issuePairing } from '../src/pairing.mjs';
 import { StateFileError } from '../src/routes/state-file.mjs';
 import { createStore } from '../src/store.mjs';
@@ -153,6 +154,46 @@ test('a durable outbox handoff owns delivery retry; an unqueued refusal is retri
   assert.deepEqual([sends, attempts], [1, 2]);
   await notify.flush();
   assert.deepEqual([sends, attempts], [2, 2]);
+});
+
+test('schema-less notification preferences allow a decision to reach the durable outbox', async (t) => {
+  const logs = [], events = [], errors = [];
+  const bridge = await startBridge({ now: () => epoch, log: (entry) => logs.push(entry), decisions: { notify: async (event) => {
+    try { return await notify(event); }
+    catch (e) { errors.push({ name: e.name, code: e.code }); throw e; }
+  } } });
+  t.after(bridge.close);
+  const token = await bridge.token();
+  const preferenceFile = join(bridge.stateDir, 'notification-preferences.json');
+  const original = JSON.stringify({ kinds: { ...DEFAULT_KINDS, decision: 'quiet' }, updatedAt: new Date(epoch).toISOString() });
+  writeFileSync(preferenceFile, original);
+  const file = join(bridge.stateDir, 'owner-notifications.json');
+  writeFileSync(file, JSON.stringify({ schema: 1, delivered: {}, pending: {} }));
+  const notify = createOwnerNotifier({ file, now: () => epoch, deliver: async (event) => {
+    events.push(event);
+    return { delivered: events.length > 1 };
+  } });
+  const [record] = fixtureRows;
+  writeRows(bridge.stateDir, [record]);
+  const [sessions, decisions] = await Promise.all(routes.map((path) => bridge.request(path, { token })));
+  assert.equal(sessions.status, 200);
+  assert.equal(decisions.status, 200);
+  assert.equal(decisions.body.data.items.length, 1);
+  assert.deepEqual(errors, []);
+  assert.equal(events.length, 1);
+  assert.equal(logs.filter((e) => e.event === 'decision_notification_retry').length, 0);
+  assert.equal(createDecisionStore({ dir: bridge.stateDir, now: () => epoch }).notificationDone(record.id, 'new'), true);
+  const pending = () => Object.values(JSON.parse(readFileSync(file, 'utf8')).pending);
+  assert.equal(pending().length, 1);
+  assert.equal(pending()[0].kind, 'decision.new');
+  assert.equal(JSON.parse(Buffer.from(events[0].session_id.split('#')[1], 'base64url')).lv, 'p');
+  await notify.flush();
+  assert.equal(events.length, 2);
+  assert.equal(events[1].event_id, events[0].event_id);
+  assert.equal(pending().length, 0);
+  assert.equal((await bridge.request('/v1/decisions', { token })).status, 200);
+  assert.equal(events.length, 2);
+  assert.equal(readFileSync(preferenceFile, 'utf8'), original);
 });
 
 test('a decision maintenance error cannot break either HTTP list', async (t) => {
