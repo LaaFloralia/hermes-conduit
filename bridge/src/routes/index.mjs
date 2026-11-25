@@ -88,7 +88,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
   const decisionsOptions = options.decisions ?? {};
   const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
   const decisions = decisionsOptions.service ?? createDecisionService({
-    refs: (kind, key) => refs.refFor(kind, key), observeRefs: () => refs.observeSource('decision'),
+    refs: (kind, key) => refs.refFor(kind, key), observeRefs: () => refs.observeSource('decision'), log: options.log,
     ...decisionsOptions, store: decisionStore, sessionStore,
     sessions: { syncDaemon: () => sessionService.syncDaemon(), decision: (id) => sessionService.decision(id) }, daemon, now,
   });

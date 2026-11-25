@@ -1,5 +1,8 @@
 import { daemonSessionID } from '../sessions/daemon.mjs';
 import { notifyOwner } from '../notify/index.mjs';
+import { BridgeError } from '../errors.mjs';
+
+const SYNC_RETRY_MS = 5_000, MAX_NOTIFICATION_RETRY_MS = 5 * 60_000;
 
 // A busy conversation gets the answer when its turn ends. The wait is bounded:
 // checked every 15 s for ten minutes, then every minute, for at most a day or
@@ -8,7 +11,7 @@ export const WAIT_LIMITS = Object.freeze({ fastMs: 15_000, fastForMs: 600_000, s
 export const isWaiting = (r) => r.status === 'answered' && r.delivery?.state === 'pending' && r.delivery.waitingSince !== undefined;
 
 export function createDecisionService({ store, sessionStore = null, sessions = null, daemon = null, notify = notifyOwner,
-  refs = null, observeRefs = null, now = () => Date.now(), limits = WAIT_LIMITS }) {
+  refs = null, observeRefs = null, log = null, now = () => Date.now(), limits = WAIT_LIMITS }) {
   const sessionRef = (id) => refs?.('session', id) ?? null;
   function view(record) {
     const { requestId, ...visible } = record;
@@ -16,51 +19,82 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
   }
   const hasOpen = (session) => store.all().some((r) => r.status === 'open' &&
     (r.source.sessionId === session.id || (r.source.paseoAgentId && r.source.paseoAgentId === session.delegate?.sessionId)));
-  let syncing;
+  const notificationRetry = new Map();
+  let syncing, syncRetryAt = -Infinity;
+  const report = (event) => { try { log?.({ level: 'error', event }); } catch {} };
   async function sync() {
     if (syncing) return syncing;
+    if (now() < syncRetryAt) return;
     syncing = (async () => {
       store.prune();
       // Number new decisions before announcing them, so the notice carries J….
       await observeRefs?.();
+      const due = new Set();
       for (let r of store.all()) {
         // An interrupted Bridge must not leave an accepted answer pending forever.
         // A waiting answer is not interrupted: `deliverWaiting` owns it.
         if (r.delivery?.state === 'pending' && !r.delivery.waiting && now() - Date.parse(r.updatedAt) > 60_000) r = store.settle(r.id, r.delivery.messageId, 'failed', 'delivery_unconfirmed');
         const key = r.status === 'open' ? 'new' : r.delivery?.state === 'failed' ? `failed:${r.delivery.attempts}` : null;
         if (!notify || !key || store.notificationDone(r.id, key)) continue;
-        const failed = key.startsWith('failed:');
-        const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}${refs?.('decision', r.id) ? ` ${refs('decision', r.id)}` : ''}: ${r.title}`,
-          body: failed ? '回答を保存しました。判断ボードから再送してください。' : r.options.find((o) => o.recommended) ? `推奨: ${r.options.find((o) => o.recommended).label}` : r.summary.slice(0, 160),
-          meta: failed ? { id: r.id } : { id: r.id, o: r.options.map((o) => o.label), ...(r.deadline ? { d: Math.floor(Date.parse(r.deadline) / 1000) } : {}) },
-          deepLink: `laa://work/decisions/${r.id}`, dedupeKey: `${r.id}:${key}` });
-        // The existing notifier owns queued retries and durable deduplication.
-        if (result?.reason !== 'invalid_notification') store.markNotification(r.id, key);
+        const dedupeKey = `${r.id}:${key}`, previous = notificationRetry.get(dedupeKey);
+        due.add(dedupeKey);
+        if (previous && now() < previous.at) continue;
+        try {
+          const failed = key.startsWith('failed:');
+          const ref = refs?.('decision', r.id), recommended = r.options.find((o) => o.recommended);
+          const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}${ref ? ` ${ref}` : ''}: ${r.title}`,
+            body: failed ? '回答を保存しました。判断ボードから再送してください。' : recommended ? `推奨: ${recommended.label}` : r.summary.slice(0, 160),
+            meta: failed ? { id: r.id } : { id: r.id, o: r.options.map((o) => o.label), ...(r.deadline ? { d: Math.floor(Date.parse(r.deadline) / 1000) } : {}) },
+            deepLink: `laa://work/decisions/${r.id}`, dedupeKey });
+          // The notifier owns delivery retries only once its outbox accepted the event.
+          if (result?.reason === 'invalid_notification'
+            || (result?.delivered === false && !result.queued && !['duplicate', 'muted'].includes(result.reason))) throw new Error('notification_not_accepted');
+          store.markNotification(r.id, key);
+          notificationRetry.delete(dedupeKey);
+        } catch {
+          const delay = Math.min(previous ? previous.delay * 2 : SYNC_RETRY_MS, MAX_NOTIFICATION_RETRY_MS);
+          notificationRetry.set(dedupeKey, { delay, at: now() + delay });
+          report('decision_notification_retry');
+        }
       }
-    })().finally(() => { syncing = null; });
+      for (const key of notificationRetry.keys()) if (!due.has(key)) notificationRetry.delete(key);
+    })().catch(() => {
+      // Maintenance is incidental to either GET; the board still reads its store normally.
+      syncRetryAt = now() + SYNC_RETRY_MS;
+      report('decision_sync_retry');
+    }).finally(() => { syncing = null; });
     return syncing;
   }
   // A decision whose asker is gone (archived or deleted conversation, a past
   // deadline) leaves the board instead of asking the owner to resend into
   // nothing (owner, 2026-11-14). Paseo being unreachable is not "gone".
   const GONE = ['agent_archived', 'not_found'];
-  async function askerGone(agent) {
+  async function askerGone(source, confirmedDeleted) {
+    const agent = source.paseoAgentId;
     if (!agent || !daemon) return null;
     try {
       const status = await daemon.status(agent);
-      return status.archivedAt ? 'agent_archived' : null;
+      return status?.archivedAt ? 'agent_archived' : null;
     } catch (e) {
-      const code = failure(e);
-      return GONE.includes(code) ? code : null;
+      // The router can transiently miss an agent. Require the session sync's
+      // independently confirmed deletion of this exact session and delegate.
+      return e instanceof BridgeError && e.status === 404 && e.code === 'not_found' && confirmedDeleted(source) ? 'not_found' : null;
     }
   }
   async function reconcile() {
+    let deleted;
+    const confirmedDeleted = (source) => {
+      try {
+        deleted ??= new Map((sessionStore?.all() ?? []).filter((r) => r.daemonDeletedAt).map((r) => [r.id, r.delegate?.sessionId]));
+        return deleted.get(source.sessionId) === source.paseoAgentId;
+      } catch { return false; }
+    };
     for (const r of store.all()) {
       if (r.status === 'open') {
         if (r.deadline && Date.parse(r.deadline) < now()) { store.withdraw(r.id, 'deadline_passed'); continue; }
-        if (await askerGone(r.source.paseoAgentId)) store.withdraw(r.id, 'source_gone');
+        if (await askerGone(r.source, confirmedDeleted)) store.withdraw(r.id, 'source_gone');
       } else if (r.status === 'answered' && r.delivery?.state === 'failed') {
-        const reason = GONE.includes(r.delivery.error) ? r.delivery.error : await askerGone(r.source.paseoAgentId);
+        const reason = GONE.includes(r.delivery.error) ? r.delivery.error : await askerGone(r.source, confirmedDeleted);
         if (reason) store.retire(r.id, reason);
       }
     }
@@ -86,7 +120,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     return { items, fetchedAt: new Date(now()).toISOString() };
   }
   const KNOWN = ['agent_archived', 'pending_decision_requires_reply', 'session_busy', 'paseo_unavailable', 'delivery_unconfirmed', 'not_found'];
-  const failure = (e) => (KNOWN.includes(e.code ?? e.message) ? (e.code ?? e.message) : 'paseo_unavailable');
+  const failure = (e) => (KNOWN.includes(e?.code ?? e?.message) ? (e.code ?? e.message) : 'paseo_unavailable');
   async function deliver(record) {
     if (record.delivery.state !== 'pending' || record.delivery.waiting) return record;
     let error = null;

@@ -216,6 +216,114 @@ test('owner scopes gate interruption, images and decisions, and a replay cannot 
   assert.equal((await bridge.request(`/v1/sessions/${id}/images/${'a'.repeat(64)}`)).status, 401);
 });
 
+test('a decision holds the app follow-up durably and a separate reply lets it deliver once', async (t) => {
+  const f = fixture();
+  const bridge = await startBridge({ sessions: { daemon: f.daemon, notify: async () => {}, outboxPollMs: 20 } });
+  t.after(bridge.close);
+  const token = await bridge.token();
+  const path = `/v1/sessions/${daemonSessionID('parent')}`;
+  await bridge.request('/v1/sessions', { token });
+  const agent = f.rows[0];
+  agent.activeTurn = true;
+  agent.pendingPermissions = [{ id: 'permission-1', kind: 'tool', name: 'Read', input: { path: 'fixture.txt' } }];
+  const request = { token, method: 'POST', key: 'held-once', body: { message: 'Next instruction', delivery: 'queue',
+    images: [{ data: 'YWJj', mimeType: 'image/png' }] } };
+  const submit = () => bridge.request(`${path}/messages`, request);
+  const queued = await submit();
+  assert.equal(queued.status, 202);
+  assert.equal(queued.body.data.phase, 'awaiting_decision');
+  assert.equal(queued.body.data.queued, true);
+  assert.equal(queued.body.data.queue.count, 1);
+  const messageId = queued.body.data.queue.items[0].id;
+  assert.equal((await submit()).headers.get('idempotency-replayed'), 'true');
+
+  await bridge.restart();
+  for (let i = 0; i < 2; i++) {
+    const detail = await bridge.request(path, { token });
+    assert.equal(detail.body.data.queue.count, 1);
+    assert.equal(detail.body.data.queue.items[0].id, messageId);
+    assert.deepEqual(detail.body.data.pending.kinds, ['tool']);
+  }
+  const sideEffects = () => f.calls.filter(([op]) => ['send', 'reply', 'cancel'].includes(op));
+  assert.deepEqual(sideEffects(), []);
+
+  const { body: { data: ticket } } = await bridge.request(`${path}/decision`, { token });
+  const reply = await bridge.request(`${path}/reply`, { token, method: 'POST', key: 'explicit-reply', body: {
+    requestId: 'permission-1', requestHash: ticket.requestHash, expiresAt: ticket.expiresAt, decision: 'allow',
+  } });
+  assert.equal(reply.status, 200);
+  assert.deepEqual(sideEffects().map(([op]) => op), ['reply']);
+  assert.equal(reply.body.data.queue.count, 1, 'a reply does not bypass the still-active turn');
+  agent.activeTurn = false;
+  agent.status = 'idle';
+  let after;
+  // The restarted process discovers the queue on its timer, not from cached HTTP replay.
+  for (let i = 0; i < 100; i++) {
+    after = await bridge.request(path, { token });
+    if (after.body.data.queue.count === 0) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(after.body.data.queue.count, 0);
+  assert.equal((await submit()).headers.get('idempotency-replayed'), 'true');
+  const actions = sideEffects();
+  assert.deepEqual(actions.map(([op]) => op), ['reply', 'send']);
+  assert.equal(actions[1][2], 'Next instruction');
+  assert.equal(actions[1][3].messageId, messageId);
+  assert.deepEqual(actions[1][3].images, request.body.images);
+  const events = (await bridge.request(`${path}/events?afterSeq=0`, { token })).body.data.items;
+  assert.equal(events.filter((event) => event.type === 'session.message.queued').length, 1);
+  assert.equal(events.filter((event) => event.type === 'session.message.sent').length, 1);
+});
+
+for (const initialStatus of ['idle', 'running']) {
+  test(`a decision arriving after ${initialStatus} preflight holds an old client's send-now without sending or cancelling`, async (t) => {
+    const f = fixture();
+    const bridge = await startBridge({ sessions: { daemon: f.daemon, notify: async () => {}, outboxPollMs: 0 } });
+    t.after(bridge.close);
+    const token = await bridge.token();
+    await bridge.request('/v1/sessions', { token });
+    f.rows[0].status = initialStatus;
+    const fetchAgent = f.client.fetchAgent;
+    f.client.fetchAgent = async (input) => {
+      const fetched = await fetchAgent(input);
+      if (input.agentId !== 'parent') return fetched;
+      f.client.fetchAgent = fetchAgent;
+      const before = { ...fetched.agent };
+      f.rows[0].pendingPermissions = [{ id: 'p1', kind: 'tool', name: 'Read' }];
+      return { agent: before };
+    };
+    const path = `/v1/sessions/${daemonSessionID('parent')}/messages`;
+    const sent = await bridge.request(path, { method: 'POST', token, key: 'race', body: { message: 'next', delivery: 'now' } });
+    assert.equal(sent.status, 202);
+    assert.equal(sent.body.data.queued, true);
+    assert.equal(sent.body.data.phase, 'awaiting_decision');
+    assert.equal(sent.body.data.queue.count, 1);
+    assert.deepEqual(f.calls.filter(([op]) => ['send', 'reply', 'cancel'].includes(op)), []);
+    assert.equal(f.rows[0].pendingPermissions.length, 1);
+  });
+}
+
+test('a freshly archived or missing daemon session refuses new follow-ups without enqueuing or sending', async (t) => {
+  const f = fixture();
+  const bridge = await startBridge({ sessions: { daemon: f.daemon, notify: async () => {}, outboxPollMs: 0 } });
+  t.after(bridge.close);
+  const token = await bridge.token();
+  await bridge.request('/v1/sessions', { token });
+  const path = `/v1/sessions/${daemonSessionID('parent')}`;
+  const send = (key) => bridge.request(`${path}/messages`, { method: 'POST', token, key, body: { message: 'next', delivery: 'queue' } });
+  // No directory refresh: the POST must also honor authoritative current archive status.
+  Object.assign(f.rows[0], { archivedAt: '2026-11-03T00:00:00Z', status: 'idle' });
+  const archived = await send('archive-refusal');
+  assert.equal(archived.status, 409);
+  assert.equal(archived.body.error.code, 'agent_archived');
+  f.rows.shift();
+  const deleted = await send('delete-refusal');
+  assert.equal(deleted.status, 404);
+  assert.equal(deleted.body.error.code, 'not_found');
+  assert.equal((await bridge.request(path, { token })).body.data.queue.count, 0);
+  assert.deepEqual(f.calls.filter(([op]) => ['send', 'reply', 'cancel'].includes(op)), []);
+});
+
 function archiveFixture() {
   const calls = [], agents = [
     { id: 'root', title: '親', provider: 'dsh', status: 'idle', workspaceId: 'wks_a', labels: {}, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' },

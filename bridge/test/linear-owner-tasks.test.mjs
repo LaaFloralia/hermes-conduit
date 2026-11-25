@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { TaskSourceError } from '../src/tasks/errors.mjs';
 import { createLinearOwnerTaskSource } from '../src/tasks/linear-owner.mjs';
 import { linearOwnerTaskRoutes } from '../src/routes/linear-owner-tasks.mjs';
@@ -1094,7 +1095,7 @@ test('a paired staff create keeps Linear assigned to the owner and exposes its s
   assert.equal(detail.body.data.run.state, 'running'); assert.deepEqual(detail.body.data.run.assignee, { kind: 'staff', staff: 'cto', name: 'Ada' }); assert.equal(detail.body.data.run.sessionRef, 'S1');
   const list = await bridge.request('/v1/linear-owner-tasks', { token }); assert.deepEqual(list.body.data.items[0].run, detail.body.data.run);
   assert.equal(fake.calls.find((c) => c.name === 'BridgeOwnerTaskCreate').variables.input.assigneeId, OWNER);
-  assert.equal(sessions.calls[0].cwd, '/Users/laa'); assert.equal(sessions.calls[0].mode, 'bypass'); assert.match(sessions.calls[0].task.prompt, /Ada（CTO）/);
+  assert.equal(sessions.calls[0].cwd, homedir()); assert.equal(sessions.calls[0].mode, 'bypass'); assert.match(sessions.calls[0].task.prompt, /Ada（CTO）/);
   const replay = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'staff-create', body }); assert.equal(replay.status, 201); assert.equal(sessions.calls.length, 1);
   const changed = await bridge.request('/v1/linear-owner-tasks', { method: 'POST', token, key: 'other-assignment', body: { ...body, assignee: { kind: 'staff', staff: 'monet' } } });
   assert.equal(changed.status, 409); assert.equal(changed.body.error.code, 'task_assignment_conflict');

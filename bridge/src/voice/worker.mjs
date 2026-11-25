@@ -7,10 +7,11 @@
 //
 // Transport is the child's stdin/stdout, one JSON object per line:
 //
-//   Bridge -> worker   {id, kind: 'polish', text, language}
-//                      {id, kind: 'summarize', text, language}
+//   Bridge -> worker   {id, kind: 'polish'|'summarize', text, language, model?}
 //                      {id, kind: 'transcribe', pcm16, sampleRate, language}
-//   worker -> Bridge   {id, ok: true, text, nothing?}
+//                      {id, kind: 'candidates', reading, candidates}
+//   worker -> Bridge   {id, ok: true, text, nothing?, model?}
+//                      {id, ok: true, items, model} for candidates only
 //                      {id, ok: false, error: 'timeout'|'empty'|'unavailable'|'internal'}
 //
 // A worker that predates `kind` treats a missing field as polish, so an older
@@ -49,6 +50,23 @@ const DEFAULT_KILL_GRACE_MS = 2_000;
 // A reply line is a few hundred bytes. 256 KiB is far beyond any answer and
 // small enough that a malformed child cannot grow the Bridge's heap.
 const MAX_LINE_BYTES = 256 * 1024;
+export const CANDIDATES_TIMEOUT_MS = 15_000;
+
+// Candidates use Swift String.count (graphemes), unlike the UTF-16 text limits.
+const candidateSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+export function candidateStringWithinLimit(text, maxChars) {
+  if (typeof text !== 'string') return false;
+  let count = 0;
+  for (const _ of candidateSegmenter.segment(text)) {
+    if (++count > maxChars) return false;
+  }
+  return true;
+}
+
+export function validCandidateItems(items) {
+  return Array.isArray(items) && items.length <= 5 && items.every((item) => candidateStringWithinLimit(item, 40));
+}
 
 // Newline framing with a byte ceiling, per line.
 //
@@ -95,15 +113,15 @@ export class VoiceWorkerError extends Error {
   }
 }
 
-// The one line the worker reads. Polish keeps its original shape plus the
-// explicit kind; transcribe carries the base64 PCM the client sent, never
-// decoded or re-encoded here, so the worker sees exactly the bytes the app
-// recorded.
+// Leave PCM untouched and let JSON.stringify omit an unspecified model.
 function wireMessage(id, entry) {
   if (entry.kind === 'transcribe') {
     return { id, kind: 'transcribe', pcm16: entry.pcm16, sampleRate: entry.sampleRate, language: entry.language };
   }
-  return { id, kind: entry.kind === 'summarize' ? 'summarize' : 'polish', text: entry.text, language: entry.language };
+  if (entry.kind === 'candidates') {
+    return { id, kind: 'candidates', reading: entry.reading, candidates: entry.candidates };
+  }
+  return { id, kind: entry.kind === 'summarize' ? 'summarize' : 'polish', text: entry.text, language: entry.language, model: entry.model };
 }
 
 export function createVoiceWorker({
@@ -213,25 +231,26 @@ export function createVoiceWorker({
     inflight = null;
     settle(entry);
 
-    // An explicit no-op from the polisher (nothing worth inserting). It must
-    // not carry text: the Bridge returns an empty answer, and a later client
-    // can choose not to insert rather than treating it as a normal reply.
-    if (message.ok === true && message.nothing === true) {
-      if (message.text !== undefined && (typeof message.text !== 'string' || message.text !== '')) {
-        entry.reject(new VoiceWorkerError('bad_reply'));
-        terminate('bad_reply');
+    if (message.ok === true) {
+      const metadata = typeof message.model === 'string' ? { model: message.model } : {};
+      let result;
+      if (entry.kind === 'candidates') {
+        if (message.text === undefined && message.nothing === undefined && validCandidateItems(message.items)) {
+          result = { items: message.items, ...metadata };
+        }
+      } else if (message.items === undefined) {
+        // No-op polish must not carry text; an empty transcript is valid silence.
+        if (message.nothing === true) {
+          if (message.text === undefined || message.text === '') result = { nothing: true, ...metadata };
+        } else if (typeof message.text === 'string') {
+          result = { text: message.text, ...metadata };
+        }
+      }
+      if (result) {
+        warm = true;
+        entry.resolve(result);
         return;
       }
-      warm = true;
-      entry.resolve({ nothing: true });
-      return;
-    }
-    // An empty string is a valid answer: speech recognition returns it for
-    // silence, and the transcribe route reports that as success.
-    if (message.ok === true && typeof message.text === 'string') {
-      warm = true;
-      entry.resolve({ text: message.text });
-      return;
     }
     if (message.ok === false && typeof message.error === 'string') {
       switch (message.error) {
@@ -345,15 +364,17 @@ export function createVoiceWorker({
   function start(entry) {
     const started = ensureChild();
     const id = `p${++sequence}`;
-    // The first request of a child pays for the model load; every later one
-    // pays only for generation.
-    const budget = warm ? (entry.timeoutMs ?? requestTimeoutMs) : coldTimeoutMs;
+    // Text/audio give a fresh child time to load; interactive candidates
+    // keep their shorter deadline even when the worker is cold.
+    const budget = entry.kind === 'candidates'
+      ? Math.min(entry.timeoutMs ?? CANDIDATES_TIMEOUT_MS, CANDIDATES_TIMEOUT_MS)
+      : (warm ? (entry.timeoutMs ?? requestTimeoutMs) : coldTimeoutMs);
     const timer = setTimeout(() => {
       if (inflight && inflight.id === id) terminate('timeout');
     }, budget);
     timer.unref?.();
 
-    const record = { id, timer, resolve: entry.resolve, reject: entry.reject, signal: entry.signal, onAbort: null };
+    const record = { id, kind: entry.kind, timer, resolve: entry.resolve, reject: entry.reject, signal: entry.signal, onAbort: null };
     if (entry.signal) {
       // Cancelling is scoped to this request: by the time the signal fires the
       // id may belong to nobody (already answered) or to a later request, and
@@ -372,8 +393,7 @@ export function createVoiceWorker({
     return id;
   }
 
-  // `payload.kind` is 'polish' (default), 'summarize' or 'transcribe'. `signal` cancels this
-  // request only, when the client that asked for it disconnects.
+  // `signal` cancels this request only, when the client that asked for it disconnects.
   function request(payload, { timeoutMs, signal } = {}) {
     return new Promise((resolve, reject) => {
       if (inflight || terminating) {

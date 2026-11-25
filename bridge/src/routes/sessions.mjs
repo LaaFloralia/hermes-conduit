@@ -79,7 +79,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
       key: req.headers['idempotency-key'],
       owner: true,
     });
-    return { status: 202, data: decorate(sessions.view(result.session)) };
+    return { status: 202, data: { ...decorate(sessions.view(result.session)), queued: result.queued === true } };
   }
 
   async function update({ params, rawBody }) {

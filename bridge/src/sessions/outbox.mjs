@@ -41,8 +41,8 @@ export function nextQueued(record) {
 /// waits is recoverable, a turn that was replaced is not.
 export function readiness(status) {
   if (!status || typeof status !== 'object') return 'unknown';
+  if (status.phase === 'awaiting_decision' || (Array.isArray(status.pending) && status.pending.length > 0)) return 'decision';
   if (status.activeTurn === true) return 'working';
-  if (Array.isArray(status.pending) && status.pending.length > 0) return 'decision';
   const state = typeof status.daemonStatus === 'string' ? status.daemonStatus.toLowerCase() : '';
   if (state !== '') return IDLE_STATES.has(state) ? 'ready' : 'working';
   return status.phase === 'awaiting_review' ? 'ready' : 'unknown';

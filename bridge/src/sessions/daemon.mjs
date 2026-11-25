@@ -386,6 +386,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
     }),
     send: (id, { text, messageId, images, origin = null }) => call(async (c) => {
       const a = await agent(c, id);
+      if (a.archivedAt) throw conflict('agent_archived', 'restore the session before sending');
       if (a.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
       // One foreground turn per agent. A prompt handed to a working agent makes
       // the provider replace that turn — and an agent without autonomous
@@ -404,8 +405,12 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
         throw error;
       }
     }),
-    stop: (id) => call(async (c) => {
-      await agent(c, id);
+    stop: (id, { protectDecision = false } = {}) => call(async (c) => {
+      const before = await agent(c, id);
+      if (protectDecision) {
+        if (before.archivedAt) throw conflict('agent_archived', 'restore the session before sending');
+        if (before.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
+      }
       await c.cancelAgent(id);
       const a = await agent(c, id);
       if (a.activeTurn || !['idle', 'closed', 'error'].includes(a.status)) throw conflict('stop_unconfirmed', 'Paseo has not finished stopping');

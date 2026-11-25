@@ -682,8 +682,32 @@ export function createSessionService({
     };
   }
 
-  function enqueue(id, { messageId, text, reason = null }) {
-    const current = requireSession(id);
+  function unavailableTarget(record, status) {
+    if (!record || record.daemonDeletedAt) return notFound('session not found');
+    if (record.archivedAt || record.daemonArchivedAt || status?.archivedAt) {
+      return conflict('agent_archived', 'restore the session before sending');
+    }
+    return null;
+  }
+
+  function followUpBlock(record, status) {
+    const unavailable = unavailableTarget(record, status);
+    if (unavailable) return unavailable;
+    if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') {
+      return conflict('session_stopped', 'the session is stopped; resume it instead of sending');
+    }
+    return null;
+  }
+
+  function requireFollowUpTarget(id, status) {
+    const record = requireSession(id);
+    const blocked = followUpBlock(record, status);
+    if (blocked) throw blocked;
+    return record;
+  }
+
+  function enqueue(id, { messageId, text, reason = null, status }) {
+    const current = requireFollowUpTarget(id, status);
     if (!outboxHas(current, messageId) && queuedEntries(current).length >= MAX_QUEUED) {
       throw new BridgeError(429, 'queue_full', `the session already holds ${MAX_QUEUED} unsent messages; let the current turn finish`);
     }
@@ -817,27 +841,27 @@ export function createSessionService({
           queuedSessions.delete(id);
           return;
         }
-        // A stop is the owner's word: queued text waits for a resume instead of
-        // starting the session again behind their back.
-        if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') return;
+        // An archived or stopped session must never restart behind the owner's back.
+        if (followUpBlock(record)) return;
         let observation;
         try {
           observation = await observe(id, { force: true });
         } catch {
           return;
         }
-        if (!observation.available) return;
-        if (readiness(observation.status) !== 'ready') return;
+        if (!observation.available || readiness(observation.status) !== 'ready') return;
+        const current = sessionStore.get(id);
+        if (followUpBlock(current, observation.status)) return;
         try {
-          await deliver(record, entry);
+          await deliver(current, entry);
         } catch (err) {
           const code = err instanceof BridgeError ? err.code : 'send_failed';
-          // Paseo started or stopped working between the read and the send:
-          // nothing failed, so nothing is counted.
+          // A session that stopped being eligible between read and send has not consumed an attempt.
           if (code === 'session_busy' || code === 'pending_decision_requires_reply') {
             await observe(id, { force: true }).catch(() => null);
             return;
           }
+          if (code === 'agent_archived' || code === 'not_found' || code === 'session_stopped') return;
           markAttempt(id, entry.id, err instanceof BridgeError ? err.message : String(err?.message ?? err));
           return;
         }
@@ -888,9 +912,13 @@ export function createSessionService({
     const record = requireSession(id);
     if (record.source !== 'paseo' || !daemon) return { session, queued: true };
     try {
-      await interruptSession(id);
-    } catch {
-      return { session: requireSession(id), queued: queuedEntries(requireSession(id)).some((row) => row.id === messageId) };
+      await interruptSession(id, { protectDecision: true });
+    } catch (err) {
+      if (err instanceof BridgeError && err.code === 'pending_decision_requires_reply') {
+        await observe(id, { force: true }).catch(() => null);
+      }
+      session = requireSession(id);
+      return { session, queued: queuedEntries(session).some((row) => row.id === messageId) };
     }
     await flushQueue(id).catch(() => {});
     session = requireSession(id);
@@ -899,10 +927,7 @@ export function createSessionService({
 
   async function sendMessage({ id, body = {}, key, owner = false }) {
     switcher.assertUnlocked(id);
-    const record = requireSession(id);
-    if (record.stopRequestedAt || record.phase === 'stopped' || record.phase === 'stop_unconfirmed') {
-      throw conflict('session_stopped', 'the session is stopped; resume it instead of sending');
-    }
+    const record = requireFollowUpTarget(id);
     const text = asText(body.message ?? body.text, 'message');
     const messageId = body.messageId === undefined || body.messageId === null
       ? `msg_${sha(`${id}|${key ?? ''}`).slice(0, 24)}`
@@ -921,24 +946,31 @@ export function createSessionService({
     const held = Array.isArray(record.outbox) ? record.outbox.find((row) => row?.id === messageId) : null;
     if (held) return { session: record, queued: held.status === 'queued' };
 
-    // Read Paseo's own status before sending: a running turn is the case that
-    // used to lose the message (and stop the turn with it).
+    // Read the authoritative status before sending or interrupting a turn.
     const before = await observe(id, { force: true }).catch((err) => ({ available: false, code: err instanceof BridgeError ? err.code : 'delegation_failed' }));
-    if (before.available) {
-      const state = readiness(before.status);
-      if (state === 'decision') throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
-      if (state === 'working') {
-        if (delivery !== 'now') return { session: enqueue(id, { messageId, text }), queued: true };
-        return sendNow(id, { messageId, text });
-      }
+    const current = requireFollowUpTarget(id, before.status);
+    if (before.code === 'not_found') throw notFound('session not found');
+    const canHoldForDecision = owner || delivery === 'queue';
+    const state = readiness(before.status);
+    if (state === 'decision') {
+      if (canHoldForDecision) return { session: enqueue(id, { messageId, text }), queued: true };
+      throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
+    }
+    if (state === 'working') {
+      if (delivery === 'queue') return { session: enqueue(id, { messageId, text }), queued: true };
+      return sendNow(id, { messageId, text });
     }
 
     try {
-      await deliver(requireSession(id), { id: messageId, text });
+      await deliver(current, { id: messageId, text });
     } catch (err) {
-      // The client needs the waiting question in the same breath as the 409.
+      // A decision appeared after the preflight. Hold the text, never answer it.
       if (err instanceof BridgeError && err.code === 'pending_decision_requires_reply') {
-        await observe(id, { force: true }).catch(() => null);
+        const observed = await observe(id, { force: true }).catch(() => null);
+        if (canHoldForDecision) {
+          if (observed?.code === 'not_found') throw notFound('session not found');
+          return { session: enqueue(id, { messageId, text, status: observed?.status }), queued: true };
+        }
         throw err;
       }
       // The turn started between the read and the send. Hold the message
@@ -1092,11 +1124,11 @@ export function createSessionService({
     return { session: updated?.record ?? requireSession(id) };
   }
 
-  async function interruptSession(id) {
+  async function interruptSession(id, { protectDecision = false } = {}) {
     switcher.assertUnlocked(id);
-    const record = requireSession(id);
+    const record = protectDecision ? requireFollowUpTarget(id) : requireSession(id);
     if (!daemon) throw new BridgeError(503, 'paseo_unavailable', 'Paseo interruption is unavailable');
-    const result = await daemon.stop(record.delegate.sessionId);
+    const result = await daemon.stop(record.delegate.sessionId, { protectDecision });
     const updated = sessionStore.update(id, (current) => {
       current.daemonStatus = result.daemonStatus;
       current.phase = 'awaiting_review';
@@ -1140,6 +1172,8 @@ export function createSessionService({
   async function resumeSession({ id, body = {}, key, deviceId, owner = false }) {
     switcher.assertUnlocked(id);
     const original = requireSession(id);
+    const unavailable = unavailableTarget(original);
+    if (unavailable) throw unavailable;
     if (original.phase === 'stop_unconfirmed') {
       throw conflict('stop_unconfirmed', 'the earlier stop is not confirmed; reconcile before resuming');
     }

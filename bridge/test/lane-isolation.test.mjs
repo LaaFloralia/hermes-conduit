@@ -129,11 +129,13 @@ test('a production-mode Bridge drops lane-tagged decisions, before any body/Cont
   await assert.rejects(() => api(`/v1/decisions/${decision.id}/answer`, {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'test' }, body: '{"optionIndex":0}',
   }), { code: 'lane_mismatch', status: 421 });
-  for (const stamp of [id, '']) {
-    const refused = await h.request('/v1/decisions', { method: 'POST', headers: { [LANE_HEADER]: stamp }, token, body: 'not even JSON', key: 'test' });
-    assert.equal(refused.status, 421);
-    assert.equal(refused.headers.has(LANE_HEADER), false);
-    assert.equal(refused.body.error.code, 'lane_mismatch');
+  for (const path of ['/v1/decisions', '/v1/sessions/ses_0000000000000000/messages']) {
+    for (const stamp of [id, '']) {
+      const refused = await h.request(path, { method: 'POST', headers: { [LANE_HEADER]: stamp }, token, body: 'not even JSON', key: 'test' });
+      assert.equal(refused.status, 421);
+      assert.equal(refused.headers.has(LANE_HEADER), false);
+      assert.equal(refused.body.error.code, 'lane_mismatch');
+    }
   }
   const status = await new Promise((ok, fail) => {
     const req = httpRequest(`${h.base}/v1/decisions`, { method: 'POST', headers: {

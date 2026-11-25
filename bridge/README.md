@@ -183,8 +183,9 @@ callers mark it processed. Unknown notification kinds use alert.
 | `POST /v1/devices/enroll` | ペアリングコード | `{deviceId, token, scopes, createdAt}`（201） |
 | `GET /v1/me` | Bearer | `{deviceId, name, scopes, platform, createdAt}` |
 | `POST /v1/voice/transcribe` | Bearer + `voice:transcribe` | `{pcm16,sampleRate:16000,language?:ja}` → `{text,model}`。PCM16LE mono base64、25秒まで |
-| `POST /v1/voice/polish` | Bearer + `voice:polish` | `{text,language?}` → `{text,model,nothing?}`。4,000 UTF-16文字まで |
-| `POST /v1/voice/summarize` | Bearer + `voice:polish` | `{text,language:ja}` → `{text,model}`。日本語、2,000 UTF-16単位まで。要約は下書き |
+| `POST /v1/voice/polish` | Bearer + `voice:polish` | `{text,language?,model?}` → `{text,model,nothing?}`。4,000 UTF-16文字まで。`model`: `gpt-6-luna` / `gpt-6.1-terra` |
+| `POST /v1/voice/summarize` | Bearer + `voice:polish` | `{text,language:ja,model?}` → `{text,model}`。日本語、2,000 UTF-16単位まで。要約は下書き。`model`: `gpt-6-luna` / `gpt-6.1-terra` |
+| `POST /v1/voice/candidates` | Bearer + `voice:polish` | `{reading,candidates?}` → `{items,model}`. `reading`: 1–32 kana or romaji graphemes; `candidates`: up to 10 strings of 1–40 graphemes; `items`: up to 5 strings of at most 40 graphemes. 15 s deadline. |
 | `POST /v1/devices/self/revoke` | Bearer + voice専用scopeのみ（1つ以上） | 呼出端末の資格情報だけ失効。対象指定不可。一般scopeと音声scopeを併せ持つ端末は拒否 |
 | `GET /v1/instructions/{agents|claude}` | Bearer + `instructions:read` | 指定された2ファイルのみ。本文と内容のSHA-256 ETag |
 | `PUT /v1/instructions/{agents|claude}` | Bearer + `instructions:write` + `If-Match` | 保存前にBridge stateへ旧版をバックアップし、版不一致は412。git commitしない |

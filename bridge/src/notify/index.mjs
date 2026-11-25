@@ -83,7 +83,8 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
     const event = { type: 'response.ready', event_id: `laa-bridge:${key}`, profile: 'laa-monet',
       session_id: sessionId, title: title.slice(0, 120), body: body.slice(0, 500) };
     state.mutate((s) => { (s.pending ??= {})[key] ??= { event, kind, queuedAt: now() }; });
-    return deliverPending(key, state.read().pending[key].event);
+    const result = await deliverPending(key, state.read().pending[key].event);
+    return result.delivered ? result : { ...result, queued: true };
   };
   notify.flush = async () => {
     const rows = Object.entries(state.read().pending ?? {});
