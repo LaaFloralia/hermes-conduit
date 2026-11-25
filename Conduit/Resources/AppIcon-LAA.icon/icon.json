@@ -2,26 +2,77 @@
   "fill-specializations": [
     {
       "value": {
-        "solid": "srgb:0.00000,0.34510,0.36863,1.00000"
+        "solid": "srgb:0.16471,0.36078,0.46275,1.00000"
       }
     },
     {
       "appearance": "dark",
       "value": {
-        "linear-gradient": [
-          "srgb:0.08627,0.21176,0.21961,1.00000",
-          "srgb:0.04314,0.10980,0.11373,1.00000"
-        ]
+        "solid": "srgb:0.05882,0.08627,0.12549,1.00000"
       }
     }
   ],
   "groups": [
     {
-      "name": "Spiral",
+      "name": "04-ribbon",
       "layers": [
         {
-          "name": "Spiral",
-          "image-name": "Spiral.svg",
+          "name": "04-ribbon",
+          "image-name": "04-ribbon.svg",
+          "glass": true,
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.22745,0.22745,0.22745,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": false,
+        "value": 0.0
+      }
+    },
+    {
+      "name": "03-hat",
+      "layers": [
+        {
+          "name": "03-hat",
+          "image-name": "03-hat.svg",
+          "glass": true,
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.43137,0.43137,0.43137,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": false,
+        "value": 0.0
+      }
+    },
+    {
+      "name": "02-face",
+      "layers": [
+        {
+          "name": "02-face",
+          "image-name": "02-face.svg",
           "glass": true
         }
       ],
@@ -36,12 +87,20 @@
       }
     },
     {
-      "name": "Quarters",
+      "name": "01-body",
       "layers": [
         {
-          "name": "Quarters",
-          "image-name": "Quarters.svg",
-          "glass": true
+          "name": "01-body",
+          "image-name": "01-body.svg",
+          "glass": true,
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.72157,0.72157,0.72157,1.00000"
+              }
+            }
+          ]
         }
       ],
       "shadow": {
@@ -50,31 +109,15 @@
       },
       "specular": true,
       "translucency": {
-        "enabled": true,
-        "value": 0.2
-      }
-    },
-    {
-      "name": "Arcs",
-      "layers": [
-        {
-          "name": "Arcs",
-          "image-name": "Arcs.svg",
-          "glass": true
-        }
-      ],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.5
-      },
-      "specular": true,
-      "translucency": {
-        "enabled": true,
-        "value": 0.1
+        "enabled": false,
+        "value": 0.0
       }
     }
   ],
   "supported-platforms": {
-    "squares": "shared"
+    "squares": "shared",
+    "circles": [
+      "watchOS"
+    ]
   }
 }

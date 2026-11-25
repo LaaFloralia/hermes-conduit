@@ -58,7 +58,7 @@ class LAABrandBundleTests(unittest.TestCase):
             brand.brand_bundle(bundle, "app", ROOT, bundle_name="LAA")
             info = plistlib.loads(info_path.read_bytes())
             self.assertEqual(info["CFBundleName"], "LAA")
-            self.assertEqual(info["CFBundleDisplayName"], "LAA")
+            self.assertEqual(info["CFBundleDisplayName"], "Hortensia")
             self.assertEqual(info["CFBundleExecutable"], "Conduit")
             self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
             scenes = info["UIApplicationSceneManifest"]["UISceneConfigurations"]
@@ -181,7 +181,7 @@ class LAABrandBundleTests(unittest.TestCase):
             brand.brand_bundle(bundle, "app", ROOT)
             with (bundle / "Info.plist").open("rb") as stream:
                 info = plistlib.load(stream)
-            self.assertEqual(info["CFBundleDisplayName"], "LAA")
+            self.assertEqual(info["CFBundleDisplayName"], "Hortensia")
             self.assertEqual(info["ConduitLauncherAppGroup"], "group.keep")
             with (local / "Localizable.strings").open("rb") as stream:
                 localized = plistlib.load(stream)
@@ -208,8 +208,8 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertEqual(len(re.findall(r"%(?:\d+\$)?@", health)), 2)
 
     def test_extension_names(self):
-        for kind, name in (("watch-widget", "LAA Watch Widgets"), ("widgets", "LAA Widgets"),
-                           ("notification", "LAA Notifications"), ("share", "LAA")):
+        for kind, name in (("watch-widget", "Hortensia Watch Widgets"), ("widgets", "Hortensia Widgets"),
+                           ("notification", "Hortensia Notifications"), ("share", "Hortensia")):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
                 bundle = Path(tmp)
                 with (bundle / "Info.plist").open("wb") as stream:
@@ -288,7 +288,7 @@ class LAABrandBundleTests(unittest.TestCase):
             brand.brand_bundle(bundle, "watch", ROOT)
             with (bundle / "Info.plist").open("rb") as stream:
                 info = plistlib.load(stream)
-            self.assertEqual(info["CFBundleDisplayName"], "LAA")
+            self.assertEqual(info["CFBundleDisplayName"], "Hortensia")
             self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
             with (bundle / "ja.lproj/InfoPlist.strings").open("rb") as stream:
                 self.assertNotIn("Conduit", plistlib.load(stream)["NSMicrophoneUsageDescription"])

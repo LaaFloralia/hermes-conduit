@@ -5,7 +5,7 @@
 #   xcodegen generate --spec project-laa.yml
 #   xcodebuild archive -project Conduit.xcodeproj -scheme Conduit ...
 #
-# The app alone under the LAA team (PAW258GB42), display name "LAA", bundle
+# The app alone under the LAA team (PAW258GB42), display name "Hortensia", bundle
 # IDs under com.laa-inc.laa and the LAA App Groups, signed automatically.
 # Everything upstream is untouched: the App Store app keeps its own bundle
 # IDs, group, entitlements and relay.
@@ -40,6 +40,10 @@ settings:
     # is why project.yml doesn't carry this: without it, no archive of the full
     # app (Watch app and extensions included) gets past the build description.
     EXCLUDED_SOURCE_FILE_NAMES: Info.plist
+packages:
+  # The shared LAA Kit, vendored by laa-brand-system scripts/snapshot.py (never edit by hand).
+  LAAKit:
+    path: Vendor/LAAKit
 targets:
   ConduitTests:
     sources:
@@ -79,6 +83,11 @@ targets:
     # the LAA team; the Location Push extension is not among them.
     dependencies:REPLACE:
       - package: WebRTC
+      # LAA Kit (Vendor/LAAKit, pinned kit-v0.1.0 snapshot; Vendor/laa-kit.pin.json).
+      - package: LAAKit
+        product: LAAKit
+      - package: LAAKit
+        product: LAAFonts
       - target: ConduitWatch
         platformFilter: iOS
       - target: ConduitNotificationService
@@ -126,7 +135,7 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --input-info "$SRCROOT/Conduit/Info.plist" \
             --output-info "$SRCROOT/$INFOPLIST_FILE" --kind app --source "$SRCROOT" \
-            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
+            --name "${CONDUIT_DISPLAY_NAME:-Hortensia}" --bundle-name Hortensia
     postBuildScripts:
       # ProcessInfoPlistFile may otherwise overwrite branding after this phase
       # in incremental builds; the input makes the build system order it first.
@@ -135,7 +144,7 @@ targets:
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
-            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
+            --name "${CONDUIT_DISPLAY_NAME:-Hortensia}" --bundle-name Hortensia
   ConduitWatch:
     sources:
       - path: Conduit/LAA/Staff/StaffAssets.swift
@@ -175,9 +184,9 @@ targets:
           mkdir -p "$DERIVED_FILE_DIR"
           cp "$SCRIPT_INPUT_FILE_0" "$SCRIPT_OUTPUT_FILE_0"
           /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName LAA" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName LAA Watch" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription LAA uses the microphone to talk with Monet from your wrist." "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Hortensia" "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Hortensia Watch" "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Hortensia uses the microphone to talk with Monet from your wrist." "$SCRIPT_OUTPUT_FILE_0"
     postBuildScripts:
       - name: LAA watch staff avatars
         basedOnDependencyAnalysis: false

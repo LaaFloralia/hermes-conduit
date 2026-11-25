@@ -21,6 +21,10 @@ settings:
     CODE_SIGN_STYLE: Automatic
     # Passed on the command line (DEVELOPMENT_TEAM=...) by the script.
     DEVELOPMENT_TEAM: ""
+packages:
+  # The shared LAA Kit, vendored by laa-brand-system scripts/snapshot.py (never edit by hand).
+  LAAKit:
+    path: Vendor/LAAKit
 targets:
   Conduit:
     sources:
@@ -35,6 +39,11 @@ targets:
         buildPhase: resources
     dependencies:REPLACE:
       - package: WebRTC
+      # LAA Kit (Vendor/LAAKit, pinned kit-v0.1.0 snapshot; Vendor/laa-kit.pin.json).
+      - package: LAAKit
+        product: LAAKit
+      - package: LAAKit
+        product: LAAFonts
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
