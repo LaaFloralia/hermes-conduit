@@ -127,7 +127,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
         XCTAssertFalse(LAAWidgetUsageBuilder.slots.first { $0.provider == "opencode-go" }!.showsInWidget)
         XCTAssertEqual(LAAWidgetUsageBuilder.cardSlots.map(\.name), ["Codex", "Claude", "Google"])
         XCTAssertEqual(LAAWidgetUsageBuilder.otherSlots.map(\.provider),
-                       ["opencode-go", "magnific", "openai-api", "claude-api", "liquid", "venice"])
+                       ["opencode-go", "magnific", "openai-api", "claude-api", "liquid", "venice", "refuseless"])
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetRows.count, 6)
         XCTAssertEqual(Set(LAAWidgetUsageBuilder.dropOrder), Set(LAAWidgetUsageBuilder.widgetRows.map(\.id)))
     }
