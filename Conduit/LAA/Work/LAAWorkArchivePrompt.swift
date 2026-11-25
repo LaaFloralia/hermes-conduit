@@ -1,6 +1,5 @@
 #if LAA_BUILD
 import SwiftUI
-import UIKit
 
 /// Archiving in Work always asks first, and only OK archives. When the Mac
 /// refuses (a session in the tree is still at work: 409 session_running),
@@ -53,61 +52,58 @@ extension View {
 
 private struct LAAWorkArchiveAlert: ViewModifier {
     @Binding var request: LAAWorkArchivePrompt?
-    @State private var shown: LAAWorkArchivePrompt?
-    @State private var anchor = UIView()
+    @State private var confirmedArchive: (() -> Void)?
+
+    private var confirmation: Binding<LAAWorkArchivePrompt?> {
+        Binding(get: { request?.archive != nil ? request : nil }, set: { item in
+            if request?.archive != nil { request = item }
+        })
+    }
 
     func body(content: Content) -> some View {
-        let presented = shown
+        let refusal = request?.archive == nil ? request : nil
         return content
-            .background(WindowAnchor(view: anchor).frame(width: 0, height: 0).accessibilityHidden(true))
-            .alert(presented?.title ?? "", isPresented: Binding(
-                get: { shown != nil },
-                set: { visible in
-                    guard !visible, shown?.id == presented?.id else { return }
-                    shown = nil
-                    if request?.id == presented?.id { request = nil }
+            // An alert supplies no dismissal completion. Wait for the sheet
+            // to close before sending, so even a fast refusal can open its alert.
+            .sheet(item: confirmation, onDismiss: performConfirmedArchive) { item in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                        Text(verbatim: item.title)
+                            .laaTextStyle(.section)
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("work.archive.title")
+                        Text(verbatim: item.message).laaTextStyle(.body)
+                        HStack {
+                            Button(role: .cancel) { request = nil } label: { Text(verbatim: LAAWorkArchivePrompt.cancelTitle) }
+                                .laaButton(.text)
+                                .accessibilityIdentifier("work.archive.cancel")
+                            Spacer()
+                            Button {
+                                confirmedArchive = item.archive
+                                request = nil
+                            } label: { Text(verbatim: LAAWorkArchivePrompt.confirmTitle) }
+                            .laaButton(.primary)
+                            .accessibilityIdentifier("work.archive.confirm")
+                        }
+                    }
+                    .padding(LAASpacing.x6)
                 }
-            ), presenting: presented) { item in
-                if let archive = item.archive {
-                    Button(role: .cancel) {} label: { Text(verbatim: LAAWorkArchivePrompt.cancelTitle) }
-                    Button { archive() } label: { Text(verbatim: LAAWorkArchivePrompt.confirmTitle) }
-                        .accessibilityIdentifier("work.archive.confirm")
-                } else {
-                    Button(role: .cancel) {} label: { Text(verbatim: "OK") }
-                }
+                .presentationDetents([.medium, .large])
+            }
+            .alert(refusal?.title ?? "", isPresented: Binding(
+                get: { request != nil && request?.archive == nil },
+                set: { visible in if !visible, request?.id == refusal?.id { request = nil } }
+            ), presenting: refusal) { _ in
+                Button(role: .cancel) {} label: { Text(verbatim: "OK") }
             } message: { item in
                 Text(verbatim: item.message)
             }
-            .task(id: request?.id) { await presentRequestedAlert() }
     }
 
-    private func presentRequestedAlert() async {
-        guard let next = request, shown?.id != next.id else { return }
-        // A fast refusal can arrive while the confirmation is closing. Keep
-        // it queued until the old alert and its UIKit transition are gone.
-        while shown != nil || nativeAlertIsClosingOrVisible {
-            do { try await Task.sleep(for: .milliseconds(25)) }
-            catch { return }
-        }
-        guard !Task.isCancelled, request?.id == next.id else { return }
-        shown = next
-    }
-
-    private var nativeAlertIsClosingOrVisible: Bool {
-        var presenter = anchor.window?.rootViewController
-        while let current = presenter {
-            if current is UIAlertController || current.transitionCoordinator?.viewController(forKey: .from) is UIAlertController {
-                return true
-            }
-            presenter = current.presentedViewController
-        }
-        return false
-    }
-
-    private struct WindowAnchor: UIViewRepresentable {
-        let view: UIView
-        func makeUIView(context: Context) -> UIView { view }
-        func updateUIView(_ uiView: UIView, context: Context) {}
+    private func performConfirmedArchive() {
+        let archive = confirmedArchive
+        confirmedArchive = nil
+        archive?()
     }
 }
 #endif

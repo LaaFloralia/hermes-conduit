@@ -89,11 +89,11 @@ final class LAAWorkArchiveUITests: XCTestCase {
         XCTAssertTrue(archiveRequests().isEmpty, "the short swipe archived by itself")
 
         button.tap()
-        let alert = app.alerts.firstMatch
-        XCTAssertTrue(alert.waitForExistence(timeout: 5), "archiving did not ask first")
+        let confirmation = app.staticTexts["work.archive.title"].firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5), "archiving did not ask first")
         shot("2-confirmation", app)
-        alert.buttons["キャンセル"].tap()
-        XCTAssertFalse(alert.waitForExistence(timeout: 1))
+        app.buttons["work.archive.cancel"].firstMatch.tap()
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(archiveRequests().isEmpty, "Cancel still sent an archive")
         XCTAssertTrue(app.staticTexts["work.session.\(idleID)"].firstMatch.exists, "Cancel removed the row")
@@ -101,8 +101,9 @@ final class LAAWorkArchiveUITests: XCTestCase {
         partialSwipe(row(idleID, app), app)
         XCTAssertTrue(archiveButton(idleID, app).waitForExistence(timeout: 5))
         archiveButton(idleID, app).tap()
-        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
-        app.alerts.firstMatch.buttons["work.archive.confirm"].firstMatch.tap()
+        let confirm = app.buttons["work.archive.confirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
                                              object: app.staticTexts["work.session.\(idleID)"].firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 10), .completed, "OK did not archive the row")
@@ -120,10 +121,10 @@ final class LAAWorkArchiveUITests: XCTestCase {
         let window = app.windows.firstMatch
         let start = window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40, dy: target.frame.midY))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 300, dy: 0)))
-        let alert = app.alerts.firstMatch
-        XCTAssertTrue(alert.waitForExistence(timeout: 5), "a full swipe did not ask first")
+        let confirmation = app.staticTexts["work.archive.title"].firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5), "a full swipe did not ask first")
         XCTAssertTrue(archiveRequests().isEmpty, "a full swipe archived before the answer")
-        alert.buttons["キャンセル"].tap()
+        app.buttons["work.archive.cancel"].firstMatch.tap()
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(archiveRequests().isEmpty)
         XCTAssertTrue(app.staticTexts["work.session.\(idleID)"].firstMatch.exists)
@@ -134,8 +135,9 @@ final class LAAWorkArchiveUITests: XCTestCase {
         partialSwipe(row(runningID, app), app)
         XCTAssertTrue(archiveButton(runningID, app).waitForExistence(timeout: 5))
         archiveButton(runningID, app).tap()
-        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
-        app.alerts.firstMatch.buttons["work.archive.confirm"].firstMatch.tap()
+        let confirm = app.buttons["work.archive.confirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
 
         let refusal = app.alerts["アーカイブできませんでした"]
         guard refusal.waitForExistence(timeout: 10) else {

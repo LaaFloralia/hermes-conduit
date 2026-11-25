@@ -214,10 +214,11 @@ final class LAAPaseoUITests: XCTestCase {
         }
         swipeRight(row)
         // A full swipe asks first since 4f2eda58; only confirmation archives.
-        let confirmation = app.alerts["このプロジェクトをアーカイブしますか？"]
+        let confirmation = app.staticTexts["work.archive.title"].firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        XCTAssertEqual(confirmation.label, "このプロジェクトをアーカイブしますか？")
         XCTAssertTrue(row.exists, "The project remains until archive is confirmed")
-        let confirm = confirmation.buttons["work.archive.confirm"].firstMatch
+        let confirm = app.buttons["work.archive.confirm"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(row.waitForNonExistence(timeout: 10), "Archiving must take the project out of the list")
         capture(app, "project-archived", "light")
