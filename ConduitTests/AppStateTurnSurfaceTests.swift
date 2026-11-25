@@ -3,8 +3,8 @@
 //  ConduitTests
 //
 //  Where in Conduit a message was sent from (#888): each send tells the
-//  notifier plugin the surface and how the message was entered, before
-//  prompt.submit, and a plugin that is slow or missing never holds it up.
+//  notifier plugin the surface and how the message was entered. In LAA,
+//  the prompt does not wait for that metadata request.
 //
 
 import XCTest
@@ -40,10 +40,13 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         let sent = await harness.appState.submitComposer(text: "What's on today?")
 
         XCTAssertTrue(sent)
-        XCTAssertEqual(recorder.events, [
-            "report rt-typed \(TurnSurface.device.rawValue) typed",
-            "prompt rt-typed What's on today?"
-        ])
+        let expected = ["report rt-typed \(TurnSurface.device.rawValue) typed", "prompt rt-typed What's on today?"]
+#if LAA_BUILD
+        await fulfillment(of: [recorder.reported], timeout: 2)
+        XCTAssertEqual(recorder.events.sorted(), expected.sorted(), "Metadata is reported without delaying submission")
+#else
+        XCTAssertEqual(recorder.events, expected)
+#endif
         XCTAssertEqual(recorder.digests, [
             TurnSurface.shortcut.body(runtimeSessionID: "", text: "What's on today?")["text_sha256"] as? String
         ], "The hash is of the text prompt.submit sends")
@@ -57,7 +60,12 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         let sent = await harness.appState.submitVoiceTranscript("Remind me at five")
 
         XCTAssertTrue(sent)
+#if LAA_BUILD
+        await fulfillment(of: [recorder.reported], timeout: 2)
+        XCTAssertTrue(recorder.events.contains("report rt-voice \(TurnSurface.device.rawValue) spoken"))
+#else
         XCTAssertEqual(recorder.events.first, "report rt-voice \(TurnSurface.device.rawValue) spoken")
+#endif
     }
 
     func testACallersSurfaceWinsOverTheComposers() async {
@@ -69,7 +77,12 @@ final class AppStateTurnSurfaceTests: XCTestCase {
 
         _ = await harness.appState.submitComposer(text: "Log my water")
 
+#if LAA_BUILD
+        await fulfillment(of: [recorder.reported], timeout: 2)
+        XCTAssertTrue(recorder.events.contains("report rt-shortcut siri -"))
+#else
         XCTAssertEqual(recorder.events.first, "report rt-shortcut siri -")
+#endif
     }
 
     func testATypedSendDuringAShortcutsSendKeepsItsOwnSurface() async {
@@ -81,7 +94,12 @@ final class AppStateTurnSurfaceTests: XCTestCase {
 
         _ = await harness.appState.submitComposer(text: "Something else")
 
+#if LAA_BUILD
+        await fulfillment(of: [recorder.reported], timeout: 2)
+        XCTAssertTrue(recorder.events.contains("report rt-mixed \(TurnSurface.device.rawValue) typed"))
+#else
         XCTAssertEqual(recorder.events.first, "report rt-mixed \(TurnSurface.device.rawValue) typed")
+#endif
     }
 
     func testASlowPluginDoesNotHoldTheSendUp() async {
@@ -189,6 +207,9 @@ private final class TurnSurfaceRecorder {
     var digests: [String] = []
     var reportDelay: Duration?
     var reportError: Error?
+#if LAA_BUILD
+    let reported = XCTestExpectation(description: "turn surface metadata recorded")
+#endif
 
     func report(_ body: [String: Any]) async throws {
         if let reportDelay { try await Task.sleep(for: reportDelay) }
@@ -197,5 +218,8 @@ private final class TurnSurfaceRecorder {
         let surface = body["surface"] as? String ?? "?"
         digests.append(body["text_sha256"] as? String ?? "")
         events.append("report \(session) \(surface) \(body["input"] as? String ?? "-")")
+#if LAA_BUILD
+        reported.fulfill()
+#endif
     }
 }
