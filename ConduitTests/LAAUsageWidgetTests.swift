@@ -364,6 +364,10 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.magnific",
             "provider.venice"])
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).first?.label, "Codex")
+        let refuseless = try item("refuseless", kind: "balance", label: "Refuseless", value: 30, unit: "usd")
+        XCTAssertEqual(LAAUsageGroup.consoleGroups([refuseless]).map(\.label), ["Refuseless"])
+        XCTAssertEqual(LAAUsageGroup.consoleGroups([refuseless]).first?.serviceURL?.host, "refuseless.com")
+        XCTAssertFalse(LAAWidgetUsageBuilder.widgetSlots.contains { $0.provider == "refuseless" })
         let liquid = try item("liquid", kind: "usage", label: "Liquid AI", value: 1, unit: "tokens")
         XCTAssertEqual(LAAUsageGroup.consoleGroups([liquid]).map(\.label), ["Liquid AI"])
         XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])

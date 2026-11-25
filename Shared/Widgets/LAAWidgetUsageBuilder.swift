@@ -41,6 +41,9 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "claude-api", name: "Claude API", reading: .balance, showsInWidget: true),
         Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage, showsInWidget: false),
         Slot(provider: "venice", name: "Venice", reading: .balance, showsInWidget: true),
+        // 2026-11-25: the official read-only /v1/credits balance. The widget already
+        // holds seven rows, so Refuseless shows in the app's Usage list only.
+        Slot(provider: "refuseless", name: "Refuseless", reading: .balance, showsInWidget: false),
     ]
 
     /// The rows the widget draws, in the owner's priority order.
