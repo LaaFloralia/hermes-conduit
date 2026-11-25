@@ -4487,7 +4487,7 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - Real settled-event and speaker-to-gateway coverage, audio handoff against the real coordinator, and iPhone/Mac behavior before enabling playback. No server planner, RPC, notification routing or Watch change is implied by this app code.
 
-**Checked:** 2026-11-26, laa/v2-next (staged implementation and fixture test coverage; playback disabled).
+**Checked:** 2026-11-26, fe1321bd (staged implementation and fixture test coverage; playback disabled).
 
 ## LAA Chats list
 
