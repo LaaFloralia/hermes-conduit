@@ -17,6 +17,12 @@
 import XCTest
 @testable import Conduit
 
+#if LAA_BUILD
+private let clarifyFenceRequestID = "srq-fecedec1de00"
+#else
+private let clarifyFenceRequestID = "req-gw"
+#endif
+
 @MainActor
 final class AppStateDecisionFenceTests: XCTestCase {
 
@@ -47,7 +53,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
         )
     }
 
-    private func clarifyFixture(requestId: String = "req-gw") -> ChatMessage {
+    private func clarifyFixture(requestId: String = clarifyFenceRequestID) -> ChatMessage {
         ChatMessage(
             id: "clarify-\(requestId)",
             role: .clarify,
@@ -139,17 +145,20 @@ final class AppStateDecisionFenceTests: XCTestCase {
     private func parkClarifyRespond(
         appState: AppState,
         socket: ClarifyFakeSocket,
-        requestId: String = "req-gw"
+        requestId: String = clarifyFenceRequestID
     ) async throws -> ParkedRPC {
         let sent = ClarifyGate()
         socket.onSend = { sent.signal() }
         let task = Task {
             await appState.respondToClarify(requestId: requestId, questionId: "environment", answer: "staging")
         }
-        try await sent.wait("the clarify.respond request to be sent")
+        try await sent.wait("the clarify answer RPC to be sent")
         let request = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
         )
+#if LAA_BUILD
+        XCTAssertEqual(request["method"] as? String, "clarify.lock")
+#endif
         return ParkedRPC(task: task, rpcID: try XCTUnwrap(request["id"] as? Int))
     }
 

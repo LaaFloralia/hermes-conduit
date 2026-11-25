@@ -1318,10 +1318,18 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    // MARK: - clarify.respond
+    // MARK: - Clarify answers
 
-    /// Connects a client, sends the clarify.respond RPC produced by `send`,
-    /// captures the outbound frame, and completes it with `result`.
+    private var clarifyResponseFixtureID: String {
+#if LAA_BUILD
+        "srq-0123456789ac"
+#else
+        "req-1"
+#endif
+    }
+
+    /// Captures the answer for a restored request. The installed LAA gateway
+    /// accepts batch locks and scalar server replies, not clarify.respond.
     private func capturedClarifyRespond(
         result: [String: Any],
         questionId: String?,
@@ -1336,22 +1344,31 @@ final class HermesClientTests: XCTestCase {
         transport.open(socket)
         try await awaitCompletion(of: connectTask, "connect() to complete", file: file, line: line)
 
+        defer { client.disconnect() }
+        let requestID = clarifyResponseFixtureID
         let sent = Gate()
         socket.onSend = { sent.signal() }
         let respondTask = Task<HermesClient.ClarifyResponseOutcome, Error> {
             try await client.respondToClarification(
-                requestId: "req-1",
+                requestId: requestID,
                 answer: "staging",
                 questionId: questionId
             )
         }
-        try await sent.wait("the clarify.respond request to be sent", file: file, line: line)
+        try await sent.wait("the clarify answer to be sent", file: file, line: line)
 
         let request = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last, file: file, line: line).utf8)) as? [String: Any],
             file: file,
             line: line
         )
+#if LAA_BUILD
+        if questionId == nil {
+            let outcome = try await awaitResult(of: respondTask, "the scalar clarify reply", file: file, line: line)
+            return (request, outcome)
+        }
+        XCTAssertEqual(request["method"] as? String, "clarify.lock", file: file, line: line)
+#endif
         let id = try XCTUnwrap(request["id"] as? Int, file: file, line: line)
         let response: [String: Any] = [
             "jsonrpc": "2.0",
@@ -1360,8 +1377,7 @@ final class HermesClientTests: XCTestCase {
         ]
         socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
 
-        let outcome = try await awaitResult(of: respondTask, "the clarify.respond response", file: file, line: line)
-        client.disconnect()
+        let outcome = try await awaitResult(of: respondTask, "the clarify answer response", file: file, line: line)
         return (request, outcome)
     }
 
@@ -1370,9 +1386,11 @@ final class HermesClientTests: XCTestCase {
             result: ["status": "ok", "remaining": ["qid-2", "qid-3"]],
             questionId: "environment"
         )
+#if !LAA_BUILD
         XCTAssertEqual(request["method"] as? String, "clarify.respond")
+#endif
         let params = try XCTUnwrap(request["params"] as? [String: Any])
-        XCTAssertEqual(params["request_id"] as? String, "req-1")
+        XCTAssertEqual(params["request_id"] as? String, clarifyResponseFixtureID)
         XCTAssertEqual(params["answer"] as? String, "staging")
         XCTAssertEqual(
             params["question_id"] as? String, "environment",
@@ -1396,11 +1414,15 @@ final class HermesClientTests: XCTestCase {
             result: ["status": "ok"],
             questionId: nil
         )
+#if LAA_BUILD
+        XCTAssertEqual(request["id"] as? String, clarifyResponseFixtureID)
+        XCTAssertNil(request["method"], "The scalar answer is a reply, not a second RPC")
+        let params = try XCTUnwrap(request["result"] as? [String: Any])
+        XCTAssertEqual(params["answer"] as? String, "staging")
+#else
         let params = try XCTUnwrap(request["params"] as? [String: Any])
-        XCTAssertNil(
-            params["question_id"],
-            "The legacy request-level response must not carry a question id"
-        )
+#endif
+        XCTAssertNil(params["question_id"], "A request-level answer must not carry a question id")
         XCTAssertEqual(
             outcome, .accepted(remaining: nil),
             "An omitted remaining field must stay nil — it is not an explicit empty list"
@@ -1426,6 +1448,24 @@ final class HermesClientTests: XCTestCase {
         XCTAssertFalse(omitted.requestCompleted)
         XCTAssertNotEqual(explicit, omitted)
     }
+
+#if LAA_BUILD
+    func testLAAIgnoresUnregisteredLegacyClarificationWithoutSending() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+        defer { client.disconnect() }
+
+        let before = socket.sentTexts.count
+        let outcome = try await client.respondToClarification(requestId: "legacy-request", answer: "staging", questionId: "environment")
+        XCTAssertEqual(outcome, .expired)
+        XCTAssertEqual(socket.sentTexts.count, before, "Do not send the retired clarify.respond RPC")
+    }
+#endif
 
     func testClarifyRespondExpiredStatusDoesNotReadAsSuccess() async throws {
         // The clarify bridge sets allow_expired, so a timed-out request

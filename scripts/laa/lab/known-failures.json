@@ -84,12 +84,6 @@
    "class": "not-applicable",
    "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
   },
-  "ConduitTests/ClarifyBatchStateTests/testFailedRespondRestoresOnlyTheRelevantQuestion": {
-   "result": "Failed",
-   "fingerprint": "f2ec7f25a1d5",
-   "class": "not-applicable",
-   "reason": "Asserts upstream copy that the LAA brand layer replaces; verified in the default build by the upstream suite. Exact substitution: baseline xcresult equality."
-  },
   "ConduitTests/CompactResumeTranscriptTests/testOversizedLegacyOneShotSurfacesCompatibilityCopy": {
    "result": "Failed",
    "fingerprint": "b0bdfa97ebff",

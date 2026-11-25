@@ -17,6 +17,14 @@ final class ClarifyBatchStateTests: XCTestCase {
 
     /// The batch shape Hermes 0.21+ emits for one `clarify` invocation that
     /// asks two questions plus a free-text note.
+    private var clarifyAnswerMethod: String {
+#if LAA_BUILD
+        "clarify.lock"
+#else
+        "clarify.respond"
+#endif
+    }
+
     private func makeBatchActivity(requestId: String = "req-batch") -> ClarifyActivity {
         ClarifyActivity(
             requestId: requestId,
@@ -67,6 +75,29 @@ final class ClarifyBatchStateTests: XCTestCase {
         let connectTask = Task { try await client.connect() }
         transport.open(socket)
         _ = try await connectTask.value
+#if LAA_BUILD
+        // These cards begin in the transcript. Reproduce the live server
+        // requests that made them answerable; the installed gateway has no
+        // legacy clarify.respond route for notification-only ids.
+        let onEvent = client.onEvent
+        defer { client.onEvent = onEvent }
+        for card in appState.messages.compactMap(\.clarify) {
+            let received = ClarifyGate()
+            client.onEvent = { event in
+                if case .clarify(_, let activity) = event, activity.requestId == card.requestId {
+                    received.signal()
+                } else {
+                    onEvent?(event)
+                }
+            }
+            let frame: [String: Any] = [
+                "jsonrpc": "2.0", "id": card.requestId, "method": "clarify",
+                "params": ["session_id": "stored-a", "question": card.displayQuestion]
+            ]
+            socket.deliver(String(decoding: try JSONSerialization.data(withJSONObject: frame), as: UTF8.self))
+            try await received.wait("the clarify server request to be registered")
+        }
+#endif
         return client
     }
 
@@ -90,10 +121,18 @@ final class ClarifyBatchStateTests: XCTestCase {
                 answer: answer
             )
         }
-        try await sent.wait("the clarify.respond request to be sent")
+        try await sent.wait("the clarify answer to be sent")
         let request = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
         )
+#if LAA_BUILD
+        if request["id"] as? String == requestId {
+            XCTAssertNil(request["method"], "A scalar answer is the JSON-RPC response itself")
+            _ = await task.value
+            return request
+        }
+#endif
+        XCTAssertEqual(request["method"] as? String, clarifyAnswerMethod)
         let id = try XCTUnwrap(request["id"] as? Int)
         let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
         socket.deliver(String(decoding: try JSONSerialization.data(withJSONObject: response), as: UTF8.self))
@@ -119,10 +158,11 @@ final class ClarifyBatchStateTests: XCTestCase {
                 answer: answer
             )
         }
-        try await sent.wait("the clarify.respond request to be sent")
+        try await sent.wait("the clarify answer RPC to be sent")
         let request = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
         )
+        XCTAssertEqual(request["method"] as? String, clarifyAnswerMethod)
         let id = try XCTUnwrap(request["id"] as? Int)
         let response: [String: Any] = [
             "jsonrpc": "2.0",
@@ -250,7 +290,11 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(settled.questions[0].status, .answered, "A sibling's failed submit must not corrupt an answered question")
         XCTAssertEqual(settled.questions[0].answer, "staging")
         XCTAssertEqual(settled.questions[1].status, .error, "Only the failed question returns to an error/answerable state")
+#if LAA_BUILD
+        XCTAssertEqual(settled.questions[1].error, "LAA did not accept that answer.")
+#else
         XCTAssertEqual(settled.questions[1].error, "Hermes did not accept that answer.")
+#endif
         XCTAssertEqual(settled.questions[2].status, .pending)
         XCTAssertEqual(settled.status, .pending, "The batch still needs input")
     }
@@ -284,8 +328,17 @@ final class ClarifyBatchStateTests: XCTestCase {
 
     func testExpired4009ErrorResponseTearsDownTheRequest() async throws {
         let (appState, _) = makeAppState()
+#if LAA_BUILD
+        let requestID = "req-batch"
+        let questionID: String? = "environment"
+        let activity = makeBatchActivity()
+#else
+        let requestID = "req-legacy"
+        let questionID: String? = nil
+        let activity = ClarifyActivity(requestId: requestID, question: "Pick", choices: [ClarifyChoice(label: "a", value: "a")])
+#endif
         appState.messages = [
-            ChatMessage(id: "clarify-req-legacy", role: .clarify, content: "legacy", timestamp: "1", clarify: ClarifyActivity(requestId: "req-legacy", question: "Pick", choices: [ClarifyChoice(label: "a", value: "a")]))
+            ChatMessage(id: "clarify-\(requestID)", role: .clarify, content: activity.displayQuestion, timestamp: "1", clarify: activity)
         ]
         let transport = ClarifyFakeTransport()
         let socket = ClarifyFakeSocket()
@@ -294,13 +347,13 @@ final class ClarifyBatchStateTests: XCTestCase {
         try await respondFailing(
             appState: appState,
             socket: socket,
-            requestId: "req-legacy",
-            questionId: nil,
+            requestId: requestID,
+            questionId: questionID,
             answer: "a",
             error: RpcError(code: 4009, message: "no pending clarify request")
         )
 
-        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-legacy"))
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: requestID))
         XCTAssertEqual(settled.status, .expired)
         XCTAssertTrue(settled.isExpired)
         XCTAssertEqual(settled.questions[0].status, .expired)
@@ -705,8 +758,14 @@ final class ClarifyBatchStateTests: XCTestCase {
             result: ["status": "ok"]
         )
 
+#if LAA_BUILD
+        XCTAssertEqual(request["id"] as? String, "req-legacy")
+        let params = try XCTUnwrap(request["result"] as? [String: Any])
+        XCTAssertEqual(params["answer"] as? String, "a")
+#else
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["request_id"] as? String, "req-legacy")
+#endif
         XCTAssertNil(params["question_id"], "A synthetic qid must never ride the wire")
         let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-legacy"))
         XCTAssertEqual(settled.questions[0].status, .answered)
@@ -792,10 +851,11 @@ final class ClarifyBatchStateTests: XCTestCase {
                 answer: "staging"
             )
         }
-        try await sent.wait("the clarify.respond request to be sent")
+        try await sent.wait("the clarify answer RPC to be sent")
         let request = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
         )
+        XCTAssertEqual(request["method"] as? String, clarifyAnswerMethod)
         let id = try XCTUnwrap(request["id"] as? Int)
 
         // Expire arrives before the RPC response.
@@ -888,8 +948,13 @@ final class ClarifyBatchStateTests: XCTestCase {
             result: ["status": "ok"]
         )
 
+#if LAA_BUILD
+        XCTAssertEqual(request["id"] as? String, "req-legacy")
+        let params = try XCTUnwrap(request["result"] as? [String: Any])
+#else
         let params = try XCTUnwrap(request["params"] as? [String: Any])
-        XCTAssertNil(params["question_id"], "A wire-parsed legacy card must keep the request-level respond shape")
+#endif
+        XCTAssertNil(params["question_id"], "A wire-parsed scalar card must keep the request-level answer shape")
         XCTAssertEqual(params["answer"] as? String, "a")
         let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-legacy"))
         XCTAssertEqual(settled.status, .answered)
@@ -1567,9 +1632,10 @@ final class ClarifyBatchStateTests: XCTestCase {
         // The gateway takes each answer as it comes, the last one closing
         // the request.
         var open = ["environment", "tests", "notes"]
+        let method = clarifyAnswerMethod
         socket.onSend = { [unowned socket] in
             guard let request = (try? JSONSerialization.jsonObject(with: Data((socket.sentTexts.last ?? "").utf8))) as? [String: Any],
-                  request["method"] as? String == "clarify.respond",
+                  request["method"] as? String == method,
                   let id = request["id"] as? Int,
                   let questionID = (request["params"] as? [String: Any])?["question_id"] as? String else { return }
             open.removeAll { $0 == questionID }
@@ -1581,7 +1647,7 @@ final class ClarifyBatchStateTests: XCTestCase {
 
         let sent = socket.sentTexts
             .compactMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? [String: Any] }
-            .filter { $0["method"] as? String == "clarify.respond" }
+            .filter { $0["method"] as? String == method }
             .compactMap { $0["params"] as? [String: Any] }
         XCTAssertEqual(sent.compactMap { $0["question_id"] as? String }, ["environment", "tests", "notes"], "One at a time, in order")
         XCTAssertEqual(sent.compactMap { $0["answer"] as? String }, ["staging", "", ""], "A blank goes as empty, even a multi-select's")
@@ -1652,9 +1718,10 @@ final class ClarifyBatchStateTests: XCTestCase {
         try await installConnectedClient(appState, socket: socket, transport: transport)
         // Another device answers "tests" while the form sends its first field.
         var open = ["environment", "tests", "notes"]
+        let method = clarifyAnswerMethod
         socket.onSend = { [unowned socket] in
             guard let request = (try? JSONSerialization.jsonObject(with: Data((socket.sentTexts.last ?? "").utf8))) as? [String: Any],
-                  request["method"] as? String == "clarify.respond",
+                  request["method"] as? String == method,
                   let id = request["id"] as? Int,
                   let questionID = (request["params"] as? [String: Any])?["question_id"] as? String else { return }
             open.removeAll { $0 == questionID || $0 == "tests" }
@@ -1669,7 +1736,7 @@ final class ClarifyBatchStateTests: XCTestCase {
 
         let sent = socket.sentTexts
             .compactMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? [String: Any] }
-            .filter { $0["method"] as? String == "clarify.respond" }
+            .filter { $0["method"] as? String == method }
             .compactMap { ($0["params"] as? [String: Any])?["question_id"] as? String }
         XCTAssertEqual(sent, ["environment", "notes"], "Hermes no longer waited on tests")
         let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
