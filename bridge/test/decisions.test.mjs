@@ -576,7 +576,8 @@ test('gone: an asker that is archived, deleted or past its deadline leaves the b
     },
     send: async () => { throw new BridgeError(404, 'not_found', 'Paseo agent not found'); },
   };
-  const f = fixture(t, { daemon });
+  const f = fixture(t, { daemon, sessionStore: { all: () => [{ id: daemonSessionID('agent-9'),
+    delegate: { sessionId: 'agent-9' }, daemonDeletedAt: '2026-11-08T00:00:00Z' }] } });
   const kept = f.service.add(request({ requestId: 'kept' })).decision;
   const archived = f.service.add(request({ requestId: 'archived', source: { paseoAgentId: 'agent-2' } })).decision;
   const deleted = f.service.add(request({ requestId: 'deleted', source: { paseoAgentId: 'agent-9' } })).decision;
