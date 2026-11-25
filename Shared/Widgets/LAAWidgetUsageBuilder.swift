@@ -34,6 +34,9 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "claude-api", name: "Claude API", reading: .balance, showsInWidget: false),
         Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage, showsInWidget: false),
         Slot(provider: "venice", name: "Venice", reading: .balance, showsInWidget: false),
+        // 2026-11-25: the official read-only /v1/credits balance is app-only;
+        // Refuseless does not change the widget's six quota rows.
+        Slot(provider: "refuseless", name: "Refuseless", reading: .balance, showsInWidget: false),
     ]
 
     static var widgetSlots: [Slot] { slots.filter(\.showsInWidget) }

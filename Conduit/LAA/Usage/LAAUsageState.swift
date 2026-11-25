@@ -314,6 +314,7 @@ struct LAAUsageGroup: Identifiable {
             "provider.opencode-go": "https://opencode.ai/console",
             "provider.claude": "https://claude.ai/settings/usage",
             "provider.venice": "https://venice.ai/settings/api",
+            "provider.refuseless": "https://refuseless.com/console/billing",
             "provider.magnific": "https://www.magnific.com/user/my-subscriptions",
             "provider.openai-api": "https://platform.openai.com/usage",
             "provider.claude-api": "https://platform.claude.com/settings/billing",
@@ -352,11 +353,9 @@ struct LAAUsageGroup: Identifiable {
         return result
     }
 
-    /// The owner's display order (2026-11-05), taken from the one slot list the
-    /// widget also reads, so a provider is added in one place: Codex, OpenCode,
-    /// Claude, Magnific, GPT API, Claude API, Liquid AI, Venice. Retired
-    /// providers (Jev, Google Cloud, Google Flow, and nanoGPT since the owner
-    /// cancelled it on 2026-11-11) are never listed.
+    /// Follow the ordered Usage slots: the Codex, Claude and Google cards,
+    /// then the additional providers, ending with Venice and Refuseless.
+    /// Retired providers (Jev, Google Cloud, Google Flow, and nanoGPT) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
             if slot.reading == .accountGroup {
