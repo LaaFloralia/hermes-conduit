@@ -138,11 +138,17 @@ final class LAAWorkArchiveUITests: XCTestCase {
         app.alerts.firstMatch.buttons["work.archive.confirm"].firstMatch.tap()
 
         let refusal = app.alerts["アーカイブできませんでした"]
-        XCTAssertTrue(refusal.waitForExistence(timeout: 10), "the refusal was not shown")
+        guard refusal.waitForExistence(timeout: 10) else {
+            let sent = archiveRequests()
+            XCTFail("the refusal was not shown; the fixture received \(sent.count) archive requests")
+            return
+        }
         XCTAssertTrue(refusal.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "実行中")).firstMatch.exists,
                       "the refusal does not say why")
         shot("4-refused", app)
-        XCTAssertEqual(archiveRequests().count, 1, "the archive was not sent")
+        let sent = archiveRequests()
+        XCTAssertEqual(sent.count, 1, "a refusal is not automatically retried")
+        XCTAssertEqual(sent.first?["id"] as? String, runningID)
         refusal.buttons["OK"].tap()
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(app.staticTexts["work.session.\(runningID)"].firstMatch.exists, "a refused archive removed the row")

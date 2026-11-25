@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import UIKit
 
 /// Archiving in Work always asks first, and only OK archives. When the Mac
 /// refuses (a session in the tree is still at work: 409 session_running),
@@ -45,26 +46,68 @@ struct LAAWorkArchivePrompt: Identifiable {
 }
 
 extension View {
-    /// One alert for both the question and a refusal, so the two never
-    /// compete for the same presentation.
     func laaWorkArchivePrompt(_ prompt: Binding<LAAWorkArchivePrompt?>) -> some View {
-        let shown = prompt.wrappedValue
-        return alert(shown?.title ?? "", isPresented: Binding(
-            get: { prompt.wrappedValue != nil },
-            // Only the prompt on screen is dismissed: a refusal that arrives
-            // as the question closes must not be cleared with it.
-            set: { if !$0, prompt.wrappedValue?.id == shown?.id { prompt.wrappedValue = nil } }
-        ), presenting: shown) { item in
-            if let archive = item.archive {
-                Button(role: .cancel) {} label: { Text(verbatim: LAAWorkArchivePrompt.cancelTitle) }
-                Button { archive() } label: { Text(verbatim: LAAWorkArchivePrompt.confirmTitle) }
-                    .accessibilityIdentifier("work.archive.confirm")
-            } else {
-                Button(role: .cancel) {} label: { Text(verbatim: "OK") }
+        modifier(LAAWorkArchiveAlert(request: prompt))
+    }
+}
+
+private struct LAAWorkArchiveAlert: ViewModifier {
+    @Binding var request: LAAWorkArchivePrompt?
+    @State private var shown: LAAWorkArchivePrompt?
+    @State private var anchor = UIView()
+
+    func body(content: Content) -> some View {
+        let presented = shown
+        return content
+            .background(WindowAnchor(view: anchor).frame(width: 0, height: 0).accessibilityHidden(true))
+            .alert(presented?.title ?? "", isPresented: Binding(
+                get: { shown != nil },
+                set: { visible in
+                    guard !visible, shown?.id == presented?.id else { return }
+                    shown = nil
+                    if request?.id == presented?.id { request = nil }
+                }
+            ), presenting: presented) { item in
+                if let archive = item.archive {
+                    Button(role: .cancel) {} label: { Text(verbatim: LAAWorkArchivePrompt.cancelTitle) }
+                    Button { archive() } label: { Text(verbatim: LAAWorkArchivePrompt.confirmTitle) }
+                        .accessibilityIdentifier("work.archive.confirm")
+                } else {
+                    Button(role: .cancel) {} label: { Text(verbatim: "OK") }
+                }
+            } message: { item in
+                Text(verbatim: item.message)
             }
-        } message: { item in
-            Text(verbatim: item.message)
+            .task(id: request?.id) { await presentRequestedAlert() }
+    }
+
+    private func presentRequestedAlert() async {
+        guard let next = request, shown?.id != next.id else { return }
+        // A fast refusal can arrive while the confirmation is closing. Keep
+        // it queued until the old alert and its UIKit transition are gone.
+        while shown != nil || nativeAlertIsClosingOrVisible {
+            do { try await Task.sleep(for: .milliseconds(25)) }
+            catch { return }
         }
+        guard !Task.isCancelled, request?.id == next.id else { return }
+        shown = next
+    }
+
+    private var nativeAlertIsClosingOrVisible: Bool {
+        var presenter = anchor.window?.rootViewController
+        while let current = presenter {
+            if current is UIAlertController || current.transitionCoordinator?.viewController(forKey: .from) is UIAlertController {
+                return true
+            }
+            presenter = current.presentedViewController
+        }
+        return false
+    }
+
+    private struct WindowAnchor: UIViewRepresentable {
+        let view: UIView
+        func makeUIView(context: Context) -> UIView { view }
+        func updateUIView(_ uiView: UIView, context: Context) {}
     }
 }
 #endif
