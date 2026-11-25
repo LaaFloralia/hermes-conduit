@@ -146,7 +146,7 @@ final class LAABubbleGlassUITests: XCTestCase {
                                      white: kind == "photo", thinking: true)
                     let activity = app.buttons["chat.typing"]
                     XCTAssertTrue(activity.waitForExistence(timeout: 10))
-                    XCTAssertEqual(activity.value as? String, "Thinking")
+                    XCTAssertEqual(activity.value as? String, "考え中")
                     Thread.sleep(forTimeInterval: 1)
                     capture(app, "thinking-\(bubble)-\(dark ? "dark" : "light")-\(kind)")
                     app.terminate()
