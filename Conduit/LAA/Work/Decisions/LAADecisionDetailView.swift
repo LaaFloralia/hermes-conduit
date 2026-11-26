@@ -96,6 +96,7 @@ struct LAADecisionDetailView: View {
                 } else if let answer = item.answer {
                     if undelivered != nil { undeliveredBlock }
                     answerBlock(answer)
+                    if item.canOverturn { choices }
                     if laaDesktop, showsSend { desktopAction }
                 } else if item.status != "open" {
                     Text(verbatim: "この判断は閉じられています。")
@@ -143,7 +144,10 @@ struct LAADecisionDetailView: View {
     /// The one line that replaces the old celebration. It only advances a
     /// just-sent answer on the phone; an answered record stays put.
     @ViewBuilder private func answeredLine(_ answer: LAADecision.Answer) -> some View {
-        if item.deliveryFailed || item.delivery?.state == "pending" {
+        if answer.answeredBy == "monet" {
+            Text(verbatim: "Monetが代理回答").laaTextStyle(.secondary)
+                .accessibilityIdentifier("work.decision.monet-answer")
+        } else if item.deliveryFailed || item.delivery?.state == "pending" {
             Text(verbatim: "回答は保存済みです")
                 .laaTextStyle(.secondary)
                 .accessibilityIdentifier("work.decision.recorded")
@@ -284,8 +288,8 @@ struct LAADecisionDetailView: View {
                 .accessibilityAddTraits(.isHeader)
             Text(verbatim: answer.label).laaTextStyle(.body).fontWeight(.semibold)
                 .fixedSize(horizontal: false, vertical: true)
-            if let note = answer.note, !note.isEmpty {
-                Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            if let detail = answer.reason ?? answer.note, !detail.isEmpty {
+                Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -321,13 +325,15 @@ struct LAADecisionDetailView: View {
         }
     }
 
-    private var retrying: Bool { item.answer != nil && item.deliveryFailed && undelivered != nil }
+    private var retrying: Bool { !item.canOverturn && item.answer != nil && item.deliveryFailed && undelivered != nil }
 
     /// One primary action, and only while there is something to send.
-    private var showsSend: Bool { item.kind == .board && ((item.status == "open" && item.answer == nil) || retrying) }
+    private var showsSend: Bool { item.kind == .board && (item.status == "open" || item.canOverturn || retrying) }
 
     private var sendTitle: String {
-        sending ? "Sending…" : retrying ? "Resend" : "Send"
+        if sending { return "Sending…" }
+        if retrying { return "Resend" }
+        return item.canOverturn ? "Change Answer" : "Send"
     }
 
     private var actionBar: some View {
@@ -382,7 +388,7 @@ struct LAADecisionDetailView: View {
         item = record
         undelivered = record.deliveryFailed ? LAADecisionCopy.deliveryError(record.delivery?.error)
             : record.delivery?.state == "pending" ? LAADecisionCopy.pending(record) : nil
-        if record.answer != nil { failure = nil; noteFocused = false }
+        if record.answer != nil && !record.canOverturn { failure = nil; noteFocused = false }
         if record.delivery?.state == "delivered" || record.delivery?.state == "stored" {
             onAnswered?(record)
         }

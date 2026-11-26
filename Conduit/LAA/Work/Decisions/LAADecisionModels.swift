@@ -60,6 +60,7 @@ struct LAADecision: Codable, Identifiable, Equatable {
     let source: Source?
     let sourceRef: String?
     let createdAt: String?
+    let category: String?
     let answer: Answer?
     let delivery: Delivery?
     /// Session items only: the Bridge session that holds the native question.
@@ -68,11 +69,11 @@ struct LAADecision: Codable, Identifiable, Equatable {
     init(kind: Kind = .board, id: String, ref: String? = nil, status: String = "open", title: String, summary: String,
          options: [Option] = [], allowOther: Bool = true, impact: String? = nil, deadline: String? = nil,
          source: Source? = nil, sourceRef: String? = nil, createdAt: String? = nil,
-         answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil) {
+         answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil, category: String? = nil) {
         self.kind = kind; self.id = id; self.ref = ref; self.status = status; self.title = title; self.summary = summary
         self.options = options; self.allowOther = allowOther; self.impact = impact; self.deadline = deadline
         self.source = source; self.sourceRef = sourceRef; self.createdAt = createdAt
-        self.answer = answer; self.delivery = delivery; self.sessionId = sessionId
+        self.answer = answer; self.delivery = delivery; self.sessionId = sessionId; self.category = category
     }
 
     init(from decoder: Decoder) throws {
@@ -102,14 +103,17 @@ struct LAADecision: Codable, Identifiable, Equatable {
         source = try c.decodeIfPresent(Source.self, forKey: .source)
         sourceRef = try c.decodeIfPresent(String.self, forKey: .sourceRef)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
         answer = try c.decodeIfPresent(Answer.self, forKey: .answer)
         delivery = try c.decodeIfPresent(Delivery.self, forKey: .delivery)
     }
     private enum CodingKeys: String, CodingKey {
         case kind, id, ref, status, title, summary, options, allowOther, impact, deadline, source, sourceRef
-        case createdAt, answer, delivery, sessionId
+        case createdAt, category, answer, delivery, sessionId
     }
 
+    var isMonetQueue: Bool { category == "delegable" || category == "unmarked" }
+    var canOverturn: Bool { kind == .board && answer?.answeredBy == "monet" && !isGone }
     var recommended: Option? { options.first(where: \.recommended) }
     /// Monet answered it for the owner; the owner may still choose again (an overturn).
     var answeredByMonet: Bool { answer?.answeredBy == "monet" }
@@ -120,7 +124,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
     /// Something the owner still has to do: an open question, or an answer
     /// that did not arrive. An answer on its way (waiting, pending) is shown
     /// quietly among the answered rows and never counted (2026-11-26).
-    var needsOwner: Bool { !isGone && (answer == nil || deliveryFailed) }
+    /// Monet's queue (delegable, unmarked) is Monet's to answer, not the owner's.
+    var needsOwner: Bool { !isGone && !isMonetQueue && (answer == nil || deliveryFailed) }
     /// Answered, and the Bridge delivers it by itself once the conversation is free.
     var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's
