@@ -31,6 +31,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
         let label: String
         let note: String?
         let answeredAt: String?
+        var answeredBy: String? = nil
+        var reason: String? = nil
     }
     struct Delivery: Codable, Equatable {
         let state: String
@@ -56,6 +58,7 @@ struct LAADecision: Codable, Identifiable, Equatable {
     let source: Source?
     let sourceRef: String?
     let createdAt: String?
+    let category: String?
     let answer: Answer?
     let delivery: Delivery?
     /// Session items only: the Bridge session that holds the native question.
@@ -64,11 +67,11 @@ struct LAADecision: Codable, Identifiable, Equatable {
     init(kind: Kind = .board, id: String, ref: String? = nil, status: String = "open", title: String, summary: String,
          options: [Option] = [], allowOther: Bool = true, impact: String? = nil, deadline: String? = nil,
          source: Source? = nil, sourceRef: String? = nil, createdAt: String? = nil,
-         answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil) {
+         answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil, category: String? = nil) {
         self.kind = kind; self.id = id; self.ref = ref; self.status = status; self.title = title; self.summary = summary
         self.options = options; self.allowOther = allowOther; self.impact = impact; self.deadline = deadline
         self.source = source; self.sourceRef = sourceRef; self.createdAt = createdAt
-        self.answer = answer; self.delivery = delivery; self.sessionId = sessionId
+        self.answer = answer; self.delivery = delivery; self.sessionId = sessionId; self.category = category
     }
 
     init(from decoder: Decoder) throws {
@@ -98,14 +101,17 @@ struct LAADecision: Codable, Identifiable, Equatable {
         source = try c.decodeIfPresent(Source.self, forKey: .source)
         sourceRef = try c.decodeIfPresent(String.self, forKey: .sourceRef)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
         answer = try c.decodeIfPresent(Answer.self, forKey: .answer)
         delivery = try c.decodeIfPresent(Delivery.self, forKey: .delivery)
     }
     private enum CodingKeys: String, CodingKey {
         case kind, id, ref, status, title, summary, options, allowOther, impact, deadline, source, sourceRef
-        case createdAt, answer, delivery, sessionId
+        case createdAt, category, answer, delivery, sessionId
     }
 
+    var isMonetQueue: Bool { category == "delegable" || category == "unmarked" }
+    var canOverturn: Bool { kind == .board && answer?.answeredBy == "monet" && !isGone }
     var recommended: Option? { options.first(where: \.recommended) }
     var deliveryFailed: Bool { delivery?.state == "failed" }
     /// The asker is gone (archived, deleted, past its deadline) or the

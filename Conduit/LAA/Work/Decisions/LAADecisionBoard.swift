@@ -49,7 +49,7 @@ import SwiftUI
     /// back to 未回答 because of it.
     private var answeredHere = Set<String>()
 
-    var count: Int { items.count }
+    var count: Int { items.count { !$0.isMonetQueue } }
 
     func reset() {
         items = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
@@ -66,7 +66,7 @@ import SwiftUI
         await load(bridge)
         guard phase == .loaded, !choseDefaultSection else { return false }
         choseDefaultSection = true
-        return !items.isEmpty
+        return count > 0
     }
 
     /// The list's read on appear, skipped right after the hub's own read.
@@ -125,7 +125,7 @@ import SwiftUI
     /// this device has already answered (a read that crossed the answer).
     /// A row that carries an answer, such as a failed delivery, stays.
     static func visible(_ items: [LAADecision], answeredHere: Set<String>) -> [LAADecision] {
-        items.filter { $0.answer != nil || !answeredHere.contains($0.id) }
+        items.filter { ($0.answer != nil && !$0.canOverturn) || !answeredHere.contains($0.id) }
     }
 
     /// The answer body. A free answer keeps `optionIndex` null on the wire
@@ -154,8 +154,8 @@ import SwiftUI
 
     func answer(_ item: LAADecision, optionIndex: Int?, note: String?, bridge: LAABridgeSession) async -> Outcome {
         let current = records[item.id] ?? item
-        if current.answer != nil { return Self.outcome(of: current, replacing: item, in: self) }
-        guard current.status == "open" else { return .failed("この判断はすでに閉じられています。") }
+        if current.answer != nil && !current.canOverturn { return Self.outcome(of: current, replacing: item, in: self) }
+        guard current.status == "open" || current.canOverturn else { return .failed("この判断はすでに閉じられています。") }
         let key = requestIDs[item.id] ?? LAABridgeIdempotencyKey()
         requestIDs[item.id] = key
         if let note, !note.isEmpty { noteDrafts[item.id] = note }
@@ -194,7 +194,8 @@ import SwiftUI
         } catch let error as LAABridgeHTTPError {
             // A refusal the Bridge confirms means nothing was recorded; a new
             // request may follow. Anything else keeps the id for a replay.
-            if let current = await refreshRecord(item.id, bridge: bridge), current.answer != nil {
+            if let current = await refreshRecord(item.id, bridge: bridge), current.answer != nil,
+               !path.hasSuffix("/answer") || !current.canOverturn {
                 // A failed record may predate an unknown retry. Keep that
                 // retry's key until its attempt or delivery is observed.
                 if path.hasSuffix("/answer") || ["pending", "stored", "delivered"].contains(current.delivery?.state ?? "")
@@ -206,7 +207,8 @@ import SwiftUI
             if !LAAWorkHTTP.outcomeUnknown(error) { requestIDs[item.id] = nil }
             return .failed(LAADecisionCopy.answerError(error))
         } catch {
-            if let current = await refreshRecord(item.id, bridge: bridge), current.answer != nil {
+            if let current = await refreshRecord(item.id, bridge: bridge), current.answer != nil,
+               !path.hasSuffix("/answer") || !current.canOverturn {
                 // A failed record may predate an unknown retry. Keep that
                 // retry's key until its attempt or delivery is observed.
                 if path.hasSuffix("/answer") || ["pending", "stored", "delivered"].contains(current.delivery?.state ?? "")
@@ -236,7 +238,7 @@ import SwiftUI
 
     private static func outcome(of decision: LAADecision, replacing item: LAADecision, in board: LAADecisionBoard) -> Outcome {
         board.records[decision.id] = decision
-        if decision.answer != nil || decision.isGone { board.answeredHere.insert(decision.id) }
+        if (decision.answer != nil && !decision.canOverturn) || decision.isGone { board.answeredHere.insert(decision.id) }
         if decision.isGone {
             board.items.removeAll { $0.id == item.id }
             return .gone(LAADecisionCopy.gone(decision))
@@ -249,7 +251,7 @@ import SwiftUI
                                      allowOther: decision.allowOther, impact: decision.impact, deadline: decision.deadline,
                                      source: decision.source, sourceRef: decision.sourceRef ?? item.sourceRef,
                                      createdAt: decision.createdAt ?? item.createdAt, answer: decision.answer,
-                                     delivery: decision.delivery)
+                                     delivery: decision.delivery, category: decision.category)
             if let index = board.items.firstIndex(where: { $0.id == item.id }) { board.items[index] = merged }
             else { board.items.append(merged) }
             board.items = LAADecisionOrder.sorted(board.items)

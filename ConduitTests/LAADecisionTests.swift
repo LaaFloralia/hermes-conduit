@@ -197,6 +197,32 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertFalse(chose)
         XCTAssertEqual(board.phase, .idle)
     }
+    func testOwnerCanReplaceDeliveredMonetAnswer() async throws {
+        let id = "dec_0000000000000d02"
+        let proxyJSON = #"{"id":"dec_0000000000000d02","status":"answered","title":"試験用の判断","category":"delegable","answer":{"optionIndex":0,"label":"A","answeredBy":"monet","reason":"確認時間を取る"},"delivery":{"state":"delivered"}}"#
+        let proxy = try JSONDecoder().decode(LAADecision.self, from: Data(proxyJSON.utf8))
+        XCTAssertTrue(proxy.canOverturn)
+        XCTAssertTrue(proxy.isMonetQueue)
+        XCTAssertEqual(proxy.answer?.reason, "確認時間を取る")
+        XCTAssertFalse(LAADecisionBoardView.needsAttention(proxy))
+        DecisionAnswerProtocol.paths = []
+        DecisionAnswerProtocol.replies = [(200, Data(#"{"data":{"decision":{"id":"dec_0000000000000d02","status":"answered","title":"試験用の判断","category":"delegable","answer":{"optionIndex":1,"label":"B","answeredBy":"owner"},"overturned":true,"delivery":{"state":"delivered"}}},"requestId":"req_1"}"#.utf8))]
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [DecisionAnswerProtocol.self]
+        let credentials = LAABridgeCredentials(baseURL: URL(string: "http://127.0.0.1:9")!, deviceID: UUID().uuidString, token: "fixture")
+        let bridge = LAABridgeSession(client: LAABridgeClient(session: URLSession(configuration: config)),
+                                      readCredentials: { credentials })
+        let board = LAADecisionBoard()
+        board.setForTesting([proxy])
+        XCTAssertEqual(board.count, 0)
+        let outcome = await board.answer(proxy, optionIndex: 1, note: nil, bridge: bridge)
+        XCTAssertEqual(outcome, .done(stored: false))
+        XCTAssertEqual(DecisionAnswerProtocol.paths, ["POST /v1/decisions/\(id)/answer"])
+        XCTAssertEqual(board.records[id]?.answer?.label, "B")
+        XCTAssertFalse(board.records[id]?.canOverturn ?? true)
+        board.finishLoadForTesting([proxy])
+        XCTAssertTrue(board.items.isEmpty)
+    }
+
     func testKnownDeliveredAnswerCannotBeSentAgainFromStaleCard() async {
         let old = LAADecision(id: "dec_0000000000000b04", title: "試験用の判断", summary: "",
                               options: [.init(label: "作業を進める", recommended: true)])

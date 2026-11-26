@@ -409,7 +409,7 @@ struct LAADecisionBoardView: View {
                     answer: item.answer,
                     delivery: .init(state: "delivered", attempts: item.delivery?.attempts,
                                     deliveredAt: item.delivery?.deliveredAt, error: nil),
-                    sessionId: item.sessionId)
+                    sessionId: item.sessionId, category: item.category)
     }
 
     // MARK: Text
@@ -430,6 +430,7 @@ struct LAADecisionBoardView: View {
             line += piece
         }
         if let source = item.sourceLine { add(source) }
+        if item.isMonetQueue { add("Monet担当") }
         if let deadline = LAADecisionDeadline.describe(item.deadline, now: now) {
             add(deadline.text, color: deadline.urgent ? LAAColor.attention : LAAColor.secondaryText, strong: deadline.urgent)
         }
@@ -445,6 +446,12 @@ struct LAADecisionBoardView: View {
         var line = AttributedString()
         if let source = item.sourceLine {
             var piece = AttributedString(source)
+            piece.foregroundColor = LAAColor.secondaryText
+            line += piece
+        }
+        if answer.answeredBy == "monet" {
+            if !line.characters.isEmpty { line += AttributedString(" · ") }
+            var piece = AttributedString("Monetが代理回答")
             piece.foregroundColor = LAAColor.secondaryText
             line += piece
         }
@@ -480,7 +487,8 @@ struct LAADecisionBoardView: View {
     /// A row that wants the owner now: a deadline inside a day, or an answer
     /// that did not reach its conversation.
     static func needsAttention(_ item: LAADecision) -> Bool {
-        if item.answer != nil { return item.deliveryFailed }
+        if item.answer != nil { return item.deliveryFailed && !item.canOverturn }
+        if item.isMonetQueue { return false }
         return item.deliveryFailed || LAADecisionDeadline.describe(item.deadline)?.urgent == true
     }
 }
