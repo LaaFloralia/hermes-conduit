@@ -277,6 +277,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       if (a.workspaceId && !active.some((entry) => entry.id === a.workspaceId)) await c.restoreWorkspace(a.workspaceId);
       await c.refreshAgent(id);
     }),
+    close: dropConnection,
     status: (id) => call(async (c) => statusOf(c, await agent(c, id))),
     continuationSource: (id, { requireWorkspace = true, relatedIds = [] } = {}) => call(async (c) => {
       const source = await agent(c, id);

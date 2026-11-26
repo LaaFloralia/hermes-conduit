@@ -23,7 +23,7 @@ const fixtureRows = [303, 352].map((length, i) => ({
   options: [{ label: 'あ'.repeat(10), detail: '文'.repeat(62), recommended: true },
     { label: 'い'.repeat(7), detail: '文'.repeat(27), recommended: false },
     { label: 'う'.repeat(5), detail: '文'.repeat(35), recommended: false }],
-  allowOther: true, impact: '文'.repeat(73), deadline: null, source, requestId: `fixture-${i}`,
+  allowOther: true, impact: `【必ず社長：選択】${'文'.repeat(64)}`, deadline: null, source, requestId: `fixture-${i}`,
   createdAt: new Date(epoch + i * 600_000).toISOString(), answer: null, delivery: null,
 }));
 const routes = ['/v1/sessions', '/v1/decisions'];

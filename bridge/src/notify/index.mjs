@@ -86,12 +86,12 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
     const result = await deliverPending(key, state.read().pending[key].event);
     return result.delivered ? result : { ...result, queued: true };
   };
-  notify.flush = async () => {
+  notify.flush = async (mayDeliver = () => true) => {
     const rows = Object.entries(state.read().pending ?? {});
     for (const [key, item] of rows) {
       let kind = item.kind;
       try { kind ??= JSON.parse(Buffer.from(item.event.session_id.slice(item.event.session_id.lastIndexOf('#') + 1), 'base64url').toString()).k; } catch { /* Legacy queued links have no metadata. */ }
-      if (notificationLevel(kind, preferences) === 'off') { state.mutate((s) => { delete s.pending[key]; }); continue; }
+      if (!mayDeliver(kind, item.event.session_id) || notificationLevel(kind, preferences) === 'off') { state.mutate((s) => { delete s.pending[key]; }); continue; }
       if (now() - item.queuedAt > 7 * 86400_000) { state.mutate((s) => { delete s.pending[key]; }); continue; }
       await deliverPending(key, item.event);
     }
@@ -101,4 +101,4 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
 let notifier;
 export async function notifyOwner(payload) { notifier ??= createOwnerNotifier(); return notifier(payload); }
 
-export async function flushOwnerNotifications() { notifier ??= createOwnerNotifier(); await notifier.flush(); }
+export async function flushOwnerNotifications(mayDeliver) { notifier ??= createOwnerNotifier(); await notifier.flush(mayDeliver); }

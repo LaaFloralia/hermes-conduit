@@ -44,7 +44,8 @@ if [ "${LAA_TF_BUILD_PHASE:-}" != 1 ]; then
   mkdir -p "$lock_dir"
   result_file="$(mktemp "$lock_dir/laa-ios-result.XXXXXX")"
   trap 'rm -f "$result_file"' EXIT
-  /usr/bin/python3 /Users/laa/hq/harness/lock_run.py "$lock_dir/laa-ios.lock" 5400 \
+  LAA_BUILD_PRIORITY=release LAA_BUILD_LABEL=hortensia-testflight \
+    /usr/bin/python3 /Users/laa/hq/harness/lock_run.py "$lock_dir/laa-ios.lock" 5400 \
     /bin/bash "$slot" /usr/bin/python3 "$storage" guard \
     /usr/bin/env LAA_TF_BUILD_PHASE=1 LAA_TF_RESULT_FILE="$result_file" /bin/bash "$repo/scripts/laa/testflight.sh" "$@"
   build_number="$(cat "$result_file")"

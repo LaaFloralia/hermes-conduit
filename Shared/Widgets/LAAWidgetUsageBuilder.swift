@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import Foundation
 import SwiftUI
+import WidgetKit
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -236,7 +237,10 @@ struct LAAUsageBar: View {
     let remainingPercent: Double?
     var height: CGFloat = LAAUsageBar.height
     var animates = true
+    /// The widget's own mode when a capture overrides it; otherwise WidgetKit's.
+    var renderingMode: WidgetRenderingMode? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.widgetRenderingMode) private var environmentRenderingMode
     @State private var appeared = false
 
     static let height: CGFloat = 4
@@ -263,14 +267,16 @@ struct LAAUsageBar: View {
 
     var body: some View {
         let level = LAAUsageBarLevel(remainingPercent: remainingPercent)
+        let paint = Paint(mode: renderingMode ?? environmentRenderingMode, level: level)
         GeometryReader { proxy in
             let drawn = !animates || appeared || reduceMotion ? fraction : 0
             ZStack(alignment: .leading) {
-                Rectangle().fill(LAAColor.separator)
+                Rectangle().fill(paint.track)
                 if level != .unknown {
-                    Rectangle().fill(level.color)
+                    Rectangle().fill(paint.fill)
                         // A nonzero share keeps a sliver visible.
                         .frame(width: max(proxy.size.width * drawn, fraction > 0 ? min(2, proxy.size.width) : 0))
+                        .widgetAccentable()
                 }
             }
         }
@@ -280,6 +286,31 @@ struct LAAUsageBar: View {
         .onAppear {
             guard animates, !appeared else { return }
             if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 0.35)) { appeared = true } }
+        }
+    }
+}
+
+extension LAAUsageBar {
+    /// Track and fill for a rendering mode. On tinted and clear Home Screens
+    /// (`accented`) WidgetKit keeps only each view's opacity, and in
+    /// `vibrant` (StandBy, the lock screen, a Mac desktop in the background)
+    /// only its brightness; an opaque track in its own colour then read the
+    /// same as the fill, so every bar looked full. Outside full colour the
+    /// track is a faint white and the fill solid white in the accent group.
+    struct Paint {
+        let track: Color
+        let fill: Color
+
+        static let tintedTrackOpacity = 0.28
+
+        init(mode: WidgetRenderingMode, level: LAAUsageBarLevel) {
+            if mode == .fullColor {
+                track = LAAColor.separator
+                fill = level.color
+            } else {
+                track = Color.white.opacity(Self.tintedTrackOpacity)
+                fill = Color.white
+            }
         }
     }
 }

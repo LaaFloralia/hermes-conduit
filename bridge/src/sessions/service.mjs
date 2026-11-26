@@ -40,7 +40,7 @@ import { daemonSessionID, snapshot } from './daemon.mjs';
 import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
 import { fastAvailable, fastValue } from './features.mjs';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
-import { approvalSummary, quickReply, sessionNotificationMeta } from './quick-reply.mjs';
+import { quickReply } from './quick-reply.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 import { createModelSwitcher, joinedHistory } from './model-switch.mjs';
 import { sessionOptionsReader } from './options.mjs';
@@ -470,17 +470,12 @@ export function createSessionService({
       await markDeletedAgents(agents);
       for (const { previous, current } of transitions) {
         const phase = current.phase;
-        const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
-          : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
+        // Provider-native questions/approvals have no category. Keep their
+        // existing in-app reply path, but don't push an unmarked decision.
+        const kind = phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
         if (kind && !current.archivedAt && !current.daemonArchivedAt && !current.routine && !(kind === 'finished' && decisions?.hasOpen(current))) {
-          let detail;
-          if (kind === 'question' || kind === 'approval') {
-            try { detail = await decision(current.id); } catch { /* Delivery survives an unavailable daemon. */ }
-          }
-          const meta = sessionNotificationMeta(current.id, kind, detail);
-          const approvalBody = meta.a === 1 ? approvalSummary(detail.requests[0]) : null;
-          void notify({ meta, kind: `session.${kind}`, title: current.name,
-            body: approvalBody ?? { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
+          void notify({ meta: { sid: current.id }, kind: `session.${kind}`, title: current.name,
+            body: { error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
         }
       }
@@ -1829,6 +1824,7 @@ function summarizePending(pending) {
     count: list.length,
     kinds,
     ids,
+    ...(list.length ? { category: 'unmarked' } : {}),
   };
 }
 

@@ -14,6 +14,18 @@ export function text(value, field, max, { optional = false } = {}) {
 }
 export const requestKey = (value) => text(value, 'requestId', 200);
 
+export function decisionCategory(impact) {
+  const kind = typeof impact === 'string' && /^【必ず社長：([^【】\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+)】/u.exec(impact)?.[1].trim();
+  return kind ? { category: 'owner', ownerKind: kind }
+    : { category: typeof impact === 'string' && impact.startsWith('【任せられる】') ? 'delegable' : 'unmarked', ownerKind: null };
+}
+
+const withCategory = (r) => Object.assign(r, decisionCategory(r.impact));
+function proxyReason(value) {
+  if (typeof value !== 'string' || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) throw badRequest('decision_invalid', 'reason must be one line');
+  return text(value, 'reason', 200);
+}
+
 const ANSWER_NOTE_LIMIT = 8000;
 function answerNote(value) {
   if (value == null) return null;
@@ -62,8 +74,15 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
         || !validTime(r.createdAt) || !validTime(r.updatedAt) || (r.ref !== null && text(r.ref, 'ref', 80) !== r.ref)) return false;
       const normalized = input(r);
       if (Object.entries(normalized).some(([k, v]) => JSON.stringify(r[k]) !== JSON.stringify(v))) return false;
-      if (r.status !== 'answered') return r.answer === null && r.delivery === null;
+      const { category, ownerKind } = decisionCategory(r.impact);
+      if ((r.category !== undefined || r.ownerKind !== undefined) && (r.category !== category || r.ownerKind !== ownerKind)) return false;
+      if (r.status !== 'answered') return r.answer === null && r.delivery === null && r.monetAnswer === undefined && r.overturned === undefined;
       const a = r.answer, d = r.delivery;
+      if (r.overturned !== undefined && (r.overturned !== true || !validAnswer(r, r.monetAnswer) || r.monetAnswer.answeredBy !== 'monet' || a?.answeredBy !== 'owner')) return false;
+      if (r.monetAnswer !== undefined && !r.overturned) return false;
+      if (category === 'owner' && (a?.answeredBy === 'monet' || r.overturned)) return false;
+      if (r.previousAttempt !== undefined && (!r.overturned || !d?.waiting || !validTime(r.previousAttempt.at)
+        || r.previousAttempt.messageId !== `${r.id}:answer:${d.attempts - 1}`)) return false;
       if (!a || !d || !validTime(a.answeredAt) || !['pending', 'delivered', 'failed', 'stored', 'gone'].includes(d.state)
         || !Number.isSafeInteger(d.attempts) || d.attempts < 1 || d.messageId !== `${r.id}:answer:${d.attempts}`
         || (d.state === 'delivered' ? !validTime(d.deliveredAt) : d.deliveredAt !== null)
@@ -71,11 +90,16 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
         // `waiting` holds an accepted answer for a busy conversation; only a pending delivery may carry it.
         || (d.waiting !== undefined && (d.state !== 'pending' || d.waiting !== true))
         || (d.waitingSince !== undefined && (d.state !== 'pending' || !validTime(d.waitingSince)))
-        || (d.holds !== undefined && (d.state !== 'pending' || !Number.isSafeInteger(d.holds) || d.holds < 1))
-        || text(a.deviceId, 'deviceId', 200) !== a.deviceId || answerNote(a.note) !== a.note) return false;
-      return a.optionIndex === null ? r.allowOther && a.note === null && Boolean(a.label) && answerNote(a.label) === a.label
-        : Number.isInteger(a.optionIndex) && r.options[a.optionIndex]?.label === a.label;
+        || (d.holds !== undefined && (d.state !== 'pending' || !Number.isSafeInteger(d.holds) || d.holds < 1))) return false;
+      return validAnswer(r, a);
     } catch { return false; }
+  }
+  function validAnswer(r, a) {
+    if (!a || !validTime(a.answeredAt) || text(a.deviceId, 'deviceId', 200) !== a.deviceId || answerNote(a.note) !== a.note) return false;
+    if (a.answeredBy === 'monet' ? proxyReason(a.reason) !== a.reason
+      : (a.answeredBy !== undefined && a.answeredBy !== 'owner') || a.reason !== undefined) return false;
+    return a.optionIndex === null ? r.allowOther && a.note === null && Boolean(a.label) && answerNote(a.label) === a.label
+      : Number.isInteger(a.optionIndex) && r.options[a.optionIndex]?.label === a.label;
   }
   function checked(s) {
     if (!Array.isArray(s.records) || !s.operations || typeof s.operations !== 'object' || Array.isArray(s.operations)
@@ -99,19 +123,22 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     for (const [key, op] of Object.entries(s.operations)) if (!ids.has(op.id)) delete s.operations[key];
     for (const id of Object.keys(s.notifications)) if (!ids.has(id)) delete s.notifications[id];
   }
-  const mutate = (fn) => access(() => file.mutate((s) => { checked(s); prune(s); return structuredClone(fn(s)); }));
+  // Older records have no category field. Re-read their original prefix instead of guessing.
+  const read = () => { const s = checked(file.read()); prune(s); s.records.forEach(withCategory); return s; };
+  const mutate = (fn) => access(() => file.mutate((s) => { checked(s); prune(s); s.records.forEach(withCategory); return structuredClone(fn(s)); }));
   function find(s, id) {
     const r = s.records.find((r) => r.id === id || (r.ref && r.ref === id));
     if (!r) throw notFound('decision not found');
     return r;
   }
-  function reserve(s, id, deviceId, body, retry) {
+  function reserve(s, id, deviceId, body, retry, monetReason = null) {
     if (body.quick !== undefined && typeof body.quick !== 'boolean') throw badRequest('decision_invalid', 'quick must be boolean');
     const r = find(s, id);
-    const key = JSON.stringify([deviceId, requestKey(body.requestId)]);
+    if (monetReason && r.category === 'owner') throw conflict('decision_owner_only', 'この判断は社長だけが回答できます。');
+    const key = monetReason ? JSON.stringify(['monet', r.id, 'proxy']) : JSON.stringify([deviceId, requestKey(body.requestId)]);
     const note = retry ? null : answerNote(body.note);
     const optionIndex = body.optionIndex ?? null;
-    const digest = createHash('sha256').update(JSON.stringify([r.id, retry, optionIndex, note])).digest('hex');
+    const digest = createHash('sha256').update(JSON.stringify([r.id, retry, optionIndex, note, ...(monetReason ? [monetReason] : [])])).digest('hex');
     if (s.operations[key]) {
       if (s.operations[key].digest !== digest) throw conflict('decision_request_conflict', 'requestId was used for a different answer');
       return { decision: r, replayed: true };
@@ -119,24 +146,36 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     if (retry) {
       if (r.status !== 'answered' || r.delivery?.state !== 'failed') throw conflict('decision_closed', 'only failed delivery can be retried');
     } else {
-      if (r.status !== 'open') throw conflict('decision_closed', 'decision is already closed');
-      if (body.quick && r.deadline !== null && Date.parse(r.deadline) < now()) throw conflict('decision_expired', '回答期限を過ぎています。判断ボードで確認してください。');
+      const overturning = !monetReason && r.answer?.answeredBy === 'monet';
+      if (r.status !== 'open' && !overturning) throw conflict('decision_closed', 'decision is already closed');
+      if ((body.quick || monetReason) && r.deadline !== null && Date.parse(r.deadline) < now()) throw conflict('decision_expired', '回答期限を過ぎています。判断ボードで確認してください。');
       if (optionIndex === null ? (!r.allowOther || !note) : (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= r.options.length)) throw badRequest('decision_invalid', 'choose an option or provide a free answer');
-      r.answer = { optionIndex, label: optionIndex === null ? note : r.options[optionIndex].label, note: optionIndex === null ? null : note, answeredAt: stamp(), deviceId };
+      if (overturning) {
+        r.monetAnswer = r.answer;
+        r.overturned = true;
+        // Cancel a held proxy answer. If its send is already in flight, queue
+        // the owner's answer behind it so an older answer cannot arrive last.
+        if (r.delivery.state === 'pending' && !r.delivery.waiting) r.previousAttempt = { messageId: r.delivery.messageId, at: r.updatedAt };
+      }
+      r.answer = { optionIndex, label: optionIndex === null ? note : r.options[optionIndex].label, note: optionIndex === null ? null : note,
+        answeredAt: stamp(), deviceId, answeredBy: monetReason ? 'monet' : 'owner', ...(monetReason ? { reason: monetReason } : {}) };
       r.status = 'answered';
     }
     const attempts = (r.delivery?.attempts ?? 0) + 1;
-    r.delivery = { state: r.source.paseoAgentId ? 'pending' : 'stored', attempts, messageId: `${r.id}:answer:${attempts}`, deliveredAt: null, error: null };
+    r.delivery = { state: r.source.paseoAgentId ? 'pending' : 'stored', attempts, messageId: `${r.id}:answer:${attempts}`, deliveredAt: null, error: null,
+      ...(r.previousAttempt ? { waiting: true, waitingSince: stamp() } : {}) };
     r.updatedAt = stamp();
     s.operations[key] = { id: r.id, digest };
     return { decision: r, replayed: false };
   }
   return {
     file: file.file,
-    all: () => access(() => { const s = checked(file.read()); prune(s); return structuredClone(s.records); }),
-    get: (id) => access(() => { const s = checked(file.read()); prune(s); return structuredClone(find(s, id)); }),
+    all: () => access(() => structuredClone(read().records)),
+    get: (id) => access(() => structuredClone(find(read(), id))),
     add(body) {
-      const value = input(body);
+      if (decisionCategory(body?.impact).category === 'unmarked') throw new BridgeError(428, 'decision_category_required',
+        '影響の先頭に【必ず社長：種類】または【任せられる】を付けてください。社長への通知は【必ず社長】だけです。');
+      const value = withCategory(input(body));
       return mutate((s) => {
         const existing = s.records.find((r) => r.requestId === value.requestId && r.source.paseoAgentId === value.source.paseoAgentId);
         if (existing) return { decision: existing, replayed: true };
@@ -145,21 +184,25 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
         return { decision: r, replayed: false };
       });
     },
-    withdraw(id, reason) {
+    withdraw(id, reason, { ifOpen = false } = {}) {
       text(reason, 'reason', 200); // A reason is required; no extra conversation text is retained.
-      return mutate((s) => { const r = find(s, id); if (r.status === 'withdrawn') return r; if (r.status !== 'open') throw conflict('decision_closed', 'decision is already closed'); r.status = 'withdrawn'; r.updatedAt = stamp(); return r; });
+      return mutate((s) => { const r = find(s, id); if (r.status === 'withdrawn' || (ifOpen && r.status !== 'open')) return r; if (r.status !== 'open') throw conflict('decision_closed', 'decision is already closed'); r.status = 'withdrawn'; r.updatedAt = stamp(); return r; });
     },
     // The conversation that asked is gone: its saved answer can never be
     // delivered, so it leaves the board and a retry is refused (owner, 2026-11-14).
-    retire(id, reason) {
+    retire(id, reason, messageId) {
       text(reason, 'reason', 80);
       return mutate((s) => { const r = find(s, id); const d = r.delivery;
-        if (r.status !== 'answered' || d?.state !== 'failed') return r;
+        if (r.status !== 'answered' || d?.state !== 'failed' || (messageId && d.messageId !== messageId)) return r;
         Object.assign(d, { state: 'gone', error: reason, deliveredAt: null }); r.updatedAt = stamp(); return r; });
     },
     reserve: (id, deviceId, body, retry = false) => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry)),
+    reserveMonet: (id, body, reason) => mutate((s) => reserve(s, id, 'monet', body, false, proxyReason(reason))),
     settle(id, messageId, state, error = null) {
-      return mutate((s) => { const r = find(s, id); if (r.delivery?.messageId !== messageId || r.delivery.state !== 'pending') return r;
+      return mutate((s) => { const r = find(s, id);
+        if (r.previousAttempt?.messageId === messageId) delete r.previousAttempt;
+        if (r.delivery?.messageId !== messageId || r.delivery.state !== 'pending') return r;
+        delete r.previousAttempt;
         for (const key of WAIT_FIELDS) delete r.delivery[key];
         Object.assign(r.delivery, { state, error, deliveredAt: state === 'delivered' ? stamp() : null }); r.updatedAt = stamp(); return r; });
     },
@@ -167,6 +210,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     // deliver it, with the same message id, once that turn ends.
     hold(id, messageId) {
       return mutate((s) => { const r = find(s, id); const d = r.delivery;
+        if (r.previousAttempt?.messageId === messageId) delete r.previousAttempt;
         if (d?.messageId !== messageId || d.state !== 'pending' || d.waiting) return r;
         Object.assign(d, { waiting: true, waitingSince: d.waitingSince ?? stamp(), holds: (d.holds ?? 0) + 1 }); r.updatedAt = stamp(); return r; });
     },
@@ -175,7 +219,8 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     release(id, messageId) {
       return mutate((s) => { const r = find(s, id); const d = r.delivery;
         if (d?.messageId !== messageId || d.state !== 'pending' || !d.waiting) return null;
-        delete d.waiting; r.updatedAt = stamp(); return r; });
+        if (r.previousAttempt && now() - Date.parse(r.previousAttempt.at) <= 60_000) return null;
+        delete r.previousAttempt; delete d.waiting; r.updatedAt = stamp(); return r; });
     },
     // Answers an earlier Bridge filed as failed because the conversation was busy.
     requeueBusy() {

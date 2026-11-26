@@ -24,7 +24,7 @@ final class LAAChatWorkingTests: XCTestCase {
     func testStatusFollowsTheTurn() {
         XCTAssertNil(LAAChatWorking.status(isBusy: false, startedAt: start, toolRunning: false, agents: []), "Idle: no pill")
         let running = LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: false, agents: [])
-        XCTAssertEqual(running?.word, "応答中")
+        XCTAssertEqual(running?.word, "Thinking")
         XCTAssertEqual(running?.startedAt, start, "The timer runs from the turn's stable start")
         XCTAssertEqual(LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: true, agents: [])?.word, "作業中")
     }
@@ -111,10 +111,10 @@ final class LAAChatWorkingTests: XCTestCase {
         ]
         let states: [(String, LAAWorkingStatus?, Bool)] = [
             ("idle", nil, false),
-            ("running", LAAWorkingStatus(word: "応答中", startedAt: Date().addingTimeInterval(-42)), false),
+            ("running", LAAWorkingStatus(word: "Thinking", startedAt: Date().addingTimeInterval(-42)), false),
             ("one-child", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: one), false),
             ("three-children", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: three), false),
-            ("scrolled-up", LAAWorkingStatus(word: "応答中", startedAt: Date().addingTimeInterval(-42)), true),
+            ("scrolled-up", LAAWorkingStatus(word: "Thinking", startedAt: Date().addingTimeInterval(-42)), true),
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (name, status, jump) in states {
