@@ -107,10 +107,14 @@ export function createConnector({ verifyOwner = verifyAccessOwner, allowedRedire
               || !allowedRedirect(clientMetadata.redirect_uris[0], url.origin)) return { description: 'Use the documented Claude OAuth callback.' };
           },
         });
-        // Registration and token calls are unauthenticated by design: cap them so
-        // nobody can exhaust the OAuth store's write quota.
-        if ((path === '/register' || path === '/token') && !await takeRate(env.DB, path.slice(1), path === '/register' ? 5 : 30)) {
-          return jsonError('rate_limited', 429, { 'Retry-After': '60' });
+        // Registration and token calls are unauthenticated by design. Cap them per
+        // client address, so one caller cannot starve Claude's token refresh, and
+        // keep a global ceiling on registration, which writes to the OAuth store.
+        if (path === '/register' || path === '/token') {
+          const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+          const limited = !await takeRate(env.DB, `${path.slice(1)}:${ip}`, path === '/register' ? 5 : 30)
+            || (path === '/register' && !await takeRate(env.DB, 'register', 30));
+          if (limited) return jsonError('rate_limited', 429, { 'Retry-After': '60' });
         }
         if (path === '/token' || path === '/register') request = new Request(request, { body: await readBytes(request, 16_384) });
         if (path === '/.well-known/oauth-protected-resource') request = new Request(`${url.origin}${path}/mcp`, request);
