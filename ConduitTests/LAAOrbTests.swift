@@ -1,4 +1,5 @@
 #if LAA_BUILD && DEBUG
+import LAAKit
 import SwiftUI
 import UIKit
 import XCTest
@@ -61,7 +62,10 @@ final class LAAOrbTests: XCTestCase {
 
         for style in [UIUserInterfaceStyle.light, .dark] {
             let suffix = style == .dark ? "dark" : "light"
-            let host = UIHostingController(rootView: page.preferredColorScheme(style == .dark ? .dark : .light))
+            let palette = LAAPalette(dark: style == .dark)
+            let host = UIHostingController(rootView: page
+                .environment(\.laaPalette, palette)
+                .preferredColorScheme(style == .dark ? .dark : .light))
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
             let window = UIWindow(windowScene: try XCTUnwrap(previous?.windowScene ?? scenes.first))
