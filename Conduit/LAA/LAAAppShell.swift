@@ -261,11 +261,14 @@ struct LAAAppShell: View {
 
     /// A call covering the tabs, or a screen that hid the system bar (a conversation, a detail page).
     private var barHidden: Bool { callCoveringTabs || tabBarVisibility.isHidden }
+    @State private var loginSafeBottom: Double = 34
 
     @ViewBuilder
     private var chatsTab: some View {
         if requiresLogin {
-            LoginView(tabBarClearance: barHidden ? 0 : LAAGlassTabBarLayout.contentClearance)
+            LoginView(tabBarClearance: barHidden ? 0 : LAAGlassTabBarLayout.contentClearance(safeBottom: loginSafeBottom))
+                // Without a home indicator (iPhone SE) the bar sits higher: size the clearance from this screen.
+                .onGeometryChange(for: Double.self) { $0.safeAreaInsets.bottom } action: { loginSafeBottom = $0 }
         } else {
             NavigationStack(path: $chatsPath) {
                 // LAAChatsContent owns the bar (an empty title and the

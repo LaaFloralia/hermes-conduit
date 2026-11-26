@@ -27,6 +27,12 @@ struct GlassTabBarTests {
         #expect(LAAGlassTabBarLayout.bottomPadding(safeBottom: 34) == 22)
         #expect(LAAGlassTabBarLayout.bottomPadding(safeBottom: 0) == LAATabBarToken.bottomMin)
         #expect(LAAGlassTabBarLayout.contentClearance == LAATabBarToken.height + LAATabBarToken.bottomFromSafeArea + 8)
+        // Content ends 8 pt above the bar's top on both kinds of screen (iPhone SE: 667 − 12 − 56 − 8).
+        for safeBottom in [0.0, 21, 34] {
+            let barTop = LAATabBarToken.height + LAAGlassTabBarLayout.bottomPadding(safeBottom: safeBottom)
+            #expect(LAAGlassTabBarLayout.contentClearance(safeBottom: safeBottom) + safeBottom == barTop + 8)
+        }
+        #expect(LAAGlassTabBarLayout.contentClearance(safeBottom: 0) == 76)
     }
 
     @Test func atMostFiveTabs() {

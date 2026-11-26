@@ -75,9 +75,14 @@ public struct LAAAppIdentity {
 
 /// Bar geometry from the tokens, for hosts that inset their content (`laaTabBarClearance`).
 public enum LAAGlassTabBarLayout {
-    /// The bar's height above the bottom safe area, plus one 8 pt step: the clearance scroll content needs.
-    public static var contentClearance: Double {
-        LAATabBarToken.height + LAATabBarToken.bottomFromSafeArea + LAASpace.s8
+    /// The bar's height above the bottom safe area, plus one 8 pt step, on a screen with a home indicator.
+    /// Prefer `contentClearance(safeBottom:)` or `laaTabBarClearance(_:)`: without one the bar sits higher.
+    public static var contentClearance: Double { contentClearance(safeBottom: 34) }
+
+    /// The clearance scroll content needs above the bottom safe area: on a screen without a home indicator
+    /// (iPhone SE) the bar keeps `bottomMin` from the edge, 24 pt higher than its home-indicator offset.
+    public static func contentClearance(safeBottom: Double) -> Double {
+        LAATabBarToken.height + bottomPadding(safeBottom: safeBottom) - safeBottom + LAASpace.s8
     }
 
     static func bottomPadding(safeBottom: Double) -> Double {
@@ -118,11 +123,23 @@ public extension View {
     /// Reserves the bar's height at the bottom of scrolling content so the last row clears the glass while the
     /// content still flows under it.
     func laaTabBarClearance(_ visible: Bool = true) -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: visible ? LAAGlassTabBarLayout.contentClearance : 0)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-        }
+        modifier(LAATabBarClearance(visible: visible))
+    }
+}
+
+private struct LAATabBarClearance: ViewModifier {
+    let visible: Bool
+    @State private var safeBottom: Double = 34
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: visible ? LAAGlassTabBarLayout.contentClearance(safeBottom: safeBottom) : 0)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+            // Read outside the inset, so the inset never feeds back into the value it is sized from.
+            .onGeometryChange(for: Double.self) { $0.safeAreaInsets.bottom } action: { safeBottom = $0 }
     }
 }
 

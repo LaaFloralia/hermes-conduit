@@ -27,6 +27,7 @@ struct LAAAssetsView: View {
     @State private var confirmFolder = false
     @State private var folderMessage: String?
     @Environment(\.laaDesktop) private var laaDesktop
+    @Environment(\.laaBehindSettingsCard) private var behindSettingsCard
     @State private var desktopSelected: LAADriveSelection?
 
     init(onRequestSettings: @escaping () -> Void, initialStudioSelected: Bool = false, initialStudioSection: Int = 0) {
@@ -44,7 +45,9 @@ struct LAAAssetsView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             LAASettingsToolbar(action: onRequestSettings)
-            if !studioSelected {
+            // Removed, not only hidden, while the settings card is open: UIKit keeps a bar item in the
+            // accessibility tree even when its SwiftUI content is hidden.
+            if !studioSelected && !behindSettingsCard {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { driveLayoutToggle &+= 1 } label: { Image(systemName: "square.grid.2x2") }
                         .accessibilityLabel(Text(verbatim: "一覧表示を切り替える"))
