@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import AppIntents
 import Foundation
 import WidgetKit
 
