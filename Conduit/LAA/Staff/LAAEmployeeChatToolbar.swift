@@ -164,10 +164,6 @@ enum LAAEmployeeCallAvailability {
         return calls.unavailableReason
     }
 
-    static func dotCallHint(_ link: URL) -> String {
-        link.scheme == "shortcuts" ? "ChatGPTでMonetと通話します" : "ブラウザでMonetの通話画面を開きます"
-    }
-
     static func voiceReason(profile: String, canStart: Bool, issue: VoiceSetupIssue?) -> String? {
         guard LAAStaff(profile: profile) == nil, !canStart else { return nil }
         return voiceReason(issue)

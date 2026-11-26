@@ -31,10 +31,9 @@ enum LAANotificationStaffArt {
         return LAAStaff(profile: profile)
     }
 
-    /// The bundled file's name for `staff`. Dots has no mascot of its own and
-    /// uses Monet's, as everywhere else in the app.
+    /// The bundled file's name for `staff`.
     static func resourceName(_ staff: LAAStaff) -> String {
-        (staff == .monetDots ? LAAStaff.monet : staff).rawValue
+        staff.rawValue
     }
 
     /// The bundled still, or nil when the build carries none for `staff`.

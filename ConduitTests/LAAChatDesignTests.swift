@@ -8,7 +8,8 @@ final class LAAChatDesignTests: XCTestCase {
 
     func testPeopleRolesAndParentheses() {
         XCTAssertEqual(LAAChatPerson.name("Morgan（CFO）"), "Morgan")
-        XCTAssertEqual(LAAChatPerson.role(profile: "laa-monet-dots"), "Secretary")
+        XCTAssertEqual(LAAChatPerson.role(profile: "laa-monet"), "Secretary")
+        XCTAssertNil(LAAChatPerson.role(profile: "laa-monet-dots"), "the contractors left Chat")
         XCTAssertEqual(LAAChatPerson.role(profile: "laa-argus"), "Head Trader")
         XCTAssertEqual(LAAChatPerson.role(profile: nil, name: "Ada"), "CTO")
         XCTAssertEqual(LAAChatPerson.role(profile: "laa-cfo", existingRole: "Finance"), "Finance")

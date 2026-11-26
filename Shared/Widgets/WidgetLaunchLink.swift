@@ -36,8 +36,7 @@ struct WidgetLaunchLink: Equatable {
             guard workspace == nil, canonicalReference == nil else { return nil }
         case .employeeChat:
             guard let workspace,
-                  (LAAWidgetEmployee.forProfile(workspace.profile) != nil
-                    || workspace.profile == "laa-monet-dots" || workspace.profile == "laa-soap"),
+                  LAAWidgetEmployee.forProfile(workspace.profile) != nil,
                   canonicalReference == nil else { return nil }
         #endif
         }

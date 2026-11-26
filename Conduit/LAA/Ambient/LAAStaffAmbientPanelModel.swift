@@ -52,7 +52,7 @@ struct LAAStaffAmbientPanelModel: Equatable {
     /// The role id routines are filed under; the Monet variants share Monet's.
     static func roleKey(_ staff: LAAStaff) -> String {
         switch staff {
-        case .monet, .monetUncensored, .monetDots: return "monet"
+        case .monet, .monetUncensored: return "monet"
         default: return staff.rawValue
         }
     }

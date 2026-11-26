@@ -38,10 +38,9 @@ final class LAAAmbientTests: XCTestCase {
         XCTAssertNil(LAANotificationStaffArt.staff(kind: nil, profile: "research", staffHint: nil))
     }
 
-    func testAssetNamesAndDotsUsesMonet() {
-        XCTAssertEqual(LAANotificationStaffArt.resourceName(.monetDots), "monet")
+    func testAssetNames() {
+        XCTAssertEqual(LAANotificationStaffArt.resourceName(.monet), "monet")
         XCTAssertEqual(LAANotificationStaffArt.resourceName(.monetUncensored), "monet-uncensored")
-        XCTAssertEqual(LAANotificationStaffArt.resourceName(.soap), "soap")
         let root = URL(fileURLWithPath: "/bundle")
         XCTAssertEqual(LAANotificationStaffArt.bundledImage(.cfo, root: root, exists: { _ in true })?.path, "/bundle/staff/cfo.png")
         XCTAssertNil(LAANotificationStaffArt.bundledImage(.cfo, root: root, exists: { _ in false }))
@@ -234,7 +233,6 @@ final class LAAAmbientTests: XCTestCase {
         XCTAssertFalse(LAAStaffAmbientPanelModel.belongs(otherRole, to: .cio), "a role the Bridge names wins over the destination")
         XCTAssertFalse(LAAStaffAmbientPanelModel.belongs(scheduled, to: .cio))
         XCTAssertTrue(LAAStaffAmbientPanelModel.belongs(monet, to: .monet))
-        XCTAssertTrue(LAAStaffAmbientPanelModel.belongs(monet, to: .monetDots))
         XCTAssertTrue(LAAStaffAmbientPanelModel.belongs(LAAStaffRoutineRow(id: "f", name: "F", receiverRole: "monet"), to: .monetUncensored))
     }
 

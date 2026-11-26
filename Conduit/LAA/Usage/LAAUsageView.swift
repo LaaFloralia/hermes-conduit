@@ -192,7 +192,7 @@ struct LAAUsageView: View {
         withAnimation(.smooth(duration: 0.25)) { expandedGroups = open.sorted().joined(separator: ",") }
     }
 
-    /// The three provider cards in one column (Codex, Claude, Google), then
+    /// The provider cards in one column (Codex, Claude, Google, Muse), then
     /// the other services folded into ruled rows below them.
     private var services: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -202,7 +202,7 @@ struct LAAUsageView: View {
                 let items = state.usage.value ?? []
                 ForEach(LAAWidgetUsageBuilder.cardSlots, id: \.provider) { slot in
                     if slot.reading == .accountGroup {
-                        googleCard(slot, accounts: LAAUsageCardModel.accounts(items))
+                        accountCard(slot, accounts: LAAUsageCardModel.accounts(items, group: slot.provider))
                     } else {
                         let item = LAAUsageCardModel.item(slot.provider, in: items)
                         LAAUsageProviderCard(provider: slot.provider, name: slot.name,
@@ -215,10 +215,10 @@ struct LAAUsageView: View {
         }
     }
 
-    /// Google: the account in use (the one the feed marks active), its 5h
-    /// and 7d with their resets. Accounts are never averaged and no address
-    /// is shown; opening the card lists every account's windows.
-    @ViewBuilder private func googleCard(_ slot: LAAWidgetUsageBuilder.Slot, accounts: [LAAUsageItem]) -> some View {
+    /// Google and Muse: the account in use (the one the feed marks active),
+    /// its windows with their resets. Accounts are never averaged and no
+    /// address is shown; opening the card lists every account's windows.
+    @ViewBuilder private func accountCard(_ slot: LAAWidgetUsageBuilder.Slot, accounts: [LAAUsageItem]) -> some View {
         let id = "provider.\(slot.provider)"
         let open = isOpen(id)
         let active = LAAWidgetUsageBuilder.activeAccount(accounts)

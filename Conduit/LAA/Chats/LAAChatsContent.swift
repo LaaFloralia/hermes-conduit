@@ -34,10 +34,6 @@ struct LAAChatsContent: View {
     private var employees: [LAAChatsPerson] {
         LAAChatsPlacement.people(snapshot.people, in: .employee).filter { LAAChatsSearch.person($0, matches: query) }
     }
-    /// 派遣社員: Muse (薬用石鹸) and Monet（Dots） (owner, 2026-11-23).
-    private var contractors: [LAAChatsPerson] {
-        LAAChatsPlacement.people(snapshot.people, in: .contractor).filter { LAAChatsSearch.person($0, matches: query) }
-    }
     private var rooms: [GroupRoom] { snapshot.rooms.filter { LAAChatsSearch.room($0, matches: query) } }
     private var matchingMonet: LAAChatsPerson? {
         monet.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
@@ -46,7 +42,7 @@ struct LAAChatsContent: View {
         projects.filter { !searching || $0.name.localizedStandardContains(query) }
     }
     private var hasResults: Bool {
-        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !contractors.isEmpty || !rooms.isEmpty || !matchingProjects.isEmpty
+        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !rooms.isEmpty || !matchingProjects.isEmpty
     }
 
     private var failure: String? {
@@ -85,10 +81,6 @@ struct LAAChatsContent: View {
                 } else {
                     if let monet, matchingMonet != nil || !monetVariants.isEmpty { monetSection(monet) }
                     if !searching || !employees.isEmpty { employeeSection }
-                    if !contractors.isEmpty {
-                        peopleSection(LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, contractors,
-                                      identifier: "laa.chats.contractors")
-                    }
                     if openProject != nil, !searching || !matchingProjects.isEmpty { projectSection }
                     if !searching || !rooms.isEmpty { groupSection }
                     if searching { searchIncomplete }
@@ -135,7 +127,6 @@ struct LAAChatsContent: View {
         if let monet = matchingMonet, monet.available { ids.append("person.\(monet.profile)") }
         ids += monetVariants.filter(\.available).map { "person.\($0.profile)" }
         ids += employees.filter(\.available).map { "person.\($0.profile)" }
-        ids += contractors.filter(\.available).map { "person.\($0.profile)" }
         ids += matchingProjects.map { "project.\($0.id.uuidString)" }
         if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
         return ids
@@ -153,7 +144,7 @@ struct LAAChatsContent: View {
     private func rowTarget(_ id: String) -> LAAChatsRowTarget? {
         if id.hasPrefix("person.") {
             let profile = String(id.dropFirst("person.".count))
-            let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees + contractors)
+            let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees)
             return people.first { $0.profile == profile }.map(LAAChatsRowTarget.person)
         }
         if id.hasPrefix("project."), let projectID = UUID(uuidString: String(id.dropFirst("project.".count))) {
@@ -277,15 +268,6 @@ struct LAAChatsContent: View {
     }
 
     /// A section of people under its heading, drawn as the employees are.
-    private func peopleSection(_ title: String, spoken: String, _ people: [LAAChatsPerson], identifier: String) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            sectionHeader(title).accessibilityLabel(Text(verbatim: spoken))
-            personRows(people)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(identifier)
-    }
-
     private func personRows(_ people: [LAAChatsPerson]) -> some View {
         VStack(spacing: 0) {
             ForEach(people) { employee in

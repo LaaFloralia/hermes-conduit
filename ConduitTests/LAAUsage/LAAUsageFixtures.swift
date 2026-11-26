@@ -28,7 +28,8 @@ enum LAAUsageFixtures {
     }
 
     static func quota(_ provider: String, label: String, windows: [[String: Any]], fable: Any? = nil,
-                      available: Bool = true, observed: TimeInterval = -60, group: String? = nil, active: Bool? = nil) -> [String: Any] {
+                      available: Bool = true, observed: TimeInterval = -60, group: String? = nil, groupName: String = "Google AI Pro",
+                      active: Bool? = nil, reason: String = "fetch_failed") -> [String: Any] {
         var detail: [String: Any] = ["windows": windows, "freshUntil": iso(observed + 600)]
         if let fable { detail["fableWeekly"] = fable }
         var row: [String: Any] = [
@@ -39,9 +40,9 @@ enum LAAUsageFixtures {
             let lowest = windows.compactMap { $0["remainingPercent"] as? Double }.min() ?? 0
             row.merge(["value": lowest, "observedAt": iso(observed), "availability": "available", "detail": detail]) { _, new in new }
         } else {
-            row.merge(["value": NSNull(), "observedAt": NSNull(), "availability": "unavailable", "nullReason": "fetch_failed"]) { _, new in new }
+            row.merge(["value": NSNull(), "observedAt": NSNull(), "availability": "unavailable", "nullReason": reason]) { _, new in new }
         }
-        if let group { row["group"] = group; row["groupName"] = "Google AI Pro" }
+        if let group { row["group"] = group; row["groupName"] = groupName }
         if let active { row["active"] = active }
         return row
     }
@@ -52,8 +53,17 @@ enum LAAUsageFixtures {
               available: available, group: "google-ai-pro", active: active)
     }
 
+    /// Muse's weekly Free allowance as Bridge passes usage-meters' reading
+    /// (no reset time: Muse shows a day only).
+    static func muse(_ account: String, active: Bool, weekly: Double?, available: Bool = true,
+                     reason: String = "fetch_failed") -> [String: Any] {
+        quota("muse-\(account)", label: account, windows: [window("週間", weekly, minutes: 10_080, reset: nil)],
+              available: available, group: "muse", groupName: "Muse", active: active, reason: reason)
+    }
+
     /// Codex 7d 66, Claude 5h 80 / 7d 49 / Fable `fable`, Google Sub2 (in
-    /// use) 83 / 75, Sub3 20 / 30, Sub4 not signed in; OpenCode and a balance.
+    /// use) 83 / 75, Sub3 20 / 30, Sub4 not signed in; Muse1 (in use) 94,
+    /// Muse2 unread, Muse3 signed out; OpenCode and a balance.
     static func rows(fable fableValue: Any? = fable(32.0), googleActive: [String: Bool] = ["sub2": true, "sub3": false, "sub4": false]) -> [[String: Any]] {
         [
             quota("codex", label: "Codex", windows: [window("Weekly", 66, minutes: 10_080, reset: 3 * 86_400)]),
@@ -64,6 +74,9 @@ enum LAAUsageFixtures {
             google("sub2", active: googleActive["sub2"] ?? false, fiveHour: 83, weekly: 75),
             google("sub3", active: googleActive["sub3"] ?? false, fiveHour: 20, weekly: 30),
             google("sub4", active: googleActive["sub4"] ?? false, fiveHour: nil, weekly: nil, available: false),
+            muse("Muse1", active: true, weekly: 94),
+            muse("Muse2", active: false, weekly: nil, available: false),
+            muse("Muse3", active: false, weekly: nil, available: false, reason: "auth_required"),
             ["id": "provider.venice.balance", "kind": "balance", "label": "Venice", "value": 0, "unit": "usd",
              "source": "codexbar-usage-proxy", "observedAt": iso(-60), "availability": "available",
              "stale": false, "estimated": false, "expired": false, "detail": ["currency": "USD", "freshUntil": iso(540)]],

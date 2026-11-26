@@ -18,9 +18,10 @@ enum LAAUsageCardModel {
         items.first { $0.id.hasPrefix("provider.\(provider).") && $0.kind == "quota" && $0.source == "codexbar-usage-proxy" }
     }
 
-    /// Google AI Pro's accounts (Sub2・Sub3・Sub4), in id order.
-    static func accounts(_ items: [LAAUsageItem]) -> [LAAUsageItem] {
-        items.filter { $0.group == LAAWidgetUsageBuilder.googleGroup && $0.kind == "quota" && $0.source == "codexbar-usage-proxy" }
+    /// A grouped service's accounts in id order: Google AI Pro's Sub2・Sub3・
+    /// Sub4, Muse's Muse1・Muse2・Muse3.
+    static func accounts(_ items: [LAAUsageItem], group: String = LAAWidgetUsageBuilder.googleGroup) -> [LAAUsageItem] {
+        items.filter { $0.group == group && $0.kind == "quota" && $0.source == "codexbar-usage-proxy" }
             .sorted { $0.id < $1.id }
     }
 
@@ -32,7 +33,8 @@ enum LAAUsageCardModel {
 
     /// The windows a card draws. Codex and Google show the 5h and 7d windows
     /// their reading has (both, unknown, when there is none); Claude always
-    /// shows 5h and 7d, then Fable on the next row.
+    /// shows 5h and 7d, then Fable on the next row; Muse has only its weekly
+    /// Free allowance.
     static func windows(provider: String, item: LAAUsageItem?, now: Date) -> [LAAUsageCardWindow] {
         let usable = item.map { $0.availability == "available" } ?? false
         func window(_ period: LAAWidgetUsageBuilder.Period) -> LAAUsageCardWindow? {
@@ -60,6 +62,7 @@ enum LAAUsageCardModel {
         if provider == "claude" {
             return [LAAWidgetUsageBuilder.Period.fiveHour, .weekly, .fable].map { window($0) ?? unknown($0) }
         }
+        if provider == "muse" { return [window(.weekly) ?? unknown(.weekly)] }
         let present = [LAAWidgetUsageBuilder.Period.fiveHour, .weekly].compactMap(window)
         return present.isEmpty ? [unknown(.fiveHour), unknown(.weekly)] : present
     }

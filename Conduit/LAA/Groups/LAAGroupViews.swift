@@ -120,7 +120,8 @@ struct LAAGroupCreateView: View {
                     .disabled(creating)
                     .accessibilityIdentifier("groups.create.confidential")
             }
-            // The same order as Chat, but only roles with a meeting seat.
+            // The same placement and order as the Chat list: Monet, then
+            // the employees (owner, 2026-11-23 and 11-26).
             ForEach(LAAGroupCandidates.sections, id: \.title) { section in
                 Section {
                     ForEach(section.staff, id: \.self) { staff in

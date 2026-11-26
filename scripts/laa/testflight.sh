@@ -15,8 +15,6 @@
 # prints, logs or passes the key as an argument.
 #
 # Environment (all optional):
-#   LAA_DOTS_CALL_URL        Monet (Dots)' dot page; written into the app's Info
-#                            as LAADotsCallURL, never printed or logged
 #   CURRENT_PROJECT_VERSION  build number; default is the UTC time (YYMMDDHHMM)
 #   MARKETING_VERSION        the TestFlight version; default from project.yml
 #   CONDUIT_DISPLAY_NAME     home screen name; default LAA
@@ -62,12 +60,8 @@ team="${LAA_TEAM_ID:-PAW258GB42}"
 app_id="${LAA_APP_ID:-6828276003}"
 group_id="${LAA_BETA_GROUP_ID:-90513640-2a93-493f-952b-cf431090174f}"
 destination="${LAA_EXPORT_DESTINATION:-upload}"
-# The dot page link is private and this repository is public, so the release
-# passes it to the brand step (scripts/laa/brand-bundle.py) through the
-# environment only: not as an argument, and never printed. It is captured and
-# exported again so a caller's unexported value still reaches the archive;
-# the signing secrets stay out of xcodebuild's environment as before.
-dots_call="${LAA_DOTS_CALL_URL:-}"
+# Monet (Dots) left the app on 2026-11-26: a leftover dot page link in the
+# environment never reaches the archive.
 unset LAA_DOTS_CALL_URL
 key_dir="$HOME/.config/laa/tmp-secrets"
 key_root=""
@@ -284,9 +278,6 @@ extra=()
 
 # 4. The archive. Automatic signing registers the LAA App IDs' capabilities
 #    and makes the profiles the archive needs.
-if [ -n "$dots_call" ]; then
-  export LAA_DOTS_CALL_URL="$dots_call"
-fi
 echo "Archiving Release for generic iOS..."
 log="$work/archive.log"
 derived_touched=1
@@ -315,7 +306,6 @@ echo "  version $(plutil -extract ApplicationProperties.CFBundleShortVersionStri
 # product names or a required component/resource cannot be inspected.
 python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Conduit.app" \
   || fail "LAA branding inspection failed; nothing was exported or uploaded"
-unset LAA_DOTS_CALL_URL dots_call
 
 # Fail before export/upload if the app or any extension imports the weak-linked
 # Foundation Date.<= / Date.>= (scripts/laa/check-weak-date-ops.sh).
