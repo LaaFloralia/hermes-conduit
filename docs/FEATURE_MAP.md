@@ -2783,10 +2783,12 @@ CHANGELOG
 - App: `Conduit/Services/LiveTurnActivities.swift` (turnStarted, observe, reconcile, register, registerUnregistered), `Conduit/Services/PushNotificationService.swift` (registerLiveActivity), `Conduit/Services/AppState.swift` (the turnStarted call, liveTurnActivitiesRegistrySnapshot)
 - LAA Catalyst no-op and check: `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `ConduitTests/LAAMacCatalystTests.swift`
 - Widget: `Shared/Widgets/HermesTurnActivity.swift`, `ConduitWidgets/HermesTurnLiveActivity.swift`
+- LAA employee mascot on the card (from the chat link's `profile`): `Shared/Widgets/LAAStaffCallActivity.swift` (LAAWidgetStaffArt), `ConduitWidgets/LAA/LAAStaffCallLiveActivity.swift` (LAAWidgetStaffAvatar), `ConduitWidgets/Resources/LAAStaffAvatars.xcassets/`
 - Notifier: `notifier/live_activity.py` (the reporter, compacted_from), `notifier/__init__.py` (the hooks that feed it), `notifier/relay/src/live-activities.mjs`, `notifier/relay/src/server.mjs`
 
 **Rulings**
 - Live Activities and their Settings control are unavailable in the LAA Mac Catalyst build; the iOS behavior below is unchanged.
+- In the LAA build the card shows the employee's bundled mascot instead of the status disc on the Lock Screen and the expanded island, and in the compact and minimal island unless the turn waits on the owner or failed, when the status symbol stays. The profile is read from the chat link the card already opens, so no attribute or relay key changes (HO-15, 2026-11-26, laa/v2-ambient-apple).
 - Only a phase, a tool category from a fixed list, a tool count and a context percentage cross the relay; the chat's title stays on the phone (#605, notifier #111).
 - A turn's end reaches its card three ways: the stream while Conduit runs, the plugin through the relay, and the live registry once Conduit is back. The relay keeps an end reported before the phone registered the card, and ends a card registered later if it started before that end, never the chat's next turn's (2026-10-27, issue #1361, #1374, notifier #421).
 - A turn that a compaction moves to a new session id reports and ends under the id the card was registered with (2026-10-27, #1374, notifier #421).
@@ -2797,7 +2799,36 @@ CHANGELOG
 - The live registry check reads the profile and dashboard on screen, so a card from another one ends only by push.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-10-27, #1374.
+**Checked:** 2026-11-26, laa/v2-ambient-apple (LAA mascot on the card; `ConduitTests/LAAAmbientTests.swift` keeps the content-state keys); 2026-10-27, #1374.
+
+## LAA staff on notifications, Live Activities, the Watch and the Mac
+
+Where the LAA build shows which employee is speaking outside a chat: the
+notification's mascot, the in-app call card, the Watch's Monet widget and
+the Mac's staff panel beside an employee chat (HO-08, HO-15, HO-06, HO-26).
+
+**Siblings:** the notification service extension (Bridge kinds and other pushes) · the turn card (Live Activity for a running turn) · the in-app call screen and its return bar (LAA staff avatars and in-app calls) · the phone-use card (unchanged) · the Watch's Talk complication and control · the Watch context the iPhone shares (Watch padlock in Notifications) · the Work tab's decision badge · the Mac chat section (The open chat in the list beside it) · the Work routines list (same `GET /v1/routines`) · the Bridge's notification metadata and routine rows (`bridge/src/notify/index.mjs`, `bridge/src/routes/routines.mjs`, unchanged here)
+
+**Code**
+- Notification mascot: `Shared/Notifications/LAANotificationStaffArt.swift`, `ConduitNotificationService/NotificationService.swift` (decorated), `Shared/LAANotificationMeta.swift` (`st`), `scripts/laa/watch-staff-avatars.sh`, `project-laa.yml`
+- Call card: `Shared/Widgets/LAAStaffCallActivity.swift`, `ConduitWidgets/LAA/LAAStaffCallLiveActivity.swift`, `ConduitWidgets/LauncherWidgets.swift`, `Conduit/LAA/Ambient/LAAStaffCallActivityController.swift`, `Conduit/LAA/Call/LAACallModel.swift` (the snapshot's didSet), `Conduit/ConduitApp.swift` (the Debug simulator fixture)
+- Watch: `Shared/Widgets/LAAWatchAmbient.swift`, `Shared/WatchVoice/WatchCallVoices.swift` (laaAmbient), `Conduit/LAA/Ambient/LAAWatchAmbientSource.swift`, `Conduit/Services/AppState+HermesCalls.swift` (shareWatchCallVoices), `ConduitWatch/WatchLink.swift`, `ConduitWatch/LAA/LAAWatchAmbientRelay.swift`, `ConduitWatch/LAA/LAAWatchMonetIntent.swift`, `ConduitWatch/Widgets/LAAMonetWatchWidget.swift`, `ConduitWatch/Widgets/ConduitWatchWidgets.swift`
+- Mac panel: `Conduit/LAA/Ambient/LAAStaffAmbientPanelModel.swift`, `Conduit/LAA/Ambient/LAAStaffAmbientPanel.swift`, `Conduit/LAA/Mac/LAAMacChatsSection.swift`
+- Tests: `ConduitTests/LAAAmbientTests.swift`, `ConduitTests/LAAAmbientSnapshotTests.swift`
+
+**Rulings**
+- A notification carries one bundled still of the employee it speaks for, copied into the extension at build time and never fetched: a Bridge notification is Monet's (a decision may name its asking employee in the sealed `st`), any other push is its profile's when that is an LAA employee. An untrusted push, and the timeout fallback, carry none. A Communication Notification avatar is not used: it needs a capability the LAA App ID does not hold (HO-08, C-2.5).
+- The extension keeps only the time of Monet's last report in the notification App Group, never its words.
+- The call card follows the call screen's state (connecting, listening, thinking, speaking, muted) with the employee's mascot and name and the time since it connected; it ends with the call. Updates are coalesced to one a second. State words are short Japanese (LAACopy), like the phone-use card. Nothing on the Mac (HO-15).
+- The Watch's Monet widget shows Monet's mascot and one line: decisions waiting, the time of a report under six hours old, else 話しかける. The values travel in the existing application context and reach the widget as a relevant intent, so the Smart Stack raises it while they matter; there is no App Group on the Watch, so a widget a person placed on a face shows the resting line (HO-06).
+- The Mac panel shows only the selected employee's mascot, role, the open chat's model, its last activity and the routines filed under the employee; it collapses to one control, and a group room or a non-employee chat has none (HO-26, HO-11).
+
+**Open gaps**
+- The Bridge sends no asking employee on a decision (`st`) and no `ownerRole` on a routine yet, so decisions show Monet and the Mac panel lists only chat-delivered routines (`destination`) until it does.
+- The Watch hears of a report only when the iPhone app next runs and shares its context; mirrored notifications themselves are not read on the Watch.
+- Real APNs delivery with the attachment, the call card during a real GPT Live call, Smart Stack placement on a real Watch and the Mac panel against the real Bridge are device checks.
+
+**Checked:** 2026-11-26, laa/v2-ambient-apple on a32a3d80 (unit and snapshot tests in `ConduitTests/LAAAmbientTests.swift`, `ConduitTests/LAAAmbientSnapshotTests.swift`).
 
 ## Large code blocks in messages
 

@@ -26,6 +26,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         UITabBar.appearance().standardAppearance = tabAppearance
         #endif
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        MainActor.assumeIsolated { LAAAmbientActivityFixture.startIfRequested() }
+        #endif
         #if DEBUG
         // No production push/Watch registration, queued answers, or OS-driven
         // sync (Calendar, mic, location, etc.) in a fixture process.

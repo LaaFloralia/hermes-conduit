@@ -17,6 +17,10 @@ struct ConduitWatchWidgets: WidgetBundle {
     var body: some Widget {
         TalkToHermesComplication()
         TalkToHermesControl()
+        #if LAA_BUILD
+        // Monet's mascot and state on the face and in the Smart Stack (HO-06).
+        LAAMonetWatchWidget()
+        #endif
     }
 }
 

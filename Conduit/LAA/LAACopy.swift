@@ -110,6 +110,21 @@ enum LAACopy {
         }
     }
     #endif
+
+    // MARK: Employee call (Live Activity)
+
+    #if os(iOS)
+    static func staffCallState(_ phase: LAAStaffCallPhase) -> String {
+        switch phase {
+        case .connecting: return "接続中"
+        case .listening: return "聞いています"
+        case .thinking: return "考え中"
+        case .speaking: return "話しています"
+        case .muted: return "ミュート中"
+        case .ended: return "通話終了"
+        }
+    }
+    #endif
 }
 
 #endif
