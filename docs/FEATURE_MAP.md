@@ -4467,7 +4467,7 @@ and rollback instructions · the upstream App Store build
 
 ## LAA Chats list
 
-**Siblings:** employee widget Chat and existing conversation links · hosted group rooms and group creation · Chat Projects on iPhone and Mac · Claude Duet's page (no Hermes profile) and the LAA connector Duet writes through (Bridge `/v1/duet/*`, `connectors/duet-mcp`, notifications) · the LAA settings entry · the upstream Chats list and its search · accessibility and offline copies
+**Siblings:** employee widget Chat and existing conversation links · hosted group rooms and group creation · Chat Projects on iPhone and Mac · Claude Duet's page (no Hermes profile) and the LAA connector Duet writes through (Bridge `/v1/duet/*`, `connectors/duet-mcp/`, notifications) · the LAA settings entry · the upstream Chats list and its search · accessibility and offline copies
 
 **Code**
 - List, search and real-state mapping: `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Chats/LAAChatsModel.swift`, `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Chats/LAAChatsCopy.swift`, `Conduit/LAA/Chats/LAAEmployeeChatOpening.swift`, `Conduit/LAA/LAAAppShell.swift`
