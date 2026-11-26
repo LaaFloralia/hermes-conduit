@@ -108,6 +108,7 @@ struct LAABrainNoteView: View {
                     .foregroundStyle(LAAColor.text)
                     .environment(\.laaRichContentStyle, true)
                 }
+                .modifier(LAADocPaperTopEdge())
                 .modifier(LAABrainReadingPosition(store: readingPositions,
                           key: ((try? local.snapshot())?.absoluteString ?? "bridge") + reference.path,
                           loaded: note != nil, hasAnchor: reference.anchor != nil))
@@ -118,7 +119,7 @@ struct LAABrainNoteView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbarBackground(LAAColor.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(usesNavigationTitle ? .visible : .hidden, for: .navigationBar)
             .toolbar {
                 if !isLocal || LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     if showsBackButton {

@@ -10,6 +10,20 @@ extension View {
     }
 }
 
+/// A split column's hard scroll edge is a system white band on Catalyst.
+/// The reading column already clears the toolbar; avoid that extra layer.
+struct LAADocPaperTopEdge: ViewModifier {
+    @Environment(\.laaDesktop) private var desktop
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), desktop {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 private struct LAADocPaper: ViewModifier {
     @Environment(\.laaDesktop) private var desktop
     @Environment(\.dynamicTypeSize) private var typeSize

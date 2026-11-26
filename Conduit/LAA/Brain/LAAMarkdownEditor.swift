@@ -76,6 +76,7 @@ struct LAAMarkdownEditor: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .modifier(BrainEditorReadingPosition(store: readingPositions, key: positionKey))
+            .modifier(LAADocPaperTopEdge())
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if session.isEditing {

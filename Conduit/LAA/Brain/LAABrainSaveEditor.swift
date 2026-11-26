@@ -14,6 +14,7 @@ private struct BrainSaveConflict {
 struct LAABrainSaveEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.laaDesktop) private var desktop
     let root: URL
     let path: String
     let autoFocus: Bool
@@ -147,7 +148,7 @@ struct LAABrainSaveEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(inline)
             .toolbarBackground(LAAColor.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(desktop && inline ? .hidden : .visible, for: .navigationBar)
             .toolbar {
                 if inline {
                     if showsBackButton {
