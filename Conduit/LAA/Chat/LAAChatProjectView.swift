@@ -216,7 +216,7 @@ struct LAAChatProjectDetail: View {
             defer { store.endTurn(in: id) }
             do {
                 let pin = try LAAChatProjectRoute(project.pendingModel)
-                let events = try await runtime.replay(conversationID: project.conversationID(for: project.pendingModel), turnID: pending.id)
+                let events = try await runtime.replay(conversationID: project.pendingConversationID, turnID: pending.id)
                 if case .failed(let error) = events.last { issue = error; restore(pending); return }
                 guard events.first == .started(pin), case .completed(let output) = events.last else {
                     issue = .init(.unknownDelivery); return

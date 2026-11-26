@@ -52,9 +52,11 @@ struct LAAChatProject: Identifiable, Codable, Equatable, Sendable {
     /// Reserved before any network submission; a relaunch can distinguish it
     /// from a completed question and must not silently send it again.
     var pending: Message?
-    /// A pre-migration turn must still be checked on its original route.
+    /// Pin each built-in Pokémon turn before sending so a default change cannot redirect its replay.
     fileprivate var pendingModelOverride: Model?
+    fileprivate var pendingConversationIDOverride: UUID?
     var pendingModel: Model { pendingModelOverride ?? model }
+    var pendingConversationID: UUID { pendingConversationIDOverride ?? conversationID(for: pendingModel) }
 
     // The gateway pins a hidden conversation UUID to its first route. Keep the
     // local project ID and history, but never attempt to repin the old UUID.
@@ -73,7 +75,9 @@ struct LAAChatProject: Identifiable, Codable, Equatable, Sendable {
         self.pending = pending
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, context, model, kind, history, pending, pendingModelOverride }
+    private enum CodingKeys: String, CodingKey {
+        case id, name, context, model, kind, history, pending, pendingModelOverride, pendingConversationIDOverride
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(UUID.self, forKey: .id), name: try c.decode(String.self, forKey: .name),
@@ -83,6 +87,7 @@ struct LAAChatProject: Identifiable, Codable, Equatable, Sendable {
                   history: try c.decodeIfPresent([Message].self, forKey: .history) ?? [],
                   pending: try c.decodeIfPresent(Message.self, forKey: .pending))
         pendingModelOverride = try c.decodeIfPresent(Model.self, forKey: .pendingModelOverride)
+        pendingConversationIDOverride = try c.decodeIfPresent(UUID.self, forKey: .pendingConversationIDOverride)
     }
 }
 
@@ -94,11 +99,13 @@ final class LAAChatProjectStore {
     }
     enum Failure: Error { case unreadable, missingProject, emptyName, unsupportedModel, pendingConflict }
     static let pokemonID = LAAChatProject.pokemonID
+    // A default-only rollback changes this policy, not the pending turn decoder or replay routing.
+    private static let pokemonDefaultModel: LAAChatProject.Model = .hydrogen
     static let seeds = [
         LAAChatProject(id: UUID(uuidString: "0198828b-238f-7294-a0a6-5b65830e1601")!,
                        name: LAACopy.ChatProjects.everyday, context: "", model: .hydrogen),
         LAAChatProject(id: pokemonID, name: LAACopy.ChatProjects.pokemon, context: LAACopy.ChatProjects.pokemonContext,
-                       model: .hydrogen, kind: .pokemon)
+                       model: pokemonDefaultModel, kind: .pokemon)
     ]
     static let shared = LAAChatProjectStore(fileURL: URL.applicationSupportDirectory
         .appending(path: "LAA/ChatProjects.json"))
@@ -114,18 +121,8 @@ final class LAAChatProjectStore {
             if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
                 let archive = try JSONDecoder().decode(Archive.self, from: Data(contentsOf: fileURL))
                 guard (archive.schema ?? 1) == 1 else { throw Failure.unreadable }
-                if let index = archive.projects.firstIndex(where: { $0.id == Self.pokemonID && $0.model == .deepSeek }) {
-                    var next = archive.projects
-                    next[index].history = next[index].history.map { message in
-                        guard message.role == .assistant, message.model == nil else { return message }
-                        return .init(id: message.id, role: message.role, text: message.text, model: .deepSeek)
-                    }
-                    if next[index].pending != nil { next[index].pendingModelOverride = .deepSeek }
-                    next[index].model = .hydrogen
-                    try commit(next)
-                } else {
-                    projects = archive.projects
-                }
+                // A typed archive rewrite on launch would discard fields this app doesn't know.
+                projects = archive.projects.map(Self.projectForCurrentDefault)
             } else {
                 try commit(Self.seeds)
             }
@@ -158,12 +155,14 @@ final class LAAChatProjectStore {
         try change(id) {
             guard $0.pending == nil else { throw Failure.pendingConflict }
             $0.pending = question
+            if id == Self.pokemonID {
+                $0.pendingModelOverride = $0.model
+                $0.pendingConversationIDOverride = $0.conversationID(for: $0.model)
+            }
         }
     }
 
-    func release(_ id: UUID) throws {
-        try change(id) { $0.pending = nil; $0.pendingModelOverride = nil }
-    }
+    func release(_ id: UUID) throws { try change(id, Self.clearPending) }
     func startTurn(in id: UUID) { inFlight.insert(id) }
     func endTurn(in id: UUID) { inFlight.remove(id) }
 
@@ -172,9 +171,30 @@ final class LAAChatProjectStore {
             guard !$0.history.contains(where: { $0.id == question.id }) else { return }
             guard localOnly ? $0.pending == nil : $0.pending?.id == question.id else { throw Failure.pendingConflict }
             $0.history += [question, .init(role: .assistant, text: answer, model: $0.pendingModel)]
-            $0.pending = nil
-            $0.pendingModelOverride = nil
+            Self.clearPending(&$0)
         }
+    }
+
+    private static func clearPending(_ project: inout LAAChatProject) {
+        project.pending = nil
+        project.pendingModelOverride = nil
+        project.pendingConversationIDOverride = nil
+    }
+
+    private static func projectForCurrentDefault(_ project: LAAChatProject) -> LAAChatProject {
+        guard project.id == pokemonID, project.model != pokemonDefaultModel,
+              LAAChatProject.Model.choices.contains(project.model) else { return project }
+        var next = project
+        next.history = project.history.map { message in
+            guard message.role == .assistant, message.model == nil else { return message }
+            return .init(id: message.id, role: message.role, text: message.text, model: project.model)
+        }
+        if project.pending != nil {
+            next.pendingModelOverride = project.pendingModel
+            next.pendingConversationIDOverride = project.pendingConversationID
+        }
+        next.model = pokemonDefaultModel
+        return next
     }
 
     private static func validName(_ input: String) throws -> String {
