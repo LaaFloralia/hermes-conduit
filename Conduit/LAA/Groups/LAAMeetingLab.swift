@@ -27,14 +27,15 @@ enum LAAMeetingLab {
                                 authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 3)
 
     static func user(seq: Int, text: String) -> GroupEvent {
-        event(seq: seq, kind: "message.user", id: "u\(seq)", payload: ["text": AnyCodable(text)])
+        event(seq: seq, kind: "message.user", id: "u\(seq)", payload: ["text": .string(text)])
     }
 
     static func settled(seq: Int, text: String, roundID: String = "historical") -> [GroupEvent] {
         let id = "m\(seq)"
-        return [event(seq: seq, kind: "message.member", id: id, payload: ["text": AnyCodable(text)]),
-                event(seq: seq + 1, kind: "turn.settled", id: "s\(seq)", payload: ["message_event_id": AnyCodable(id), "discussion_event_id": AnyCodable(roundID)]),
-                event(seq: seq + 2, kind: "room.activity", id: "closed\(seq)", payload: ["status": AnyCodable("settled"), "discussion_event_id": AnyCodable(roundID)])]
+        let round: AnyCodable = .string(roundID)
+        return [event(seq: seq, kind: "message.member", id: id, payload: ["text": .string(text)]),
+                event(seq: seq + 1, kind: "turn.settled", id: "s\(seq)", payload: ["message_event_id": .string(id), "discussion_event_id": round]),
+                event(seq: seq + 2, kind: "room.activity", id: "closed\(seq)", payload: ["status": .string("settled"), "discussion_event_id": round])]
     }
 
     private static func event(seq: Int, kind: String, id: String, payload: [String: AnyCodable]) -> GroupEvent {
