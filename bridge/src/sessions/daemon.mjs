@@ -298,10 +298,12 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       await assertChildrenIdle(c, [source.id, ...(source.relatedIds ?? [])]);
       // Bypass in each harness's words. Both Hermes API routes run Hermes's ACP (`dont_ask`);
       // Antigravity and the other ACP agents keep their catalog mode and auto-accept.
-      const modeId = target.provider === 'claude' ? 'bypassPermissions'
-        : target.provider === 'codex' ? 'full-access'
+      // Claude Code and Pi on their API keys take their own harness's bypass.
+      const modeId = ['claude', 'claude-api'].includes(target.provider) ? 'bypassPermissions'
+        : ['codex', 'pi-openai-api'].includes(target.provider) ? 'full-access'
           : ['hermes-claude-api', 'hermes-openai-api'].includes(target.provider) ? 'dont_ask' : null;
-      const featureValues = target.provider === 'claude' ? { fast_mode: false }
+      const featureValues = ['claude', 'claude-api'].includes(target.provider) ? { fast_mode: false }
+        : target.provider === 'pi-openai-api' ? {}
         : target.provider === 'codex' ? { service_tier: 'default' } : { auto_accept: true };
       const created = await c.createAgent({ agentId: id, provider: target.provider, model: target.model,
         thinkingOptionId: target.effort, cwd: source.cwd, workspaceId: source.workspaceId,
@@ -475,6 +477,10 @@ export function snapshot(a, now) {
   const effort = a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null;
   const observed = { provider: a.provider, model: runningModel(a), effort };
   return { title: a.title, daemonStatus: a.status, activeTurn: Boolean(a.activeTurn), archivedAt: a.archivedAt ?? null, engine: a.engine ?? null,
+    // The harness the session actually runs on (LAA Work's `harness`: a provider whose new sessions
+    // were moved, codex -> pi, names the one it was created on). Null from a daemon that does not say.
+    harness: typeof a.harness === 'string' ? a.harness
+      : typeof a.runtimeInfo?.extra?.harness === 'string' ? a.runtimeInfo.extra.harness : null,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
     pending,
     // The runtime reports model/mode in `runtimeInfo` and the applied thinking
