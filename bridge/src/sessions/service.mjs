@@ -447,6 +447,7 @@ export function createSessionService({
           modelLog: foldModelLog(previous?.modelLog, state.modelCheck.observed, new Date(now()).toISOString()),
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
           observedFast: fastValue(state.features), fastAvailable: fastAvailable(state.features),
+          harness: state.harness ?? previous?.harness ?? null,
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
           // favourite the owner set here survives a Paseo that has no pin yet.
           favorite: pins?.get(workspaceId) === true ? true : undefined, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
@@ -1380,6 +1381,7 @@ export function createSessionService({
         record.modelLog = foldModelLog(record.modelLog, status.modelCheck.observed, new Date(now()).toISOString());
       }
       if (status.daemonStatus) record.daemonStatus = status.daemonStatus;
+      if (typeof status.harness === 'string') record.harness = status.harness;
       // A successful observation that does not report the provider toggle
       // clears the remembered value: "unknown now" must not stay "was on".
       // Sources that never report features (no key) and failed observations
@@ -1471,6 +1473,8 @@ export function createSessionService({
       // Only the provider's own toggle value is exposed; the Bridge's request
       // (`fast`) is not proof that Fast is on now.
       observedFast: typeof record.observedFast === 'boolean' ? record.observedFast : null,
+      // The harness the daemon reports the session runs on; null until it has said.
+      harness: typeof record.harness === 'string' ? record.harness : null,
       // Offered only when the daemon advertises the operation and this session
       // runs through the daemon (the delegation adapter cannot change effort).
       capabilities: {

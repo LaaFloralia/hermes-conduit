@@ -45,7 +45,15 @@ export function providerAvailability({ bin, ttlMs = 30_000, timeoutMs = 10_000, 
 }
 
 // A profile whose provider cannot take a session now keeps its place in the list and says why.
+// It also names the harness the profile's sessions start on (`harness`, the engine's
+// work-engine.json move: codex -> pi). A moved provider stays on its own harness for what the
+// other cannot do; Fast is the one a profile carries, so `fastHarness` names where Fast runs
+// (LAA Work agents.mjs #plan: Pi has no Fast tier).
 export function withAvailability(profile, state) {
+  if (state && typeof state.harness === 'string' && state.harness) {
+    profile = { ...profile, harness: state.harness,
+      ...(profile.fast && state.harness !== profile.provider ? { fastHarness: profile.provider } : {}) };
+  }
   if (!state || state.available !== false) return profile;
   const short = typeof state.reasonShort === 'string' && state.reasonShort.trim() ? state.reasonShort.trim() : null;
   return {

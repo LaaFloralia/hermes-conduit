@@ -22,7 +22,11 @@ import SwiftUI
 /// the reason in a disabled row (owner, 2026-11-11). Identifiers are
 /// `<identifier>.model` and `<identifier>.effort`; VoiceOver reads 「モデル」
 /// and 「推論」 as two controls.
-struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
+struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: View>: View {
+    /// The harness the conversation runs on, shown ahead of the model as its
+    /// own capsule and menu (LAAHarnessCapsule); nil leaves it out.
+    var harness: LAAHarness? = nil
+    var harnessHint: String = "実行基盤を変更"
     /// The wire id ("claude-fable-5-2") or a display name ("Fable 5.2").
     let model: String?
     /// The provider id ("claude", "codex", "dsh"); sets the face's family.
@@ -47,8 +51,24 @@ struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
     var modelValueSuffix: String? = nil
     var modelHint: String = "モデルを変更"
     var effortHint: String = "推論の強さを変更"
-    @ViewBuilder let modelMenu: () -> ModelMenu
-    @ViewBuilder let effortMenu: () -> EffortMenu
+    var harnessMenu: () -> HarnessMenu
+    var modelMenu: () -> ModelMenu
+    var effortMenu: () -> EffortMenu
+
+    init(harness: LAAHarness?, harnessHint: String = "実行基盤を変更",
+         model: String?, provider: String?, effort: String?, name: String? = nil, current: Bool = true,
+         attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false, identifier: String,
+         modelValueSuffix: String? = nil, modelHint: String = "モデルを変更", effortHint: String = "推論の強さを変更",
+         @ViewBuilder harnessMenu: @escaping () -> HarnessMenu,
+         @ViewBuilder modelMenu: @escaping () -> ModelMenu,
+         @ViewBuilder effortMenu: @escaping () -> EffortMenu) {
+        self.harness = harness; self.harnessHint = harnessHint
+        self.model = model; self.provider = provider; self.effort = effort; self.name = name; self.current = current
+        self.attention = attention; self.changingModel = changingModel; self.changingEffort = changingEffort
+        self.identifier = identifier; self.modelValueSuffix = modelValueSuffix
+        self.modelHint = modelHint; self.effortHint = effortHint
+        self.harnessMenu = harnessMenu; self.modelMenu = modelMenu; self.effortMenu = effortMenu
+    }
 
     private var modelText: String { LAAModelCapsule.text(model: model, provider: provider, name: name, current: current) }
     private var effortText: String {
@@ -58,9 +78,20 @@ struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
 
     var body: some View {
         LAAWrapRow {
+            if let harness {
+                Menu { harnessMenu() } label: { LAAHarnessCapsule(harness: harness, current: current) }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .accessibilityLabel(Text(verbatim: "実行基盤"))
+                    .accessibilityValue(Text(verbatim: harness.name))
+                    .accessibilityHint(Text(verbatim: harnessHint))
+                    .accessibilityIdentifier(identifier + ".harness")
+            }
             Menu { modelMenu() } label: {
                 LAAModelCapsule(model: model, provider: provider, name: name, current: current,
-                                attention: attention, changing: changingModel)
+                                attention: attention, changing: changingModel,
+                                showsFace: !(harness?.sharesMark(model: model, provider: provider) ?? false))
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -81,6 +112,73 @@ struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
             .accessibilityHint(Text(verbatim: effortHint))
             .accessibilityIdentifier(identifier + ".effort")
         }
+    }
+}
+
+extension LAAModelEffortPickers where HarnessMenu == EmptyView {
+    /// The pair without a harness capsule (the task form, a project's default).
+    init(model: String?, provider: String?, effort: String?, name: String? = nil, current: Bool = true,
+         attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false, identifier: String,
+         modelValueSuffix: String? = nil, modelHint: String = "モデルを変更", effortHint: String = "推論の強さを変更",
+         @ViewBuilder modelMenu: @escaping () -> ModelMenu,
+         @ViewBuilder effortMenu: @escaping () -> EffortMenu) {
+        self.init(harness: nil, model: model, provider: provider, effort: effort, name: name, current: current,
+                  attention: attention, changingModel: changingModel, changingEffort: changingEffort,
+                  identifier: identifier, modelValueSuffix: modelValueSuffix, modelHint: modelHint,
+                  effortHint: effortHint, harnessMenu: { EmptyView() }, modelMenu: modelMenu, effortMenu: effortMenu)
+    }
+}
+
+/// The harness capsule: the harness's own mark and chevron, the same 36pt
+/// glass as the model and effort beside it, so the three read as one row of
+/// one control. The phone shows the mark alone (the name is in the menu and
+/// read aloud) so the row keeps one line with every model name whole; the
+/// Mac, with room, adds the name. Plain glass: the marble finish stays the
+/// model's and the effort's (tokens.json appSelection).
+struct LAAHarnessCapsule: View {
+    let harness: LAAHarness
+    var current = true
+
+    #if targetEnvironment(macCatalyst)
+    static let showsName = true
+    #else
+    static let showsName = false
+    #endif
+
+    var body: some View {
+        if Self.showsName { named } else { round }
+    }
+
+    /// The phone: the mark alone in a round glass button the size of the
+    /// composer's icon buttons, so the row keeps room for the model and the
+    /// effort (the menu's own title names the harness).
+    private var round: some View {
+        LAAHarnessMark(harness: harness, size: 18)
+            .opacity(current ? 1 : 0.6)
+            .frame(width: LAAPickerMetrics.height, height: LAAPickerMetrics.height)
+            .contentShape(Circle())
+            .laaGlassSelection(step: .plain, tone: .stone, seed: 0, motion: .frozen(elapsed: nil, light: nil),
+                               cornerRadius: LAAPickerMetrics.radius)
+    }
+
+    /// The Mac: the mark, the harness's name and the menu's chevron.
+    private var named: some View {
+        HStack(spacing: 6) {
+            LAAHarnessMark(harness: harness, size: 18)
+            Text(verbatim: harness.name)
+                .foregroundStyle(LAAColor.text)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+            LAAPickerMetrics.chevronView()
+        }
+        .fixedSize()
+        .laaTextStyle(.secondary)
+        .opacity(current ? 1 : 0.6)
+        .padding(.leading, (LAAPickerMetrics.height - 18) / 2).padding(.trailing, LAASpacing.x3)
+        .frame(minHeight: LAAPickerMetrics.height)
+        .contentShape(RoundedRectangle(cornerRadius: LAAPickerMetrics.radius, style: .continuous))
+        .laaGlassSelection(step: .plain, tone: .stone, seed: 0, motion: .frozen(elapsed: nil, light: nil),
+                           cornerRadius: LAAPickerMetrics.radius)
     }
 }
 
@@ -116,6 +214,9 @@ struct LAAModelCapsule: View {
     var current = true
     var attention = false
     var changing = false
+    /// Off when the harness capsule beside it already shows the same maker's
+    /// mark (Claude Code running Claude, Codex running GPT): one mark, not two.
+    var showsFace = true
 
     static let unknown = "不明"
 
@@ -152,7 +253,8 @@ struct LAAModelCapsule: View {
         row
             .laaTextStyle(.secondary)
             // The face sits as far from the rim as it is from top and bottom.
-            .padding(.leading, (LAAPickerMetrics.height - 22) / 2).padding(.trailing, LAASpacing.x3)
+            .padding(.leading, showsFace ? (LAAPickerMetrics.height - 22) / 2 : LAASpacing.x3)
+            .padding(.trailing, LAASpacing.x3)
             .frame(minHeight: LAAPickerMetrics.height)
             .contentShape(Capsule())
             .laaGlassSelection(step: rank.step, tone: rank.tone, seed: LAAMarble.seed(model), motion: motion,
@@ -163,7 +265,7 @@ struct LAAModelCapsule: View {
         // The whole name on one line; only a row narrower than the name
         // itself (never at the phone's width) wraps it at a space, never "…".
         HStack(spacing: 6) {
-            LAAModelMark(model: model, provider: provider, size: 22)
+            if showsFace { LAAModelMark(model: model, provider: provider, size: 22) }
             if changing { Text(verbatim: "変更中").font(.caption).foregroundStyle(LAAColor.text).fixedSize() }
             if attention {
                 // ▲ is the house mark for "check this".
