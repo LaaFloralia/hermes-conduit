@@ -36,16 +36,18 @@ export function laneRecorder(lane, edge) {
   };
 }
 
+export async function connectLaneWork(lane) {
+  if (!lane.client) throw laneMissing('Work engine');
+  const { connectEngine } = await import(pathToFileURL(lane.client).href);
+  return connectEngine({ socket: lane.work });
+}
+
 export function laneAdapters(lane, store, now) {
   const notifyRecord = laneRecorder(lane, 'notify');
   const apnsRecord = laneRecorder(lane, 'apns');
   const workRecord = laneRecorder(lane, 'work');
   const notify = async ({ kind }) => { notifyRecord({ kind }); return { status: 'sent' }; };
-  const connect = async () => {
-    if (!lane.client) throw laneMissing('Work engine');
-    const { connectEngine } = await import(pathToFileURL(lane.client).href);
-    return connectEngine({ socket: lane.work });
-  };
+  const connect = () => connectLaneWork(lane);
   const daemon = lane.work ? daemonAdapter({ connect, now }) : null;
   async function callWork(operation, fn) {
     const client = await connect();
