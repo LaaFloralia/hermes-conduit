@@ -91,6 +91,10 @@ final class LAAMacShellUITests: XCTestCase {
                 && abs(current.width - initial.width) < 3 && abs(current.height - initial.height) < 3
         }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 6), .completed)
+        let geometry = XCTAttachment(string: "Before: \(initial)\nFit: \(frame)\nRestored: \(window.frame)")
+        geometry.name = "mac-fit-window-frames"
+        geometry.lifetime = .keepAlways
+        add(geometry)
     }
 
     /// Chat keeps its list; the detail column says what to do rather than
