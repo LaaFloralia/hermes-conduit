@@ -70,10 +70,10 @@ private struct LAAStaffAmbientCollapsed: View {
     var body: some View {
         VStack {
             Button(action: expand) {
-                Image(systemName: "sidebar.right")
-                    .font(.system(size: 16))
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16 * LAAStaffAmbientPanel.scale))
                     .foregroundStyle(LAAColor.secondaryText)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 28 * LAAStaffAmbientPanel.scale, height: 28 * LAAStaffAmbientPanel.scale)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -82,13 +82,17 @@ private struct LAAStaffAmbientCollapsed: View {
             Spacer()
         }
         .padding(.top, LAASpacing.x3)
-        .frame(width: 44)
+        .frame(width: 44 * LAAStaffAmbientPanel.scale)
         .background(LAAColor.background)
     }
 }
 
 struct LAAStaffAmbientPanel: View {
-    static let width: CGFloat = 288
+    /// Catalyst draws at 77%: sizes are the design's Mac values divided by it,
+    /// as the transcript does (LAAReadingStyle.platformScale).
+    static let scale = LAAReadingStyle.platformScale
+    static let width: CGFloat = 288 * scale
+    private var s: CGFloat { Self.scale }
 
     let inputs: LAAStaffAmbientInputs
     let profile: String
@@ -118,25 +122,25 @@ struct LAAStaffAmbientPanel: View {
             HStack {
                 Spacer()
                 Button(action: collapse) {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 16))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16 * s))
                         .foregroundStyle(LAAColor.secondaryText)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 28 * s, height: 28 * s)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(verbatim: "社員の情報を隠す"))
                 .accessibilityIdentifier("laa.mac.staffPanel.collapse")
             }
-            StaffMascotView(profile: model.profile, name: model.name, size: 176)
+            StaffMascotView(profile: model.profile, name: model.name, size: 176 * s)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, LAASpacing.x2)
             Text(verbatim: model.name)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17 * s, weight: .semibold))
                 .foregroundStyle(LAAColor.text)
                 .padding(.top, LAASpacing.x4)
             Text(verbatim: model.role)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12 * s, weight: .medium))
                 .foregroundStyle(LAAColor.secondaryText)
                 .padding(.top, LAASpacing.x1)
             VStack(alignment: .leading, spacing: 0) {
@@ -159,16 +163,16 @@ struct LAAStaffAmbientPanel: View {
     private func infoRow(_ label: String, _ value: String?) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(verbatim: label)
-                .font(.system(size: 13))
+                .font(.system(size: 13 * s))
                 .foregroundStyle(LAAColor.secondaryText)
             Spacer(minLength: LAASpacing.x3)
             Text(verbatim: value ?? LAAStaffAmbientPanelModel.Mark.unknown.rawValue)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 13 * s, weight: .medium))
                 .foregroundStyle(value == nil ? LAAColor.secondaryText : LAAColor.text)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
-        .frame(minHeight: 32)
+        .frame(minHeight: 32 * s)
         .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
         .accessibilityElement(children: .combine)
     }
@@ -177,7 +181,7 @@ struct LAAStaffAmbientPanel: View {
     private func routines(_ state: LAAStaffAmbientPanelModel.Routines) -> some View {
         switch state {
         case .loading:
-            ProgressView().controlSize(.small).frame(minHeight: 32)
+            ProgressView().controlSize(.small).frame(minHeight: 32 * s)
         case .unavailable:
             routineMarkOnly
         case .loaded(let list) where list.isEmpty:
@@ -186,17 +190,17 @@ struct LAAStaffAmbientPanel: View {
             ForEach(list) { routine in
                 HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                     Text(verbatim: routine.mark.rawValue)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * s))
                         .foregroundStyle(routine.mark == .attention ? LAAColor.attention : LAAColor.link)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: routine.title)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 13 * s, weight: .medium))
                             .foregroundStyle(LAAColor.text)
                             .lineLimit(2)
                         if !routine.detail.isEmpty {
                             Text(verbatim: routine.detail)
-                                .font(.system(size: 12))
+                                .font(.system(size: 12 * s))
                                 .foregroundStyle(LAAColor.secondaryText)
                                 .lineLimit(1)
                         }
@@ -204,7 +208,7 @@ struct LAAStaffAmbientPanel: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.vertical, LAASpacing.x2)
-                .frame(minHeight: 48, alignment: .leading)
+                .frame(minHeight: 48 * s, alignment: .leading)
                 .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
                 .accessibilityElement(children: .combine)
             }
@@ -214,9 +218,9 @@ struct LAAStaffAmbientPanel: View {
     /// No routines, or none could be read: the open mark on its ruled row.
     private var routineMarkOnly: some View {
         Text(verbatim: LAAStaffAmbientPanelModel.Mark.unknown.rawValue)
-            .font(.system(size: 12))
+            .font(.system(size: 12 * s))
             .foregroundStyle(LAAColor.secondaryText)
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 32 * s, alignment: .leading)
             .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
             .accessibilityLabel(Text(verbatim: "Routines"))
     }
