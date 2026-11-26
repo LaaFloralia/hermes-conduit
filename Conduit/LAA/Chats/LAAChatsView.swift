@@ -141,6 +141,7 @@ struct LAAChatsView: View {
                 LAADuetScreen()
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.ChatProjects.done) { showingDuetSheet = false } } }
             }
+            .environmentObject(bridge)
             .laaSheetSize(.form)
         }
         .navigationDestination(item: $selectedProject) { id in
