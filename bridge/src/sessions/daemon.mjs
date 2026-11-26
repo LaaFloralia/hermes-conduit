@@ -385,7 +385,7 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       if (fastValue(after.features) !== value) throw new BridgeError(409, 'fast_not_applied', 'Paseo did not apply the Fast change');
       return statusOf(c, after);
     }),
-    send: (id, { text, messageId, images, origin = null }) => call(async (c) => {
+    send: (id, { text, messageId, images, origin = null, queue = false }) => call(async (c) => {
       const a = await agent(c, id);
       if (a.archivedAt) throw conflict('agent_archived', 'restore the session before sending');
       if (a.pendingPermissions?.length) throw conflict('pending_decision_requires_reply', 'answer the pending decision first');
@@ -393,11 +393,18 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       // the provider replace that turn — and an agent without autonomous
       // steering refuses the start instead, which loses the owner's message and
       // stops the turn (2026-11-09). The caller holds the message until idle.
-      if (isBusy(a)) throw conflict('session_busy', 'the session is still working; the message waits for the turn to end');
+      // The LAA Work engine instead keeps a message for a working session in
+      // its own persisted queue, once per message id, and runs it after the
+      // current turn; a caller that asks for that (`queue`) hands it over now.
+      // A parent that keeps working never goes idle long enough to be caught
+      // between turns (2026-11-26).
+      const busy = isBusy(a);
+      if (busy && !(queue && a.engine === 'laa-work')) throw conflict('session_busy', 'the session is still working; the message waits for the turn to end');
       try {
         // Explicit steering preserves the currently running turn. The daemon
         // owns exactly-once message acceptance for this stable client message id.
-        await c.sendMessage(id, text, { messageId, activeTurnBehavior: 'steer', images, ...(origin ? { origin } : {}) });
+        const accepted = await c.sendMessage(id, text, { messageId, activeTurnBehavior: 'steer', images, ...(origin ? { origin } : {}) });
+        return { queued: Boolean(accepted?.queued ?? busy) };
       } catch (error) {
         if (error instanceof BridgeError) throw error;
         if (/already active|is busy|is running/i.test(String(error?.message ?? error))) {
@@ -467,7 +474,7 @@ export function snapshot(a, now) {
   const pending = a.pendingPermissions ?? [];
   const effort = a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null;
   const observed = { provider: a.provider, model: runningModel(a), effort };
-  return { title: a.title, daemonStatus: a.status, activeTurn: Boolean(a.activeTurn), archivedAt: a.archivedAt ?? null,
+  return { title: a.title, daemonStatus: a.status, activeTurn: Boolean(a.activeTurn), archivedAt: a.archivedAt ?? null, engine: a.engine ?? null,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
     pending,
     // The runtime reports model/mode in `runtimeInfo` and the applied thinking
