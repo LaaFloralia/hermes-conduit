@@ -1,0 +1,30 @@
+version: 1
+# Synthetic data, including fields the public projection should never expose.
+roles:
+  - id: zebra
+    dir: InternalZ
+    name: Zebra
+    thinking: {"base":"Ready… ⚙️","alt":["Waiting… 🐣"],"private":"do-not-expose"}
+    internal: do-not-expose
+  - id: ant
+    name: Ant
+    dir: InternalA
+    worker: { thinking: max }
+  - id: bad_json
+    name: Bad JSON
+    thinking: {base: "YAML-only object", alt: []}
+  - id: blank_base
+    name: Blank Base
+    thinking: {"base":" ","alt":["Valid"]}
+  - id: bad_alt_type
+    name: Bad Alt Type
+    thinking: {"base":"Valid","alt":"Not an array"}
+  - id: bad_alt_item
+    name: Bad Alt Item
+    thinking: {"base":"Valid","alt":["Also valid", 1]}
+  - id: blank_alt
+    name: Blank Alt
+    thinking: {"base":"Valid","alt":[""]}
+  - id: only_base
+    name: Only Base
+    thinking: {"base":"Valid","alt":[]}
