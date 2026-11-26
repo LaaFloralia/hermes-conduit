@@ -536,7 +536,11 @@ struct GroupChatView: View {
             return LAAChatLabels.text("Approval needed")
         }
         if let responder = respondingMember {
+#if LAA_BUILD
+            return GroupRoomTurns.displayName(of: responder) + " · " + LAAChatWorking.thinking
+#else
             return AppLocalization.string("\(GroupRoomTurns.displayName(of: responder)) is responding…")
+#endif
         }
         if let driver = appState.activeRoomDriverStatus, driver.working {
             return AppLocalization.string("\(count) members · working…")

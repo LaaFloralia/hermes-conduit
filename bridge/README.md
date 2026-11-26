@@ -651,6 +651,7 @@ opt-in `media:write` and idempotency keys. Upload sessions are device-bound,
 expire after one hour and accept at most 4 MiB per chunk. Status queries reconcile
 lost acknowledgements before resending; completed status remains available until expiry.
 
+Agents on the Mac read events without HTTP or a device token through `laa-bridge calendar events [--from YYYY-MM-DD|today] [--days N] --json` (read-only, selected calendars, attendee addresses reduced to domains, exit 6 instead of an empty list when Google is unavailable; refused in test lanes).
 Calendar list and event/detail reads require `calendar:read`. Day/week/month/agenda
 ranges span up to 42 days. Create/PATCH/DELETE require separate `calendar:write`;
 etags protect edits and deletes, and Bridge idempotency protects retries. Expanded
