@@ -2,9 +2,7 @@
 import Foundation
 import SwiftUI
 import LAAKit
-#if canImport(UIKit)
-import UIKit
-#endif
+import WidgetKit
 
 enum LAAWidgetUsageBuilder {
     /// One ordered list for the app's AI Usage screen. The first three are the
@@ -233,22 +231,29 @@ struct LAAUsageMeterTrack: View {
     let fraction: Double?
     var level: LAAMeterLevel? = nil
     var animates = true
+    var renderingMode: WidgetRenderingMode? = nil
     @Environment(\.laaPalette) private var palette
+    @Environment(\.widgetRenderingMode) private var environmentRenderingMode
 
     static let height = LAAComponentToken.Meter.barHeight
+    static let caution = LAAColor.caution
 
     var body: some View {
         let finite = fraction.flatMap { $0.isFinite ? min(max(0, $0), 1) : nil }
+        let mode = renderingMode ?? environmentRenderingMode
         Group {
-            if animates && level == nil {
+            if animates && level == nil && mode == .fullColor {
                 LAAKit.LAAUsageBar(remaining: finite)
             } else {
+                let paint = Paint(mode: mode, level: level ?? LAAMeterLevel(remaining: finite), palette: palette)
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
-                        Rectangle().fill(palette.rule)
-                        if let finite {
-                            Rectangle().fill(palette.meter(level ?? LAAMeterLevel(remaining: finite)))
-                                .frame(width: proxy.size.width * finite)
+                        Rectangle().fill(paint.track)
+                        if let finite, finite > 0 {
+                            Rectangle().fill(paint.fill)
+                                // Keep a 2pt sliver for a known positive reading.
+                                .frame(width: max(proxy.size.width * finite, min(2, proxy.size.width)))
+                                .widgetAccentable()
                         }
                     }
                 }
@@ -256,6 +261,42 @@ struct LAAUsageMeterTrack: View {
             }
         }
         .accessibilityHidden(true)
+    }
+}
+
+extension LAAUsageMeterTrack {
+    /// Track and fill for a rendering mode. On tinted and clear Home Screens
+    /// (`accented`) WidgetKit keeps only each view's opacity, and in
+    /// `vibrant` (StandBy, the lock screen, a Mac desktop in the background)
+    /// only its brightness; an opaque track in its own colour then read the
+    /// same as the fill, so every bar looked full. Outside full colour the
+    /// track is a faint white and the fill solid white in the accent group.
+    struct Paint {
+        let track: Color
+        let fill: Color
+
+        static let tintedTrackOpacity = 0.28
+
+        init(mode: WidgetRenderingMode, level: LAAMeterLevel, palette: LAAPalette? = nil) {
+            if mode == .fullColor {
+                if let palette {
+                    track = palette.rule
+                    fill = palette.meter(level)
+                } else {
+                    // Default adaptive colors when no resolved Kit palette is supplied.
+                    track = LAAColor.separator
+                    switch level {
+                    case .normal: fill = LAAColor.link
+                    case .caution: fill = LAAUsageMeterTrack.caution
+                    case .critical: fill = LAAColor.critical
+                    case .unknown: fill = track
+                    }
+                }
+            } else {
+                track = Color.white.opacity(Self.tintedTrackOpacity)
+                fill = Color.white
+            }
+        }
     }
 }
 

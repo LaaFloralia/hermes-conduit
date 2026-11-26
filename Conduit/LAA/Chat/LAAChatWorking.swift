@@ -5,10 +5,15 @@ import SwiftUI
 /// built from what the chat already knows (the turn state, its start, the
 /// running tool, the delegate agents Hermes reports for this conversation).
 enum LAAChatWorking {
+    /// What Chat says while the employee answers and no tool is running; the
+    /// Live Activity's thinking phase says the same.
+    static let thinking = "Thinking"
+
     static func status(isBusy: Bool, startedAt: Date?, toolRunning: Bool,
                        agents: [DelegateAgentActivity]) -> LAAWorkingStatus? {
         guard isBusy else { return nil }
-        let word = toolRunning ? "作業中" : "応答中"
+        // The owner's word for a turn with no tool running (2026-11-26).
+        let word = toolRunning ? "作業中" : thinking
         return LAAWorkingStatus(word: word, startedAt: startedAt, orb: toolRunning ? .tool : .thinking,
                                 children: children(agents, since: startedAt))
     }
