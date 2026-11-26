@@ -11903,10 +11903,15 @@ final class AppState: ObservableObject {
         return try await client.groupsSend(roomID: roomID, eventID: eventID, text: text, threadID: threadID)
     }
 
-    private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]])
-        async throws -> GroupRoom {
+    private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]],
+                              confidential: Bool) async throws -> GroupRoom {
         if let operation = groupChatOperations.create { return try await operation(client, roomID, name, members) }
+#if LAA_BUILD
+        return try await client.groupsCreate(roomID: roomID, name: name, members: members,
+                                             capabilities: groupCapabilities, confidential: confidential)
+#else
         return try await client.groupsCreate(roomID: roomID, name: name, members: members)
+#endif
     }
 
     private func groupsStop(_ client: HermesClient, roomID: String) async throws -> Int {
@@ -12825,7 +12830,7 @@ final class AppState: ObservableObject {
     /// the CALLER owns its lifetime (the create sheet holds one per logical
     /// room) so a retry of an ambiguous create reuses the SAME id and the
     /// gateway deduplicates instead of forking a twin room.
-    func createGroupRoom(name: String, bots: [BotProfile], roomID: String) async -> Bool {
+    func createGroupRoom(name: String, bots: [BotProfile], roomID: String, confidential: Bool = false) async -> Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         // Each refusal explains itself: the sheet's own gate cannot see a
         // dropped connection or a roster that changed under the selection.
@@ -12867,7 +12872,8 @@ final class AppState: ObservableObject {
             ])
         }
         do {
-            let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members)
+            let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members,
+                                              confidential: confidential)
             await refreshGroupRooms()
             await openGroupRoom(room)
             return true

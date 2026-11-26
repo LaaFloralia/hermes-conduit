@@ -81,7 +81,7 @@ struct LAAChatsFixtureView: View {
         }
         .sheet(isPresented: $showingGroupCreator) {
             NavigationStack {
-                LAAGroupCreateView(roster: bots) { name, _, _ in
+                LAAGroupCreateView(roster: bots) { name, _, _, _ in
                     createdGroup = name
                     showingGroupCreator = false
                     return true

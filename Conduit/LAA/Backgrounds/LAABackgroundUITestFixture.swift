@@ -11,13 +11,19 @@ final class LAABackgroundFixture: ObservableObject {
 
     init(chatFixtureOverride: String? = nil, defaultsSuiteName: String = "LAABackgroundUITestFixture",
          conversationID: String = "fixture-chat") {
-        let members = [
+        let chaired = ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_CHAIRED_MEETING")
+        var members = [
             GroupMember(memberID: "laa-monet", profile: "laa-monet", handle: "monet", displayName: "Monet", target: nil, extra: [:]),
             GroupMember(memberID: "laa-cto", profile: "laa-cto", handle: "ada", displayName: "Ada", target: nil, extra: [:]),
         ]
+        if chaired {
+            members.append(GroupMember(memberID: "laa-cos", profile: "laa-cos", handle: "merlin", displayName: "Merlin", target: nil, extra: [:]))
+        }
         let room = GroupRoom(roomID: "fixture-room", name: LAALabCaptureFixture.expanded("企画チーム"), members: members,
                              authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1,
-                             createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: 2)
+                             createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: chaired ? 6 : 2,
+                             chair: chaired ? "laa-monet" : nil, policy: chaired ? .standard : nil,
+                             confidential: chaired ? true : nil)
         self.room = room
         let bots = LAAWidgetEmployee.allCases.map { employee in
             BotProfile(name: employee.profile, botTitle: nil, displayName: employee.name, profileDescription: "", model: nil,
@@ -60,11 +66,33 @@ final class LAABackgroundFixture: ObservableObject {
                     authorityEpoch: 1, payload: ["text": .string("午後の資料は私が用意します。")], createdAt: now)
             ]
         }
+        if chaired {
+            let seed = GroupEvent(roomID: room.roomID, seq: 1, eventID: "fixture-topic", kind: "message.chair",
+                actor: GroupActor(kind: "chair", id: "laa-monet", profile: "laa-monet", displayName: nil, connectionID: nil),
+                authorityEpoch: 1, payload: ["text": .string("資料の方針を決めましょう。"), "thread_id": .string("main")], createdAt: now - 120)
+            let lines = [
+                ("laa-monet", "agenda", "構成と順番について意見を集めます。"),
+                ("laa-cto", "staff", "構成案は1ページで始めます。"),
+                ("laa-cos", "staff", "根拠になる数値を先に集めます。"),
+                ("laa-monet", "conclusion", "資料は1ページにまとめます。先に数値をそろえ、構成案と一緒に確認します。"),
+            ]
+            events = [seed] + lines.enumerated().map { index, line in
+                GroupEvent(roomID: room.roomID, seq: index + 2, eventID: "fixture-meeting-\(index)", kind: "message.member",
+                    actor: GroupActor(kind: "member", id: line.0, profile: line.0, displayName: nil, connectionID: nil),
+                    authorityEpoch: 1, payload: ["text": .string(line.2), "member_id": .string(line.0), "thread_id": .string("main"),
+                        "discussion_event_id": .string(seed.id), "meeting_phase": .string(line.1)], createdAt: now - 30 + Double(index))
+            }
+            events.append(GroupEvent(roomID: room.roomID, seq: 6, eventID: "fixture-meeting-complete", kind: "room.activity",
+                actor: GroupActor(kind: "gateway", id: "fixture", profile: nil, displayName: nil, connectionID: nil),
+                authorityEpoch: 1, payload: ["status": .string("settled"), "reason_code": .string("meeting_complete"),
+                    "thread_id": .string("main"), "discussion_event_id": .string(seed.id)], createdAt: now))
+        }
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in
                 if mode == "error" { throw URLError(.cannotConnectToHost) }
                 return GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "fixture",
-                    features: [], methods: GroupWire.requiredMethods.union(["groups.rename"]), maxLogLimit: 500)
+                    features: chaired ? ["room_chair", "room_confidential"] : [],
+                    methods: GroupWire.requiredMethods.union(["groups.rename"]), maxLogLimit: 500)
             },
             list: { _ in (mode == "empty" ? [] : [room], nil) }, state: { _, _ in (room, nil) },
             log: { _, _, since, _ in GroupLogPage(events: events.filter { $0.seq > since }, cursor: events.count,
@@ -313,7 +341,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                 switch selected {
                 case .create:
                     NavigationStack {
-                        LAAGroupCreateView(roster: fake.bots) { name, bots, _ in
+                        LAAGroupCreateView(roster: fake.bots, capabilities: appState.groupCapabilities) { name, bots, _, _ in
                             guard (2...6).contains(bots.count) else { return false }
                             fake.createdName = name
                             sheet = nil
