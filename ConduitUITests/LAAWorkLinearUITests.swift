@@ -214,7 +214,7 @@ final class LAAWorkLinearUITests: XCTestCase {
             // Skills moved into Settings (2b5760d5).
             LAASettingsSkillsUI.open(in: app)
         } else {
-            app.buttons["work.section.\(section)"].tap()
+            LAAWorkSectionUI.open(section, in: app)
         }
     }
     private func attach(_ name: String) {

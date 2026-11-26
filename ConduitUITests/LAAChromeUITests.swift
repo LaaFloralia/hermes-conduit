@@ -221,11 +221,13 @@ final class LAAChromeUITests: XCTestCase {
                 XCTAssertTrue(entry.waitForExistence(timeout: 10))
                 if !entry.isHittable { app.scrollViews.firstMatch.swipeUp() }
                 entry.tap()
-                XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 10))
                 if title == "Appearance" {
+                    XCTAssertTrue(app.staticTexts["settings.appearance.title"].waitForExistence(timeout: 10))
                     XCTAssertFalse(app.staticTexts["Main button"].exists)
                     XCTAssertFalse(app.staticTexts["Project chats"].exists)
                 } else {
+                    let navigation = app.navigationBars.matching(NSPredicate(format: "identifier IN %@", ["Notifications", "通知"])).firstMatch
+                    XCTAssertTrue(navigation.waitForExistence(timeout: 10))
                     XCTAssertFalse(app.textFields["Push relay URL"].exists)
                     XCTAssertFalse(app.staticTexts["Verify pairing"].exists)
                     XCTAssertFalse(app.buttons["notifications.plugin-link"].exists)
@@ -247,7 +249,7 @@ final class LAAChromeUITests: XCTestCase {
             if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
             voice.tap()
             XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["音声設定を取得できません"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.staticTexts["Macの音声設定が応答しません。接続を確認してください。"].waitForExistence(timeout: 15))
             capture("remnants-voice-\(appearance)")
             let advanced = app.buttons["voice.advancedToggle"]
             for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }

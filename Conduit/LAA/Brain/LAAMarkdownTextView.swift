@@ -93,7 +93,9 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                 guard let self, let view else { return }
                 self.selectionChanged(view)
             }
-            // updateUIView installs the source and styles it once, after attaching.
+            // updateUIView styles newly installed source; a preloaded view
+            // already has text and needs its typing attributes now.
+            if let source = view.text, !source.isEmpty { restyle(view, full: true) }
             // Reporting from inside a view update would publish the format
             // bar's state mid-update; do it on the next run loop turn.
             Task { @MainActor [weak self, weak view] in

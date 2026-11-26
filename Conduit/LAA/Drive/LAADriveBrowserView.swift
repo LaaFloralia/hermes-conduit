@@ -185,6 +185,7 @@ struct LAADriveBrowserView: View {
                     .foregroundStyle(folders.isEmpty ? LAAColor.text : LAAColor.link)
             }
             .buttonStyle(.plain).frame(minHeight: LAASpacing.minimumTouchTarget)
+            .accessibilityIdentifier("laa.drive.browser.root")
             ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
                 Text("/").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)

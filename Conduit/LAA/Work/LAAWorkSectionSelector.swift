@@ -2,8 +2,8 @@
 import SwiftUI
 import LAAKit
 
-/// Four frequent destinations, with the others in one native menu. At
-/// accessibility sizes the four labels get two columns rather than clipping.
+/// Four frequent destinations. On iPhone, swipe to the remaining sections
+/// or use the same menu as Mac and accessibility text sizes.
 struct LAAWorkSectionSelector: View {
     typealias Section = LAAWorkHub.Section
     @Binding var selection: Section
@@ -18,19 +18,34 @@ struct LAAWorkSectionSelector: View {
     private var control: LAAControlSize { desktop ? LAAControl.Mac.secondary : LAAControl.IPhone.compact }
 
     var body: some View {
-        HStack(spacing: LAASpace.s4) {
-            if typeSize.isAccessibilitySize {
-                VStack(spacing: 0) {
-                    row(Self.primary.prefix(2))
-                    row(Self.primary.suffix(2))
+        if desktop || typeSize.isAccessibilitySize {
+            HStack(spacing: LAASpace.s4) {
+                if typeSize.isAccessibilitySize {
+                    VStack(spacing: 0) {
+                        row(Self.primary.prefix(2))
+                        row(Self.primary.suffix(2))
+                    }
+                } else {
+                    row(Self.primary[...])
                 }
-            } else {
-                row(Self.primary[...])
+                overflow
             }
-            overflow
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("work.segment")
+        } else {
+            HStack(spacing: LAASpace.s4) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        row(Self.primary[...]).containerRelativeFrame(.horizontal)
+                        row(Self.secondary[...]).containerRelativeFrame(.horizontal)
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .accessibilityIdentifier("work.segment")
+                overflow
+            }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("work.segment")
     }
 
     private func row(_ sections: ArraySlice<Section>) -> some View {

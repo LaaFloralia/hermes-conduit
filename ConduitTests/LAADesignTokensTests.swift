@@ -77,24 +77,26 @@ final class LAADesignTokensTests: XCTestCase {
     }
 
     func testTextAndFilledControlsMeetContrastInBothAppearances() {
-        let pairs: [(String, Color, Color)] = [
-            ("text/background", LAAColor.text, LAAColor.background),
-            ("text/surface", LAAColor.text, LAAColor.surface),
-            ("secondary/background", LAAColor.secondaryText, LAAColor.background),
-            ("secondary/surface", LAAColor.secondaryText, LAAColor.surface),
-            ("link/background", LAAColor.link, LAAColor.background),
-            ("own bubble", LAAColor.ownBubbleText, LAAColor.ownBubble),
-            ("filled button", LAAColor.filledButtonText, LAAColor.filledButton),
-            ("filled control", LAAColor.filledControlText, LAAColor.filledControl)
+        let pairs: [(String, Color, Color, Double)] = [
+            ("text/background", LAAColor.text, LAAColor.background, 7),
+            ("text/surface", LAAColor.text, LAAColor.surface, 7),
+            ("secondary/background", LAAColor.secondaryText, LAAColor.background, 4.5),
+            ("secondary/surface", LAAColor.secondaryText, LAAColor.surface, 4.5),
+            ("link/background", LAAColor.link, LAAColor.background, 4.5),
+            ("own bubble", LAAColor.ownBubbleText, LAAColor.ownBubble, 4.5),
+            ("filled button", LAAColor.filledButtonText, LAAColor.filledButton, 4.5),
+            ("filled control", LAAColor.filledControlText, LAAColor.filledControl, 4.5)
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
-            for (name, foreground, background) in pairs {
-                XCTAssertGreaterThanOrEqual(contrast(foreground, background, style: style), 4.5, "\(name) \(style)")
+            // The kit keeps foreground roles in high contrast; edges use text ink.
+            for accessibility in [UIAccessibilityContrast.normal, .high] {
+                for (name, foreground, background, minimum) in pairs {
+                    XCTAssertGreaterThanOrEqual(contrast(foreground, background, style: style, accessibility: accessibility),
+                                                minimum, "\(name) \(style) \(accessibility)")
+                }
             }
-            for color in [LAAColor.text, LAAColor.secondaryText, LAAColor.link] {
-                XCTAssertGreaterThan(contrast(color, LAAColor.background, style: style, accessibility: .high),
-                                     contrast(color, LAAColor.background, style: style), "text \(style)")
-            }
+            XCTAssertEqual(components(LAAColor.separator, style: style, contrast: .high),
+                           components(LAAColor.text, style: style, contrast: .high), "high-contrast edge \(style)")
             XCTAssertGreaterThan(contrast(LAAColor.separator, LAAColor.background, style: style, accessibility: .high),
                                  contrast(LAAColor.separator, LAAColor.background, style: style), "separator \(style)")
         }
@@ -116,9 +118,20 @@ final class LAADesignTokensTests: XCTestCase {
 
     func testSpacingAndRadiusValues() {
         XCTAssertEqual([LAASpacing.x1, LAASpacing.x2, LAASpacing.x3, LAASpacing.x4, LAASpacing.x6, LAASpacing.x8], [4, 8, 12, 16, 24, 32])
-        XCTAssertEqual([LAASpacing.horizontal, LAASpacing.compactHorizontal, LAASpacing.section, LAASpacing.minimumRowHeight, LAASpacing.minimumTouchTarget], [20, 20, 32, 56, 44])
         XCTAssertEqual([LAARadius.card, LAARadius.bubble, LAARadius.selectionChip, LAARadius.photo, LAARadius.control], [16, 18, 16, 24, 28])
-        XCTAssertEqual([LAAType.bodySize, LAAType.secondarySize, LAAType.sectionSize], [16, 13, 15])
+        #if targetEnvironment(macCatalyst)
+        let canvasSpacing: [CGFloat] = [24, 24, 32, 28]
+        let canvasType: [CGFloat] = [14, 13, 12]
+        #else
+        let canvasSpacing: [CGFloat] = [16, 16, 44, 44]
+        let canvasType: [CGFloat] = [16, 13, 12]
+        #endif
+        let actualSpacing = [LAASpacing.horizontal, LAASpacing.compactHorizontal, LAASpacing.minimumRowHeight, LAASpacing.minimumTouchTarget]
+        let actualType = [LAAType.bodySize, LAAType.secondarySize, LAAType.sectionSize]
+        XCTAssertEqual(LAASpacing.section, 32)
+        for (actual, expected) in zip(actualSpacing + actualType, canvasSpacing + canvasType) {
+            XCTAssertEqual(actual / LAAType.platformScale, expected, accuracy: 0.001)
+        }
     }
 }
 
@@ -141,11 +154,12 @@ final class LAATabModelTests: XCTestCase {
         XCTAssertEqual(LAACopy.bridgeNotPairedBody, "Macに接続してください")
     }
 
-    func testBuiltAppHasLAANameAndPermissionCopy() throws {
+    func testBuiltAppHasHortensiaNameAndPermissionCopy() throws {
         let info = try XCTUnwrap(Bundle.main.infoDictionary)
-        XCTAssertEqual(info["CFBundleDisplayName"] as? String, "LAA")
+        XCTAssertEqual(info["CFBundleDisplayName"] as? String, "Hortensia")
         let microphone = try XCTUnwrap(info["NSMicrophoneUsageDescription"] as? String)
         XCTAssertFalse(microphone.contains("Conduit"))
+        XCTAssertTrue(microphone.contains("voice conversations and foreground wake phrases"))
         let englishURL = try XCTUnwrap(Bundle.main.url(forResource: "en", withExtension: "lproj"))
         let english = try XCTUnwrap(Bundle(url: englishURL))
         XCTAssertEqual(english.localizedString(forKey: "Open Conduit", value: nil, table: nil), "Open LAA")

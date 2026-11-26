@@ -41,36 +41,68 @@ final class LAASelectedTheme: Observable, @unchecked Sendable {
 }
 
 /// Compatibility spellings for screens adopting the kit incrementally.
-/// Store roles as computed values: caching a returned Color freezes the selected theme.
 enum LAAColor {
-    static var background: Color { themed { $0.raw.bg } }
-    static var surface: Color { themed { $0.raw.surface } }
-    static var subtleSurface: Color { themed { $0.raw.wash } }
-    static var text: Color { themed { $0.raw.text } }
-    static var secondaryText: Color { themed { $0.raw.textMuted } }
-    static var link: Color { themed { $0.raw.accent } }
-    static var separator: Color { themed { $0.increasedContrast ? $0.raw.text : $0.raw.rule } }
-    static var selectionFill: Color { themed { $0.raw.selection } }
-    static var ownBubble: Color { themed { $0.raw.accentFill } }
-    static var ownBubbleText: Color { themed { $0.raw.onAccent } }
-    static var second: Color { themed { $0.raw.second } }
+    static var background: Color { selected.background }
+    static var surface: Color { selected.surface }
+    static var subtleSurface: Color { selected.subtleSurface }
+    static var text: Color { selected.text }
+    static var secondaryText: Color { selected.secondaryText }
+    static var link: Color { selected.link }
+    static var separator: Color { selected.separator }
+    static var selectionFill: Color { selected.selectionFill }
+    static var ownBubble: Color { selected.ownBubble }
+    static var ownBubbleText: Color { selected.ownBubbleText }
+    static var second: Color { selected.second }
     static var filledButton: Color { ownBubble }
     static var filledButtonText: Color { ownBubbleText }
     static var filledControl: Color { filledButton }
     static var filledControlText: Color { filledButtonText }
-    static var positive: Color { adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).positive } }
-    static var caution: Color { adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).caution } }
-    static var critical: Color { adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).critical } }
-    static var end: Color { critical }
-    static var attention: Color { adaptive { dark, _ in LAAThemeSets.laa.colors(dark: dark).second } }
+    static let positive = adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).positive }
+    static let caution = adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).caution }
+    static let critical = adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).critical }
+    static let end = critical
+    static let attention = adaptive { dark, _ in LAAThemeSets.laa.colors(dark: dark).second }
     // Fixed brand roles, independent of the selected theme. Kit v0.1.0 does not export ruleWarm.
     static let decorativeTan = Color(laa: LAAColorValues.ruleWarm)
     static let ivory = Color(laa: LAAThemeSets.laa.light.bg)
-    static var rimLight: Color { adaptive { dark, _ in dark ? LAAThemeSets.laa.light.surface : LAAColorValues.ruleWarm } }
+    static let rimLight = adaptive { dark, _ in dark ? LAAThemeSets.laa.light.surface : LAAColorValues.ruleWarm }
 
-    private static func themed(_ role: @escaping @Sendable (LAAPalette) -> LAARGB) -> Color {
-        let theme = LAAThemeSets.set(id: LAASelectedTheme.shared.themeID)
-        return adaptive { dark, contrast in role(LAAPalette(theme: theme, dark: dark, increasedContrast: contrast)) }
+    // A role has stable identity within a theme. A theme switch publishes a
+    // different Color so SwiftUI cannot reuse the previous theme's resolved
+    // style when the UIKit light/dark/contrast traits have not changed.
+    private static var selected: ThemeColors {
+        let id = LAASelectedTheme.shared.themeID
+        return themes[id] ?? defaultTheme
+    }
+
+    private static let defaultTheme = ThemeColors(LAAThemeSets.laa)
+    private static let themes = Dictionary(uniqueKeysWithValues: LAAThemeSets.all.map { theme in
+        (theme.id, theme.id == LAAThemeSets.defaultID ? defaultTheme : ThemeColors(theme))
+    })
+
+    private struct ThemeColors {
+        let background, surface, subtleSurface, text, secondaryText, link: Color
+        let separator, selectionFill, ownBubble, ownBubbleText, second: Color
+
+        init(_ theme: LAAThemeSet) {
+            func color(_ role: KeyPath<LAAThemeColors, LAARGB> & Sendable) -> Color {
+                adaptive { dark, _ in theme.colors(dark: dark)[keyPath: role] }
+            }
+            background = color(\.bg)
+            surface = color(\.surface)
+            subtleSurface = color(\.wash)
+            text = color(\.text)
+            secondaryText = color(\.textMuted)
+            link = color(\.accent)
+            separator = adaptive { dark, highContrast in
+                let raw = theme.colors(dark: dark)
+                return highContrast ? raw.text : raw.rule
+            }
+            selectionFill = color(\.selection)
+            ownBubble = color(\.accentFill)
+            ownBubbleText = color(\.onAccent)
+            second = color(\.second)
+        }
     }
 
     private static func adaptive(_ value: @escaping @Sendable (Bool, Bool) -> LAARGB) -> Color {

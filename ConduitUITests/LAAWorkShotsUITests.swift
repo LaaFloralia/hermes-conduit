@@ -59,7 +59,7 @@ final class LAAWorkShotsUITests: XCTestCase {
         capture(app, "list-tasks-menu-\(theme)")
         app.buttons["work.tasks.quick.all"].tap()
 
-        app.buttons["work.section.routines"].tap()
+        LAAWorkSectionUI.open("routines", in: app)
         XCTAssertTrue(app.staticTexts["昼の市況メモ"].waitForExistence(timeout: 20))
         settle(1)
         capture(app, "list-routines-\(theme)")

@@ -172,7 +172,7 @@ final class LAABrainUITests: XCTestCase {
         let confirm = app.buttons["laa.brain.manage.confirmTrash"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Trash confirmation missing. Tree:\n\(app.debugDescription)"); confirm.tap()
         XCTAssertTrue(app.buttons["laa.brain.gallery.note"].firstMatch.waitForNonExistence(timeout: 15))
-        app.buttons["Back"].tap()
+        app.buttons["laa.brain.filter.back"].tap()
         XCTAssertTrue(filters.waitForExistence(timeout: 15))
     }
 
@@ -517,7 +517,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertEqual(app.buttons["laa.brain.pin"].label, "ピン留めを外す")
         app.tap()
         app.buttons["laa.brain.back"].tap()
-        app.buttons["Back"].tap()
+        app.buttons["laa.brain.filter.back"].tap()
         XCTAssertTrue(app.staticTexts["Pinned"].waitForExistence(timeout: 10))
         let search = app.textFields["laa.brain.search"]
         search.tap()

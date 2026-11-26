@@ -292,8 +292,7 @@ final class LAALabCaptureUITests: XCTestCase {
 
     private func segment(_ name: String, _ app: XCUIApplication) {
         wait("work.segment", app)
-        if name == "routines" || name == "campaigns" { tap("work.section.more", app) }
-        tap("work.section.\(name)", app)
+        LAAWorkSectionUI.open(name, in: app)
     }
 
     private func shot(_ id: String, after ready: String, _ app: XCUIApplication) {

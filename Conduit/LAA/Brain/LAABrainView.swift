@@ -493,6 +493,7 @@ struct LAABrainView: View {
                 skeletonRows
             } else if (2...4).contains(localMode) {
                 Button("Back") { localMode = 1 }
+                    .accessibilityIdentifier("laa.brain.filter.back")
                 if localMode == 2 { tagBrowser }
                 else if localMode == 3 { conflictBrowser }
                 else { galleryBrowser }
