@@ -223,6 +223,18 @@ final class WidgetLaunchUITests: XCTestCase {
     func testInputTextSizeIsIndependentAndPersists() throws {
         let app = launchApp(coldURL: resumeURL, persistentDraftID: UUID())
         func openChatSettings() {
+            // Hortensia opens Settings from the glass tab bar's app card.
+            let entry = app.laaSettingsEntry
+            app.returnToV2Tabs(revealing: entry)
+            if !entry.exists, app.buttons["BackButton"].exists { app.buttons["BackButton"].tap() }
+            if entry.waitForExistence(timeout: 10) {
+                app.openLAASettings()
+                let chat = app.buttons["settings.chat"]
+                for _ in 0..<6 where !chat.isHittable { app.swipeUp() }
+                XCTAssertTrue(chat.waitForExistence(timeout: 5), tree(app))
+                chat.tap()
+                return
+            }
             let settings = app.buttons.matching(NSPredicate(
                 format: "identifier == %@ OR label == %@ OR label == %@", "gearshape", "Settings", "設定"
             )).firstMatch
