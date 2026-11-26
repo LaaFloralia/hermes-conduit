@@ -54,7 +54,6 @@ import { createPhoneUse } from '../phone-use/service.mjs';
 import { phoneUseRoutes } from '../phone-use/routes.mjs';
 import { deviceReportRoutes } from './device-reports.mjs';
 import { campaignRoutes } from './campaigns.mjs';
-import { duetRoutes } from './duet.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {}, lane = null } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -180,7 +179,6 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
 
   const routes = [
     ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
-    ...duetRoutes({ dir: store.dir, now, live: !lane && sessionOptions.live === true, registerCleanup: sessionOptions.registerCleanup }),
     ...createDecisionRoutes({ service: decisions }),
     ...(!lane ? [
       ...taskRoutes({ ...(options.tasks ?? {}), now }),

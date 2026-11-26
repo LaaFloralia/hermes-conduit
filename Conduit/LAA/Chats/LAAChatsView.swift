@@ -7,7 +7,6 @@ import SwiftUI
 struct LAAChatsView: View {
     @ObservedObject var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
-    @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     /// The Mac's list column asks for a highlighted row and forwards the
     /// menu bar's search, reload and new-chat requests. The phone passes none.
     var selection: LAAChatsListSelection? = nil
@@ -15,9 +14,6 @@ struct LAAChatsView: View {
     @State private var selectedProject: UUID?
     @State private var sheetProject: LAAChatProject?
     @State private var showingProjectCreator = false
-    /// Claude Duet's page: pushed on the phone, a sheet beside the Mac's list.
-    @State private var showingDuet = false
-    @State private var showingDuetSheet = false
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaSettingsAction) private var settings
@@ -104,12 +100,6 @@ struct LAAChatsView: View {
         // The model lineup Chat's menus offer comes from Work's catalog
         // (LAAChatModelAllowList); read it when the list is first shown.
         .task(id: bridge.revision) { await LAAChatModelAllowList.refresh(bridge) }
-        // A Duet notification (`laa://chats/duet`) opens Duet's page once.
-        .onChange(of: linkRequest.generation, initial: true) { _, generation in
-            guard LAADuet.opensPage(linkRequest.url), LAADuet.handledLink != generation else { return }
-            LAADuet.handledLink = generation
-            openDuet()
-        }
     }
 
     private var liveContent: some View {
@@ -133,17 +123,7 @@ struct LAAChatsView: View {
         }, searchChanged: {
             if shown { appState.noteChatListInteraction() }
         }, projects: projects.projects, projectsUnavailable: projects.unavailable,
-                        openProject: openProject, newProject: { showingProjectCreator = true },
-                        openDuet: openDuet)
-        .navigationDestination(isPresented: $showingDuet) { LAADuetScreen() }
-        .sheet(isPresented: $showingDuetSheet) {
-            NavigationStack {
-                LAADuetScreen()
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.ChatProjects.done) { showingDuetSheet = false } } }
-            }
-            .environmentObject(bridge)
-            .laaSheetSize(.form)
-        }
+                        openProject: openProject, newProject: { showingProjectCreator = true })
         .navigationDestination(item: $selectedProject) { id in
             LAAChatProjectDetail(store: projects, id: id, runtime: HermesChatProjectRuntime { [weak appState] in appState?.client })
         }
@@ -276,10 +256,6 @@ struct LAAChatsView: View {
 
     private func openProject(_ id: UUID) {
         if selection != nil { sheetProject = projects.project(id) } else { selectedProject = id }
-    }
-
-    private func openDuet() {
-        if selection != nil { showingDuetSheet = true } else { showingDuet = true }
     }
 
     private func openNewProject() {

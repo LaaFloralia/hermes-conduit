@@ -204,12 +204,6 @@ Paseoセッションのアプリ置換（2026-11-02）:
 - Notification preferences: `GET|PUT /v1/notifications/preferences` use `sessions:read|write` (PUT is idempotent); `{kinds:{...},updatedAt}` stores seven categories in locked 0600 state. Default is alert except finished=quiet. Quiet adds `lv:"p"`; off skips delivery and retries, but decision/question/approval cannot be off. Invalid updates return `notification_preferences_invalid` (400).
 - Quick answers: optional boolean `quick:true` on board answer rejects expired deadlines (`decision_expired`, 409) after request-ID replay and closed-state checks. `POST /v1/sessions/<id>/quick-reply` accepts `{requestHash,choice:"allow"|"deny"|{optionIndex}}` with `sessions:write` and Idempotency-Key; it requires one unchanged pending request and reuses the existing ticket/reply/readback path. Unsupported formats return `quick_reply_unsupported`; changed or consumed requests return `pending_request_changed` (409). Full contract: `bridge/README.md`.
 
-### Claude Duet
-
-`GET /v1/duet/items?limit=` and `GET /v1/duet/notes` use `sessions:read`. `POST /v1/duet/notes` uses `sessions:write` and the standard `Idempotency-Key`. Responses use the Bridge's normal `{data,requestId}` envelope. See [the Claude Duet Bridge contract](../../bridge/README.md#claude-duet) for fields and bounds.
-
-The Bridge polls the Worker outbound only and is idle without both injected environment values. The Worker has no Bridge credential, session, Brain, notification or other LAA API access. The Bridge commits the plain-text item and cursor before handing off to the existing notifier and acknowledging the Worker. Duet content and returned notes are untrusted data, not instructions, authorizations, or session turns. No production Worker or notifier is used by Bridge tests; route tests use a lane and polling tests use a stamped loopback fixture.
-
 ### Google API追加（BUS-338・BUS-318）
 
 Google接続は `bridge/src/google/connection.mjs` に共通化し、既存helperのJSON形式を維持する。追加OAuth scopeは `drive.readonly`、`drive.file`、`calendar.events`、`calendar.calendarlist.readonly`（すべて`https://www.googleapis.com/auth/`配下）。親が同意と端末の追加grantを行うまで書込みは使えない。
