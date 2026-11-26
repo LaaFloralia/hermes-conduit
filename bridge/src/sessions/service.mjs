@@ -40,7 +40,7 @@ import { daemonSessionID, snapshot } from './daemon.mjs';
 import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
 import { fastAvailable, fastValue } from './features.mjs';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
-import { approvalSummary, quickReply, sessionNotificationMeta } from './quick-reply.mjs';
+import { quickReply } from './quick-reply.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 import { createModelSwitcher, joinedHistory } from './model-switch.mjs';
 import { sessionOptionsReader } from './options.mjs';
@@ -447,6 +447,7 @@ export function createSessionService({
           modelLog: foldModelLog(previous?.modelLog, state.modelCheck.observed, new Date(now()).toISOString()),
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
           observedFast: fastValue(state.features), fastAvailable: fastAvailable(state.features),
+          harness: state.harness ?? previous?.harness ?? null,
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
           // favourite the owner set here survives a Paseo that has no pin yet.
           favorite: pins?.get(workspaceId) === true ? true : undefined, archivedAt: null, daemonArchivedAt: a.archivedAt ?? null,
@@ -470,17 +471,12 @@ export function createSessionService({
       await markDeletedAgents(agents);
       for (const { previous, current } of transitions) {
         const phase = current.phase;
-        const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
-          : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
+        // Provider-native questions/approvals have no category. Keep their
+        // existing in-app reply path, but don't push an unmarked decision.
+        const kind = phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
         if (kind && !current.archivedAt && !current.daemonArchivedAt && !current.routine && !(kind === 'finished' && decisions?.hasOpen(current))) {
-          let detail;
-          if (kind === 'question' || kind === 'approval') {
-            try { detail = await decision(current.id); } catch { /* Delivery survives an unavailable daemon. */ }
-          }
-          const meta = sessionNotificationMeta(current.id, kind, detail);
-          const approvalBody = meta.a === 1 ? approvalSummary(detail.requests[0]) : null;
-          void notify({ meta, kind: `session.${kind}`, title: current.name,
-            body: approvalBody ?? { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
+          void notify({ meta: { sid: current.id }, kind: `session.${kind}`, title: current.name,
+            body: { error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
         }
       }
@@ -1385,6 +1381,7 @@ export function createSessionService({
         record.modelLog = foldModelLog(record.modelLog, status.modelCheck.observed, new Date(now()).toISOString());
       }
       if (status.daemonStatus) record.daemonStatus = status.daemonStatus;
+      if (typeof status.harness === 'string') record.harness = status.harness;
       // A successful observation that does not report the provider toggle
       // clears the remembered value: "unknown now" must not stay "was on".
       // Sources that never report features (no key) and failed observations
@@ -1476,6 +1473,8 @@ export function createSessionService({
       // Only the provider's own toggle value is exposed; the Bridge's request
       // (`fast`) is not proof that Fast is on now.
       observedFast: typeof record.observedFast === 'boolean' ? record.observedFast : null,
+      // The harness the daemon reports the session runs on; null until it has said.
+      harness: typeof record.harness === 'string' ? record.harness : null,
       // Offered only when the daemon advertises the operation and this session
       // runs through the daemon (the delegation adapter cannot change effort).
       capabilities: {
@@ -1829,6 +1828,7 @@ function summarizePending(pending) {
     count: list.length,
     kinds,
     ids,
+    ...(list.length ? { category: 'unmarked' } : {}),
   };
 }
 

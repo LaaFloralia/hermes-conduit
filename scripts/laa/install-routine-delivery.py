@@ -29,6 +29,17 @@ def install(plugin, source, *, apply=False):
         '        if routine_delivery.handles(profile):\n'
         '            return show(job, content, profile, for_failure=bool(kwargs.get("for_failure", args[0] if args else False)))\n'
         '        if lets_act(job):\n')
+    # Staff reports go to the shared room, which needs no native chat-note
+    # support, so the hook is installed on every Hermes. Without that support
+    # only non-group report-only jobs fail closed (never an AI turn).
+    chat_text = replace_once(chat_text,
+        '        if not callable(own) or not supported():\n',
+        '        if not callable(own):\n')
+    chat_text = replace_once(chat_text,
+        '        # Hermes passes it by keyword; positionally, it\'s the next one.\n',
+        '        if not supported():\n'
+        '            return "bot-chat report-only storage unavailable; no AI turn"\n'
+        '        # Hermes passes it by keyword; positionally, it\'s the next one.\n')
     runs_text = replace_once(runs.read_text(),
         '    return muted(job) or (response is not None and is_silent(response))\n',
         '    from . import routine_delivery\n'

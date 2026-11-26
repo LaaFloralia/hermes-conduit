@@ -254,6 +254,31 @@ struct LAAWorkRequirementBoard: Equatable {
     /// The finished group starts folded while anything else is open, so the
     /// open work is what the owner sees; when all is done it opens.
     var foldsCompleted: Bool { groups.contains { $0.status != .completed } }
+
+    /// The groups that start open: what needs the owner and what is moving
+    /// (owner, 2026-11-26: the opened project was too dense). Not started,
+    /// unknown and done start folded; when none of the open kinds exists,
+    /// the first group opens so the page never shows only headings.
+    var openByDefault: Set<LAAWorkRequirementStatus> {
+        let attention = Set(groups.map(\.status)).intersection([.awaitingDecision, .inProgress])
+        if !attention.isEmpty { return attention }
+        return groups.first.map { [$0.status] } ?? []
+    }
+}
+
+/// One line of a requirement's name: the stored title up to its first line
+/// break or sentence end, so a long title never wraps the list into
+/// paragraphs. The full title is on the requirement's own page.
+enum LAAWorkRequirementName {
+    static func short(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstLine = trimmed.split(whereSeparator: \.isNewline).first.map(String.init) ?? trimmed
+        if let end = firstLine.firstIndex(where: { "。！？".contains($0) }), end != firstLine.startIndex {
+            let head = String(firstLine[..<end])
+            if head.count >= 4 { return head }
+        }
+        return firstLine
+    }
 }
 
 /// Whether the project has anything at work now, for the list row's mark.

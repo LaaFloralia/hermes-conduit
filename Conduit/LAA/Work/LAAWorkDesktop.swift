@@ -95,10 +95,10 @@ struct LAAWorkDesktopSessionsView: View {
                         Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
                         Menu {
-                            Button("Recent First") { projectOrder = false }
-                            Button("By Project") { projectOrder = true }
+                            Button { projectOrder = false } label: { Text(verbatim: "Recent First") }
+                            Button { projectOrder = true } label: { Text(verbatim: "By Project") }
                             Button { showArchived.toggle(); reloadID += 1 } label: {
-                                Text(verbatim: showArchived ? "Recent" : "Archive")
+                                Text(verbatim: showArchived ? "Recent" : "Archived")
                             }
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
@@ -467,7 +467,7 @@ struct LAAWorkDesktopProjectsView: View {
                         Button {
                             showArchived.toggle()
                         } label: {
-                            Label { Text(verbatim: showArchived ? "プロジェクトへ戻る" : "アーカイブを表示") }
+                            Label { Text(verbatim: showArchived ? "Back" : "Archived") }
                                 icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
                                 .frame(minHeight: LAASpacing.minimumTouchTarget)

@@ -55,6 +55,23 @@ final class LAAWorkProjectSnapshotTests: XCTestCase {
         XCTAssertLessThan(height(empty), height(full), "no note line when there is no note")
     }
 
+    /// A requirement is one line in the list however long its title, and
+    /// nothing of its detail (note, sessions) is drawn there (owner, 2026-11-26).
+    func testRequirementRowIsOneLine() {
+        func height(_ title: String, details: String? = nil, sessions: [String] = []) -> CGFloat {
+            let requirement = LAAWorkRequirement(id: "req_000000000001", title: title, details: details,
+                                                 status: .inProgress, sessionIds: sessions, order: 0)
+            let row = LAAWorkRequirementRow(requirement: requirement, setStatus: { _ in }, withdraw: {}, open: {})
+                .frame(width: 440 - 2 * LAASpacing.horizontal)
+            return UIHostingController(rootView: row).sizeThatFits(in: CGSize(width: 440, height: 1_000)).height
+        }
+        let short = height("要件")
+        let long = height(String(repeating: "プロジェクトを開いたら要件の完了と着手中が一目で分かる", count: 4),
+                          details: String(repeating: "補足の説明。", count: 30), sessions: ["ses_1", "ses_2"])
+        XCTAssertEqual(short, LAASpacing.minimumTouchTarget, accuracy: 1)
+        XCTAssertEqual(long, short, accuracy: 1, "a long title, a note and sessions add no lines")
+    }
+
     private func capture<V: View>(_ view: V, style: UIUserInterfaceStyle, name: String,
                                   size: DynamicTypeSize = .large, height: CGFloat = 956) throws {
         let screen = view

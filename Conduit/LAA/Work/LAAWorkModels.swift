@@ -256,6 +256,15 @@ struct LAAWorkSessionOptions: Decodable {
         var available: Bool? = nil
         var unavailableReason: String? = nil
         var usageNote: String? = nil
+        /// The harness a new session on this profile starts on, as the
+        /// engine reports it (codex → pi), and where it runs with Fast on
+        /// when that differs. Absent from a Bridge that predates them; the
+        /// provider then stands in (LAAHarness.work).
+        var harness: String? = nil
+        var fastHarness: String? = nil
+        /// A route billed per use (the Bridge's PAID_ROUTES): offered only
+        /// by hand and labelled so. Absent from an older Bridge.
+        var metered: Bool? = nil
     }
     /// The efforts Paseo can apply to one model of a running session. More
     /// than the profiles: those name what a new session may start with.
@@ -359,6 +368,9 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     /// The provider's own Fast value, when it reports one. `fast` is only what
     /// the Bridge requested at start, so it is not shown as the current state.
     let observedFast: Bool?
+    /// The harness the daemon reports the session runs on (LAA Work's
+    /// `harness`); nil until it has said, or from an older Bridge.
+    var harness: String? = nil
     let capabilities: Capabilities?
     /// What the owner changed after the start (model, effort); the request
     /// itself is never rewritten. Absent from an older Bridge.

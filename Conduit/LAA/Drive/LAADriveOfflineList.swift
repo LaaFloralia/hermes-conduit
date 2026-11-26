@@ -63,10 +63,17 @@ struct LAADriveOfflineList: View {
                     Button {
                         showingAll.toggle()
                     } label: {
-                        Text(verbatim: showingAll ? "折りたたむ" : "すべて表示（\(visibleRecords.count)件）")
-                            .laaTextStyle(.secondary)
+                        // An icon to close; one English word and the count to open (DESIGN, 2026-11-26).
+                        HStack(spacing: LAASpacing.x1) {
+                            if !showingAll { Text(verbatim: "All \(visibleRecords.count)").monospacedDigit() }
+                            Image(systemName: showingAll ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .laaTextStyle(.secondary)
+                        .frame(minWidth: LAASpacing.minimumTouchTarget)
                     }
                     .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .accessibilityLabel(Text(verbatim: showingAll ? "閉じる" : "すべて表示"))
                     .accessibilityIdentifier("laa.drive.offline.showAll")
                 }
             }
