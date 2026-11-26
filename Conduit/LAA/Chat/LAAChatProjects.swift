@@ -99,7 +99,7 @@ final class LAAChatProjectStore {
     }
     enum Failure: Error { case unreadable, missingProject, emptyName, unsupportedModel, pendingConflict }
     static let pokemonID = LAAChatProject.pokemonID
-    // A default-only rollback changes this policy, not the pending turn decoder or replay routing.
+    // Pending-turn decoding and replay are independent of the default.
     private static let pokemonDefaultModel: LAAChatProject.Model = .hydrogen
     static let seeds = [
         LAAChatProject(id: UUID(uuidString: "0198828b-238f-7294-a0a6-5b65830e1601")!,
@@ -122,7 +122,7 @@ final class LAAChatProjectStore {
                 let archive = try JSONDecoder().decode(Archive.self, from: Data(contentsOf: fileURL))
                 guard (archive.schema ?? 1) == 1 else { throw Failure.unreadable }
                 // A typed archive rewrite on launch would discard fields this app doesn't know.
-                projects = archive.projects.map(Self.projectForCurrentDefault)
+                projects = archive.projects.map(Self.migrateLegacyPokemon)
             } else {
                 try commit(Self.seeds)
             }
@@ -181,9 +181,9 @@ final class LAAChatProjectStore {
         project.pendingConversationIDOverride = nil
     }
 
-    private static func projectForCurrentDefault(_ project: LAAChatProject) -> LAAChatProject {
-        guard project.id == pokemonID, project.model != pokemonDefaultModel,
-              LAAChatProject.Model.choices.contains(project.model) else { return project }
+    private static func migrateLegacyPokemon(_ project: LAAChatProject) -> LAAChatProject {
+        guard project.id == pokemonID, project.model == .deepSeek,
+              pokemonDefaultModel == .hydrogen else { return project }
         var next = project
         next.history = project.history.map { message in
             guard message.role == .assistant, message.model == nil else { return message }

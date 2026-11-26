@@ -87,6 +87,7 @@ import XCTest
         let savedRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
         let savedRecords = try XCTUnwrap(savedRoot["projects"] as? [[String: Any]])
         let savedPokemon = try XCTUnwrap(savedRecords.first { $0["id"] as? String == id.uuidString })
+        XCTAssertEqual(savedPokemon["model"] as? String, LAAChatProject.Model.hydrogen.rawValue)
         XCTAssertEqual(savedPokemon["pendingModelOverride"] as? String, LAAChatProject.Model.hydrogen.rawValue)
         XCTAssertEqual(savedPokemon["pendingConversationIDOverride"] as? String, hydrogenID.uuidString)
         try withPending.complete(next, answer: "New answer", in: id)
@@ -123,7 +124,7 @@ import XCTest
         let file = FileManager.default.temporaryDirectory.appending(path: "project-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
         let legacy = """
-        {"projects":[{"id":"0198828b-238f-7294-a0a6-5b65830e1601","name":"Former","model":"unlisted-model"}]}
+        {"projects":[{"id":"0198828b-238f-7294-a0a6-5b65830e1602","name":"Former","model":"unlisted-model"}]}
         """
         try Data(legacy.utf8).write(to: file)
         let restored = LAAChatProjectStore(fileURL: file)
