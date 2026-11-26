@@ -144,10 +144,8 @@ struct LAAStaffAmbientPanel: View {
                 infoRow("最後の活動", model.lastActivity)
             }
             .padding(.top, LAASpacing.x6)
-            // The Work tab's name for them.
-            Text(verbatim: "Routines")
-                .laaTextStyle(.section)
-                .foregroundStyle(LAAColor.secondaryText)
+            // The Work tab's name for them, in the app's section header.
+            LAASectionHeader("Routines")
                 .padding(.top, LAASpacing.x8)
                 .padding(.bottom, LAASpacing.x2)
             routines(model.routines)
