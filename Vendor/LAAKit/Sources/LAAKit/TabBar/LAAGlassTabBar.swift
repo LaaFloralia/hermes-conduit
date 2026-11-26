@@ -231,6 +231,10 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
                 }
             }
             .frame(width: widths.bar)
+            // The open card and the Close circle beside it are one modal scope: VoiceOver and hit-testing
+            // stay inside both (the card alone as modal left Close outside it, unreachable — Console 2026-11-26).
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(isExpanded ? .isModal : [])
         }
         .animation(morph, value: isExpanded)
         .sensoryFeedback(.selection, trigger: selection)
@@ -371,7 +375,6 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         .modifier(MorphGlass(id: "app", space: space, shape: shape, interactive: false,
                              reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { isExpanded = false }
         .accessibilityIdentifier("laa.tabbar.card")
     }
@@ -384,6 +387,7 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
                     .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
                     .foregroundStyle(palette.text)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.5) // accessibility sizes: the name shrinks before it truncates
                 if !app.version.isEmpty {
                     Text(app.version)
                         .font(.system(size: LAAPlatform.current.canvas.label).monospacedDigit())
