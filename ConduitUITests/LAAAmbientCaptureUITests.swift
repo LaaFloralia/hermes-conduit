@@ -43,8 +43,6 @@ final class LAAAmbientCaptureUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 4)
         XCUIDevice.shared.press(.home)
         Thread.sleep(forTimeInterval: 3)
-        XCTAssertTrue(label(name).waitForExistence(timeout: 10) || springboard.otherElements["Dynamic Island"].exists,
-                      "no activity for \(name)")
         shot("\(mode)-island-compact")
         springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.025)).press(forDuration: 1.2)
         Thread.sleep(forTimeInterval: 1.5)
@@ -56,6 +54,10 @@ final class LAAAmbientCaptureUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 2)
         XCUIDevice.shared.press(.home)
         Thread.sleep(forTimeInterval: 2.5)
+        XCTAssertTrue(label(name).waitForExistence(timeout: 10), "no card for \(name) on the Lock Screen")
+        // The system asks once under the first card; allowed, then shot clean.
+        let allow = springboard.buttons["Allow"]
+        if allow.exists { allow.tap(); Thread.sleep(forTimeInterval: 1.5) }
         shot("\(mode)-lock")
         // Back to the Home Screen for the next capture.
         XCUIDevice.shared.press(.home)
