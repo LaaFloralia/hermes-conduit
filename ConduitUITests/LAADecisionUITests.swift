@@ -339,10 +339,7 @@ final class LAADecisionUITests: XCTestCase {
             app.buttons["work.section.tasks"].tap()
             XCTAssertTrue(app.buttons["work.tasks.quick"].waitForExistence(timeout: 15))
             screenshot("work-tasks-after-\(style)", app)
-            app.buttons["work.section.more"].tap()
-            let routines = app.buttons["work.section.routines"]
-            XCTAssertTrue(routines.waitForExistence(timeout: 5))
-            routines.tap()
+            LAAWorkSectionUI.open("routines", in: app)
             XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 15))
             screenshot("work-routines-after-\(style)", app)
             XCTAssertEqual(app.activityIndicators.count, 0)

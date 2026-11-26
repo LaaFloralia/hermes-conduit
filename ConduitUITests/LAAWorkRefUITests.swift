@@ -37,11 +37,11 @@ final class LAAWorkRefUITests: XCTestCase {
         for _ in 0..<3 where !app.buttons["work.section.sessions"].isHittable {
             app.navigationBars.buttons.firstMatch.tap()
         }
-        if value == "projects" {
-            app.buttons["work.section.projects"].tap()
-        } else if value == "skills" {
+        if value == "skills" {
             LAASettingsSkillsUI.open(in: app)
-        } else { app.buttons["work.section.\(value)"].tap() }
+        } else {
+            LAAWorkSectionUI.open(value, in: app)
+        }
     }
 
     private func searchField(_ app: XCUIApplication) -> XCUIElement {
