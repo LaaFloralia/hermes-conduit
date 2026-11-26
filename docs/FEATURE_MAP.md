@@ -4490,7 +4490,7 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - The device canary must verify music continuity, Apple speech capture, the per-profile Hermes output, dual-device handoff and Catalyst Space. Installing the separately prepared chair prompt and Bridge route is release work.
 
-**Checked:** 2026-11-26, `adebb146` (Bridge lease tests and deterministic turn/queue probe); release flag remains closed until the build and simulator smoke gates pass.
+**Checked:** 2026-11-26, `2342eca5`: 312 selected iOS unit tests, one LAA 16 Pro Max fixture smoke, Catalyst build, Bridge suite, and idle/Talk/speaking design checks passed. The playback surface is enabled; real-device audio is not claimed.
 
 ## LAA Chats list
 
