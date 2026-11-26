@@ -234,7 +234,10 @@ final class LAAWorkUITests: XCTestCase {
         app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
         for name in ["sessions", "tasks", "routines"] {
-            LAAWorkSectionUI.open(name, in: app)
+            let segment = app.buttons["work.section.\(name)"]
+            if !segment.isHittable { app.scrollViews["work.segment"].swipeLeft() }
+            XCTAssertTrue(segment.exists)
+            segment.tap()
             XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 5))
         }
         XCTAssertTrue(app.buttons["work.usage"].exists)
@@ -406,7 +409,7 @@ final class LAAWorkUITests: XCTestCase {
         app.buttons["閉じる"].tap()
         app.buttons["Tasks"].tap()
         XCTAssertTrue(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].waitForExistence(timeout: 30))
-        LAAWorkSectionUI.open("routines", in: app)
+        app.buttons["Routines"].tap()
         XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
     }
 
