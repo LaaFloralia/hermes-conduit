@@ -45,7 +45,7 @@ struct LAAWorkTaskDetailView: View {
         .navigationTitle(Text(verbatim: LAACopy.WorkTab.task))
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .task { await load() }
     }
 

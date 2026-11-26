@@ -34,6 +34,17 @@ import Combine
         generation &+= 1
         return true
     }
+    /// Generations each view has already acted on. The link stays readable,
+    /// but a view built again later (opening Work, switching back to it) must
+    /// not replay an old notification's link: an answered decision reopened
+    /// the board every time Work was opened (2026-11-26).
+    private var handled: [String: UInt64] = [:]
+    /// The pending link for `consumer`, once per `open`.
+    func claim(_ consumer: String) -> URL? {
+        guard generation != 0, handled[consumer] != generation, let url else { return nil }
+        handled[consumer] = generation
+        return url
+    }
     var calendarEvent: (id: String, calendarID: String)? {
         guard url?.host == "today", let url, url.pathComponents.count == 3, url.pathComponents[1] == "events",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),

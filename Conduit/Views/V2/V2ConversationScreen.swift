@@ -149,6 +149,7 @@ struct V2ConversationScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
 #if LAA_BUILD
+        .laaHidesTabBar()
         .modifier(LAAInCallBarModifier())
         .navigationBarBackButtonHidden(usesLAAChatBack)
         // Hiding the system Back for LAA's also turns off the edge swipe;

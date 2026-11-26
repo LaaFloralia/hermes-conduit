@@ -89,7 +89,7 @@ struct LAAPersonalInboxView: View {
         }
         .navigationTitle(Text(verbatim: "受信箱"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .refreshable { await refresh() }
         .task(id: "\(bridge.revision)-\(viewerId)-\(includeArchived)") { await refresh() }
         .onDisappear(perform: onExit)

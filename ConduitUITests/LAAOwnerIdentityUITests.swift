@@ -105,9 +105,7 @@ final class LAAOwnerIdentityUITests: XCTestCase {
     func testSettingsOffersChooseAndRemove() throws {
         for avatar in [false, true] {
             let app = try launchWork(avatar: avatar)
-            let settings = app.navigationBars.buttons.matching(identifier: "laa.settings.open").firstMatch
-            XCTAssertTrue(settings.waitForExistence(timeout: 15))
-            settings.tap()
+            app.openLAASettings()
             let choose = app.buttons["laa.settings.ownerIcon.choose"]
             XCTAssertTrue(choose.waitForExistence(timeout: 15))
             XCTAssertTrue(choose.isEnabled, "a paired device can choose a photo")

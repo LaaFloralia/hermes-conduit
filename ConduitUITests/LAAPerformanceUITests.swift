@@ -60,13 +60,13 @@ final class LAAPerformanceUITests: XCTestCase {
 
     private enum Destination: String, CaseIterable {
         case work, today, doc, usage, chat
-        var tabIndex: Int? {
+        var tabTitle: String? {
             switch self {
-            case .chat: return 0
-            case .work: return 1
-            case .today: return 2
-            case .doc: return 3
-            case .usage: return nil // Work pushes Usage; it isn't a native tab.
+            case .chat: return "Chat"
+            case .work: return "Work"
+            case .today: return "Today"
+            case .doc: return "Doc"
+            case .usage: return nil // Work pushes Usage; it isn't a tab.
             }
         }
         var marker: String {
@@ -86,18 +86,18 @@ final class LAAPerformanceUITests: XCTestCase {
 
     private func usable(_ target: Destination, _ app: XCUIApplication) {
         XCTAssertTrue(item(target.marker, app).waitForExistence(timeout: 15), "Destination \(target.rawValue) not mounted")
-        if let index = target.tabIndex {
-            XCTAssertTrue(app.tabBars.buttons.element(boundBy: index).isSelected, "Wrong native tab for \(target.rawValue)")
+        if let title = target.tabTitle {
+            XCTAssertTrue(app.laaTab(title).isSelected, "Wrong glass tab for \(target.rawValue)")
         }
     }
 
     private func move(_ source: Destination, _ target: Destination, _ app: XCUIApplication) {
         if source == .usage { app.buttons["BackButton"].firstMatch.tap() }
-        if let index = target.tabIndex {
-            if source != .usage || target != .work { app.tabBars.buttons.element(boundBy: index).tap() }
+        if let title = target.tabTitle {
+            if source != .usage || target != .work { app.laaTab(title).tap() }
         } else {
             if source != .work {
-                app.tabBars.buttons.element(boundBy: Destination.work.tabIndex!).tap()
+                app.laaTab("Work").tap()
                 usable(.work, app)
             }
             app.buttons["work.usage"].tap()
