@@ -200,7 +200,7 @@ struct LAAEmployeeWidgetView: View {
     private var usageSummary: some View {
         // Six readings with their numbers need the column's width: past
         // xxLarge the names and periods alone would fill it.
-        LAAWidgetUsageColumn(entry: entry, renderedAt: renderedAt)
+        LAAWidgetUsageColumn(entry: entry, renderedAt: renderedAt, renderingMode: effectiveRenderingMode)
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
@@ -370,6 +370,7 @@ struct LAAEmployeeWidgetView: View {
 struct LAAWidgetUsageColumn: View {
     let entry: LAAEmployeeWidgetEntry
     let renderedAt: Date
+    var renderingMode: WidgetRenderingMode = .fullColor
     @Environment(\.laaThemeID) private var themeID
     @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var noteSize: CGFloat = 11
@@ -458,7 +459,7 @@ struct LAAWidgetUsageColumn: View {
             // A line never gives up height: squeezing it would shrink the
             // text and let ViewThatFits accept a list that does not fit.
             .fixedSize(horizontal: false, vertical: true)
-            LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false)
+            LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false, renderingMode: renderingMode)
                 .padding(.leading, providerWidth + LAASpacing.x1)
         }
         .accessibilityElement(children: .ignore)
