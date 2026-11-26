@@ -11,7 +11,7 @@ final class LAADocRulesAndStudioUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "studio", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-studio-fixture", "grouped",
-                               "-laa-drive-fixture", "browse", "-laa-doc-rules-fixture", "-conduit.themePreference", style]
+                               "-laa-assets-fixture", "browse", "-laa-doc-rules-fixture", "-conduit.themePreference", style]
         app.launchInLab()
         defer { app.terminate() }
         #if targetEnvironment(macCatalyst)
@@ -35,7 +35,8 @@ final class LAADocRulesAndStudioUITests: XCTestCase {
         #else
         app.buttons["studio.drive"].tap()
         #endif
-        openRules(app, menu: app.buttons["laa.drive.browser.menu"].firstMatch, entry: "laa.drive.rules")
+        let driveMenu = app.descendants(matching: .any).matching(identifier: "laa.drive.browser.menu").firstMatch
+        openRules(app, menu: driveMenu, entry: "laa.drive.rules")
         capture(app, "drive-rules-" + variant)
     }
 
