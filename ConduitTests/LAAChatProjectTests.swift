@@ -11,7 +11,7 @@ import XCTest
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appending(path: "projects.json")
         let store = LAAChatProjectStore(fileURL: file)
-        XCTAssertEqual(store.projects.map(\.model), [.hydrogen, .deepSeek])
+        XCTAssertEqual(store.projects.map(\.model), [.hydrogen, .hydrogen])
         XCTAssertEqual(store.projects.map(\.name), ["日常質問", "ポケモンサイズ証判定"])
         let id = try store.create(name: " 趣味 ", context: "# Notes", model: .deepSeek)
         XCTAssertEqual(store.project(id)?.name, "趣味")
@@ -29,6 +29,72 @@ import XCTest
         XCTAssertNil(relaunched.project(id)?.pending)
         try relaunched.delete(id)
         XCTAssertTrue(LAAChatProjectStore(fileURL: file).projects.isEmpty)
+    }
+
+    func testPokemonMigrationPersistsAndPreservesLegacyHistoryAndPendingRoute() throws {
+        struct Archive: Encodable { let schema = 1; let projects: [LAAChatProject] }
+        let file = FileManager.default.temporaryDirectory.appending(path: "project-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let id = LAAChatProjectStore.pokemonID
+        let question = LAAChatProject.Message(role: .user, text: "Past question")
+        let answer = LAAChatProject.Message(role: .assistant, text: "Past answer")
+        let pending = LAAChatProject.Message(role: .user, text: "Unconfirmed question")
+        let pokemon = LAAChatProject(id: id, name: "Edited name", context: "Edited context", model: .deepSeek,
+                                     kind: .pokemon, history: [question, answer], pending: pending)
+        let custom = LAAChatProject(name: "ポケモンサイズ証判定", context: "My rules", model: .deepSeek)
+        try JSONEncoder().encode(Archive(projects: [custom, pokemon])).write(to: file)
+
+        let store = LAAChatProjectStore(fileURL: file)
+        XCTAssertFalse(store.unavailable)
+        let migrated = try XCTUnwrap(store.project(id))
+        XCTAssertEqual(migrated.model, .hydrogen)
+        XCTAssertEqual(migrated.kind, .pokemon)
+        XCTAssertEqual(migrated.name, pokemon.name)
+        XCTAssertEqual(migrated.context, pokemon.context)
+        XCTAssertEqual(migrated.history.map(\.id), [question.id, answer.id])
+        XCTAssertEqual(migrated.history.map(\.text), [question.text, answer.text])
+        XCTAssertEqual(migrated.history.last?.model, .deepSeek)
+        XCTAssertEqual(migrated.pending, pending)
+        XCTAssertEqual(migrated.pendingModel, .deepSeek)
+        XCTAssertEqual(migrated.conversationID(for: migrated.pendingModel), id)
+        XCTAssertNotEqual(migrated.conversationID(for: migrated.model), id)
+        XCTAssertEqual(store.project(custom.id), custom)
+
+        let persisted = try Data(contentsOf: file)
+        let reopened = LAAChatProjectStore(fileURL: file)
+        XCTAssertEqual(reopened.projects, store.projects)
+        XCTAssertEqual(try Data(contentsOf: file), persisted, "Migration must not rewrite on subsequent launches")
+        try reopened.complete(pending, answer: "Recovered once", in: id)
+        let next = LAAChatProject.Message(role: .user, text: "New question")
+        try reopened.reserve(next, in: id)
+        XCTAssertEqual(reopened.project(id)?.pendingModel, .hydrogen)
+        try reopened.complete(next, answer: "New answer", in: id)
+        XCTAssertEqual(LAAChatProjectStore(fileURL: file).project(id)?.history.compactMap(\.model),
+                       [.deepSeek, .deepSeek, .hydrogen])
+    }
+
+    func testBothBuiltInProjectsCompleteOnTheHydrogenRoute() async throws {
+        let fixture = Runtime()
+        let pin = LAAChatProjectRoute(model: "gemini-4-hydrogen", provider: "laa-agy", effort: "low")
+        let table = try XCTUnwrap(LAAChatPokemon.bundled)
+        for project in LAAChatProjectStore.seeds {
+            let question = LAAChatProject.Message(role: .user, text: project.kind == .pokemon ? "ピカチュウ" : "2+2?")
+            let reference: String?
+            if project.kind == .pokemon {
+                guard case .reference(let answer) = table.guidance(question.text, route: .init(context: project.context)) else {
+                    return XCTFail("Expected a deterministic Pokémon reference")
+                }
+                reference = answer
+            } else { reference = nil }
+            let result = try await LAAChatProjectRunner.run(runtime: fixture, project: project, question: question,
+                                                            referenceAnswer: reference)
+            XCTAssertEqual(result, reference ?? "first second")
+            XCTAssertEqual(fixture.created.last?.route, pin)
+            XCTAssertEqual(fixture.submitted.last?.route, pin)
+            XCTAssertEqual(fixture.created.last?.conversationID, project.conversationID(for: .hydrogen))
+            XCTAssertEqual(fixture.submitted.last?.conversationID, fixture.created.last?.conversationID)
+        }
+        XCTAssertEqual(Set(fixture.created.map(\.conversationID)).count, 2)
     }
 
     func testMigrationPreservesUnknownPinAndFutureArchive() throws {

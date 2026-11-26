@@ -4588,7 +4588,7 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAChatProjectTests.swift` (store, routing, retry, lookup and `LAAChatProjectSnapshotTests`)
 
 **Rulings**
-- Seed two quick projects once: a general project pinned to Gemini 4 Hydrogen and a Pokémon project pinned to DeepSeek V4.1 Flash. Project name, Markdown context, history and pending turn live in the app's project store. iPhone pushes the detail; Catalyst opens it as a sheet. The detail uses the LAA message-row wrappers and IME-safe composer.
+- Seed two quick projects once: general and Pokémon, both pinned to Gemini 4 Hydrogen. At launch only the built-in Pokémon project's former DeepSeek pin migrates; its local ID, context and history are retained. New Pokémon turns use a separate hidden UUID because Hermes pins each UUID to its first route. A pending legacy turn is read back on its original route without resending. iPhone pushes the detail; Catalyst opens it as a sheet.
 - Create and submit require the gateway to advertise `laa_chat_projects`. The app uses dedicated project RPCs and a hidden logical conversation, not an active employee session. It sends only project context and filtered project history with the pinned route and turn UUID. Scoped events and replay recover unknown delivery without resubmitting it; typed failures may include a retry time, and the app does not substitute a model.
 - The Pokémon size lookup resolves names and forms against its bundled index and computes labeled, conditional GO-height estimates for eligible forms. Actual GO tags outrank metre estimates; form ambiguity and exceptions have separate answers. A metre reading alone does not guarantee a Scarlet/Violet size mark.
 
