@@ -242,6 +242,9 @@ extension AppState {
             let profile = "laa-\(staff.rawValue)"
             return LAAEmployeeGPTLivePlan.make(profile: profile, savedVoice: nil) == nil ? nil : profile
         }
+        let ambient = LAAWatchAmbientSource.current()
+        context.laaAmbient = ambient
+        LAAWatchAmbientSource.observe(shared: ambient) { [weak self] in self?.shareWatchCallVoices() }
         #endif
         WatchVoiceLink.shared.share(context)
     }

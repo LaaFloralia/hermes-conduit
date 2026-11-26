@@ -30,6 +30,10 @@ struct LAANotificationMeta: Equatable {
     /// The board decision's deadline, when it has one.
     let deadline: Date?
     let quick: Quick?
+    /// The staff profile the notification speaks for (`st`, e.g.
+    /// `laa-cfo`): the asking employee on a decision. Nil when the Bridge
+    /// did not say, which reads as Monet (LAANotificationStaffArt).
+    var staff: String? = nil
 
     static func parse(_ sessionID: String?) -> LAANotificationMeta? {
         guard let sessionID, sessionID.hasPrefix(prefix),
@@ -66,8 +70,9 @@ struct LAANotificationMeta: Equatable {
         default: break
         }
         let deadline = (object["d"] as? Double).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
+        let staff = (object["st"] as? String).flatMap { LAANotificationMeta.isStaffProfile($0) ? $0 : nil }
         return LAANotificationMeta(kind: kind, quiet: (object["lv"] as? String) == "p", link: link,
-                                   deadline: deadline, quick: quick)
+                                   deadline: deadline, quick: quick, staff: staff)
     }
 
     private static func base64URLDecoded(_ value: String) -> Data? {
@@ -79,6 +84,11 @@ struct LAANotificationMeta: Equatable {
 
     private static func isDecisionID(_ value: String) -> Bool {
         value.hasPrefix("dec_") && value.count == 20 && value.dropFirst(4).allSatisfy { "0123456789abcdef".contains($0) }
+    }
+
+    static func isStaffProfile(_ value: String) -> Bool {
+        value.hasPrefix("laa-") && (5...44).contains(value.utf8.count)
+            && value.dropFirst(4).allSatisfy { "abcdefghijklmnopqrstuvwxyz-".contains($0) }
     }
 
     private static func isHash(_ value: String) -> Bool {

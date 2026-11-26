@@ -20,7 +20,13 @@ final class WatchLink: ObservableObject {
     @Published private(set) var isCompanionInstalled = false
     /// What Conduit on the iPhone last shared: which voices can start, and
     /// whether calls from Hermes ring it. Nil from an older iPhone app.
-    @Published private(set) var phoneContext: WatchPhoneContext?
+    @Published private(set) var phoneContext: WatchPhoneContext? {
+        didSet {
+            #if LAA_BUILD
+            LAAWatchAmbientRelay.receive(phoneContext?.laaAmbient)
+            #endif
+        }
+    }
     /// Every reachable ↔ unreachable change since launch.
     private(set) var reachabilityChanges = 0
 

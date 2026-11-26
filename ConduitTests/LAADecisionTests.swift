@@ -59,6 +59,23 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertTrue(decoded.items[2].allowOther)
     }
 
+    func testMonetProxyAnswerDecodesFromTheBoardItems() throws {
+        let decoded = try page(#"{"items":[{"kind":"board","id":"dec_a","title":"方法を選択","status":"answered","category":"delegable","answer":{"label":"案一","note":null,"optionIndex":0,"answeredBy":"monet","reason":"安全な範囲"}},{"kind":"board","id":"dec_b","title":"支払い","status":"open","category":"owner","options":[{"label":"払う","recommended":true}]}]}"#)
+        XCTAssertTrue(decoded.items[0].answeredByMonet)
+        XCTAssertEqual(decoded.items[0].answer?.reason, "安全な範囲")
+        XCTAssertFalse(decoded.items[1].answeredByMonet)
+    }
+
+    func testReportLinkResolvesProjectWithoutTreatingItAsADecisionOrSession() throws {
+        let request = LAAWorkLinkRequest()
+        XCTAssertTrue(request.open(try XCTUnwrap(URL(string: "laa://work/projects/prj_0123456789ab"))))
+        XCTAssertEqual(request.projectTarget, "prj_0123456789ab")
+        XCTAssertNil(request.sessionTarget)
+        XCTAssertFalse(request.decisionsLink)
+        XCTAssertTrue(request.open(try XCTUnwrap(URL(string: "laa://work/projects/invalid"))))
+        XCTAssertNil(request.projectTarget)
+    }
+
     func testSourceLineUsesRefWhenTheBridgeAssignsOne() {
         let item = LAADecision(id: "dec_1", title: "t", summary: "s",
                                source: .init(paseoAgentId: nil, sessionId: nil, name: "会話"), sourceRef: "S5")

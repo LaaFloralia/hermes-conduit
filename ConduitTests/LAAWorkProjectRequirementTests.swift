@@ -154,6 +154,17 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertEqual(row.mark, .pending)
     }
 
+    func testVerificationFieldsDoNotExposeEvidenceAndEmptyRateIsAbsent() throws {
+        let data = Data(#"{"id":"r","title":"Title","status":"completed","verifiedAt":"2026-11-26T00:00:00Z","verifiedBy":"monet","requestId":"r1","note":"試験で確認","evidence":"Internal text"}"#.utf8)
+        let row = try JSONDecoder().decode(LAAWorkRequirement.self, from: data)
+        XCTAssertEqual(row.verifiedBy, "monet")
+        XCTAssertEqual(row.requestId, "r1")
+        XCTAssertEqual(row.note, "試験で確認")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(row), as: UTF8.self).contains("Internal text"))
+        XCTAssertNil(LAAWorkRequirementSummary([]).rate)
+        XCTAssertEqual(LAAWorkRequirementSummary([row]).rate, 1)
+    }
+
     func testSummaryFraction() {
         XCTAssertEqual(LAAWorkRequirementSummary(completed: 0, total: 0).fraction, 0)
         XCTAssertEqual(LAAWorkRequirementSummary(completed: 3, total: 4).fraction, 0.75)

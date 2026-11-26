@@ -35,6 +35,36 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
         _ = lease
     }
 
+    func testMeetingPlaybackIsMixableAndNeverAcquiresCapture() throws {
+        session.isOtherAudioPlaying = true
+        XCTAssertNil(coordinator.appliedPolicy)
+        XCTAssertEqual(session.activationCount, 0)
+        let lease = try coordinator.acquire(.meetingPlayback)
+        XCTAssertEqual(coordinator.appliedPolicy, .meetingPlayback)
+        XCTAssertFalse(coordinator.hasCaptureOwner)
+        XCTAssertEqual(session.categoryCalls.last?.category, .playback)
+        XCTAssertTrue(session.categoryCalls.last?.options.contains(.mixWithOthers) ?? false)
+        coordinator.release(lease)
+        XCTAssertEqual(session.lastDeactivationOptions, .notifyOthersOnDeactivation)
+        XCTAssertNil(coordinator.appliedPolicy)
+    }
+
+    func testMeetingCaptureNeedsLiveAuthorizationAndRejectsPlaybackDuringTalk() throws {
+        try VoiceAudioSessionCoordinator.$meetingCaptureAuthorization.withValue({ false }) {
+            XCTAssertThrowsError(try coordinator.acquire(.conversationCapture))
+            XCTAssertEqual(session.activationCount, 0)
+            XCTAssertNil(coordinator.appliedPolicy)
+        }
+        try VoiceAudioSessionCoordinator.$meetingCaptureAuthorization.withValue({ true }) {
+            let lease = try coordinator.acquire(.conversationCapture)
+            XCTAssertEqual(coordinator.appliedPolicy, .meetingCapture)
+            XCTAssertTrue(coordinator.hasCaptureOwner)
+            XCTAssertThrowsError(try coordinator.acquire(.meetingPlayback))
+            coordinator.release(lease)
+            XCTAssertEqual(session.lastDeactivationOptions, .notifyOthersOnDeactivation)
+        }
+    }
+
     func testConversationPlaybackJoinsCaptureWithoutReconfiguring() throws {
         _ = try coordinator.acquire(.conversationCapture)
         session.resetRecordings()

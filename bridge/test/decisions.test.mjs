@@ -443,7 +443,7 @@ function runCli(dir, args) {
 }
 test('real CLI: category enforcement, option/note proxy, replay, stats and report log', (t) => {
   const f = fixture(t);
-  const base = ['add', '--title', '題', '--summary', '選択', '--option', 'A', '--option', 'B', '--request-id', 'proxy', '--json'];
+  const base = ['add', '--title', '題', '--summary', '選択', '--option', '案A', '--option', '案B', '--request-id', 'proxy', '--json'];
   const rejected = runCli(f.dir, base);
   assert.notEqual(rejected.status, 0);
   assert.equal(JSON.parse(rejected.stdout).error.code, 'decision_category_required');
@@ -457,13 +457,13 @@ test('real CLI: category enforcement, option/note proxy, replay, stats and repor
   refStore.registerSource('decision', () => [{ key: delegated.id, title: delegated.title }]);
   return refStore.observeSource('decision').then(() => {
     const ref = refStore.refFor('decision', delegated.id);
-    assert.equal(JSON.parse(answer(ref, '--option', '2').stdout).decision.answer.label, 'B');
+    assert.equal(JSON.parse(answer(ref, '--option', '2').stdout).decision.answer.label, '案B');
     assert.equal(JSON.parse(answer(ref, '--option', '2').stdout).replayed, true);
     assert.equal(JSON.parse(answer(note.id, '--note', '自由回答').stdout).decision.answer.label, '自由回答');
     assert.deepEqual(JSON.parse(runCli(f.dir, ['stats', '--json']).stdout),
       { ok: true, answeredByMonet: 2, overturnedByOwner: 0, ownerOnlyOpen: 1, ownerAnswered: 0 });
     const log = JSON.parse(runCli(f.dir, ['list', '--monet-log', '--since', '2000-01-01T00:00:00Z', '--json']).stdout);
-    assert.deepEqual(log.items.map((row) => row.chosenOption).sort(), ['B', '自由回答']);
+    assert.deepEqual(log.items.map((row) => row.chosenOption).sort(), ['案B', '自由回答']);
     assert(log.items.every((row) => row.subject === '題' && row.reason === '判断根拠' && Date.parse(row.time) > 0));
   });
 });
@@ -485,7 +485,7 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
   assert.equal(runCli(f.dir, ['add']).status, 2);
   assert.equal(runCli(f.dir, ['add', '--title']).status, 2);
   assert.equal(runCli(f.dir, ['list', '--unknown', 'x']).status, 2);
-  assert.equal(runCli(f.dir, args.map((v) => v === '判断' ? 'x'.repeat(61) : v)).status, 5);
+  assert.equal(runCli(f.dir, args.map((v) => v === '判断' ? '題'.repeat(61) : v)).status, 5);
   const answered = f.service.add(request({ source: {}, requestId: 'stored' })).decision;
   f.store.reserve(answered.id, 'phone', { requestId: 'stored-answer', optionIndex: 0 });
   assert.equal(runCli(f.dir, ['withdraw', answered.id, '--reason', '解決']).status, 4);
@@ -495,7 +495,7 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
 
 test('real CLI: shows the J number the server assigned and accepts it for status, without writing refs.json', (t) => {
   const f = fixture(t);
-  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'cli-ref', '--impact', '【必ず社長：公開】', '--json']);
+  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'cli-ref', '--impact', '【必ず社長：公開】', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const id = JSON.parse(added.stdout).decision.id;
   assert.equal(JSON.parse(added.stdout).decision.ref, null);
@@ -511,7 +511,7 @@ test('real CLI: shows the J number the server assigned and accepts it for status
 
 test('real concurrent CLI writers keep one record for one idempotency key', async (t) => {
   const f = fixture(t);
-  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'race', '--impact', '【必ず社長：公開】', '--json'];
+  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'race', '--impact', '【必ず社長：公開】', '--json'];
   const run = () => new Promise((resolve, reject) => {
     const child = spawn(cli, args, { env: { ...process.env, PASEO_AGENT_ID: '', LAA_BRIDGE_STATE_DIR: f.dir }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = ''; child.stdout.on('data', (b) => { out += b; }); child.stderr.on('data', (b) => { err += b; });

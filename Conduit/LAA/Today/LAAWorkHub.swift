@@ -23,6 +23,7 @@ struct LAAWorkHub: View {
     @Environment(\.laaThemeID) private var themeID
     @Environment(\.laaPalette) private var palette
     @State private var decisionDevice: String?
+    @State private var linkedProject: String?
 
     /// Projects opens first: opening a project shows its requirements, done
     /// and under way, with its Sessions (owner, 2026-11-23; Sessions had
@@ -119,7 +120,10 @@ struct LAAWorkHub: View {
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
             guard linkRequest.url?.host == "work" else { return }
-            if linkRequest.decisionsLink {
+            linkedProject = linkRequest.projectTarget
+            if linkedProject != nil {
+                section = .projects
+            } else if linkRequest.decisionsLink {
                 decisions.linkedID = linkRequest.decisionTarget
                 select(.decisions)
             } else {
@@ -159,10 +163,10 @@ struct LAAWorkHub: View {
     @ViewBuilder private var sectionContent: some View {
         switch section {
         case .projects:
-            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID) }
+            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID, linkedProject: $linkedProject) }
             else {
                 ScrollView {
-                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search)
+                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject)
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1 }
             }

@@ -33,7 +33,10 @@ struct LAADecisionBoardView: View {
     #endif
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            content
+            if !board.monetAnswers.isEmpty { monetAnswersList }
+        }
             .background(LAAColor.background)
             .tint(LAAColor.link)
             .refreshable { await board.load(bridge) }
@@ -79,6 +82,35 @@ struct LAADecisionBoardView: View {
                 phoneList
             }
         }
+    }
+
+    // MARK: Monet's answers
+
+    /// Stage 3 (AI-OPERATING-MODEL 「判断の移譲」): items filed 【任せられる】 are
+    /// answered by Monet with a one-line reason. They are listed apart, read-only.
+    private var monetAnswersList: some View {
+        DisclosureGroup {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    ForEach(board.monetAnswers) { item in
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            Text(verbatim: item.title).laaTextStyle(.body)
+                            if let answer = item.answer {
+                                Text(verbatim: [answer.label, answer.reason].compactMap { $0 }.joined(separator: " · "))
+                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .frame(maxHeight: 160)
+        } label: { sectionText("Monetが決めた件", count: board.monetAnswers.count) }
+        .padding(LAASpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LAAColor.surface)
+        .accessibilityIdentifier("laa.decisions.monetAnswers")
     }
 
     // MARK: Rows

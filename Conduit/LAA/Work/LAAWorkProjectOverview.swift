@@ -79,7 +79,7 @@ struct LAAWorkProjectRow: View {
             }
             .accessibilityIdentifier("laa.work.project.progress.\(project.id)")
         } else {
-            Text(verbatim: [LAACopy.WorkProject.noRequirementsShort, time].compactMap { $0 }.joined(separator: " · "))
+            Text(verbatim: ["—", LAACopy.WorkProject.noRequirementsShort, time].compactMap { $0 }.joined(separator: " · "))
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
         }
     }
@@ -167,7 +167,10 @@ struct LAAWorkProjectPage: View {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 heading
                 banners
-                if let board, board.summary.total > 0 { LAAWorkProjectSummary(board: board) }
+                if let board {
+                    if board.summary.rate != nil { LAAWorkProjectSummary(board: board) }
+                    else { Text(verbatim: "—").laaTextStyle(.secondary).accessibilityLabel(LAACopy.WorkProject.noRequirementsShort) }
+                }
                 if let note = detail?.progressNote { LAAWorkProjectNote(text: note) }
             }
             requirementsSection
@@ -227,6 +230,18 @@ struct LAAWorkProjectPage: View {
                                ? (LAACopy.WorkProject.add, "plus", "laa.work.project.addRequirement", actions.addRequirement)
                                : nil)
             requirementsContent
+            if let log = detail?.requirementDenominatorLog, !log.isEmpty {
+                DisclosureGroup {
+                    ForEach(Array(log.reversed().enumerated()), id: \.offset) { _, change in
+                        let date = LAAWorkFreshness.date(change.at).map { LAADateText.string($0, .monthDay) } ?? ""
+                        Text(verbatim: "\(date) \(change.delta > 0 ? "+" : "")\(change.delta) · \(change.reason)")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                } label: {
+                    Text(verbatim: "要件数の変更").laaTextStyle(.secondary)
+                }
+                .padding(.vertical, LAASpacing.x2)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.work.project.requirements")

@@ -47,11 +47,61 @@ final class LAACallPolicyTests: XCTestCase {
 
     func testWhatTheOwnerMustAnswerCannotBeTurnedOff() {
         let kinds = LAAWorkNotificationPreferences.kinds
-        XCTAssertEqual(kinds.map(\.id), ["decision", "question", "approval", "error", "finished", "task", "calendar"])
+        XCTAssertEqual(kinds.map(\.id), ["decision", "question", "approval", "error", "report", "finished", "task", "calendar"])
         for kind in kinds where ["decision", "question", "approval"].contains(kind.id) {
             XCTAssertEqual(kind.levels, [.alert, .quiet])
         }
         XCTAssertEqual(kinds.first { $0.id == "finished" }?.levels, [.alert, .quiet, .off])
+    }
+
+    /// A Bridge with Monet's report lane: its own defaults (finished off) and
+    /// the owner's explicit choices are shown as the Mac holds them.
+    func testTheReportRowFollowsTheMacAndKeepsTheOwnersChoices() throws {
+        let fresh = try JSONDecoder().decode(LAAWorkNotificationPreferences.self, from: Data("""
+        { "kinds": { "decision": "alert", "question": "alert", "approval": "alert", "error": "alert",
+                     "finished": "off", "report": "alert", "task": "alert", "calendar": "alert" }, "updatedAt": null }
+        """.utf8))
+        XCTAssertEqual(fresh.shownKinds.map(\.id), LAAWorkNotificationPreferences.kinds.map(\.id))
+        XCTAssertEqual(fresh.level("finished"), .off)
+        XCTAssertEqual(fresh.level("report"), .alert)
+        XCTAssertEqual(fresh.shownKinds.first { $0.id == "report" }?.title, "Monetの報告")
+        XCTAssertTrue(fresh.canChange("report", to: .quiet))
+        XCTAssertTrue(fresh.canChange("report", to: .off))
+
+        let chosen = try JSONDecoder().decode(LAAWorkNotificationPreferences.self, from: Data("""
+        { "kinds": { "decision": "quiet", "question": "alert", "approval": "alert", "error": "off",
+                     "finished": "quiet", "report": "off", "task": "alert", "calendar": "alert" }, "updatedAt": "2026-11-25T08:00:00.000Z" }
+        """.utf8))
+        XCTAssertEqual(chosen.level("finished"), .quiet)
+        XCTAssertEqual(chosen.level("report"), .off)
+        XCTAssertEqual(chosen.level("decision"), .quiet)
+        XCTAssertEqual(chosen.level("error"), .off)
+        XCTAssertFalse(chosen.canChange("decision", to: .off))
+    }
+
+    /// An older Bridge does not list `report` and rejects it: no row, no change sent.
+    func testAnOlderMacShowsNoReportRowAndAcceptsNoReportChange() throws {
+        let legacy = try JSONDecoder().decode(LAAWorkNotificationPreferences.self, from: Data("""
+        { "kinds": { "decision": "alert", "question": "alert", "approval": "alert", "error": "alert",
+                     "finished": "quiet", "task": "alert", "calendar": "alert" }, "updatedAt": null }
+        """.utf8))
+        XCTAssertEqual(legacy.shownKinds.map(\.id), ["decision", "question", "approval", "error", "finished", "task", "calendar"])
+        XCTAssertFalse(legacy.canChange("report", to: .off))
+        XCTAssertTrue(legacy.canChange("finished", to: .off))
+        XCTAssertEqual(legacy.level("finished"), .quiet)
+        XCTAssertFalse(legacy.canChange("unknown", to: .alert))
+    }
+
+    func testAnUnsupportedChangeNeverReachesTheMac() async {
+        let model = LAAWorkNotificationSettingsModel()
+        model.setForTesting(.init(kinds: ["decision": .alert, "question": .alert, "approval": .alert, "error": .alert,
+                                          "finished": .quiet, "task": .alert, "calendar": .alert]))
+        // "Paired" without credentials: any request would fail and move the phase
+        // off `.loaded`, so an unchanged model shows none was attempted.
+        await model.set("report", to: .off, bridge: LAABridgeSession(statusForTesting: .paired))
+        XCTAssertEqual(model.phase, .loaded)
+        XCTAssertNil(model.preferences.kinds["report"])
+        XCTAssertNil(model.saving)
     }
 
     func testOneChangeSendsOnlyThatKind() throws {

@@ -54,6 +54,10 @@ targets:
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
         buildPhase: resources
+      # The call card's views, drawn by LAAAmbientSnapshotTests.
+      - path: ConduitWidgets/LAA/LAAStaffCallLiveActivity.swift
+      - path: ConduitWidgets/Resources/LAAStaffAvatars.xcassets
+        buildPhase: resources
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
@@ -151,6 +155,10 @@ targets:
   ConduitWatch:
     sources:
       - path: Conduit/LAA/Staff/StaffAssets.swift
+      # Monet's state from the iPhone's application context (HO-06).
+      - path: Shared/Widgets/LAAWatchAmbient.swift
+      # The Monet widget's views, for the DEBUG gallery (LAAMonetWatchGallery).
+      - path: ConduitWatch/Widgets/LAAMonetWatchWidget.swift
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAAColorValues.swift
@@ -204,6 +212,9 @@ targets:
     sources:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
+      # The Monet widget's plan and its relevant intent (HO-06).
+      - path: Shared/Widgets/LAAWatchAmbient.swift
+      - path: ConduitWatch/LAA/LAAWatchMonetIntent.swift
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
@@ -212,12 +223,20 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
+      # Monet's still for the Monet widget (staff/monet.png).
+      - name: LAA watch widget staff avatars
+        basedOnDependencyAnalysis: false
+        script: |
+          "$SRCROOT/scripts/laa/watch-staff-avatars.sh" 120
       - name: Brand LAA watch widget resources
         basedOnDependencyAnalysis: false
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch-widget --source "$SRCROOT"
   ConduitNotificationService:
+    sources:
+      # The staff list the mascot attachment picks from (HO-08).
+      - path: Conduit/LAA/Staff/StaffAssets.swift
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
@@ -231,6 +250,12 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
+      # Each employee's still for the notification's attachment
+      # (LAANotificationStaffArt, staff/<id>.png).
+      - name: LAA notification staff avatars
+        basedOnDependencyAnalysis: false
+        script: |
+          "$SRCROOT/scripts/laa/watch-staff-avatars.sh" 512
       - name: Brand LAA notification resources
         basedOnDependencyAnalysis: false
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
@@ -246,6 +271,9 @@ targets:
       - path: Conduit/LAA/Design/LAAColorValues.swift
       - path: Shared/LAAProductBrand.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
+        buildPhase: resources
+      # The employees' small stills for the Live Activities (HO-15).
+      - path: ConduitWidgets/Resources/LAAStaffAvatars.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAATokens.swift
       - path: Conduit/LAA/LAAColors.swift

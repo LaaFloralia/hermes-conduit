@@ -387,6 +387,13 @@ struct LAAWorkDesktopProjectsView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let refreshID: Int
+    @Binding var linkedProject: String?
+
+    init(drafts: ComposerDraftStore, refreshID: Int, linkedProject: Binding<String?> = .constant(nil)) {
+        self.drafts = drafts; self.refreshID = refreshID
+        _linkedProject = linkedProject
+    }
+
     @State private var projects: [LAAWorkProject] = []
     /// Only for the rows' marks of work running or waiting for the owner.
     @State private var sessions: [LAAWorkSession] = []
@@ -512,6 +519,24 @@ struct LAAWorkDesktopProjectsView: View {
                 .environmentObject(bridge)
                 .laaSheetSize(.form)
         }
+        .task(id: "\(bridge.revision)-\(linkedProject ?? "")") {
+            guard let id = linkedProject, bridge.status == .paired else { return }
+            do {
+                let project: LAAWorkProject = try await bridge.read("/v1/projects/\(id)")
+                guard !Task.isCancelled, linkedProject == id else { return }
+                showArchived = project.isArchived
+                search = ""
+                if !projects.contains(where: { $0.id == id }) { projects.insert(project, at: 0) }
+                selectedID = id
+                linkedProject = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, linkedProject == id else { return }
+                linkedProject = nil
+                failure = (error as? LAABridgeError)?.japaneseText ?? "プロジェクトを開けませんでした。"
+            }
+        }
         // The phone's interval: the Mac list had no re-read of its own
         // (PROJECT-RULES: both lists are checked).
         .task(id: "\(bridge.revision)-\(refreshID)-\(reloadID)-\(showArchived)") {
@@ -540,9 +565,10 @@ struct LAAWorkDesktopProjectsView: View {
         loading = true
         defer { loading = false }
         do {
-            let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
+            let archived = showArchived
+            let query = archived ? [URLQueryItem(name: "archived", value: "only")] : []
             let loaded: [LAAWorkProject] = try await LAAWorkPaging.all(bridge, "/v1/projects", query: query)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, showArchived == archived else { return }
             projects = loaded; failure = nil; hasLoaded = true
             if !showArchived, let rows: [LAAWorkSession] = try? await LAAWorkPaging.all(bridge, "/v1/sessions") {
                 sessions = rows

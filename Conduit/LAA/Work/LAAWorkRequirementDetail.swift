@@ -81,6 +81,12 @@ struct LAAWorkRequirementDetail<SessionView: View>: View {
                         .accessibilityIdentifier("laa.work.requirement.details")
                 }
             }
+            // Monet's verification note (C-3): shown once the requirement is verified.
+            if requirement.verifiedAt != nil, let note = requirement.note, !note.isEmpty {
+                Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("laa.work.requirement.verification")
+            }
             if !linked.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     heading(LAACopy.WorkProject.linkedSessions)

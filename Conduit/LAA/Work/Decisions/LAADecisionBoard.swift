@@ -19,6 +19,7 @@ import SwiftUI
     }
 
     @Published private(set) var items: [LAADecision] = []
+    @Published private(set) var monetAnswers: [LAADecision] = []
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var loading = false
     /// The hub picks the board once, the first time it has something waiting.
@@ -52,7 +53,7 @@ import SwiftUI
     var count: Int { items.count }
 
     func reset() {
-        items = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
+        items = []; monetAnswers = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
     }
 
     func restoreIfNeeded(_ cached: [LAADecision]) {
@@ -83,7 +84,10 @@ import SwiftUI
         let start = loadsStarted
         do {
             let page: LAADecisionPage = try await bridge.read("/v1/decisions")
-            let fresh = Self.visible(page.items, answeredHere: answeredHere)
+            guard start == loadsStarted else { return }
+            // Monet's stage-3 answers stay listed apart until their delivery is gone.
+            monetAnswers = page.items.filter(\.answeredByMonet)
+            let fresh = Self.visible(page.items.filter { !$0.answeredByMonet }, answeredHere: answeredHere)
             for item in fresh { records[item.id] = item }
             items = LAADecisionOrder.sorted(fresh)
             phase = .loaded

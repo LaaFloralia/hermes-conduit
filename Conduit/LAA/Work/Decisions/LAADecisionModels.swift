@@ -31,6 +31,10 @@ struct LAADecision: Codable, Identifiable, Equatable {
         let label: String
         let note: String?
         let answeredAt: String?
+        /// "monet" when Monet answered a delegable item for the owner (stage 3); nil or "owner" otherwise.
+        var answeredBy: String? = nil
+        /// Monet's one-line reason, present with answeredBy == "monet".
+        var reason: String? = nil
     }
     struct Delivery: Codable, Equatable {
         let state: String
@@ -107,6 +111,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
     }
 
     var recommended: Option? { options.first(where: \.recommended) }
+    /// Monet answered it for the owner; the owner may still choose again (an overturn).
+    var answeredByMonet: Bool { answer?.answeredBy == "monet" }
     var deliveryFailed: Bool { delivery?.state == "failed" }
     /// The asker is gone (archived, deleted, past its deadline) or the
     /// decision was withdrawn: it no longer belongs on the board.

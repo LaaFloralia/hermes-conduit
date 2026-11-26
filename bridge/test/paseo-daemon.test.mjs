@@ -11,6 +11,7 @@ import { sessionImageStore } from '../src/sessions/images.mjs';
 import { inspectLocalImage, readLocalImage, settleLocalImages, splitLocalImages } from '../src/sessions/local-images.mjs';
 import { startBridge } from './helpers.mjs';
 import { createOwnerNotifier } from '../src/notify/index.mjs';
+import { createNotificationPreferences } from '../src/notify/preferences.mjs';
 
 function fixture(options = {}) {
   const calls = [], rows = [{ id: 'parent', title: '親', workspaceId: options.workspaceId, provider: 'codex', model: 'gpt-6.1-sol', effectiveThinkingOptionId: 'high', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z', status: 'running', labels: {} },
@@ -128,6 +129,8 @@ test('owner notification reuses plugin event routing and durable dedupe; failure
   const dir = mkdtempSync(join(tmpdir(), 'paseo-notify-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, 'notify.json'), sent = [];
   const payload = { kind: 'session.finished', title: '終了', body: '確認してください', deepLink: 'laa://work/sessions/ses_0123456789abcdef', dedupeKey: 'one' };
+  // finished is off by default (C-2.1); an explicit owner choice of quiet still sends a passive push.
+  createNotificationPreferences({ file: join(dir, 'notification-preferences.json') }).update({ kinds: { finished: 'quiet' } });
   const notify = createOwnerNotifier({ file, deliver: async (p) => { sent.push(p); return { delivered: true }; } });
   assert.equal((await notify(payload)).delivered, true);
   assert.equal(sent[0].session_id.split('#')[0], `laa-bridge:${payload.deepLink}`);

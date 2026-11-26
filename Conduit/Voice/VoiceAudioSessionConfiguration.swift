@@ -15,6 +15,11 @@ struct VoiceAudioSessionConfiguration: Equatable {
         outputChannelCount: 1
     )
 
+    // Explicit Talk uses the tested foreground voice-capture route, never
+    // the phone-style/CallKit override. Meeting output is always mixable.
+    static let meetingCapture = capture
+    static let meetingPlayback = standalonePlayback
+
     /// The conversation's policy while a CallKit call is up: one from Hermes
     /// answered here (#449), or one the user placed from Conduit (LAA fork,
     /// VoicePlacedCalls). The same as `capture` without `.defaultToSpeaker`.

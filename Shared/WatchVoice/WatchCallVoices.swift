@@ -85,6 +85,9 @@ struct WatchPhoneContext: Codable, Equatable {
     #if LAA_BUILD
     /// Employee profiles the phone can prepare with its existing call plan.
     var laaCallableProfiles: [String]? = nil
+    /// Monet's decision count and last report time for the Watch's Monet
+    /// widget (LAAWatchAmbient). Nil from an older iPhone app.
+    var laaAmbient: LAAWatchAmbient? = nil
     #endif
 
     /// What the Watch's Settings show for the notifications it mirrors.

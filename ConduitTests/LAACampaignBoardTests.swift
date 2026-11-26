@@ -10,20 +10,20 @@ import XCTest
 final class LAACampaignBoardTests: XCTestCase {
     private static let page = #"""
     {"count":3,"items":[
-      {"key":"bb8f8dafe0d1dea8","kind":"site","action":"agent_apply","status":"needs_owner","waiting":true,"url":"https://jbia.org/campaign.html","at":"2026-11-15T14:20:38+09:00","decidedAt":null,
+      {"key":"bb8f8dafe0d1dea8","eligible":true,"kind":"site","action":"agent_apply","status":"needs_owner","waiting":true,"url":"https://example.invalid/bath","at":"2026-11-15T14:20:38+09:00","decidedAt":null,
        "title":"いい風呂の日キャンペーン（日本浴用剤工業会）","organizer":"日本浴用剤工業会","benefit":"入浴剤セット","deadline":"11月30日 23:59",
        "reason":"応募フォームで規約への同意と本人の住所の入力が必要なため、社長の判断を待っています。","conditions":null,"nextStep":null,"gbizid":null},
-      {"key":"e07cb584cf2b6f5f","kind":"x","action":"self","status":"candidate","waiting":true,"url":"https://x.com/nakau_info/status/1","at":"2026-11-15T13:42:12+09:00","decidedAt":null,
+      {"key":"e07cb584cf2b6f5f","eligible":true,"kind":"x","action":"self","status":"candidate","waiting":true,"url":"https://example.invalid/post/1","at":"2026-11-15T13:42:12+09:00","decidedAt":null,
        "title":"なか卯【公式】","genre":"食品","organizer":null,"benefit":"なか卯お食事券1,000円分（30名）","deadline":"2026-11-15","reason":null,"conditions":"フォロー＋リポスト。23:59まで","nextStep":null,"gbizid":null},
-      {"key":"b7b5b1f12181290d","kind":"grant","action":"draft","status":"candidate","waiting":true,"url":"https://example.com/grant","at":"2026-11-15T08:35:54+09:00","decidedAt":null,
+      {"key":"b7b5b1f12181290d","eligible":true,"kind":"grant","action":"draft","status":"candidate","waiting":true,"url":"https://example.com/grant","at":"2026-11-15T08:35:54+09:00","decidedAt":null,
        "title":"東京都 新製品・新技術開発助成事業","organizer":"東京都","benefit":"上限25,000,000円","deadline":"2027-04-17","reason":"自社ソフトの新製品開発は候補になり得る。","conditions":null,"nextStep":"GビズID本人確認","gbizid":true},
-      {"key":"aaaaaaaaaaaaaaaa","kind":"site","status":"declined","url":"https://example.com/b","at":"2026-11-14T10:00:00+09:00","decidedAt":"2026-11-14T10:00:00+09:00",
+      {"key":"aaaaaaaaaaaaaaaa","eligible":true,"kind":"site","status":"declined","url":"https://example.com/b","at":"2026-11-14T10:00:00+09:00","decidedAt":"2026-11-14T10:00:00+09:00",
        "title":"秋の読書キャンペーン","organizer":null,"benefit":null,"deadline":null,"reason":null,"conditions":null},
-      {"key":"cccccccccccccccc","kind":"site","status":"approved","url":"https://example.com/c","at":"2026-11-15T09:00:00+09:00","decidedAt":"2026-11-15T09:00:00+09:00",
+      {"key":"cccccccccccccccc","eligible":true,"kind":"site","status":"approved","url":"https://example.com/c","at":"2026-11-15T09:00:00+09:00","decidedAt":"2026-11-15T09:00:00+09:00",
        "title":"コーヒー豆プレゼント","organizer":"珈琲店","benefit":"豆 200g","deadline":"12月1日","reason":"抽選","conditions":null},
-      {"key":"dddddddddddddddd","kind":"perk","action":"agent_apply","category":"perk","categoryLabel":"利用者特典","genre":"通信","service":"SoftBank","addedAt":"2026-11-15T20:00:00+09:00","status":"candidate","url":"https://example.com/d","at":"2026-11-15T18:00:00+09:00","decidedAt":null,
+      {"key":"dddddddddddddddd","eligible":true,"kind":"perk","action":"agent_apply","category":"perk","categoryLabel":"利用者特典","genre":"通信","service":"SoftBank","addedAt":"2026-11-15T20:00:00+09:00","status":"candidate","url":"https://example.com/d","at":"2026-11-15T18:00:00+09:00","decidedAt":null,
        "title":"SoftBank ギガ無料","organizer":"SoftBank","benefit":"データ5GB","deadline":"通年","reason":null,"conditions":null},
-      {"key":"eeeeeeeeeeeeeeee","kind":"site","action":"agent_apply","status":"needs_owner","url":"https://example.com/e","at":"2026-11-01T09:00:00+09:00","decidedAt":null,
+      {"key":"eeeeeeeeeeeeeeee","eligible":true,"kind":"site","action":"agent_apply","status":"needs_owner","url":"https://example.com/e","at":"2026-11-01T09:00:00+09:00","decidedAt":null,
        "title":"終わった応募","organizer":null,"benefit":null,"deadline":"2026-11-10","reason":null,"conditions":null}
     ]}
     """#
@@ -32,14 +32,14 @@ final class LAACampaignBoardTests: XCTestCase {
         try JSONDecoder().decode(LAACampaignPage.self, from: Data(Self.page.utf8)).items
     }
 
-    func testSectionsSplitByStatusWithTheNewestChoiceFirst() throws {
+    func testDefaultListUsesOnlyLiveCategories() throws {
         let board = LAACampaignBoard()
         board.setForTesting(try items(), now: try Self.now())
         XCTAssertEqual(board.count, 4, "the row past its deadline is gone")
         XCTAssertEqual(board.waiting(.x).map(\.key), ["e07cb584cf2b6f5f"])
         XCTAssertEqual(board.waiting(.grant).map(\.id), ["grant:b7b5b1f12181290d"])
-        XCTAssertEqual(board.decided.map(\.key), ["cccccccccccccccc", "aaaaaaaaaaaaaaaa"])
-        XCTAssertEqual(board.categories.map(\.rawValue), ["prize", "signup", "grant", "unlock", "perk"])
+        XCTAssertEqual(board.current.filter { !$0.waiting }.map(\.key), ["aaaaaaaaaaaaaaaa", "cccccccccccccccc"])
+        XCTAssertEqual(board.categories.map(\.rawValue), ["prize", "grant", "perk"])
     }
 
     private static func now() throws -> Date { try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-15T09:00:00Z")) }
@@ -75,12 +75,42 @@ final class LAACampaignBoardTests: XCTestCase {
         XCTAssertTrue(LAACampaignCopy.decision(rows[2].with(status: "drafted", decidedAt: nil)).hasPrefix("下書き済み"))
     }
 
-    /// The Bridge before the kinds sends `prize` and no kind: still a site row.
+    func testStatusAndSearchNeverSurfaceIneligibleOrExpiredRows() throws {
+        let extras = #"""
+        [
+          {"key":"coffee-site","kind":"site","category":"signup","eligible":true,"status":"applied","title":"Coffee 登録特典","url":"https://example.invalid/1"},
+          {"key":"coffee-x","kind":"x","eligible":true,"status":"applied","title":"Coffee 抽選","url":"https://example.invalid/2"},
+          {"key":"deal-active","kind":"deal","categoryLabel":"期間限定セール","eligible":true,"status":"listed","title":"Krea 見本","url":"https://example.invalid/3"},
+          {"key":"feature-active","kind":"feature","category":"unlock","eligible":true,"status":"candidate","title":"機能の見本","url":"https://example.invalid/4"},
+          {"key":"former","kind":"x","eligible":true,"status":"applied","title":"Coffee 旧受付","deadline":"2026-11-14","url":"https://example.invalid/5"},
+          {"key":"unqualified","kind":"x","eligible":false,"category":"excluded","status":"applied","title":"Coffee 対象外","url":"https://example.invalid/6"},
+          {"key":"unverified","kind":"x","status":"candidate","title":"Coffee 未確認","url":"https://example.invalid/7"}
+        ]
+        """#
+        let newItems = try JSONDecoder().decode([LAACampaign].self, from: Data(extras.utf8))
+        let board = LAACampaignBoard()
+        board.setForTesting(try items() + newItems, now: try Self.now())
+        XCTAssertEqual(board.categories, [.prize, .signup, .grant, .unlock, .perk, .deal])
+        XCTAssertFalse(board.visible(category: nil, appliedOnly: false, query: " ").contains(where: \.applied))
+        XCTAssertEqual(board.visible(category: nil, appliedOnly: true, query: "").map(\.key), ["coffee-site", "coffee-x"])
+        XCTAssertEqual(board.visible(category: nil, appliedOnly: false, query: " ＣＯＦＦＥＥ ").map(\.key), ["coffee-site", "coffee-x"])
+        XCTAssertEqual(board.visible(category: .signup, appliedOnly: true, query: "coffee").map(\.key), ["coffee-site"])
+        XCTAssertEqual(LAACampaignCopy.decision(newItems[0]), "応募済み")
+        XCTAssertFalse(newItems[0].changeable)
+        XCTAssertTrue(newItems[0].with(status: "applied", decidedAt: nil).eligible)
+        let deal = try XCTUnwrap(board.visible(category: .deal, appliedOnly: false, query: "").first)
+        XCTAssertEqual(LAACampaignCopy.category(deal), "期間限定セール")
+        XCTAssertTrue(deal.listed)
+        XCTAssertFalse(deal.waiting || deal.changeable)
+    }
+
+    /// Old rows can decode but are not considered eligible without an explicit flag.
     func testAnOlderBridgeRowReadsAsASiteEntry() throws {
         let row = try JSONDecoder().decode(LAACampaign.self, from: Data(#"{"key":"aaaaaaaaaaaaaaaa","status":"needs_owner","title":"t","url":"https://example.com","prize":"豆"}"#.utf8))
         XCTAssertEqual(row.kind, .site)
         XCTAssertEqual(row.benefit, "豆")
         XCTAssertTrue(row.waiting)
+        XCTAssertFalse(row.eligible)
     }
 
     func testWaitingRowsGroupByDeadlineDay() throws {

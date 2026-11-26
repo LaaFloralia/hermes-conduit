@@ -60,7 +60,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
       result = service.add({ title: flags.title, summary: flags.summary,
         options: flags.option.map((value, i) => { const split = value.indexOf('::'); return { label: split < 0 ? value : value.slice(0, split), detail: split < 0 ? null : value.slice(split + 2), recommended: recommended === i + 1 }; }),
         impact: flags.impact, deadline: flags.deadline, allowOther: !flags['no-other'], requestId: flags['request-id'],
-        source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } });
+        source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } }, { author: 'agent' });
       result.decision = service.view(result.decision);
     } else if (sub === 'status') result = { decision: service.get(id) };
     else if (sub === 'withdraw') result = { decision: service.withdraw(id, requireFlag('reason')) };
@@ -84,7 +84,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
     else for (const r of result.items) write(`${r.ref ?? r.id ?? r.sessionId}  ${r.status}  ${r.category}  ${r.title}\n`);
     return 0;
   } catch (e) {
-    const body = e instanceof BridgeError ? { code: e.code, message: e.message } : { code: 'internal_error', message: 'unexpected failure' };
+    const body = e instanceof BridgeError ? { code: e.code, message: e.message, ...(e.status === 422 ? { status: 422 } : {}) } : { code: 'internal_error', message: 'unexpected failure' };
     if (flags.json) write(`${JSON.stringify({ ok: false, error: body })}\n`);
     writeErr(`laa-bridge: ${body.code}: ${body.message}\n`);
     return exitCodeFor(e);

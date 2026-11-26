@@ -47,6 +47,11 @@ import Combine
         guard id.range(of: "^[A-Za-z0-9_-]{1,200}$", options: .regularExpression) != nil else { return nil }
         return id
     }
+    var projectTarget: String? {
+        guard url?.host == "work", let parts = url?.pathComponents, parts.count == 3,
+              parts[1] == "projects", parts[2].range(of: "^prj_[0-9a-f]{12}$", options: .regularExpression) != nil else { return nil }
+        return parts[2]
+    }
     /// `laa://work/decisions` (the board) or `laa://work/decisions/<id>`.
     var decisionsLink: Bool { url?.host == "work" && url?.pathComponents.dropFirst().first == "decisions" }
     var decisionTarget: String? {
