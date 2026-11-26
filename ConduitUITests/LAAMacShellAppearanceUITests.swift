@@ -20,7 +20,8 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchEnvironment["LAA_UI_TEST_THEME_SUITE"] = "laa.appearance-test.\(UUID().uuidString)"
         app.launchEnvironment["LAA_UI_TEST_APPEARANCE_SCHEME"] = dark ? "Dark" : "Light"
-        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-tab", "today", "-laa-mac-section", "today"]
+        app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-tab", "today", "-laa-mac-section", "today",
+                                "-laa.work.decisionCount", "5"]
         app.launchInLab()
         let prefix = dark ? "dark" : "light"
         let today = app.staticTexts["laa.today.title"]
@@ -38,7 +39,7 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
             XCTAssertEqual(tab.isSelected, label == "Today")
         }
         let work = tabs.buttons.matching(NSPredicate(format: "label == %@", "Work")).firstMatch
-        XCTAssertNotNil(work.value, "The fixture's work badge survives the custom glyph")
+        XCTAssertTrue(String(describing: work.value ?? "").contains("5"), "The Work badge survives the custom glyph")
         #endif
 
         openAppearance(app)
