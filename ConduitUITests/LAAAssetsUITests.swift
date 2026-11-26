@@ -27,6 +27,16 @@ final class LAAAssetsUITests: XCTestCase {
         app.descendants(matching: .any)["laa.drive.browser.item.\(id)"].firstMatch
     }
 
+    private func selectRootFilter(_ filter: String, in app: XCUIApplication) {
+        let root = app.buttons["laa.drive.browser.root"]
+        XCTAssertTrue(root.waitForExistence(timeout: 10))
+        root.tap()
+        XCTAssertTrue(item("folder1", in: app).waitForExistence(timeout: 10))
+        let filterButton = app.buttons["laa.drive.filter.\(filter)"]
+        XCTAssertTrue(filterButton.waitForExistence(timeout: 10))
+        filterButton.tap()
+    }
+
     private func capture(_ screen: String, _ appearance: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "drive-\(screen)-\(appearance)-iphone16promax"
@@ -42,8 +52,7 @@ final class LAAAssetsUITests: XCTestCase {
             item("folder1", in: app).tap()
             XCTAssertTrue(item("doc2", in: app).waitForExistence(timeout: 10))
             capture("folder-after", appearance)
-            app.buttons["My Drive"].tap()
-            app.buttons["laa.drive.filter.video"].tap()
+            selectRootFilter("video", in: app)
             XCTAssertTrue(item("video1", in: app).waitForExistence(timeout: 10))
             XCTAssertFalse(item("folder1", in: app).exists)
             item("video1", in: app).tap()
@@ -103,8 +112,7 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(item("image1", in: app).isEnabled)
         folder.tap()
         XCTAssertTrue(item("doc2", in: app).waitForExistence(timeout: 10))
-        app.buttons["My Drive"].tap()
-        app.buttons["laa.drive.filter.image"].tap()
+        selectRootFilter("image", in: app)
         XCTAssertTrue(item("image1", in: app).waitForExistence(timeout: 10))
         XCTAssertFalse(item("folder1", in: app).exists)
         app.buttons["laa.drive.filter.all"].tap()
