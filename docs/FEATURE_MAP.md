@@ -1176,7 +1176,7 @@ Work › `Campaigns` lists confirmed eligible offers and choices without sending
 **Open gaps**
 - No notification or link opens the section yet; the count refreshes with the hub every 15 seconds.
 
-**Checked:** 2026-11-26, `laa/v2-ambient-campaigns` (HO-20–23): Bridge and app coverage for verified eligibility, JST expiry, the category menu, applied search and browse-only deals.
+**Checked:** 2026-11-26, cceebc05 (HO-20–23): Bridge and app coverage for verified eligibility, JST expiry, the category menu, applied search and browse-only deals.
 
 ## LAA answers from a notification, and which Mac notifications arrive
 
