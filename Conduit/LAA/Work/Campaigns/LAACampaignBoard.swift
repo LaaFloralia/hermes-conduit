@@ -583,13 +583,8 @@ struct LAACampaignBoardView: View {
                 }
                 .accessibilityIdentifier("work.campaigns.display")
             }
-            TextField("", text: $query, prompt: Text(verbatim: "応募・特典を検索"))
-                .laaTextStyle(.body)
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                .focused($searching)
-                .onSubmit { searching = false }
-                .accessibilityIdentifier("work.campaigns.search")
+            LAASearchField(placeholder: "応募・特典を検索", text: $query,
+                           identifier: "work.campaigns.search", focus: $searching)
         }
     }
 

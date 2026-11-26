@@ -1155,7 +1155,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 Work › `Campaigns` lists confirmed eligible offers and choices without sending individual Decision Board questions. A type menu lists the categories present, using ledger labels: 懸賞, 登録特典, 助成金・補助金, 機能追加, 利用者特典, セール and future categories. Waiting rows and deals are ordered by category and genre, deadline, or newest. `応募済み` rows are hidden by default and appear by search or the `応募済` status filter. Deals only open the offer page. The Work count is the number waiting for a choice; chosen rows still move under 判断済み and can change until acted on.
 
-**Siblings:** campaign-hunt routine and ledger `list`/`decide` (skill repo) · Bridge route and README · Work hub count · Mac Work (shared view) · lab capture fixture
+**Siblings:** campaign-hunt routine and ledger `list`/`decide` (skill repo) · Bridge route and README · Work hub count · Mac Work (shared view) · shared `LAASearchField` · lab capture fixture
 
 **Code**
 - App: `Conduit/LAA/Work/Campaigns/LAACampaignBoard.swift`; hub section and count: `Conduit/LAA/Today/LAAWorkHub.swift`
