@@ -467,7 +467,7 @@ final class LAABrainUITests: XCTestCase {
         case "laa.markdown.format.indent": return "インデントを進める"
         case "laa.markdown.format.outdent": return "インデントを戻す"
         case "laa.markdown.format.undo": return "Undo"
-        case "laa.markdown.format.dismiss": return "キーボードを閉じる"
+        case "laa.markdown.format.dismiss": return "Hide Keyboard"
         default: return ""
         }
     }
