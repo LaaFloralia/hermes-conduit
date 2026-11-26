@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import CoreText
+import LAAFonts
 import LAAKit
 import UIKit
 import XCTest
