@@ -603,7 +603,7 @@ struct LAAChatModelPickers: View {
 
     /// A metered route's heading says so (LAAHarness.metered).
     private func sectionTitle(_ section: (name: String, choices: [LAAChatModelCatalog.Choice])) -> String {
-        LAAChatModelCatalog.meteredSection(section.choices) ? section.name + "（従量）" : section.name
+        LAAChatModelCatalog.meteredSection(section.choices) ? section.name + " · Metered" : section.name
     }
 
     @ViewBuilder private var modelMenu: some View {

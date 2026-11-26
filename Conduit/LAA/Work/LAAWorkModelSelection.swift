@@ -186,14 +186,14 @@ struct LAAWorkHarnessMenu: View {
 
     var body: some View {
         if let lock { LAAMenuReason(text: lock) }
-        if groups.isEmpty { LAAMenuReason(text: "選べる実行基盤がありません。") }
+        if groups.isEmpty { LAAMenuReason(text: "None available") }
         ForEach(groups) { group in
             let sections = LAAWorkModelSelection.providers(group.models)
             Section(header: Text(verbatim: group.harness.name + (group.fast ? " · Fast" : ""))) {
                 ForEach(sections, id: \.name) { section in
                     ForEach(section.models) { model in
                         let metered = LAAWorkModelSelection.metered(model)
-                        let route = sections.count > 1 || metered ? section.name + (metered ? "（従量）" : "") : nil
+                        let route = sections.count > 1 || metered ? section.name + (metered ? " · Metered" : "") : nil
                         let isCurrent = group.id == current?.id && model.id == chosen?.id
                         LAAHarnessModelRow(title: model.label, route: route, current: isCurrent) { pick(group, model) }
                             .disabled(lock != nil || isCurrent || disabled(model))
