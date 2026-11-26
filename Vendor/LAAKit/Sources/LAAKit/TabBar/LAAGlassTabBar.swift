@@ -401,15 +401,36 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
 }
 
 /// The card's rows scroll only when they do not fit (large Dynamic Type, landscape).
+/// The rows' natural height is measured once per change and decides plain vs scrolling. No `ViewThatFits`:
+/// inside the morphing glass (GlassEffectLayout sizing every frame of the transition) it measured both
+/// candidates, the ScrollView included, on every pass and kept the main thread busy for seconds (Primula
+/// 2026-11-26, iOS 27 simulator sample: GlassEntryLayout.sizeThatFits → SizeFittingLayoutComputer).
 struct LAACardScroll<Content: View>: View {
     let maxHeight: Double
     @ViewBuilder let content: Content
+    @State private var contentHeight: Double = 0
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            content
-            ScrollView { content }.frame(maxHeight: max(maxHeight, LAATabBarToken.Card.row * 2))
+        let cap = max(maxHeight, LAATabBarToken.Card.row * 2)
+        Group {
+            if contentHeight > cap {
+                ScrollView(.vertical) { measured }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: cap)
+            } else {
+                measured
+            }
         }
+    }
+
+    private var measured: some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: Double.self) { proxy in
+                (proxy.size.height).rounded()
+            } action: { height in
+                if abs(height - contentHeight) >= 1 { contentHeight = height }
+            }
     }
 }
 
