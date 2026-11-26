@@ -69,6 +69,7 @@ struct LAABrainView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.section) {
                         heading
+                        if let localError { localErrorText(localError) }
                         if local.isSelected {
                             if local.state == .needsAccess { localAccessView }
                             else { localBrowser }
@@ -254,6 +255,7 @@ struct LAABrainView: View {
                             localIntroduction
                         }
                         #endif
+                        if let localError { localErrorText(localError) }
                     }
                     .padding(.horizontal, LAASpacing.x4)
                     .padding(.vertical, LAASpacing.x4)
@@ -460,7 +462,6 @@ struct LAABrainView: View {
                 .laaGlassButton(prominent: true).accessibilityIdentifier("laa.brain.chooseFolder")
             Button("Mac接続で開く") { showMacSource = true }.laaTextStyle(.secondary)
                 .accessibilityIdentifier("laa.brain.openMac")
-            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }.foregroundStyle(LAAColor.text)
     }
 
@@ -574,8 +575,11 @@ struct LAABrainView: View {
                     paperPanel { folderContents("", excluding: pins) }
                 }
             }
-            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }
+    }
+
+    private func localErrorText(_ message: String) -> some View {
+        Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
     }
 
     private var recoveryAction: some View {
@@ -599,7 +603,6 @@ struct LAABrainView: View {
                     catch { localError = LAABrainVaultError.unreadable.message }
                 }.laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.useMac")
             }
-            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }
     }
 
@@ -703,6 +706,7 @@ struct LAABrainView: View {
         let child = parent.isEmpty ? name : parent + "/" + name
         if let desktop = desktopActions {
             LAABrainDesktopFolderRow(name: name) { desktop.openFolder(child) }
+                .accessibilityIdentifier("laa.brain.folder.\(child)")
         } else {
             NavigationLink(value: LAABrainRoute.folder(child)) {
                 HStack(spacing: LAASpacing.x3) {
@@ -713,7 +717,7 @@ struct LAABrainView: View {
                 .frame(maxWidth: .infinity, minHeight: LAACanvas.iphone.rowMinHeight, alignment: .leading)
                 .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
                 .contentShape(Rectangle())
-            }.buttonStyle(.plain)
+            }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.folder.\(child)")
         }
     }
 
