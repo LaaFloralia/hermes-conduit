@@ -27,10 +27,15 @@ final class LAAAppearanceThemeTests: XCTestCase {
         let original = selection.themeID
         defer { selection.apply(original) }
         selection.apply(LAAThemeSets.defaultID)
+        let defaultBackground = LAAColor.background
+        XCTAssertEqual(defaultBackground, LAAColor.background)
         let changed = expectation(description: "Existing SwiftUI callers track palette changes")
         withObservationTracking { _ = LAAColor.background } onChange: { changed.fulfill() }
         selection.apply(LAAThemeSets.iris.id)
         wait(for: [changed], timeout: 0.5)
+        let irisBackground = LAAColor.background
+        XCTAssertNotEqual(irisBackground, defaultBackground)
+        XCTAssertEqual(irisBackground, LAAColor.background)
 
         for (style, contrast) in [(UIUserInterfaceStyle.light, UIAccessibilityContrast.normal), (.dark, .high)] {
             let traits = UITraitCollection(traitsFrom: [
@@ -45,6 +50,8 @@ final class LAAAppearanceThemeTests: XCTestCase {
             XCTAssertEqual(UIColor(LAAColor.separator).resolvedColor(with: traits), expected(contrast == .high ? raw.text : raw.rule))
             XCTAssertEqual(UIColor(LAAColor.attention).resolvedColor(with: traits), expected(LAAThemeSets.laa.colors(dark: style == .dark).second))
         }
+        selection.apply(LAAThemeSets.defaultID)
+        XCTAssertEqual(defaultBackground, LAAColor.background, "A theme reuses the same role when reselected")
     }
 }
 #endif

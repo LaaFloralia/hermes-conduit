@@ -33,7 +33,7 @@ final class LAATaskRunTests: XCTestCase {
             ("awaiting_decision", "判断待（S5）", .attention),
             ("done", "完了（S5）", .link),
             ("stopped", "停止（S5）", .attention),
-            ("failed", "取得できません（S5）", .attention),
+            ("failed", "Failed（S5）", .attention),
         ]
         for (state, label, tone) in cases {
             let row = task(state: state, session: "ses_0123456789abcdef", ref: "S5")

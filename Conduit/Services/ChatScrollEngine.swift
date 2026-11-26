@@ -183,6 +183,10 @@ final class ChatScrollEngine: ObservableObject {
         /// When the reader's rows were found where they were, by their own
         /// frames in the new layout.
         var settledAt: TimeInterval?
+        #if LAA_BUILD
+        var revealScheduled = false
+        var revealed = false
+        #endif
     }
 
     /// A card above the viewport about to change height, the change owed
@@ -1587,9 +1591,22 @@ final class ChatScrollEngine: ObservableObject {
         // A flick after the prepend belongs to the reader.
         guard !surface.isTracking, !surface.isDecelerating else { return }
         let estimate = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
+        #if LAA_BUILD
+        // After a targeted reveal, only measured rows drive correction. The
+        // same estimate that missed them must not undo the reveal.
+        let rowTarget = prependRowTarget(anchor, on: surface, near: anchor.revealed ? surface.contentOffsetY : estimate)
+        if anchor.revealed, rowTarget == nil { return }
+        #else
         let rowTarget = prependRowTarget(anchor, on: surface, near: estimate)
+        #endif
         let target = rowTarget ?? estimate
         let moves = abs(surface.contentOffsetY - target) > 0.5
+        #if LAA_BUILD
+        if moves, rowTarget == nil, !anchor.revealScheduled, let row = anchor.rows.first {
+            anchor.revealScheduled = true
+            schedulePrependReveal(row: row, landedAt: landedAt)
+        }
+        #endif
         if moves {
             // Moving the reader needs a fresh confirmation, which the
             // correction's own scroll callback usually gives. Past the limit
@@ -1610,6 +1627,24 @@ final class ChatScrollEngine: ObservableObject {
         ))
         surface.setContentOffsetY(target, animated: false)
     }
+
+    #if LAA_BUILD
+    /// The lazy stack may settle with all of the original rows outside its
+    /// measured range. Reveal the first saved row once in that case; normal
+    /// prepends already have exact frames and never take this path.
+    private func schedulePrependReveal(row: PrependAnchor.Row, landedAt: TimeInterval) {
+        schedule(0.15) { [weak self] in
+            guard let self, let surface, var anchor = prependAnchor, anchor.landedAt == landedAt,
+                  mode == .browsing, !isPaused, !isUserScrolling,
+                  !prependHoldLapsed(anchor, landedAt: landedAt), anchor.settledAt == nil else { return }
+            let estimate = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
+            guard prependRowTarget(anchor, on: surface, near: estimate) == nil else { return }
+            anchor.revealed = true
+            prependAnchor = anchor
+            emit(.revealRow(id: row.id))
+        }
+    }
+    #endif
 
     /// A landed page of earlier messages still holding the reader's rows.
     /// One whose hold has lapsed holds nothing, though no layout or scroll
