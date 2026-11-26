@@ -35,24 +35,23 @@ def handles(profile):
     return profile in STAFF
 
 
-def scheduled(job):
-    values = job.get('deliver', '')
-    values = values if isinstance(values, list) else str(values).split(',')
-    return any(str(v).strip() == 'bot-chat' or str(v).strip().startswith('bot-chat:') for v in values)
-
-
-def quiets(job_id):
-    """Only the staff chat's own push notifies; the execution's scratch chat is silent."""
+def quiets(job_id, *, for_failure=False):
+    """The staff chat's push replaces the run's, even from a different profile."""
     try:
         from hermes_constants import get_hermes_home
         home = Path(get_hermes_home())
-        if not handles(home.name):
-            return False
-        jobs = json.loads((home / 'cron/jobs.json').read_text())
+        jobs = json.loads((home / 'cron/jobs.json').read_text(encoding='utf-8'))
         jobs = jobs.get('jobs', []) if isinstance(jobs, dict) else jobs
-        return any(j.get('id') == job_id and scheduled(j) for j in jobs)
+        for job in jobs:
+            if not isinstance(job, dict) or job.get('id') != job_id:
+                continue
+            targets = (job.get('failure_deliver') if for_failure else None) or job.get('deliver', '')
+            targets = targets if isinstance(targets, (list, tuple)) else str(targets).split(',')
+            return any(str(target).strip().startswith('bot-chat:') and
+                       handles(str(target).strip().partition(':')[2]) for target in targets)
     except (OSError, ValueError, TypeError):
-        return False
+        pass
+    return False
 
 
 def failure_signature(content, for_failure=False):
@@ -127,31 +126,25 @@ NOTE_WAIT_S, NOTE_RETRY_S = 60.0, 5.0
 
 
 def write_bot_chat_note(home, text, key, for_failure=False, *, sleep=time.sleep, clock=time.monotonic):
-    """The report as a note row in the profile's Bot Chat (no turn). A turn holding the chat refuses
-    the write, so it waits for that turn; `key` keeps a retried run to one row."""
-    from hermes_state import SessionDB
+    """Append once to the staff Bot Chat; use the same lease fence as other notes."""
+    from . import cron_note_compat
+
+    home = Path(home)
     metadata = {'completion_note': [key], 'conduit_cron_report': True}
     if for_failure:
         metadata['notification_category'] = 'diagnostic'
     deadline = clock() + NOTE_WAIT_S
     while True:
-        db = SessionDB(db_path=Path(home) / 'state.db')
         try:
-            row = db.get_session_by_title('Bot Chat')
-            chat = db.get_compression_tip(row['id']) if row else None
+            chat = cron_note_compat.bot_chat_tip(home)
             if not chat:
                 raise LookupError('no Bot Chat yet')
-            if not db.has_platform_message_id(chat, key):
-                db.append_message(chat, 'user', content=text, platform_message_id=key,
-                                  display_kind='internal_notification', display_metadata=metadata)
-            return chat
-        except LookupError:
+            return cron_note_compat.write_staff_note(home, chat, key, text, metadata)
+        except (LookupError, ValueError):
             raise
         except Exception:  # noqa: BLE001 - a running turn or a busy database; retried until the wait is up
             if clock() + NOTE_RETRY_S > deadline:
                 raise
-        finally:
-            db.close()
         sleep(NOTE_RETRY_S)
 
 
@@ -256,17 +249,13 @@ def record_work_run(home, job, *, runs=WORK_RUNS, now=time.time):
 def show(job, content, profile, *, for_failure=False):
     """Plugin entry: fail visibly rather than fall back into another chat."""
     try:
+        if not __package__:  # Standalone Work CLI; use the installed overlay.
+            from conduit_push import routine_delivery
+            return routine_delivery.show(job, content, profile, for_failure=for_failure)
         from hermes_constants import get_hermes_home, set_hermes_home_override, reset_hermes_home_override
-        # Directory plugins live under hermes_plugins.<slug> in the gateway.
-        # Only standalone Work processes use the bare package path.
-        if __package__:
-            from . import client, cron_runs, cron_bot_chat
-            from .cron_store import CronStore
-            from .events import push_event, plain_text
-        else:
-            from conduit_push import client, cron_runs, cron_bot_chat
-            from conduit_push.cron_store import CronStore
-            from conduit_push.events import push_event, plain_text
+        from . import client, cron_runs, cron_bot_chat
+        from .cron_store import CronStore
+        from .events import push_event, plain_text
         try:
             record_work_run(get_hermes_home(), job)
         except Exception:

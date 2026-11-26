@@ -118,8 +118,10 @@ struct LAASettingsToolbar: ToolbarContent {
     let action: () -> Void
 
     @ToolbarContentBuilder var body: some ToolbarContent {
-        if #available(iOS 26.0, *) { item.sharedBackgroundVisibility(.hidden) }
-        else { item }
+        if LAASettingsEntry.showsToolbarGear {
+            if #available(iOS 26.0, *) { item.sharedBackgroundVisibility(.hidden) }
+            else { item }
+        }
     }
 
     private var item: some ToolbarContent {
@@ -294,10 +296,10 @@ struct LAAScreenToolbar: ToolbarContent {
     @ToolbarContentBuilder var body: some ToolbarContent {
         if #available(iOS 26.0, *) {
             if canCreate { createItem.sharedBackgroundVisibility(.hidden) }
-            if !desktop { settingsItem.sharedBackgroundVisibility(.hidden) }
+            if !desktop && LAASettingsEntry.showsToolbarGear { settingsItem.sharedBackgroundVisibility(.hidden) }
         } else {
             if canCreate { createItem }
-            if !desktop { settingsItem }
+            if !desktop && LAASettingsEntry.showsToolbarGear { settingsItem }
         }
     }
     private var createItem: some ToolbarContent {

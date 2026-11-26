@@ -21,3 +21,38 @@ extension XCUIApplication {
         candidates.first(where: { $0.exists })?.tap()
     }
 }
+
+#if LAA_BUILD
+extension XCUIApplication {
+    var laaSettingsEntry: XCUIElement {
+        #if targetEnvironment(macCatalyst)
+        buttons["laa.sidebar.app"]
+        #else
+        buttons["laa.tabbar.app"]
+        #endif
+    }
+
+    var laaSettingsCardSettings: XCUIElement { buttons["laa.tabbar.settings"] }
+
+    func openLAASettings(file: StaticString = #filePath, line: UInt = #line) {
+        let entry = laaSettingsEntry
+        guard entry.waitForExistence(timeout: 30), entry.isHittable else {
+            XCTFail("Settings entry is missing or not hittable", file: file, line: line)
+            return
+        }
+        entry.tap()
+        let settings = laaSettingsCardSettings
+        guard settings.waitForExistence(timeout: 10), settings.isHittable else {
+            XCTFail("Settings card entry is missing or not hittable", file: file, line: line)
+            return
+        }
+        settings.tap()
+    }
+
+    // The glass destinations are real buttons; match their AX label, not the
+    // index or value (Work can expose a badge as its value).
+    func laaTab(_ title: String) -> XCUIElement {
+        buttons.matching(NSPredicate(format: "label == %@", title)).firstMatch
+    }
+}
+#endif

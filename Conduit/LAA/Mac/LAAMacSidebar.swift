@@ -3,7 +3,7 @@ import LAAKit
 import SwiftUI
 
 /// The Mac window's sidebar: the LAA heading, one row per section, and the
-/// Mac's connection state with Settings beneath it.
+/// Mac's connection state with the app's icon beneath it (it opens the settings card).
 ///
 /// The rows are drawn rather than a `List`'s selection, so the selected row
 /// uses LAA's own colours — `LAAColor.selectionFill` behind `LAAColor.link` —
@@ -114,21 +114,11 @@ struct LAAMacSidebar: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("laa.mac.connection")
-            Button(action: onRequestSettings) {
-                HStack(spacing: LAASpacing.x3) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 15, weight: .regular))
-                        .frame(width: 22)
-                        .foregroundStyle(LAAColor.secondaryText)
-                    Text(verbatim: LAACopy.settings).laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                    Spacer(minLength: 0)
-                }
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                .contentShape(Rectangle())
+            // The app icon opens the same settings card as the iPhone's bar (its last row opens the
+            // Settings window; ⌘, still does too).
+            LAASidebarAppEntry(app: .hortensia) {
+                LAAAppSettingsCard(openSettings: onRequestSettings, showsMac: false)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: LAACopy.settings))
-            .accessibilityIdentifier("laa.settings.open")
             .help(LAACopy.settings)
         }
         .padding(.horizontal, LAASpacing.x4)

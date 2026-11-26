@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// A Phosphor glyph (or the mapped SF Symbol) at one of the four icon sizes (16/18/20/24).
 /// Regular by default; `selected` draws the fill weight. Colour comes from `foregroundStyle`
@@ -18,7 +23,7 @@ public struct LAAIconImage: View {
     public var body: some View {
         Group {
             if icon.prefersSFSymbol {
-                Image(systemName: selected ? icon.sfSymbol + ".fill" : icon.sfSymbol)
+                Image(systemName: Self.symbolName(icon.sfSymbol, selected: selected))
                     .font(.system(size: size * 0.85, weight: .regular))
                     .frame(width: size, height: size)
             } else {
@@ -28,6 +33,21 @@ public struct LAAIconImage: View {
             }
         }
         .accessibilityHidden(true)
+    }
+
+    /// The `.fill` variant when the system has one, else the regular symbol: several mapped symbols
+    /// (`laptopcomputer`, `iphone`, `applewatch`, `faceid`) have no fill, and a missing name draws nothing
+    /// (a selected Mac tab left the glass bar's circle empty — Console 2026-11-26).
+    static func symbolName(_ base: String, selected: Bool) -> String {
+        guard selected else { return base }
+        let fill = base + ".fill"
+        #if canImport(UIKit)
+        return UIImage(systemName: fill) == nil ? base : fill
+        #elseif canImport(AppKit)
+        return NSImage(systemSymbolName: fill, accessibilityDescription: nil) == nil ? base : fill
+        #else
+        return base
+        #endif
     }
 }
 

@@ -1,8 +1,8 @@
 {
-  "kitVersion": "0.1.0",
+  "kitVersion": "0.2.4",
   "tokensVersion": "2026.11.4",
   "tokensStatus": "provisional",
-  "tokenHash": "6c710fc7b0f0e133fc37b1cdd78edb2f42bad5a5fcfd67a809fc1e46b064ab0a",
+  "tokenHash": "2db00e7402b5d125d4e476ccf0674b26b1bb72027bf49157723ae56a0c580c6f",
   "generator": "scripts/generate.py",
   "files": {
     "LICENSES.md": "41d821817bce8a51a37a8a9c01791092d79bb4c79865e7c94e7baf94b9e82365",
@@ -14,10 +14,10 @@
     "Sources/LAAFonts/Resources/Fonts/OFL-ShipporiMincho.txt": "41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38",
     "Sources/LAAFonts/Resources/Fonts/ShipporiMincho-Medium.ttf": "700e505afc4cded2338eba29478a041e04c1c2ea5114fbb3e0b04e76c302c5d8",
     "Sources/LAAFonts/Resources/Fonts/ShipporiMincho-SemiBold.ttf": "bc7925544894a91466449adb73c6d943f50c3e53eb1c74d0673fe2dbafcd4d2d",
-    "Sources/LAATokens/LAAIcon.generated.swift": "4040e4f676715abb1eb19a545316d45951fa189da05cf1d8283bde7806c084d0",
-    "Sources/LAATokens/LAATokens.generated.swift": "6609287a361feb7aab27329ccba145ba4d1238b0dee692dec6e60aca1a2265a7",
-    "web/tokens.css": "2478b8cbf5f0f0148af08b4c0509b8b696157781ef9bfbaa44d684be3b5d97fd",
-    "web/tokens.json": "ae36dc74141073f9452fcf8352b566112f9d8c2131e148fbc4c5a5393ddf0972",
-    "web/tokens.ts": "c919c7ba20898c2cec38b2ff98f0663262f4a0516dfb2991ab79a5d4a7452801"
+    "Sources/LAATokens/LAAIcon.generated.swift": "fa941002434df880906333fe604655b65bdec03f02ae8fe8abac91bb32a45d6f",
+    "Sources/LAATokens/LAATokens.generated.swift": "199e5bdf02c8138785d9b2e44f71e007117513cbef3e89b5114b335373877d25",
+    "web/tokens.css": "ab4c601890e1e6ec0794a354b943811e332bf3336d0c0ac390ae5646d5dbda7b",
+    "web/tokens.json": "f9346dd704bef4bca213bba0b0a6a49af2a75b041f993bedc922725b43736f6e",
+    "web/tokens.ts": "b432f6aedfc3e93f6538c9b09aa29584a79b40c1a85fb61bc5f4ed83f828449b"
   }
 }

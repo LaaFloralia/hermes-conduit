@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// Observes just the meeting strip; audio level updates do not invalidate the
@@ -7,7 +8,6 @@ struct LAAMeetingControls: View {
     @ObservedObject var meeting: LAAMeetingSession
     @ObservedObject private var audio = VoiceAudioSessionCoordinator.shared
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var talkFocused: Bool
     @State private var spaceHeld = false
 
@@ -22,15 +22,26 @@ struct LAAMeetingControls: View {
     let stop: () -> Void
     let ownerChanged: () -> Void
 
+    /// Kit orb state: listening while the owner talks, thinking while a staff reply is awaited, speaking while
+    /// a staff line plays.
+    private func orbState(speaking: Bool) -> LAAParticleOrb.State {
+        if meeting.turn.ownerTalking { return .listening }
+        switch meeting.turn.phase {
+        case .listening: return .listening
+        case .sending, .waiting: return .thinking
+        case .speaking: return .speaking
+        case .idle: return speaking ? .speaking : .idle
+        }
+    }
+
     var body: some View {
         let queue = queue()
         let speakerID = queue.current?.utterance.speakerID
         let speaker = members.first { speakerID != nil && ($0.profile == speakerID || $0.memberID == speakerID) }
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                LAAParticleOrbView(size: 36, level: meeting.turn.ownerTalking ? meeting.micLevel : meeting.speechLevel,
-                    thinking: meeting.turn.phase == .waiting || meeting.turn.ownerTalking ? 1 : 0,
-                    ground: colorScheme == .dark ? .dark : .paperBead)
+                LAAParticleOrb(size: 36, state: orbState(speaking: speakerID != nil),
+                               level: meeting.turn.ownerTalking ? meeting.micLevel : meeting.speechLevel)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: speaker?.displayName ?? status(speaking: speakerID != nil))
                         .laaTextStyle(.note)

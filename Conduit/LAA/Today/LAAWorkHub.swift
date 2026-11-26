@@ -118,7 +118,7 @@ struct LAAWorkHub: View {
         .tint(LAAColor.link)
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
-            guard linkRequest.url?.host == "work" else { return }
+            guard linkRequest.url?.host == "work", linkRequest.claim("work.hub") != nil else { return }
             linkedProject = linkRequest.projectTarget
             if linkedProject != nil {
                 section = .projects

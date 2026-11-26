@@ -117,6 +117,10 @@ struct LAADecision: Codable, Identifiable, Equatable {
     /// The asker is gone (archived, deleted, past its deadline) or the
     /// decision was withdrawn: it no longer belongs on the board.
     var isGone: Bool { status == "withdrawn" || delivery?.state == "gone" }
+    /// Something the owner still has to do: an open question, or an answer
+    /// that did not arrive. An answer on its way (waiting, pending) is shown
+    /// quietly among the answered rows and never counted (2026-11-26).
+    var needsOwner: Bool { !isGone && (answer == nil || deliveryFailed) }
     /// Answered, and the Bridge delivers it by itself once the conversation is free.
     var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's

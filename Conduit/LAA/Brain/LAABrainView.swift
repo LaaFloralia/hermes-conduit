@@ -138,7 +138,7 @@ struct LAABrainView: View {
                                      index: index, isPinned: pins.contains(reference.path),
                                      togglePin: { togglePin(reference.path) }, path: $path,
                                      autoEditPath: $autoEditPath, editorIsOpen: $editorIsOpen, readingPositions: readingPositions)
-                        .toolbar(.hidden, for: .tabBar)
+                        .laaHidesTabBar()
                 }
             }
         }
@@ -295,8 +295,10 @@ struct LAABrainView: View {
         #if targetEnvironment(macCatalyst)
         ToolbarItem(placement: .topBarTrailing) { macLocalSelector }
         #endif
-        ToolbarItem(placement: .topBarTrailing) {
-            LAASettingsButton(action: onRequestSettings)
+        if LAASettingsEntry.showsToolbarGear {
+            ToolbarItem(placement: .topBarTrailing) {
+                LAASettingsButton(action: onRequestSettings)
+            }
         }
     }
 

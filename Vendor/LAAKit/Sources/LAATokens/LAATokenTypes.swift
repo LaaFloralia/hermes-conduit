@@ -41,9 +41,18 @@ public struct LAAThemeSet: Sendable, Hashable, Identifiable {
 }
 
 public extension LAAThemeSets {
-    /// The set for an identifier; unknown or retired identifiers fall back to the default set.
+    /// Identifiers of renamed sets → their current identifier, so a stored choice survives the rename.
+    /// `iris` became `ayame` on 2026-11-26 (the staff member Iris keeps the name).
+    static let renamedIDs: [String: String] = ["iris": "ayame"]
+
+    /// The current identifier for a stored one (renamed sets map forward; others are returned as they are).
+    static func currentID(_ id: String?) -> String? { id.map { renamedIDs[$0] ?? $0 } }
+
+    /// The set for an identifier; renamed identifiers map to their new set, unknown or retired ones
+    /// fall back to the default set.
     static func set(id: String?) -> LAAThemeSet {
-        all.first { $0.id == id } ?? all.first { $0.id == defaultID } ?? all[0]
+        let id = currentID(id)
+        return all.first { $0.id == id } ?? all.first { $0.id == defaultID } ?? all[0]
     }
 }
 

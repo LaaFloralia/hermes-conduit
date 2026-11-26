@@ -31,7 +31,7 @@ struct LAADriveOfflineScreen: View {
         .background(LAAColor.background.ignoresSafeArea())
         .navigationTitle("Saved offline")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .task(id: bridge.revision) { selection = nil; await reload() }
         .sheet(item: $selection, onDismiss: { Task { await reload() } }) { selected in
             NavigationStack { LAADriveOfflinePreview(opened: selected.opened).environmentObject(bridge) }

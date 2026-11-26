@@ -40,14 +40,13 @@ final class LAAChromeUITests: XCTestCase {
             let app = launch(appearance)
             var firstFrame: CGRect?
             for tab in ["Chat", "Today", "Doc", "Studio", "Work"] {
-                let tabButton = app.buttons[tab]
+                let tabButton = app.laaTab(tab)
                 XCTAssertTrue(tabButton.waitForExistence(timeout: 30), tab)
                 tabButton.tap()
-                // Only the visible tab's bar carries the button; the tab
-                // views the picker keeps off screen must not answer here.
-                let bar = app.navigationBars.buttons.matching(identifier: "laa.settings.open")
-                XCTAssertEqual(bar.count, 1, "\(tab): one settings button in the visible bar")
-                let settings = bar.firstMatch
+                XCTAssertFalse(app.buttons["laa.settings.open"].exists, "\(tab): no toolbar gear on iPhone")
+                XCTAssertEqual(app.buttons.matching(identifier: "laa.tabbar.app").count, 1,
+                               "\(tab): one app icon in the visible bar")
+                let settings = app.laaSettingsEntry
                 XCTAssertTrue(settings.waitForExistence(timeout: 15), tab)
                 XCTAssertTrue(settings.isHittable, tab)
                 if let firstFrame {
@@ -66,13 +65,12 @@ final class LAAChromeUITests: XCTestCase {
                     XCTAssertEqual(app.staticTexts["laa.chats.heading"].label, "Chat")
                 }
                 capture("chrome-\(tab.lowercased())-\(appearance)")
-                settings.tap()
+                app.openLAASettings()
                 XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10), tab)
                 if tab == "Chat" { capture("chrome-settings-\(appearance)") }
                 app.buttons["laa.settings.done"].tap()
             }
-            let settingsButton = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settingsButton.waitForExistence(timeout: 10)); settingsButton.tap()
+            app.openLAASettings()
             XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
             let pairing = app.buttons["laa.settings.mac.repair"]
             XCTAssertTrue(pairing.waitForExistence(timeout: 10))
@@ -102,10 +100,9 @@ final class LAAChromeUITests: XCTestCase {
     func testDisconnectedChatsOpenSettingsAndCapture() {
         for appearance in ["light", "dark"] {
             let app = launch(appearance, extra: ["-LAA_UI_TEST_FORCE_LOGIN", "-LAA_UI_TEST_FIRST_LOGIN"])
-            let settings = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 30))
+            XCTAssertTrue(app.laaSettingsEntry.waitForExistence(timeout: 30))
             capture("chrome-login-\(appearance)")
-            settings.tap()
+            app.openLAASettings()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
             app.terminate()
         }
@@ -114,9 +111,7 @@ final class LAAChromeUITests: XCTestCase {
     func testSettingsAndDataUseLAAContentAndCapture() {
         for appearance in ["light", "dark"] {
             let app = launch(appearance)
-            let settings = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 30))
-            settings.tap()
+            app.openLAASettings()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
             XCTAssertTrue(app.staticTexts["AI社員"].exists)
             XCTAssertFalse(app.staticTexts["Hermes"].exists)
@@ -155,9 +150,7 @@ final class LAAChromeUITests: XCTestCase {
                                     (["-LAA_UI_TEST_KEYCHAIN_ERROR"], "認証情報を読み取れません"),
                                     (["-LAA_UI_TEST_BRIDGE_OFFLINE"], "未接続")] {
             let app = launch("light", extra: arguments)
-            let settings = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 30))
-            settings.tap()
+            app.openLAASettings()
             let value = app.staticTexts["laa.settings.mac.status"]
             XCTAssertTrue(value.waitForExistence(timeout: 10))
             let predicate = NSPredicate(format: "label == %@", status)
@@ -184,9 +177,7 @@ final class LAAChromeUITests: XCTestCase {
     func testMacSettingsAndPairingCapture() {
         for appearance in ["light", "dark"] {
             let app = launch(appearance)
-            let settings = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 30))
-            settings.tap()
+            app.openLAASettings()
             let repair = app.buttons["laa.settings.mac.repair"]
             XCTAssertTrue(repair.waitForExistence(timeout: 10))
             capture("remnants-mac-\(appearance)")
@@ -214,13 +205,14 @@ final class LAAChromeUITests: XCTestCase {
         for appearance in ["light", "dark"] {
             for (setting, title) in [("settings.appearance", "Appearance"), ("settings.notifications", "Notifications")] {
                 let app = launch(appearance)
-                let settings = app.buttons["laa.settings.open"]
-                XCTAssertTrue(settings.waitForExistence(timeout: 30))
-                settings.tap()
+                app.openLAASettings()
                 let entry = app.buttons[setting]
                 XCTAssertTrue(entry.waitForExistence(timeout: 10))
                 if !entry.isHittable { app.scrollViews.firstMatch.swipeUp() }
                 entry.tap()
+                let destination = title == "Appearance"
+                    ? app.staticTexts["settings.appearance.title"] : app.navigationBars[title]
+                XCTAssertTrue(destination.waitForExistence(timeout: 10), "Did not open \(title)")
                 if title == "Appearance" {
                     XCTAssertTrue(app.staticTexts["settings.appearance.title"].waitForExistence(timeout: 10))
                     XCTAssertFalse(app.staticTexts["Main button"].exists)
@@ -241,9 +233,7 @@ final class LAAChromeUITests: XCTestCase {
     func testVoiceSettingsOmitLegacyCallOrbControl() {
         for appearance in ["light", "dark"] {
             let app = launch(appearance, extra: ["-LAA_UI_TEST_VOICE_SETTINGS"])
-            let settings = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 30))
-            settings.tap()
+            app.openLAASettings()
             let voice = app.buttons["settings.voice"]
             XCTAssertTrue(voice.waitForExistence(timeout: 10))
             if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }

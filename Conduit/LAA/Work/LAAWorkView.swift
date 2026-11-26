@@ -56,12 +56,14 @@ struct LAAWorkView: View {
         .navigationBarTitleDisplayMode(embeddedSection == nil ? .inline : .large)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if embeddedSection == nil { LAASettingsButton(action: onRequestSettings) }
-                else if section == 1 {
-                    Button { showNewProject = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text(verbatim: "プロジェクトを追加"))
-                        .disabled(bridge.status != .paired)
+            if embeddedSection != nil || LAASettingsEntry.showsToolbarGear {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if embeddedSection == nil { LAASettingsButton(action: onRequestSettings) }
+                    else if section == 1 {
+                        Button { showNewProject = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel(Text(verbatim: "プロジェクトを追加"))
+                            .disabled(bridge.status != .paired)
+                    }
                 }
             }
         }

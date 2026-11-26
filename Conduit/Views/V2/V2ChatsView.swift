@@ -765,7 +765,7 @@ struct V2ChatsView: View, Equatable {
             V2VoiceButton(context: .home, style: .capsule)
             // The LAA build reaches Conduit's settings from this bar: its
             // five tabs have no Settings tab of their own.
-            if let laaSettingsAction {
+            if let laaSettingsAction, LAASettingsEntry.showsToolbarGear {
                 Button {
                     Haptics.selection()
                     laaSettingsAction()

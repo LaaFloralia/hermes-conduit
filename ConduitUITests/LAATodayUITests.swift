@@ -23,9 +23,7 @@ final class LAATodayUITests: XCTestCase {
             app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance,
                                     "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
             app.launchInLab()
-            let settings = app.buttons["laa.settings.open"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 30))
-            settings.tap()
+            app.openLAASettings()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
             XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
             XCTAssertTrue(app.staticTexts["接続"].exists)
