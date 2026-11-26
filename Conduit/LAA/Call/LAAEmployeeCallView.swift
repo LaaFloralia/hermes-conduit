@@ -162,8 +162,8 @@ private struct CallGlassButton: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: symbol)
-                    .font(.system(size: 21, weight: .semibold))
-                    .frame(width: 60, height: 60)
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 52, height: 52)
                     .modifier(CallGlassCircle(selected: selected, destructive: destructive))
                 Text(title).font(.caption).foregroundStyle(LAAColor.secondaryText)
                     .lineLimit(1).minimumScaleFactor(0.8)
