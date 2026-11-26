@@ -17,10 +17,44 @@ import { BridgeError } from '../errors.mjs';
 import { routineRefItem } from '../refs/items.mjs';
 const exec = promisify(execFile);
 
-const ROLE_NAMES = Object.freeze({ monet: 'Monet', cos: 'Merlin', cto: 'Ada', cfo: 'Morgan',
-  cio: 'Sherlock', cso: 'Talos', argus: 'Argus', soap: '薬用石鹸' });
-const boundedString = (value) => typeof value === 'string' && value.length <= 500 ? value : null;
+const STAFF_NAMES = Object.freeze({ monet: 'Monet', cos: 'Merlin', cto: 'Ada', cfo: 'Morgan',
+  cio: 'Sherlock', cso: 'Talos', argus: 'Argus' });
+const ROLE_NAMES = Object.freeze({ ...STAFF_NAMES, soap: '薬用石鹸' });
+const boundedString = (value, limit = 500) => typeof value === 'string' && value.length <= limit ? value : null;
 const modelSetting = (value) => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(value) ? value : null;
+const deliveryMode = (value) => ['chat', 'local', 'none'].includes(value) ? value : null;
+const routineStaff = (value) => typeof value?.id === 'string' && Object.hasOwn(STAFF_NAMES, value.id) && value.name === STAFF_NAMES[value.id]
+  ? { id: value.id, name: value.name } : null;
+
+function plannedRun(value) {
+  const by = modelSetting(value?.by);
+  const why = boundedString(value?.why, 120);
+  const label = boundedString(value?.label, 100);
+  const effort = value?.effort ?? null;
+  if (!by || by !== by.toLowerCase() || !why || !label ||
+      (by === 'code' ? effort !== null : !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort))) return null;
+  return { by, effort, why, label };
+}
+
+function runTime(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+      !Number.isFinite(Date.parse(value))) return null;
+  const day = value.slice(0, 10);
+  const midnight = Date.parse(`${day}T00:00:00Z`);
+  return Number.isFinite(midnight) && new Date(midnight).toISOString().slice(0, 10) === day ? value : null;
+}
+
+function recentRuns(value) {
+  if (!Array.isArray(value)) return null;
+  return value.slice(0, 20).flatMap((run) => {
+    const startedAt = runTime(run?.startedAt);
+    const { runId, result } = run ?? {};
+    if (!startedAt || typeof runId !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(runId) ||
+        !['ok', 'failed', 'running', 'silent', 'unknown'].includes(result)) return [];
+    return [{ runId, startedAt, finishedAt: runTime(run.finishedAt), result,
+      model: modelSetting(run.model), provider: modelSetting(run.provider), effort: modelSetting(run.effort) }];
+  });
+}
 
 export function routineState(job, reading) {
   // A disabled output never runs just because its sibling owns the shared slot.
@@ -35,9 +69,18 @@ export function routineState(job, reading) {
 }
 
 export function routineDestination(job) {
-  if (job.notificationMode !== 'chat') return null;
-  if (job.triggerKind === 'scheduled' || ['hermes', 'hermes-shared', 'work', 'paseo'].includes(job.reading?.source)) return '定期実行';
-  const rawRole = job.receiverRole ?? job.ownerRole;
+  const delivery = deliveryMode(job.delivery);
+  if (delivery) {
+    if (delivery !== 'chat') return null;
+    const staff = routineStaff(job.staff);
+    if (staff) return `${staff.name}のチャット`;
+    // Accept a Console still using legacy receiver roles during the migration.
+    if (job.staff != null) return null;
+  } else {
+    if (job.delivery != null || job.notificationMode !== 'chat') return null;
+    if (job.triggerKind === 'scheduled' || ['hermes', 'hermes-shared', 'work', 'paseo'].includes(job.reading?.source)) return '定期実行';
+  }
+  const rawRole = job.receiverRole ?? (delivery ? null : job.ownerRole);
   const role = typeof rawRole === 'string' ? rawRole.toLowerCase() : null;
   const name = Object.hasOwn(ROLE_NAMES, role) ? ROLE_NAMES[role] : null;
   return name ? `${name}のチャット` : null;
@@ -66,6 +109,8 @@ export function projectRoutineRows(document) {
     const reading = job.reading && typeof job.reading === 'object' ? job.reading : {};
     items.push({ id: job.id, name: job.name, schedule: boundedString(job.schedule),
       triggerKind: routineKind(job), destination: routineDestination(job), state: routineState(job, reading),
+      staff: routineStaff(job.staff), run: plannedRun(job.run), delivery: deliveryMode(job.delivery),
+      recentRuns: recentRuns(reading.recentRuns),
       ...(reading.modelSettings?.author ? { authorModel: modelSetting(reading.modelSettings.author.model),
         authorEffort: modelSetting(reading.modelSettings.author.effort) } : {}),
       nextRunAt: boundedString(reading.nextRunAt), lastRunAt: boundedString(reading.lastRunAt),

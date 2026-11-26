@@ -10,7 +10,7 @@ test('routine endpoint requires read access and projects only public fields', as
   const token = await bridge.token();
   const response = await bridge.request('/v1/routines', { token });
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null, ...Object.fromEntries(['runId', 'reasonCode', 'observationStatus', 'scheduledAt', 'expectedRunAt', 'startedAt', 'finishedAt', 'notificationAcceptedAt', 'notificationSentAt', 'notificationReceivedAt'].map((key) => [key, null])), ref: 'R1' }]);
+  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null, staff: null, run: null, delivery: null, recentRuns: null, ...Object.fromEntries(['runId', 'reasonCode', 'observationStatus', 'scheduledAt', 'expectedRunAt', 'startedAt', 'finishedAt', 'notificationAcceptedAt', 'notificationSentAt', 'notificationReceivedAt'].map((key) => [key, null])), ref: 'R1' }]);
 });
 
 test('unavailable routine source returns an error rather than an empty list', async (t) => {
@@ -82,12 +82,62 @@ test('chart routines expose only author model and effort identifiers', () => {
   assert.equal(project({ model: '{"key":"secret"}' }).authorModel, null);
 });
 
+test('staff, planned execution and recent observed executions survive the HTTP projection', async (t) => {
+  const staff = { id: 'cto', name: 'Ada' };
+  const run = { by: 'gpt-6.2-sol', effort: 'high', why: '画面を確認するため', label: 'Sol High' };
+  const recent = { runId: 'execution-12345678', startedAt: '2026-11-26T08:00:00.000Z', finishedAt: null,
+    result: 'running', model: 'gemini-4-hydrogen', provider: 'laa-agy', effort: 'high' };
+  const jobs = [{ id: 'job:a', name: 'Daily', staff: { ...staff, secret: 'PRIVATE-STAFF' },
+    run: { ...run, secret: 'PRIVATE-PLAN' }, delivery: 'chat', receiverRole: 'monet', notificationMode: 'chat',
+    triggerKind: 'scheduled', reading: { source: 'hermes', recentRuns: [{ ...recent, output: 'PRIVATE-OUTPUT' }] } }];
+  const bridge = await startBridge({ routines: { read: async () => ({ data: jobs }) } });
+  t.after(() => bridge.close());
+  const response = await bridge.request('/v1/routines', { token: await bridge.token() });
+  assert.equal(response.status, 200);
+  const item = response.body.data.items[0];
+  assert.deepEqual(item.staff, staff);
+  assert.deepEqual(item.run, run);
+  assert.equal(item.delivery, 'chat');
+  assert.equal(item.destination, 'Adaのチャット');
+  assert.deepEqual(item.recentRuns, [recent]);
+  assert.doesNotMatch(JSON.stringify(item), /PRIVATE-/);
+});
+
+test('new routine fields are bounded and malformed data cannot leak through', () => {
+  const valid = { runId: 'execution-12345678', startedAt: '2026-11-26T08:00:00.000Z', finishedAt: null,
+    result: 'silent', model: null, provider: null, effort: null };
+  const project = (patch) => projectRoutines({ data: [{ id: 'job:a', name: 'Daily', ...patch }] })[0];
+  const row = project({ staff: { id: 'cto', name: '<invalid>' }, delivery: 'chat',
+    run: { by: 'code', effort: 'high', why: '理由', label: 'コード' }, reading: { recentRuns: [
+      null, { ...valid, runId: 'a'.repeat(81) }, { ...valid, result: 'unexpected' },
+      { ...valid, startedAt: '2026-02-30T08:00:00Z' },
+      { ...valid, model: 'x'.repeat(121), provider: 'https://private.invalid/token', effort: 'bad effort', finishedAt: 'invalid' },
+    ] } });
+  assert.equal(row.staff, null);
+  assert.equal(row.destination, null);
+  assert.equal(row.run, null);
+  assert.deepEqual(row.recentRuns, [valid]);
+  assert.equal(project({ delivery: 'other' }).delivery, null);
+  assert.equal(project({ run: { by: 'code', why: 'a'.repeat(121), label: 'コード' } }).run, null);
+  assert.deepEqual(project({ run: { by: 'code', why: '定型処理', label: 'コード' } }).run,
+    { by: 'code', effort: null, why: '定型処理', label: 'コード' });
+  const recentRuns = Array.from({ length: 21 }, (_, i) => ({ ...valid, runId: `execution-${i}` }));
+  assert.deepEqual(project({ reading: { recentRuns } }).recentRuns, recentRuns.slice(0, 20));
+  assert.deepEqual(project({ reading: { recentRuns: [] } }).recentRuns, []);
+});
+
 test('destinations only use explicitly configured chat roles and preserve unknown receivers', () => {
   assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'COS', ownerRole: 'Monet' }), 'Merlinのチャット');
   assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'monet', deliver: 'local' }), 'Monetのチャット');
   assert.equal(routineDestination({ notificationMode: 'email', ownerRole: 'monet' }), null);
   assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'unknown', ownerRole: 'monet' }), null);
   assert.equal(routineDestination({ notificationMode: 'chat', ownerRole: 'constructor' }), null);
+  assert.equal(routineDestination({ notificationMode: 'chat', receiverRole: 'cos', triggerKind: 'scheduled' }), '定期実行');
+  assert.equal(routineDestination({ delivery: 'chat', receiverRole: 'cos', triggerKind: 'scheduled' }), 'Merlinのチャット');
+  assert.equal(routineDestination({ delivery: 'chat', ownerRole: 'cos' }), null);
+  for (const delivery of ['local', 'none']) {
+    assert.equal(routineDestination({ delivery, staff: { id: 'cos', name: 'Merlin' }, notificationMode: 'chat' }), null);
+  }
 });
 
 test('history stays visible separately from the current state and is recomputed each read', () => {
