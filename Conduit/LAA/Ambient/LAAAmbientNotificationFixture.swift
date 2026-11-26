@@ -15,7 +15,10 @@ enum LAAAmbientNotificationFixture {
         guard requested else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted, let bundle = stills() else { return }
+            guard granted, let bundle = stills() else {
+                NSLog("LAA ambient fixture granted=%d stills=nil", granted ? 1 : 0)
+                return
+            }
             let items: [(kind: String, hint: String?, title: String, body: String, delay: TimeInterval)] = [
                 ("monet.report", nil, "Monet", "朝の報告をまとめました。", 5),
                 ("decision.new", "laa-cfo", "判断待ち", "今月の経費の締め方を選んでください。", 11),
@@ -27,6 +30,7 @@ enum LAAAmbientNotificationFixture {
                 LAANotificationStaffArt.decorate(content, kind: item.kind, profile: "laa-monet", staffHint: item.hint) {
                     LAANotificationStaffArt.attachment($0, bundle: bundle)
                 }
+                NSLog("LAA ambient fixture %@ attachments=%ld", item.kind, content.attachments.count)
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: item.delay, repeats: false)
                 center.add(UNNotificationRequest(identifier: "laa-ambient-fixture-\(item.kind)", content: content, trigger: trigger))
             }

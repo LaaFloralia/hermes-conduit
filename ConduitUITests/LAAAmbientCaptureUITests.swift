@@ -68,8 +68,8 @@ final class LAAAmbientCaptureUITests: XCTestCase {
     func testCall() { capture("call", name: "Morgan") }
 
     /// Monet's report and Morgan's decision as the extension decorates
-    /// them (the app's local-notification fixture), on the Home Screen and
-    /// in Notification Center.
+    /// them (the app's local-notification fixture), as banners, held open,
+    /// and on the Lock Screen.
     func testNotifications() {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_AMBIENT_NOTIFICATION_FIXTURE", "-LAA_UI_TEST_ISOLATED_BRIDGE",
@@ -81,11 +81,19 @@ final class LAAAmbientCaptureUITests: XCTestCase {
         shot("notification-monet-report")
         XCTAssertTrue(label("経費").waitForExistence(timeout: 15), "no decision banner")
         shot("notification-decision-cfo")
-        Thread.sleep(forTimeInterval: 6)
-        springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.005))
-            .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.7)))
+        // Held, the banner opens with the attachment at full size.
+        label("経費").press(forDuration: 1.2)
+        Thread.sleep(forTimeInterval: 1.5)
+        shot("notification-expanded")
+        add(XCTAttachment(string: springboard.debugDescription))
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 3)
+        // Both on the Lock Screen, each with its thumbnail.
+        XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         Thread.sleep(forTimeInterval: 2)
-        shot("notification-center")
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 2.5)
+        shot("notification-lock")
         XCUIDevice.shared.press(.home)
         app.terminate()
     }
