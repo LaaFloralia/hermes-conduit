@@ -241,6 +241,7 @@ struct LAAAppShell: View {
         // While the settings card is open, the screen behind it (including its navigation bar's actions, which
         // live outside the card's modal scope in UIKit) leaves the accessibility tree; the card and Close stay.
         .accessibilityHidden(settingsCardOpen)
+        .environment(\.laaBehindSettingsCard, settingsCardOpen)
         .laaGlassTabBar(glassTabs, selection: $selectedTab, isExpanded: $settingsCardOpen, isHidden: barHidden,
                         app: .hortensia) {
             LAAAppSettingsCard(openSettings: {

@@ -49,6 +49,7 @@ struct LAAAssetsView: View {
                     Button { driveLayoutToggle &+= 1 } label: { Image(systemName: "square.grid.2x2") }
                         .accessibilityLabel(Text(verbatim: "一覧表示を切り替える"))
                         .accessibilityIdentifier("laa.drive.layout")
+                        .laaHiddenBehindSettingsCard()
                 }
             }
         }

@@ -119,6 +119,10 @@ final class LAAGlassTabBarUITests: XCTestCase {
         attachScreen(app, named: "first-login-tab-clearance")
         for action in [app.buttons["login.connect"], setup] {
             XCTAssertTrue(action.exists)
+            // On a small screen (iPhone SE) the login page scrolls: bring the action into its clipped viewport,
+            // then require it to rest above the bar, never under the glass.
+            for _ in 0..<3 where !action.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            XCTAssertTrue(action.isHittable, "\(action.identifier) cannot be reached above the tab bar")
             XCTAssertLessThanOrEqual(action.frame.maxY, barTop,
                                      "\(action.identifier) overlaps the glass tab bar\n\(app.debugDescription)")
         }
