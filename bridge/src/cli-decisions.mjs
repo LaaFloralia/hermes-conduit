@@ -4,14 +4,16 @@ import { validateLane } from './lane/guard.mjs';
 import { daemonAdapter } from './sessions/daemon.mjs';
 import { createDecisionStore } from './decisions/store.mjs';
 import { createDecisionService } from './decisions/service.mjs';
+import { invalidDecisionImage } from './decisions/images.mjs';
 import { createSessionStore } from './sessions/store.mjs';
 import { exitCodeFor } from './cli-tasks.mjs';
 import { BridgeError } from './errors.mjs';
 import { createRefRegistry, normalizeRefInput } from './refs/registry.mjs';
 
 export const DECISIONS_USAGE = `laa-bridge decide — 判断ボード
-  decide add --title <t> --summary <s> --option <label>[::<detail>] (2..6)
+  decide add --title <t> --summary <s> --option '<label>[::<detail>][::image=<absolute path>]' (2..6)
              --impact <t> [--recommended <1-based index>] [--deadline <ISO>]
+             [--image <absolute path>] (repeat up to 6 times)
              [--no-other] [--agent <paseo id>] [--name <title>] --request-id <id> [--json]
   decide status <id|ref> [--json]
   decide withdraw <id|ref> --reason <t> [--json]
@@ -28,7 +30,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
   try {
     const [sub, given] = argv;
     if (!sub || sub === 'help') { write(DECISIONS_USAGE); return 0; }
-    const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id json', status: 'json',
+    const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id image json', status: 'json',
       withdraw: 'reason json', answer: 'option note by reason json', list: 'monet-log since json', stats: 'since json' };
     if (!Object.hasOwn(allowed, sub)) usage('unknown decide subcommand');
     if (argv.length !== (['status', 'withdraw', 'answer'].includes(sub) ? 2 : 1)) usage('invalid positional arguments');
@@ -57,10 +59,21 @@ export async function decisionsCommand(argv, flags, io = {}) {
       if (!Array.isArray(flags.option) || flags.option.length < 2 || flags.option.length > 6) usage('repeat --option 2..6 times');
       const recommended = flags.recommended === undefined ? null : Number(flags.recommended);
       if (recommended !== null && (!Number.isInteger(recommended) || recommended < 1 || recommended > flags.option.length)) usage('--recommended is a 1-based option index');
-      result = service.add({ title: flags.title, summary: flags.summary,
-        options: flags.option.map((value, i) => { const split = value.indexOf('::'); return { label: split < 0 ? value : value.slice(0, split), detail: split < 0 ? null : value.slice(split + 2), recommended: recommended === i + 1 }; }),
+      const imageInputs = (flags.image ?? []).map((path) => ({ path }));
+      const options = flags.option.map((value, i) => {
+        const suffix = '::image=';
+        const image = value.indexOf(suffix);
+        if (image !== -1) {
+          if (image !== value.lastIndexOf(suffix)) throw invalidDecisionImage();
+          imageInputs.push({ path: value.slice(image + suffix.length), option: i });
+          value = value.slice(0, image);
+        }
+        const split = value.indexOf('::');
+        return { label: split < 0 ? value : value.slice(0, split), detail: split < 0 ? null : value.slice(split + 2), recommended: recommended === i + 1 };
+      });
+      result = service.add({ title: flags.title, summary: flags.summary, options,
         impact: flags.impact, deadline: flags.deadline, allowOther: !flags['no-other'], requestId: flags['request-id'],
-        source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } }, { author: 'agent' });
+        source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } }, imageInputs, { author: 'agent' });
       result.decision = service.view(result.decision);
     } else if (sub === 'status') result = { decision: service.get(id) };
     else if (sub === 'withdraw') result = { decision: service.withdraw(id, requireFlag('reason')) };

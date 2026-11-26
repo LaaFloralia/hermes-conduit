@@ -1346,6 +1346,15 @@ final class AppState: ObservableObject {
             // A running turn keeps the backdrop drifting; only its edges
             // are reported, not every streamed token.
             InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
+            #if LAA_BUILD
+            // The wait is over: the employee's next wait picks its word again.
+            if oldValue.isRunning, !turnState.isRunning {
+                LAAStaffThinking.shared.endWait(profile: conversationIdentityProfile)
+            } else if !oldValue.isRunning, turnState.isRunning {
+                // Running again without a send: the same wait under the grace, else a new one.
+                LAAStaffThinking.shared.resumeWait(profile: conversationIdentityProfile)
+            }
+            #endif
             // Its reply sends no push while the chat is on screen.
             updateChatOnScreen()
         }
@@ -3688,7 +3697,9 @@ final class AppState: ObservableObject {
                         let result = await self.laaEmployeePersonality(scopedContext, plan: employeePlan)
                         guard isCurrent() else { throw CancellationError() }
                         switch result {
-                        case .available(let text): personality = text
+                        // Emoji and kaomoji in the SOUL are for the eye; the
+                        // call speaks the words (D-01 decision 8).
+                        case .available(let text): personality = LAASpokenWords.strip(text)
                         case .missingRoute:
                             return .unavailable(reason: LAACopy.employeePersonalityUnavailable)
                         case .missingPersona:
@@ -27352,6 +27363,11 @@ final class AppState: ObservableObject {
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
         if !joinsRunningTurn { clearStreamingText() }
+        #if LAA_BUILD
+        // A new wait picks the employee's word now, before the pill shows;
+        // a steer joins the running wait and keeps its word.
+        if !joinsRunningTurn { LAAStaffThinking.shared.beginWait(profile: conversationIdentityProfile) }
+        #endif
         turnState = .running
 
         // Images staged for a Queue, taken back if Hermes refuses it.
@@ -27529,6 +27545,12 @@ final class AppState: ObservableObject {
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
                     )
                     // The new turn's progress on the Lock Screen (#605).
+                    #if LAA_BUILD
+                    // The same word as the chat's pill for this wait.
+                    let thinkingWord = LAAStaffThinking.shared.liveActivityWord(profile: conversationIdentityProfile)
+                    #else
+                    let thinkingWord: String? = nil
+                    #endif
                     LiveTurnActivities.shared.turnStarted(
                         sessionIDs: submissionSessionIDs,
                         primaryID: sessionId,
@@ -27539,7 +27561,8 @@ final class AppState: ObservableObject {
                         profileName: conversationAgentIdentity.name,
                         glowHex: profileGlowColors()[conversationIdentityProfile]?.hex
                             ?? profileGlowTint(conversationIdentityProfile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex },
-                        dashboardID: activeDashboardID?.uuidString
+                        dashboardID: activeDashboardID?.uuidString,
+                        thinkingWord: thinkingWord
                     )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,
@@ -37656,7 +37679,8 @@ final class AppState: ObservableObject {
         if persona == .unavailable { persona = await context.employeePersonality() }
         let personality: String
         switch persona {
-        case .available(let text): personality = text
+        // The Watch call speaks the SOUL's words, not its emoji (D-01).
+        case .available(let text): personality = LAASpokenWords.strip(text)
         case .missingRoute: throw WatchDirectPrepareError(LAACopy.employeePersonalityUnavailable)
         case .missingPersona: throw WatchDirectPrepareError("社員の人格が見つかりません")
         case .unavailable: throw WatchDirectPrepareError("社員の人格を読み込めません")

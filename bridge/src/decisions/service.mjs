@@ -226,7 +226,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
   return {
     view, hasOpen, sync, list, deliverWaiting,
     get: (id) => view(store.get(id)),
-    add(body, { author = 'owner' } = {}) {
+    image: (id, imgId, size) => store.image(id, imgId, size),
+    add(body, imageInputs, { author = 'owner' } = {}) {
       // C-5: what an agent files reaches the owner verbatim, so it must read as owner text.
       if (author === 'agent') {
         assertOwnerSurface(body.title, 'title');
@@ -245,7 +246,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
         if (new Set(matches).size === 1) agent = matches[0];
       }
       const session = agent && sessionStore?.all().find((r) => r.delegate?.sessionId === agent);
-      return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } });
+      return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } }, imageInputs);
     },
     withdraw: (id, reason) => view(store.withdraw(id, reason)),
     stats(since) {
