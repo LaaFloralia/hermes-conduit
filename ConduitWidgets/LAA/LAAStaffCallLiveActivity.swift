@@ -99,7 +99,7 @@ enum LAAStaffCallIsland {
                 .accessibilityHidden(true)
         } else {
             LAAStaffCallElapsed(state: state)
-                .font(.caption2.monospacedDigit().weight(.semibold))
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
                 .foregroundStyle(LAAStaffActivityStyle.gold)
                 .frame(maxWidth: 48)
         }

@@ -18,7 +18,7 @@ struct LAAMonetWatchGallery: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(plans.enumerated()), id: \.offset) { _, plan in
                     let entry = LAAMonetStatusEntry(date: now, plan: plan)
                     LAAMonetWatchView(entry: entry, familyOverride: .accessoryRectangular)

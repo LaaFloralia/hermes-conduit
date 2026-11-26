@@ -70,7 +70,7 @@ private struct LAAStaffAmbientCollapsed: View {
     var body: some View {
         VStack {
             Button(action: expand) {
-                Image(systemName: "chevron.left")
+                Image(systemName: "arrow.left.to.line")
                     .font(.system(size: 16 * LAAStaffAmbientPanel.scale))
                     .foregroundStyle(LAAColor.secondaryText)
                     .frame(width: 28 * LAAStaffAmbientPanel.scale, height: 28 * LAAStaffAmbientPanel.scale)
@@ -122,7 +122,7 @@ struct LAAStaffAmbientPanel: View {
             HStack {
                 Spacer()
                 Button(action: collapse) {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: "arrow.right.to.line")
                         .font(.system(size: 16 * s))
                         .foregroundStyle(LAAColor.secondaryText)
                         .frame(width: 28 * s, height: 28 * s)
