@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import LAATokens
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct TokenTests {
     @Test func lockMatchesGeneratedHash() throws {
@@ -73,5 +76,21 @@ struct TokenTests {
         #expect(LAAThemeStore.storedThemeID(appGroup: suite) == "iris")
         #expect(LAAThemeStore(appGroup: suite).themeID == "iris")
         UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+    }
+}
+
+struct IconSymbolTests {
+    /// Every SF-Symbol-mapped icon draws something when selected: the fill if the system has one, else the
+    /// regular symbol (a missing `laptopcomputer.fill` left the selected Mac tab empty).
+    @Test func selectedSymbolsResolve() {
+        for icon in LAAIcon.allCases where icon.prefersSFSymbol {
+            let name = LAAIconImage.symbolName(icon.sfSymbol, selected: true)
+            #expect(name == icon.sfSymbol || name == icon.sfSymbol + ".fill")
+            #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            #expect(NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil, "\(icon) → \(name)")
+            #endif
+        }
+        #expect(LAAIconImage.symbolName("laptopcomputer", selected: true) == "laptopcomputer")
+        #expect(LAAIconImage.symbolName("laptopcomputer", selected: false) == "laptopcomputer")
     }
 }

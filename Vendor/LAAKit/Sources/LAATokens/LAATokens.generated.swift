@@ -5,7 +5,7 @@ import Foundation
 
 /// Where these values came from. Consumers pin `kitVersion` and `tokenHash`.
 public enum LAATokenInfo {
-    public static let kitVersion = "0.2.2"
+    public static let kitVersion = "0.2.3"
     public static let tokensVersion = "2026.11.4"
     public static let tokensStatus = "provisional"
     public static let tokenHash = "6132767bf00900dbdcbd147a516656c9f3570d8f8314c311d8870bd7134354d1"
