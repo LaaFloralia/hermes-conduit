@@ -12,7 +12,7 @@
 // Handlers return `{status, data, headers?}` or throw a BridgeError.
 
 import { notificationRoutes } from './notifications.mjs';
-import { flushOwnerNotifications } from '../notify/index.mjs';
+import { notifyOwner, flushOwnerNotifications } from '../notify/index.mjs';
 import { daemonAdapter } from '../sessions/daemon.mjs';
 import { personalAgentAdapter } from '../sessions/adapter.mjs';
 import { createSessionService } from '../sessions/service.mjs';
@@ -46,6 +46,8 @@ import { deviceRoutes } from './devices.mjs';
 import { createDecisionStore } from '../decisions/store.mjs';
 import { createDecisionService, isWaiting } from '../decisions/service.mjs';
 import { createDecisionRoutes } from './decisions.mjs';
+import { monetRoutes, resolveMonetTrigger } from './monet.mjs';
+import { createCompletionReporter } from '../notify/completion-report.mjs';
 import { createRefService } from '../refs/service.mjs';
 import { projectRefItem, sessionRefItem } from '../refs/items.mjs';
 import { refRoutes } from '../refs/routes.mjs';
@@ -175,7 +177,15 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     sessionOptions.registerCleanup?.(() => clearInterval(timer));
   }
 
+  const reportOptions = options.monet ?? {};
+  const liveReports = !lane && sessionOptions.live === true;
+  const report = createCompletionReporter({
+    notify: reportOptions.notify ?? (liveReports ? notifyOwner : sessionOptions.notify ?? (() => ({ delivered: false, reason: 'not_configured' }))),
+    readProject: async (id) => { await sessionService.syncDaemon(); return projectStore.get(id); },
+    readOpenDecisions: () => decisionStore.all(), readSessions: () => sessionStore.all(), resolveCaller: resolveMonetTrigger,
+  });
   const routes = [
+    ...monetRoutes({ reporter: report, decisions, tokenHash: reportOptions.tokenHash ?? (liveReports ? process.env.LAA_BRIDGE_MONET_TOKEN_SHA256 : null) }),
     ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
     ...createDecisionRoutes({ service: decisions }),
     ...(!lane ? [

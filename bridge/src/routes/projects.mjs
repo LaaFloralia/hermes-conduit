@@ -35,6 +35,7 @@ import { createJsonFile, parseObjectBody } from './state-file.mjs';
 import { projectRefItem } from '../refs/items.mjs';
 
 import { changeRequirement, parseProgressNote, projectRequirements } from './project-requirements.mjs';
+import { assertOwnerSurface } from '../owner-surface.mjs';
 
 const PROJECT_SCHEMA = 3;
 export const DEFAULT_PROJECT_ID = 'prj_000000000000';
@@ -181,11 +182,12 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     return project;
   }
 
-  function detail(project) {
+  function detail(project, internal = false) {
     return {
       ...view(project),
       instructions: project.instructions ?? null,
-      requirements: projectRequirements(project),
+      requirementDenominatorLog: project.requirementDenominatorLog ?? [],
+      requirements: projectRequirements(project).map(({ evidence, ...row }) => internal ? { ...row, evidence } : row),
       files: (project.files ?? []).map(({ id, name, size, mimeType, sha256, createdAt }) => ({ id, name, size, mimeType, sha256, createdAt })),
     };
   }
@@ -203,7 +205,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
           instructions: project.instructions ?? null,
           defaultProfile: project.defaultProfile ?? null,
           progressNote: project.progressNote ?? null,
-          requirements: projectRequirements(project),
+          requirements: projectRequirements(project).map(({ evidence, ...row }) => row),
         },
       },
     });
@@ -232,7 +234,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 
   function get({ params, req, internalFullSessions = false }) {
     const project = requireProject(params[0]);
-    const data = decorate({ ...detail(project), ...sessionPage(projectSessions(project.id), req?.url, internalFullSessions, project.id) });
+    const data = decorate({ ...detail(project, internalFullSessions), ...sessionPage(projectSessions(project.id), req?.url, internalFullSessions, project.id) });
     // The body carries the document version for writes. The response tag also
     // tracks this page, membership, and live Session summaries for polling.
     const fingerprint = createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 24);
@@ -250,7 +252,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     return { status: 200, data: { items, nextCursor: null } };
   }
 
-  function create({ device, rawBody, reuseName = false }) {
+  function create({ device, rawBody, reuseName = false, author = 'owner' }) {
     let name;
     let nameSource;
     let instructions;
@@ -260,7 +262,8 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
     try {
       const body = parseObjectBody(rawBody);
       name = parseName(body.name, { required: true });
-      nameSource = parseNameSource(body.nameSource);
+      nameSource = author === 'agent' ? 'auto' : parseNameSource(body.nameSource);
+      if (author === 'agent') assertOwnerSurface(name, 'name');
       rejectInstructionRef(body);
       instructions = parseInstructions(body.instructions);
       instructionHash = instructions === null ? null : hashBody(instructions);
@@ -310,7 +313,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
       headers: { etag: etagFor(project.version) } };
   }
 
-  function patch({ device, rawBody, params, req }) {
+  function patch({ device, rawBody, params, req, author = 'owner' }) {
     let current;
     let expected;
     let name;
@@ -341,6 +344,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
         throw badRequest('payload_invalid', 'nameSource is only meaningful together with name');
       }
       nameSource = body.nameSource === undefined ? undefined : parseNameSource(body.nameSource);
+      if (name !== undefined && author === 'agent') { assertOwnerSurface(name, 'name'); nameSource = 'auto'; }
       if (name !== undefined && current.nameSource === 'owner' && nameSource === 'auto') {
         // Owner-given names always win: an automatic rename is refused, not
         // silently ignored, so the caller cannot believe it succeeded.
@@ -426,7 +430,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
   }
 
   function requirement(action) {
-    return ({ device, rawBody, params, req, internalFullSessions = false }) => {
+    return ({ device, rawBody, params, req, internalFullSessions = false, author = 'owner' }) => {
       let updated;
       try {
         const current = requireProject(params[0]);
@@ -438,7 +442,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
           if (!record || record.version !== expected) throw mismatch(record ?? current);
           if (record.archivedAt) throw conflict('project_archived', 'restore the project before changing requirements');
           const membership = sessionMembership();
-          if (changeRequirement(record, { action, id: params[1], body, iso, belongs: (id) => membership.get(id) === record.id })) {
+          if (changeRequirement(record, { action, id: params[1], body, iso, author, belongs: (id) => membership.get(id) === record.id })) {
             record.version += 1;
             record.updatedAt = iso;
             record.updatedBy = device?.id ?? null;
@@ -449,7 +453,7 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
         if (error instanceof BridgeError) throw markBeforeWrite(error);
         throw error;
       }
-      return { status: action === 'add' ? 201 : 200, data: decorate({ ...detail(updated), ...sessionPage(projectSessions(updated.id), undefined, internalFullSessions) }),
+      return { status: action === 'add' ? 201 : 200, data: decorate({ ...detail(updated, internalFullSessions), ...sessionPage(projectSessions(updated.id), undefined, internalFullSessions) }),
         headers: { etag: etagFor(updated.version) } };
     };
   }
@@ -585,9 +589,11 @@ export function createProjectRoutes({ projects, now = () => Date.now(), refs = n
 // download every shared prompt. `GET /v1/projects/{id}` adds `instructions`.
 function view(project) {
   const requirements = projectRequirements(project);
+  const completed = requirements.filter((item) => item.status === 'completed').length;
+  const total = requirements.length;
   return {
     progressNote: project.progressNote ?? null,
-    requirementSummary: { completed: requirements.filter((item) => item.status === 'completed').length, total: requirements.length },
+    requirementSummary: { completed, total, rate: total ? completed / total : null },
     id: project.id,
     name: project.name,
     nameSource: project.nameSource,

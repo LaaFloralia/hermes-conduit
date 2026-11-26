@@ -160,6 +160,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     /// where it stands. An older Bridge omits all four; a list row then reads
     /// as a project without requirements, and the detail says what is missing.
     let requirementSummary: LAAWorkRequirementSummary?
+    var requirementDenominatorLog: [LAAWorkDenominatorChange]? = nil
     let progressNote: String?
     /// The detail's requirements and sessions; nil when the Bridge predates them.
     let requirements: [LAAWorkRequirement]?
@@ -177,7 +178,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, name, nameSource, defaultProfile, instructionRef, instructionHash, instructionVersion
         case instructions, instructionError, version, etag, updatedAt, archivedAt, fileCount, files, ref
-        case requirementSummary, progressNote, requirements, sessions, sessionCounts, nextSessionsCursor
+        case requirementSummary, requirementDenominatorLog, progressNote, requirements, sessions, sessionCounts, nextSessionsCursor
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
@@ -203,6 +204,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         // each is read on its own, and a requirement or session row the app
         // cannot read is left out rather than failing the list.
         requirementSummary = try? box.decodeIfPresent(LAAWorkRequirementSummary.self, forKey: .requirementSummary)
+        requirementDenominatorLog = ((try? box.decodeIfPresent(LAAWorkLossyList<LAAWorkDenominatorChange>.self, forKey: .requirementDenominatorLog)) ?? nil)?.items
         let note = (try? box.decodeIfPresent(String.self, forKey: .progressNote)) ?? nil
         progressNote = note.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         requirements = ((try? box.decodeIfPresent(LAAWorkLossyList<LAAWorkRequirement>.self, forKey: .requirements)) ?? nil)?.items

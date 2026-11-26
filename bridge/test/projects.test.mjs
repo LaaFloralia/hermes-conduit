@@ -615,10 +615,10 @@ test('versioned requirements preserve the owner title on edits and withdrawal ac
   assert.deepEqual(ordered.body.data.requirements.map(r => [r.id, r.order]), [[bId, 0], [aId, 1]]);
   const done = await req(`/requirements/${aId}`, 'PATCH', 'complete', ordered.body.data.etag, { status: 'completed', details: 'Verified' });
   assert.equal(done.body.data.requirements[1].title, owner.title);
-  assert.deepEqual(done.body.data.requirementSummary, { completed: 1, total: 2 });
+  assert.deepEqual(done.body.data.requirementSummary, { completed: 1, total: 2, rate: 0.5 });
   const removed = await req(`/requirements/${aId}`, 'DELETE', 'withdraw', done.body.data.etag);
   assert.equal(removed.status, 200);
-  assert.deepEqual(removed.body.data.requirementSummary, { completed: 0, total: 1 });
+  assert.deepEqual(removed.body.data.requirementSummary, { completed: 0, total: 1, rate: 0 });
   const file = join(api.stateDir, 'projects.json');
   const stored = JSON.parse(readFileSync(file, 'utf8')).projects[p.id];
   assert.equal(statSync(file).mode & 0o777, 0o600);
