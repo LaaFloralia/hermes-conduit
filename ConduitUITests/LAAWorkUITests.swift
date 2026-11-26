@@ -82,6 +82,10 @@ final class LAAWorkUITests: XCTestCase {
         let projectID = try XCTUnwrap(WorkLaneUI.setup("project", ["name": name])["id"] as? String)
         let app = try pairedLaneWork()
         WorkLaneUI.composer(app)
+        // The new-session sheet's harness comes from the lane's own options.
+        let harness = app.descendants(matching: .any)["work.launch.harness"].firstMatch
+        XCTAssertTrue(harness.waitForExistence(timeout: 10))
+        XCTAssertEqual(harness.value as? String, "Echo")
         let picker = app.descendants(matching: .any)["work.launch.project"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 10)); picker.tap()
         let project = app.buttons["work.launch.project.\(projectID)"]
@@ -417,7 +421,19 @@ final class LAAWorkUITests: XCTestCase {
     // write observable before the next one is attempted.
     func testLiveCreateScratchSession() throws {
         if LabUI.active {
-            _ = try startLaneConversation("Lab UI session", project: "Lab session project")
+            let app = try startLaneConversation("Lab UI session", project: "Lab session project")
+            // The harness capsule names what the lane's session runs on: the
+            // isolated engine's built-in Echo, read back from the daemon.
+            let harness = app.descendants(matching: .any)["work.session.harness"].firstMatch
+            XCTAssertTrue(harness.waitForExistence(timeout: 20))
+            expectation(for: NSPredicate(format: "value == %@", "Echo"), evaluatedWith: harness)
+            waitForExpectations(timeout: 20)
+            let model = app.descendants(matching: .any)["work.session.model"].firstMatch
+            XCTAssertTrue(model.exists)
+            XCTAssertLessThanOrEqual(harness.frame.maxX, model.frame.minX + 1, "the harness leads the model")
+            XCTAssertEqual(harness.frame.midY, model.frame.midY, accuracy: 2, "on the model's line")
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "lane-session-harness"; shot.lifetime = .keepAlways; add(shot)
             return
         }
         let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]

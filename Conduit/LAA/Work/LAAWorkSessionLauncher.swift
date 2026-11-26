@@ -195,18 +195,26 @@ struct LAAWorkSessionLauncher: View {
     /// content).
     private var modelBar: some View {
         HStack(spacing: LAASpacing.x2) {
-            let models = LAAWorkModelSelection.models(options)
+            let all = LAAWorkModelSelection.models(options)
+            let harnesses = LAAWorkModelSelection.harnesses(all)
+            let running = LAAWorkModelSelection.group(of: profile, fast: fast, in: harnesses)
+            // The model menu lists only what the chosen harness runs.
+            let models = running?.models ?? all
             let chosen = LAAWorkModelSelection.model(of: profile, in: options)
             LAAModelEffortPickers(
+                harness: running?.harness,
                 model: selected?.model, provider: selected?.provider, effort: selected?.effort,
                 name: chosen?.label ?? (options == nil ? "読み込み中" : "モデルを選択"),
                 identifier: "work.launch"
             ) {
+                LAAWorkHarnessMenu(groups: harnesses, current: running, chosen: chosen,
+                                   identifier: "work.launch.harness") { group, model in chooseModel(model, in: group) }
+            } modelMenu: {
                 if options == nil { LAAMenuReason(text: "モデルを読み込み中です。") }
                 ForEach(LAAWorkModelSelection.providers(models), id: \.name) { group in
                     Section(group.name) {
                         ForEach(group.models) { item in
-                            Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in if on { chooseModel(item) } })) {
+                            Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in if on { chooseModel(item, in: running) } })) {
                                 LAAModelMenu.Name(label: item.label, model: item.model)
                             }
                             .disabled(!item.available)
@@ -300,7 +308,10 @@ struct LAAWorkSessionLauncher: View {
             return
         }
         let last = LAAWorkModelPreferences.decode("[\(lastRaw)]").first
-        if let last, options.profiles.contains(where: { $0.id == last.profile }) {
+        // A metered route is chosen by hand each time: it never comes back as
+        // the next session's starting choice (owner, 2026-11-26).
+        if let last, let restored = options.profiles.first(where: { $0.id == last.profile }),
+           !LAAWorkModelSelection.metered(restored) {
             profile = last.profile; fast = last.fast
         } else {
             profile = options.defaultProfile ?? options.profiles.first?.id ?? ""
@@ -321,9 +332,16 @@ struct LAAWorkSessionLauncher: View {
 
     /// Another model keeps the effort when it has it, else High, else the
     /// nearest (LAAEffort.carried).
-    private func chooseModel(_ model: LAAWorkModelSelection.Model) {
+    /// A model picked under a harness also sets Fast where the harness
+    /// depends on it: on for the one only Fast reaches (Codex), off for the
+    /// one a Fast-capable model moved to (Pi).
+    private func chooseModel(_ model: LAAWorkModelSelection.Model, in group: LAAWorkModelSelection.HarnessGroup? = nil) {
         guard let next = LAAWorkModelSelection.profile(switchingTo: model, from: selected) else { return }
         choose(next.id)
+        if let group, next.fastHarness != nil {
+            fast = group.fast && next.fast
+            remember()
+        }
     }
 
     private func choose(_ id: String) {

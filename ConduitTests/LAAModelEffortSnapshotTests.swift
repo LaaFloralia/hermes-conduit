@@ -264,6 +264,45 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         }
     }
 
+    /// The harness capsule ahead of the model (owner, 2026-11-26): every
+    /// harness's mark beside a model it runs, the phone's mark-only capsule,
+    /// and the new-session sheet on the live options' shape (codex on Pi).
+    func testHarnessCapsulesLightAndDark() throws {
+        func harnessed(_ harness: String, _ model: String, _ provider: String, _ effort: String) -> some View {
+            LAAModelEffortPickers(harness: LAAHarness.work(harness), model: model, provider: provider, effort: effort,
+                                  identifier: "snapshot") { EmptyView() } modelMenu: { EmptyView() } effortMenu: { EmptyView() }
+        }
+        let board = VStack(alignment: .leading, spacing: LAASpacing.x5) {
+            row("Claude Code", harnessed("claude", "claude-opus-5-5", "claude", "high"))
+            row("Claude Code · Mythos", harnessed("claude", "claude-mythos-5-2", "claude", "max"))
+            row("Pi", harnessed("pi", "gpt-6.2-sol", "codex", "high"))
+            row("Codex（Fast）", harnessed("codex", "gpt-6.2-astra", "codex", "xhigh"))
+            row("DSH", harnessed("dsh", #"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "high"))
+            row("Antigravity", harnessed("antigravity", "gemini-4-neon", "antigravity", "high"))
+            row("Hermes", harnessed("hermes-openai-api", "gpt-6.2-sol", "codex", "high"))
+            row("Echo（試験レーン）", harnessed("echo", "echo", "echo", "high"))
+        }
+        .padding(LAASpacing.horizontal)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(LAAColor.background.ignoresSafeArea())
+        let live = LAAWorkSessionOptions(profiles: [
+            .init(id: "opus-high", label: "Claude Opus 5.5", provider: "claude", model: "claude-opus-5-5", effort: "high", fast: true, harness: "claude"),
+            .init(id: "sol-high", label: "GPT-6.2 Sol", provider: "codex", model: "gpt-6.2-sol", effort: "high", fast: true,
+                  harness: "pi", fastHarness: "codex"),
+            .init(id: "dsh-high", label: "DeepSeek V4.1 Flash", provider: "dsh", model: "deepseek-v4.1-flash", effort: "high", fast: false, harness: "dsh"),
+            .init(id: "neon-high", label: "Gemini 4 Neon", provider: "antigravity", model: "gemini-4-neon", effort: "high", fast: false,
+                  harness: "antigravity"),
+        ], defaultProfile: "opus-high", defaultMode: "bypass")
+        UserDefaults.standard.removeObject(forKey: LAAWorkModelPreferences.lastKey)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            try capture(board, style: style, settle: 1.2, name: "harness-capsules-\(suffix)")
+            try capture(LAAWorkSessionLauncher(projects: [], options: live,
+                                               drafts: LAAWorkDrafts.makeStore(fileURL: tempFile())) { _ in },
+                        style: style, name: "harness-launcher-\(suffix)")
+        }
+    }
+
     private func row(_ title: String, _ pickers: some View) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: title).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)

@@ -193,6 +193,24 @@ enum LAAChatModelCatalog {
         }
     }
 
+    /// True for a section of LAA's API routes (billed per use).
+    static func meteredSection(_ choices: [Choice]) -> Bool {
+        !choices.isEmpty && choices.allSatisfy { LAAHarness.metered(chatProvider: $0.provider) }
+    }
+
+    /// The harness a choice's turns run on (LAAHarness.chat).
+    static func harness(of choice: Choice) -> LAAHarness { LAAHarness.chat(provider: choice.provider) }
+
+    /// The harnesses the chat can switch to, in Hermes' order, each with
+    /// only its own choices: what Hermes lists for this chat's agent, after
+    /// the lineup and the hidden models. A harness with nothing left is not
+    /// listed.
+    static func harnesses(_ choices: [Choice]) -> [(harness: LAAHarness, choices: [Choice])] {
+        LAAHarness.ordered(choices.map(harness(of:))).map { item in
+            (item, choices.filter { harness(of: $0).id == item.id })
+        }
+    }
+
     /// Sections for the menu, one per provider in Hermes' order.
     static func sections(_ choices: [Choice]) -> [(name: String, choices: [Choice])] {
         var order: [String] = []
@@ -496,10 +514,13 @@ struct LAAChatModelPickers: View {
         // long (LAAWrapRow); none is ever cut.
         LAAWrapRow {
             LAAModelEffortPickers(
+                harness: harness, harnessHint: modelLock ?? "この会話の実行基盤を変更",
                 model: shown.model, provider: shown.provider, effort: shown.effort,
                 changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
                 modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
             ) {
+                harnessMenu
+            } modelMenu: {
                 modelMenu
             } effortMenu: {
                 effortMenu
@@ -521,6 +542,46 @@ struct LAAChatModelPickers: View {
         }
     }
 
+    /// The harness this chat's turns run on now: the one Hermes reports the
+    /// chat's provider under. Nil until Hermes has said.
+    private var harness: LAAHarness? {
+        if let currentChoice { return LAAChatModelCatalog.harness(of: currentChoice) }
+        return shown.provider.map { LAAHarness.chat(provider: $0) }
+    }
+    /// The choices on the running harness: the model menu offers only these.
+    private var harnessChoices: [LAAChatModelCatalog.Choice] {
+        guard let harness else { return choices }
+        let own = choices.filter { LAAChatModelCatalog.harness(of: $0).id == harness.id }
+        return own.isEmpty ? choices : own
+    }
+
+    /// One section per harness, headed by its name, holding only its own
+    /// models: picking one switches this chat to that model on that harness
+    /// through Hermes.
+    @ViewBuilder private var harnessMenu: some View {
+        if let modelLock { LAAMenuReason(text: modelLock) }
+        ForEach(LAAChatModelCatalog.harnesses(choices), id: \.harness.id) { group in
+            let sections = LAAChatModelCatalog.sections(group.choices)
+            Section(header: Text(verbatim: group.harness.name)) {
+                ForEach(sections, id: \.name) { section in
+                    let route = sections.count > 1 || LAAChatModelCatalog.meteredSection(section.choices)
+                        ? sectionTitle(section) : nil
+                    ForEach(section.choices) { choice in
+                        let isCurrent = choice.id == currentChoice?.id
+                        LAAHarnessModelRow(title: choice.label, route: route, current: isCurrent) { switchModel(choice) }
+                            .disabled(modelLock != nil || isCurrent)
+                            .accessibilityIdentifier("composer.runtime.harness.\(group.harness.id).\(choice.model)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// A metered route's heading says so (LAAHarness.metered).
+    private func sectionTitle(_ section: (name: String, choices: [LAAChatModelCatalog.Choice])) -> String {
+        LAAChatModelCatalog.meteredSection(section.choices) ? section.name + " · Metered" : section.name
+    }
+
     @ViewBuilder private var modelMenu: some View {
         if let modelLock { LAAMenuReason(text: modelLock) }
         if phase == .failed {
@@ -528,8 +589,8 @@ struct LAAChatModelPickers: View {
                 Label { Text(verbatim: "読み直す") } icon: { Image(systemName: "arrow.clockwise") }
             }
         }
-        ForEach(LAAChatModelCatalog.sections(choices), id: \.name) { section in
-            Section(section.name) {
+        ForEach(LAAChatModelCatalog.sections(harnessChoices), id: \.name) { section in
+            Section(sectionTitle(section)) {
                 ForEach(section.choices) { choice in
                     let isCurrent = choice.id == currentChoice?.id
                     Button { switchModel(choice) } label: {
