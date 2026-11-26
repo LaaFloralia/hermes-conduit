@@ -21,7 +21,7 @@ final class LAABackgroundFixture: ObservableObject {
         }
         let room = GroupRoom(roomID: "fixture-room", name: LAALabCaptureFixture.expanded("企画チーム"), members: members,
                              authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1,
-                             createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: chaired ? 6 : 2,
+                             createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: chaired ? 5 : 2,
                              chair: chaired ? "laa-monet" : nil, policy: chaired ? .standard : nil,
                              confidential: chaired ? true : nil)
         self.room = room
@@ -67,13 +67,13 @@ final class LAABackgroundFixture: ObservableObject {
             ]
         }
         if chaired {
-            let seed = GroupEvent(roomID: room.roomID, seq: 1, eventID: "fixture-topic", kind: "message.chair",
-                actor: GroupActor(kind: "chair", id: "laa-monet", profile: "laa-monet", displayName: nil, connectionID: nil),
-                authorityEpoch: 1, payload: ["text": .string("資料の方針を決めましょう。"), "thread_id": .string("main")], createdAt: now - 120)
+            let seed = GroupEvent(roomID: room.roomID, seq: 1, eventID: "fixture-topic", kind: "message.user",
+                actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+                authorityEpoch: 1, payload: ["text": .string("資料の方針を決めて。"), "thread_id": .string("main")], createdAt: now - 120)
             let lines = [
                 ("laa-monet", "agenda", "構成と順番について意見を集めます。"),
-                ("laa-cto", "staff", "構成案は1ページで始めます。"),
-                ("laa-cos", "staff", "根拠になる数値を先に集めます。"),
+                ("laa-cto", "staff", "POSITION: Start with a one-page outline."),
+                ("laa-cos", "staff", "POSITION: Collect the supporting figures first."),
                 ("laa-monet", "conclusion", "資料は1ページにまとめます。先に数値をそろえ、構成案と一緒に確認します。"),
             ]
             events = [seed] + lines.enumerated().map { index, line in
@@ -82,10 +82,6 @@ final class LAABackgroundFixture: ObservableObject {
                     authorityEpoch: 1, payload: ["text": .string(line.2), "member_id": .string(line.0), "thread_id": .string("main"),
                         "discussion_event_id": .string(seed.id), "meeting_phase": .string(line.1)], createdAt: now - 30 + Double(index))
             }
-            events.append(GroupEvent(roomID: room.roomID, seq: 6, eventID: "fixture-meeting-complete", kind: "room.activity",
-                actor: GroupActor(kind: "gateway", id: "fixture", profile: nil, displayName: nil, connectionID: nil),
-                authorityEpoch: 1, payload: ["status": .string("settled"), "reason_code": .string("meeting_complete"),
-                    "thread_id": .string("main"), "discussion_event_id": .string(seed.id)], createdAt: now))
         }
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in
