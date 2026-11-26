@@ -29,7 +29,7 @@ import Combine
     @Published var url: URL?
     @Published private(set) var generation: UInt64 = 0
     @discardableResult func open(_ url: URL) -> Bool {
-        guard url.scheme == "laa", ["work", "today", "brain", "assets"].contains(url.host ?? "") else { return false }
+        guard url.scheme == "laa", ["chats", "work", "today", "brain", "assets"].contains(url.host ?? "") else { return false }
         self.url = url
         generation &+= 1
         return true

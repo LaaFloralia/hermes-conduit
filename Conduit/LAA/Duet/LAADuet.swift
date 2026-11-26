@@ -19,6 +19,14 @@ enum LAADuet {
     /// only its invite and usage pages, so the web Duet opens; the app
     /// itself and its Shortcuts actions are checked on the device.
     static let webURL = URL(string: "https://claude.ai/duet")!
+    /// The connector keeps notes to 2000 characters (Bridge and Worker).
+    static let noteLimit = 2000
+    /// The link Duet's notifications carry (Bridge `notifyDuetItem`).
+    static let pageLink = URL(string: "laa://chats/duet")!
+    static func opensPage(_ url: URL?) -> Bool { url?.scheme == "laa" && url?.host == "chats" && url?.path == "/duet" }
+    /// The link generation already answered, so a page rebuilt later does
+    /// not reopen Duet from an old notification.
+    @MainActor static var handledLink: UInt64 = 0
 
     /// The words to hand over: trimmed; nothing when only blanks are left.
     static func handoffText(_ draft: String) -> String? {

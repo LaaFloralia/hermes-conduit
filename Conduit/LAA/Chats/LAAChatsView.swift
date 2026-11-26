@@ -7,6 +7,7 @@ import SwiftUI
 struct LAAChatsView: View {
     @ObservedObject var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     /// The Mac's list column asks for a highlighted row and forwards the
     /// menu bar's search, reload and new-chat requests. The phone passes none.
     var selection: LAAChatsListSelection? = nil
@@ -103,6 +104,12 @@ struct LAAChatsView: View {
         // The model lineup Chat's menus offer comes from Work's catalog
         // (LAAChatModelAllowList); read it when the list is first shown.
         .task(id: bridge.revision) { await LAAChatModelAllowList.refresh(bridge) }
+        // A Duet notification (`laa://chats/duet`) opens Duet's page once.
+        .onChange(of: linkRequest.generation, initial: true) { _, generation in
+            guard LAADuet.opensPage(linkRequest.url), LAADuet.handledLink != generation else { return }
+            LAADuet.handledLink = generation
+            openDuet()
+        }
     }
 
     private var liveContent: some View {
@@ -128,10 +135,10 @@ struct LAAChatsView: View {
         }, projects: projects.projects, projectsUnavailable: projects.unavailable,
                         openProject: openProject, newProject: { showingProjectCreator = true },
                         openDuet: openDuet)
-        .navigationDestination(isPresented: $showingDuet) { LAADuetView() }
+        .navigationDestination(isPresented: $showingDuet) { LAADuetScreen() }
         .sheet(isPresented: $showingDuetSheet) {
             NavigationStack {
-                LAADuetView()
+                LAADuetScreen()
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.ChatProjects.done) { showingDuetSheet = false } } }
             }
             .laaSheetSize(.form)
