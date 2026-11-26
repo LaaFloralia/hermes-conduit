@@ -20,7 +20,7 @@ final class LAAMeetingSession: ObservableObject {
     var onTimeout: (() -> Void)?
 
     func observeMic(_ rms: Double) -> Bool {
-        guard turn.ownerTalking, let captureStarted else { return false }
+        guard rms.isFinite, turn.ownerTalking, let captureStarted else { return false }
         micLevel = min(1, rms * 8)
         #if targetEnvironment(macCatalyst)
         return false // Hold Space is the capture boundary on Mac.

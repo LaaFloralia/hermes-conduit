@@ -4490,6 +4490,8 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - The device canary must verify music continuity, Apple speech capture, the per-profile Hermes output, dual-device handoff and Catalyst Space. Installing the separately prepared chair prompt and Bridge route is release work.
 
+**Checked:** 2026-11-26, `adebb146` (Bridge lease tests and deterministic turn/queue probe); release flag remains closed until the build and simulator smoke gates pass.
+
 ## LAA Chats list
 
 **Siblings:** employee widget Chat and existing conversation links · hosted group rooms and group creation · Chat Projects on iPhone and Mac · the LAA settings entry · the upstream Chats list and its search · accessibility and offline copies

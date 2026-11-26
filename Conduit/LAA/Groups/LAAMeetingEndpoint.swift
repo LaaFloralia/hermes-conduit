@@ -114,6 +114,7 @@ final class LAAMeetingEndpoint {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled, let self, let active = self.active, active.grant.generation == id else { return }
+                guard self.canUseAudio else { self.lose(id); return }
                 pulse += 1
                 let sent = self.clock.now
                 do {

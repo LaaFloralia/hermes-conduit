@@ -14,7 +14,7 @@ struct LAAMeetingControls: View {
     let members: [GroupMember]
     let queue: () -> LAAChairedVoicePlayback
     let hasCompetingAudio: () -> Bool
-    let talk: () -> Void
+    let talk: @MainActor () async -> Void
     let releaseTalk: () -> Void
     let mute: () -> Void
     let skip: () -> Void
@@ -58,7 +58,7 @@ struct LAAMeetingControls: View {
                 VStack(alignment: .leading, spacing: 8) { buttons(queue) }
             }
             .padding(.horizontal, 8)
-            .conduitGlassControl(cornerRadius: 22, tint: .clear)
+            .conduitGlassControl(cornerRadius: 12, tint: .clear)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-LAA_MEETING_DIAGNOSTICS") {
                 Text(verbatim: "otherAudio=\(audio.meetingOtherAudioPlaying) policy=\(audio.appliedPolicy.map { String(describing: $0) } ?? "inactive") lease=\(meeting.endpoint.generation ?? "none")")
@@ -85,13 +85,17 @@ struct LAAMeetingControls: View {
         let engaged = queue.phase != .silent
         let talking = meeting.turn.ownerTalking
         let talkButton = button(meeting.claiming ? "接続を中止" : talking ? "話し終える" : "話す",
-                                symbol: talking ? "mic.fill" : "mic",
-                                id: "talk", action: (talking || meeting.claiming) ? releaseTalk : talk)
+                                symbol: talking ? "mic.fill" : "mic", id: "talk") {
+            if talking || meeting.claiming { releaseTalk() } else { Task { await talk() } }
+        }
         #if targetEnvironment(macCatalyst)
         talkButton.focused($talkFocused)
             .accessibilityHint(Text(verbatim: "フォーカス中はスペースキーを押している間だけ話します。"))
             .onKeyPress(.space, phases: [.down, .up, .repeat]) { key in
-                if key.phase == .down, !spaceHeld { spaceHeld = true; talk() }
+                if key.phase == .down, !spaceHeld {
+                    spaceHeld = true
+                    Task { @MainActor in if spaceHeld { await talk() } }
+                }
                 if key.phase == .up, spaceHeld { spaceHeld = false; releaseTalk() }
                 return .handled
             }

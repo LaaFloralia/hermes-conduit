@@ -11822,6 +11822,7 @@ final class AppState: ObservableObject {
 
     private func chairedMeetingGateway(speaker: String) -> HermesVoiceGateway? {
         guard let member = activeRoomSurface?.room.members.first(where: { $0.memberID == speaker || $0.profile == speaker }),
+              (member.target?["kind"]?.stringValue ?? "local") == "local",
               let profile = member.profile, let bridge = dashboardTicketBridge, let connection else { return nil }
         // Reuse the roster member's existing Hermes voice, not the owner's
         // active profile or a generic fallback voice.

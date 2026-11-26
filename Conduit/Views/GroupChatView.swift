@@ -112,7 +112,7 @@ struct GroupChatView: View {
                     meeting: appState.chairedMeeting, members: members,
                     queue: { appState.chairedVoice.core },
                     hasCompetingAudio: { appState.chairedVoiceAudioOwner != .none },
-                    talk: { Task { await appState.requestChairedVoiceTalk() } },
+                    talk: { await appState.requestChairedVoiceTalk() },
                     releaseTalk: appState.requestChairedVoiceListen,
                     mute: { appState.chairedVoice.toggleMute(generation: appState.groupRoomEpoch) },
                     skip: { appState.chairedVoice.skip(generation: appState.groupRoomEpoch) },
