@@ -2826,9 +2826,10 @@ the Mac's staff panel beside an employee chat (HO-08, HO-15, HO-06, HO-26).
 **Open gaps**
 - The Bridge sends no asking employee on a decision (`st`) and no `ownerRole` on a routine yet, so decisions show Monet and the Mac panel lists only chat-delivered routines (`destination`) until it does.
 - The Watch hears of a report only when the iPhone app next runs and shares its context; mirrored notifications themselves are not read on the Watch.
+- On the iOS 27 simulator the mascot shows when a notification is held open; the banner and the Lock Screen row show only the app icon (the system's layout, measured with the Debug fixture).
 - Real APNs delivery with the attachment, the call card during a real GPT Live call, Smart Stack placement on a real Watch and the Mac panel against the real Bridge are device checks.
 
-**Checked:** 2026-11-26, laa/v2-ambient-apple on a32a3d80 (unit and snapshot tests in `ConduitTests/LAAAmbientTests.swift`, `ConduitTests/LAAAmbientSnapshotTests.swift`).
+**Checked:** 2026-11-26, laa/v2-ambient-apple on a32a3d80: iOS (app, widgets, notification extension, Watch app) and Catalyst Debug builds, the captures above on the iOS 27 and watchOS simulators and the Mac; the unit and snapshot tests in `ConduitTests/LAAAmbientTests.swift`, `ConduitTests/LAAAmbientSnapshotTests.swift` compile but have not yet run in the integration suite (the shared build slot stayed taken).
 
 ## Large code blocks in messages
 
