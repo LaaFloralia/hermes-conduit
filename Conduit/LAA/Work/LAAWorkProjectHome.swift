@@ -284,14 +284,15 @@ struct LAAWorkProjectHome: View {
 
 extension LAAWorkProjectSnapshot {
     init(progressNote: String?, requirements: [LAAWorkRequirement]?, sessions: [LAAWorkProjectSession]?,
-         sessionCounts: LAAWorkSessionCounts? = nil, savedAt: Date) {
+         sessionCounts: LAAWorkSessionCounts? = nil, requirementDenominatorLog: [LAAWorkDenominatorChange]? = nil,
+         savedAt: Date) {
         self.progressNote = progressNote; self.requirements = requirements; self.sessions = sessions
-        self.sessionCounts = sessionCounts; self.savedAt = savedAt
+        self.sessionCounts = sessionCounts; self.requirementDenominatorLog = requirementDenominatorLog; self.savedAt = savedAt
     }
 
     func sameContent(as other: Self) -> Bool {
         progressNote == other.progressNote && requirements == other.requirements && sessions == other.sessions
-            && sessionCounts == other.sessionCounts
+            && sessionCounts == other.sessionCounts && requirementDenominatorLog == other.requirementDenominatorLog
     }
 }
 
