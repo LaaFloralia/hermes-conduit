@@ -91,7 +91,10 @@ struct LAAStudioHomeView: View {
                             Spacer()
                             Menu {
                                 Button("Search", systemImage: "magnifyingglass") { searching.toggle() }
-                                if snapshot.supportsV2 { Button("Library", systemImage: "books.vertical") { library = true } }
+                                if snapshot.supportsV2 {
+                                    Button("Library", systemImage: "books.vertical") { library = true }
+                                        .accessibilityIdentifier("laa.studio.library.open")
+                                }
                                 Button("Rules", systemImage: "doc.text") { showingRules = true }
                                     .accessibilityIdentifier("laa.studio.rules")
                             } label: {
