@@ -58,7 +58,6 @@ struct LAAAppearanceThemeList: View {
                 Rectangle().fill(palette.rule).frame(height: LAAStroke.rule).accessibilityHidden(true)
             }
         }
-        .accessibilityIdentifier("settings.appearance.themes")
     }
 
     private func themeRow(_ set: LAAThemeSet) -> some View {
