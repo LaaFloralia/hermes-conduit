@@ -86,7 +86,7 @@ struct LAAAppShell: View {
                 guard scenePhase == .active else { return }
                 guard bridge.status == .paired else { return }
                 if let page: LAADecisionPage = try? await bridge.read("/v1/decisions"), !Task.isCancelled {
-                    decisionCount = page.items.count
+                    decisionCount = page.items.filter(\.needsOwner).count
                 }
             }
             .onChange(of: scenePhase) { _, phase in
