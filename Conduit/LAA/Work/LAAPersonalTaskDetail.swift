@@ -6,6 +6,7 @@ struct LAAPersonalTaskDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dismiss) private var dismiss
     @Environment(\.laaDesktop) private var laaDesktop
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
     /// The list row's short number; this route does not carry one itself.
@@ -41,18 +42,7 @@ struct LAAPersonalTaskDetailView: View {
                     }
                     if let task {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            HStack(spacing: LAASpacing.x2) {
-                                // The short number the owner says, then Linear's
-                                // own identifier.
-                                Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
-                                    .compactMap { $0 }.joined(separator: " · "))
-                                    .laaTextStyle(.secondary).monospacedDigit()
-                                    .foregroundStyle(LAAColor.secondaryText)
-                                    .accessibilityIdentifier("work.task.detail.ref")
-                                if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
-                                Spacer(minLength: LAASpacing.x2)
-                                if let ownerTask, ownerTask.isOpen { completeButton(ownerTask) }
-                            }
+                            taskMetadata(task)
                             Text(verbatim: task.title)
                                 .font(LAAType.title(task.title, size: laaDesktop ? 30 : 26, relativeTo: .title))
                                 .foregroundStyle(LAAColor.text)
@@ -103,6 +93,34 @@ struct LAAPersonalTaskDetailView: View {
             Text(verbatim: ownerTask.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
         }
         .task(id: "\(id):\(bridge.revision)") { task = nil; viewerId = nil; await load() }
+    }
+
+    private func taskMetadata(_ task: LAAPersonalTask) -> some View {
+        // Give the spoken task number and Linear identifier a full row when
+        // the action and genre cannot fit without breaking the number apart.
+        let reference = Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
+            .compactMap { $0 }.joined(separator: " · "))
+            .laaTextStyle(.secondary).monospacedDigit()
+            .foregroundStyle(LAAColor.secondaryText)
+            .accessibilityIdentifier("work.task.detail.ref")
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: LAASpace.s8) {
+                reference.fixedSize()
+                taskActions
+            }
+            VStack(alignment: .leading, spacing: LAASpace.s8) {
+                reference.fixedSize(horizontal: false, vertical: true)
+                taskActions
+            }
+        }
+    }
+
+    private var taskActions: some View {
+        HStack(spacing: LAASpace.s8) {
+            if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
+            Spacer(minLength: 0)
+            if let ownerTask, ownerTask.isOpen { completeButton(ownerTask) }
+        }
     }
 
     /// 完了 beside the number, at the size of the list's glass capsules: a
@@ -243,20 +261,36 @@ struct LAAPersonalTaskDetailView: View {
         .accessibilityIdentifier("work.task.detail.properties")
     }
 
+    @ViewBuilder
     private func property<Value: View>(_ symbol: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
-        GridRow {
-            Label { Text(verbatim: label) } icon: {
-                Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: 18)
-            }
-            .laaTextStyle(.secondary)
-            .foregroundStyle(LAAColor.secondaryText)
-            .gridColumnAlignment(.leading)
-            value()
-                .laaTextStyle(.body)
-                .foregroundStyle(LAAColor.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        let key = Label { Text(verbatim: label) } icon: {
+            Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: LAAIconSize.row)
         }
-        .accessibilityElement(children: .combine)
+        .laaTextStyle(.secondary)
+        .foregroundStyle(LAAColor.secondaryText)
+        let content = value().laaTextStyle(.body).foregroundStyle(LAAColor.text)
+        if typeSize.isAccessibilitySize {
+            // Fit each pair on its own rather than letting a long label in
+            // one property squeeze the value column for the whole grid.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: LAASpace.s12) {
+                    key.fixedSize()
+                    content.fixedSize()
+                }
+                VStack(alignment: .leading, spacing: LAASpace.s4) {
+                    key
+                    content.fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else {
+            GridRow {
+                key.gridColumnAlignment(.leading)
+                content.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     private func genreChip(_ genre: LAATaskGenre) -> some View {

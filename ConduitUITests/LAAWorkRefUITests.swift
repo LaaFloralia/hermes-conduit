@@ -8,7 +8,7 @@ import XCTest
 final class LAAWorkRefUITests: XCTestCase {
     private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
 
-    private func launch(_ appearance: String = "light") throws -> XCUIApplication {
+    private func launch(_ appearance: String = "light", extra: [String] = []) throws -> XCUIApplication {
         guard (try? LabUI.data(LabUI.origin("work-control", legacyPort: port + 1), "/reset")) != nil else {
             throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
         }
@@ -16,7 +16,7 @@ final class LAAWorkRefUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance,
-                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + extra
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
         app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
@@ -112,6 +112,19 @@ final class LAAWorkRefUITests: XCTestCase {
         app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.skill.detail"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["K1"].exists)
+    }
+
+    func testLargestTextKeepsTheTaskReferenceOnOneLine() throws {
+        let app = try launch(extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        let task = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
+        if !task.isHittable { app.swipeUp() }
+        task.press(forDuration: 1.5)
+        let open = app.buttons["詳細・コメント"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5)); open.tap()
+        let meta = app.staticTexts["work.task.detail.ref"]
+        XCTAssertTrue(meta.waitForExistence(timeout: 10))
+        XCTAssertEqual(meta.label, "T12 · BUS-TEST1")
+        XCTAssertGreaterThan(meta.frame.width, meta.frame.height * 3)
     }
 
     func testSearchFindsAShortNumberAndTheRowText() throws {

@@ -44,8 +44,8 @@ struct LAAAppThemeModifier: ViewModifier {
 }
 
 struct LAAAppearanceThemeList: View {
-    @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.locale) private var locale
     @Environment(\.laaPalette) private var palette
     private var themeID: String { LAAAppTheme.store.themeID }
 
@@ -62,8 +62,9 @@ struct LAAAppearanceThemeList: View {
 
     private func themeRow(_ set: LAAThemeSet) -> some View {
         let colors = set.colors(dark: scheme == .dark)
-        let name = locale.language.languageCode?.identifier == "ja" ? set.nameJa : set.name
         let selected = themeID == set.id
+        let name = set.id != LAAThemeSets.ayame.id && locale.language.languageCode?.identifier == "ja"
+            ? set.nameJa : set.name
         return Button { LAAAppTheme.select(set.id) } label: {
             HStack(spacing: LAASpace.s12) {
                 HStack(spacing: LAASpace.s4) {
