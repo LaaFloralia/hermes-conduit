@@ -59,6 +59,11 @@ struct LAAMonetWatchView: View {
     var familyOverride: WidgetFamily?
     @Environment(\.widgetFamily) private var environmentFamily
 
+    init(entry: LAAMonetStatusEntry, familyOverride: WidgetFamily? = nil) {
+        self.entry = entry
+        self.familyOverride = familyOverride
+    }
+
     private var family: WidgetFamily { familyOverride ?? environmentFamily }
     private var spoken: String { "Monet \(entry.plan.line)" }
 
