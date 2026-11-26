@@ -8,12 +8,22 @@ import os
 final class LAAEmployeeChatPreview: ObservableObject {
     @Published private(set) var presentation: OfflineChatPresentation?
     @Published private(set) var failure: String?
+    private(set) var recoversAfterTransportLoss = false
     @Published var queuedSend: PendingComposerSend?
     private(set) var workspace: WidgetWorkspaceID?
+    private var preferredSessionID: String?
+    var queueTargetSessionID: String? {
+        guard let workspace else { return nil }
+        if let presentation, presentation.dashboardID == workspace.dashboardID, presentation.profile == workspace.profile,
+           let cachedID = presentation.composerSessionID { return cachedID }
+        return preferredSessionID
+    }
 
     func canQueue(_ text: String, isComposing: Bool) -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return workspace != nil && failure == nil && queuedSend == nil && !isComposing && !text.isEmpty
+        guard let target = queueTargetSessionID, !target.isEmpty,
+              target != ComposerDraftKey.newConversationSessionID else { return false }
+        return (failure == nil || recoversAfterTransportLoss) && queuedSend == nil && !isComposing && !text.isEmpty
             && AppState.parseSlashCommand(text) == nil
     }
     private var generation = 0
@@ -27,22 +37,42 @@ final class LAAEmployeeChatPreview: ObservableObject {
     static let unavailable = "Macの会話サービスから応答がありません。接続を確認して再試行してください。"
 
     func begin(workspace: WidgetWorkspaceID, directory: URL, preferredSessionID: String?) {
-        clear()
+        if self.workspace != workspace { clear() }
         self.workspace = workspace
-        let interval = OSSignpostID(log: Self.log)
-        self.interval = interval
-        os_signpost(.begin, log: Self.log, name: "EmployeeConversationOpen", signpostID: interval)
+        self.preferredSessionID = preferredSessionID
+        recoversAfterTransportLoss = false
+        failure = nil
+        if interval == nil {
+            let interval = OSSignpostID(log: Self.log)
+            self.interval = interval
+            os_signpost(.begin, log: Self.log, name: "EmployeeConversationOpen", signpostID: interval)
+        }
+        // Retry the transport without flashing away this employee's copy or
+        // moving a reserved send to the new-chat draft while disk is read.
+        guard presentation == nil, read == nil else { return }
         let generation = generation
         read = Task { [weak self] in
             let presentation = await Task.detached(priority: .userInitiated) {
                 Self.load(workspace: workspace, directory: directory, preferredSessionID: preferredSessionID)
             }.value
             guard let self, !Task.isCancelled, self.generation == generation else { return }
-            self.presentation = presentation
+            self.read = nil
+            if let presentation {
+                self.presentation = presentation
+                if let interval = self.interval {
+                    os_signpost(.event, log: Self.log, name: "EmployeeCachedTranscriptReady", signpostID: interval)
+                }
+            }
         }
     }
 
-    func finish(_ outcome: WidgetLaunchOutcome?) {
+    func noteLiveReady() {
+        if let interval {
+            os_signpost(.event, log: Self.log, name: "EmployeeLiveChatReady", signpostID: interval)
+        }
+    }
+
+    func finish(_ outcome: WidgetLaunchOutcome?, recoversAfterTransportLoss: Bool = false) {
         if let interval {
             os_signpost(.end, log: Self.log, name: "EmployeeConversationOpen", signpostID: interval)
             self.interval = nil
@@ -50,6 +80,7 @@ final class LAAEmployeeChatPreview: ObservableObject {
         if case .failed(let reason) = outcome {
             // Keep the employee and their copy on screen. Clearing it would
             // expose the previous employee's still-connected conversation.
+            self.recoversAfterTransportLoss = recoversAfterTransportLoss
             failure = reason
         } else {
             clear()
@@ -65,7 +96,9 @@ final class LAAEmployeeChatPreview: ObservableObject {
         read?.cancel()
         read = nil
         workspace = nil
+        preferredSessionID = nil
         presentation = nil
+        recoversAfterTransportLoss = false
         failure = nil
     }
 

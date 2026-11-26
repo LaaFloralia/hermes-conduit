@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import Combine
 import Foundation
 import XCTest
 @testable import Conduit
@@ -29,11 +30,12 @@ final class LAAChatConnectionTests: XCTestCase {
             let start = ContinuousClock.now
             state.widgetLaunchPendingLinkChanged(link)
             let preview = state.laaEmployeeChatPreview
-            let newCanSend = start.duration(to: .now)
-            XCTAssertTrue(preview.canQueue("fixture turn", isComposing: false))
-            XCTAssertFalse(preview.canQueue("fixture turn", isComposing: true))
+            XCTAssertFalse(preview.canQueue("fixture turn", isComposing: false))
             try await wait { preview.presentation?.displayedMessages.first?.id == "saved" }
             let firstCachedRow = start.duration(to: .now)
+            XCTAssertTrue(preview.canQueue("fixture turn", isComposing: false))
+            XCTAssertFalse(preview.canQueue("fixture turn", isComposing: true))
+            let newCanSend = start.duration(to: .now)
             let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard)
             XCTAssertTrue(state.laaQueueEmployeeOpeningSend("fixture turn", draftKey: key))
             let echoID = try XCTUnwrap(preview.queuedSend?.id)
@@ -43,7 +45,7 @@ final class LAAChatConnectionTests: XCTestCase {
             // the enabled flag was false for the entire fixture attach delay.
             try await Task.sleep(for: .milliseconds(80))
             XCTAssertNotNil(state.laaOpeningEmployeeChat)
-            state.laaEmployeeChatLaunchEnded(link, outcome: .handled)
+            state.laaEmployeeChatLaunchEnded(link, outcome: nil)
             XCTAssertNil(state.laaOpeningEmployeeChat)
             let oldAttachGate = start.duration(to: .now)
             XCTAssertNil(preview.queuedSend)
@@ -57,17 +59,19 @@ final class LAAChatConnectionTests: XCTestCase {
         let profile = "laa-monet"
         let workspace = WidgetWorkspaceID(dashboardID: dashboard, profile: profile)
         let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
-        let key = ComposerDraftKey(profile: profile, sessionID: ComposerDraftKey.newConversationSessionID, dashboardID: dashboard)
+        let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard)
         let defaults = makeScratchDefaults("LAAChatConnectionTests-failed")
         let state = AppState(defaults: defaults, loadSavedConnection: false,
                              sessionPresentationCache: SessionPresentationCache(defaults: defaults))
         state.widgetLaunchPendingLinkChanged(link)
+        state.laaEmployeeChatPreview.begin(workspace: workspace, directory: FileManager.default.temporaryDirectory, preferredSessionID: stored)
         state.laaEmployeeChatLaunchEnded(link, outcome: .failed("fixture unavailable"))
         XCTAssertFalse(state.laaEmployeeChatPreview.canQueue("draft", isComposing: false))
         XCTAssertFalse(state.laaQueueEmployeeOpeningSend("draft", draftKey: key))
         XCTAssertNil(state.laaEmployeeChatPreview.queuedSend)
 
         state.widgetLaunchPendingLinkChanged(link)
+        state.laaEmployeeChatPreview.begin(workspace: workspace, directory: FileManager.default.temporaryDirectory, preferredSessionID: stored)
         XCTAssertTrue(state.laaEmployeeChatPreview.canQueue("draft", isComposing: false))
         state.laaDismissEmployeeChatPreview()
     }
@@ -80,27 +84,56 @@ final class LAAChatConnectionTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let defaults = makeScratchDefaults("LAAChatConnectionTests-attach")
+        let cache = OfflineChatCacheStore(directory: directory.appendingPathComponent("cache"))
+        let draftStore = ComposerDraftStore(fileURL: directory.appendingPathComponent("drafts.json"))
+        let selected = employeeRow(profile: profile)
+        cache.record(dashboardID: dashboard.id, profile: profile, sessionID: stored, title: "Fixture",
+                     messages: [ChatMessage(id: "cached", role: .assistant, content: "Fixture", timestamp: "1")],
+                     sessions: [selected])
         let state = AppState(defaults: defaults, loadSavedConnection: false,
                              dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
                              sessionPresentationCache: SessionPresentationCache(defaults: defaults),
-                             offlineChatCache: OfflineChatCacheStore(directory: directory))
+                             offlineChatCache: cache, composerDraftStore: draftStore)
+        _ = state.handleScenePhase(.active)
+        state.deviceConditionsChanged(.init(pathSatisfied: true))
+        state.showLogin = false
         state.setActiveProfileForTesting(profile)
-        let (client, socket) = try await connect(capabilities: ["client_turn_id": true])
-        defer { client.disconnect() }
-        state.client = client
-        state.widgetLaunchPendingLinkChanged(link)
-        let key = ComposerDraftKey(profile: profile, sessionID: ComposerDraftKey.newConversationSessionID, dashboardID: dashboard.id)
+        let (previousClient, previousSocket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+        defer { previousClient.disconnect() }
+        state.client = previousClient
+        state.connection = previousClient.connection
+        state.isConnected = true
+        state.sessions = [selected]
+        state.profiles = [profile]
+        state.widgetSettledCatalogOwner = workspace
+        XCTAssertTrue(state.routeWidgetLaunchURL(link.url))
+        _ = try await request("session.resume", previousSocket)
+        let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard.id)
+        try await wait { state.laaEmployeeChatPreview.presentation?.composerSessionID == self.stored }
+        XCTAssertTrue(draftStore.save(.init(text: "fixture turn", attachments: [], replyReference: nil), for: key))
         XCTAssertTrue(state.laaQueueEmployeeOpeningSend("fixture turn", draftKey: key))
         let id = try XCTUnwrap(state.laaEmployeeChatPreview.queuedSend?.id)
-        XCTAssertFalse(socket.methods.contains("prompt.submit"))
-        try await attach(client, socket)
-        state.activeSessionId = session
+        // Disconnect the actual transport while the first resume is held.
+        // Nothing has been sent, and there is no user retry in this test.
+        previousClient.disconnect()
+        state.isConnected = false
+        try await wait { state.laaEmployeeChatPreview.recoversAfterTransportLoss }
+        XCTAssertEqual(state.laaEmployeeChatPreview.queuedSend?.id, id)
+        XCTAssertFalse(state.laaEmployeeChatPreview.canQueue("second turn", isComposing: false))
+        XCTAssertFalse(previousSocket.methods.contains("prompt.submit"))
+        let (client, socket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+        defer { client.disconnect() }
+        state.client = client
+        state.connection = client.connection
         state.isConnected = true
-        state.laaEmployeeChatLaunchEnded(link, outcome: .handled)
-        state.settlePendingComposerSend()
+        let resume = try await request("session.resume", socket)
+        XCTAssertEqual(state.laaEmployeeChatPreview.queuedSend?.id, id)
+        XCTAssertFalse(socket.methods.contains("prompt.submit"))
+        let rotatedRuntimeID = "rotated-runtime"
+        try socket.reply(resume, ["session_id": rotatedRuntimeID, "stored_session_id": stored, "running": false])
         let prompt = try await request("prompt.submit", socket)
         let params = try XCTUnwrap(prompt["params"] as? [String: Any])
-        XCTAssertEqual(params["session_id"] as? String, session)
+        XCTAssertEqual(params["session_id"] as? String, rotatedRuntimeID)
         XCTAssertEqual(params["client_turn_id"] as? String, id.uuidString)
         XCTAssertEqual(params["text"] as? String, "fixture turn")
         try socket.reply(prompt, ["status": "streaming"])
@@ -108,6 +141,377 @@ final class LAAChatConnectionTests: XCTestCase {
         try await wait { state.deliveringPendingComposerSendIDs.isEmpty }
         XCTAssertEqual(socket.methods.filter { $0 == "prompt.submit" }.count, 1)
         XCTAssertEqual(state.messages.filter { $0.role == .user }.count, 1)
+        XCTAssertFalse(previousSocket.methods.contains("prompt.submit"))
+    }
+
+    func testEmployeeGenericFailureDoesNotAutoRetryEvenWithOfflineBannerText() async throws {
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-retry-required")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults), composerDraftStore: .init())
+        _ = state.handleScenePhase(.active)
+        state.deviceConditionsChanged(.init(pathSatisfied: true))
+        state.showLogin = false
+        state.setActiveProfileForTesting(profile)
+        state.widgetLaunchPendingLinkChanged(link)
+        state.laaEmployeeChatPreview.begin(workspace: workspace, directory: FileManager.default.temporaryDirectory, preferredSessionID: stored)
+        let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard.id)
+        state.laaEmployeeChatLaunchEnded(link, outcome: .failed(LAAEmployeeWidgetLinks.offlineMessage))
+        XCTAssertFalse(state.laaEmployeeChatPreview.canQueue("fixture draft", isComposing: false))
+        XCTAssertFalse(state.laaQueueEmployeeOpeningSend("fixture draft", draftKey: key))
+        state.widgetLaunchPendingLinkChanged(link)
+        state.laaEmployeeChatPreview.begin(workspace: workspace, directory: FileManager.default.temporaryDirectory, preferredSessionID: stored)
+        XCTAssertTrue(state.laaQueueEmployeeOpeningSend("fixture draft", draftKey: key))
+        let queued = try XCTUnwrap(state.laaEmployeeChatPreview.queuedSend)
+        state.laaEmployeeChatLaunchEnded(link, outcome: .failed(LAAEmployeeWidgetLinks.offlineMessage))
+        XCTAssertFalse(state.laaEmployeeChatPreview.recoversAfterTransportLoss)
+        let (client, socket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+        defer { client.disconnect() }
+        state.client = client
+        state.connection = client.connection
+        state.isConnected = true
+        XCTAssertNil(state.widgetLaunchCoordinator.pendingLink)
+        XCTAssertEqual(state.laaEmployeeChatPreview.queuedSend?.id, queued.id)
+        XCTAssertFalse(socket.methods.contains("session.resume"))
+        XCTAssertFalse(socket.methods.contains("prompt.submit"))
+    }
+
+    func testEmployeePreviewNeverSendsUnboundOrMismatchedDraftIntoLatestChat() async throws {
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        for cachedTarget in [nil, stored] as [String?] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let file = directory.appendingPathComponent("drafts.json")
+            let drafts = ComposerDraftStore(fileURL: file)
+            let cache = OfflineChatCacheStore(directory: directory.appendingPathComponent("cache"))
+            if let cachedTarget {
+                cache.record(dashboardID: dashboard.id, profile: profile, sessionID: cachedTarget, title: "Original",
+                             messages: [ChatMessage(id: "cached", role: .assistant, content: "Fixture", timestamp: "1")],
+                             sessions: [employeeRow(profile: profile)])
+            }
+            let defaults = makeScratchDefaults("LAAChatConnectionTests-restore")
+            let state = AppState(defaults: defaults, loadSavedConnection: false,
+                                 dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                                 sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+                                 offlineChatCache: cache, composerDraftStore: drafts)
+            state.setActiveProfileForTesting(profile)
+            let (client, socket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+            defer { client.disconnect() }
+            state.client = client
+            state.connection = client.connection
+            state.isConnected = true
+            let differentID = "unrelated-durable"
+            state.sessions = [employeeRow(profile: profile, durableID: differentID)]
+            state.widgetSettledCatalogOwner = workspace
+            state.widgetLaunchPendingLinkChanged(link)
+            if let cachedTarget {
+                try await wait { state.laaEmployeeChatPreview.presentation?.composerSessionID == cachedTarget }
+            }
+            let key = ComposerDraftKey(profile: profile, sessionID: cachedTarget ?? ComposerDraftKey.newConversationSessionID,
+                                       dashboardID: dashboard.id)
+            let unrelatedKey = ComposerDraftKey(profile: profile, sessionID: differentID, dashboardID: dashboard.id)
+            let original = ComposerDraft(text: "original", attachments: [], replyReference: nil)
+            let unrelated = ComposerDraft(text: "do not overwrite", attachments: [], replyReference: nil)
+            XCTAssertTrue(drafts.save(original, for: key))
+            XCTAssertTrue(drafts.save(unrelated, for: unrelatedKey))
+            XCTAssertEqual(state.laaEmployeeChatPreview.canQueue(original.text, isComposing: false), cachedTarget != nil)
+            XCTAssertEqual(state.laaQueueEmployeeOpeningSend(original.text, draftKey: key), cachedTarget != nil)
+            let performing = Task { await state.performWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true })) }
+            let resume = try await request("session.resume", socket)
+            try socket.reply(resume, ["session_id": session, "stored_session_id": differentID, "running": false])
+            let outcome = await performing.value
+            XCTAssertEqual(outcome, .handled)
+            state.laaEmployeeChatLaunchEnded(link, outcome: outcome)
+            state.settlePendingComposerSend()
+            XCTAssertNil(state.pendingComposerSend)
+            XCTAssertFalse(socket.methods.contains("prompt.submit"))
+            let reopened = ComposerDraftStore(fileURL: file)
+            XCTAssertEqual(reopened.draft(for: key), original)
+            XCTAssertEqual(reopened.draft(for: unrelatedKey), unrelated)
+        }
+    }
+
+    func testEmployeeQueuePreservesNonTextDraftsAndRequiresAdmittedAttachment() async throws {
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let draftFile = directory.appendingPathComponent("drafts.json")
+        let drafts = ComposerDraftStore(fileURL: draftFile)
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-attachment-proof")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             chatResumeLifecycleOperations: .init(refreshContext: { _, _ in }),
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults), composerDraftStore: drafts)
+        state.setActiveProfileForTesting(profile)
+        let (client, socket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+        defer { client.disconnect() }
+        state.client = client
+        state.connection = client.connection
+        state.isConnected = true
+        state.activeSessionId = session
+        state.sessions = [employeeRow(profile: profile)]
+        state.widgetSettledCatalogOwner = workspace
+        let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard.id)
+        let quoted = ComposerDraft(text: "", attachments: [],
+                                  replyReference: .init(authorName: "Fixture", text: "Quoted", isOwnMessage: false))
+        let attachment = Attachment(id: "fixture-file", name: "Fixture.txt", uri: "https://r1.invalid/fixture.txt",
+                                    mimeType: "text/plain", kind: .document)
+        let withFile = ComposerDraft(text: "file draft", attachments: [attachment])
+        state.widgetLaunchPendingLinkChanged(link)
+        state.laaEmployeeChatPreview.begin(workspace: workspace, directory: directory, preferredSessionID: stored)
+        for draft in [quoted, withFile] {
+            XCTAssertTrue(drafts.save(draft, for: key))
+            XCTAssertFalse(state.laaQueueEmployeeOpeningSend(draft.text.isEmpty ? "new words" : draft.text, draftKey: key))
+            XCTAssertNil(state.laaEmployeeChatPreview.queuedSend)
+            XCTAssertEqual(ComposerDraftStore(fileURL: draftFile).draft(for: key), draft)
+        }
+
+        let plain = ComposerDraft(text: "saved chat fixture", attachments: [])
+        for attachOutsideAppState in [false, true] {
+            // Even a raw attach for the runtime is not evidence that this
+            // workspace adopted the durable chat into its current viewport.
+            if attachOutsideAppState { try await attach(client, socket) }
+            XCTAssertEqual(client.laaHasAttachment(session), attachOutsideAppState)
+            state.widgetLaunchPendingLinkChanged(link)
+            state.laaEmployeeChatPreview.begin(workspace: workspace, directory: directory, preferredSessionID: stored)
+            XCTAssertTrue(drafts.save(plain, for: key))
+            XCTAssertTrue(state.laaQueueEmployeeOpeningSend(plain.text, draftKey: key))
+            state.laaEmployeeChatLaunchEnded(link, outcome: .handled)
+            state.settlePendingComposerSend()
+            XCTAssertNil(state.laaEmployeeChatPreview.queuedSend)
+            XCTAssertNil(state.pendingComposerSend)
+            XCTAssertFalse(socket.methods.contains("prompt.submit"))
+            XCTAssertEqual(ComposerDraftStore(fileURL: draftFile).draft(for: key), plain)
+        }
+    }
+
+    func testEmployeeOpenReusesOnlyTheSelectedChatAttachedOnTheCurrentSocket() async throws {
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-reuse")
+        let selected = employeeRow(profile: profile)
+        let transport = LaneR1Transport()
+        let socket = transport.socket
+        var catalogReads = 0
+        var ticketMints = 0
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             chatResumeLifecycleOperations: .init(loadCatalog: { _, _ in
+                                 catalogReads += 1
+                                 return [selected]
+                             }, mintTicket: { _ in
+                                 ticketMints += 1
+                                 return "fresh-fixture-ticket"
+                             }, refreshContext: { _, _ in }, pendingApprovals: { _, _ in [] }, makeTransport: { transport }),
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        defer {
+            state.client?.disconnect()
+            KeychainHelper.clearConnection(dashboardID: dashboard.id)
+        }
+        _ = state.handleScenePhase(.active)
+        state.showLogin = false
+        state.setActiveProfileForTesting("default")
+        state.connection = .init(baseUrl: dashboard.normalizedURL, ticket: "previous-fixture-ticket")
+        state.isConnected = true
+        state.profiles = ["default", profile]
+        state.widgetLaunchPendingLinkChanged(link)
+        let lease = WidgetLaunchLease(isCurrent: { true })
+        XCTAssertFalse(state.laaReuseAttachedEmployeeChat(selected, workspace: workspace, lease: lease))
+
+        // Exercise the actual cross-profile preparation: one scoped ticket,
+        // catalog and attach, then the employee performer reuses that attach.
+        let preparing = Task { await state.prepareWidgetLaunch(link, lease: lease) }
+        try await wait { transport.open != nil }
+        transport.open?(socket)
+        try socket.event(["type": "gateway.ready", "payload": ["replay_epoch": epoch]])
+        let handshake = try await request("client.capabilities", socket)
+        try socket.reply(handshake, [:])
+        let resume = try await request("session.resume", socket)
+        try socket.reply(resume, ["session_id": session, "stored_session_id": stored, "running": false])
+        let prepared = await preparing.value
+        XCTAssertEqual(prepared, .handled)
+        let client = try XCTUnwrap(state.client)
+        defer { client.disconnect() }
+        XCTAssertEqual(client.profile, profile)
+        let moved = employeeRow(profile: profile, durableID: "different-durable")
+        XCTAssertFalse(state.laaReuseAttachedEmployeeChat(moved, workspace: workspace, lease: lease),
+                       "Sharing a historical runtime alias doesn't prove the selected chat is attached")
+        XCTAssertFalse(state.laaReuseAttachedEmployeeChat(selected, workspace: workspace,
+                                                         lease: WidgetLaunchLease(isCurrent: { false })))
+        let outcome = await state.performWidgetLaunch(link, lease: lease)
+        XCTAssertEqual(outcome, .handled)
+        XCTAssertEqual(ticketMints, 1)
+        XCTAssertEqual(catalogReads, 1)
+        XCTAssertEqual(socket.methods.filter { $0 == "session.resume" }.count, 1)
+
+        let (replacement, replacementSocket) = try await connect(profile: profile)
+        defer { replacement.disconnect() }
+        try await attach(replacement, replacementSocket)
+        state.client = replacement
+        state.connection = replacement.connection
+        XCTAssertFalse(state.laaReuseAttachedEmployeeChat(selected, workspace: workspace, lease: lease),
+                       "A raw attachment on a replacement client was not admitted into AppState's viewport")
+        let fallback = Task { await state.performWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true })) }
+        let fallbackResume = try await request("session.resume", replacementSocket, occurrence: 2)
+        try replacementSocket.reply(fallbackResume, ["session_id": session, "stored_session_id": stored, "running": false])
+        let fallbackOutcome = await fallback.value
+        XCTAssertEqual(fallbackOutcome, .handled)
+    }
+
+    func testEmployeeOfflinePreflightQueuesAfterFailureAndAutoSendsOnce() async throws {
+        try await assertEmployeeOfflinePreflight(autoRecover: true)
+    }
+
+    func testEmployeeOfflineQueueRestoresOriginalDraftOnDismiss() async throws {
+        try await assertEmployeeOfflinePreflight(autoRecover: false)
+    }
+
+    private func assertEmployeeOfflinePreflight(autoRecover: Bool) async throws {
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = OfflineChatCacheStore(directory: directory.appendingPathComponent("cache"))
+        let draftFile = directory.appendingPathComponent("drafts.json")
+        let drafts = ComposerDraftStore(fileURL: draftFile)
+        let selected = employeeRow(profile: profile)
+        cache.record(dashboardID: dashboard.id, profile: profile, sessionID: stored, title: "Fixture",
+                     messages: [ChatMessage(id: "cached", role: .assistant, content: "Fixture", timestamp: "1")],
+                     sessions: [selected])
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-offline-preflight")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+                             offlineChatCache: cache, composerDraftStore: drafts,
+                             deviceConditionsUpdates: Empty<DeviceConditions, Never>().eraseToAnyPublisher())
+        _ = state.handleScenePhase(.active)
+        state.showLogin = false
+        state.setActiveProfileForTesting(profile)
+        state.profiles = [profile]
+        state.deviceConditionsChanged(.init(pathSatisfied: false))
+        XCTAssertTrue(state.routeWidgetLaunchURL(link.url))
+        try await wait {
+            state.laaEmployeeChatPreview.recoversAfterTransportLoss && state.laaEmployeeChatPreview.queueTargetSessionID == self.stored
+        }
+        XCTAssertEqual(state.laaEmployeeChatPreview.failure, LAAEmployeeWidgetLinks.offlineMessage)
+        XCTAssertFalse(state.laaIsEmployeeChatWaiting(for: workspace))
+        XCTAssertNil(state.widgetLaunchCoordinator.pendingLink)
+        let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard.id)
+        let otherKey = ComposerDraftKey(profile: profile, sessionID: "other-chat", dashboardID: dashboard.id)
+        let typed = ComposerDraft(text: "offline text", attachments: [], replyReference: nil)
+        let other = ComposerDraft(text: "other draft", attachments: [], replyReference: nil)
+        XCTAssertTrue(drafts.save(typed, for: key))
+        XCTAssertTrue(drafts.save(other, for: otherKey))
+        XCTAssertFalse(state.laaQueueEmployeeOpeningSend(other.text, draftKey: otherKey))
+        XCTAssertTrue(state.laaEmployeeChatPreview.canQueue(typed.text, isComposing: false))
+        XCTAssertTrue(state.laaQueueEmployeeOpeningSend(typed.text, draftKey: key))
+        let queued = try XCTUnwrap(state.laaEmployeeChatPreview.queuedSend)
+        XCTAssertEqual(queued.draftKey, key)
+        XCTAssertNil(state.pendingComposerSend)
+        XCTAssertEqual(ComposerDraftStore(fileURL: draftFile).draft(for: key), .empty)
+        if !autoRecover {
+            let newer = ComposerDraft(text: "new words", attachments: [],
+                                      replyReference: .init(authorName: "Fixture", text: "Later quote", isOwnMessage: false))
+            XCTAssertTrue(drafts.save(newer, for: key))
+            state.laaDismissEmployeeChatPreview()
+            let reopened = ComposerDraftStore(fileURL: draftFile)
+            XCTAssertEqual(reopened.draft(for: key).text, "offline text\n\nnew words")
+            XCTAssertEqual(reopened.draft(for: key).replyReference, newer.replyReference)
+            XCTAssertEqual(reopened.draft(for: otherKey), other)
+            return
+        }
+
+        let (client, socket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+        defer { client.disconnect() }
+        state.client = client
+        state.connection = client.connection
+        state.sessions = [selected]
+        state.widgetSettledCatalogOwner = workspace
+        state.isConnected = true // The network path is still offline.
+        XCTAssertNil(state.widgetLaunchCoordinator.pendingLink)
+        XCTAssertFalse(socket.methods.contains("prompt.submit"))
+        state.deviceConditionsChanged(.init(pathSatisfied: true))
+        let resume = try await request("session.resume", socket)
+        XCTAssertEqual(state.laaEmployeeChatPreview.queuedSend?.id, queued.id)
+        XCTAssertFalse(socket.methods.contains("prompt.submit"))
+        let live = "live-after-offline-preflight"
+        try socket.reply(resume, ["session_id": live, "stored_session_id": stored, "running": false])
+        let prompt = try await request("prompt.submit", socket)
+        let params = try XCTUnwrap(prompt["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, live)
+        XCTAssertEqual(params["client_turn_id"] as? String, queued.id.uuidString)
+        XCTAssertEqual(params["text"] as? String, typed.text)
+        try socket.reply(prompt, ["status": "streaming"])
+        try await wait { state.deliveringPendingComposerSendIDs.isEmpty }
+        state.settlePendingComposerSend()
+        XCTAssertEqual(socket.methods.filter { $0 == "prompt.submit" }.count, 1)
+        let reopened = ComposerDraftStore(fileURL: draftFile)
+        XCTAssertEqual(reopened.draft(for: key), .empty)
+        XCTAssertEqual(reopened.draft(for: otherKey), other)
+    }
+
+    func testEmployeeWaitingRequiresPendingOwnerAndEndsOnFailure() throws {
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let otherWorkspace = WidgetWorkspaceID(dashboardID: UUID(), profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-waiting-owner")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        _ = state.handleScenePhase(.active)
+        state.setActiveProfileForTesting(profile)
+        state.deviceConditionsChanged(.init(pathSatisfied: true))
+        XCTAssertFalse(state.laaIsEmployeeChatWaiting(for: workspace))
+        XCTAssertTrue(state.routeWidgetLaunchURL(link.url))
+        XCTAssertTrue(state.laaIsEmployeeChatWaiting(for: workspace))
+        XCTAssertFalse(state.laaIsEmployeeChatWaiting(for: otherWorkspace))
+        state.deviceConditionsChanged(.init(pathSatisfied: false))
+        XCTAssertFalse(state.laaIsEmployeeChatWaiting(for: workspace))
+        state.deviceConditionsChanged(.init(pathSatisfied: true))
+        state.laaEmployeeChatLaunchEnded(link, outcome: .failed(LAAEmployeeWidgetLinks.offlineMessage))
+        XCTAssertFalse(state.laaIsEmployeeChatWaiting(for: workspace))
+        state.laaDismissEmployeeChatPreview()
+    }
+
+    func testEmployeeCatalogFailureEndsTheWaitWithoutCreatingAChat() async throws {
+        enum CatalogFailure: Error { case unavailable }
+        let profile = "laa-monet"
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-catalog")
+        var reads = 0
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             sessionCatalogLoader: { _ in reads += 1; throw CatalogFailure.unavailable },
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        _ = state.handleScenePhase(.active)
+        state.setActiveProfileForTesting(profile)
+        state.profiles = [profile]
+        state.isConnected = true
+        state.widgetLaunchPendingLinkChanged(link)
+        let outcome = await state.prepareWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true }))
+        guard case .failed = outcome else { return XCTFail("A known failed read is not a wait") }
+        state.laaEmployeeChatLaunchEnded(link, outcome: outcome)
+        XCTAssertNotNil(state.laaEmployeeChatPreview.failure)
+        XCTAssertNil(state.activeSessionId)
+        XCTAssertEqual(reads, 1)
     }
 
     func testReasoningOptsInOnlyOnCreateAndEveryResumeWhenAdvertised() async throws {
@@ -287,9 +691,15 @@ final class LAAChatConnectionTests: XCTestCase {
          "payload": ["text": text, "kind": "lifecycle", "tool": "fixture", "tool_use_id": "fixture-tool"]]
     }
 
-    private func connect(capabilities: [String: Any] = [:], capabilityReply: [String: Any] = [:]) async throws -> (HermesClient, LaneR1Socket) {
+    private func employeeRow(profile: String, durableID: String? = nil) -> SessionSummary {
+        SessionSummary(id: durableID ?? stored, alternateIds: [session], title: "Fixture", model: "Fixture",
+                       updatedLabel: "now", profile: profile, source: .chat, isActive: true,
+                       isArchived: false, lineageRootId: nil)
+    }
+
+    private func connect(profile: String? = nil, capabilities: [String: Any] = [:], capabilityReply: [String: Any] = [:]) async throws -> (HermesClient, LaneR1Socket) {
         let transport = LaneR1Transport()
-        let client = HermesClient(connection: .init(baseUrl: "https://r1.invalid", ticket: "fixture"),
+        let client = HermesClient(connection: .init(baseUrl: "https://r1.invalid", ticket: "fixture"), profile: profile,
                                   transportFactory: { transport }, monitorsPath: false)
         let connected = Task { try await client.connect() }
         try await wait { transport.open != nil }

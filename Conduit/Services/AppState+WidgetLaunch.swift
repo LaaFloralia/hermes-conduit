@@ -27,8 +27,13 @@ extension AppState {
                reference: link.reference) {
             link = resolved
         }
-        #endif
+        // The foreground/bootstrap path already owns this dashboard's
+        // socket and catalog. Let it finish rather than demote its sync and
+        // repeat the work on the employee route.
+        if !laaEmployeeLaunchJoinsConnectionWork(link) { cancelChatResumeRestoration() }
+        #else
         cancelChatResumeRestoration()
+        #endif
         newChatLaunchStartedInApp = false
         widgetLaunchCoordinator.receive(link)
         // A New Chat's chat shows straight away, empty, while it waits for
@@ -63,6 +68,14 @@ extension AppState {
         // previous switch is still finishing. Wait even when the desired
         // profile currently appears selected; its switch may yet roll back.
         guard !isProfileSwitching else { return .deferred }
+        #if LAA_BUILD
+        if link.action == .employeeChat, workspace.dashboardID == activeDashboardID {
+            if !isConnected, !networkPathUsable {
+                return laaEmployeeOfflineFailure(workspace: workspace, lease: lease)
+            }
+            if laaEmployeeBootstrapInFlight { return .deferred }
+        }
+        #endif
 
         if workspace.dashboardID != activeDashboardID {
             await switchDashboard(to: workspace.dashboardID, widgetLease: lease)
@@ -82,6 +95,9 @@ extension AppState {
         }
         guard isConnected else {
             #if LAA_BUILD
+            if link.action == .employeeChat, !networkPathUsable {
+                return laaEmployeeOfflineFailure(workspace: workspace, lease: lease)
+            }
             if LAAWidgetEmployee.forProfile(workspace.profile) != nil, !isConnecting {
                 return .failed(LAAEmployeeWidgetLinks.offlineMessage)
             }
@@ -130,9 +146,22 @@ extension AppState {
             // would have read this catalog (routeWidgetLaunchURL), and a
             // cancelled sync drops the rows it fetched. Read it here rather
             // than wait for a load nothing else starts.
-            await loadSessionsForWidgetLaunch()
+            #if LAA_BUILD
+            let catalogSocket = link.action == .employeeChat && client?.isConnected == true ? client : nil
+            #endif
+            let loaded = await loadSessionsForWidgetLaunch()
             guard lease.isCurrent else { return .deferred }
-            if widgetSettledCatalogOwner != workspace { return .deferred }
+            if widgetSettledCatalogOwner != workspace {
+                #if LAA_BUILD
+                if link.action == .employeeChat, !loaded {
+                    if !networkPathUsable || catalogSocket?.isConnected == false {
+                        return laaEmployeeOfflineFailure(workspace: workspace, lease: lease)
+                    }
+                    return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+                }
+                #endif
+                return .deferred
+            }
         }
         if link.action == .resume, let reference = link.reference, reference.kind == .dashboard {
             guard widgetSettledCatalogOwner == workspace else { return .deferred }
@@ -180,23 +209,49 @@ extension AppState {
         case .usage:
             return .handled // Normally consumed by routeWidgetLaunchURL.
         case .employeeChat:
+            guard isConnected, client?.isConnected != false else {
+                // Preparation completed; do not turn authentication or a
+                // missing client into a recoverable transport failure.
+                if !networkPathUsable || (!showLogin && client?.isConnected == false) {
+                    return laaEmployeeOfflineFailure(workspace: workspace, lease: lease)
+                }
+                return .failed(LAAEmployeeWidgetLinks.offlineMessage)
+            }
+            let liveSocket = client.flatMap { $0.isConnected ? $0 : nil }
             // Prefer the profile's saved dashboard chat, then its latest
             // available chat. Create only after a successful empty catalog.
             let rows = activeProfileSessions.filter { !$0.isArchived && $0.source == .chat }
             let saved = chatResumeWidgetReference(for: workspace.profile).map(Self.widgetReference(from:))
-            let chosen = saved.flatMap { ref -> WidgetConversationReference? in
-                guard ref.kind == .dashboard, ref.scopeProfile == workspace.profile,
-                      rows.contains(where: { $0.id == ref.sessionID || $0.storedSessionId == ref.sessionID || $0.alternateIds.contains(ref.sessionID) }) else { return nil }
-                return ref
-            } ?? ChatResumeSessionResolver.latestChat(in: rows).map { row in
-                WidgetConversationReference(kind: .dashboard, scopeProfile: workspace.profile, botName: nil,
-                    botLabel: nil, sessionID: row.storedSessionId ?? row.id, isUnverified: false)
+            let selection: (row: SessionSummary, reference: WidgetConversationReference)?
+            if let saved, saved.kind == .dashboard, saved.scopeProfile == workspace.profile,
+               let row = rows.first(where: { $0.id == saved.sessionID || $0.storedSessionId == saved.sessionID })
+                    ?? rows.first(where: { $0.alternateIds.contains(saved.sessionID) }) {
+                selection = (row, saved)
+            } else {
+                selection = ChatResumeSessionResolver.latestChat(in: rows).map { row in
+                    (row, WidgetConversationReference(kind: .dashboard, scopeProfile: workspace.profile, botName: nil,
+                        botLabel: nil, sessionID: row.storedSessionId ?? row.id, isUnverified: false))
+                }
             }
-            if let chosen { return await openWidgetConversation(chosen, workspace: workspace, lease: lease) }
-            let previous = activeSessionId
-            await createNewSession(widgetLease: lease)
+            if let selection {
+                if laaReuseAttachedEmployeeChat(selection.row, workspace: workspace, lease: lease) { return .handled }
+                let outcome = await openWidgetConversation(selection.reference, workspace: workspace, lease: lease)
+                if lease.isCurrent, outcome != .handled, outcome != .superseded,
+                   !networkPathUsable || liveSocket?.isConnected == false {
+                    return laaEmployeeOfflineFailure(workspace: workspace, lease: lease)
+                }
+                return outcome
+            }
+            guard widgetSettledCatalogOwner == workspace else { return .deferred }
+            let created = await createNewSession(widgetLease: lease)
             guard lease.isCurrent else { return .deferred }
-            return activeSessionId != previous ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            guard let created, activeSessionId == created else {
+                if !networkPathUsable || liveSocket?.isConnected == false {
+                    return .failed(LAAEmployeeWidgetLinks.offlineMessage)
+                }
+                return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
+            return .handled
         #endif
         }
     }
