@@ -118,7 +118,7 @@ struct LAADriveBrowserView: View {
             results
         }
         .tint(LAAColor.link)
-        .sheet(isPresented: $showRules) { LAADriveOperatingRulesView(surface: .drive).laaSheetSize(.page) }
+        .navigationDestination(isPresented: $showRules) { LAADriveOperatingRulesView(surface: .drive) }
         .refreshable { await reload(key, debounce: false) }
         .task(id: preferenceKey) {
             layout = Layout(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".layout") ?? "") ?? (desktop ? .list : .grid)

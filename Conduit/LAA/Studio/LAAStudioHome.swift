@@ -44,7 +44,7 @@ struct LAAStudioHomeView: View {
             Task { await load(refreshReviews: true) }
         }
         .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge) }
-        .sheet(isPresented: $showingRules) { LAADriveOperatingRulesView(surface: .studio).laaSheetSize(.page) }
+        .navigationDestination(isPresented: $showingRules) { LAADriveOperatingRulesView(surface: .studio) }
         .sheet(isPresented: $library) {
             NavigationStack {
                 if let snapshot { ScrollView { LAAStudioCatalogView(snapshot: snapshot).padding(LAASpacing.horizontal) }

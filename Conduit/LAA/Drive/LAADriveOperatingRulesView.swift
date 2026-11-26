@@ -17,30 +17,28 @@ struct LAADriveOperatingRulesView: View {
     @State private var attempt = 0
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    Text(verbatim: surface.source).laaTextStyle(.secondary)
-                        .foregroundStyle(LAAColor.secondaryText)
-                    if let markdown {
-                        MarkdownText(source: markdown, foregroundStyle: LAAColor.text)
-                            .environment(\.laaRichContentStyle, true)
-                            .accessibilityIdentifier("laa.doc.rules.body")
-                    } else if failed {
-                        Text(verbatim: missing ? "Driveの所定の場所に運用ルールがありません。" : "Driveの接続を確認して、もう一度お試しください。")
-                            .laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-                        Button("Retry") { attempt += 1 }
-                    } else {
-                        LAALoadingDots()
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                Text(verbatim: surface.source + " / Rules").laaTextStyle(.secondary)
+                    .foregroundStyle(LAAColor.secondaryText)
+                if let markdown {
+                    MarkdownText(source: markdown, foregroundStyle: LAAColor.text)
+                        .environment(\.laaRichContentStyle, true)
+                        .accessibilityIdentifier("laa.doc.rules.body")
+                } else if failed {
+                    Text(verbatim: missing ? "Driveの所定の場所に運用ルールがありません。" : "Driveの接続を確認して、もう一度お試しください。")
+                        .laaTextStyle(.body).foregroundStyle(LAAColor.attention)
+                    Button("Retry") { attempt += 1 }
+                } else {
+                    LAALoadingDots()
                 }
-                .laaDocPaper()
             }
-            .background(LAAColor.surface.ignoresSafeArea())
-            .navigationTitle("Rules")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .laaDocPaper()
         }
+        .background(LAAColor.surface.ignoresSafeArea())
+        .navigationBarBackButtonHidden()
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .task(id: [bridge.revision, attempt]) {
             markdown = nil; failed = false; missing = false
             do {
