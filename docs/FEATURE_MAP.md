@@ -83,6 +83,7 @@ keyboard controls, draft handoff, the eight-second boundary and final expiry.
 
 **Rulings**
 - The header overlays the transcript and is the same in the preview and the live chat (owner, 2026-11-13).
+  At accessibility text sizes and on a Mac the live chat's header takes its own row above the transcript, so a tall header never hides the newest message (2026-11-27, laa/v2-design; owner's 2026-11-26 capture findings 5 and 12).
 - Monet's row on the Chat tab is the common employee row (owner, 2026-11-13).
 - No suggestion row above the composer (owner, 2026-11-13). Upstream's opt-in `PredictiveRow` is a separate
   feature and stays off by default.
@@ -94,7 +95,7 @@ keyboard controls, draft handoff, the eight-second boundary and final expiry.
 - Host support for opt-in reasoning and replay is a separate deployment requirement.
 - The preview's first message sits about 7 pt lower than the live chat's.
 
-**Checked:** 2026-11-25, laa/v2-chat (preview send and failed-open retry, model menu, attach, reasoning opt-in and replay); 2026-11-15, laa/selection-style (header mascot 78 pt, 66 pt at accessibility sizes: header snapshots at 375/440, `LAACompactChatSnapshotTests`, `LAAChatDesignTests` on the 440×956 simulator, light and dark); 2026-11-14, laa/final-chat-visual (header mascot 66 pt, 56 pt at accessibility sizes: header snapshots at 375/440, LAACompactChatSnapshotTests, LAAChatDesignUITests on the 440×956 simulator, light and dark; Mac window shots); 2026-11-13, 3ef5680d (laa/chat-ui-layout): 42 tests on the 440×956 simulator (header snapshots at 375/440,
+**Checked:** 2026-11-27, laa/v2-design (header row at accessibility sizes and on a Mac, overlay otherwise: `LAAChatDesignUITests`, `LAAChatRuntimeChipUITests`); 2026-11-25, laa/v2-chat (preview send and failed-open retry, model menu, attach, reasoning opt-in and replay); 2026-11-15, laa/selection-style (header mascot 78 pt, 66 pt at accessibility sizes: header snapshots at 375/440, `LAACompactChatSnapshotTests`, `LAAChatDesignTests` on the 440×956 simulator, light and dark); 2026-11-14, laa/final-chat-visual (header mascot 66 pt, 56 pt at accessibility sizes: header snapshots at 375/440, LAACompactChatSnapshotTests, LAAChatDesignUITests on the 440×956 simulator, light and dark; Mac window shots); 2026-11-13, 3ef5680d (laa/chat-ui-layout): 42 tests on the 440×956 simulator (header snapshots at 375/440,
 normal and accessibility sizes, light and dark; Chat list, conversation, preview, composer and send-scroll UI tests).
 
 ## Hermes is waiting on you
