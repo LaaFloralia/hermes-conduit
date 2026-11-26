@@ -329,6 +329,9 @@ struct LAABackgroundUITestFixtureScreen: View {
                         Button(String("接続")) { sheet = .pairing }.accessibilityIdentifier("fixture.bridge")
                         Button(String("一覧")) { sheet = .groupList }.accessibilityIdentifier("fixture.groups.list")
                     }.font(.caption).padding(4)
+                    // The employee's mascot reaches up into the navigation
+                    // row by design; the test controls stay above it.
+                    .zIndex(1)
                 }
                 if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_REAL_BRIDGE") {
                     HStack {
@@ -342,6 +345,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                         }.accessibilityIdentifier("fixture.bridge.verify")
                         Text(bridgeResult).accessibilityIdentifier("fixture.bridge.result")
                     }
+                    .zIndex(1)
                 }
                 if let name = fake.createdName { Text(verbatim: "作成済み：\(name)").accessibilityIdentifier("fixture.created") }
                 conversationScreen.environmentObject(fake.state)

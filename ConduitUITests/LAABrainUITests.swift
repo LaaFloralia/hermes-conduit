@@ -466,7 +466,7 @@ final class LAABrainUITests: XCTestCase {
         case "laa.markdown.format.table": return "表を挿入"
         case "laa.markdown.format.indent": return "インデントを進める"
         case "laa.markdown.format.outdent": return "インデントを戻す"
-        case "laa.markdown.format.undo": return "取り消す"
+        case "laa.markdown.format.undo": return "Undo"
         case "laa.markdown.format.dismiss": return "キーボードを閉じる"
         default: return ""
         }
