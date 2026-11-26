@@ -89,14 +89,18 @@ struct LAAWorkSessionsSection: View {
                             }
                         let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
                         if rows.isEmpty { Text(verbatim: "セッションはありません").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                        else { group("", rows, children) }
+                        else { group("", headingID: "", rows, children) }
                     }
                 }
                 let ungrouped = shown((visible.pinned + visible.recent).filter { row in !projects.contains { $0.id == LAAWorkSessionOrder.projectID(row, in: matches) && !$0.isArchived } })
-                if !ungrouped.isEmpty { group("プロジェクトなし", ungrouped, children) }
+                if !ungrouped.isEmpty {
+                    group("No Project", headingID: "work.sessions.ungrouped.heading", ungrouped, children)
+                }
             } else {
                 let sections = LAAWorkSessionOrder.sections(matches)
-                if !sections.active.isEmpty { group("実行中・判断待ち", shown(sections.active), children) }
+                if !sections.active.isEmpty {
+                    group("Active", headingID: "work.sessions.active.heading", shown(sections.active), children)
+                }
                 if !sections.pinned.isEmpty {
                     group(LAACopy.WorkTab.pinned, headingID: "work.sessions.pinned.heading", shown(sections.pinned), children)
                 }
