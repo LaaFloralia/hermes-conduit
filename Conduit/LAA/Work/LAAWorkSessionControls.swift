@@ -120,14 +120,39 @@ struct LAAWorkSessionControls: View {
     /// lists the session provider's models under the request → running line;
     /// the effort menu, the current model's efforts. What cannot be changed
     /// stays listed and disabled, with the reason at the top.
+    /// The harness the session runs on: what the daemon reports, else the
+    /// provider's own.
+    private var harness: LAAHarness? { LAAHarness.work(session.harness ?? session.observed?.provider) }
+    /// The models this session can switch to on its own harness (a model
+    /// change keeps the agent), and the other harnesses' models (a provider
+    /// switch hands the conversation over), each harness once.
+    /// Muse stays listed here, disabled with its reason, until it can run
+    /// (owner, 2026-11-23), rather than as a harness of its own.
+    private var ownModels: [LAAWorkModelSelection.Model] {
+        models.filter { $0.provider == session.observed?.provider || ($0.provider == "muse" && !$0.available) }
+    }
+    private var harnessGroups: [LAAWorkModelSelection.HarnessGroup] {
+        let others = LAAWorkModelSelection.harnesses(models.filter { $0.provider != session.observed?.provider && $0.provider != "muse" })
+            .filter { !$0.fast && $0.harness.id != harness?.id }
+        guard let harness else { return others }
+        return [LAAWorkModelSelection.HarnessGroup(harness: harness, fast: false,
+                                                   models: ownModels.filter { $0.provider != "muse" })] + others
+    }
+
     private func pickers(_ modelText: String, name: String, effort: String) -> some View {
         LAAModelEffortPickers(
+            harness: harness, harnessHint: modelLock ?? "実行基盤を変更",
             model: currentModel, provider: session.observed?.provider, effort: effort, name: name,
             current: observing, attention: mismatch != nil, changingModel: (changing && changingWhat == .model) || session.modelSwitch != nil,
             changingEffort: changing && changingWhat != .model, identifier: "work.session",
             modelValueSuffix: mismatch.map { "、依頼 " + $0.requested },
             modelHint: modelLock ?? "モデルを変更", effortHint: effortLock ?? "推論の強さを変更"
         ) {
+            LAAWorkHarnessMenu(groups: harnessGroups, current: harnessGroups.first,
+                               chosen: ownModels.first { $0.model == currentModel && $0.provider == session.observed?.provider },
+                               identifier: "work.session.harness", lock: modelLock,
+                               disabled: { !$0.available || targetProfile($0) == nil }) { _, model in changeModel(model) }
+        } modelMenu: {
             if let mismatch {
                 // Why the face says another model than the one asked for.
                 Section {
@@ -138,7 +163,8 @@ struct LAAWorkSessionControls: View {
                 }
             }
             if let modelLock { LAAMenuReason(text: modelLock) }
-            ForEach(LAAWorkModelSelection.providers(models), id: \.name) { group in
+            // Only the running harness's models; another harness is chosen in its own menu.
+            ForEach(LAAWorkModelSelection.providers(ownModels.isEmpty ? models : ownModels), id: \.name) { group in
                 Section(group.name) {
                     ForEach(group.models) { choice in
                         let selected = choice.model == currentModel && choice.provider == session.observed?.provider

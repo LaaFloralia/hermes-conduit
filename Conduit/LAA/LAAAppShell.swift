@@ -105,7 +105,6 @@ struct LAAAppShell: View {
             .onChange(of: workLinkRequest.generation, initial: true) { _, _ in
                 guard let host = workLinkRequest.url?.host else { return }
                 switch host {
-                case "chats": selectedTab = .chats
                 case "work": selectedTab = .work
                 case "today": selectedTab = .today
                 case "brain": selectedTab = .brain

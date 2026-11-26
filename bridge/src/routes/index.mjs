@@ -40,6 +40,7 @@ import { createGoogleCalendar } from '../calendar/google.mjs';
 import { createCalendarReminders } from '../calendar/reminders.mjs';
 import { calendarRoutes } from './calendar.mjs';
 import { routineRoutes } from './routines.mjs';
+import { staffRoutes } from './staff.mjs';
 import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
 import { deviceRoutes } from './devices.mjs';
@@ -54,7 +55,6 @@ import { createPhoneUse } from '../phone-use/service.mjs';
 import { phoneUseRoutes } from '../phone-use/routes.mjs';
 import { deviceReportRoutes } from './device-reports.mjs';
 import { campaignRoutes } from './campaigns.mjs';
-import { duetRoutes } from './duet.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {}, lane = null } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -180,7 +180,6 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
 
   const routes = [
     ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
-    ...duetRoutes({ dir: store.dir, now, live: !lane && sessionOptions.live === true, registerCleanup: sessionOptions.registerCleanup }),
     ...createDecisionRoutes({ service: decisions }),
     ...(!lane ? [
       ...taskRoutes({ ...(options.tasks ?? {}), now }),
@@ -188,6 +187,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
       ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
     ] : []),
     ...skillRoutes({ ...(options.skills ?? {}), refs }),
+    ...staffRoutes({ ...options.staff, log: options.log, lane }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...habitRoutes({ dir: store.dir, now, ...options.habits }),
     ...(!lane ? brainRoutes({ store, now, options: options.brain ?? {} }) : []),

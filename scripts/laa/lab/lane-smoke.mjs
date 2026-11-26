@@ -71,8 +71,11 @@ async function workflow(lane, index, other) {
   };
   // Same choices → create → send → conversation → archive shape as Work UI.
   assert.equal((await request('/v1/sessions')).items.length, 0);
-  const { defaultProfile } = await request('/v1/session-options?catalogOnly=true');
+  const { defaultProfile, profiles } = await request('/v1/session-options?catalogOnly=true');
   assert.equal(defaultProfile, 'lab-echo');
+  // The harness selector's source: each profile's harness, else its provider (the lane's Echo).
+  assert.deepEqual(profiles.map((p) => p.harness ?? p.provider), ['lab']);
+  assert.ok(profiles.every((p) => p.metered !== true), 'the lane offers no metered route');
   const prompt = `Lane ${index} original`;
   const created = await request('/v1/sessions', 'POST', { profile: defaultProfile, requestId: 'same-run-id', prompt }, 'create');
   const id = created.id ?? created.session?.id;
@@ -89,6 +92,9 @@ async function workflow(lane, index, other) {
     await sleep(100);
   }
   assert.deepEqual(echoed, [`Lab Echo: ${prompt}`, `Lab Echo: ${followUp}`]);
+  // The harness the selector shows for a running session is the daemon's own, read back.
+  const readBack = (await request('/v1/sessions')).items.find((item) => item.id === id);
+  assert.equal(readBack?.harness, 'lab');
   await request(`/v1/sessions/${id}`, 'PATCH', { archived: true }, 'archive');
   assert.equal((await request('/v1/sessions')).items.length, 0);
   const archived = (await request('/v1/sessions?archived=only')).items;

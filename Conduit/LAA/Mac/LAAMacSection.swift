@@ -36,7 +36,6 @@ enum LAAMacSection: String, CaseIterable, Identifiable {
     /// host this shell doesn't know.
     init?(linkHost: String) {
         switch linkHost {
-        case "chats": self = .chats
         case "work": self = .work
         case "today": self = .today
         case "brain": self = .brain
