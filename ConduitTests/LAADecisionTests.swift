@@ -60,11 +60,11 @@ final class LAADecisionTests: XCTestCase {
     }
 
     func testMonetDigestDecodesReasonAndReopenability() throws {
-        let page = try page(#"{"items":[],"monetAnswers":[{"id":"dec_a","title":"方法を選択","status":"answered","answeredBy":"monet","canReopen":true,"answer":{"label":"案一","note":"安全な範囲","optionIndex":0}}]}"#)
-        XCTAssertTrue(page.items.isEmpty)
-        XCTAssertEqual(page.monetAnswers?.first?.answeredBy, "monet")
-        XCTAssertEqual(page.monetAnswers?.first?.answer?.note, "安全な範囲")
-        XCTAssertEqual(page.monetAnswers?.first?.canReopen, true)
+        let decoded = try page(#"{"items":[],"monetAnswers":[{"id":"dec_a","title":"方法を選択","status":"answered","answeredBy":"monet","canReopen":true,"answer":{"label":"案一","note":"安全な範囲","optionIndex":0}}]}"#)
+        XCTAssertTrue(decoded.items.isEmpty)
+        XCTAssertEqual(decoded.monetAnswers?.first?.answeredBy, "monet")
+        XCTAssertEqual(decoded.monetAnswers?.first?.answer?.note, "安全な範囲")
+        XCTAssertEqual(decoded.monetAnswers?.first?.canReopen, true)
         let grant = LAADecisionDelegation(mode: "window", until: "2026-11-26T01:00:00Z")
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(grant)) as? [String: String])
         XCTAssertEqual(body, ["mode": "window", "until": "2026-11-26T01:00:00Z"])
