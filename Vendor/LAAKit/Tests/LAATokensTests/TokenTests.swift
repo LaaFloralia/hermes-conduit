@@ -72,10 +72,22 @@ struct TokenTests {
     @Test func storesSelectionInTheAppGroupSuite() {
         let suite = "laa.kit.tests.\(UUID().uuidString)"
         let store = LAAThemeStore(appGroup: suite)
-        store.select("iris")
-        #expect(LAAThemeStore.storedThemeID(appGroup: suite) == "iris")
-        #expect(LAAThemeStore(appGroup: suite).themeID == "iris")
+        store.select("ayame")
+        #expect(LAAThemeStore.storedThemeID(appGroup: suite) == "ayame")
+        #expect(LAAThemeStore(appGroup: suite).themeID == "ayame")
         UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+    }
+
+    /// A choice stored before the 2026-11-26 rename (`iris`) keeps the same colours as `ayame` and is rewritten.
+    @Test func renamedIrisSelectionMigratesToAyame() {
+        let suite = "laa.kit.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set("iris", forKey: LAAThemeStore.defaultsKey)
+        #expect(LAAThemeStore.storedThemeID(appGroup: suite) == "ayame")
+        #expect(LAAThemeStore(appGroup: suite).themeID == "ayame")
+        #expect(defaults.string(forKey: LAAThemeStore.defaultsKey) == "ayame")
+        #expect(LAAThemeSets.set(id: "iris") == LAAThemeSets.ayame)
+        defaults.removePersistentDomain(forName: suite)
     }
 }
 

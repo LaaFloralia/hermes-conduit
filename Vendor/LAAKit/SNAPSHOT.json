@@ -1,5 +1,5 @@
 {
-  "commit": "33ebe40736a0dd9d1f00b173baf398086c157d24",
+  "commit": "388e9b7210fe579e67c3f18487dd8202fa90a4ff",
   "files": {
     "LICENSES.md": "41d821817bce8a51a37a8a9c01791092d79bb4c79865e7c94e7baf94b9e82365",
     "Package.swift": "bd5633c7965dee359a5e114965572580a5b25a3d267f55ab7fa601281eedef4f",
@@ -43,22 +43,22 @@
     "Sources/LAAKit/Type/LAAType.swift": "eac24791b300882f3e5e6933db5659f26ad885f055f918db04bb16783dd22517",
     "Sources/LAAKit/Usage/LAAUsageCard.swift": "8899d15b700f6d1b813e1211f63546d1ec7d9e0525bfcd8b70101a2b6595cd07",
     "Sources/LAAKit/Working/LAAWorkingStrip.swift": "483528d7a17110e6b013ab89c909d767078a9ac3604b8593bd3a3581486a38dd",
-    "Sources/LAATokens/LAAIcon.generated.swift": "51ae42fa44e4720937ac5e2595cfd817e6bd06599084a3607ef0f09312727676",
+    "Sources/LAATokens/LAAIcon.generated.swift": "fa941002434df880906333fe604655b65bdec03f02ae8fe8abac91bb32a45d6f",
     "Sources/LAATokens/LAAIconImage.swift": "40001e8872093f4337d3e5203f0d73b32f1d74a4a63842f3d4de69eacddc4050",
     "Sources/LAATokens/LAAPalette.swift": "de594ac9389ac27e3ef8e1ad1618e9924259eea19541f10dd60bf64eda9a569c",
-    "Sources/LAATokens/LAAThemeStore.swift": "a11e7f7c63710c0d35900edec190a80de72ea947e118b3c796ee0823d998902f",
-    "Sources/LAATokens/LAATokenTypes.swift": "9025fce790bc957ecf7a3563067f8368faaeaf3cf8cdd63861ca3f098101f597",
-    "Sources/LAATokens/LAATokens.generated.swift": "7c3e39840a138fc98f3a88f2da066dfad75e9c23b73e598218c9c4955c1e2c8d",
+    "Sources/LAATokens/LAAThemeStore.swift": "3a2e88181265426b6bc3a0ebf7cd7dec2e7433ca4b83d15e9558f1c9cf16f58d",
+    "Sources/LAATokens/LAATokenTypes.swift": "187830c67b7f36409f5bd008d96c826ce2845414ed97cf40a5dcb7deef3c87d0",
+    "Sources/LAATokens/LAATokens.generated.swift": "199e5bdf02c8138785d9b2e44f71e007117513cbef3e89b5114b335373877d25",
     "Tests/LAAFontsTests/FontRegistrationTests.swift": "afd21b55d50a9cffb2d4c68d0375aed524b6ab079f91a4024a9d0094c3713691",
     "Tests/LAAKitTests/GlassTabBarTests.swift": "ee2483aa73e86e31ce4477ffb66b6648e6cadee39d4a0411dfdda539f536b03d",
     "Tests/LAAKitTests/KitTests.swift": "fc72f6502b22c05435c73cc61480acdcfb88d8155c0f3a9a75df1304a4f9854c",
     "Tests/LAAKitTests/OrbTests.swift": "b1eacce8601b18126fd93a6f88c3beaa886a947414043ea4c1a2feb412bd7c04",
     "Tests/LAAKitTests/PickerTests.swift": "c2d82458eeac880a5ffb42c1064ce8c804ea949ab0c2480cd1cee07196beae98",
-    "Tests/LAATokensTests/TokenTests.swift": "6ba962d904662db664759bcfb3628d1212a0deaf6e1d9f192ffc18c576618ebd",
-    "VERSION": "3ab94c04d24986f3af288ba1cda2c0bbddbc5a89dff097182805f54578e1ea75",
-    "kit.lock.json": "9159a4d92a063b0127180fd6909376480b309286572545b133abac61ed2b0790"
+    "Tests/LAATokensTests/TokenTests.swift": "585e0deed64e30ee12a0a46f5412c1d491234cc9124ffe7e5f7103d81ec16334",
+    "VERSION": "1725bfa6524c5265e7c171cf06568417d39b947fff49c242f03859479c82334b",
+    "kit.lock.json": "b8ec7ae8463124bf4d4c720af2e6a6ee13ecc7da8c4be174d6a27a1a5eb1a7b4"
   },
-  "kitVersion": "0.2.3",
+  "kitVersion": "0.2.4",
   "products": [
     "LAATokens",
     "LAAFonts",
@@ -66,6 +66,6 @@
   ],
   "source": "LaaFloralia/laa-brand-system",
   "sourceDirty": false,
-  "tokenHash": "6132767bf00900dbdcbd147a516656c9f3570d8f8314c311d8870bd7134354d1",
+  "tokenHash": "2db00e7402b5d125d4e476ccf0674b26b1bb72027bf49157723ae56a0c580c6f",
   "tokensVersion": "2026.11.4"
 }
