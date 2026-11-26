@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.cloudflare/
+.wrangler/
+.deploy.local.json
+.*.log
+.*.exit
+.oauth-types

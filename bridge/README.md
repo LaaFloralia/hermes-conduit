@@ -310,6 +310,20 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 
 `verify-project-instructions.mjs` は Project 作成 → 編集 → 古い `If-Match` の 412（現在の版・ETag・本文）→ 版履歴 → 実セッションへの適用 → 停止を1回で回す。`ok:true` は「セッションが同じ版/hash を記録」「応答が指示ヘッダの hash を返す（＝ブロックが委譲プロンプトに届いた）」「journal に版はあるが本文はない」の3つが揃った時だけ。どれか欠ければ終了コード1。2026-10-29 に loopback で実測: 作成 201（`instructionVersion` 1）、編集 200（2）、stale 412 の `details.current` に版2・ETag `"2"`・本文、履歴2件（本文つき）、セッションは `instructionVersion=2` と hash を記録し、DSH の応答が指示ヘッダの hash（71文字）をそのまま返した。journal に本文は入らず、版と hash だけ。検証用の端末は失効、Project・セッション・作業用 worktree は削除し、Bridge が起動した Paseo agent は `paseo archive` で退避した。
 
+## Claude Duet
+
+The Mac polls the dedicated [Claude Duet MCP connector](../connectors/duet-mcp/README.md) on startup and every five minutes when both `LAA_DUET_CONNECTOR_URL` and `LAA_DUET_PULL_TOKEN` are set. Supply them to the existing Bridge process through the 1Password template `~/.config/laa/duet-connector.env.tpl`; do not place resolved credentials in a plist or start a second Bridge. Without configuration (or inside a lab lane) there is no outbound poll or notification. This does not expose a new inbound Mac endpoint to the Worker.
+
+The Bridge saves the newest 200 items and the pull cursor to `duet-items.json` (0600), accepts them into the existing notification queue with `duet:<id>` dedupe keys, then acknowledges the Worker. An unclear ACK may be repeated without notifying again. Items and notes are untrusted plain text, never commands or automated replies. Notes written offline remain queued with the same UUID for retries; `read` means returned by the connector, not acted on by Duet. The connector does not provide chat or guarantee a scheduled Duet response.
+
+| Method / path | Scope | Data inside the Bridge response envelope |
+|---|---|---|
+| `GET /v1/duet/items?limit=` | `sessions:read` | `{items:[{id,kind,title,body,link,createdAt}],status:{configured,lastPullAt,lastError}}`; newest first, `limit` 1–200, default 50 |
+| `POST /v1/duet/notes` | `sessions:write` + `Idempotency-Key` | `{text}` (at most 2,000 characters) → 201 `{id,state:"sent"\|"queued"}` |
+| `GET /v1/duet/notes` | `sessions:read` | `[{id,text,createdAt,state:"queued"\|"sent"\|"read"}]`, newest first |
+
+When unconfigured, `status.configured` is false and `lastError` is `not_configured`. When configured, `lastPullAt` is the last successful pull (null before the first) and `lastError` is a short machine code or null. A full local queue refuses new notes rather than discarding unsent text.
+
 ## Drive（一覧・metadata・Range配信）
 
 `/v1/drive/files` reads the Google Drive API through `src/drive/google.mjs` and

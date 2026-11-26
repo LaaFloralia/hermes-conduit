@@ -21,6 +21,8 @@ struct LAAChatsContent: View {
     var projectsUnavailable = false
     var openProject: ((UUID) -> Void)? = nil
     var newProject: (() -> Void)? = nil
+    /// Claude Duet's page (owner, 2026-11-26). Nil leaves its row out.
+    var openDuet: (() -> Void)? = nil
 
     @Environment(\.laaDesktop) private var laaDesktop
     @State private var query = ""
@@ -38,6 +40,11 @@ struct LAAChatsContent: View {
     private var contractors: [LAAChatsPerson] {
         LAAChatsPlacement.people(snapshot.people, in: .contractor).filter { LAAChatsSearch.person($0, matches: query) }
     }
+    /// Duet sits after Muse and Dots; it is no Hermes profile, so it is
+    /// always shown, never unavailable, and opens its own page.
+    private var showsDuet: Bool {
+        openDuet != nil && LAAChatsSearch.matches(query, [LAADuet.name, LAACopy.duetRole])
+    }
     private var rooms: [GroupRoom] { snapshot.rooms.filter { LAAChatsSearch.room($0, matches: query) } }
     private var matchingMonet: LAAChatsPerson? {
         monet.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
@@ -46,7 +53,7 @@ struct LAAChatsContent: View {
         projects.filter { !searching || $0.name.localizedStandardContains(query) }
     }
     private var hasResults: Bool {
-        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !contractors.isEmpty || !rooms.isEmpty || !matchingProjects.isEmpty
+        matchingMonet != nil || !monetVariants.isEmpty || !employees.isEmpty || !contractors.isEmpty || showsDuet || !rooms.isEmpty || !matchingProjects.isEmpty
     }
 
     private var failure: String? {
@@ -85,9 +92,9 @@ struct LAAChatsContent: View {
                 } else {
                     if let monet, matchingMonet != nil || !monetVariants.isEmpty { monetSection(monet) }
                     if !searching || !employees.isEmpty { employeeSection }
-                    if !contractors.isEmpty {
+                    if !contractors.isEmpty || showsDuet {
                         peopleSection(LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, contractors,
-                                      identifier: "laa.chats.contractors")
+                                      identifier: "laa.chats.contractors", duet: showsDuet)
                     }
                     if openProject != nil, !searching || !matchingProjects.isEmpty { projectSection }
                     if !searching || !rooms.isEmpty { groupSection }
@@ -136,13 +143,17 @@ struct LAAChatsContent: View {
         ids += monetVariants.filter(\.available).map { "person.\($0.profile)" }
         ids += employees.filter(\.available).map { "person.\($0.profile)" }
         ids += contractors.filter(\.available).map { "person.\($0.profile)" }
+        if showsDuet { ids.append(Self.duetRowID) }
         ids += matchingProjects.map { "project.\($0.id.uuidString)" }
         if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
         return ids
     }
 
+    private static let duetRowID = "duet.\(LAADuet.rowID)"
+
     private func isSelected(_ id: String) -> Bool {
         guard let selection else { return false }
+        if id == Self.duetRowID { return false }
         if id.hasPrefix("person.") {
             return selection.roomID == nil && selection.profile == String(id.dropFirst("person.".count))
         }
@@ -151,6 +162,7 @@ struct LAAChatsContent: View {
 
     /// The person or room a row id names, in the rows the list shows now.
     private func rowTarget(_ id: String) -> LAAChatsRowTarget? {
+        if id == Self.duetRowID { return showsDuet ? .duet : nil }
         if id.hasPrefix("person.") {
             let profile = String(id.dropFirst("person.".count))
             let people = ([matchingMonet].compactMap { $0 } + monetVariants + employees + contractors)
@@ -171,6 +183,7 @@ struct LAAChatsContent: View {
         case .person(let person): openPerson(person)
         case .room(let room): openRoom(room)
         case .project(let id): openProject?(id)
+        case .duet: openDuet?()
         }
         return .handled
     }
@@ -277,10 +290,14 @@ struct LAAChatsContent: View {
     }
 
     /// A section of people under its heading, drawn as the employees are.
-    private func peopleSection(_ title: String, spoken: String, _ people: [LAAChatsPerson], identifier: String) -> some View {
+    private func peopleSection(_ title: String, spoken: String, _ people: [LAAChatsPerson], identifier: String,
+                               duet: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(title).accessibilityLabel(Text(verbatim: spoken))
-            personRows(people)
+            VStack(spacing: 0) {
+                personRows(people)
+                if duet { duetRow }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
@@ -300,6 +317,29 @@ struct LAAChatsContent: View {
                     .onHover(perform: hover("person.\(employee.profile)"))
             }
         }
+    }
+
+    /// Duet's row, drawn as a person's: its mark, its name, its maker.
+    private var duetRow: some View {
+        Button { openDuet?() } label: {
+            HStack(spacing: LAASpacing.x3) {
+                LAADuetMark(size: Self.personAvatarSize)
+                HStack(spacing: 6) {
+                    Text(verbatim: LAADuet.name).font(LAAType.chatListName(LAADuet.name, japaneseSize: japaneseNameSize))
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        .foregroundStyle(LAAColor.text)
+                    LAARoleBadge(role: LAACopy.duetRole)
+                }
+                Spacer(minLength: LAASpacing.x2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(LAAListRowStyle())
+        .accessibilityIdentifier("laa.chats.duet")
+        .modifier(rowChrome(Self.duetRowID))
+        .focused($focusedRow, equals: Self.duetRowID)
+        .onHover(perform: hover(Self.duetRowID))
     }
 
     private var newChatButton: some View {
@@ -581,6 +621,7 @@ private enum LAAChatsRowTarget {
     case person(LAAChatsPerson)
     case room(GroupRoom)
     case project(UUID)
+    case duet
 }
 
 /// Mac only: a row's selected and hovered fill. `active` is false on the

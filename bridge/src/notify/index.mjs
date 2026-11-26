@@ -72,7 +72,7 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
   }
   const notify = async ({ kind, title, body, deepLink, dedupeKey, meta } = {}) => {
     if (typeof kind !== 'string' || typeof title !== 'string' || typeof body !== 'string'
-      || typeof deepLink !== 'string' || !/^laa:\/\/(work|today|brain|assets)(\/|$)/.test(deepLink) || deepLink.length > 400
+      || typeof deepLink !== 'string' || !/^laa:\/\/(chats|work|today|brain|assets)(\/|$)/.test(deepLink) || deepLink.length > 400
       || typeof dedupeKey !== 'string' || !dedupeKey) return { delivered: false, reason: 'invalid_notification' };
     const level = notificationLevel(kind, preferences);
     if (level === 'off') return { delivered: false, reason: 'muted' };

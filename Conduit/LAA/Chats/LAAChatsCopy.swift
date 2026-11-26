@@ -9,6 +9,22 @@ extension LAACopy {
     static let chatsContractors = "Contractors"
     /// What VoiceOver reads for that heading.
     static let chatsContractorsSpoken = "派遣社員"
+    /// Claude Duet's row and page (owner, 2026-11-26). Duet answers in its
+    /// own app; the page hands the owner's words over by the owner's tap.
+    static let duetRole = "Anthropic"
+    static let duetPlaceholder = "Duetに伝えること"
+    static let duetOpen = "Duetで開く"
+    static let duetOpenHint = "書いた文をコピーしてDuetを開きます。"
+    static let duetHowItWorks = "返事・朝の要約・お知らせはDuetのアプリに届きます。書いた文は「Duetで開く」でコピーされるので、Duetの入力欄に貼り付けて送ってください。"
+    static let duetCopied = "コピーしました。Duetの入力欄に貼り付けて送ってください。"
+    static let duetHowItWorksConnected = "返事・朝の要約はDuetのアプリに届きます。「Duetで開く」は書いた文をコピーしてDuetを開き、「メモで残す」はDuetがLAAの連携を使う時に読むメモにします。メモへの返事は保証されないので、急ぐ時は「Duetで開く」を使ってください。"
+    static let duetLeaveNote = "メモで残す"
+    static let duetLeaveNoteHint = "書いた文を、DuetがLAAの連携を使う時に読むメモとして残します。"
+    static let duetNoteLeft = "メモを残しました。DuetがLAAの連携を使う時に読みます。"
+    static let duetNoteFailed = "メモを残せませんでした。Macとの接続を確かめて、もう一度試してください。"
+    static let duetNotesTitle = "Notes"
+    static let duetItemsTitle = "From Duet"
+    static let duetItemsHow = "DuetがLAAの連携で書いた要約・知らせです。書かれた文をそのまま表示し、Hortensiaからは実行しません。"
     static let chatsGroups = "Groups"
     static let chatsNewGroup = "新しいグループ"
     static let groupDone = "完了"
