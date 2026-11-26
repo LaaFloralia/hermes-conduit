@@ -1,4 +1,5 @@
 #if LAA_BUILD && targetEnvironment(macCatalyst)
+import LAAKit
 import SwiftUI
 
 /// The Mac window: a sidebar of sections beside a detail column, in place of
@@ -151,6 +152,21 @@ struct LAAMacShell: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { commands.fitWindow += 1 } label: {
+                    LAAIconImage(.windowFit, size: LAAControl.Mac.iconButton.icon / LAAMacWindow.scale)
+                        .frame(width: LAAControl.Mac.hitArea / LAAMacWindow.scale,
+                               height: LAAControl.Mac.hitArea / LAAMacWindow.scale)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LAAColor.link)
+                .accessibilityLabel("Fit Window")
+                .accessibilityIdentifier("laa.mac.window.fit")
+                .help("Fit Window")
+            }
+        }
         .background(LAAColor.background.ignoresSafeArea())
     }
 

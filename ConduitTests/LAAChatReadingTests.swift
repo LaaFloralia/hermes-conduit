@@ -1,4 +1,6 @@
 #if LAA_BUILD
+import CoreText
+import LAAKit
 import UIKit
 import XCTest
 @testable import Conduit
@@ -10,9 +12,9 @@ final class LAAChatReadingTests: XCTestCase {
     private var scale: CGFloat { LAAReadingStyle.platformScale }
 
     func testBundledFacesResolveByPostScriptName() {
-        XCTAssertTrue(LAAReadingStyle.registerBundledFonts(), "Every bundled reading face registers")
-        for face in LAAReadingStyle.Face.allCases {
-            XCTAssertEqual(UIFont(name: face.rawValue, size: 17)?.fontName, face.rawValue, "\(face) resolves by PostScript name")
+        XCTAssertTrue(LAAReadingStyle.fontsAvailable, "Every kit face registers")
+        for face in LAAFonts.faces {
+            XCTAssertEqual(UIFont(name: face.postScriptName, size: Conduit.LAAType.bodySize)?.familyName, face.family)
         }
         XCTAssertTrue(LAAReadingStyle.isEnabled)
     }
@@ -20,28 +22,26 @@ final class LAAChatReadingTests: XCTestCase {
     func testBodyFaceSizeAndCascade() throws {
         let body = try XCTUnwrap(LAAReadingStyle.font(for: .body, chatScale: 1, traits: large))
         XCTAssertEqual(body.pointSize, LAAReadingStyle.bodySizeToken * scale, accuracy: 0.01)
-        XCTAssertEqual(body.fontName, LAAReadingStyle.Face.latin.rawValue)
-        let cascade = body.fontDescriptor.fontAttributes[.cascadeList] as? [UIFontDescriptor]
-        XCTAssertEqual(cascade?.first?.fontAttributes[.name] as? String, LAAReadingStyle.Face.japanese.rawValue,
-                       "Japanese falls to Shippori Mincho, never a system fallback")
+        XCTAssertEqual(body.familyName, LAAFontFamily.readingLatin)
+        let glyphFont = CTFontCreateForString(body as CTFont, "花" as CFString, CFRange(location: 0, length: 1))
+        XCTAssertEqual(CTFontCopyFamilyName(glyphFont) as String, LAAFontFamily.readingJapanese)
         let strong = try XCTUnwrap(LAAReadingStyle.uiFont(size: body.pointSize, strong: true))
-        XCTAssertEqual(strong.fontName, LAAReadingStyle.Face.latinStrong.rawValue)
-        XCTAssertEqual(body.withTraits(.traitBold).fontName, LAAReadingStyle.Face.latinStrong.rawValue,
-                       "Markdown bold takes the 600 face, not a synthesized one")
-        XCTAssertEqual(body.withTraits(.traitItalic).fontName, LAAReadingStyle.Face.latinItalic.rawValue)
+        let actual = body.withTraits(.traitBold)
+        XCTAssertEqual(CTFontCopyVariation(actual as CTFont) as? [Int: Double], CTFontCopyVariation(strong as CTFont) as? [Int: Double])
+        XCTAssertTrue(CTFontGetSymbolicTraits(body.withTraits(.traitItalic) as CTFont).contains(.traitItalic))
     }
 
     func testHeadingCodeAndInlineCodeTokens() throws {
         let h1 = try XCTUnwrap(LAAReadingStyle.font(for: .heading(level: 1), chatScale: 1, traits: large))
         XCTAssertEqual(h1.pointSize, 20 * scale, accuracy: 0.01)
-        XCTAssertEqual(h1.fontName, LAAReadingStyle.Face.latinStrong.rawValue)
+        XCTAssertEqual(h1.familyName, LAAFontFamily.readingLatin)
         XCTAssertEqual(LAAReadingStyle.lineHeight(for: h1), (20 * scale * 26 / 20).rounded())
         let code = try XCTUnwrap(LAAReadingStyle.font(for: .blockCode, chatScale: 1, traits: large))
         XCTAssertEqual(code.pointSize, 13 * scale, accuracy: 0.01)
         XCTAssertEqual(code.lineHeight + LAAReadingStyle.codeBlockLineSpacing(for: code), (13 * scale * 20 / 13).rounded(), accuracy: 0.5)
         let body = try XCTUnwrap(LAAReadingStyle.font(for: .body, chatScale: 1, traits: large))
         let inline = try XCTUnwrap(LAAReadingStyle.inlineCodeFont(for: body))
-        XCTAssertEqual(inline.pointSize, (body.pointSize * 0.88).rounded())
+        XCTAssertEqual(inline.pointSize, (body.pointSize * LAAReadingStyle.inlineCodeScale).rounded())
         XCTAssertNil(LAAReadingStyle.font(for: .tableBody, chatScale: 1, traits: large), "Tables keep the system face")
     }
 
@@ -96,10 +96,10 @@ final class LAAChatReadingTests: XCTestCase {
         XCTAssertTrue(reading.cacheIdentity.hasSuffix("-r"), "Render caches key the register")
         XCTAssertFalse(LAAReadingStyle.reading(ChatTextAppearance(size: .default, style: .rounded)).laaReading,
                        "A chat style picked in Settings keeps its face")
-        XCTAssertEqual(ChatTypography.font(for: .body, appearance: reading, compatibleWith: large).fontName,
-                       LAAReadingStyle.Face.latin.rawValue)
-        XCTAssertNotEqual(ChatTypography.font(for: .body, appearance: .default, compatibleWith: large).fontName,
-                          LAAReadingStyle.Face.latin.rawValue, "Without the register the system face stays")
+        XCTAssertEqual(ChatTypography.font(for: .body, appearance: reading, compatibleWith: large).familyName,
+                       LAAFontFamily.readingLatin)
+        XCTAssertNotEqual(ChatTypography.font(for: .body, appearance: .default, compatibleWith: large).familyName,
+                          LAAFontFamily.readingLatin, "Without the register the system face stays")
         XCTAssertTrue(LAAReadingStyle.isReadingFont(ChatTypography.inputFont(for: large, size: .default)))
     }
 }

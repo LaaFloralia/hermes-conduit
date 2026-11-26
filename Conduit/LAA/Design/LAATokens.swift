@@ -1,112 +1,125 @@
 #if LAA_BUILD
+import LAAKit
+import Observation
 import SwiftUI
 import UIKit
 
-/// Semantic colours for the LAA interface. Content stays opaque; system
-/// navigation and controls supply their own material or glass.
-enum LAAColor {
-    static let background = adaptive(light: 0xF6F2E9, dark: LAAColorValues.backgroundDark)
-    static let surface = adaptive(light: 0xFFFDF8, dark: LAAColorValues.surfaceDark)
-    static let subtleSurface = adaptive(light: 0xEBE6DC, dark: 0x243638)
-    static let text = adaptive(light: 0x213536, dark: 0xECE7DC,
-                               highContrastLight: 0x102627, highContrastDark: 0xFFFDF8)
-    static let secondaryText = adaptive(light: 0x596968, dark: 0xA8B7B4,
-                                        highContrastLight: 0x3A5150, highContrastDark: 0xD1DEDA)
-    static let link = adaptive(light: LAAColorValues.linkLight, dark: LAAColorValues.linkDark,
-                               highContrastLight: 0x003F43, highContrastDark: 0xA4DDDC)
-    static let separator = adaptive(light: 0xD7D5CC, dark: 0x385052,
-                                    highContrastLight: 0x899493, highContrastDark: 0x829D9A)
-    static let selectionFill = adaptive(light: 0xDFEAE5, dark: 0x294844)
-    static let ownBubble = adaptive(light: 0x00585E, dark: 0x1E6B70)
-    static let ownBubbleText = adaptive(light: 0xF6F2E9, dark: 0xF6F2E9)
-    static let filledButton = ownBubble
-    static let filledButtonText = ownBubbleText
-    // Compatibility aliases for the initial v2 token API.
-    static let filledControl = filledButton
-    static let filledControlText = filledButtonText
-    static let attention = adaptive(light: 0x6C244C, dark: LAAColorValues.attentionDark)
-    /// `color.semantic.caution` / `.critical` (provisional v2.1 delta): a
-    /// child that needs the owner, and one that failed.
-    static let caution = adaptive(light: 0x8A5A0B, dark: 0xE2B45C)
-    static let critical = adaptive(light: 0xA23B2A, dark: 0xEE8E7C)
-    static let end = Color.red
-    static let decorativeTan = adaptive(light: 0xB99B7A, dark: 0xB99B7A)
-    /// The brand ivory in both appearances: the paper disc under Claude's Spark.
-    static let ivory = adaptive(light: 0xF6F2E9, dark: 0xF6F2E9)
-    /// The light that runs once round a control's glass rim when a value is
-    /// applied: the tan on the paper, where white would not show; the light
-    /// glass surface (#FFFDF8) on the dark glass. A stroke, never a fill.
-    static let rimLight = adaptive(light: 0xB99B7A, dark: 0xFFFDF8)
+/// The read side of the theme store for legacy SwiftUI/ UIKit callers that still take `Color`.
+/// SwiftUI tracks `themeID` when a view resolves a role; UIKit resolves the system traits lazily.
+/// Background readers (e.g. attributed text preparation) can safely read the same snapshot.
+final class LAASelectedTheme: Observable, @unchecked Sendable {
+    static let appGroup: String? = {
+        #if DEBUG
+        // Keep visual tests entirely outside the real app-group preference.
+        if let suite = ProcessInfo.processInfo.environment["LAA_UI_TEST_THEME_SUITE"],
+           suite.hasPrefix("laa.appearance-test.") { return suite }
+        #endif
+        let value = Bundle.main.object(forInfoDictionaryKey: "ConduitLauncherAppGroup") as? String
+        return value?.hasPrefix("group.") == true ? value : nil
+    }()
+    static let shared = LAASelectedTheme()
+    private let changes = ObservationRegistrar()
+    private let lock = NSLock()
+    private var selected = LAAThemeStore.storedThemeID(appGroup: appGroup)
 
-    private static func adaptive(light: Int, dark: Int,
-                                 highContrastLight: Int? = nil, highContrastDark: Int? = nil) -> Color {
+    var themeID: String {
+        #if LAA_WIDGET_EXTENSION
+        // WidgetKit may reuse the extension process across reload requests.
+        return LAAThemeStore.storedThemeID(appGroup: Self.appGroup)
+        #else
+        changes.access(self, keyPath: \.themeID)
+        return lock.withLock { selected }
+        #endif
+    }
+
+    @MainActor func apply(_ id: String) {
+        guard id != themeID else { return }
+        changes.withMutation(of: self, keyPath: \.themeID) {
+            lock.withLock { selected = id }
+        }
+    }
+}
+
+/// Compatibility spellings for screens adopting the kit incrementally.
+/// Store roles as computed values: caching a returned Color freezes the selected theme.
+enum LAAColor {
+    static var background: Color { themed { $0.raw.bg } }
+    static var surface: Color { themed { $0.raw.surface } }
+    static var subtleSurface: Color { themed { $0.raw.wash } }
+    static var text: Color { themed { $0.raw.text } }
+    static var secondaryText: Color { themed { $0.raw.textMuted } }
+    static var link: Color { themed { $0.raw.accent } }
+    static var separator: Color { themed { $0.increasedContrast ? $0.raw.text : $0.raw.rule } }
+    static var selectionFill: Color { themed { $0.raw.selection } }
+    static var ownBubble: Color { themed { $0.raw.accentFill } }
+    static var ownBubbleText: Color { themed { $0.raw.onAccent } }
+    static var second: Color { themed { $0.raw.second } }
+    static var filledButton: Color { ownBubble }
+    static var filledButtonText: Color { ownBubbleText }
+    static var filledControl: Color { filledButton }
+    static var filledControlText: Color { filledButtonText }
+    static var positive: Color { adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).positive } }
+    static var caution: Color { adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).caution } }
+    static var critical: Color { adaptive { dark, _ in (dark ? LAASemantic.dark : LAASemantic.light).critical } }
+    static var end: Color { critical }
+    static var attention: Color { adaptive { dark, _ in LAAThemeSets.laa.colors(dark: dark).second } }
+    // Fixed brand roles, independent of the selected theme. Kit v0.1.0 does not export ruleWarm.
+    static let decorativeTan = Color(laa: LAAColorValues.ruleWarm)
+    static let ivory = Color(laa: LAAThemeSets.laa.light.bg)
+    static var rimLight: Color { adaptive { dark, _ in dark ? LAAThemeSets.laa.light.surface : LAAColorValues.ruleWarm } }
+
+    private static func themed(_ role: @escaping @Sendable (LAAPalette) -> LAARGB) -> Color {
+        let theme = LAAThemeSets.set(id: LAASelectedTheme.shared.themeID)
+        return adaptive { dark, contrast in role(LAAPalette(theme: theme, dark: dark, increasedContrast: contrast)) }
+    }
+
+    private static func adaptive(_ value: @escaping @Sendable (Bool, Bool) -> LAARGB) -> Color {
         Color(uiColor: UIColor { traits in
-            let darkMode = traits.userInterfaceStyle == .dark
-            let increasedContrast = traits.accessibilityContrast == .high
-            let value = darkMode
-                ? (increasedContrast ? highContrastDark ?? dark : dark)
-                : (increasedContrast ? highContrastLight ?? light : light)
-            return UIColor(red: CGFloat((value >> 16) & 0xFF) / 255,
-                           green: CGFloat((value >> 8) & 0xFF) / 255,
-                           blue: CGFloat(value & 0xFF) / 255,
-                           alpha: 1)
+            let rgb = value(traits.userInterfaceStyle == .dark, traits.accessibilityContrast == .high)
+            return UIColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
         })
     }
 }
 
 /// Points rather than fixed frames: rows and content must grow with Dynamic Type.
 extension LAASpacing {
-    static let horizontal: CGFloat = 20
-    static let compactHorizontal: CGFloat = 20
-    static let section: CGFloat = x8
-    static let minimumRowHeight: CGFloat = 56
-    static let minimumTouchTarget: CGFloat = 44
+    static let horizontal = LAAType.canvas.marginCompact * LAAType.platformScale
+    static let compactHorizontal = horizontal
+    static let section = LAASpace.s32
+    static let minimumRowHeight = LAAType.canvas.rowMinHeight * LAAType.platformScale
+    static let minimumTouchTarget = LAAType.canvas.touchTarget * LAAType.platformScale
 }
 
 enum LAARadius {
-    static let card: CGFloat = 16
-    static let bubble: CGFloat = 18
-    static let selectionChip: CGFloat = 16
-    static let photo: CGFloat = 24
-    static let control: CGFloat = 28
+    static let card = LAAKit.LAARadius.card
+    static let bubble = LAAKit.LAARadius.bubble
+    static let selectionChip = LAAKit.LAARadius.chip
+    static let photo = LAAKit.LAARadius.photo
+    static let control = LAAKit.LAARadius.tabBar
 }
 
 enum LAAType {
+    static let canvas = LAAPlatform.current.canvas
+    // Scale Interface to Match iPad; common to the app and its Catalyst targets.
+    static let catalystScale: CGFloat = 0.77
     #if targetEnvironment(macCatalyst)
-    // Catalyst draws UIKit points at about 0.77 Mac points, so the phone's
-    // 16/13/12 read as 12.3/10/9.2 on a Mac: below the system's 13 pt body.
-    // One step up keeps the phone's proportions at the Mac's reading size,
-    // and the section label takes a second step to stay above 11 pt.
-    static let bodySize: CGFloat = 17
-    static let secondarySize: CGFloat = 15
-    static let sectionSize: CGFloat = 15
-    static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
+    static let platformScale: CGFloat = 1 / catalystScale
     #else
-    static let bodySize: CGFloat = 16
-    static let secondarySize: CGFloat = 13
-    static let sectionSize: CGFloat = 15
-    static let screenTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
+    static let platformScale: CGFloat = 1
     #endif
-    static func title(_ value: String, size: CGFloat = 34, relativeTo style: Font.TextStyle = .largeTitle) -> Font {
-        let latinOnly = value.unicodeScalars.allSatisfy {
-            !$0.properties.isAlphabetic || (0x0041...0x024F).contains($0.value)
-        }
-        return latinOnly ? .custom("Georgia", size: size, relativeTo: style) : .system(size: size, weight: .semibold)
-    }
+    static let iconButton = LAAPlatform.current == .mac ? LAAControl.Mac.iconButton : LAAControl.IPhone.iconButton
+    static let bodySize = canvas.body * platformScale
+    static let secondarySize = canvas.small * platformScale
+    static let sectionSize = canvas.label * platformScale
+    static var screenTitle: Font { display(canvas.title * platformScale) }
+    static func title(_ value: String, size: CGFloat = canvas.title * platformScale,
+                      relativeTo style: Font.TextStyle = .largeTitle) -> Font { display(size) }
+    static func chatListName(_ value: String, japaneseSize: CGFloat) -> Font { .system(size: japaneseSize) }
+    static var employeeName: Font { .system(size: bodySize) }
+    static var usageValue: Font { display(canvas.number * platformScale).monospacedDigit() }
+    static var usageRowValue: Font { .system(size: canvas.heading * platformScale).monospacedDigit() }
 
-    /// Full-width Japanese glyphs use the body face and weight; the Latin
-    /// employee names keep Georgia. Both scale with the owner's text size.
-    static func chatListName(_ value: String, japaneseSize: CGFloat) -> Font {
-        let latinOnly = value.unicodeScalars.allSatisfy {
-            !$0.properties.isAlphabetic || (0x0041...0x024F).contains($0.value)
-        }
-        return latinOnly ? .custom("Georgia", size: 17, relativeTo: .body) : .system(size: japaneseSize)
-    }
-
-    static let employeeName = Font.custom("Georgia", size: 17, relativeTo: .body)
-    static let usageValue = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
-
-    static let usageRowValue = Font.custom("Georgia", size: 22, relativeTo: .title3).monospacedDigit()
+    static func display(_ size: CGFloat) -> Font { LAAKit.LAAType.display(size: size) }
 
     enum TextRole { case body, secondary, section, rowTitle, note }
 }
@@ -123,8 +136,8 @@ private struct LAATextStyle: ViewModifier {
         case .body: content.font(.system(size: bodySize))
         case .secondary: content.font(.system(size: secondarySize))
         case .section: content.font(.system(size: sectionSize, weight: .semibold))
-        case .rowTitle: content.font(.system(size: bodySize + 1))
-        case .note: content.font(.system(size: secondarySize - 1, weight: .medium))
+        case .rowTitle: content.font(.system(size: bodySize))
+        case .note: content.font(.system(size: sectionSize, weight: .medium))
         }
     }
 }

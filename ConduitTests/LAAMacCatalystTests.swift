@@ -65,6 +65,19 @@ final class LAAMacCatalystTests: XCTestCase {
 
     /// The detail column holds a conversation only while one is open and the
     /// list hasn't been returned to; otherwise it explains what to do.
+    func testFitCentersWithinEachDisplayAndCapsPhysicalSize() {
+        for visible in [CGRect(x: -1600, y: 52, width: 1600, height: 900),
+                        CGRect(x: 0, y: 28, width: 1280, height: 716),
+                        CGRect(x: 0, y: 32, width: 2560, height: 1400)] {
+            let frame = LAAMacWindow.comfortableFrame(in: visible)
+            XCTAssertTrue(visible.contains(frame))
+            XCTAssertEqual(frame.midX, visible.midX, accuracy: 1)
+            XCTAssertEqual(frame.midY, visible.midY, accuracy: 1)
+            XCTAssertLessThanOrEqual(frame.width, 1440)
+            XCTAssertLessThanOrEqual(frame.height, 900)
+        }
+    }
+
     func testChatDetailResolvesFromShownAndOpen() {
         XCTAssertEqual(LAAMacChatDetail.resolve(shown: true, hasConversation: true), .conversation)
         XCTAssertEqual(LAAMacChatDetail.resolve(shown: true, hasConversation: false), .empty)

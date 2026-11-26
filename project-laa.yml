@@ -46,6 +46,9 @@ packages:
     path: Vendor/LAAKit
 targets:
   ConduitTests:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: Shared/Widgets/LAAEmployeeWidget.swift
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
@@ -234,6 +237,9 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
@@ -248,7 +254,7 @@ targets:
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_EXTENSION"
         INFOPLIST_FILE: scripts/laa/Widget-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
@@ -261,6 +267,9 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind widgets --source "$SRCROOT"
   ConduitShareExtension:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: Shared/Widgets/LAAUsageReading.swift
       - path: assets/laa/LAAAccent.xcassets

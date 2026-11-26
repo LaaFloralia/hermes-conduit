@@ -39,6 +39,10 @@ struct LAAMacCommands: Commands {
                 .disabled(model.activeSection != .chats)
             Divider()
         }
+        CommandGroup(after: .windowSize) {
+            Button("Fit Window") { model.fitWindow += 1 }
+                .keyboardShortcut("0", modifiers: [.command, .option])
+        }
         // New Window is not this app's: one window holds the LAA desktop.
         CommandGroup(replacing: .newItem) {
             Button(section?.newTitle ?? LAACopy.macNewChat) { section?.create() }

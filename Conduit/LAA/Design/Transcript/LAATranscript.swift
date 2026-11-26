@@ -1,42 +1,34 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// One transcript for every LAA conversation: the employee Chat and the Work
 /// Session, on the iPhone and the Mac (P0-7, ADVICE-V2 §3.5). The owner's
 /// words sit in a soft trailing bubble; an employee's or an agent's words are
-/// set straight on the paper under a speaker line, as a page of a book. Each
-/// value comes from `LAATranscriptMetrics`, named after the kit tokens, so the
-/// later swap to `kit-v0.1.0` is mechanical.
+/// set straight on the paper under a speaker line, as a page of a book.
 enum LAATranscriptMetrics {
     /// Catalyst draws UIKit points at 0.77 Mac points; the tokens are Mac
     /// points on the Mac (`LAAReadingStyle.platformScale`).
     static var scale: CGFloat { LAAReadingStyle.platformScale }
 
-    /// `radius.app.bubble`: the owner's bubble.
-    static let ownerBubbleRadius: CGFloat = 18
-    /// Inside the owner's bubble: 12 above and below, 16 at the sides.
-    static var ownerBubblePaddingV: CGFloat { 12 * scale }
-    static var ownerBubblePaddingH: CGFloat { 16 * scale }
-    /// The owner's bubble takes at most 78% of the column on the iPhone and
-    /// 560 pt inside the Mac column.
-    static let ownerBubbleShare: CGFloat = 0.78
-    static var ownerBubbleMacMax: CGFloat { 560 * scale }
+    private typealias Tokens = LAAComponentToken.Transcript
+    static let ownerBubbleRadius: CGFloat = Tokens.bubbleRadius
+    static var ownerBubblePaddingV: CGFloat { Tokens.bubblePaddingV * scale }
+    static var ownerBubblePaddingH: CGFloat { Tokens.bubblePaddingH * scale }
+    static let ownerBubbleShare: CGFloat = Tokens.bubbleMaxWidth
+    static var ownerBubbleMacMax: CGFloat { Tokens.bubbleMaxWidthMac * scale }
 
-    /// The speaker's picture, name and role above a turn.
-    static var avatar: CGFloat { 24 * scale }
-    static var speakerSpacing: CGFloat { 8 * scale }
-    static var speakerNameSize: CGFloat { 13 * scale }
-    static var speakerRoleSize: CGFloat { 12 * scale }
-    /// Between the speaker line and the prose.
-    static var speakerToProse: CGFloat { 8 * scale }
-    /// Between two turns, and between rows inside one turn.
-    static var turnGap: CGFloat { 24 * scale }
-    static var rowGap: CGFloat { 12 * scale }
+    static var avatar: CGFloat { Tokens.mascot * scale }
+    static var speakerSpacing: CGFloat { Tokens.speakerGap * scale }
+    static var speakerNameSize: CGFloat { Tokens.speakerName * scale }
+    static var speakerRoleSize: CGFloat { Tokens.speakerRole * scale }
+    static var speakerToProse: CGFloat { Tokens.speakerGap * scale }
+    static var turnGap: CGFloat { Tokens.turnGap * scale }
+    static var rowGap: CGFloat { Tokens.paragraphGap * scale }
 
-    /// The thinking line: the orb and one muted line.
-    static var thoughtOrb: CGFloat { 16 * scale }
-    static var thoughtTextSize: CGFloat { 13 * scale }
-    static var thoughtMinHeight: CGFloat { 28 * scale }
+    static var thoughtOrb: CGFloat { LAAComponentToken.WorkingStrip.iphone.orb * scale }
+    static var thoughtTextSize: CGFloat { LAAType.canvas.small * scale }
+    static var thoughtMinHeight: CGFloat { LAAControl.Mac.iconButton.visual * scale }
 
     /// The widest the prose runs: the Mac's 680 pt measure, left-anchored.
     static var proseMeasure: CGFloat? {
@@ -136,11 +128,12 @@ struct LAATranscriptSpeakerLine<Avatar: View>: View {
 /// A role in the speaker line: muted `label` text, never a plate (C12).
 struct LAATranscriptRoleLabel: View {
     let role: String
+    @ScaledMetric(relativeTo: .caption) private var size = LAATranscriptMetrics.speakerRoleSize
     var body: some View {
         Text(verbatim: role)
-            .font(.system(size: LAATranscriptMetrics.speakerRoleSize, weight: .medium))
+            .font(.system(size: size, weight: .medium))
             .foregroundStyle(LAAColor.secondaryText)
-            .lineLimit(1).fixedSize()
+            .lineLimit(1)
             .laaPhotoSupportingText()
     }
 }

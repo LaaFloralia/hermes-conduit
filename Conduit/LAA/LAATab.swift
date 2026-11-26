@@ -1,6 +1,9 @@
 #if LAA_BUILD
 
 import Foundation
+#if !os(watchOS)
+import LAATokens
+#endif
 
 enum LAATab: String, CaseIterable, Identifiable {
     case chats
@@ -29,6 +32,20 @@ enum LAATab: String, CaseIterable, Identifiable {
         case .usage: return "gauge.medium"
         }
     }
+
+    #if !os(watchOS)
+    var icon: LAAIcon {
+        switch self {
+        case .chats: .chat
+        case .today: .calendar
+        case .studio: .studio
+        case .work: .work
+        case .brain: .brain
+        case .source: .image
+        case .usage: .usage
+        }
+    }
+    #endif
 
     /// The screen opens on this tab when launched with `-laa-tab <rawValue>`.
     /// DEBUG only, for manual simulator inspection of each tab.
