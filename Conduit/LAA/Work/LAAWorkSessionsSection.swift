@@ -34,7 +34,7 @@ struct LAAWorkSessionsSection: View {
 
     private var searchText: String { query ?? search }
     private var viewTitle: String {
-        showArchived ? LAACopy.WorkTab.archived : projectOrder ? String("プロジェクト別") : String("新しい順")
+        showArchived ? LAACopy.WorkTab.archived : projectOrder ? LAACopy.WorkTab.byProject : LAACopy.WorkTab.newest
     }
     private var searching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -43,11 +43,11 @@ struct LAAWorkSessionsSection: View {
             // The list's view is one pulldown labelled with the current
             // choice, the same control the Tasks list starts with.
             LAAWorkListPicker(title: viewTitle, identifier: "work.sessions.menu") {
-                LAAWorkPickerItem(title: "新しい順", selected: !projectOrder && !showArchived) {
+                LAAWorkPickerItem(title: LAACopy.WorkTab.newest, selected: !projectOrder && !showArchived) {
                     projectOrder = false
                     if showArchived { showArchived = false; Task { await load() } }
                 }
-                LAAWorkPickerItem(title: "プロジェクト別", selected: projectOrder && !showArchived,
+                LAAWorkPickerItem(title: LAACopy.WorkTab.byProject, selected: projectOrder && !showArchived,
                                   identifier: "work.sessions.byProject") {
                     projectOrder = true
                     if showArchived { showArchived = false; Task { await load() } }
@@ -97,8 +97,14 @@ struct LAAWorkSessionsSection: View {
             } else {
                 let sections = LAAWorkSessionOrder.sections(matches)
                 if !sections.active.isEmpty { group("実行中・判断待ち", shown(sections.active), children) }
-                if !sections.pinned.isEmpty { group(LAACopy.WorkTab.pinned, shown(sections.pinned), children) }
-                if !sections.recent.isEmpty { group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent, shown(sections.recent), children) }
+                if !sections.pinned.isEmpty {
+                    group(LAACopy.WorkTab.pinned, headingID: "work.sessions.pinned.heading", shown(sections.pinned), children)
+                }
+                if !sections.recent.isEmpty {
+                    group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent,
+                          headingID: showArchived ? "work.sessions.archived.heading" : "work.sessions.recent.heading",
+                          shown(sections.recent), children)
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -149,11 +155,12 @@ struct LAAWorkSessionsSection: View {
         searching ? rows : LAAWorkSessionOrder.visible(rows, expanded: expanded)
     }
 
-    private func group(_ title: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
+    private func group(_ title: String, headingID: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !title.isEmpty {
                 HStack {
                     Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                        .accessibilityIdentifier(headingID)
                     Spacer()
                     Text(verbatim: String(rows.count)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }.padding(.bottom, LAASpacing.x2)

@@ -172,17 +172,16 @@ struct LAAWorkSessionTally: Equatable {
         self.running = running; self.decision = decision; self.waiting = waiting
     }
 
-    /// 「実行中 0 · 待機 6」: 実行中 always comes first, even at 0, because it
-    /// answers whether anything is working; the others only when present.
+    /// Keep Running first, even at 0, to show whether anything is working.
     var parts: [(status: LAAWorkStatus, label: String, count: Int)] {
-        var list: [(LAAWorkStatus, String, Int)] = [(.running, LAAWorkStatus.running.label, running)]
-        if decision > 0 { list.append((.decision, LAAWorkStatus.decision.label, decision)) }
-        if waiting > 0 { list.append((.waiting, LAAWorkStatus.waiting.label, waiting)) }
-        return list.map { (status: $0.0, label: $0.1, count: $0.2) }
+        var counts: [(LAAWorkStatus, Int)] = [(.running, running)]
+        if decision > 0 { counts.append((.decision, decision)) }
+        if waiting > 0 { counts.append((.waiting, waiting)) }
+        return counts.map { (status: $0.0, label: LAACopy.WorkProject.sessionStatus($0.0), count: $0.1) }
     }
 
     var accessibilityText: String {
-        parts.map { "\($0.label) \($0.count)件" }.joined(separator: "、")
+        parts.map { "\($0.label) \($0.count)" }.joined(separator: ", ")
     }
 }
 
@@ -205,7 +204,7 @@ struct LAAWorkSessionTallyLine: View {
         ForEach(tally.parts, id: \.label) { part in
             HStack(spacing: LAASpace.s4) {
                 LAAStatusMark(mark(part.status, count: part.count))
-                Text(verbatim: "\(part.status.displayLabel) \(part.count)")
+                Text(verbatim: "\(part.label) \(part.count)")
                     .laaTextStyle(.secondary).monospacedDigit()
                     .foregroundStyle(LAAColor.secondaryText)
                     .fixedSize(horizontal: true, vertical: false)

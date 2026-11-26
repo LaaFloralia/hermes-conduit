@@ -159,7 +159,7 @@ struct LAAWorkProjectSession: Codable, Hashable, Identifiable {
         default: .pending
         }
     }
-    var statusLabel: String { LAACopy.WorkProject.sessionStatus(status) }
+    var statusLabel: String { LAACopy.WorkProject.sessionStatus(mark) }
 }
 
 /// A session a requirement names, from whichever list knows it.
@@ -177,7 +177,8 @@ struct LAAWorkLinkedSession: Hashable, Identifiable {
         }
         for row in full {
             let mark = LAAWorkStatus.session(row.needsDecision ? "awaiting_decision" : row.phase)
-            result[row.id] = .init(id: row.id, name: row.name, ref: row.ref, mark: mark, statusLabel: mark.label)
+            result[row.id] = .init(id: row.id, name: row.name, ref: row.ref, mark: mark,
+                                   statusLabel: LAACopy.WorkProject.sessionStatus(mark))
         }
         return result
     }

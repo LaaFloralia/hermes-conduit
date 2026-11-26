@@ -203,7 +203,9 @@ final class LAAWorkLinearUITests: XCTestCase {
     func testWorkScreensDark() throws { try capture("dark") }
     private func openEditor(_ app: XCUIApplication, _ row: XCUIElement) {
         row.press(forDuration: 1.2)
-        let edit = app.buttons["Edit"].firstMatch
+        let identified = app.buttons["work.linear.edit"].firstMatch
+        // Some OS versions drop the identifier when bridging to a native menu.
+        let edit = identified.waitForExistence(timeout: 2) ? identified : app.buttons["Edit"].firstMatch
         XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
     }
     private func taskRow(_ app: XCUIApplication, _ title: String) -> XCUIElement {

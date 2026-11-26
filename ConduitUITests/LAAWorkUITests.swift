@@ -770,7 +770,9 @@ final class LAAWorkUITests: XCTestCase {
             add(attachment)
         }
         XCTAssertTrue(waitUntilReady(app.buttons["work.create"], timeout: 30))
-        XCTAssertTrue(app.staticTexts["ピン留め"].waitForExistence(timeout: 30))
+        let pinned = app.staticTexts["work.sessions.pinned.heading"]
+        XCTAssertTrue(pinned.waitForExistence(timeout: 30))
+        XCTAssertEqual(pinned.label, "Pinned")
         shot("sessions")
         app.buttons["work.create"].tap(); app.buttons["work.sessions.new"].tap()
         XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 10))

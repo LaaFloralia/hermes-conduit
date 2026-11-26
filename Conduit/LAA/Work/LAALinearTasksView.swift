@@ -384,7 +384,9 @@ struct LAALinearTasksView: View {
                     Button { detail = task } label: { Label { Text(verbatim: "Details") } icon: { Image(systemName: "doc.text") } }
                     Button { editor = Editor(id: task.id, task: task) } label: {
                         Label { Text(verbatim: "Edit") } icon: { Image(systemName: "pencil") }
-                    }.disabled(locked)
+                    }
+                    .accessibilityIdentifier("work.linear.edit")
+                    .disabled(locked)
                     if task.isOpen {
                         Button { completing = task } label: {
                             Label { Text(verbatim: "Complete") } icon: { Image(systemName: "checkmark.circle") }
@@ -403,7 +405,7 @@ struct LAALinearTasksView: View {
                         Label { Text(verbatim: "Restore") } icon: { Image(systemName: "arrow.uturn.backward") }
                     }.tint(LAAColor.link).disabled(locked)
                 } else {
-                    // First on the trailing edge, so a swipe ends on 完了.
+                    // First on the trailing edge, so a swipe ends on Complete.
                     Button {
                         guard task.completionBlockedReason == nil else { return }
                         completing = task
@@ -527,6 +529,7 @@ struct LAALinearTasksView: View {
                     } label: { Text(verbatim: "Restore") }
                 } else {
                     Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "Edit") }
+                        .accessibilityIdentifier("work.linear.edit")
                     Button { completing = task } label: { Text(verbatim: "Complete") }
                         .disabled(locked || !task.isOpen || task.completionBlockedReason != nil)
                     Divider()
@@ -867,15 +870,15 @@ struct LAALinearTaskEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(text: $title, axis: .vertical) { Text(verbatim: "題名") }
+                    TextField(text: $title, axis: .vertical) { Text(verbatim: "Title") }
                         .accessibilityIdentifier("work.linear.title")
-                    TextField(text: $detail, axis: .vertical) { Text(verbatim: "説明") }.lineLimit(4...10)
+                    TextField(text: $detail, axis: .vertical) { Text(verbatim: "Description") }.lineLimit(4...10)
                 }
                 Section {
                     if let task {
-                        LabeledContent { Text(verbatim: task.assigneeDisplay) } label: { Text(verbatim: "担当") }
+                        LabeledContent { Text(verbatim: task.assigneeDisplay) } label: { Text(verbatim: LAACopy.WorkTab.ownerFilter) }
                         if let model = task.run?.profileLabel ?? task.run?.profile {
-                            LabeledContent { Text(verbatim: model) } label: { Text(verbatim: "モデル") }
+                            LabeledContent { Text(verbatim: model) } label: { Text(verbatim: "Model") }
                         }
                         Text(verbatim: "担当とモデルは作成後に変えません。")
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -885,7 +888,7 @@ struct LAALinearTaskEditor: View {
                             ForEach(LAATaskStaff.assignable, id: \.rawValue) { item in
                                 Text(verbatim: item.name).tag(item.rawValue)
                             }
-                        } label: { Text(verbatim: "担当") }
+                        } label: { Text(verbatim: LAACopy.WorkTab.ownerFilter) }
                         .accessibilityIdentifier("work.linear.assignee")
                         if staff != nil { modelPicker }
                         if let footer = LAALinearTaskCreate.footer(staff: staff) {
@@ -897,11 +900,11 @@ struct LAALinearTaskEditor: View {
                     }
                 }
                 Section {
-                    Toggle(isOn: $hasDueDate) { Text(verbatim: "期限") }
-                    if hasDueDate { DatePicker(selection: $dueDate, displayedComponents: .date) { Text(verbatim: "期限日") } }
+                    Toggle(isOn: $hasDueDate) { Text(verbatim: "Due Date") }
+                    if hasDueDate { DatePicker(selection: $dueDate, displayedComponents: .date) { Text(verbatim: "Date") } }
                     Picker(selection: $priority) {
                         ForEach(0...4, id: \.self) { value in Text(verbatim: LAALinearTask.priorityLabel(value)).tag(value) }
-                    } label: { Text(verbatim: "優先度") }
+                    } label: { Text(verbatim: "Priority") }
                 }
                 if let message = localFailure ?? failure { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
@@ -928,11 +931,11 @@ struct LAALinearTaskEditor: View {
         if let options, !options.profiles.isEmpty {
             let chosen = LAAWorkModelSelection.model(of: profile, in: options)
             HStack(spacing: LAASpacing.x2) {
-                Text(verbatim: "モデル").layoutPriority(1)
+                Text(verbatim: "Model").layoutPriority(1)
                 Spacer(minLength: LAASpacing.x2)
                 LAAModelEffortPickers(
                     model: selectedProfile?.model, provider: selectedProfile?.provider,
-                    effort: selectedProfile?.effort, name: chosen?.label ?? "モデルを選択",
+                    effort: selectedProfile?.effort, name: chosen?.label ?? "Select Model",
                     identifier: "work.linear"
                 ) {
                     ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(options)), id: \.name) { group in

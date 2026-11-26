@@ -23,9 +23,9 @@ extension LAACopy {
         static let connect = "Macに接続"
         static let retry = "Retry"
         static let reconnect = "Reconnect"
-        static let ownerFilter = "担当"
-        static let statusFilter = "状態"
-        static let all = "すべて"
+        static let ownerFilter = "Assignee"
+        static let statusFilter = "Status"
+        static let all = "All"
         static let create = "Create"
         static let cancel = "Cancel"
         static let retryRequest = "もう一度送る"
@@ -41,8 +41,8 @@ extension LAACopy {
         static let hold = "保留する"
         static let checkStop = "中断状況を確認"
         static let retryStop = "もう一度中断を要求"
-        static let resume = "再開"
-        static let stop = "中断"
+        static let resume = "Resume"
+        static let stop = "Stop"
         static let openSuccessor = "続きを開く"
         static let startSuccessor = "続きの会話を開始"
         static let resumeNewConversation = "続きは別の会話で開始します。履歴は引き継がれません。"
@@ -61,12 +61,13 @@ extension LAACopy {
         static let openLinear = "Linearで開く"
         static let projectName = "プロジェクト名"
 
-        // One name per action across the Work list, its swipe rows and the
-        // context menu. States stay Japanese; actions are short English.
-        static let searchSessions = "検索"
-        static let pinned = "ピン留め"
-        static let recent = "最近"
-        static let archived = "アーカイブ"
+        // Keep Work list headings and actions consistent with its menus.
+        static let searchSessions = "Search"
+        static let newest = "Newest"
+        static let byProject = "By Project"
+        static let pinned = "Pinned"
+        static let recent = "Recent"
+        static let archived = "Archived"
         static let pin = "Pin"
         static let unpin = "Unpin"
         static let archive = "Archive"
@@ -90,12 +91,11 @@ extension LAACopy {
         static let requirementDetails = "補足（任意）"
         static let addFooter = "社長の要件として登録します。題名は後から変えず、補足と状態で進みを表します。"
         static let changeStatus = "状態を変える"
-        static let withdraw = "取り下げる"
+        static let withdraw = "Withdraw"
         static func withdrawTitle(_ title: String) -> String { "「\(title)」を取り下げますか？" }
         static let withdrawMessage = "一覧から外します。元の文はMacに残ります。"
-        static let addedByAI = "AI追加"
-        static let addedByAIHint = "AIが足した項目"
-        static let ownerHint = "社長の要件"
+        static let addedByAI = "AI-added"
+        static let owner = "Owner"
         static let startSession = "New"
         static let startSessionHint = "このプロジェクトで新しいセッションを開始"
         static let showArchived = "Archived"
@@ -145,21 +145,20 @@ extension LAACopy {
             }
         }
 
-        static func sessionStatus(_ raw: String) -> String {
-            switch raw {
-            case "running": "実行中"
-            case "waiting": "待機"
-            case "awaiting_decision": "判断待ち"
-            case "completed": "完了"
-            default: "状態不明"
+        static func sessionStatus(_ status: LAAWorkStatus) -> String {
+            switch status {
+            case .decision: "Waiting"
+            case .waiting: "Idle"
+            case .pending: "Unknown"
+            default: status.displayLabel
             }
         }
 
         static func activity(_ activity: LAAWorkProjectActivity) -> String? {
             switch activity {
             case .idle: nil
-            case .running(let count): "実行中のセッション \(count)件"
-            case .decision(let count): "判断待ちのセッション \(count)件"
+            case .running(let count): "\(sessionStatus(.running)) \(count)"
+            case .decision(let count): "\(sessionStatus(.decision)) \(count)"
             }
         }
     }
