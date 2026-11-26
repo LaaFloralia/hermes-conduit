@@ -87,7 +87,7 @@ struct LAAWorkProjectsSection: View {
         .sheet(isPresented: $showNew, onDismiss: { editorID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
-        .task(id: linkedProject) {
+        .task(id: "\(bridge.revision)-\(linkedProject ?? "")") {
             guard let id = linkedProject, bridge.status == .paired else { return }
             do {
                 let project: LAAWorkProject = try await bridge.read("/v1/projects/\(id)")
