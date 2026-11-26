@@ -1,17 +1,12 @@
 #if LAA_BUILD
 import CoreText
+import LAAFonts
+import LAAKit
 import SwiftUI
 import UIKit
 
-/// The reading register's one place (provisional v2.1 delta, ADVICE-V2 §3.2
-/// `font.reading`, §3.3 type scale). Every face, size, line box and measure
-/// the transcript, the owner's bubble and the composer read comes from here,
-/// named after the kit tokens, so the swap to `kit-v0.1.0` is mechanical.
-///
-/// Newsreader sets the Latin, Shippori Mincho the Japanese (cascade), both
-/// SIL OFL and bundled in the app (`Conduit/LAA/Design/Fonts`). Labels,
-/// buttons, tabs, lists and numbers keep the system face (the operating
-/// register).
+/// Kit reading tokens and fonts for the UIKit/TextKit transcript and composer.
+/// SwiftUI can use the kit's reading face directly; TextKit keeps its attributed line boxes.
 enum LAAReadingStyle {
     // MARK: Register
 
@@ -26,44 +21,18 @@ enum LAAReadingStyle {
     /// glyph by glyph.
     static var isEnabled: Bool { register == .reading && fontsAvailable }
 
-    // MARK: Faces (font.reading.en / .ja)
+    // MARK: Kit metrics (converted to UIKit points on Catalyst)
 
-    enum Face: String, CaseIterable {
-        case latin = "Newsreader16pt-Regular"
-        case latinStrong = "NewsreaderRoman-SemiBold"
-        case latinItalic = "Newsreader16pt-Italic"
-        case latinStrongItalic = "NewsreaderItalic-SemiBold"
-        case japanese = "ShipporiMincho-Medium"
-        case japaneseStrong = "ShipporiMincho-SemiBold"
-    }
-
-    /// The bundled files, registered once for the app process.
-    static let fontFiles = ["Newsreader-Roman", "Newsreader-Italic", "ShipporiMincho-Medium", "ShipporiMincho-SemiBold"]
-
-    // MARK: Sizes (canvas.app-390 / canvas.app-1280)
-
-    /// Catalyst draws UIKit points at 0.77 Mac points (`LAAType`); the Mac
-    /// tokens are Mac points, so UIKit sizes are the token over 0.77.
-    #if targetEnvironment(macCatalyst)
-    static let platformScale: CGFloat = 1 / 0.77
-    static let bodySizeToken: CGFloat = 16
-    static let bodyLineToken: CGFloat = 26
-    #else
-    static let platformScale: CGFloat = 1
-    static let bodySizeToken: CGFloat = 17
-    static let bodyLineToken: CGFloat = 28
-    #endif
-    static let headingSizeToken: CGFloat = 20
-    static let headingLineToken: CGFloat = 26
-    static let codeBlockSizeToken: CGFloat = 13
-    static let codeBlockLineToken: CGFloat = 20
-    /// Inline code is mono at 0.88 of the reading size.
-    static let inlineCodeScale: CGFloat = 0.88
-    /// Latin tracking −0.01 em; Japanese 0.
-    static let latinTracking: CGFloat = -0.01
-
-    /// `canvas.app-1280.readingMeasure`: the Mac's prose column, left-anchored.
-    static var macMeasure: CGFloat { 680 * platformScale }
+    static let platformScale = LAAType.platformScale
+    static let bodySizeToken = LAAKit.LAAType.readingSize(.body)
+    static let bodyLineToken = LAAKit.LAAType.readingLine(.body)
+    static let headingSizeToken = LAAKit.LAAType.readingSize(.heading)
+    static let headingLineToken = LAAKit.LAAType.readingLine(.heading)
+    static let codeBlockSizeToken = LAAType.canvas.codeBlock
+    static let codeBlockLineToken = LAAType.canvas.codeBlockLine
+    static let inlineCodeScale = LAAType.canvas.codeInline / bodySizeToken
+    static let latinTracking = LAAFontFamily.readingTracking
+    static let macMeasure = LAACanvas.mac.readingMeasure * platformScale
 
     /// The reading body size at `traits`' Dynamic Type size and the chat's
     /// own text-size step.
@@ -95,10 +64,22 @@ enum LAAReadingStyle {
         let strong = strong || traits?.legibilityWeight == .bold || UIAccessibility.isBoldTextEnabled
         let key = FontKey(size: (size * 100).rounded() / 100, strong: strong, italic: italic)
         return cache.font(for: key) {
-            let latin: Face = italic ? (strong ? .latinStrongItalic : .latinItalic) : (strong ? .latinStrong : .latin)
-            let japanese: Face = strong ? .japaneseStrong : .japanese
-            let cascade = UIFontDescriptor(fontAttributes: [.name: japanese.rawValue])
-            let descriptor = UIFontDescriptor(fontAttributes: [.name: latin.rawValue, .cascadeList: [cascade]])
+            if #available(iOS 26, *) {
+                let font = LAAKit.LAAType.reading(size: key.size, strong: strong, italic: italic)
+                return font.resolve(in: EnvironmentValues().fontResolutionContext).ctFont as UIFont
+            }
+            // Older deployments have no SwiftUI Font → CTFont bridge.
+            let faces = LAAFonts.faces.filter { $0.family == LAAFontFamily.readingLatin }
+            let latin = faces.first { $0.postScriptName.contains("Italic") == italic }?.postScriptName
+                ?? LAAFontFamily.readingLatin
+            let japanese = LAAFonts.faces.filter { $0.family == LAAFontFamily.readingJapanese }
+            let cascade = japanese.filter { $0.postScriptName.contains("SemiBold") == strong }
+                .map { UIFontDescriptor(fontAttributes: [.name: $0.postScriptName]) }
+            let variation = UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String)
+            let descriptor = UIFontDescriptor(fontAttributes: [
+                .name: latin, .cascadeList: cascade,
+                variation: [0x7767_6874: strong ? LAAFontFamily.readingWeightStrong : LAAFontFamily.readingWeight],
+            ])
             return UIFont(descriptor: descriptor, size: key.size)
         }
     }
@@ -148,15 +129,16 @@ enum LAAReadingStyle {
     }
 
     static func isReadingFont(_ font: UIFont) -> Bool {
-        font.fontName.hasPrefix("Newsreader") || font.fontName.hasPrefix("ShipporiMincho")
+        font.familyName == LAAFontFamily.readingLatin || font.familyName == LAAFontFamily.readingJapanese
     }
 
     /// `font` made strong or italic within the reading faces; nil when it
     /// is not a reading font.
     static func withTraits(_ font: UIFont, _ traits: UIFontDescriptor.SymbolicTraits) -> UIFont? {
         guard isEnabled, isReadingFont(font) else { return nil }
-        let strong = traits.contains(.traitBold) || font.fontName.contains("SemiBold")
-        let italic = traits.contains(.traitItalic) || font.fontName.contains("Italic")
+        let axes = CTFontCopyVariation(font as CTFont) as? [Int: Double]
+        let strong = traits.contains(.traitBold) || (axes?[0x7767_6874] ?? 0) >= LAAFontFamily.readingWeightStrong
+        let italic = traits.contains(.traitItalic) || font.fontDescriptor.symbolicTraits.contains(.traitItalic)
         return uiFont(size: font.pointSize, strong: strong, italic: italic)
     }
 
@@ -168,23 +150,7 @@ enum LAAReadingStyle {
 
     // MARK: Registration
 
-    static let fontsAvailable: Bool = registerBundledFonts()
-
-    /// Registers the bundled faces for this process (app target only) and
-    /// proves each resolves by its PostScript name.
-    @discardableResult
-    static func registerBundledFonts(bundle: Bundle = .main) -> Bool {
-        for file in fontFiles {
-            guard let url = bundle.url(forResource: file, withExtension: "ttf") else { return false }
-            var error: Unmanaged<CFError>?
-            if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error) {
-                let code = (error?.takeRetainedValue()).map { CFErrorGetCode($0) } ?? 0
-                // Registered already (a second call in the same process).
-                guard code == CTFontManagerError.alreadyRegistered.rawValue else { return false }
-            }
-        }
-        return Face.allCases.allSatisfy { UIFont(name: $0.rawValue, size: 17)?.fontName == $0.rawValue }
-    }
+    static let fontsAvailable = LAAFonts.register().isEmpty
 
     // MARK: Line box
 
@@ -301,8 +267,7 @@ extension Font {
     /// The reading face for SwiftUI text (the owner's quick echoes), the
     /// system body when the register is off.
     static func laaReading(size: CGFloat? = nil) -> Font {
-        if let font = LAAReadingStyle.uiFont(size: size ?? LAAReadingStyle.bodySize()) { return Font(font as CTFont) }
-        return .body
+        LAAKit.LAAType.reading(size: size ?? LAAReadingStyle.bodySize())
     }
 }
 #endif

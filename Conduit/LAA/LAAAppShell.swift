@@ -253,10 +253,17 @@ struct LAAAppShell: View {
 
     private func tabLabel(_ tab: LAATab) -> some View {
         Label {
-            Text(verbatim: tab.title).font(.system(size: 10, weight: .semibold))
+            Text(verbatim: tab.title)
         } icon: {
+            #if targetEnvironment(macCatalyst)
             Image(systemName: tab.symbol).environment(\.symbolVariants, .none).fontWeight(.regular)
+            #else
+            Image(uiImage: LAANativeTabIcons.image(tab, selected: selectedTab == tab))
+                .renderingMode(.template)
+            #endif
         }
+        .labelStyle(.iconOnly)
+        .accessibilityLabel(Text(verbatim: tab.title))
         .environment(\.symbolVariants, .none)
     }
 

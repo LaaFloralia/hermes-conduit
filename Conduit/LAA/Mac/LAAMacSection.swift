@@ -97,6 +97,7 @@ final class LAAMacCommandsModel: ObservableObject {
     @Published var toggleSidebar = 0
     @Published var openSettings = 0
     @Published var closeConversation = 0
+    @Published var fitWindow = 0
 }
 
 extension LAACopy {

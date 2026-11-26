@@ -13,7 +13,7 @@ import UIKit
 /// phone.
 enum LAAMacWindow {
     /// UIKit points per Mac point under "Scale Interface to Match iPad".
-    static let scale: CGFloat = 0.77
+    static let scale = LAAType.catalystScale
 
     /// 1280×820 Mac points: the default desktop window.
     static let initialWidth: CGFloat = 1662
@@ -25,6 +25,19 @@ enum LAAMacWindow {
     /// Large enough for any display; the screen, not this, is the limit.
     static let maximumWidth: CGFloat = 8000
     static let maximumHeight: CGFloat = 5000
+
+    /// Geometry uses Mac system points, not Catalyst UIKit points.
+    static func comfortableFrame(in visible: CGRect) -> CGRect {
+        let horizontalMargin: CGFloat = 32
+        let verticalMargin: CGFloat = 32
+        let aspect: CGFloat = 1.6
+        let roomWidth = max(1, visible.width - horizontalMargin)
+        let roomHeight = max(1, visible.height - verticalMargin)
+        let width = min(1440, roomWidth, max(minimumWidth * scale, floor(roomHeight * aspect)))
+        let height = min(900, roomHeight, max(minimumHeight * scale, floor(width / aspect)))
+        return CGRect(x: floor(visible.midX - width / 2), y: floor(visible.midY - height / 2),
+                      width: width, height: height)
+    }
 
     #if DEBUG
     /// `-laa-mac-window 1280x820` asks the window for that size in Mac
@@ -57,10 +70,58 @@ enum LAAMacWindow {
 }
 
 struct LAAMacWindowConstraints: UIViewRepresentable {
+    @ObservedObject private var commands = LAAMacCommandsModel.shared
     func makeUIView(context: Context) -> ConstraintView { ConstraintView() }
-    func updateUIView(_ view: ConstraintView, context: Context) { view.apply() }
+    func updateUIView(_ view: ConstraintView, context: Context) { view.fit(ifRequested: commands.fitWindow) }
 
     final class ConstraintView: UIView {
+        private var lastRequest = LAAMacCommandsModel.shared.fitWindow
+        private var fitted: CGRect?
+        private var previous: CGRect?
+
+        func fit(ifRequested request: Int) {
+            guard request != lastRequest, let scene = window?.windowScene else { return }
+            lastRequest = request
+            let current = scene.effectiveGeometry.systemFrame
+            guard !current.isEmpty, let visible = Self.visibleFrame(containing: current) else { return }
+            let target = LAAMacWindow.comfortableFrame(in: visible)
+            if let fitted, let previous, current.insetBy(dx: -2, dy: -2).contains(fitted), visible.contains(previous) {
+                scene.requestGeometryUpdate(.Mac(systemFrame: previous))
+                self.previous = nil
+                self.fitted = nil
+            } else {
+                previous = current
+                fitted = target
+                scene.requestGeometryUpdate(.Mac(systemFrame: target))
+            }
+        }
+
+        private static func visibleFrame(containing window: CGRect) -> CGRect? {
+            // Catalyst does not import NSScreen, but AppKit's documented screen metrics are
+            // available in the process. Resize the scene itself through public UIKit geometry.
+            func rect(_ screen: NSObject, _ property: String) -> CGRect? {
+                let selector = NSSelectorFromString(property)
+                guard let getter = screen.method(for: selector) else { return nil }
+                typealias GetRect = @convention(c) (AnyObject, Selector) -> CGRect
+                // A typed getter avoids unboxing an AppKit NSRect with UIKit's NSValue API.
+                return unsafeBitCast(getter, to: GetRect.self)(screen, selector)
+            }
+            guard let type = NSClassFromString("NSScreen") as? NSObject.Type,
+                  let screens = type.perform(NSSelectorFromString("screens"))?.takeUnretainedValue() as? [NSObject],
+                  let primary = screens.first.flatMap({ rect($0, "frame") }) else { return nil }
+            func systemRect(_ rect: CGRect) -> CGRect {
+                CGRect(x: rect.minX, y: primary.maxY - rect.maxY, width: rect.width, height: rect.height)
+            }
+            func overlap(_ screen: NSObject) -> CGFloat {
+                guard let frame = rect(screen, "frame") else { return 0 }
+                let area = systemRect(frame).intersection(window)
+                return area.isNull ? 0 : area.width * area.height
+            }
+            guard let screen = screens.max(by: { overlap($0) < overlap($1) }),
+                  let frame = rect(screen, "visibleFrame") else { return nil }
+            return systemRect(frame)
+        }
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
             apply()
@@ -69,6 +130,7 @@ struct LAAMacWindowConstraints: UIViewRepresentable {
             guard let scene = window?.windowScene else { return }
             // The scene settles its own restrictions just after it connects,
             // which undoes the first attempt; apply again once it has.
+            scene.titlebar?.titleVisibility = .hidden
             setRestrictions(scene)
             requestFrame(scene)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self, weak scene] in

@@ -23,11 +23,7 @@ enum LAAChatPerson {
 struct LAARoleBadge: View {
     let role: String
     var body: some View {
-        Text(verbatim: role)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(LAAColor.link).lineLimit(1).fixedSize()
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: 4))
+        LAATranscriptRoleLabel(role: role)
     }
 }
 

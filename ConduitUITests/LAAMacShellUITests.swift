@@ -63,6 +63,40 @@ final class LAAMacShellUITests: XCTestCase {
                       "⌘3 did not open Today")
     }
 
+    func testFitWindowChangesFrameAndCanRestoreIt() {
+        let app = XCUIApplication()
+        app.launchEnvironment["LAA_UI_TEST_APPEARANCE_SCHEME"] = "Light"
+        app.launchEnvironment["LAA_UI_TEST_THEME_SUITE"] = "laa.appearance-test.\(UUID().uuidString)"
+        app.launchArguments += ["-laa-mac-section", "today", "-laa-mac-window", "940x620", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchInLab()
+        let fit = app.buttons["laa.mac.window.fit"].firstMatch
+        XCTAssertTrue(fit.waitForExistence(timeout: 20))
+        let window = app.windows.firstMatch
+        let initial = window.frame
+        fit.click()
+        let moved = NSPredicate { _, _ in window.frame != initial }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 6), .completed)
+        let frame = window.frame
+        XCTAssertLessThanOrEqual(frame.width, 1441)
+        XCTAssertLessThanOrEqual(frame.height, 901)
+        XCTAssertTrue(app.staticTexts["laa.today.title"].exists)
+        let shot = XCTAttachment(screenshot: window.screenshot())
+        shot.name = "mac-fit-window-light"
+        shot.lifetime = .keepAlways
+        add(shot)
+        fit.click()
+        let restored = NSPredicate { _, _ in
+            let current = window.frame
+            return abs(current.minX - initial.minX) < 3 && abs(current.minY - initial.minY) < 3
+                && abs(current.width - initial.width) < 3 && abs(current.height - initial.height) < 3
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 6), .completed)
+        let geometry = XCTAttachment(string: "Before: \(initial)\nFit: \(frame)\nRestored: \(window.frame)")
+        geometry.name = "mac-fit-window-frames"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+    }
+
     /// Chat keeps its list; the detail column says what to do rather than
     /// showing an empty conversation.
     func testChatStartsWithListAndEmptyDetail() {

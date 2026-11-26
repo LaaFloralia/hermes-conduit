@@ -22,7 +22,13 @@ extension ShapeStyle where Self == Color {
     #else
     static var conduitAura: Color { Color(red: 0.38, green: 0.58, blue: 0.98) }
     #endif
-    // V2 status tokens. Each is always paired with an SF Symbol and a word.
+    // Status colour is always paired with a symbol or a word.
+    #if LAA_BUILD
+    static var conduitAttention: Color { LAAColor.caution }
+    static var conduitSuccess: Color { LAAColor.positive }
+    static var conduitScheduled: Color { LAAColor.secondaryText }
+    static var conduitVoice: Color { LAAColor.link }
+    #else
     /// Approval waiting (amber shield).
     static var conduitAttention: Color { .conduitAdaptiveAttention }
     /// Finished work (green check).
@@ -31,12 +37,18 @@ extension ShapeStyle where Self == Color {
     static var conduitScheduled: Color { .conduitAdaptiveScheduled }
     /// Hermes speaking in a voice call (violet).
     static var conduitVoice: Color { .conduitAdaptiveVoice }
-    // Text colors (adapt to light/dark via system colors)
+    #endif
+    #if LAA_BUILD
+    static var conduitText: Color { LAAColor.text }
+    static var conduitTextSecondary: Color { LAAColor.secondaryText }
+    static var conduitBackground: Color { LAAColor.background }
+    static var conduitSurface: Color { LAAColor.surface }
+    #else
     static var conduitText: Color { Color.primary }
     static var conduitTextSecondary: Color { Color.secondary }
-    // Backgrounds
     static var conduitBackground: Color { Color(.systemBackground) }
     static var conduitSurface: Color { Color(.secondarySystemBackground) }
+    #endif
 }
 
 /// Quiet information (timestamps, hints, counts) at the tertiary level,
@@ -291,7 +303,7 @@ extension EnvironmentValues {
 
 extension UIColor {
     #if LAA_BUILD
-    static let conduitAccent = UIColor(LAAColor.link)
+    static var conduitAccent: UIColor { UIColor(LAAColor.link) }
     #else
     static let conduitAccent = UIColor { traits in
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
@@ -310,8 +322,8 @@ extension UIColor {
     /// A sent bubble's fill, top-leading and bottom-trailing stops. See
     /// ConduitAccent.bubbleColor.
     #if LAA_BUILD
-    static let conduitUserBubble = UIColor(LAAColor.ownBubble)
-    static let conduitUserBubbleShade = UIColor(LAAColor.ownBubble)
+    static var conduitUserBubble: UIColor { UIColor(LAAColor.ownBubble) }
+    static var conduitUserBubbleShade: UIColor { UIColor(LAAColor.ownBubble) }
     #else
     static let conduitUserBubble = UIColor { traits in
         traits.conduitAccent.bubbleColor

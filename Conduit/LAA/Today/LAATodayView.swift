@@ -1,7 +1,9 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 struct LAATodayView: View {
+    @ScaledMetric(relativeTo: .body) private var dayNumberSize = LAACanvas.iphone.body
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaDesktop) private var laaDesktop
@@ -202,11 +204,18 @@ struct LAATodayView: View {
                 Button { calendar.selectedDate = date } label: {
                     VStack(spacing: 2) {
                         Text(verbatim: LAADateText.string(date, .dayNumber))
+                            .monospacedDigit()
+                            .font(.system(size: dayNumberSize))
+                            .lineLimit(1)
+                            // Two tabular digits must fit a seventh of the width, even at AX5.
+                            // Other Today text and the full date accessibility label still scale.
+                            .minimumScaleFactor(LAACanvas.iphone.label / dayNumberSize)
                             .foregroundStyle(inMonth ? LAAColor.text : LAAColor.secondaryText)
-                        Circle().fill(count > 0 ? LAAColor.link : .clear).frame(width: 4, height: 4)
-                    }.frame(maxWidth: .infinity, minHeight: 44)
+                        Circle().fill(count > 0 ? LAAColor.link : .clear)
+                            .frame(width: LAASpace.hair, height: LAASpace.hair)
+                    }.frame(maxWidth: .infinity, minHeight: LAAControl.IPhone.hitArea)
                         .background(today ? LAAColor.selectionFill : selected ? LAAColor.subtleSurface : .clear,
-                                    in: RoundedRectangle(cornerRadius: LAARadius.card))
+                                    in: RoundedRectangle(cornerRadius: LAAKit.LAARadius.selection))
                 }.buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? .isSelected : [])
                     .accessibilityLabel(Text(verbatim: LAADateText.string(date, .day) + " · \(count)件"))

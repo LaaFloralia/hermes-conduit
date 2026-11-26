@@ -1,4 +1,5 @@
 #if LAA_BUILD && targetEnvironment(macCatalyst)
+import LAAKit
 import SwiftUI
 
 /// The Mac window's sidebar: the LAA heading, one row per section, and the
@@ -41,7 +42,7 @@ struct LAAMacSidebar: View {
 
     private var heading: some View {
         Text(verbatim: LAACopy.brand)
-            .font(LAAType.screenTitle)
+            .font(.custom("Georgia", size: LAACanvas.mac.title / LAAMacWindow.scale, relativeTo: .largeTitle))
             .foregroundStyle(LAAColor.text)
             .accessibilityAddTraits(.isHeader)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,9 +57,9 @@ struct LAAMacSidebar: View {
             section = item
         } label: {
             HStack(spacing: LAASpacing.x3) {
-                Image(systemName: item.symbol)
-                    .font(.system(size: 15, weight: .regular))
-                    .frame(width: 22, alignment: .center)
+                LAAIconImage(item == .drive ? .folder : item.tab.icon,
+                             size: LAAIconSize.inline / LAAMacWindow.scale)
+                    .frame(width: LAAIconSize.inline / LAAMacWindow.scale, alignment: .center)
                     .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
                     .accessibilityHidden(true)
                 Text(verbatim: item.title)

@@ -652,7 +652,11 @@ struct SettingsView: View {
                         .v2TabBarClearance()
                 }
         }
+        #if LAA_BUILD
+        .preferredColorScheme(LAAAppTheme.colorScheme(appState.themePreference.colorScheme))
+        #else
         .preferredColorScheme(appState.themePreference.colorScheme)
+        #endif
         .onAppear {
             // A link's page is already open as the sheet comes up; Back
             // leads to the Settings home.
@@ -1436,7 +1440,7 @@ private struct SettingsHome: View {
         VStack(alignment: .leading, spacing: 8) {
             LAASectionHeader("アプリ")
             LAAListSurface {
-                laaLink(.appearance, icon: "circle.lefthalf.filled", title: "外観", identifier: "settings.appearance")
+                laaLink(.appearance, icon: "circle.lefthalf.filled", title: "Appearance", identifier: "settings.appearance")
                 LAAListDivider()
                 laaLink(.notifications, icon: "bell", title: "通知", identifier: "settings.notifications")
                 LAAListDivider()
@@ -3482,6 +3486,33 @@ private struct AppearanceSettingsDetail: View {
     }
     var body: some View {
         SettingsDetailContainer {
+            #if LAA_BUILD
+            VStack(spacing: 0) {
+                LAAAppearanceThemeList()
+                LAAAppearancePreferenceRow(title: "Mode") {
+                    Picker("Mode", selection: Binding(get: { selected }, set: {
+                        selected = $0
+                        Haptics.selection()
+                        saveTheme($0)
+                    })) {
+                        Text(verbatim: "System").tag(ThemePreference.system)
+                        Text(verbatim: "Light").tag(ThemePreference.light)
+                        Text(verbatim: "Dark").tag(ThemePreference.dark)
+                    }
+                }
+                LAAListDivider()
+                LAAAppearancePreferenceRow(title: "Language") {
+                    Picker("Language", selection: Binding(get: { appLanguage.selection }, set: {
+                        Haptics.selection()
+                        appLanguage.select($0)
+                    })) {
+                        ForEach(AppLanguage.selectable) { language in
+                            Text(verbatim: language.displayName).tag(language)
+                        }
+                    }
+                }
+            }
+            #else
             ConduitSettingsSection(title: AppLocalization.string("Theme"), symbol: "circle.lefthalf.filled", tint: .conduitAccent) {
                 Text("Choose how Conduit appears across this device.").font(.footnote).foregroundStyle(.secondary)
                 Picker("Theme", selection: Binding(get: { selected }, set: {
@@ -3492,14 +3523,12 @@ private struct AppearanceSettingsDetail: View {
                     Text("Dark").tag(ThemePreference.dark); Text("Light").tag(ThemePreference.light); Text("System").tag(ThemePreference.system)
                 }.pickerStyle(.segmented)
             }
-            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("Accent color"), symbol: "paintpalette", tint: .conduitAccent) {
                 Text("Choose the color of your own messages and Conduit’s highlights.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 AccentColorPicker(selection: $accentChoice)
             }
-            #endif
             ConduitSettingsSection(title: AppLocalization.string("App language"), symbol: "globe", tint: .conduitAccent) {
                 Text("Choose the language Conduit’s interface uses. Speech, transcription, and provider language settings are unaffected.")
                     .font(.footnote)
@@ -3529,7 +3558,6 @@ private struct AppearanceSettingsDetail: View {
                     }
                 }
             }
-            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("App icon"), symbol: "app.badge", tint: .conduitAura) {
                 Text("Choose the icon shown on your Home Screen.")
                     .font(.footnote)
@@ -3664,7 +3692,10 @@ private struct AppearanceSettingsDetail: View {
                 }
             }
             #endif
-        }.navigationTitle("Appearance")
+        }
+        #if !LAA_BUILD
+        .navigationTitle("Appearance")
+        #endif
     }
 }
 

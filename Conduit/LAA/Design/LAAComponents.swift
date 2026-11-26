@@ -1,11 +1,13 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 struct LAAScreenHeader: View {
     let title: String
     var identifier = ""
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = LAAType.canvas.title * LAAType.platformScale
     var body: some View {
-        Text(verbatim: title).font(LAAType.title(title)).foregroundStyle(LAAColor.text)
+        Text(verbatim: title).font(LAAType.display(titleSize)).foregroundStyle(LAAColor.text)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier(identifier)
     }
@@ -245,11 +247,39 @@ struct LAAToolbarIconButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName).font(.system(size: 20, weight: .regular))
-                .foregroundStyle(tint).frame(width: 44, height: 44).contentShape(Circle())
+            LAACompactGlassIcon(icon: Self.phosphor(for: systemName), systemName: systemName, tint: tint)
         }
-        .buttonStyle(.plain).laaGlass(in: Circle())
+        .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: label)).accessibilityIdentifier(identifier).macTooltip(label)
+    }
+
+    private static func phosphor(for name: String) -> LAAIcon? {
+        switch name {
+        case "plus": .new
+        case "chevron.left": .back
+        case "gearshape": .settings
+        default: nil
+        }
+    }
+}
+
+struct LAACompactGlassIcon: View {
+    let icon: LAAIcon?
+    var systemName = ""
+    var tint = LAAColor.link
+    private var visual: CGFloat { LAAType.iconButton.visual * LAAType.platformScale }
+    private var glyph: CGFloat { LAAType.iconButton.icon * LAAType.platformScale }
+
+    var body: some View {
+        Group {
+            if let icon { LAAIconImage(icon, size: glyph) }
+            else { Image(systemName: systemName).font(.system(size: glyph)) }
+        }
+        .foregroundStyle(tint)
+        .frame(width: visual, height: visual)
+        .laaGlass(in: Circle(), interactive: true)
+        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+        .contentShape(Rectangle())
     }
 }
 
@@ -277,7 +307,7 @@ struct LAAScreenToolbar: ToolbarContent {
     }
     private var settingsItem: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            LAAToolbarIconButton(systemName: "gearshape", label: "設定", identifier: "laa.settings.open", action: settings)
+            LAAToolbarIconButton(systemName: "gearshape", label: LAACopy.settings, identifier: "laa.settings.open", action: settings)
         }
     }
 
@@ -356,7 +386,7 @@ struct LAALoadingDots: View {
             .frame(maxWidth: .infinity, minHeight: 88)
             .overlay { if visible { LAAActivityDots() } }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: "読み込み中"))
+            .accessibilityLabel(Text(verbatim: "Loading"))
             #if DEBUG
             .accessibilityIdentifier("laa.lab.loading")
             #endif
