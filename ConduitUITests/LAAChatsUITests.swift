@@ -48,6 +48,22 @@ final class LAAChatsUITests: XCTestCase {
         }
     }
 
+    /// Claude Duet sits under 派遣社員 and opens its own page, which hands a
+    /// draft over only through 「Duetで開く」 (owner, 2026-11-26).
+    func testDuetRowOpensItsPage() {
+        let app = launch()
+        let row = app.buttons["laa.chats.duet"]
+        for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.buttons["laa.duet.open"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textViews["laa.duet.draft"].exists || app.textFields["laa.duet.draft"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "duet-page-ui"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testPhoneListHasNoSearchField() {
         let app = launch()
         XCTAssertFalse(app.textFields["laa.chats.search"].exists)

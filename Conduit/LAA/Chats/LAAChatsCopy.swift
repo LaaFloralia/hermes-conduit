@@ -9,6 +9,14 @@ extension LAACopy {
     static let chatsContractors = "Contractors"
     /// What VoiceOver reads for that heading.
     static let chatsContractorsSpoken = "派遣社員"
+    /// Claude Duet's row and page (owner, 2026-11-26). Duet answers in its
+    /// own app; the page hands the owner's words over by the owner's tap.
+    static let duetRole = "Anthropic"
+    static let duetPlaceholder = "Duetに伝えること"
+    static let duetOpen = "Duetで開く"
+    static let duetOpenHint = "書いた文をコピーしてDuetを開きます。"
+    static let duetHowItWorks = "返事・朝の要約・お知らせはDuetのアプリに届きます。書いた文は「Duetで開く」でコピーされるので、Duetの入力欄に貼り付けて送ってください。"
+    static let duetCopied = "コピーしました。Duetの入力欄に貼り付けて送ってください。"
     static let chatsGroups = "Groups"
     static let chatsNewGroup = "新しいグループ"
     static let groupDone = "完了"

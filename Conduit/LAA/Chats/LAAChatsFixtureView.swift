@@ -11,6 +11,7 @@ struct LAAChatsFixtureView: View {
     @State private var selection: Selection?
     @State private var showingGroupCreator = false
     @State private var createdGroup: String?
+    @State private var showingDuet = false
     @Environment(\.laaSettingsAction) private var settings
 
     private var mode: String {
@@ -64,7 +65,9 @@ struct LAAChatsFixtureView: View {
                         newGroup: { showingGroupCreator = true },
                         openSettings: {
                             if let settings { settings() } else { selection = Selection(label: "settings") }
-                        }, retry: {}, searchChanged: {}, publishesMacCommands: false)
+                        }, retry: {}, searchChanged: {}, publishesMacCommands: false,
+                        openDuet: { showingDuet = true })
+        .sheet(isPresented: $showingDuet) { NavigationStack { LAADuetView() } }
         .overlay(alignment: .bottom) {
             if let createdGroup {
                 Text(verbatim: "created:\(createdGroup)").accessibilityIdentifier("laa.chats.fixture.created")
