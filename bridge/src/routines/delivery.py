@@ -27,7 +27,7 @@ STAFF = {'laa-monet': 'Monet', 'laa-cos': 'Merlin', 'laa-cto': 'Ada', 'laa-cfo':
 FIX_ROLE = {'laa-monet': 'COS', 'laa-cos': 'COS', 'laa-cto': 'CTO', 'laa-cfo': 'CFO',
             'laa-cio': 'CIO', 'laa-cso': 'CTO', 'laa-argus': 'CIO'}
 FAILURE_MARKS = ('[CRON_FAILURE]', '障害:', '障害：')
-CODE = re.compile(r'\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b')
+CODE = re.compile(r'\b([A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+)\b')  # snake_case or UPPER_SNAKE reason codes
 LAA_AGENT = Path.home() / '.local/bin/laa-agent'
 
 

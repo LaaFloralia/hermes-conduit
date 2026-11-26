@@ -73,6 +73,7 @@ class RoutineDeliveryTests(unittest.TestCase):
         self.assertIsNone(delivery.failure_signature('告。新着2件'))
         self.assertEqual(delivery.failure_signature('[CRON_FAILURE]\nscript_timeout after 180s'), 'script_timeout')
         self.assertIsNotNone(delivery.failure_signature('Job timed out', for_failure=True))
+        self.assertEqual(delivery.failure_signature('障害: 画面を読めない（WINDOW_UNREADABLE／HTTP_503）'), 'WINDOW_UNREADABLE')
 
     def test_muted_job_stores_without_push(self):
         self.assertEqual(self.report(muted=True)['notification_status'], 'muted')
