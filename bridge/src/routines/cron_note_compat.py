@@ -94,6 +94,8 @@ def append_note(db: Any, session_id: str, key: str, text: str, metadata: dict, *
         db._check_transcript_write_guards(conn, tip, None, reject_active_turn_lease=True)
         message = {"role": "user", "content": text, "display_kind": "internal_notification",
                    "display_metadata": {**metadata, "conduit_cron_delivery_id": key}}
+        if routine:
+            message["platform_message_id"] = key
         inserted, calls = db._insert_message_rows(conn, tip, [message])
         db._bump_session_counters(conn, tip, inserted, calls, unit=True)
         return int(message["_row_id"])
