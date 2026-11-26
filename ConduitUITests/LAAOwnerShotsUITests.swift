@@ -36,9 +36,7 @@ final class LAAOwnerShotsUITests: XCTestCase {
     func testSettingsShots() throws {
         for (theme, avatar) in [("light", false), ("dark", false), ("light", true), ("dark", true)] {
             let app = try launchWork(theme, avatar: avatar)
-            let settings = app.navigationBars.buttons.matching(identifier: "laa.settings.open").firstMatch
-            XCTAssertTrue(settings.waitForExistence(timeout: 15))
-            settings.tap()
+            app.openLAASettings()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
             Thread.sleep(forTimeInterval: 2)
             capture(app, "settings-\(theme)\(avatar ? "-avatar" : "")")

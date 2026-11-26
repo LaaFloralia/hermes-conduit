@@ -171,7 +171,7 @@ final class LAALabCaptureUITests: XCTestCase {
             }
         }
         batch(["settings"], tab: "work") { app in
-            tap("laa.settings.open", app)
+            app.openLAASettings()
             shot("settings", after: "settings.chat", app)
         }
         for (mode, expected) in [("empty", "laa.lab.empty"), ("loading", "laa.lab.loading"),

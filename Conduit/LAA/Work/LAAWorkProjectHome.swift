@@ -63,7 +63,7 @@ struct LAAWorkProjectHome: View {
         .navigationTitle(Text(verbatim: ""))
         .navigationBarTitleDisplayMode(.inline)
         .tint(LAAColor.link)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .accessibilityIdentifier("laa.work.project.detail")
         .navigationDestination(item: $openedID) { id in
             LAAWorkSessionDetail(id: id, projects: [project], workspaces: [], drafts: drafts)

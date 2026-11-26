@@ -53,7 +53,7 @@ struct LoginView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
             .toolbar {
-                if let laaSettings {
+                if let laaSettings, LAASettingsEntry.showsToolbarGear {
                     ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: laaSettings) }
                 }
             }

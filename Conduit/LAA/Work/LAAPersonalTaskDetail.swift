@@ -85,7 +85,7 @@ struct LAAPersonalTaskDetailView: View {
         .navigationTitle(Text(verbatim: LAACopy.WorkTab.task))
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(LAACopy.WorkTab.edit) { showEdit = true }.disabled(task == nil || viewerId == nil || error != nil)

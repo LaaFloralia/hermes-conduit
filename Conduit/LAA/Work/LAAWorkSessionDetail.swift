@@ -202,7 +202,7 @@ struct LAAWorkSessionDetail: View {
         .navigationTitle(Text(verbatim: session?.name ?? LAACopy.WorkTab.sessions))
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         // The bar keeps the system's glass, as in Chat; painting the paper
         // here flattened it under the session pill.
         .toolbarBackground(.hidden, for: .navigationBar)

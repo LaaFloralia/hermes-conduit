@@ -32,13 +32,12 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         let brightness = (mainBefore >> 16 & 255) + (mainBefore >> 8 & 255) + (mainBefore & 255)
         XCTAssertEqual(brightness < 384, dark, "The actual canvas follows the requested system appearance")
         #if !targetEnvironment(macCatalyst)
-        let tabs = app.tabBars.firstMatch
         for label in ["Chat", "Work", "Today", "Doc", "Studio"] {
-            let tab = tabs.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
-            XCTAssertTrue(tab.waitForExistence(timeout: 5), tabs.debugDescription)
+            let tab = app.laaTab(label)
+            XCTAssertTrue(tab.waitForExistence(timeout: 5), label)
             XCTAssertEqual(tab.isSelected, label == "Today")
         }
-        let work = tabs.buttons.matching(NSPredicate(format: "label == %@", "Work")).firstMatch
+        let work = app.laaTab("Work")
         XCTAssertTrue(String(describing: work.value ?? "").contains("5"), "The Work badge survives the custom glyph")
         #endif
 
@@ -81,11 +80,7 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
     }
 
     private func openAppearance(_ app: XCUIApplication) {
-        #if targetEnvironment(macCatalyst)
-        app.typeKey(",", modifierFlags: .command)
-        #else
-        app.buttons["laa.settings.open"].firstMatch.tap()
-        #endif
+        app.openLAASettings()
         let appearance = app.buttons["settings.appearance"].firstMatch
         XCTAssertTrue(appearance.waitForExistence(timeout: 10))
         #if !targetEnvironment(macCatalyst)
