@@ -10,6 +10,12 @@ struct LAAWorkProjectsSection: View {
     let refreshID: Int
     /// The Work hub's search on the phone.
     var query = ""
+    @Binding var linkedProject: String?
+
+    init(drafts: ComposerDraftStore, refreshID: Int, query: String = "", linkedProject: Binding<String?> = .constant(nil)) {
+        self.drafts = drafts; self.refreshID = refreshID; self.query = query
+        _linkedProject = linkedProject
+    }
 
     @State private var projects: [LAAWorkProject] = []
     /// The sessions, only to mark the projects with work running or waiting.
@@ -80,6 +86,21 @@ struct LAAWorkProjectsSection: View {
         }
         .sheet(isPresented: $showNew, onDismiss: { editorID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
+        }
+        .task(id: linkedProject) {
+            guard let id = linkedProject, bridge.status == .paired else { return }
+            do {
+                let project: LAAWorkProject = try await bridge.read("/v1/projects/\(id)")
+                guard !Task.isCancelled, linkedProject == id else { return }
+                opened = project
+                linkedProject = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, linkedProject == id else { return }
+                linkedProject = nil
+                failure = (error as? LAABridgeError)?.japaneseText ?? "プロジェクトを開けませんでした。"
+            }
         }
         // Re-read like the session list (every five seconds while shown), so
         // a requirement Monet finishes moves the row's count without a pull.

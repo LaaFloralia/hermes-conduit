@@ -1096,7 +1096,8 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   links `laa://work/decisions[/<id>]`: `Conduit/LAA/Work/LAAWorkSessionCache.swift`; native questions reuse
   `Conduit/LAA/Work/LAAWorkSessionDecision.swift`
 - Bridge: `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/routes/decisions.mjs`,
-  `bridge/src/cli-decisions.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md`; design: `docs/laa/DESIGN.md`
+  `bridge/src/cli-decisions.mjs`, `bridge/src/cli-monet.mjs` (trusted proxy), `bridge/src/routes/monet.mjs`;
+  contract: `bridge/README.md`, `docs/laa/BRIDGE.md`; design: `docs/laa/DESIGN.md`
 - Tests: `ConduitTests/LAADecisionTests.swift`, `ConduitTests/LAAStopgapTests.swift`, `ConduitTests/LAADecisionSnapshotTests.swift`,
   `ConduitUITests/LAADecisionUITests.swift`, `scripts/laa/work-ui-fixture.mjs`, `bridge/test/decisions.test.mjs`
 
@@ -1210,14 +1211,15 @@ same extension and delegate) · the decision board and the session reply card (u
   `Conduit/Views/AuxiliaryViews.swift` (the section's place)
 - Bridge: `bridge/src/notify/index.mjs` (encodeNotificationSessionId), `bridge/src/notify/preferences.mjs`,
   `bridge/src/routes/notifications.mjs`, `bridge/src/sessions/quick-reply.mjs`, `bridge/src/sessions/service.mjs`,
-  `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/notify/completion-report.mjs`
-  (unwired producer); contract: `bridge/README.md`,
+  `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/notify/completion-report.mjs`,
+  `bridge/src/routes/monet.mjs` (verified request trigger), `bridge/src/owner-surface.mjs` (agent-only language gate);
+  contract: `bridge/README.md`,
   `docs/laa/BRIDGE.md`
 - Call policy: `scripts/laa/check-call-policy.py`
 - Tests: `ConduitTests/LAAQuickAnswerTests.swift`, `ConduitTests/LAACallPolicyTests.swift`,
   `ConduitTests/LAAWorkNotificationSettingsSnapshotTests.swift`, `bridge/test/notification-quick-reply.test.mjs`,
   `bridge/test/notify-lanes.test.mjs`, `bridge/test/notify-completion-report.test.mjs`,
-  `scripts/tests/test_laa_check_call_policy.py`
+  `bridge/test/ambient-wave3.test.mjs` (off-production request-to-report rehearsal), `scripts/tests/test_laa_check_call_policy.py`
 
 **Rulings**
 - The Bridge's own facts ride in the push's `session_id` as `laa-bridge:<link>#<base64url JSON>`, within the
@@ -1252,13 +1254,14 @@ same extension and delegate) · the decision board and the session reply card (u
   More than one pending request, more than one question, or a question with no listed choices gets no buttons: it
   opens the app.
 - Kinds and defaults: decision, question, approval, error, task, calendar and Monet's report alert; finished turns
-  are off by default. Previously stored choices are preserved, including legacy `finished: quiet` entries that cannot
-  be distinguished from a deliberate choice. Decision, question and approval cannot be turned off. Settings shares
+  are off by default. Unmarked legacy `finished: quiet` entries migrate once to off; choices with owner provenance
+  and other stored levels are preserved. Decision, question and approval cannot be turned off. Settings shares
   one set on the Bridge for every device and shows the report choice only if the Bridge advertises it. Employee chat
   notifications keep their own switches under "Notify me when".
-- `monet.report` uses a project/request key and a separate persisted, bounded dedupe ledger. The staged producer
-  requires a verified request, no open decision for its project, and a trusted top-level Monet caller; it is not wired
-  to a caller or route. The extension, Watch mirroring, routine policy and quick-answer routes are unchanged.
+- `monet.report` uses a project/request key and a separate persisted, bounded dedupe ledger. The report route
+  requires a verified request, no open decision for its project, and the trusted top-level Monet credential; a Work
+  child cannot call it. Child completions, child notices and silent Monet proposals never enqueue a push. The
+  extension, Watch mirroring, routine policy and quick-answer routes are unchanged.
 - An employee calls the owner when asked (`when_asked`). Calling on its own judgment (`decides`) and about approvals
   and failures (`alerts`) stay off unless the owner turns them on; `scripts/laa/check-call-policy.py` reads every
   employee profile and fails when one has either on. It changes nothing.
@@ -4628,7 +4631,7 @@ The LAA employee transcript and composer, including the cached opening preview a
 **Code**
 - Follow-up field, message actions and the model menu: `Conduit/LAA/Work/LAAWorkComposer.swift`, `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkMessageActions.swift`, `Conduit/LAA/Work/LAAWorkMessageRow.swift`, `Conduit/LAA/Work/LAAWorkSessionParts.swift`, `Conduit/LAA/Design/LAAEffortMark.swift`, `Conduit/LAA/Design/LAAModelMark.swift`, `Conduit/LAA/Design/LAAModelEffortPicker.swift`, `Conduit/LAA/Design/LAAGlassActionButton.swift`, `assets/laa/LAAAccent.xcassets/LAADeepSeekMark.imageset/Contents.json`, `Conduit/LAA/Work/LAAWorkPaneViews.swift`, `scripts/laa/work-ui-fixture.mjs`, `ConduitUITests/LAAChatPolishUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAASessionModelDisplayUITests.swift`
 - Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkArchivePrompt.swift`, `Conduit/LAA/Work/LAAWorkDesktop.swift`, `Conduit/LAA/Work/LAAWorkStatusMark.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkModelSelection.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`, `Conduit/LAA/Work/LAAWorkTranscriptPages.swift`, `Conduit/Views/Components/TranscriptBackfillControl.swift`, `Conduit/LAA/Work/LAAWorkSessionProjectMove.swift`, `Conduit/LAA/Work/LAAWorkInitialInstruction.swift`
-- Project requirements and progress (list rows, detail page, owner's requirement changes, fixture): `Conduit/LAA/Work/LAAWorkProjectRequirements.swift`, `Conduit/LAA/Work/LAAWorkProjectOverview.swift`, `Conduit/LAA/Work/LAAWorkProjectHome.swift`, `Conduit/LAA/Work/LAAWorkProjectFixtureView.swift`, `Conduit/LAA/Work/LAAWorkCopy.swift`, `bridge/src/routes/projects.mjs`, `ConduitTests/LAAWorkProjectRequirementTests.swift`, `ConduitTests/LAAWorkProjectSnapshotTests.swift`
+- Project requirements and progress (list rows, detail page, owner's requirement changes, fixture): `Conduit/LAA/Work/LAAWorkProjectRequirements.swift`, `Conduit/LAA/Work/LAAWorkProjectOverview.swift`, `Conduit/LAA/Work/LAAWorkProjectHome.swift`, `Conduit/LAA/Work/LAAWorkProjectFixtureView.swift`, `Conduit/LAA/Work/LAAWorkCopy.swift`, `bridge/src/routes/projects.mjs`, `bridge/src/routes/project-requirements.mjs`, `ConduitTests/LAAWorkProjectRequirementTests.swift`, `ConduitTests/LAAWorkProjectSnapshotTests.swift`
 - Name and first instruction sheet: `Conduit/LAA/Work/LAAWorkInitialInstruction.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkPaneViews.swift`, `bridge/src/sessions/service.mjs` (initialInstruction), `bridge/src/routes/sessions.mjs`, `bridge/test/sessions.test.mjs`, `bridge/test/first-prompt.test.mjs`, `ConduitUITests/LAAWorkSessionUITests.swift`
 - Directory, decisions, images and notifications: `bridge/src/sessions/daemon.mjs`, `bridge/src/sessions/images.mjs`, `bridge/src/sessions/local-images.mjs`, `bridge/src/sessions/history.mjs`, `bridge/src/notify/index.mjs`, `bridge/src/notify/deliver.py`, `Conduit/LAA/Work/LAAWorkSessionCache.swift`, `Conduit/LAA/Work/LAAWorkSessionDecision.swift`, `Conduit/LAA/Work/LAAWorkSessionImage.swift`, `bridge/test/paseo-daemon.test.mjs`, `ConduitUITests/LAAPaseoUITests.swift`, `scripts/laa/paseo-ui-fixture.mjs`
 - Session question free answer (the same card on iPhone and Mac Catalyst): `Conduit/LAA/Studio/LAAStudioCreate.swift` (`studioInputField`), `ConduitUITests/LAATaskRunUITests.swift`, `ConduitUITests/LAALabCaptureUITests.swift`

@@ -67,9 +67,13 @@ struct LAAWorkRequirement: Codable, Hashable, Identifiable {
     let sessionIds: [String]
     let order: Int
     let updatedAt: String?
+    var verifiedAt: String? = nil
+    var verifiedBy: String? = nil
+    var note: String? = nil
+    var requestId: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, title, details, source, sessionIds, order, updatedAt
+        case id, title, details, source, sessionIds, order, updatedAt, verifiedAt, verifiedBy, note, requestId
         case statusValue = "status"
     }
 
@@ -90,6 +94,10 @@ struct LAAWorkRequirement: Codable, Hashable, Identifiable {
         sessionIds = (try? box.decodeIfPresent([String].self, forKey: .sessionIds)) ?? []
         order = (try? box.decodeIfPresent(Int.self, forKey: .order)) ?? Int.max
         updatedAt = try? box.decodeIfPresent(String.self, forKey: .updatedAt)
+        verifiedAt = try? box.decodeIfPresent(String.self, forKey: .verifiedAt)
+        verifiedBy = try? box.decodeIfPresent(String.self, forKey: .verifiedBy)
+        note = try? box.decodeIfPresent(String.self, forKey: .note)
+        requestId = try? box.decodeIfPresent(String.self, forKey: .requestId)
     }
 
     var status: LAAWorkRequirementStatus { LAAWorkRequirementStatus(raw: statusValue) }
@@ -117,7 +125,14 @@ struct LAAWorkRequirementSummary: Codable, Hashable {
         total = requirements.count
     }
 
-    var fraction: Double { total > 0 ? Double(min(completed, total)) / Double(total) : 0 }
+    var rate: Double? { total > 0 ? Double(min(completed, total)) / Double(total) : nil }
+    var fraction: Double { rate ?? 0 }
+}
+
+struct LAAWorkDenominatorChange: Codable, Hashable {
+    let at: String
+    let delta: Int
+    let reason: String
 }
 
 /// One of the project's sessions as the project detail lists it.
@@ -288,11 +303,13 @@ struct LAAWorkProjectSnapshot: Codable, Equatable {
     let sessions: [LAAWorkProjectSession]?
     /// Absent from a reading kept by an earlier build; decoded as nil.
     let sessionCounts: LAAWorkSessionCounts?
+    let requirementDenominatorLog: [LAAWorkDenominatorChange]?
     let savedAt: Date
 
     init(_ project: LAAWorkProject, at date: Date = Date()) {
         progressNote = project.progressNote; requirements = project.requirements
         sessions = project.sessions; sessionCounts = project.sessionCounts; savedAt = date
+        requirementDenominatorLog = project.requirementDenominatorLog
     }
 }
 
