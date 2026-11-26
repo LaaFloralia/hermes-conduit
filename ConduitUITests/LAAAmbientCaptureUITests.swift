@@ -67,6 +67,29 @@ final class LAAAmbientCaptureUITests: XCTestCase {
 
     func testCall() { capture("call", name: "Morgan") }
 
+    /// Monet's report and Morgan's decision as the extension decorates
+    /// them (the app's local-notification fixture), on the Home Screen and
+    /// in Notification Center.
+    func testNotifications() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-LAA_AMBIENT_NOTIFICATION_FIXTURE", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                               "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP"]
+        app.launchInLab()
+        allowNotifications()
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(label("朝の報告").waitForExistence(timeout: 15), "no report banner")
+        shot("notification-monet-report")
+        XCTAssertTrue(label("経費").waitForExistence(timeout: 15), "no decision banner")
+        shot("notification-decision-cfo")
+        Thread.sleep(forTimeInterval: 6)
+        springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.005))
+            .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.7)))
+        Thread.sleep(forTimeInterval: 2)
+        shot("notification-center")
+        XCUIDevice.shared.press(.home)
+        app.terminate()
+    }
+
     func testTurn() { capture("turn", name: "Monet") }
 }
 #endif
