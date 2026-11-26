@@ -34,6 +34,8 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         }
         #endif
         let mainBefore = try paperSample(app.screenshot())
+        let brightness = (mainBefore >> 16 & 255) + (mainBefore >> 8 & 255) + (mainBefore & 255)
+        XCTAssertEqual(brightness < 384, dark, "The actual canvas follows the requested system appearance")
         attach(app.screenshot(), as: "shell-\(prefix)")
 
         openAppearance(app)

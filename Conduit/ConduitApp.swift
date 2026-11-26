@@ -425,7 +425,7 @@ struct ConduitApp: App {
                 .environmentObject(appState)
                 .environment(\.locale, appLanguage.resolvedLocale)
                 .environment(\.laaDesktop, true)
-                .preferredColorScheme(appState.themePreference.colorScheme)
+                .preferredColorScheme(LAAAppTheme.colorScheme(appState.themePreference.colorScheme))
                 .tint(LAAColor.link)
                 .modifier(LAAAppThemeModifier())
         }
@@ -467,10 +467,11 @@ struct ConduitApp: App {
                 NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
                 HermesCallNotifications.registerCategory()
             }
-            .preferredColorScheme(appState.themePreference.colorScheme)
             #if LAA_BUILD
+            .preferredColorScheme(LAAAppTheme.colorScheme(appState.themePreference.colorScheme))
             .tint(LAAColor.link)
             #else
+            .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)
             .background(WindowAccentTint(choice: accentChoice))
             #endif

@@ -36,9 +36,6 @@ struct LAAAppThemeModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.laaTheme(store.themeID)
-            #if DEBUG
-            .preferredColorScheme(LAAAppTheme.colorScheme(nil))
-            #endif
             .onChange(of: store.themeID, initial: true) { _, id in LAASelectedTheme.shared.apply(id) }
             .onChange(of: phase, initial: true) { _, phase in
                 if phase == .active { store.reload() }

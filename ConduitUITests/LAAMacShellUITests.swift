@@ -65,6 +65,8 @@ final class LAAMacShellUITests: XCTestCase {
 
     func testFitWindowChangesFrameAndCanRestoreIt() {
         let app = XCUIApplication()
+        app.launchEnvironment["LAA_UI_TEST_APPEARANCE_SCHEME"] = "Light"
+        app.launchEnvironment["LAA_UI_TEST_THEME_SUITE"] = "laa.appearance-test.\(UUID().uuidString)"
         app.launchArguments += ["-laa-mac-section", "today", "-laa-mac-window", "940x620", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchInLab()
         let fit = app.buttons["laa.mac.window.fit"].firstMatch
