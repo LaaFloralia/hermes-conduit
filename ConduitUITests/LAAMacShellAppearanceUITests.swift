@@ -32,11 +32,13 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         XCTAssertEqual(brightness < 384, dark, "The actual canvas follows the requested system appearance")
         #if !targetEnvironment(macCatalyst)
         let tabs = app.tabBars.firstMatch
-        for (id, label) in [("chats", "Chat"), ("work", "Work"), ("today", "Today"), ("brain", "Doc"), ("studio", "Studio")] {
-            let tab = tabs.buttons["laa.tab.\(id)"]
+        for label in ["Chat", "Work", "Today", "Doc", "Studio"] {
+            let tab = tabs.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
             XCTAssertTrue(tab.waitForExistence(timeout: 5), tabs.debugDescription)
-            XCTAssertTrue(tab.label.hasPrefix(label), "The icon-only tab keeps an English accessibility label (and any badge)")
+            XCTAssertEqual(tab.isSelected, label == "Today")
         }
+        let work = tabs.buttons.matching(NSPredicate(format: "label == %@", "Work")).firstMatch
+        XCTAssertNotNil(work.value, "The fixture's work badge survives the custom glyph")
         #endif
 
         openAppearance(app)

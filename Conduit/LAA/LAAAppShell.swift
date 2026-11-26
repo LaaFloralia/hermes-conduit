@@ -231,9 +231,6 @@ struct LAAAppShell: View {
     private var tabs: some View {
         TabView(selection: $selectedTab) {
             chatsTab
-                #if !targetEnvironment(macCatalyst)
-                .background(LAANativeTabIcons().allowsHitTesting(false).accessibilityHidden(true))
-                #endif
                 .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
                 .tabItem { tabLabel(.chats) }
                 .tag(LAATab.chats)
@@ -246,9 +243,6 @@ struct LAAAppShell: View {
                               usageState: usageState, selectedTab: $selectedTab,
                               onRequestSettings: onRequestSettings)
                     .equatable()
-                #if !targetEnvironment(macCatalyst)
-                .background(LAANativeTabIcons().allowsHitTesting(false).accessibilityHidden(true))
-                #endif
                 .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
                 .tabItem { tabLabel(tab) }
                 .badge(tab == .work ? decisionCount : 0)
@@ -261,8 +255,15 @@ struct LAAAppShell: View {
         Label {
             Text(verbatim: tab.title)
         } icon: {
+            #if targetEnvironment(macCatalyst)
             Image(systemName: tab.symbol).environment(\.symbolVariants, .none).fontWeight(.regular)
+            #else
+            Image(uiImage: LAANativeTabIcons.image(tab, selected: selectedTab == tab))
+                .renderingMode(.template)
+            #endif
         }
+        .labelStyle(.iconOnly)
+        .accessibilityLabel(Text(verbatim: tab.title))
         .environment(\.symbolVariants, .none)
     }
 
