@@ -42,6 +42,7 @@ import { calendarRoutes } from './calendar.mjs';
 import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
+import { voiceLeaseRoutes } from './voice-lease.mjs';
 import { deviceRoutes } from './devices.mjs';
 import { createDecisionStore } from '../decisions/store.mjs';
 import { createDecisionService, isWaiting } from '../decisions/service.mjs';
@@ -226,7 +227,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
       ...(options.instructions?.enabled === true
         ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
         : []),
-      ...voiceRoutes(options.voice ?? {}),
+      ...voiceRoutes(options.voice ?? {}), ...voiceLeaseRoutes(options.voiceLease),
       ...campaignRoutes(options.campaigns ?? {}),
     ] : []),
     ...deviceRoutes({ store, now }),

@@ -251,20 +251,16 @@ struct GroupRoomComposer: View {
             if inUse { dictation.cancel() }
         }
 #if LAA_BUILD
-        // Chaired Voice: the bar's Talk starts this dictation; its start and
-        // end (send, stop, cancel) hold and resume meeting lines.
+        .onAppear { installChairedMeetingCaptureStop() }
+        .onChange(of: surface?.room.roomID) { _, _ in installChairedMeetingCaptureStop() }
         .onChange(of: appState.chairedVoiceTalkRequest) { _, _ in
-            if !appState.isVoiceInUse, !isDictationActive { beginDictation() }
-            // M2c: a bar Talk that could not start dictation returns to listening.
+            if let generation = appState.liveChairedGeneration, !appState.isVoiceInUse, !isDictationActive {
+                beginDictation(meetingGeneration: generation)
+            }
             if !isDictationActive { appState.chairedVoiceDictationChanged(active: false) }
         }
-        // M3: Listen stops dictation keeping the words (never cancel/discard).
-        .onChange(of: appState.chairedVoiceListenRequest) { _, _ in
-            if dictation.isCapturing { dictation.stop() }
-            appState.chairedVoiceDictationChanged(active: false)
-        }
         .onChange(of: isDictationActive) { _, active in
-            appState.chairedVoiceDictationChanged(active: active)
+            if !active, appState.chairedMeeting.turn.ownerTalking { appState.chairedVoiceDictationChanged(active: false) }
         }
 #endif
         .onDisappear {
@@ -1005,13 +1001,21 @@ struct GroupRoomComposer: View {
 
     // MARK: - Dictation
 
-    private func beginDictation() {
+    #if LAA_BUILD
+    private func installChairedMeetingCaptureStop() {
+        let epoch = appState.groupRoomEpoch
+        appState.chairedMeetingEndCapture = { [weak appState, weak dictation] keep in
+            guard let appState, let dictation, appState.groupRoomEpoch == epoch,
+                  appState.chairedMeeting.turn.ownerTalking else { return }
+            if keep, dictation.isCapturing { dictation.stop() }
+            else if !keep || dictation.isStarting { dictation.cancel() }
+            if !keep || !dictation.isDictating { appState.chairedVoiceDictationChanged(active: false) }
+        }
+    }
+    #endif
+
+    private func beginDictation(meetingGeneration: String? = nil) {
         guard let token = dictation.reserveStart() else { return }
-        #if LAA_BUILD
-        // M2a: same main-actor turn as reserveStart, so the room releases its
-        // leases before the Task below can acquire capture (no takeover).
-        appState.chairedVoiceDictationChanged(active: true)
-        #endif
         composerError = nil
         dictationPrefix = draft
         dictatedDraft = nil
@@ -1037,13 +1041,35 @@ struct GroupRoomComposer: View {
         dictation.onFailure = { message in composerError = message }
         Task {
             do {
+                #if LAA_BUILD
+                if let generation = meetingGeneration {
+                    let state = appState
+                    let talkRequest = state.chairedVoiceTalkRequest
+                    try await VoiceAudioSessionCoordinator.$meetingCaptureAuthorization.withValue({ [weak state] in
+                        state?.liveChairedGeneration == generation && state?.chairedVoiceTalkRequest == talkRequest
+                    }) {
+                        try await dictation.start(token: token, engine: .apple, words: [], onInputLevel: { [weak state, weak dictation] level in
+                            Task { @MainActor in
+                                guard let state, state.liveChairedGeneration == generation,
+                                      state.chairedVoiceTalkRequest == talkRequest, dictation?.isCapturing == true else { return }
+                                if state.chairedMeeting.observeMic(level) { state.requestChairedVoiceListen() }
+                            }
+                        })
+                    }
+                } else {
+                    try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() })
+                }
+                #else
                 try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() })
+                #endif
             } catch {
                 composerError = UserFacingError.message(for: error)
             }
             #if LAA_BUILD
-            // M2b: acquisition failed (possibly coalesced in one render pass): back to listening.
-            if !isDictationActive { appState.chairedVoiceDictationChanged(active: false) }
+            if let generation = meetingGeneration, appState.liveChairedGeneration == generation, !isDictationActive {
+                appState.chairedVoiceDictationChanged(active: false)
+                if dictatedDraft == nil { appState.chairedMeeting.apply(.sendDeclined) }
+            }
             #endif
         }
     }

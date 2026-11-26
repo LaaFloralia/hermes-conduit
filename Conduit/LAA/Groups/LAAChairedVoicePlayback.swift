@@ -64,8 +64,10 @@ struct LAAChairedVoicePlayback {
     private(set) var current: (utterance: LAAChairedVoiceUtterance, ticket: UInt64)?
     /// Backlog present at engage (and everything flushed) stays unspoken.
     private(set) var silentThroughSeq = Int.min
+    private(set) var muted = false
+    private var heardSeqs: Set<Int> = []
     private var heardEventIDs: Set<String> = []
-    private var heardOrder: [String] = []
+    private var heardOrder: [(id: String, seq: Int)] = []
     private var nextTicket: UInt64 = 0
     private var hasBound = false
     private var highestSeq = Int.min
@@ -87,7 +89,9 @@ struct LAAChairedVoicePlayback {
         self.generation = generation
         phase = .silent
         silentThroughSeq = Int.min
+        muted = false
         heardEventIDs = []
+        heardSeqs = []
         heardOrder = []
         highestSeq = Int.min
         return effects
@@ -108,10 +112,11 @@ struct LAAChairedVoicePlayback {
         guard owns(generation), event.roomID == roomID else { return [] }
         let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard event.isFinal, event.actorKind == "member", !text.isEmpty else { return [] }
-        guard !event.eventID.isEmpty, !heardEventIDs.contains(event.eventID) else { return [] }
+        guard !event.eventID.isEmpty, !heardEventIDs.contains(event.eventID), !heardSeqs.contains(event.seq),
+              event.seq > silentThroughSeq else { return [] }
         highestSeq = max(highestSeq, event.seq)
-        remember(event.eventID)
-        guard phase != .silent, event.seq > silentThroughSeq else { return [] }
+        remember(event.eventID, seq: event.seq)
+        guard phase != .silent, !muted else { return [] }
         let line = LAAChairedVoiceUtterance(
             roomID: event.roomID, seq: event.seq, eventID: event.eventID,
             speakerID: event.speakerID, text: text
@@ -148,12 +153,29 @@ struct LAAChairedVoicePlayback {
         return startNextIfIdle()
     }
 
+    mutating func flushRound(generation: Int) -> [LAAChairedVoiceEffect] {
+        guard owns(generation), phase == .engaged else { return [] }
+        return flush(releasing: current != nil || !queue.isEmpty)
+    }
+
+    mutating func skip(generation: Int) -> [LAAChairedVoiceEffect] {
+        guard owns(generation), let current else { return [] }
+        return [.stopSpeaking(ticket: current.ticket)] + completed(ticket: current.ticket, generation: generation)
+    }
+
+    mutating func toggleMute(generation: Int) -> [LAAChairedVoiceEffect] {
+        guard owns(generation), phase != .silent else { return [] }
+        muted.toggle()
+        return muted ? flush(releasing: current != nil || !queue.isEmpty) : []
+    }
+
     /// Stop: flush, stop and disengage. Voice stays silent until `engage`.
     @discardableResult
     mutating func stop(generation: Int) -> [LAAChairedVoiceEffect] {
         guard owns(generation) else { return [] }
         let effects = flush(releasing: current != nil || !queue.isEmpty)
         phase = .silent
+        muted = false
         return effects
     }
 
@@ -174,11 +196,15 @@ struct LAAChairedVoicePlayback {
         roomID != nil && generation == self.generation
     }
 
-    private mutating func remember(_ eventID: String) {
+    private mutating func remember(_ eventID: String, seq: Int) {
         heardEventIDs.insert(eventID)
-        heardOrder.append(eventID)
+        heardSeqs.insert(seq)
+        heardOrder.append((eventID, seq))
         if heardOrder.count > Self.heardLimit {
-            heardEventIDs.remove(heardOrder.removeFirst())
+            let dropped = heardOrder.removeFirst()
+            heardEventIDs.remove(dropped.id)
+            heardSeqs.remove(dropped.seq)
+            silentThroughSeq = max(silentThroughSeq, dropped.seq)
         }
     }
 

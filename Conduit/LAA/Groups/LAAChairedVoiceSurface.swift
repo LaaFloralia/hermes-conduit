@@ -97,11 +97,8 @@ enum LAAChairedVoiceCopy {
 }
 
 enum LAAChairedVoiceSurface {
-    /// The meeting's effect executor (TTS / lease / completion) is owned by
-    /// AppState and not installed yet (patch 2 has no handler), so the bar
-    /// stays hidden: it must not offer a Voice button that plays nothing.
-    /// The AppState owner flips this in the same change that calls
-    /// `chairedVoice.setHandler(_:)`.
-    static let playbackWired = false
+    /// The iOS, Catalyst and synthetic-room gates passed. Visibility alone
+    /// never activates audio; only explicit Talk can claim the endpoint.
+    static let playbackWired = true
 }
 #endif
