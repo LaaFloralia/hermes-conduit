@@ -84,7 +84,7 @@ test('chart routines expose only author model and effort identifiers', () => {
 
 test('staff, planned execution and recent observed executions survive the HTTP projection', async (t) => {
   const staff = { id: 'cto', name: 'Ada' };
-  const run = { by: 'gpt-6.2-sol', effort: 'high', why: '画面を確認するため', label: 'Sol High' };
+  const run = { by: 'gpt-6.2-sol', effort: 'high', via: 'work', why: '画面を確認するため', label: 'Sol High' };
   const recent = { runId: 'execution-12345678', startedAt: '2026-11-26T08:00:00.000Z', finishedAt: null,
     result: 'running', model: 'gemini-4-hydrogen', provider: 'laa-agy', effort: 'high' };
   const jobs = [{ id: 'job:a', name: 'Daily', staff: { ...staff, secret: 'PRIVATE-STAFF' },
@@ -119,8 +119,10 @@ test('new routine fields are bounded and malformed data cannot leak through', ()
   assert.deepEqual(row.recentRuns, [valid]);
   assert.equal(project({ delivery: 'other' }).delivery, null);
   assert.equal(project({ run: { by: 'code', why: 'a'.repeat(121), label: 'コード' } }).run, null);
-  assert.deepEqual(project({ run: { by: 'code', why: '定型処理', label: 'コード' } }).run,
+  assert.deepEqual(project({ run: { by: 'code', why: '定型処理', label: 'コード', via: 'work' } }).run,
     { by: 'code', effort: null, why: '定型処理', label: 'コード' });
+  const plan = { by: 'gpt-6.2-sol', effort: 'high', why: '画面を確認するため', label: 'Sol High' };
+  assert.deepEqual(project({ run: { ...plan, via: 'private-route' } }).run, plan);
   const recentRuns = Array.from({ length: 21 }, (_, i) => ({ ...valid, runId: `execution-${i}` }));
   assert.deepEqual(project({ reading: { recentRuns } }).recentRuns, recentRuns.slice(0, 20));
   assert.deepEqual(project({ reading: { recentRuns: [] } }).recentRuns, []);

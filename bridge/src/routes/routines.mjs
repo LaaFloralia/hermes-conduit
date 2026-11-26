@@ -33,7 +33,8 @@ function plannedRun(value) {
   const effort = value?.effort ?? null;
   if (!by || by !== by.toLowerCase() || !why || !label ||
       (by === 'code' ? effort !== null : !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort))) return null;
-  return { by, effort, why, label };
+  const via = by !== 'code' && value.via === 'work' ? { via: 'work' } : {};
+  return { by, effort, ...via, why, label };
 }
 
 function runTime(value) {
