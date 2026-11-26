@@ -7,14 +7,10 @@ enum LAADriveBrowseSection: String, CaseIterable {
 
 enum LAADriveFileFilter: String, CaseIterable, Codable {
     case all, video, image, document
-    var title: String {
-        switch self { case .all: return "All"; case .video: return "Video"; case .image: return "Images"; case .document: return "Documents" }
-    }
 }
 
 enum LAADriveBrowseOrder: String, CaseIterable {
     case name, recent
-    var title: String { self == .name ? "Name" : "Modified" }
 }
 
 /// A cursor belongs to this exact section, folder, query and page size.

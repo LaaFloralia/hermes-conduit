@@ -146,7 +146,7 @@ struct LAAUsageView: View {
         }
         .buttonStyle(.plain)
         .disabled(state.isRefreshing || bridge.status != .paired)
-        .accessibilityValue(state.isRefreshing ? "Syncing" : "")
+        .accessibilityValue(state.isRefreshing ? AppLocalization.string("Syncing") : "")
         .accessibilityIdentifier("laa.usage.refresh")
     }
 

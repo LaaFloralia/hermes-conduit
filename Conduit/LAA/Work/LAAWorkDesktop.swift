@@ -97,7 +97,9 @@ struct LAAWorkDesktopSessionsView: View {
                         Menu {
                             Button("Recent First") { projectOrder = false }
                             Button("By Project") { projectOrder = true }
-                            Button(showArchived ? "Recent" : "Archive") { showArchived.toggle(); reloadID += 1 }
+                            Button { showArchived.toggle(); reloadID += 1 } label: {
+                                Text(verbatim: showArchived ? "Recent" : "Archive")
+                            }
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
                     }

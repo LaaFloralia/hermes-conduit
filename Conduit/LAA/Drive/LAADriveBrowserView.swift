@@ -181,7 +181,7 @@ struct LAADriveBrowserView: View {
     private var desktopBreadcrumb: some View {
         HStack(spacing: LAASpacing.x1) {
             Button { folders = []; search = "" } label: {
-                Text(verbatim: section.title).laaTextStyle(.secondary)
+                section.label.laaTextStyle(.secondary)
                     .foregroundStyle(folders.isEmpty ? LAAColor.text : LAAColor.link)
             }
             .buttonStyle(.plain).frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -210,7 +210,7 @@ struct LAADriveBrowserView: View {
     @ViewBuilder private var filterButtons: some View {
         ForEach(LAADriveFileFilter.allCases.filter { $0 == .all || availableKinds.contains($0) }, id: \.self) { option in
             Button { fileType = option; searchFocused = false } label: {
-                Text(verbatim: option.title).laaTextStyle(.secondary)
+                option.label.laaTextStyle(.secondary)
                     .foregroundStyle(option == fileType ? LAAColor.link : LAAColor.secondaryText)
                     .padding(.horizontal, LAASpacing.x2).frame(minHeight: (desktop ? LAACanvas.mac : .iphone).touchTarget)
                     .overlay(alignment: .bottom) {
@@ -247,10 +247,10 @@ struct LAADriveBrowserView: View {
     private var fileMenu: some View {
             Menu {
                 Picker("Location", selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
-                    ForEach(LAADriveBrowseSection.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
+                    ForEach(LAADriveBrowseSection.allCases, id: \.self) { $0.label.tag($0) }
                 }
                 Picker("Sort", selection: $sort) {
-                    ForEach(LAADriveBrowseOrder.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
+                    ForEach(LAADriveBrowseOrder.allCases, id: \.self) { $0.label.tag($0) }
                 }
                 Button("Rules", systemImage: "doc.text") { showRules = true }
                     .accessibilityIdentifier("laa.drive.rules")
@@ -513,16 +513,33 @@ private struct LAADriveSearchPlacement: ViewModifier {
     }
 }
 
+// LAA Drive controls stay in English. Use verbatim text for keys the
+// upstream app already translates; LAA-only keys stay English in the catalog.
 private extension LAADriveBrowseSection {
-    var title: String {
+    var label: Text {
         switch self {
-        case .my: return "My Drive"
-        case .shared: return "Shared Drives"
-        case .sharedWithMe: return "Shared Items"
-        case .recent: return "Recent"
-        case .starred: return "Starred"
+        case .my: Text(verbatim: "My Drive")
+        case .shared: Text("Shared Drives")
+        case .sharedWithMe: Text("Shared Items")
+        case .recent: Text(verbatim: "Recent")
+        case .starred: Text(verbatim: "Starred")
         }
     }
+}
+
+private extension LAADriveFileFilter {
+    var label: Text {
+        switch self {
+        case .all: Text(verbatim: "All")
+        case .video: Text(verbatim: "Video")
+        case .image: Text(verbatim: "Images")
+        case .document: Text(verbatim: "Documents")
+        }
+    }
+}
+
+private extension LAADriveBrowseOrder {
+    var label: Text { Text(verbatim: self == .name ? "Name" : "Modified") }
 }
 
 @MainActor
