@@ -100,7 +100,9 @@ struct LAAWorkInitialInstruction: View {
             .foregroundStyle(LAAColor.text)
             .navigationTitle(Text(verbatim: "名前と最初の指示"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("work.initialInstruction.done") } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) {
+                LAACloseButton { dismiss() }.accessibilityIdentifier("work.initialInstruction.done")
+            } }
         }
         .tint(LAAColor.link)
         .task(id: sessionID) { await load() }

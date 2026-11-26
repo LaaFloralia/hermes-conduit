@@ -130,10 +130,10 @@ struct LAABrainNoteView: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button(String("文書内検索")) { showQuickSwitch = true }
-                            Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), action: togglePin)
-                            Button(raw ? String("本文を表示") : String("Markdownを表示")) { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
-                            Button(String("情報")) { showInfo = true }
+                            Button(String("Find")) { showQuickSwitch = true }
+                            Button(isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin, action: togglePin)
+                            Button(raw ? String("Preview") : String("Markdown")) { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
+                            Button(String("Info")) { showInfo = true }
                         } label: { Image(systemName: "ellipsis") }
                             .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
                     }
@@ -198,7 +198,7 @@ struct LAABrainNoteView: View {
                             Text(verbatim: metadata).textSelection(.enabled)
                         }
                     }.navigationTitle(String("情報"))
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showInfo = false }.accessibilityIdentifier("laa.brain.note.info.close") } }
                 }
             }
             .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : bridge.revision, isLocal: isLocal)) {
@@ -301,7 +301,7 @@ private struct LAABrainQuickSwitch: View {
             }
             .searchable(text: $query, prompt: "ノートを検索")
             .navigationTitle(String("ノートを切り替える"))
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.note.local.close") } }
         }
     }
 }

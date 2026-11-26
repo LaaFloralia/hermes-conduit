@@ -29,7 +29,7 @@ struct LAAMarkdownFormatBar: View {
             control("outdent", "decrease.indent", LAACopy.Brain.outdent, .indent(outdent: true))
             control("indent", "increase.indent", LAACopy.Brain.indent, .indent(outdent: false))
             control("undo", "arrow.uturn.backward", LAACopy.Brain.undo, .undo)
-                .contextMenu { Button(String("やり直す")) { session.apply(.redo) } }
+                .contextMenu { Button(String("Redo")) { session.apply(.redo) } }
             control("dismiss", "keyboard.chevron.compact.down", LAACopy.Brain.dismissKeyboard, .dismissKeyboard)
         }
         .frame(maxWidth: .infinity)

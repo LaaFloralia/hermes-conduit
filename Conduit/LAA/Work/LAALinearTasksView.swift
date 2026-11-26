@@ -156,7 +156,7 @@ struct LAALinearTasksView: View {
             NavigationStack {
                 LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { taskRoute.target = nil } label: { Text(verbatim: LAACopy.close) }
+                        LAACloseButton { taskRoute.target = nil }.accessibilityIdentifier("work.task.route.close")
                     } }
             }
             .environmentObject(bridge)
@@ -170,7 +170,7 @@ struct LAALinearTasksView: View {
                     Task { await load(quiet: true) }
                 })
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { detail = nil } label: { Text(verbatim: LAACopy.close) }
+                        LAACloseButton { detail = nil }
                         #if DEBUG
                         .accessibilityIdentifier("work.task.detail.close")
                         #endif
@@ -189,7 +189,7 @@ struct LAALinearTasksView: View {
             Button(role: .destructive) {
                 if let task = deleting { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "archive") }
                 deleting = nil
-            } label: { Text(verbatim: "削除") }
+            } label: { Text(verbatim: "Delete") }
             Button(role: .cancel) { deleting = nil } label: { Text(verbatim: LAACopy.cancel) }
         } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
         .confirmationDialog(Text(verbatim: "完了にしますか？"), isPresented: Binding(get: { completing != nil },
@@ -197,7 +197,7 @@ struct LAALinearTasksView: View {
             Button {
                 if let task = completing { complete(task) }
                 completing = nil
-            } label: { Text(verbatim: "完了") }
+            } label: { Text(verbatim: "Complete") }
             Button(role: .cancel) { completing = nil } label: { Text(verbatim: LAACopy.cancel) }
         } message: {
             Text(verbatim: completing.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
@@ -231,7 +231,7 @@ struct LAALinearTasksView: View {
                         Button {
                             if let tasks = confirmingBatch { completeAll(tasks) }
                             confirmingBatch = nil
-                        } label: { Text(verbatim: "完了") }
+                        } label: { Text(verbatim: "Complete") }
                         Button(role: .cancel) { confirmingBatch = nil } label: { Text(verbatim: LAACopy.cancel) }
                     } message: {
                         Text(verbatim: LAATaskRunCopy.batchMessage(for: confirmingBatch ?? []))
@@ -378,21 +378,21 @@ struct LAALinearTasksView: View {
                 if archivedOnly {
                     Button {
                         submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
-                    } label: { Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") } }
+                    } label: { Label { Text(verbatim: "Restore") } icon: { Image(systemName: "arrow.uturn.backward") } }
                         .disabled(locked)
                 } else {
-                    Button { detail = task } label: { Label { Text(verbatim: "詳細・コメント") } icon: { Image(systemName: "doc.text") } }
+                    Button { detail = task } label: { Label { Text(verbatim: "Details") } icon: { Image(systemName: "doc.text") } }
                     Button { editor = Editor(id: task.id, task: task) } label: {
-                        Label { Text(verbatim: "編集") } icon: { Image(systemName: "pencil") }
+                        Label { Text(verbatim: "Edit") } icon: { Image(systemName: "pencil") }
                     }.disabled(locked)
                     if task.isOpen {
                         Button { completing = task } label: {
-                            Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark.circle") }
+                            Label { Text(verbatim: "Complete") } icon: { Image(systemName: "checkmark.circle") }
                         }.disabled(locked || task.completionBlockedReason != nil)
                     }
                     Divider()
                     Button(role: .destructive) { deleting = task } label: {
-                        Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                        Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                     }.disabled(locked)
                 }
             }
@@ -400,7 +400,7 @@ struct LAALinearTasksView: View {
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if archivedOnly {
                     Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
-                        Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") }
+                        Label { Text(verbatim: "Restore") } icon: { Image(systemName: "arrow.uturn.backward") }
                     }.tint(LAAColor.link).disabled(locked)
                 } else {
                     // First on the trailing edge, so a swipe ends on 完了.
@@ -408,18 +408,18 @@ struct LAALinearTasksView: View {
                         guard task.completionBlockedReason == nil else { return }
                         completing = task
                     } label: {
-                        Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark") }
+                        Label { Text(verbatim: "Complete") } icon: { Image(systemName: "checkmark") }
                     }.tint(LAAColor.link)
                         .disabled(locked || task.completionBlockedReason != nil)
                     Button(role: .destructive) { deleting = task } label: {
-                        Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                        Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                     }.disabled(locked)
                 }
             }
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if !archivedOnly {
                     Button { editor = Editor(id: task.id, task: task) } label: {
-                        Label { Text(verbatim: "編集") } icon: { Image(systemName: "pencil") }
+                        Label { Text(verbatim: "Edit") } icon: { Image(systemName: "pencil") }
                     }.tint(LAAColor.decorativeTan).disabled(locked)
                 }
             }
@@ -520,17 +520,17 @@ struct LAALinearTasksView: View {
         let task = row.task
         return rowView(row, selected: selectedTask?.id == row.id)
             .contextMenu {
-                Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "開く") }
+                Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "Open") }
                 if task.isArchived {
                     Button {
                         submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
-                    } label: { Text(verbatim: "戻す") }
+                    } label: { Text(verbatim: "Restore") }
                 } else {
-                    Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "編集") }
-                    Button { completing = task } label: { Text(verbatim: "完了") }
+                    Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "Edit") }
+                    Button { completing = task } label: { Text(verbatim: "Complete") }
                         .disabled(locked || !task.isOpen || task.completionBlockedReason != nil)
                     Divider()
-                    Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
+                    Button(role: .destructive) { deleting = task } label: { Text(verbatim: "Archive") }
                 }
             }
             .disabled(locked)
@@ -909,7 +909,7 @@ struct LAALinearTaskEditor: View {
             .navigationTitle(Text(verbatim: task == nil ? "タスクを追加" : "タスクを編集"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.close) } }
+                ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.editor.close") }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { commit() } label: { Text(verbatim: LAACopy.save) }
                         .disabled(!canSave)

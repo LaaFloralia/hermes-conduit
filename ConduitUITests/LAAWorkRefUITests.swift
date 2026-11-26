@@ -69,12 +69,12 @@ final class LAAWorkRefUITests: XCTestCase {
         let task = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
         XCTAssertTrue(task.waitForExistence(timeout: 10))
         task.press(forDuration: 1.5)
-        let open = app.buttons["詳細・コメント"]
+        let open = app.buttons["Details"]
         XCTAssertTrue(open.waitForExistence(timeout: 5)); open.tap()
         let meta = app.staticTexts["work.task.detail.ref"]
         XCTAssertTrue(meta.waitForExistence(timeout: 10))
         XCTAssertEqual(meta.label, "T12 · BUS-TEST1")
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["work.task.detail.close"].tap()
 
         // Sessions: every row and the session's own header.
         section(app, "sessions")

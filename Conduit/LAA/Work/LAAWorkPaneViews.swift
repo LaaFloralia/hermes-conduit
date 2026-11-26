@@ -702,7 +702,7 @@ extension LAACopy {
     static let paneEmptyHeading = "空のペイン"
     static let paneNewSession = "新しいセッション"
     static let paneFocusedValue = "選択中"
-    static let paneOpenRight = "右に分割して開く"
-    static let paneOpenBelow = "下に分割して開く"
+    static let paneOpenRight = "Split Right"
+    static let paneOpenBelow = "Split Below"
 }
 #endif

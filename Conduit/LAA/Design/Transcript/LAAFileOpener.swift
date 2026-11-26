@@ -30,7 +30,7 @@ struct LAAFileDocumentSheet: View, Identifiable {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { dismiss() } label: { Text(verbatim: "閉じる") }
+                    LAACloseButton { dismiss() }
                         .accessibilityIdentifier("laa.file.close")
                 }
             }
@@ -106,7 +106,7 @@ struct LAADriveLinkSheet: View, Identifiable {
                                                   exportFormats: nil, thumbnailLink: nil, owners: nil))
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button { dismiss() } label: { Text(verbatim: "閉じる") }
+                        LAACloseButton { dismiss() }.accessibilityIdentifier("laa.file.drive.close")
                     }
                 }
         }

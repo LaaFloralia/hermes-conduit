@@ -127,8 +127,8 @@ struct LAAWorkDesktopSessionsView: View {
                                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                     .contextMenu {
                                         if let project {
-                                            Button(String("名前と指示を変更")) { editingProject = project }
-                                            Button(String("アーカイブ")) {
+                                            Button(String("Edit")) { editingProject = project }
+                                            Button(String("Archive")) {
                                                 archivePrompt = .project(project) {
                                                     Task {
                                                         do { try await LAAWorkHTTP.setProjectArchived(project, archived: true, bridge: bridge) }
@@ -273,13 +273,13 @@ struct LAAWorkDesktopSessionsView: View {
             }
             #endif
             Button { Task { await update(session, favorite: !session.isFavorite) } } label: {
-                Label { Text(verbatim: session.isFavorite ? "ピンを外す" : "ピン留め") } icon: { Image(systemName: "pin") }
+                Label { Text(verbatim: session.isFavorite ? LAACopy.WorkTab.unpin : LAACopy.WorkTab.pin) } icon: { Image(systemName: "pin") }
             }
             Button {
                 if session.isArchived { Task { await update(session, archived: false) } }
                 else { archivePrompt = .session(session) { Task { await update(session, archived: true) } } }
             } label: {
-                Label { Text(verbatim: session.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                Label { Text(verbatim: session.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
             }
             LAAWorkProjectMoveMenu(session: session, projects: projects) { project in
                 Task { await move(session, to: project) }
@@ -460,7 +460,7 @@ struct LAAWorkDesktopProjectsView: View {
                                     if project.isArchived { Task { await setArchived(project) } }
                                     else { archivePrompt = .project(project) { Task { await setArchived(project) } } }
                                 } label: {
-                                    Label { Text(verbatim: project.isArchived ? "戻す" : "アーカイブ") } icon: { Image(systemName: "archivebox") }
+                                    Label { Text(verbatim: project.isArchived ? LAACopy.WorkTab.unarchive : LAACopy.WorkTab.archive) } icon: { Image(systemName: "archivebox") }
                                 }
                             }
                             .accessibilityAddTraits(selectedID == project.id ? .isSelected : [])

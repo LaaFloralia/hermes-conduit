@@ -93,7 +93,8 @@ struct LAAPersonalTaskList: View {
             if !submittedSearch.isEmpty {
                 HStack {
                     Text(verbatim: "Search: \(submittedSearch)").laaTextStyle(.secondary)
-                    Button(LAACopy.WorkTab.close) { search = ""; submittedSearch = "" }
+                    LAACloseButton(label: "Clear Search") { search = ""; submittedSearch = "" }
+                        .accessibilityIdentifier("work.personalTask.search.clear")
                 }
             }
             ScrollView(.horizontal, showsIndicators: false) {

@@ -257,9 +257,9 @@ struct LAADriveBrowserView: View {
                     .accessibilityIdentifier("laa.drive.rules")
                 Button("Upload", systemImage: "plus") { upload(folders.last?.id) }
                 if let folder = folders.last {
-                    Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFolder(folder) }
+                    Button(String("Save Offline"), systemImage: "arrow.down.circle") { saveFolder(folder) }
                 }
-                NavigationLink(String("この端末に保存済み")) { LAADriveOfflineScreen() }
+                NavigationLink(String("Saved Offline")) { LAADriveOfflineScreen() }
             } label: {
                 Image(systemName: "ellipsis").frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
             }.accessibilityLabel("Drive Menu").accessibilityIdentifier("laa.drive.browser.menu")
@@ -273,7 +273,7 @@ struct LAADriveBrowserView: View {
             if let error = controller.error {
                 HStack {
                     Text(verbatim: errorMessage(error)).lineLimit(2)
-                    Button(String("再試行")) { Task { await reload(key, debounce: false) } }
+                    Button(String("Retry")) { Task { await reload(key, debounce: false) } }
                 }.laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             if controller.items.isEmpty && controller.error == nil {
@@ -348,14 +348,14 @@ struct LAADriveBrowserView: View {
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")
         .contextMenu {
             if let url = entry.safeWebViewURL {
-                ShareLink(item: url) { Label(String("共有"), systemImage: "square.and.arrow.up") }
-                Button(String("リンクをコピー"), systemImage: "link") { UIPasteboard.general.url = url }
-                Link(destination: url) { Label(String("Driveで開く"), systemImage: "arrow.up.right.square") }
+                ShareLink(item: url) { Label(String("Share"), systemImage: "square.and.arrow.up") }
+                Button(String("Copy Link"), systemImage: "link") { UIPasteboard.general.url = url }
+                Link(destination: url) { Label(String("Open in Drive"), systemImage: "arrow.up.right.square") }
             }
             if entry.item.isFolder {
-                Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFolder(entry) }
+                Button(String("Save Offline"), systemImage: "arrow.down.circle") { saveFolder(entry) }
             } else {
-                Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFile(entry) }
+                Button(String("Save Offline"), systemImage: "arrow.down.circle") { saveFile(entry) }
                     .disabled(LAADrivePresentation.reason(entry.item) != nil)
             }
         }

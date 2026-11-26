@@ -81,9 +81,9 @@ struct LAAWorkSessionsSection: View {
                         Text(verbatim: project.name).laaTextStyle(.section)
                             .foregroundStyle(LAAColor.text).frame(minHeight: 32, alignment: .bottom)
                             .contextMenu {
-                                Button(String("開く")) { projectHome = project }
-                                Button(String("名前と指示を変更")) { editingProject = project }
-                                Button(String("アーカイブ")) {
+                                Button(String("Open")) { projectHome = project }
+                                Button(String("Edit")) { editingProject = project }
+                                Button(String("Archive")) {
                                     archivePrompt = .project(project) { Task { await archiveProject(project) } }
                                 }
                             }
@@ -412,7 +412,7 @@ struct LAAWorkChildDisclosure: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: open ? "子エージェントを閉じる" : "子エージェントを開く"))
+        .accessibilityLabel(Text(verbatim: open ? "Collapse children" : "Expand children"))
         .accessibilityValue(Text(verbatim: "\(count)"))
         .accessibilityIdentifier("work.session.\(id).children")
     }

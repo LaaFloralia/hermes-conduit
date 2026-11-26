@@ -81,7 +81,7 @@ struct LAAMessageActionBar: View {
     var body: some View {
         HStack(spacing: 0) {
             if hasText {
-                action(copied ? "checkmark" : "doc.on.doc", label: copied ? "コピーしました" : "コピー",
+                action(copied ? "checkmark" : "doc.on.doc", label: copied ? "Copied" : "Copy",
                        id: "copy", tint: copied ? LAAColor.link : LAAColor.secondaryText) { copy() }
                 if let onReply {
                     action("arrowshape.turn.up.left", label: "返信", id: "reply", tint: LAAColor.secondaryText, perform: onReply)
@@ -97,12 +97,12 @@ struct LAAMessageActionBar: View {
                     }
                     .alert(String("スタンプを追加"), isPresented: $addingStamp) {
                         TextField(String("絵文字"), text: $stamp)
-                        Button(String("追加")) {
+                        Button(String("Add")) {
                             let emoji = stamp.trimmingCharacters(in: .whitespacesAndNewlines)
                             if !emoji.isEmpty { onReact(String(emoji.prefix(1))) }
                             stamp = ""
                         }
-                        Button("キャンセル", role: .cancel) { stamp = "" }
+                        Button(String("Cancel"), role: .cancel) { stamp = "" }
                     }
             }
             if let liked, let onLike {

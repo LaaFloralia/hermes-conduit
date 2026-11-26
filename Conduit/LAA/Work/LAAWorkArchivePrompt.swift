@@ -12,8 +12,8 @@ struct LAAWorkArchivePrompt: Identifiable {
     /// nil: a notice that only needs OK.
     let archive: (() -> Void)?
 
-    static let confirmTitle = "アーカイブ"
-    static let cancelTitle = "キャンセル"
+    static let confirmTitle = "Archive"
+    static let cancelTitle = "Cancel"
     static let refusedTitle = "アーカイブできませんでした"
     static let running = "このセッション、またはその下の子のセッションが実行中か判断待ちのため、Macがアーカイブを断りました。セッションはそのまま残っています。終わってから、または停止してから、もう一度アーカイブしてください。"
     static let unreachable = "Macから結果が届かなかったため、アーカイブできたか確かめられません。一覧を読み直して確認してください。"

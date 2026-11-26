@@ -8,8 +8,7 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.employee.call"].waitForExistence(timeout: 10))
         app.buttons["laa.employee.header"].tap()
         XCTAssertTrue(app.staticTexts["社長秘書・総合アドバイザー"].waitForExistence(timeout: 5))
-        // The sheet localizes its close label, and the gate's simulator is English.
-        app.buttons.matching(NSPredicate(format: "label IN %@", ["閉じる", "Close"])).firstMatch.tap()
+        app.buttons["laa.staff.intro.close"].tap()
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["laa.call.name"].exists)
@@ -45,7 +44,7 @@ final class LAAStaffCallUITests: XCTestCase {
         let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Juniper")).firstMatch
         XCTAssertTrue(choice.waitForExistence(timeout: 5))
         choice.tap()
-        app.buttons.matching(NSPredicate(format: "label IN %@", ["閉じる", "Close"])).firstMatch.tap()
+        app.buttons["laa.staff.intro.close"].tap()
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
         attachScreenshot(name: "employee-gpt-live-call")

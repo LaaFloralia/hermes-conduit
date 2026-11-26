@@ -55,7 +55,7 @@ struct LAAOwnerTaskListContent: View {
                     .onSubmit(createTask)
                     .disabled(!inputEnabled)
                     .accessibilityIdentifier("work.ownerTasks.newTitle")
-                Button(String("追加"), action: createTask)
+                Button(String("Add"), action: createTask)
                     .disabled(!inputEnabled || adding || newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("work.ownerTasks.create")
             }
@@ -193,9 +193,9 @@ struct LAAOwnerTaskEditor: View {
             }
             .navigationTitle(draft.base == nil ? LAAOwnerTaskCopy.addTask : LAAOwnerTaskCopy.editTask)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.ownerTasks.editor.close") }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { saveIfValid() }
+                    Button(String("Save")) { saveIfValid() }
                         .accessibilityIdentifier("work.ownerTasks.editor.save")
                 }
             }

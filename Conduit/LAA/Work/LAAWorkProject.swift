@@ -130,6 +130,7 @@ struct LAAWorkProjectEditor: View {
                 }
                 Button(LAACopy.WorkTab.save) { save() }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy || pending != nil || drafts.persistenceFailed)
+                    .accessibilityIdentifier("work.project.editor.save")
             }
             .scrollContentBackground(.hidden)
             .background(LAAColor.background)
@@ -154,7 +155,7 @@ struct LAAWorkProjectEditor: View {
                 }
             }
             .navigationTitle(Text(verbatim: current == nil ? LAACopy.WorkTab.newProject : LAACopy.WorkTab.editProject))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.project.editor.close") } }
         }
     }
     private func profileLabel(_ id: String?) -> String {

@@ -339,8 +339,8 @@ extension LAAChatModelCatalog {
         guard connected else { return "Hermesに接続していません。" }
         if switching { return "変更中です。" }
         switch phase {
-        case .idle, .loading: return "モデルの候補を読み込み中です。"
-        case .failed: return "モデルの候補を取得できませんでした。"
+        case .idle, .loading: return "モデルの一覧を準備中です。"
+        case .failed: return "モデルの一覧を読み取れませんでした。"
         case .ready(let choices):
             if choices.isEmpty { return "選べるモデルがありません。" }
             if choices.count == 1 { return "この社員で選べるモデルはこれだけです。" }

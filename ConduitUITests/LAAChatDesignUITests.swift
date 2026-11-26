@@ -127,7 +127,7 @@ final class LAAChatDesignUITests: XCTestCase {
             conversation.tap()
             XCTAssertTrue(app.navigationBars["会話の情報"].waitForExistence(timeout: 5))
             capture(app, "intro-conversation-after-\(theme)")
-            app.navigationBars["会話の情報"].buttons["完了"].tap()
+            app.buttons["laa.staff.info.close"].tap()
             XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 5))
             app.terminate()
         }
@@ -200,7 +200,7 @@ final class LAAChatDesignUITests: XCTestCase {
             capture(app, "conversation-information-after-\(dark ? "dark" : "light")")
             app.buttons["conversation.background"].tap()
             XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))
-            app.navigationBars["背景"].buttons["完了"].tap()
+            app.buttons["laa.background.close"].tap()
             XCTAssertTrue(app.buttons["会話内を検索"].waitForExistence(timeout: 5))
             app.terminate()
         }

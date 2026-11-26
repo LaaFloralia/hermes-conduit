@@ -454,7 +454,7 @@ struct LAAWorkProjectPage: View {
                         .background(LAAColor.surface)
                         .contextMenu {
                             Button(role: .destructive) { actions.removeFile(file) } label: {
-                                Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                                Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                             }
                         }
                         if file.id != files.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 50) }

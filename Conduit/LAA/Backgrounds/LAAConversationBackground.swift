@@ -244,7 +244,7 @@ struct LAABackgroundPicker: View {
                             .accessibilityIdentifier("background.fixture.photo")
                     }
                     #endif
-                    if loading { ProgressView(LAACopy.chatLoadingPhoto) }
+                    if loading { ProgressView().accessibilityLabel(Text(verbatim: "Loading photo")) }
                 }
                 if value.kind == .photo {
                     Section {
@@ -289,7 +289,9 @@ struct LAABackgroundPicker: View {
             }
             .navigationTitle(Text(verbatim: LAACopy.chatBackground))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LAACopy.chatDone) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) {
+                LAACloseButton { dismiss() }.accessibilityIdentifier("laa.background.close")
+            } }
             .onAppear { value = store.setting(for: key) }
             .onChange(of: photo) { _, item in
                 guard let item else { return }

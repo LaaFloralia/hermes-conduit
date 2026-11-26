@@ -46,8 +46,8 @@ final class LAAStudioUITests: XCTestCase {
         let stopConfirmation = app.sheets.firstMatch
         XCTAssertTrue(stopConfirmation.waitForExistence(timeout: 10))
         XCTAssertTrue(stopConfirmation.buttons["停止"].exists)
-        if app.buttons["キャンセル"].exists {
-            app.buttons["キャンセル"].tap()
+        if app.buttons["Cancel"].exists {
+            app.buttons["Cancel"].tap()
         } else {
             let dismiss = app.otherElements["PopoverDismissRegion"]
             XCTAssertTrue(dismiss.exists)

@@ -113,7 +113,7 @@ struct LAAStudioCreateView: View {
                 }
                 LabeledContent(String("作品")) {
                     Picker(String("作品"), selection: selection) {
-                        Text(verbatim: "新規").tag("")
+                        Text(verbatim: "New").tag("")
                         ForEach(snapshot.projects) { project in Text(verbatim: project.title).tag(project.id) }
                     }.labelsHidden().frame(minHeight: 44).disabled(draft.pending || sending || storageBlocked)
                         .accessibilityIdentifier("laa.studio.project")
@@ -127,7 +127,7 @@ struct LAAStudioCreateView: View {
                     Button(String("状態を確認")) { Task { await check() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
                         .accessibilityIdentifier("laa.studio.check")
                     if canRetry {
-                        Button(String("再試行")) { Task { await submit() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
+                        Button(String("Retry")) { Task { await submit() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
                             .accessibilityIdentifier("laa.studio.retry")
                     }
                 } else {
@@ -141,7 +141,7 @@ struct LAAStudioCreateView: View {
         }
         .background(LAAColor.background.ignoresSafeArea()).navigationTitle(String("制作を依頼"))
         .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String("Cancel")) { dismiss() } } }
     }
 
     private var editingBlocked: Bool { draft.pending || sending || storageBlocked }
@@ -229,7 +229,7 @@ struct LAAStudioCreateView: View {
                 Button(String("状態を確認")) { Task { await check() } }.frame(minHeight: 44)
                     .accessibilityIdentifier("laa.studio.check")
                 if canRetry {
-                    Button(String("再試行")) { Task { await submit() } }.frame(minHeight: 44)
+                    Button(String("Retry")) { Task { await submit() } }.frame(minHeight: 44)
                         .accessibilityIdentifier("laa.studio.retry")
                 }
             }.disabled(storageBlocked)

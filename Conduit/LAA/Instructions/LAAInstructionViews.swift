@@ -68,7 +68,7 @@ private struct LAAInstructionEditor: View {
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if document != nil {
-                    Button { editing.toggle() } label: { Text(verbatim: editing ? "プレビュー" : "編集") }.disabled(busy)
+                    Button { editing.toggle() } label: { Text(verbatim: editing ? "Preview" : "Edit") }.disabled(busy)
                     if editing {
                         Button { Task { await save() } } label: { Text(verbatim: LAACopy.save) }.disabled(!dirty || busy)
                             .accessibilityIdentifier("laa.instructions.save")

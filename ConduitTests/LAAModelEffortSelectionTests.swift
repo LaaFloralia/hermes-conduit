@@ -237,7 +237,7 @@ final class LAAModelEffortSelectionTests: XCTestCase {
                        "会話を始めると変更できます。")
         XCTAssertEqual(C.modelLock(sessionID: "a", connected: false, phase: .idle, switching: false), "Hermesに接続していません。")
         XCTAssertEqual(C.modelLock(sessionID: "a", connected: true, phase: .failed, switching: false),
-                       "モデルの候補を取得できませんでした。")
+                       "モデルの一覧を読み取れませんでした。")
         XCTAssertEqual(C.modelLock(sessionID: "a", connected: true, phase: .ready([one]), switching: false),
                        "この社員で選べるモデルはこれだけです。")
         XCTAssertEqual(C.modelLock(sessionID: "a", connected: true, phase: .ready([]), switching: false), "選べるモデルがありません。")

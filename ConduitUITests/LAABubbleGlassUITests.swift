@@ -43,7 +43,7 @@ final class LAABubbleGlassUITests: XCTestCase {
         XCTAssertEqual(glass.value as? String, "選択中")
         XCTAssertNotEqual(standard.value as? String, "選択中")
         capture(app, "picker-glass-light")
-        app.navigationBars["背景"].buttons["完了"].tap()
+        app.buttons["laa.background.close"].tap()
 
         // A hold on the glass reply's text still selects it, and the choice
         // is still there when the sheet opens again. (The owner's bubble is
@@ -62,7 +62,7 @@ final class LAABubbleGlassUITests: XCTestCase {
         XCTAssertEqual(glass.value as? String, "選択中")
         standard.tap()
         XCTAssertEqual(standard.value as? String, "選択中")
-        app.navigationBars["背景"].buttons["完了"].tap()
+        app.buttons["laa.background.close"].tap()
     }
 
     /// A picture with no choice made draws glass, and the sheet says so;
@@ -78,11 +78,11 @@ final class LAABubbleGlassUITests: XCTestCase {
         XCTAssertEqual(glass.value as? String, "選択中")
         standard.tap()
         XCTAssertEqual(standard.value as? String, "選択中")
-        app.navigationBars["背景"].buttons["完了"].tap()
+        app.buttons["laa.background.close"].tap()
         background.tap()
         XCTAssertTrue(standard.waitForExistence(timeout: 5))
         XCTAssertEqual(standard.value as? String, "選択中")
-        app.navigationBars["背景"].buttons["完了"].tap()
+        app.buttons["laa.background.close"].tap()
     }
 
     /// Sending, a streamed reply and a long press over the glass, for the

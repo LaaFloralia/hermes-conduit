@@ -136,7 +136,7 @@ struct LAADecisionBoardView: View {
             if case .failed(let text) = board.phase {
                 Section {
                     Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                    Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                    Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                 }
             }
             if !openItems.isEmpty {
@@ -184,7 +184,7 @@ struct LAADecisionBoardView: View {
                         if case .failed(let text) = board.phase {
                             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                                 Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                             }
                             .padding(LAASpacing.x3)
                         }
@@ -262,9 +262,9 @@ struct LAADecisionBoardView: View {
     }
 
     @ViewBuilder private func rowMenu(_ item: LAADecision) -> some View {
-        Button { show(item) } label: { Text(verbatim: "開く") }
+        Button { show(item) } label: { Text(verbatim: "Open") }
         if item.deliveryFailed {
-            Button { Task { await retry(item) } } label: { Text(verbatim: "届け直す") }
+            Button { Task { await retry(item) } } label: { Text(verbatim: "Resend") }
         }
     }
 
@@ -287,9 +287,9 @@ struct LAADecisionBoardView: View {
             Spacer(minLength: 0)
             Button { Task { await retry(item) } } label: {
                 Group {
-                    if retrying == item.id { Text(verbatim: "送信中") }
+                    if retrying == item.id { Text(verbatim: "Sending…") }
                     else {
-                        Label { Text(verbatim: "届け直す") } icon: { Image(systemName: "arrow.clockwise") }
+                        Label { Text(verbatim: "Resend") } icon: { Image(systemName: "arrow.clockwise") }
                             .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)
                     }
                 }
@@ -316,7 +316,7 @@ struct LAADecisionBoardView: View {
                     .multilineTextAlignment(.center)
             }
             if retry {
-                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                     .laaGlassButton()
             }
         }

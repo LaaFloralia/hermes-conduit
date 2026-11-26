@@ -187,13 +187,13 @@ final class LAAAssetsUITests: XCTestCase {
         let folder = item("folder1", in: app)
         XCTAssertTrue(folder.waitForExistence(timeout: 30))
         folder.press(forDuration: 1)
-        let save = app.buttons["この端末に保存"]
+        let save = app.buttons["Save Offline"]
         XCTAssertTrue(save.waitForExistence(timeout: 10)); save.tap()
         XCTAssertTrue(app.buttons["ファイルを保存"].waitForExistence(timeout: 20))
         let message = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "失敗した場合も、保存済みのファイルは残ります。")).firstMatch
         XCTAssertTrue(message.exists)
-        if app.buttons["キャンセル"].exists {
-            app.buttons["キャンセル"].tap()
+        if app.buttons["Cancel"].exists {
+            app.buttons["Cancel"].tap()
         } else {
             let dismiss = app.otherElements["PopoverDismissRegion"]
             XCTAssertTrue(dismiss.exists)

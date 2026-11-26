@@ -19,8 +19,8 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
     }
 
     private func closeBackground(_ app: XCUIApplication) {
-        app.navigationBars["背景"].buttons["完了"].tap()
-        app.navigationBars["会話の情報"].buttons["完了"].tap()
+        app.buttons["laa.background.close"].tap()
+        app.buttons["laa.staff.info.close"].tap()
     }
 
     func testAllBackgroundsAndPhotoControlsPersist() {

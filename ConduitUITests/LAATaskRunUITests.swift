@@ -225,13 +225,12 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertEqual(reason.label, "実施中のため、終わってから完了できます")
         XCTAssertFalse(app.buttons["work.task.detail.complete"].isEnabled)
         XCTAssertEqual(completedIDs(), [])
-        // The run is in Japanese, so the sheet's close reads 閉じる.
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["work.task.detail.close"].tap()
 
         let target = row(app, "次の打ち合わせを確認する")
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         target.swipeLeft()
-        let complete = app.buttons["完了"].firstMatch
+        let complete = app.buttons["Complete"].firstMatch
         XCTAssertTrue(complete.exists)
         complete.tap()
         XCTAssertFalse(app.staticTexts["完了にしますか？"].waitForExistence(timeout: 2),
@@ -246,12 +245,12 @@ final class LAATaskRunUITests: XCTestCase {
         scrollTo(app, target)
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         target.swipeLeft()
-        let complete = app.buttons["完了"].firstMatch
+        let complete = app.buttons["Complete"].firstMatch
         XCTAssertTrue(complete.waitForExistence(timeout: 5))
         complete.tap()
         XCTAssertTrue(app.staticTexts["完了にしますか？"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["一覧から消し、記録をHQに保管します。"].exists)
-        app.sheets.buttons["完了"].tap()
+        app.sheets.buttons["Complete"].tap()
         XCTAssertTrue(target.waitForNonExistence(timeout: 15))
         XCTAssertTrue(completedIDs().contains(queuedID))
     }
@@ -268,7 +267,7 @@ final class LAATaskRunUITests: XCTestCase {
         button.tap()
         XCTAssertTrue(app.staticTexts["完了にしますか？"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["一覧から消し、記録をHQに保管します。セッション（S8）はアーカイブします。"].exists)
-        app.sheets.buttons["完了"].tap()
+        app.sheets.buttons["Complete"].tap()
         XCTAssertTrue(row(app, "名刺の紙を決める").waitForNonExistence(timeout: 15))
         XCTAssertTrue(completedIDs().contains(awaitingID))
     }
@@ -355,7 +354,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["一覧から消し、記録をHQに保管します。セッション（S8）はアーカイブします。"].exists)
         XCTAssertEqual(completedIDs(), [], "Nothing is sent before the confirmation")
         shot(app, "c-tasks-picked-confirm-light")
-        app.sheets.buttons["完了"].firstMatch.tap()
+        app.sheets.buttons["Complete"].firstMatch.tap()
         XCTAssertTrue(row(app, "名刺の紙を決める").waitForNonExistence(timeout: 15))
         XCTAssertEqual(Set(completedIDs()), [awaitingID, reviewID])
     }
@@ -477,18 +476,18 @@ final class LAATaskRunUITests: XCTestCase {
         app.buttons["work.linear.add"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.linear.model"].firstMatch.waitForExistence(timeout: 10))
         shot(app, "c-task-create-\(suffix)")
-        app.navigationBars.buttons["閉じる"].tap()
+        app.buttons["work.task.editor.close"].tap()
 
         let target = row(app, "見積りを送る")
         scrollTo(app, target)
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         target.swipeLeft()
-        app.buttons["完了"].firstMatch.tap()
+        app.buttons["Complete"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["完了にしますか？"].waitForExistence(timeout: 5))
         shot(app, "c-task-complete-confirm-\(suffix)")
         // This iOS build shows only the action in the sheet; confirming also
         // closes it (the fixture is reset by the next test).
-        app.sheets.buttons["完了"].tap()
+        app.sheets.buttons["Complete"].tap()
     }
 
     private func decisionShots(dark: Bool) throws {
@@ -531,7 +530,7 @@ final class LAATaskRunUITests: XCTestCase {
         let target = row(app, title)
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         target.press(forDuration: 1.2)
-        let detail = app.buttons["詳細・コメント"]
+        let detail = app.buttons["Details"]
         XCTAssertTrue(detail.waitForExistence(timeout: 5))
         detail.tap()
         XCTAssertTrue(app.staticTexts["work.task.detail.title"].firstMatch.waitForExistence(timeout: 15))
