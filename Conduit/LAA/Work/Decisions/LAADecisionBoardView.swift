@@ -409,7 +409,7 @@ struct LAADecisionBoardView: View {
                     answer: item.answer,
                     delivery: .init(state: "delivered", attempts: item.delivery?.attempts,
                                     deliveredAt: item.delivery?.deliveredAt, error: nil),
-                    sessionId: item.sessionId)
+                    sessionId: item.sessionId, images: item.images)
     }
 
     // MARK: Text
@@ -513,6 +513,13 @@ private struct LAADecisionRow: View {
                             .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
+                        if !item.images.isEmpty {
+                            Image(systemName: "photo")
+                                .laaTextStyle(.secondary)
+                                .foregroundStyle(LAAColor.secondaryText)
+                                .accessibilityHidden(true)
+                                .accessibilityIdentifier("work.decision.row.photo")
+                        }
                     }
                     if !meta.characters.isEmpty {
                         Text(meta).laaTextStyle(.secondary).lineLimit(1)

@@ -1087,18 +1087,22 @@ The LAA Work hub's second section, `Decisions` (after Sessions, before Tasks and
 
 **Siblings:** the Bridge decision store, delivery and CLI · the session decision
 read and reply (`LAAWorkSessionDecision`) · Work hub pills and links · owner
-notifications (`decision.new`, `decision.failed`, deep link) · Mac Work sections
+notifications (`decision.new`, `decision.failed`, deep link) · Mac Work sections ·
+the Bridge's decision images (`laa-bridge decide add --image`, `GET /v1/decisions/:id/images/:img`,
+retention) and the HQ rule, kept outside this repo, that a decision about looks carries pictures (RUNTIME 「判断ボード」)
 
 **Code**
 - App: `Conduit/LAA/Work/Decisions/LAADecisionModels.swift`, `Conduit/LAA/Work/Decisions/LAADecisionBoard.swift`,
   `Conduit/LAA/Work/Decisions/LAADecisionBoardView.swift`, `Conduit/LAA/Work/Decisions/LAADecisionDetailView.swift`,
-  `Conduit/LAA/Work/Decisions/LAADecisionCelebration.swift`; hub section and segment count: `Conduit/LAA/Today/LAAWorkHub.swift`;
+  `Conduit/LAA/Work/Decisions/LAADecisionCelebration.swift`; pictures and the viewer:
+  `Conduit/LAA/Work/Decisions/LAADecisionImages.swift`; links: `Conduit/LAA/Work/Decisions/LAADecisionLinks.swift`; hub section and segment count: `Conduit/LAA/Today/LAAWorkHub.swift`;
   links `laa://work/decisions[/<id>]`: `Conduit/LAA/Work/LAAWorkSessionCache.swift`; native questions reuse
   `Conduit/LAA/Work/LAAWorkSessionDecision.swift`
 - Bridge: `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/routes/decisions.mjs`,
   `bridge/src/cli-decisions.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md`; design: `docs/laa/DESIGN.md`
 - Tests: `ConduitTests/LAADecisionTests.swift`, `ConduitTests/LAAStopgapTests.swift`, `ConduitTests/LAADecisionSnapshotTests.swift`,
-  `ConduitUITests/LAADecisionUITests.swift`, `scripts/laa/work-ui-fixture.mjs`, `bridge/test/decisions.test.mjs`
+  `ConduitTests/LAADecisionMediaTests.swift`, `ConduitUITests/LAADecisionUITests.swift`,
+  `scripts/laa/work-ui-fixture.mjs` (`/decisions/images`), `bridge/test/decisions.test.mjs`
 
 **Rulings**
 - Nothing answered stays on the board (owner, 2026-11-23: the board stayed after it was empty). An answer
@@ -1140,6 +1144,18 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   and outcome-unknown errors keep their existing wording. The board keeps the typed answer per decision until one
   is recorded, so a refused or failed send, or closing and reopening the decision, leaves it to send again.
 
+- Pictures and links (D-17, owner 2026-11-27: 「ウィジェットの画像案が判断ボードから見れない」). A record's
+  `images` (missing on older records, read as none) load through the decision's own auth with a memory and
+  Caches copy revalidated by ETag once per launch. General pictures sit under the summary (one at the column's
+  width, several in a sideways strip); an option's picture is a 72 pt square laid over the row's right end, so the
+  row still chooses across its full width and only the picture opens the viewer. The viewer pages through every
+  picture (general, then by option), zooms by pinch and double-tap, pans while zoomed, and closes with its button
+  or Esc on the Mac. A picture the Bridge removed (410, or 404 `decision_image_not_found`) reads
+  「画像は削除されました」 in its frame; nothing else shows an error. http(s) addresses in the summary, an option's
+  detail and the impact are links (never parsed as Markdown): the in-app browser on the iPhone, the default
+  browser on the Mac; VoiceOver reaches an option's links as actions. A row with pictures adds one `photo` glyph
+  after its title and 「画像あり」 to its label; a record without pictures looks and answers as before.
+
 **Owner check on the device**
 - Open a production-sized decision and write the answer in 「選択肢以外で答える」 without tapping any card; it should reach the conversation that asked and leave the board.
 
@@ -1148,6 +1164,7 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 - The segment count refreshes when the hub appears, every 15 seconds while it is active, or when the board is
   pulled; the tab badge also on each activation. There is no push-driven refresh yet.
 - A native question's detail shows the existing session reply card, not the board's large choice cards.
+- An option carries one picture; a second per option is not shown (the CLI accepts one).
 
 **Checked:** 2026-11-23, laa/stopgap-20261123 (answered rows leave and the last answer empties the board: `LAADecisionUITests` (testAnsweringTheLastDecisionEmptiesTheBoard, testChooseRecommended), `LAAStopgapTests`); 2026-11-23, laa/c5-staff-models (a refused long answer keeps its draft and shows the Bridge's message: LAADecisionTests with a stubbed 400 `decision_note_too_long`, the 7,600/8,000 count; `LAADecisionUITests.testALongAnswerIsCountedAndARefusalKeepsIt` against work-ui-fixture's `/decisions/note-limit-600` (the older Bridge's refusal): 8,001 characters held with 「1字多すぎます」, a refused 1,000 kept through close and reopen; the live Bridge took 1,500 (200) and refused 8,001 (400) in the parent's check); 2026-11-14, 6cf44994 (laa/app-final): a gone asker retires the decision (bridge decisions tests 29, LAADecisionTests), the five 「届け直す」 rows left from not_found deliveries leave the board once the Bridge restarts.
 

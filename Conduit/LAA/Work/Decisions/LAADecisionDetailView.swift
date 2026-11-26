@@ -27,6 +27,9 @@ struct LAADecisionDetailView: View {
     /// True when the answer just sent was stored instead of delivered.
     @State private var stored: Bool?
     @FocusState private var noteFocused: Bool
+    @State private var viewer: LAADecisionImageViewer.Request?
+    @State private var browser: LAADecisionBrowserPage?
+    @Environment(\.openURL) private var systemOpenURL
 
     init(item: LAADecision, board: LAADecisionBoard, drafts: ComposerDraftStore,
          onAnswered: ((LAADecision) -> Void)? = nil,
@@ -82,6 +85,10 @@ struct LAADecisionDetailView: View {
                 do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
+        .fullScreenCover(item: $viewer) { request in
+            LAADecisionImageViewer(request: request).environmentObject(bridge)
+        }
+        .laaDecisionLinks($browser)
         .sensoryFeedback(.selection, trigger: choice)
         .sensoryFeedback(.warning, trigger: undelivered) { old, new in old == nil && new != nil }
     }
@@ -134,8 +141,13 @@ struct LAADecisionDetailView: View {
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("work.decision.title")
             if !item.summary.isEmpty, item.kind == .board {
-                Text(verbatim: item.summary).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                Text(LAADecisionLinks.attributed(item.summary)).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("work.decision.summary")
+            }
+            if item.kind == .board, !item.generalImages.isEmpty {
+                LAADecisionImageStrip(item: item) { open($0) }
+                    .padding(.vertical, LAASpacing.x1)
             }
             facts
         }
@@ -171,7 +183,7 @@ struct LAADecisionDetailView: View {
     }
 
     private func fact(icon: String, text: String, color: Color) -> some View {
-        Label { Text(verbatim: text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon) }
+        Label { Text(LAADecisionLinks.attributed(text)).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon) }
             .laaTextStyle(.secondary)
             .foregroundStyle(color)
     }
@@ -231,8 +243,17 @@ struct LAADecisionDetailView: View {
         }
     }
 
+    /// The side of an option's picture at the row's right end.
+    static let optionThumb: CGFloat = 72
+
+    private func open(_ image: LAADecision.Image) {
+        viewer = .init(item: item, start: image)
+    }
+
     private func optionRow(index: Int, option: LAADecision.Option) -> some View {
         let selected = choice == .option(index)
+        let picture = item.kind == .board ? item.image(forOption: index) : nil
+        let links = option.detail.map(LAADecisionLinks.urls(in:)) ?? []
         return Button { choice = .option(index) } label: {
             HStack(alignment: .center, spacing: LAASpacing.x3) {
                 mark(selected)
@@ -248,11 +269,14 @@ struct LAADecisionDetailView: View {
                         .foregroundStyle(LAAColor.text)
                         .fixedSize(horizontal: false, vertical: true)
                     if let detail = option.detail, !detail.isEmpty {
-                        Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Text(LAADecisionLinks.attributed(detail)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer(minLength: 0)
+                // Room for the picture laid over the row's end; the row
+                // itself still spans the full width.
+                if picture != nil { Color.clear.frame(width: Self.optionThumb, height: 1) }
             }
             .padding(.horizontal, LAASpacing.x3)
             .padding(.vertical, LAASpacing.x3)
@@ -266,6 +290,37 @@ struct LAADecisionDetailView: View {
                                  + (option.detail.map { "、\($0)" } ?? "")))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("work.decision.option.\(index)")
+        .accessibilityActions {
+            ForEach(links, id: \.self) { url in
+                Button {
+                    #if targetEnvironment(macCatalyst)
+                    systemOpenURL(url)
+                    #else
+                    _ = LAADecisionLinkOpener.open(url, page: $browser)
+                    #endif
+                } label: { Text(verbatim: LAADecisionLinks.actionName(url)) }
+            }
+        }
+        .overlay(alignment: .trailing) {
+            if let picture { optionThumb(picture, index: index, option: option) }
+        }
+    }
+
+    /// A sibling over the row, not inside it: a tap here opens the viewer and
+    /// a tap anywhere else on the row still chooses the option.
+    private func optionThumb(_ image: LAADecision.Image, index: Int, option: LAADecision.Option) -> some View {
+        Button { open(image) } label: {
+            LAADecisionImageView(decisionID: item.id, image: image, size: .thumb)
+                .frame(width: Self.optionThumb, height: Self.optionThumb)
+                .clipped()
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(LAADecisionPressStyle())
+        .padding(.trailing, LAASpacing.x3)
+        .accessibilityLabel(Text(verbatim: LAADecisionImageCopy.option(option.label)))
+        .accessibilityHint(Text(verbatim: LAADecisionImageCopy.openHint))
+        .accessibilityAddTraits(.isImage)
+        .accessibilityIdentifier("work.decision.option.\(index).image")
     }
 
     private func mark(_ selected: Bool) -> some View {
@@ -437,7 +492,7 @@ struct LAADecisionDetailView: View {
                     deadline: item.deadline, source: item.source, sourceRef: item.sourceRef, createdAt: item.createdAt,
                     answer: .init(optionIndex: optionIndex, label: label, note: note,
                                   answeredAt: ISO8601DateFormatter().string(from: Date())),
-                    delivery: item.delivery, sessionId: item.sessionId)
+                    delivery: item.delivery, sessionId: item.sessionId, images: item.images)
     }
 }
 #endif

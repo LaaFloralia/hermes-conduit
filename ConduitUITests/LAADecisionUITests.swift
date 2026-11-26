@@ -9,6 +9,8 @@ final class LAADecisionUITests: XCTestCase {
     private let hpID = "dec_0000000000000a01"
     private let cardID = "dec_0000000000000a02"
     private let failedID = "dec_0000000000000a03"
+    /// D-17: two general pictures, pictures on options A and B, C's removed.
+    private let mediaID = "dec_0000000000000a05"
     /// The fixture's API port; control is the next one. `TEST_RUNNER_LAA_WORK_FIXTURE_PORT`
     /// moves both when another run holds the usual pair.
     private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
@@ -353,6 +355,114 @@ final class LAADecisionUITests: XCTestCase {
             screenshot("work-no-decisions-after-\(style)", empty)
             empty.terminate()
         }
+    }
+
+    // MARK: Pictures and links (D-17)
+
+    private func waitFor(_ element: XCUIElement, _ format: String, timeout: TimeInterval = 10) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: format), object: element)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private func zoom(_ page: XCUIElement) -> Int { Int((page.value as? String ?? "").dropLast()) ?? 0 }
+
+    /// The owner sees the pictures on the board itself: a strip under the
+    /// summary, a picture beside each option, a removed one said quietly; the
+    /// viewer zooms (double-tap and pinch), pages through every picture and
+    /// closes; the row still chooses its option.
+    func testDecisionPicturesOpenZoomPageAndClose() throws {
+        let app = try launch(board: "images")
+        XCTAssertTrue(row(mediaID, app).waitForExistence(timeout: 20))
+        XCTAssertTrue(row(mediaID, app).label.contains("画像あり"), row(mediaID, app).label)
+        XCTAssertFalse(row(hpID, app).label.contains("画像あり"), "a record without pictures reads as before")
+        screenshot("decision-media-list", app)
+        openUnansweredDecision(mediaID, app)
+
+        let first = app.buttons["work.decision.image.0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertEqual(first.label, "画像1（全2枚）")
+        XCTAssertTrue(app.buttons["work.decision.image.1"].exists)
+        let thumbA = app.buttons["work.decision.option.0.image"]
+        XCTAssertTrue(thumbA.exists)
+        XCTAssertEqual(thumbA.label, "A案 名前だけの画像")
+        XCTAssertTrue(app.buttons["work.decision.option.1.image"].exists)
+        // C's picture was removed by retention: a quiet line, no error banner.
+        let removed = app.descendants(matching: .any)["work.decision.image.removed"].firstMatch
+        for _ in 0..<3 where !(removed.exists && removed.isHittable) { app.swipeUp() }
+        XCTAssertTrue(removed.waitForExistence(timeout: 10))
+        XCTAssertTrue(removed.label.contains("画像は削除されました"), removed.label)
+        XCTAssertFalse(app.staticTexts["work.decision.failure"].exists)
+        screenshot("decision-media-options", app)
+
+        // The row selects; its picture only opens the viewer.
+        let optionA = app.buttons["work.decision.option.0"], optionB = app.buttons["work.decision.option.1"]
+        optionA.tap()
+        XCTAssertTrue(optionA.isSelected)
+        app.buttons["work.decision.option.1.image"].tap()
+        let viewer = app.descendants(matching: .any)["work.decision.viewer"].firstMatch
+        XCTAssertTrue(viewer.waitForExistence(timeout: 10))
+        // Pages run general 0, 1, then options A, B: B's picture is page 3.
+        XCTAssertTrue(app.images["work.decision.viewer.page.3"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.images["work.decision.viewer.page.3"].label, "B案 名前と予定の画像")
+        app.buttons["work.decision.viewer.close"].tap()
+        XCTAssertTrue(viewer.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(optionA.isSelected, "opening a picture does not change the choice")
+        XCTAssertFalse(optionB.isSelected)
+
+        for _ in 0..<3 where !first.isHittable { app.swipeDown() }
+        first.tap()
+        XCTAssertTrue(viewer.waitForExistence(timeout: 10))
+        let page = app.images["work.decision.viewer.page.0"]
+        XCTAssertTrue(page.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitFor(page, "value == '100%'"), "opens at the fitted size")
+        page.doubleTap()
+        XCTAssertTrue(waitFor(page, "value == '250%'"), "double-tap zooms in: \(page.value ?? "nil")")
+        screenshot("decision-media-viewer-zoomed", app)
+        page.doubleTap()
+        XCTAssertTrue(waitFor(page, "value == '100%'"), "double-tap again fits")
+        page.pinch(withScale: 3, velocity: 4)
+        let pinched = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in self.zoom(page) > 150 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [pinched], timeout: 5), .completed, "pinch zooms: \(page.value ?? "nil")")
+        // Drag while zoomed pans the picture, it does not page.
+        page.swipeLeft()
+        XCTAssertTrue(page.exists)
+        page.doubleTap()
+        XCTAssertTrue(waitFor(page, "value == '100%'"))
+        viewer.swipeLeft()
+        XCTAssertTrue(app.images["work.decision.viewer.page.1"].waitForExistence(timeout: 10), "swipes to the next picture")
+        app.buttons["work.decision.viewer.close"].tap()
+        XCTAssertTrue(viewer.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["work.decision.send"].exists, "the decision is still open to answer")
+    }
+
+    /// A web address in the summary opens the in-app browser; nothing is
+    /// loaded by the test, only the presentation is checked.
+    func testASummaryLinkOpensTheInAppBrowser() throws {
+        let app = try launch(board: "images")
+        openUnansweredDecision(mediaID, app)
+        let link = app.links.matching(NSPredicate(format: "label CONTAINS %@", "example.com/laa-decision-fixture")).firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10), app.debugDescription)
+        link.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.decision.browser"].firstMatch.waitForExistence(timeout: 15),
+                      app.debugDescription)
+        screenshot("decision-media-browser", app)
+    }
+
+    /// An address that is an option's whole detail opens the browser too, and
+    /// tapping it does not choose the option.
+    func testAnOptionLinkOpensTheBrowserWithoutChoosing() throws {
+        let app = try launch(board: "images")
+        openUnansweredDecision(mediaID, app)
+        let optionB = app.buttons["work.decision.option.1"]
+        XCTAssertTrue(optionB.waitForExistence(timeout: 10))
+        for _ in 0..<3 where !optionB.isHittable { app.swipeUp() }
+        // The detail is the row's last line: tap inside its text.
+        let frame = optionB.frame
+        optionB.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 80, dy: frame.height - 22)).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.decision.browser"].firstMatch.waitForExistence(timeout: 15),
+                      app.debugDescription)
+        screenshot("decision-media-option-link", app)
     }
 
 }

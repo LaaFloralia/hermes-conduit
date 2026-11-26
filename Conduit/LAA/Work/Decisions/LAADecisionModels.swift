@@ -41,6 +41,35 @@ struct LAADecision: Codable, Identifiable, Equatable {
         /// it when that turn ends. Only a pending delivery carries it.
         var waiting: Bool? = nil
     }
+    /// A picture the Bridge copied for this decision (D-17). `option` is the
+    /// 0-based index into `options` (recommended-first); nil is a general
+    /// picture shown under the summary.
+    struct Image: Codable, Equatable, Hashable {
+        let id: String
+        let width: Int
+        let height: Int
+        let option: Int?
+        init(id: String, width: Int, height: Int, option: Int? = nil) {
+            self.id = id; self.width = width; self.height = height; self.option = option
+        }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            width = max(0, try c.decodeIfPresent(Int.self, forKey: .width) ?? 0)
+            height = max(0, try c.decodeIfPresent(Int.self, forKey: .height) ?? 0)
+            option = try c.decodeIfPresent(Int.self, forKey: .option)
+        }
+        private enum CodingKeys: String, CodingKey { case id, width, height, option }
+        /// Width over height; 4:3 when the record has no size.
+        var aspect: CGFloat {
+            guard width > 0, height > 0 else { return 4.0 / 3.0 }
+            return CGFloat(width) / CGFloat(height)
+        }
+        /// Only an id the Bridge's route accepts is ever put into a path.
+        static func validID(_ id: String) -> Bool {
+            id.range(of: #"^img_[0-9a-f]{12}$"#, options: .regularExpression) != nil
+        }
+    }
     enum Kind: String, Codable { case board, session }
 
     let kind: Kind
@@ -60,15 +89,17 @@ struct LAADecision: Codable, Identifiable, Equatable {
     let delivery: Delivery?
     /// Session items only: the Bridge session that holds the native question.
     let sessionId: String?
+    /// Pictures in the record's order; missing on older records.
+    let images: [Image]
 
     init(kind: Kind = .board, id: String, ref: String? = nil, status: String = "open", title: String, summary: String,
          options: [Option] = [], allowOther: Bool = true, impact: String? = nil, deadline: String? = nil,
          source: Source? = nil, sourceRef: String? = nil, createdAt: String? = nil,
-         answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil) {
+         answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil, images: [Image] = []) {
         self.kind = kind; self.id = id; self.ref = ref; self.status = status; self.title = title; self.summary = summary
         self.options = options; self.allowOther = allowOther; self.impact = impact; self.deadline = deadline
         self.source = source; self.sourceRef = sourceRef; self.createdAt = createdAt
-        self.answer = answer; self.delivery = delivery; self.sessionId = sessionId
+        self.answer = answer; self.delivery = delivery; self.sessionId = sessionId; self.images = images
     }
 
     init(from decoder: Decoder) throws {
@@ -91,7 +122,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
         // Board records are stored recommended-first; keep that promise on
         // the client too, so an older or hand-written record reads the same.
         let raw = try c.decodeIfPresent([Option].self, forKey: .options) ?? []
-        options = raw.filter(\.recommended) + raw.filter { !$0.recommended }
+        let order = raw.indices.filter { raw[$0].recommended } + raw.indices.filter { !raw[$0].recommended }
+        options = order.map { raw[$0] }
         allowOther = try c.decodeIfPresent(Bool.self, forKey: .allowOther) ?? true
         impact = try c.decodeIfPresent(String.self, forKey: .impact)
         deadline = try c.decodeIfPresent(String.self, forKey: .deadline)
@@ -100,11 +132,27 @@ struct LAADecision: Codable, Identifiable, Equatable {
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         answer = try c.decodeIfPresent(Answer.self, forKey: .answer)
         delivery = try c.decodeIfPresent(Delivery.self, forKey: .delivery)
+        // An image's option index follows its option through the reorder
+        // above; an index the record does not have makes it a general picture.
+        let moved = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset) })
+        let stored = (try? c.decodeIfPresent([Image].self, forKey: .images)) ?? []
+        images = stored.filter { Image.validID($0.id) }.map { image in
+            .init(id: image.id, width: image.width, height: image.height, option: image.option.flatMap { moved[$0] })
+        }
     }
     private enum CodingKeys: String, CodingKey {
         case kind, id, ref, status, title, summary, options, allowOther, impact, deadline, source, sourceRef
-        case createdAt, answer, delivery, sessionId
+        case createdAt, answer, delivery, sessionId, images
     }
+
+    /// General pictures, then each option's picture in option order: the
+    /// order the full-screen viewer pages through.
+    var viewerImages: [Image] {
+        images.filter { $0.option == nil } + images.filter { $0.option != nil }.sorted { $0.option! < $1.option! }
+    }
+    var generalImages: [Image] { images.filter { $0.option == nil } }
+    /// The first picture attached to an option.
+    func image(forOption index: Int) -> Image? { images.first { $0.option == index } }
 
     var recommended: Option? { options.first(where: \.recommended) }
     var deliveryFailed: Bool { delivery?.state == "failed" }
@@ -200,6 +248,7 @@ enum LAADecisionCopy {
     /// The same line when the answer was stored, not delivered.
     static let recorded = "記録済み"
     static let empty = "判断待ちはありません"
+    static let imagesAttached = "画像あり"
     static let unsupported = "Macのアップデート待ち"
     static let unsupportedDetail = "判断ボードを使うには、MacのLAAアプリを最新にしてください。"
 
@@ -212,6 +261,7 @@ enum LAADecisionCopy {
         else if let label = item.recommended?.label { parts.append("推奨 \(label)") }
         if item.deliveryFailed { parts.append(notDelivered) }
         if item.deliveryWaiting { parts.append(waiting) }
+        if !item.images.isEmpty { parts.append(imagesAttached) }
         if let deadline = LAADecisionDeadline.describe(item.deadline, now: now) { parts.append(deadline.text) }
         if let source = item.sourceLine { parts.append(source) }
         return parts.joined(separator: "、")

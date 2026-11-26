@@ -1,6 +1,7 @@
 // Local, synthetic Work UI fixture. Never calls Linear or reads personal data.
 import { createLaneFixtureServer, listenLaneFixture } from '../../bridge/src/lane/fixture.mjs';
 import { workUIControl } from './lab/work-ui-control.mjs';
+import { deflateSync } from 'node:zlib';
 let tasks;
 // The Bridge's run record (contract 2026-11-09). One row is running so the
 // completion is refused; the rest cover every label the list draws, plus the
@@ -234,7 +235,54 @@ const followUps = [];
 // stay undelivered. The first decision carries J1/S4; the others keep ref and
 // sourceRef null, as an older Bridge sends.
 const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02', failed: 'dec_0000000000000a03',
-  long: 'dec_0000000000000a04' };
+  long: 'dec_0000000000000a04', media: 'dec_0000000000000a05' };
+// D-17: /decisions/images lists J5 (two general pictures, a picture on
+// options A and B, and option C's picture already removed by retention) beside
+// J1 without pictures; J5's sooner deadline puts it first, so the Mac's detail
+// column opens on it. Synthetic PNGs drawn here; nothing is read from disk.
+const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const pngChunk = (type, data) => {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+};
+// Blocks of the brand's paper, ink and teal, so a zoom and a page change show.
+const fixturePNG = (width, height, seed) => {
+  const palette = [[246, 242, 233], [0, 88, 94], [33, 53, 54], [185, 155, 122], [223, 234, 229]];
+  const raw = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (width * 3 + 1)] = 0;
+    for (let x = 0; x < width; x++) {
+      const cell = (Math.floor(x / (width / 6)) + Math.floor(y / (height / 4)) * (seed + 1) + seed) % palette.length;
+      const frame = x < 4 || y < 4 || x >= width - 4 || y >= height - 4;
+      const [r, g, b] = frame ? palette[2] : palette[cell];
+      const o = y * (width * 3 + 1) + 1 + x * 3; raw[o] = r; raw[o + 1] = g; raw[o + 2] = b;
+    }
+  }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', deflateSync(raw)), pngChunk('IEND', Buffer.alloc(0))]);
+};
+const MEDIA_IMAGES = [
+  { id: 'img_00000000000a', width: 1200, height: 800, seed: 0 },
+  { id: 'img_00000000000b', width: 900, height: 1200, seed: 1 },
+  { id: 'img_0000000000a0', width: 800, height: 800, option: 0, seed: 2 },
+  { id: 'img_0000000000b0', width: 800, height: 600, option: 1, seed: 3 },
+  { id: 'img_0000000000c0', width: 800, height: 600, option: 2, expired: true },
+];
+const imageBytes = new Map();
+const fixtureImage = (image, size) => {
+  const key = `${image.id}:${size}`;
+  if (!imageBytes.has(key)) {
+    const scale = size === 'thumb' ? 720 / Math.max(image.width, image.height) : 1;
+    const width = Math.round(image.width * Math.min(1, scale)), height = Math.round(image.height * Math.min(1, scale));
+    imageBytes.set(key, { width, height, data: fixturePNG(width, height, image.seed ?? 0) });
+  }
+  return imageBytes.get(key);
+};
+let imageRequests = [];
 // A production-sized question: about 600 characters of explanation and two
 // choices, so the free answer is measured where the owner reads it.
 const longSummary = '新しいHPと名刺、写真の選び直しが同時に進んでいます。'.repeat(24) + '公開日と告知の順番を決めると、ここから先の作業を止めずに進められます。';
@@ -249,6 +297,7 @@ let decisions = [];
 const iso = (offsetHours) => new Date(Date.now() + offsetHours * 3600 * 1000).toISOString();
 const resetDecisions = () => {
   decisionMode = 'off'; failNextDelivery = false; loseNextDecisionResponse = false; noteLimit = null; decisionPosts = 0;
+  imageRequests = [];
   decisions = [
     { id: DECISION_IDS.hp, ref: 'J1', status: 'open', title: 'HPの公開日を決める',
       summary: '新しいHPは公開できる状態です。告知の準備に合わせて公開日を1つ選んでください。選んだ日に合わせて告知文と予約投稿を整えます。',
@@ -286,12 +335,26 @@ const resetDecisions = () => {
       allowOther: true, impact: '公開日から逆算して、写真・名刺・告知の順番が決まります。', deadline: iso(30),
       source: { paseoAgentId: 'agent-fixture-long', sessionId: null, name: 'HP｜四半期計画' }, sourceRef: 'S9',
       createdAt: iso(-1), updatedAt: iso(-1), answer: null, delivery: null },
+    { id: DECISION_IDS.media, ref: 'J5', status: 'open', title: 'ウィジェットの表示を選ぶ',
+      summary: '3案を並べた比較と、各案の画面です。比較表は https://example.com/laa-decision-fixture にもあります。',
+      options: [
+        { label: 'A案 名前だけ', detail: '一番静かな表示です。', recommended: true },
+        { label: 'B案 名前と予定', detail: 'https://example.com/laa-decision-fixture/b', recommended: false },
+        { label: 'C案 予定だけ', detail: null, recommended: false },
+      ],
+      allowOther: true, impact: '選んだ案でウィジェットを作ります。', deadline: iso(3),
+      source: { paseoAgentId: 'agent-fixture-widget', sessionId: null, name: 'Hortensia｜ウィジェット' }, sourceRef: 'S6',
+      createdAt: iso(-0.5), updatedAt: iso(-0.5), answer: null, delivery: null,
+      images: MEDIA_IMAGES.map(({ id, width, height, option }) => (option === undefined ? { id, width, height } : { id, width, height, option })) },
   ];
 };
 resetDecisions();
 const boardItems = () => {
   if (decisionMode === 'off' || decisionMode === 'empty' || decisionMode === 'unsupported') return [];
   let items = decisions.filter((d) => d.status === 'open' || d.delivery?.state === 'failed').map((d) => ({ kind: 'board', ...d }));
+  // J5 belongs to /decisions/images only, so every other board stays as it was.
+  if (decisionMode === 'images') return items.filter((d) => d.id === DECISION_IDS.media || d.id === DECISION_IDS.hp);
+  items = items.filter((d) => d.id !== DECISION_IDS.media);
   if (decisionMode === 'long') items = items.filter((d) => d.id === DECISION_IDS.long);
   // /decisions/single: only J1, so answering it empties the board.
   if (decisionMode === 'single') items = items.filter((d) => d.id === DECISION_IDS.hp);
@@ -387,6 +450,20 @@ const api = createLaneFixtureServer(async (req, res) => {
   if (path === '/v1/decisions' && req.method === 'GET') {
     if (decisionMode === 'unsupported') { res.writeHead(404, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code: 'not_found', message: 'Not found', retryable: false }, requestId: 'fixture' })); }
     return send(res, 200, { items: boardItems(), fetchedAt: new Date().toISOString() });
+  }
+  const imageMatch = path.match(/^\/v1\/decisions\/(dec_[0-9a-f]{16})\/images\/(img_[0-9a-f]{12})$/);
+  if (imageMatch && req.method === 'GET') {
+    const size = url.searchParams.get('size') === 'thumb' ? 'thumb' : 'full';
+    imageRequests.push({ id: imageMatch[2], size });
+    const decision = decisions.find((d) => d.id === imageMatch[1]);
+    const image = decision?.images?.find((i) => i.id === imageMatch[2]) && MEDIA_IMAGES.find((i) => i.id === imageMatch[2]);
+    const refuse = (status, code) => { res.writeHead(status, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { code, message: code, retryable: false }, requestId: 'fixture' })); };
+    if (!image) return refuse(404, 'decision_image_not_found');
+    if (image.expired) return refuse(410, 'decision_image_expired');
+    const bytes = fixtureImage(image, size);
+    const etag = `"${image.id}-${size}"`;
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag }); return res.end(); }
+    return send(res, 200, { contentType: 'image/png', width: bytes.width, height: bytes.height, etag, data: bytes.data.toString('base64') }, { ETag: etag });
   }
   const decisionMatch = path.match(/^\/v1\/decisions\/(dec_[0-9a-f]{16})(?:\/(answer|retry))?$/);
   if (decisionMatch) {
@@ -616,7 +693,7 @@ const control = createLaneFixtureServer(async (req, res) => {
     imagesServed = 0;
     resetDecisions();
   }
-  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long|single)$/);
+  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long|single|images)$/);
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/decisions/note-limit-600') noteLimit = 600;
@@ -645,7 +722,7 @@ const control = createLaneFixtureServer(async (req, res) => {
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ messages: longMessages.length, served: lastServed, images: imagesServed, followUps, archiveRequests,
-    created: createdBodies, completed, lastAnswer, decisionPosts,
+    created: createdBodies, completed, lastAnswer, decisionPosts, imageRequests,
     answered: decisions.filter((d) => d.status === 'answered').map((d) => ({ id: d.id, optionIndex: d.answer?.optionIndex ?? null,
       note: d.answer?.note ?? null, label: d.answer?.label ?? null, delivery: d.delivery?.state ?? null })) }));
 });
