@@ -113,7 +113,10 @@ enum LAAType {
     static let sectionSize = canvas.label * platformScale
     static var screenTitle: Font { display(canvas.title * platformScale) }
     static func title(_ value: String, size: CGFloat = canvas.title * platformScale,
-                      relativeTo style: Font.TextStyle = .largeTitle) -> Font { display(size) }
+                      relativeTo style: Font.TextStyle = .largeTitle) -> Font {
+        // Inline names are operating text. Do not let the display face's minimum enlarge a row or chip.
+        size >= LAAFontFamily.displayMinSize ? display(size) : .system(style)
+    }
     static func chatListName(_ value: String, japaneseSize: CGFloat) -> Font { .system(size: japaneseSize) }
     static var employeeName: Font { .system(size: bodySize) }
     static var usageValue: Font { display(canvas.number * platformScale).monospacedDigit() }
