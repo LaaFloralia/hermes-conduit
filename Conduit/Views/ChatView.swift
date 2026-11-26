@@ -276,7 +276,7 @@ struct ChatView: View {
     private var laaWorkingStatus: LAAWorkingStatus? {
         LAAChatWorking.status(isBusy: appState.isBusy, startedAt: turnStartedAt,
                               toolRunning: runningToolName != nil || runningToolTitle != nil,
-                              agents: appState.delegateAgents)
+                              agents: appState.delegateAgents, profile: appState.conversationIdentityProfile)
     }
 
     /// A child opens its live output in the app.

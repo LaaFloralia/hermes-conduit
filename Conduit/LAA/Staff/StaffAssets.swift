@@ -3,7 +3,7 @@ import Foundation
 
 /// Profile IDs are stable; display names can be changed on the host.
 enum LAAStaff: String, CaseIterable {
-    case monet, monetUncensored = "monet-uncensored", monetDots = "monet-dots", argus, cfo, cio, cos, cso, cto, soap
+    case monet, monetUncensored = "monet-uncensored", argus, cfo, cio, cos, cso, cto
 
     init?(profile: String) {
         let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -11,11 +11,19 @@ enum LAAStaff: String, CaseIterable {
         self.init(rawValue: String(profile.dropFirst(4)))
     }
 
-    /// Where a person sits in Chat (owner, 2026-11-23): Monet at the top,
-    /// then the employees, then the contractors (派遣社員: Muse and Dots),
-    /// then the groups.
+    /// An LAA profile the app seats nowhere (the contractors since
+    /// 2026-11-26): no list shows it and no link opens it.
+    static func isHidden(profile: String) -> Bool {
+        let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return profile.hasPrefix("laa-") && LAAStaff(profile: profile) == nil
+    }
+
+    /// Where a person sits in Chat: Monet at the top, then the employees,
+    /// then the groups. The contractors (Muse, Dots) left Chat on 2026-11-26
+    /// (owner): their Hermes profiles match no case, so no list, picker,
+    /// call or widget reaches them; their conversations stay on the host.
     enum Placement: String, CaseIterable {
-        case monet, employee, contractor
+        case monet, employee
     }
 
     /// Fixed here: Hermes' `/api/profiles` carries no group, and the list
@@ -23,7 +31,6 @@ enum LAAStaff: String, CaseIterable {
     var placement: Placement {
         switch self {
         case .monet, .monetUncensored: return .monet
-        case .monetDots, .soap: return .contractor
         case .argus, .cfo, .cio, .cos, .cso, .cto: return .employee
         }
     }
@@ -31,78 +38,32 @@ enum LAAStaff: String, CaseIterable {
     /// The people of one group, in the list's order.
     static func members(of placement: Placement) -> [LAAStaff] { allCases.filter { $0.placement == placement } }
 
-    /// In-app calls (GPT Live). Dots replies through its text bridge; its
-    /// phone hands the call to the owner's own ChatGPT dot (`dotCallURL`).
-    var supportsCalls: Bool { self != .monetUncensored && self != .monetDots && self != .soap }
-
-    /// Where Dots' phone goes (owner, 2026-11-09).
-    var dotCallURL: URL? {
-        #if targetEnvironment(macCatalyst)
-        dotCallURL(onMac: true, info: Bundle.main.infoDictionary)
-        #else
-        dotCallURL(onMac: false, info: Bundle.main.infoDictionary)
-        #endif
-    }
-
-    /// iPhone runs the owner's "Monetに電話" shortcut (ChatGPT's Open your
-    /// dot, Call). A release writes the dot's page into Info as
-    /// `LAADotsCallURL`; the x-callback-url form then opens that page in
-    /// ChatGPT when the shortcut is missing or fails, instead of stopping at
-    /// "shortcut not found". Without the page the plain run-shortcut stays.
-    /// Mac opens the dot's page in the default browser, since the ChatGPT app
-    /// there would take the Local Work connection. That page's link stays out
-    /// of this public source: the release writes it into Info as
-    /// `LAADotsCallURL` (scripts/laa/brand-bundle.py).
-    func dotCallURL(onMac: Bool, info: [String: Any]?) -> URL? {
-        guard self == .monetDots else { return nil }
-        let page = (info?["LAADotsCallURL"] as? String)
-            .flatMap { $0.hasPrefix("https://chatgpt.com/dots/") ? $0 : nil }
-        guard onMac else {
-            // A page is escaped once, with the unreserved set only, so a
-            // receiver that splits the query on `&`, `=`, `+` or `?` still
-            // gets the whole link back after decoding.
-            guard let page, let error = page.addingPercentEncoding(withAllowedCharacters: Self.dotLinkCharacters) else {
-                return Self.dotShortcutURL
-            }
-            return URL(string: Self.dotShortcutFallback + error)
-        }
-        guard let page else { return nil }
-        return URL(string: page)
-    }
-
-    /// Characters left as they are inside the dot link given to `x-error`.
-    private static let dotLinkCharacters = CharacterSet(
-        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-    private static let dotShortcutURL = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
-    private static let dotShortcutFallback =
-        "shortcuts://x-callback-url/run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1&x-error="
+    /// In-app calls (GPT Live).
+    var supportsCalls: Bool { self != .monetUncensored }
 
     var name: String {
         switch self {
         case .monet: return "Monet"
         case .monetUncensored: return "Monet（無検閲）"
-        case .monetDots: return "Monet（Dots）"
         case .argus: return "Argus"
         case .cfo: return "Morgan"
         case .cio: return "Sherlock"
         case .cos: return "Merlin"
         case .cso: return "Talos"
         case .cto: return "Ada"
-        case .soap: return "薬用石鹸"
         }
     }
 
     var role: String {
         switch self {
         case .monet: return "社長秘書・総合アドバイザー"
-        case .monetUncensored, .monetDots: return "社長秘書・総合アドバイザー"
+        case .monetUncensored: return "社長秘書・総合アドバイザー"
         case .argus: return "Head Trader"
         case .cfo: return "CFO"
         case .cio: return "CIO"
         case .cos: return "COS"
         case .cso: return "CSO"
         case .cto: return "CTO"
-        case .soap: return "制作と作業の代行（Muse）"
         }
     }
 }
@@ -129,7 +90,7 @@ struct StaffAssetResolver {
             return StaffAssets(defaultMark: present(root.appendingPathComponent("callkit-icon-template-120.png")))
         }
         guard let staff = LAAStaff(profile: normalized) else { return StaffAssets() }
-        let name = (staff == .monetDots ? LAAStaff.monet : staff).rawValue
+        let name = staff.rawValue
         let directory = root.appendingPathComponent("staff/\(name)", isDirectory: true)
         return StaffAssets(
             avatar: present(directory.appendingPathComponent("\(name)-avatar-512.png")),

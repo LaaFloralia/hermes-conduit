@@ -57,36 +57,6 @@ enum LAAChatFastControl {
     }
 }
 
-/// A chat whose model, effort and speed are not Hermes' to report or change:
-/// the capsules show these values and their menus say why (owner, 2026-11-14:
-/// Monet · Dots reads GPT 6 Astra · Ultra Code · Fast on and offers no choice;
-/// owner, 2026-11-14 20:45).
-struct LAAChatFixedRuntime: Equatable {
-    let model: String
-    let provider: String
-    /// The name on the model capsule, whole (LAAModelCapsule.fullName).
-    let name: String
-    let effort: String
-    let speed: ModelSpeed
-    let reason: String
-
-    static let dots = LAAChatFixedRuntime(model: "gpt-6-astra", provider: "openai-codex", name: "GPT 6 Astra", effort: "ultracode",
-                                          speed: .fast, reason: "Monet（Dots）はモデルと推論を選べません。")
-
-    static let muse = LAAChatFixedRuntime(model: "muse", provider: "custom:laa-muse", name: "Muse", effort: "",
-                                          speed: .normal, reason: "薬用石鹸はMuseで動きます。モデルは選べません。")
-
-    static func of(profile: String) -> LAAChatFixedRuntime? {
-        switch LAAStaff(profile: profile) {
-        case .monetDots: return dots
-        case .soap: return muse
-        default: return nil
-        }
-    }
-
-    var fast: LAAChatFastControl.Display { .init(speed: speed, choices: [], lock: reason) }
-}
-
 /// The Fast capsule's face, shared by Work's session row and Chat's composer:
 /// the bolt and its word on the same 36 pt glass as the model and effort.
 struct LAAFastCapsuleLabel: View {

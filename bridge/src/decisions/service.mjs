@@ -147,7 +147,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
   const failure = (e) => (KNOWN.includes(e?.code ?? e?.message) ? (e.code ?? e.message) : 'paseo_unavailable');
   async function deliver(record) {
     if (record.delivery.state !== 'pending' || record.delivery.waiting) return record;
-    let error = null;
+    let error = null, queued = false;
     try {
       if (!daemon) throw new Error('paseo_unavailable');
       const before = await daemon.status(record.source.paseoAgentId);
@@ -158,9 +158,13 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       const who = a.answeredBy === 'monet' ? `Monetが代理回答しました。理由: ${a.reason}`
         : record.overturned ? '社長がMonetの回答を変更しました。こちらを優先してください。' : '社長が判断ボードで選びました。この判断で作業を続けてください。';
       const message = `【判断ボードの回答】${refs?.('decision', record.id) ?? record.ref ?? record.id}「${record.title}」\n選択: ${a.label}${a.note ? `\n補足: ${a.note}` : ''}\n（${who}）`;
-      await daemon.send(record.source.paseoAgentId, { text: message, messageId: record.delivery.messageId });
-      const after = await daemon.status(record.source.paseoAgentId);
-      if (!after.activeTurn && after.daemonStatus !== 'running' && !(Date.parse(after.updatedAt) > sentAt && Date.parse(after.updatedAt) > Date.parse(before.updatedAt))) throw new Error('delivery_unconfirmed');
+      // A Work engine session queues the answer behind its running turn (once per
+      // message id) instead of refusing it, so a parent that never idles still
+      // gets it at its next turn and the answer leaves the board (2026-11-26).
+      const sent = await daemon.send(record.source.paseoAgentId, { text: message, messageId: record.delivery.messageId, queue: true });
+      queued = sent?.queued === true;
+      const after = queued ? null : await daemon.status(record.source.paseoAgentId);
+      if (!queued && !after.activeTurn && after.daemonStatus !== 'running' && !(Date.parse(after.updatedAt) > sentAt && Date.parse(after.updatedAt) > Date.parse(before.updatedAt))) throw new Error('delivery_unconfirmed');
     } catch (e) {
       error = failure(e);
     }
@@ -168,7 +172,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     // accepted anything: the answer waits and the Bridge delivers it when that
     // turn ends, instead of asking the owner to resend (2026-11-13).
     if (error === 'session_busy' && (record.delivery.holds ?? 0) < limits.maxHolds) return store.hold(record.id, record.delivery.messageId);
-    let updated = store.settle(record.id, record.delivery.messageId, error ? 'failed' : 'delivered', error === 'session_busy' ? 'delivery_wait_expired' : error);
+    let updated = store.settle(record.id, record.delivery.messageId, error ? 'failed' : 'delivered', error === 'session_busy' ? 'delivery_wait_expired' : error, { queued });
     if (GONE.includes(error)) updated = store.retire(record.id, error, record.delivery.messageId);
     await sync();
     return updated;
@@ -205,8 +209,10 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
           continue;
         }
         if (status.archivedAt) { fail('agent_archived'); continue; }
-        // Still working, or asking its own question: the turn has not ended.
-        if (status.activeTurn || status.pending?.length || !['idle', 'closed', 'error'].includes(status.daemonStatus)) continue;
+        // Asking its own question, or (outside the Work engine, which queues)
+        // still working: the answer keeps waiting.
+        if (status.pending?.length) continue;
+        if (status.engine !== 'laa-work' && (status.activeTurn || !['idle', 'closed', 'error'].includes(status.daemonStatus))) continue;
         const claimed = store.release(r.id, key);
         if (!claimed) continue;
         const result = await deliver(claimed);
@@ -219,7 +225,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
   return {
     view, hasOpen, sync, list, deliverWaiting,
     get: (id) => view(store.get(id)),
-    add(body) {
+    image: (id, imgId, size) => store.image(id, imgId, size),
+    add(body, imageInputs) {
       let agent = body.source?.paseoAgentId ?? null;
       // A short id (the first 8 characters Paseo prints) is resolved to the
       // single full id it names, or delivery later finds no conversation.
@@ -228,7 +235,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
         if (new Set(matches).size === 1) agent = matches[0];
       }
       const session = agent && sessionStore?.all().find((r) => r.delegate?.sessionId === agent);
-      return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } });
+      return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } }, imageInputs);
     },
     withdraw: (id, reason) => view(store.withdraw(id, reason)),
     stats(since) {

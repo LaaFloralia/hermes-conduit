@@ -22,12 +22,11 @@ struct LAAGroupSelection {
 /// Who a new group can include, sectioned as the Chat list is. The
 /// uncensored Monet stays out of groups.
 enum LAAGroupCandidates {
-    struct Section { let title: String; var spoken: String? = nil; let staff: [LAAStaff] }
+    struct Section { let title: String; let staff: [LAAStaff] }
 
     static var sections: [Section] {
         [Section(title: LAACopy.groupSelectEmployees, staff: [.monet]),
-         Section(title: LAACopy.chatsEmployees, staff: LAAStaff.members(of: .employee)),
-         Section(title: LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, staff: LAAStaff.members(of: .contractor))]
+         Section(title: LAACopy.chatsEmployees, staff: LAAStaff.members(of: .employee))]
     }
 
     static var all: [LAAStaff] { sections.flatMap(\.staff) }
@@ -114,8 +113,8 @@ struct LAAGroupCreateView: View {
             Section(LAACopy.groupName) {
                 TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.create.name")
             }
-            // The same placement and order as the Chat list: Monet, the
-            // employees, then the contractors (owner, 2026-11-23).
+            // The same placement and order as the Chat list: Monet, then
+            // the employees (owner, 2026-11-23 and 11-26).
             ForEach(LAAGroupCandidates.sections, id: \.title) { section in
                 Section {
                     ForEach(section.staff, id: \.self) { staff in
@@ -137,7 +136,7 @@ struct LAAGroupCreateView: View {
                         .accessibilityIdentifier("groups.employee.\(profile)")
                     }
                 } header: {
-                    Text(verbatim: section.title).accessibilityLabel(Text(verbatim: section.spoken ?? section.title))
+                    Text(verbatim: section.title)
                 }
             }
             if failed { Text(verbatim: "作成できませんでした。接続先と選択した社員を確認して再試行してください。")

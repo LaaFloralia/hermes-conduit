@@ -4,18 +4,39 @@ import SwiftUI
 /// Chat's side of the working control: what the pill says while a turn runs,
 /// built from what the chat already knows (the turn state, its start, the
 /// running tool, the delegate agents Hermes reports for this conversation).
+@MainActor
 enum LAAChatWorking {
-    /// What Chat says while the employee answers and no tool is running; the
-    /// Live Activity's thinking phase says the same.
-    static let thinking = "Thinking"
+    /// What Chat says while a reply runs and no tool is running, for a
+    /// profile with no words of its own (unknown, or none read yet).
+    static let thinking = LAAStaffThinking.fallback
+    /// While a tool runs, whoever answers (never mixed with an employee's words).
+    static let toolRunning = "作業中"
 
+    /// The pill's state. With no tool running an employee's chat says that
+    /// employee's word for this wait (LAAStaffThinking, D-01 2026-11-26),
+    /// the same one through the whole wait; a tool running says 作業中.
     static func status(isBusy: Bool, startedAt: Date?, toolRunning: Bool,
-                       agents: [DelegateAgentActivity]) -> LAAWorkingStatus? {
+                       agents: [DelegateAgentActivity], profile: String? = nil,
+                       words: LAAStaffThinking = .shared) -> LAAWorkingStatus? {
         guard isBusy else { return nil }
-        // The owner's word for a turn with no tool running (2026-11-26).
-        let word = toolRunning ? "作業中" : thinking
+        let word: String
+        if toolRunning {
+            word = Self.toolRunning
+        } else if let profile {
+            word = words.word(profile: profile)
+        } else {
+            word = thinking
+        }
         return LAAWorkingStatus(word: word, startedAt: startedAt, orb: toolRunning ? .tool : .thinking,
                                 children: children(agents, since: startedAt))
+    }
+
+    /// The transcript's typing row with no tool running: an employee's chat
+    /// says the pill's word for this wait (the same hold); a chat with no
+    /// words of its own keeps 考え中.
+    static func rowPhrase(profile: String?, words: LAAStaffThinking = .shared) -> String {
+        guard let profile, words.words(forProfile: profile) != nil else { return LAACopy.chatThinking }
+        return words.word(profile: profile)
     }
 
     /// The turn's children: every agent still queued or running, and the

@@ -1319,8 +1319,11 @@ final class GPTLiveConversationController: ObservableObject {
         guard let target = target ?? session else { return false }
         #if LAA_BUILD
         guard !isReconnecting else { return false }
+        var text = text
         if let identity = callIdentity(), !identity.isEmpty {
             guard target.appendContext(identity, channel: .commentary, delegationID: nil) else { return false }
+            // An employee's reply is spoken without its emoji and kaomoji (D-01).
+            text = LAASpokenWords.strip(text)
         }
         #endif
         let onDelegation = delegationID.flatMap { $0.hasPrefix(Self.conduitDelegationPrefix) ? nil : $0 }

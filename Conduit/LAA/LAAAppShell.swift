@@ -69,6 +69,7 @@ struct LAAAppShell: View {
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
             .laaOwnerAvatarSync(bridge, active: scenePhase == .active)
+            .laaStaffThinkingSync(bridge, active: scenePhase == .active)
             .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
                 let active = scenePhase == .active
                 await usageState.synchronize(bridge: bridge, active: active)
@@ -86,7 +87,7 @@ struct LAAAppShell: View {
                 guard scenePhase == .active else { return }
                 guard bridge.status == .paired else { return }
                 if let page: LAADecisionPage = try? await bridge.read("/v1/decisions"), !Task.isCancelled {
-                    decisionCount = page.items.count
+                    decisionCount = page.items.filter(\.needsOwner).count
                 }
             }
             .onChange(of: scenePhase) { _, phase in

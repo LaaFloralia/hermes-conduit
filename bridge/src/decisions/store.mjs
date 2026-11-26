@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { createJsonFile } from '../routes/state-file.mjs';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
+import { createDecisionImages, DECISION_ID, IMAGE_ID, imageNotFound, validDecisionImages } from './images.mjs';
 
 const RETENTION = 30 * 86400_000;
 const WAIT_FIELDS = ['waiting', 'waitingSince', 'holds'];
@@ -37,6 +38,8 @@ function answerNote(value) {
   return value.trim() ? value : null;
 }
 
+const optionOrder = (options) => options.map((_, i) => i).sort((a, b) => Number(options[b].recommended === true) - Number(options[a].recommended === true));
+
 function input(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw badRequest('decision_invalid', 'decision must be an object');
   if (!Array.isArray(body.options) || body.options.length < 2 || body.options.length > 6) throw badRequest('decision_invalid', 'choose 2..6 options');
@@ -54,7 +57,7 @@ function input(body) {
   }
   return {
     title: text(body.title, 'title', 60), summary: text(body.summary, 'summary', 600),
-    options: options.sort((a, b) => Number(b.recommended) - Number(a.recommended)), allowOther: body.allowOther !== false,
+    options: optionOrder(options).map((i) => options[i]), allowOther: body.allowOther !== false,
     impact: text(body.impact, 'impact', 200, { optional: true }), deadline: deadline ? new Date(deadline).toISOString() : null,
     source: { paseoAgentId: text(body.source?.paseoAgentId, 'agent', 200, { optional: true }),
       sessionId: text(body.source?.sessionId, 'sessionId', 200, { optional: true }), name: text(body.source?.name, 'name', 200, { optional: true }) },
@@ -66,14 +69,16 @@ function input(body) {
 // the shared state-file lock, including delivery reservations and deduplication.
 export function createDecisionStore({ dir, now = () => Date.now() }) {
   const file = createJsonFile({ file: join(dir, 'decisions.json'), initial: () => ({ records: [], operations: {}, notifications: {} }) });
+  const images = createDecisionImages(dir);
   const stamp = () => new Date(now()).toISOString();
   const validTime = (v) => typeof v === 'string' && Number.isFinite(Date.parse(v));
   function validRecord(r) {
     try {
-      if (!r || !/^dec_[0-9a-f]{16}$/.test(r.id) || !['open', 'answered', 'withdrawn'].includes(r.status)
+      if (!r || !DECISION_ID.test(r.id) || !['open', 'answered', 'withdrawn'].includes(r.status)
         || !validTime(r.createdAt) || !validTime(r.updatedAt) || (r.ref !== null && text(r.ref, 'ref', 80) !== r.ref)) return false;
       const normalized = input(r);
       if (Object.entries(normalized).some(([k, v]) => JSON.stringify(r[k]) !== JSON.stringify(v))) return false;
+      if (r.images !== undefined && !validDecisionImages(r.images, r.options.length)) return false;
       const { category, ownerKind } = decisionCategory(r.impact);
       if ((r.category !== undefined || r.ownerKind !== undefined) && (r.category !== category || r.ownerKind !== ownerKind)) return false;
       if (r.status !== 'answered') return r.answer === null && r.delivery === null && r.monetAnswer === undefined && r.overturned === undefined;
@@ -117,8 +122,8 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       throw new BridgeError(503, 'decisions_store_unavailable', '判断の保存先を読み書きできません。', { retryable: true });
     }
   }
-  function prune(s) {
-    s.records = s.records.filter((r) => r.status === 'open' || now() - Date.parse(r.updatedAt) < RETENTION);
+  function prune(s, time = now()) {
+    s.records = s.records.filter((r) => r.status === 'open' || time - Date.parse(r.updatedAt) < RETENTION);
     const ids = new Set(s.records.map((r) => r.id));
     for (const [key, op] of Object.entries(s.operations)) if (!ids.has(op.id)) delete s.operations[key];
     for (const id of Object.keys(s.notifications)) if (!ids.has(id)) delete s.notifications[id];
@@ -172,17 +177,30 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     file: file.file,
     all: () => access(() => structuredClone(read().records)),
     get: (id) => access(() => structuredClone(find(read(), id))),
-    add(body) {
+    image(id, imgId, size) {
+      if (!DECISION_ID.test(id) || !IMAGE_ID.test(imgId)) throw imageNotFound();
+      return access(() => images.read(read().records.find((r) => r.id === id), imgId, size, now()));
+    },
+    add(body, imageInputs = []) {
       if (decisionCategory(body?.impact).category === 'unmarked') throw new BridgeError(428, 'decision_category_required',
         '影響の先頭に【必ず社長：種類】または【任せられる】を付けてください。社長への通知は【必ず社長】だけです。');
       const value = withCategory(input(body));
-      return mutate((s) => {
-        const existing = s.records.find((r) => r.requestId === value.requestId && r.source.paseoAgentId === value.source.paseoAgentId);
-        if (existing) return { decision: existing, replayed: true };
-        const r = { id: `dec_${randomBytes(8).toString('hex')}`, ref: null, status: 'open', ...value, createdAt: stamp(), updatedAt: stamp(), answer: null, delivery: null };
-        s.records.push(r);
-        return { decision: r, replayed: false };
-      });
+      const staged = access(() => images.stage(imageInputs, optionOrder(body.options)));
+      try {
+        return mutate((s) => {
+          const existing = s.records.find((r) => r.requestId === value.requestId && r.source.paseoAgentId === value.source.paseoAgentId);
+          if (existing) return { decision: existing, replayed: true };
+          const r = { id: `dec_${randomBytes(8).toString('hex')}`, ref: null, status: 'open', ...value, createdAt: stamp(), updatedAt: stamp(), answer: null, delivery: null };
+          if (staged) {
+            // Publish before the JSON write under the same lock. If that write
+            // fails or is interrupted, sync can reclaim the unreferenced dir.
+            staged.publish(r.id);
+            r.images = staged.images;
+          }
+          s.records.push(r);
+          return { decision: r, replayed: false };
+        });
+      } finally { if (staged) access(staged.cleanup); }
     },
     withdraw(id, reason, { ifOpen = false } = {}) {
       text(reason, 'reason', 200); // A reason is required; no extra conversation text is retained.
@@ -198,13 +216,14 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     },
     reserve: (id, deviceId, body, retry = false) => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry)),
     reserveMonet: (id, body, reason) => mutate((s) => reserve(s, id, 'monet', body, false, proxyReason(reason))),
-    settle(id, messageId, state, error = null) {
+    // `queued`: the conversation accepted the answer into its queue behind a running turn.
+    settle(id, messageId, state, error = null, { queued = false } = {}) {
       return mutate((s) => { const r = find(s, id);
         if (r.previousAttempt?.messageId === messageId) delete r.previousAttempt;
         if (r.delivery?.messageId !== messageId || r.delivery.state !== 'pending') return r;
         delete r.previousAttempt;
         for (const key of WAIT_FIELDS) delete r.delivery[key];
-        Object.assign(r.delivery, { state, error, deliveredAt: state === 'delivered' ? stamp() : null }); r.updatedAt = stamp(); return r; });
+        Object.assign(r.delivery, { state, error, deliveredAt: state === 'delivered' ? stamp() : null, ...(state === 'delivered' && queued ? { queued: true } : {}) }); r.updatedAt = stamp(); return r; });
     },
     // The conversation is busy: keep the accepted answer and let the Bridge
     // deliver it, with the same message id, once that turn ends.
@@ -229,6 +248,12 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     },
     notificationDone(id, key) { return access(() => Boolean(checked(file.read()).notifications[id]?.includes(key))); },
     markNotification(id, key) { mutate((s) => { const keys = s.notifications[id] ??= []; if (!keys.includes(key)) keys.push(key); }); },
-    prune: () => mutate(() => null),
+    prune: () => access(() => file.mutate((s) => {
+      checked(s);
+      const time = now();
+      images.prune(s.records, time);
+      prune(s, time);
+      s.records.forEach(withCategory);
+    })),
   };
 }

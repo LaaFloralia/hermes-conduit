@@ -71,7 +71,6 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 - モデル: 22ptの顔、依頼と実行が違う時の▲、名前、chevron。幅が足りなければ名前を丸ごと省いて顔だけにし、「M…」にしない。メニューはモデルだけ（依頼 → 実行の説明行はここ）。新規セッションは提供元ごとの節と、末尾に「確認なしで実行」。
 - 推論: 5段メーターと名前、chevron。常に欠けない。メニューは選んだモデルで選べるeffortだけ。モデルを替えた時は同じeffort、なければHigh、なければ最も近い値にする。
 - Fast（Chatの入力欄とWorkのセッション詳細、2026-11-14 社長の依頼）: 稲妻と「Fast／Ultrafast」の3つ目のカプセル。部品は `Conduit/LAA/Chat/LAAChatFast.swift` の `LAAFastCapsuleLabel`（Work・Chat共通）と `LAAChatFastCapsule`。値は会話ごとで、Hermesが報告した値に変わった時だけ表示を変える。モデルがUltrafastを提供する時は 通常／Fast／Ultrafast のメニュー、提供しない時は押すたびに 通常⇄Fast、Fast自体が無いモデルでは出さない。会話の開始前・未接続・書込み中は押せず、理由をメニューに出す。識別子は `composer.runtime.fast`。
-- Monet（Dots）: 3カプセルを「GPT 6 Astra／Ultra Code／Fast（オン）」の固定表示にし（社長 2026-11-14 20:45。旧「Astra／Max／Ultrafast」）、Hermesへ model・reasoning・fast を書かない。判定と値は `LAAChatFixedRuntime`（`LAAChatFast.swift`）の1か所。メニューは理由「Monet（Dots）はモデルと推論を選べません。」だけを出す。
 - 選択演出（2026-11-14、社長訂正）: 外枠の線・紋様を撤去し、Liquid Glassの内側に紫が一度広がって落ち着く。Mythosを最も強く、AstraとGemini 4 Neonを次の段とする（Fableは2026-11-23に一覧から外れ、旧Fableの会話は通常のガラス）。推論もXHighからMax・Ultra Codeへ段階を上げる。動きを減らす設定は静止した色、透明度低減は不透明面で同じ段階を示す。色の数値はHQ `design/tokens.json` の `appSelection`。
 - 2つは高さ36pt・角丸18pt・内側の余白・chevron（10pt、補助色）・押下時のガラスの反応を揃え、間は8pt。値が不明なら「不明」、最後に確認した値なら「最終確認」を付け、変更中は「変更中」を出す。
 - 変更できない時もメニューは開き、理由を1行の無効行で示す（2026-11-11の指摘を維持）。VoiceOverは「モデル」「推論」を別の操作として読む。
@@ -79,7 +78,7 @@ iOS 26以降は標準 `TabView`・`toolbar` のシステム表現を優先する
 
 ## Chats：相手を選ぶ一覧
 
-画面上部に `Chats`、検索、新規作成。縦スクロールの順は `Monet`、`Employees`、`Contractors`（派遣社員）、`Groups`（2026-11-23 社長）。Monetは最初に1行で固定し（無検閲Monetはその下のvariant）、Employeesは既存の社員データ、ContractorsはMuse（薬用石鹸）とMonet（Dots）、Groupsは参加中のグループを、折りたたまずに全件表示する。区分は `LAAStaff.placement` がプロフィールIDで持つ（Hermesの `/api/profiles` は区分を返さない）。接続先にいない派遣社員は、使えない社員と同じく押せない行で示す（Recentは2026-11-02に社長の指示で削除。会話の一覧はWorkのSessions）。`+` は既存の作成フローへ進む。未実装の作成操作を成功したように見せない。
+画面上部に `Chats`、検索、新規作成。縦スクロールの順は `Monet`、`Employees`、`Groups`（2026-11-23 社長。`Contractors`（派遣社員）は2026-11-26に社長が外した）。Monetは最初に1行で固定し（無検閲Monetはその下のvariant）、Employeesは既存の社員データ、Groupsは参加中のグループを、折りたたまずに全件表示する。区分は `LAAStaff.placement` がプロフィールIDで持つ（Hermesの `/api/profiles` は区分を返さない）。MuseとMonet（Dots）のプロフィールは行も検索結果も出さず、会話はMacのHermesに残す（Recentは2026-11-02に社長の指示で削除。会話の一覧はWorkのSessions）。`+` は既存の作成フローへ進む。未実装の作成操作を成功したように見せない。
 
 社員行は40〜44ptの静止アバター、表示名、役割を並べる。グループ行は参加社員の顔を同じ大きさの枠に重ねて示す（2人は斜め、3人以上は3つの塊、4人以上は3つ目を人数）。実際に取得できない状態や未読数は作らない。検索は相手名・役割・グループ名・メンバーを対象にし、結果なし、読み込み中、接続失敗を区別する。
 
@@ -194,7 +193,7 @@ Macも同じ画面を本文幅で使う。値は既存トークンだけ。
 
 アイコン原本はStudioブランドの「配信用 — PWA 1024 / any」。`Conduit/Resources/AppIcon-LAA.icon` は青緑の地に螺旋・四分円・円弧の3層、iOS 26未満は `Conduit/Resources/Assets.xcassets/AppIcon-LAA.appiconset` を使う。LAA用署名overlayで `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA` を指定し、上流のアイコン設定は維持する。既存の `ictool`・`actool` 検証は実機表示の確認を意味しない。
 
-社員像は2026-11-08のMonet統合後の8体に、2026-11-15採用の薬用石鹸を加えた9体を使う。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。周りに円・縁・白い下地を付けない（社長の指摘 2026-11-06）。チャット上部のマスコットは54ptで、名前のガラスの外に置く。
+社員像は2026-11-08のMonet統合後の8体を使う（2026-11-15採用の薬用石鹸は、2026-11-26にMuseがChatから外れたため画面では使わない）。原本・検証結果は [assets/staff/README.md](assets/staff/README.md)。周りに円・縁・白い下地を付けない（社長の指摘 2026-11-06）。チャット上部のマスコットは54ptで、名前のガラスの外に置く。
 
 | ファイル | 用途 |
 |---|---|
@@ -203,7 +202,7 @@ Macも同じ画面を本文幅で使う。値は既存トークンだけ。
 | `<id>-avatar-512.png` | ループの1コマ目。一覧、処理中の行、静止時 |
 | `<id>-idle-512.mov` | HEVCアルファ付き、512²、約4秒、24fps。チャット上部と通話 |
 
-IDは `monet`（藤色の花）、`monet-uncensored`（無検閲版）、`argus`（孔雀）、`cfo`（Morgan）、`cio`（Sherlock）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）、`soap`（白いフェルト石鹸と泡）。Monet（Dots）はMonetの素材を共用する。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。
+IDは `monet`（藤色の花）、`monet-uncensored`（無検閲版）、`argus`（孔雀）、`cfo`（Morgan）、`cio`（Sherlock）、`cos`（Merlin）、`cto`（Ada）、`cso`（Talos）。`soap`（白いフェルト石鹸と泡）の素材は残すが使わない。人物に見える案、吊り目、白目、頬紅やリボンを足した案は社長が退けた。太い輪郭・濃い色・最小限の顔を守る。
 
 LAA版の `profileAvatarURL` は社員ならHermesの画像ではなく同梱のマスコットを返す。処理中の行や一覧も同じ画像になる。
 

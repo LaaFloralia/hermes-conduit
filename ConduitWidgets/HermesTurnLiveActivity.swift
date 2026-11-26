@@ -44,7 +44,7 @@ struct HermesTurnLiveActivity: Widget {
                 HermesTurnPhaseIcon(state: state)
                     .font(.footnote.weight(.semibold))
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
+                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.spokenStatus(state, language: attributes.language, thinkingWord: attributes.thinkingWord)))
             } compactTrailing: {
                 HermesTurnElapsed(attributes: attributes, state: state)
                     .font(.caption2.monospacedDigit().weight(.semibold))
@@ -54,7 +54,7 @@ struct HermesTurnLiveActivity: Widget {
                 HermesTurnPhaseIcon(state: state)
                     .font(.footnote.weight(.semibold))
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
+                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.spokenStatus(state, language: attributes.language, thinkingWord: attributes.thinkingWord)))
             }
             .widgetURL(attributes.link)
             .keylineTint(HermesTurnStyle.tint(for: state.turnPhase))
@@ -162,10 +162,11 @@ private struct HermesTurnHeadline: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Text(verbatim: HermesTurnCopy.status(state, language: attributes.language))
+            Text(verbatim: HermesTurnCopy.status(state, language: attributes.language, thinkingWord: attributes.thinkingWord))
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+                .accessibilityLabel(Text(verbatim: HermesTurnCopy.spokenStatus(state, language: attributes.language, thinkingWord: attributes.thinkingWord)))
         }
     }
 

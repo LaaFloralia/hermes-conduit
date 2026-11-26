@@ -268,7 +268,7 @@ final class LiveTurnActivities {
     /// older one for the same chat ends.
     /// `linkID` is the id the card's tap opens the chat by (its durable
     /// one); the runtime `primaryID` stops resolving once Hermes reaps it.
-    func turnStarted(sessionIDs: Set<String>, primaryID: String, linkID: String? = nil, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil, dashboardID: String? = nil) {
+    func turnStarted(sessionIDs: Set<String>, primaryID: String, linkID: String? = nil, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil, dashboardID: String? = nil, thinkingWord: String? = nil) {
         adoptExisting()
         let held = early.first { !$0.sessionIDs.isDisjoint(with: sessionIDs) }
             .map { LiveTurnProgress.newTurnEvents($0.events) } ?? []
@@ -285,7 +285,8 @@ final class LiveTurnActivities {
             sessionIDs: Array(sessionIDs).sorted(),
             profileName: profileName,
             glowHex: glowHex,
-            dashboardID: dashboardID
+            dashboardID: dashboardID,
+            thinkingWord: thinkingWord
         )
         let state = HermesTurnAttributes.ContentState(phase: .thinking)
         do {

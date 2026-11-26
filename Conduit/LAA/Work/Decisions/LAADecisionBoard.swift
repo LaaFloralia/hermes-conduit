@@ -49,7 +49,8 @@ import SwiftUI
     /// back to 未回答 because of it.
     private var answeredHere = Set<String>()
 
-    var count: Int { items.count { !$0.isMonetQueue } }
+    /// The badge and segment number: only what still needs the owner.
+    var count: Int { items.filter(\.needsOwner).count }
 
     func reset() {
         items = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []

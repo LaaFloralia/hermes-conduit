@@ -78,7 +78,7 @@ function fail(message, code = 1) {
 // appended). Everything else takes exactly one value; a missing value is a usage
 // error rather than a silent `true`.
 const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'clear-minutes', 'clear-minimum', 'force', 'allow-live', 'help', 'no-other', 'pending', 'sync-linear', 'monet-log']);
-const REPEATED_FLAGS = new Set(['link', 'option']);
+const REPEATED_FLAGS = new Set(['link', 'option', 'image']);
 
 function parseArgs(argv) {
   const positional = [];

@@ -108,6 +108,7 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
         let cases: [(String, [LAAUsageItem], String)] = [
             ("normal", try F.items(), ""),
             ("google-open", try F.items(), "provider.google-ai-pro"),
+            ("muse-open", try F.items(), "provider.muse"),
             ("others-open", try F.items(), "others"),
             ("unknown", try F.items(fable: nil, googleActive: [:]), ""),
             ("empty", [], ""),

@@ -40,6 +40,11 @@ struct LAAChatsFixtureView: View {
                                : ($0 == .cto ? "資料を更新しました。公開前に見出しを確認してください。" : nil),
                            lastMessageAt: $0 == .cto ? Date().addingTimeInterval(-180) : nil)
         }
+        // The former contractors' profiles, still on the host (2026-11-26):
+        // the list must not show them.
+        + [("laa-soap", "薬用石鹸"), ("laa-monet-dots", "Monet（Dots）")].map {
+            LAAChatsPerson(profile: $0.0, name: $0.1, role: "", available: mode != "offline")
+        }
         let rooms = mode == "normal" ? [GroupRoom(roomID: "team", name: LAALabCaptureFixture.expanded("LAA team"), members: members,
             authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1, createdAt: 1, updatedAt: 2,
             disbandedAt: nil, latestSeq: 1)] : []

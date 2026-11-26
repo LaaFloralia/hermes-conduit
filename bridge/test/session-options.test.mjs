@@ -81,7 +81,7 @@ test('Claude API choices retain their paid route and require an explicit manual 
   const options = sessionOptionsFrom(api);
   assert.deepEqual(options.profiles.find(p => p.id === 'fable-api-high'), {
     id: 'fable-api-high', label: 'Claude Fable 5.2（API）', provider: 'hermes-claude-api',
-    model: 'anthropic:claude-fable-5-2', effort: 'high', fast: false,
+    model: 'anthropic:claude-fable-5-2', effort: 'high', fast: false, metered: true,
   });
   assert.equal(options.defaultProfile, 'opus-high');
   api.entrances.at(-1).status = 'stopped';
@@ -349,7 +349,7 @@ test('GPT API is a paid manual route with the openai-api: wire id (the Hermes pr
     provider: 'hermes-openai-api', model: 'openai-api:{{id:gpt55api}}', thinking: 'high' } }] };
   const options = sessionOptionsFrom(api);
   assert.deepEqual(options.profiles.find((p) => p.id === 'gpt-api-55-high'), {
-    id: 'gpt-api-55-high', label: 'GPT-5.5（API）', provider: 'hermes-openai-api', model: 'openai-api:gpt-5.5', effort: 'high', fast: false,
+    id: 'gpt-api-55-high', label: 'GPT-5.5（API）', provider: 'hermes-openai-api', model: 'openai-api:gpt-5.5', effort: 'high', fast: false, metered: true,
   });
   assert.ok(!options.profiles.some((p) => p.id === 'gpt-api-unlisted-high'));
   assert.ok(options.switchProfiles.some((p) => p.id === 'gpt-api-55-high'));
@@ -376,4 +376,59 @@ test('Gemini on Antigravity is a subscription manual choice from manual_profiles
   const unavailable = sessionOptionsFrom(gemini, (provider) => provider === 'antigravity'
     ? { available: false, reason: 'no signed-in account', reasonShort: 'サインイン済みのアカウントなし' } : null);
   assert.equal(unavailable.profiles.find((p) => p.id === 'neon-high').label, 'Gemini 4 Neon（サインイン済みのアカウントなしのため使えません）');
+});
+
+// The harness selector (2026-11-26): each profile names the harness its sessions start on, as the
+// engine reports it (`laa-work provider ls --json`, work-engine.json `harnesses`). A moved provider
+// stays on its own harness for Fast, so a Fast-capable profile also names that one.
+test('profiles name the harness the engine starts them on, and where Fast runs', async () => {
+  const engine = {
+    claude: { id: 'claude', harness: 'claude', available: true },
+    codex: { id: 'codex', harness: 'pi', available: true },
+    dsh: { id: 'dsh', harness: 'dsh', available: false, reason: 'down', reasonShort: '停止中' },
+  };
+  const options = sessionOptionsFrom(table, (provider) => engine[provider] ?? null);
+  const byId = Object.fromEntries(options.profiles.map((p) => [p.id, p]));
+  assert.equal(byId['opus-high'].harness, 'claude');
+  assert.equal(byId['opus-high'].fastHarness, undefined, 'a provider that is not moved has no separate Fast harness');
+  assert.equal(byId['sol-high'].harness, 'pi');
+  assert.equal(byId['sol-high'].fastHarness, 'codex', 'Fast keeps a moved Codex session on Codex');
+  assert.equal(byId['sol-high'].provider, 'codex', 'the launch body still names the provider');
+  assert.equal(byId['deepseek-flash-high'].harness, 'dsh');
+  assert.equal(byId['deepseek-flash-high'].available, false);
+  // Before the engine has answered nothing is claimed.
+  assert.equal(sessionOptionsFrom(table).profiles.find((p) => p.id === 'sol-high').harness, undefined);
+  // The daemon snapshot carries the harness a running session is on.
+  const { snapshot } = await import('../src/sessions/daemon.mjs');
+  assert.equal(snapshot({ provider: 'codex', harness: 'pi', status: 'idle' }, Date.now()).harness, 'pi');
+  assert.equal(snapshot({ provider: 'codex', runtimeInfo: { extra: { harness: 'codex' } }, status: 'idle' }, Date.now()).harness, 'codex');
+  assert.equal(snapshot({ provider: 'claude', status: 'idle' }, Date.now()).harness, null);
+});
+
+// Claude Code and Pi on their API keys (2026-11-26): the engine's own providers, offered only by
+// hand behind an exact manual entrance, marked metered, never the default; a subscription
+// profile never carries the mark.
+test('Claude Code and Pi API routes are manual, metered choices behind an exact entrance', () => {
+  const api = { ...table, profiles: { ...table.profiles,
+    'opus-api-high': { model: 'opus', harness: 'claude-api', effort: 'high', manual: true },
+    'sol-api-high': { model: 'terra', harness: 'pi-openai-api', effort: 'high', manual: true },
+  }, entrances: [...table.entrances,
+    { kind: 'paseo', status: 'manual', paseo: { provider: 'claude-api', model: '{{id:opus}}', thinking: 'high' } },
+    { kind: 'work', status: 'manual', work: { provider: 'pi-openai-api', model: '{{id:terra}}', thinking: 'high' } },
+  ] };
+  const options = sessionOptionsFrom(api);
+  const byId = Object.fromEntries(options.profiles.map((p) => [p.id, p]));
+  assert.deepEqual(byId['opus-api-high'], { id: 'opus-api-high', label: 'Claude Opus 5.5（API）', provider: 'claude-api',
+    model: 'claude-opus-5-5', effort: 'high', fast: false, metered: true });
+  assert.equal(byId['sol-api-high'].provider, 'pi-openai-api');
+  assert.equal(byId['sol-api-high'].model, 'gpt-6.1-terra');
+  assert.equal(byId['sol-api-high'].metered, true);
+  assert.equal(byId['opus-high'].metered, undefined, 'a subscription route is not marked');
+  assert.equal(options.defaultProfile, 'opus-high');
+  // Without its manual entrance a metered route is not offered.
+  const bare = sessionOptionsFrom({ ...api, entrances: table.entrances });
+  assert.ok(!bare.profiles.some((p) => ['claude-api', 'pi-openai-api'].includes(p.provider)));
+  // A metered profile not marked manual is never offered.
+  const auto = structuredClone(api); auto.profiles['opus-api-high'].manual = false;
+  assert.ok(!sessionOptionsFrom(auto).profiles.some((p) => p.id === 'opus-api-high'));
 });

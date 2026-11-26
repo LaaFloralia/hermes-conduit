@@ -106,7 +106,7 @@ struct LAAWorkHub: View {
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: section) { _, _ in search = "" }
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
-            guard linkRequest.url?.host == "work" else { return }
+            guard linkRequest.url?.host == "work", linkRequest.claim("work.hub") != nil else { return }
             if linkRequest.decisionsLink {
                 decisions.linkedID = linkRequest.decisionTarget
                 section = .decisions

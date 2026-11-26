@@ -57,7 +57,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
             let item = try claude(items)
             XCTAssertNil(item.fableWeekly(at: now), name)
             XCTAssertEqual(item.weeklyWindow?.remainingPercent, 49, name)
-            XCTAssertEqual(items.count, 7, name)
+            XCTAssertEqual(items.count, 10, name)
         }
         // No reset at all is still a reading.
         XCTAssertEqual(try claude(F.items(fable: F.fable(40.0, reset: nil))).fableWeekly(at: now)?.remainingPercent, 40)
@@ -125,7 +125,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
     func testOpenCodeAndTheBalancesLeftTheWidget() {
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetSlots.map(\.provider), ["codex", "claude", "google-ai-pro"])
         XCTAssertFalse(LAAWidgetUsageBuilder.slots.first { $0.provider == "opencode-go" }!.showsInWidget)
-        XCTAssertEqual(LAAWidgetUsageBuilder.cardSlots.map(\.name), ["Codex", "Claude", "Google"])
+        XCTAssertEqual(LAAWidgetUsageBuilder.cardSlots.map(\.name), ["Codex", "Claude", "Google", "Muse"])
         XCTAssertEqual(LAAWidgetUsageBuilder.otherSlots.map(\.provider),
                        ["opencode-go", "magnific", "openai-api", "claude-api", "liquid", "venice", "refuseless"])
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetRows.count, 6)
@@ -236,6 +236,30 @@ final class LAAUsageV2ModelTests: XCTestCase {
         let active = try XCTUnwrap(LAAWidgetUsageBuilder.activeAccount(accounts))
         XCTAssertEqual(LAAUsageCardModel.windows(provider: "google-ai-pro", item: active, now: now).map(\.remainingPercent), [83, 75])
         XCTAssertEqual(LAAUsageCardModel.windows(provider: "google-ai-pro", item: accounts[2], now: now).map(\.remainingPercent), [nil, nil])
+    }
+
+    /// Muse (2026-11-26): the three Free accounts the harness switches
+    /// between, each with its weekly allowance; an unread or signed-out
+    /// account reads unknown, never 0, and the widget keeps its six rows.
+    func testMuseCardShowsEachAccountsWeeklyFreeAllowance() throws {
+        let items = try F.items()
+        let muse = LAAUsageCardModel.accounts(items, group: "muse")
+        XCTAssertEqual(muse.map(LAAUsageCardModel.accountName), ["Muse1", "Muse2", "Muse3"])
+        XCTAssertEqual(LAAUsageCardModel.accounts(items).map(LAAUsageCardModel.accountName), ["Sub2", "Sub3", "Sub4"],
+                       "Google's accounts stay Google's")
+        let active = try XCTUnwrap(LAAWidgetUsageBuilder.activeAccount(muse))
+        XCTAssertEqual(active.label, "Muse1")
+        let shown = LAAUsageCardModel.windows(provider: "muse", item: active, now: now)
+        XCTAssertEqual(shown.map(\.label), ["7d"])
+        XCTAssertEqual(shown.map(\.remainingPercent), [94])
+        XCTAssertNil(shown[0].resetsAt, "Muse names a day, not a time: no reset is made up")
+        for account in muse.dropFirst() {
+            XCTAssertEqual(LAAUsageCardModel.windows(provider: "muse", item: account, now: now).map(\.remainingPercent), [nil])
+        }
+        XCTAssertEqual(muse[2].nullReason, "auth_required")
+        XCTAssertTrue(LAAUsageGroup.isAccountGroup("provider.muse"))
+        XCTAssertFalse(LAAWidgetUsageBuilder.widgetSlots.contains { $0.provider == "muse" })
+        XCTAssertNil(LAAUsageGauge.lowestWeeklyRemaining(muse), "Muse does not move Work's gauge")
     }
 
     func testResetText() {

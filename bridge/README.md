@@ -76,17 +76,34 @@ without it `ref` and `sourceRef` are null.
 
 ```sh
 laa-bridge decide add --title '公開日を決める' --summary '日付を選んでください' \
-  --option '明日' --option '来週::確認時間を確保' --recommended 2 --request-id release-date
+  --option '明日' --option '来週::確認時間を確保' --impact '【任せられる】日程' \
+  --recommended 2 --request-id release-date
 laa-bridge decide status dec_<16hex> --json
 laa-bridge decide list --json
 laa-bridge decide withdraw dec_<16hex> --reason '解決済み'
 ```
 
-`--agent` defaults to `$PASEO_AGENT_ID`; `--name`, `--impact`, `--deadline` (ISO
-8601) and `--no-other` are optional. End the agent turn after posting. The server
+`--agent` defaults to `$PASEO_AGENT_ID`; `--name`, `--deadline` (ISO 8601) and
+`--no-other` are optional. `--impact` must start with `【任せられる】` or
+`【必ず社長：…】`. End the agent turn after posting. The server
 detects CLI records on the existing five-second session sync and sends through
 the existing notifier. Posting an open board decision suppresses that session's
 finished notification. CLI reads do not consume pending notifications.
+
+Use `--image /absolute/path.png` up to six times for general images, in display
+order. Append `::image=/absolute/path.png` to an option (`label::detail::image=…`
+or `label::image=…`) to attach one image to it. Only readable PNG, JPEG, HEIC
+and WebP files up to 40 MB are accepted by signature (`decision_image_invalid`
+otherwise). The Mac CLI uses `sips` to make metadata-free full and thumbnail
+copies (long side at most 3000 and 720 px, no upscaling; PNG stays PNG, other
+formats become JPEG). Copies are staged under `decision-images/.staging/`,
+then moved into `decision-images/<decId>/` under the decision store lock;
+directories are 0700 and files 0600. A request-ID replay does not add copies.
+`images: [{id,width,height,option?}]` is omitted on image-free decisions;
+`option` is the zero-based index in **stored**, recommended-first order. Sync
+removes copies seven days after a decision is answered or withdrawn without
+removing its image metadata, and reclaims orphan/staging directories after an
+hour. Lane CLI source files must also be inside the lane.
 
 Answers use the existing daemon adapter with a stable
 `<id>:answer:<attempt>` message ID and steering behavior. A fresh agent read
@@ -108,6 +125,7 @@ answers; another answer after closure is `409 decision_closed`.
 |---|---|---|
 | `GET /v1/decisions` | `sessions:read` | `{items,fetchedAt}`; board open/failed/waiting plus native pending sessions, failed first, then deadline, then newest |
 | `GET /v1/decisions/{dec_id}` | `sessions:read` | One record, any status; omits posting `requestId` |
+| `GET /v1/decisions/{dec_id}/images/{img_id}` | `sessions:read` | Full copy, or `?size=thumb`. `{contentType,width,height,etag,data}` with base64 bytes. `ETag` / `If-None-Match` → 304; 404 `decision_image_not_found`; 410 `decision_image_expired`. |
 | `POST /v1/decisions/{dec_id}/answer` | `sessions:write` | `{optionIndex,note?,requestId,quick?}` → `{decision}` after delivery; null index requires a free answer and `allowOther` |
 | `POST /v1/decisions/{dec_id}/retry` | `sessions:write` | `{requestId}` → `{decision}`; only failed delivery |
 
@@ -208,6 +226,7 @@ callers mark it processed. Unknown notification kinds use alert.
 | `POST /v1/linear-owner-tasks/{id}/complete` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match`（AI担当は `sessions:write` も） | `{id,completed:true,sessionArchived,archive:"queued"}`。会話ツリーの実行中は409 `session_running`。判断の取下げ→会話のアーカイブ→完了コメント→Done→番号解放→記録保管。途中失敗は同じ要求の再送で続行 |
 | `GET /v1/skills` | Bearer + `sessions:read` | `{items:[{id,name,description,source,category,summary,detail,metadataKnown}]}`。分類・日本語説明は名前別メタデータ、未登録は「その他」と元の説明。SKILL.md本文は返さない。読取失敗は503 |
 | `GET /v1/routines` | Bearer + `sessions:read` | Console `jobs` の名前・予定・配信先・状態・直近実行・結果・`triggerKind`。定期実行以外は別枠。未観測はnull、読取失敗は503 |
+| `GET /v1/staff` | Bearer + `sessions:read` | `{staff:[{id,profile,name,thinking?}]}` in roster order; `profile` is `laa-` + `id`. `thinking` is `{base,alt}` and omitted if missing or invalid (blank base/alternate or non-array `alt`; `[]` is valid). Reads `LAA_ROSTER_PATH` (default `/Users/laa/hq/roles/roster.yaml`) on mtime changes. An unreadable roster logs a warning and returns 200 with `{staff:[]}`. Lab defaults to its own `roster.yaml`; an explicit override may use the sibling HQ worktree roster. |
 | `GET /v1/refs?kind=` | Bearer + `tasks:read`（task）／`sessions:read`（他） | 保持中の短い番号 `{items:[{ref,kind,key,title,external}],observedAt,fetchedAt}`。種類ごとに `n` 順 |
 | `GET /v1/refs/{ref}` | 同上（refの種類による） | `{ref,kind,status:"active"|"released",holder,previous}`。未知で履歴なしは404 `ref_unknown`、形式不正は400 `ref_invalid` |
 | `GET /v1/calendar/events?start=&end=` | Bearer + `calendar:read` | RFC3339の42日以内 → `{items:[予定詳細],source,start,end}`。設定・認可・API失敗は503で、空の予定にしない |

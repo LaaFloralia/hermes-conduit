@@ -63,26 +63,27 @@ final class LAAStaffCallTests: XCTestCase {
     func testStaffProfilesAndUnknownProfile() {
         let expected: [String: String] = ["monet": "Monet", "argus": "Argus", "cfo": "Morgan",
                                           "cio": "Sherlock", "cos": "Merlin",
-                                          "cso": "Talos", "cto": "Ada", "monet-uncensored": "Monet（無検閲）",
-                                          "monet-dots": "Monet（Dots）", "soap": "薬用石鹸"]
+                                          "cso": "Talos", "cto": "Ada", "monet-uncensored": "Monet（無検閲）"]
         for (id, name) in expected {
             XCTAssertEqual(LAAStaff(profile: "laa-\(id)")?.name, name)
         }
         XCTAssertNil(LAAStaff(profile: "default"))
         XCTAssertNil(LAAStaff(profile: "laa-other"))
-        for retired in ["laa-ciel", "laa-ciel-uncensored", "laa-cmo"] {
+        // Retired, and the contractors who left Chat on 2026-11-26.
+        for retired in ["laa-ciel", "laa-ciel-uncensored", "laa-cmo", "laa-monet-dots", "laa-soap", "laa-duet"] {
             XCTAssertNil(LAAStaff(profile: retired))
         }
     }
 
-    func testDotsEmployeeChatRoutePreservesProfileWithoutAddingAVoiceWidget() throws {
-        let workspace = WidgetWorkspaceID(dashboardID: UUID(), profile: "laa-monet-dots")
-        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
-        XCTAssertEqual(WidgetLaunchLink(url: link.url)?.workspace, workspace)
-        XCTAssertEqual(WidgetLaunchLink(url: link.url)?.action, .employeeChat)
-        XCTAssertNil(LAAWidgetEmployee.forProfile(workspace.profile))
-        XCTAssertNil(WidgetLaunchLink(action: .employeeChat,
-            workspace: WidgetWorkspaceID(dashboardID: workspace.dashboardID, profile: "laa-unknown"), reference: nil))
+    /// The contractors' profiles stay on the host but no link reaches them.
+    func testContractorProfilesHaveNoChatOrCallLink() {
+        for profile in ["laa-monet-dots", "laa-soap"] {
+            let workspace = WidgetWorkspaceID(dashboardID: UUID(), profile: profile)
+            XCTAssertNil(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil), profile)
+            XCTAssertNil(LAAWidgetEmployee.forProfile(profile), profile)
+            XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: profile, savedVoice: "vale"), profile)
+            XCTAssertTrue(LAAStaff.isHidden(profile: profile), profile)
+        }
     }
 
     func testEveryStaffProfileSupportsEmployeeChatAndURLRoundTrip() throws {
@@ -95,10 +96,6 @@ final class LAAStaffCallTests: XCTestCase {
             XCTAssertEqual(link.workspace, workspace)
             XCTAssertEqual(link.action, .employeeChat)
             XCTAssertEqual(WidgetLaunchLink(url: link.url), link, "URL must preserve \(workspace.profile)")
-        }
-        // Chat-only employees must not become voice/widget choices to obtain a chat route.
-        for profile in ["laa-monet-dots", "laa-soap"] {
-            XCTAssertNil(LAAWidgetEmployee.forProfile(profile))
         }
         XCTAssertNil(WidgetLaunchLink(action: .employeeChat,
             workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-unknown"), reference: nil))
@@ -198,51 +195,18 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertFalse(calls.startEmployeeConversation(app))
     }
 
-    func testDotsHasNoInAppCallAndRetainsItsExternalLinkConfiguration() {
-        let shortcut = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
-        let page = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
-        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: nil), shortcut)
-        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: true, info: ["LAADotsCallURL": page]), URL(string: page))
-        XCTAssertNil(LAAStaff.monetDots.dotCallURL(onMac: true, info: nil))
-        XCTAssertNil(LAAStaff.monetDots.dotCallURL(onMac: true, info: ["LAADotsCallURL": "https://example.com/dots/x"]))
-        XCTAssertNil(LAAStaff.monet.dotCallURL(onMac: false, info: nil))
-        XCTAssertEqual(LAAEmployeeCallAvailability.dotCallHint(shortcut), "ChatGPTでMonetと通話します")
-        XCTAssertEqual(LAAEmployeeCallAvailability.dotCallHint(URL(string: page)!), "ブラウザでMonetの通話画面を開きます")
-
+    func testTheUncensoredMonetHasNoInAppCall() {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)
         }
         let app = harness.appState
         app.setActiveProfileForTesting("default")
-        app.noteBotChatSessionForTesting("dots-chat", profile: "laa-monet-dots")
-        app.activeSessionId = "dots-chat"
         let calls = LAAEmployeeCallCoordinator(control: FakeControl())
-        XCTAssertEqual(LAAEmployeeCallAvailability.reason(appState: app, bridge: .unpaired, calls: calls), "この会話はテキスト専用です")
-        XCTAssertFalse(calls.startEmployeeConversation(app))
         app.noteBotChatSessionForTesting("uncensored-chat", profile: "laa-monet-uncensored")
         app.activeSessionId = "uncensored-chat"
         XCTAssertEqual(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls), "この会話はテキスト専用です")
-    }
-
-    func testDotsPhoneOpensTheDotsPageWhenTheShortcutFails() throws {
-        let shortcut = URL(string: "shortcuts://run-shortcut?name=Monet%E3%81%AB%E9%9B%BB%E8%A9%B1")!
-        let page = "https://chatgpt.com/dots/00000000-0000-4000-8000-000000000000~0123abcd"
-        let url = try XCTUnwrap(LAAStaff.monetDots.dotCallURL(onMac: false, info: ["LAADotsCallURL": page]))
-        XCTAssertEqual(url.scheme, "shortcuts")
-        XCTAssertEqual(url.host, "x-callback-url")
-        XCTAssertEqual(url.path, "/run-shortcut")
-        let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.first { $0.name == "name" }?.value, "Monetに電話")
-        // One escape only: the query parser gives the original link back, and
-        // the raw link is not written into the URL twice.
-        XCTAssertEqual(items.first { $0.name == "x-error" }?.value, page)
-        XCTAssertTrue(url.absoluteString.contains("x-error=https%3A%2F%2Fchatgpt.com%2Fdots%2F"))
-        XCTAssertFalse(url.absoluteString.contains("%253A"))
-        XCTAssertEqual(LAAEmployeeCallAvailability.dotCallHint(url), "ChatGPTでMonetと通話します")
-        // No page yet, or one that is not the dot: the plain shortcut stays.
-        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: nil), shortcut)
-        XCTAssertEqual(LAAStaff.monetDots.dotCallURL(onMac: false, info: ["LAADotsCallURL": "https://example.com/dots/x"]), shortcut)
+        XCTAssertFalse(calls.startEmployeeConversation(app))
     }
 
     func testBindingVoiceControlRefreshesAvailability() {
@@ -483,8 +447,6 @@ final class LAAStaffCallTests: XCTestCase {
         let resolver = StaffAssetResolver(root: root, exists: { paths.contains($0.path) })
         let monet = resolver.resolve(profile: "laa-monet")
         XCTAssertEqual(monet.avatar?.path, "/test-bundle/staff/monet/monet-avatar-512.png")
-        XCTAssertEqual(resolver.resolve(profile: "laa-monet-dots"), monet)
-        XCTAssertFalse(LAAStaff.monetDots.supportsCalls)
         XCTAssertNotNil(monet.loop)
         XCTAssertNotNil(monet.turn)
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").turn)
@@ -493,18 +455,6 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").avatar)
         XCTAssertNotNil(resolver.resolve(profile: "default").defaultMark)
         XCTAssertEqual(resolver.resolve(profile: "unknown"), StaffAssets())
-    }
-
-    func testSoapAssetReferencesAndChatOnlyBoundary() {
-        let resolver = StaffAssetResolver(root: URL(fileURLWithPath: "/test-bundle"), exists: { _ in true })
-        let assets = resolver.resolve(profile: "laa-soap")
-        XCTAssertEqual(assets.avatar?.lastPathComponent, "soap-avatar-512.png")
-        XCTAssertEqual(assets.hero?.lastPathComponent, "soap-hero-1024.png")
-        XCTAssertEqual(assets.loop?.lastPathComponent, "soap-idle-512.mov")
-        XCTAssertEqual(assets.turn?.lastPathComponent, "soap-turn.heic")
-        XCTAssertFalse(LAAStaff.soap.supportsCalls)
-        XCTAssertFalse(LAATaskStaff.assignable.contains(.soap))
-        XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "laa-soap", savedVoice: "vale"))
     }
 
     func testAdoptedStaffAssetsAreInTheAppBundle() {

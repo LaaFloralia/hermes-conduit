@@ -368,7 +368,8 @@ final class LAAModelEffortSelectionTests: XCTestCase {
 
     /// Hermes' providers for Gemini (`laa-agy`), the GPT API (`gpt-api`) and
     /// the Claude API (`claude-api`) read as LAA names them; Gemini offers Low
-    /// to XHigh, and Muse and Dots stay with their own employees.
+    /// to XHigh, and Muse and Dots (no Chat model since the contractors left
+    /// Chat on 2026-11-26) are offered to no one.
     func testChatReadsGeminiAndTheAPIsAndKeepsMuseAndDotsToTheirEmployees() {
         let providers = [
             ProviderInfo(name: "laa-agy", models: [
@@ -418,8 +419,6 @@ final class LAAModelEffortSelectionTests: XCTestCase {
         XCTAssertNil(LAAModelCapsule.readableName("laa-monet-local"))
         XCTAssertEqual(LAAModelCapsule.readableName("claude-opus-5-5[1m]"), "Opus 5.5", "the 1M route reads as its model")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "claude-opus-5-5[1m]", provider: "claude"), "Claude Opus 5.5")
-        let dots = LAAChatFixedRuntime.dots
-        XCTAssertEqual(LAAModelCapsule.text(model: dots.model, provider: dots.provider, name: dots.name, current: true), "GPT 6 Astra")
     }
 }
 #endif

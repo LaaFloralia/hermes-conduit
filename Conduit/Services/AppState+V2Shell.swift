@@ -19,10 +19,6 @@ extension AppState {
     /// resolves to a roster bot, a workspace profile's name included.
     func profileGlowTint(_ profile: String) -> Color? {
         if let glow = profileGlowColors()[profile] { return glow.color }
-#if LAA_BUILD
-        // Owner-selected mascot colour; stays available before its image arrives.
-        if LAAStaff(profile: profile) == .soap { return Color(red: 220 / 255, green: 202 / 255, blue: 170 / 255) }
-#endif
         // The common case has no roster at all: one check, no passes.
         guard !botRoster.isEmpty else { return nil }
         guard let bot = Self.linkedBot(named: profile, in: botRoster),

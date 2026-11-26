@@ -128,6 +128,24 @@ final class LAABackgroundFixture: ObservableObject {
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
             }
         }
+        // Two waits in a row, for the employee's thinking word
+        // (LAAStaffThinking): the first runs 16 s, the reply lands, and the
+        // second starts 6 s later (past the resume grace), so it picks
+        // again. With "-LAA_FIXTURE_STAFF_THINKING -LAA_FIXTURE_THINKING_SEED
+        // <n>" the words are the owner's table and the picks fixed.
+        if chatFixture == "typing", args.contains("-LAA_FIXTURE_WAIT_CYCLE") {
+            Task { @MainActor [weak app] in
+                try? await Task.sleep(for: .seconds(16))
+                guard let app else { return }
+                app.handleStreamEvent(.messageComplete(sessionId: conversationID, messageId: "fixture-first",
+                                                       content: "午前は予定を確認し、午後は資料を仕上げましょう。", reasoning: nil))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: false))
+                try? await Task.sleep(for: .seconds(6))
+                app.messages.append(ChatMessage(id: "user-second", role: .user, content: "資料の順番も決めて。",
+                                                timestamp: String(Date().timeIntervalSince1970), rowId: 3))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+            }
+        }
         // A reply streamed a few seconds after the chat opens, for the glass
         // bubbles' updates while the text grows: "-LAA_FIXTURE_STREAM".
         if args.contains("-LAA_FIXTURE_STREAM") {
@@ -466,8 +484,18 @@ private final class LAAChatModelFixture {
         let shown = app.laaChatRuntime.shown(for: [session])
         model = shown.model; provider = shown.provider
         let ids = variant == "single" ? ["claude-opus-5-5"] : ["claude-opus-5-5", "claude-mythos-5-2", "claude-sonnet-5-5"]
-        providers = [ProviderInfo(name: "claude", models: ids.map { ModelInfo(id: $0, label: nil, reasoningCapable: true) },
-                                  displayName: "Claude")]
+        func info(_ id: String) -> ModelInfo { ModelInfo(id: id, label: nil, reasoningCapable: true) }
+        if variant == "harness" {
+            // Hermes' rows as the gateway names them (hq/logs/refuseless-route-20261126.md §1).
+            providers = [
+                ProviderInfo(name: "claude-subscription-directsdk-experimental", models: ["claude-opus-5-5"].map(info)),
+                ProviderInfo(name: "openai-codex", models: ["gpt-6.2-sol"].map(info)),
+                ProviderInfo(name: "laa-dsh", models: ["deepseek-v4.1-flash"].map(info)),
+                ProviderInfo(name: "laa-agy", models: ["gemini-4-neon"].map(info)),
+            ]
+            return
+        }
+        providers = [ProviderInfo(name: "claude", models: ids.map(info), displayName: "Claude")]
     }
 
     var operations: LAAChatModelOperations {
