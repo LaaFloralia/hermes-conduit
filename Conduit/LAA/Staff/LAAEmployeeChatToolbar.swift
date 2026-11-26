@@ -61,13 +61,21 @@ struct LAAEmployeeConversationHeader: View {
     private var sameCall: Bool {
         calls.snapshot?.context.profile == profile && calls.snapshot?.context.conversationID == appState.activeSessionId
     }
+    @State private var connectingFired: LAAConnectionWait.Key?
     private var status: String {
         if sameCall {
             if case .failed = calls.snapshot?.phase { return "通話を確認" }
             return "通話中"
         }
-        return appState.isConnected ? "" : "接続中…"
+        return LAAConnectionWait.words(connectingTarget, scope: connectingScope, fired: connectingFired)
     }
+    /// Only a reconnect actually under way says so; a quiet return, a
+    /// connected chat and an idle, offline one say nothing (D-15).
+    private var connectingTarget: String {
+        appState.isConnected || appState.hidesBriefReconnect || !appState.isRecoveringConnection
+            ? "" : LAAConnectionWait.connecting
+    }
+    private var connectingScope: String { "\(profile)|\(appState.activeSessionId ?? "")" }
 
     private var header: some View {
         LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
@@ -85,8 +93,70 @@ struct LAAEmployeeConversationHeader: View {
             // The mascot's top is the navigation controls' top; only what
             // hangs below that row insets the transcript.
             .padding(.top, -LAAConversationHeaderLayout.controlHeight)
+            .laaConnectionWait(connectingTarget, scope: connectingScope, fired: $connectingFired)
+            #if DEBUG
+            .background { LAAConnectionWaitTestHook(words: sameCall ? "" : status, identifier: "laa.employee.header.connecting") }
+            #endif
     }
 }
+
+/// "接続中…" appears only once a wait has lasted half a second, so an open
+/// or reconnect that lands sooner never shows it (D-15). The fired wait is
+/// kept with its scope and words, and `words` checks it against the current
+/// ones in the same render, so a wait that ended or belongs to another
+/// employee never shows for a frame before the reset runs.
+enum LAAConnectionWait {
+    static let connecting = "接続中…"
+    static let delay: Duration = .milliseconds(500)
+
+    struct Key: Equatable {
+        let scope: String
+        let target: String
+    }
+
+    static func words(_ target: String, scope: String, fired: Key?) -> String {
+        !target.isEmpty && fired == Key(scope: scope, target: target) ? target : ""
+    }
+}
+
+private struct LAAConnectionWaitModifier: ViewModifier {
+    let key: LAAConnectionWait.Key
+    @Binding var fired: LAAConnectionWait.Key?
+
+    func body(content: Content) -> some View {
+        content.task(id: key) {
+            if fired != nil, fired != key { fired = nil }
+            guard !key.target.isEmpty, fired != key else { return }
+            guard (try? await Task.sleep(for: LAAConnectionWait.delay)) != nil, !Task.isCancelled else { return }
+            fired = key
+        }
+    }
+}
+
+extension View {
+    func laaConnectionWait(_ target: String, scope: String, fired: Binding<LAAConnectionWait.Key?>) -> some View {
+        modifier(LAAConnectionWaitModifier(key: LAAConnectionWait.Key(scope: scope, target: target), fired: fired))
+    }
+}
+
+#if DEBUG
+/// UI tests only (`CONDUIT_UITEST`): the heading's label is hidden from
+/// accessibility, so the delayed words get a findable twin.
+struct LAAConnectionWaitTestHook: View {
+    let words: String
+    let identifier: String
+
+    var body: some View {
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1", !words.isEmpty {
+            Color.clear.frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityElement()
+                .accessibilityLabel(Text(verbatim: words))
+                .accessibilityIdentifier(identifier)
+        }
+    }
+}
+#endif
 
 /// The call button and the conversation menu at the bar's trailing end.
 /// One item on iPhone, since two get a capsule too wide to leave the name

@@ -619,14 +619,27 @@ final class AppState: ObservableObject {
                 widgetLaunchCoordinator.readinessChanged()
                 // Back from a drop or a gateway restart: the list reads at
                 // once rather than waiting out a long backoff step.
-                if !oldValue { noteChatListInteraction() }
+                if !oldValue {
+                    noteChatListInteraction()
+                    #if LAA_BUILD
+                    laaResumeQueuedEmployeeSendAfterReconnect()
+                    #endif
+                }
             }
             if oldValue != isConnected { schedulePendingComposerSendCheck() }
             // Nothing left to keep answering pings for off screen.
             if oldValue, !isConnected { backgroundConnectionGrace.end() }
         }
     }
-    @Published var isConnecting = false
+    @Published var isConnecting = false {
+        didSet {
+            #if LAA_BUILD
+            if oldValue && !isConnecting, widgetLaunchCoordinator.pendingLink?.action == .employeeChat {
+                widgetLaunchCoordinator.readinessChanged()
+            }
+            #endif
+        }
+    }
     /// For status words and dots only: connecting now, or between the first
     /// few retries after a dropped connection. A drop waits a few seconds
     /// before each early retry with `isConnecting` false, which would
@@ -858,6 +871,25 @@ final class AppState: ObservableObject {
     /// can drop a socket that died in the background and restore the last
     /// chat, which would fail a new chat or take over the screen it opened.
     var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive && scenePhaseAttemptID == nil }
+    #if LAA_BUILD
+    // Scoped to the socket actually bootstrapping, not an owed bootstrap
+    // from an interrupted operation. The latter must not block a route.
+    private weak var laaBootstrappingClient: HermesClient?
+    var laaEmployeeBootstrapInFlight: Bool {
+        laaBootstrappingClient.map { $0 === client } ?? false
+    }
+
+    func laaEmployeeLaunchJoinsConnectionWork(_ link: WidgetLaunchLink) -> Bool {
+        link.action == .employeeChat && link.workspace?.dashboardID == activeDashboardID
+            && (scenePhaseAttemptID != nil || laaEmployeeBootstrapInFlight)
+    }
+
+    private func finishLAAEmployeeBootstrap(for client: HermesClient) {
+        guard laaBootstrappingClient === client else { return }
+        laaBootstrappingClient = nil
+        widgetLaunchCoordinator.readinessChanged()
+    }
+    #endif
     var widgetSessionMutationRequestOverride: ((String, String, [String: Any]?) async throws -> [String: Any])?
     /// "host|profile" whose Hermes answered 404 for the mutation snapshot
     /// (older than the route): its writes skip the read until a write is
@@ -6333,9 +6365,19 @@ final class AppState: ObservableObject {
         if let link, link.action == .employeeChat, !isVoiceCallInProgress,
            let workspace = link.workspace {
             if laaEmployeeChatPreview.workspace != workspace { laaReleaseEmployeeOpeningSend() }
+            laaEmployeeTransportLoss = nil
             laaOpeningEmployeeChat = workspace.profile
+            let saved = workspace.dashboardID == activeDashboardID
+                ? chatResumeWidgetReference(for: workspace.profile).map(Self.widgetReference(from:)) : nil
             laaEmployeeChatPreview.begin(workspace: workspace, directory: offlineChatCache.laaPreviewDirectory,
-                preferredSessionID: chatResumeWidgetReference(for: workspace.profile)?.sessionID)
+                preferredSessionID: saved.flatMap {
+                    $0.kind == .dashboard && $0.scopeProfile == workspace.profile && !$0.isUnverified ? $0.sessionID : nil
+                })
+        } else if link != nil, laaOpeningEmployeeChat != nil {
+            laaReleaseEmployeeOpeningSend()
+            laaEmployeeTransportLoss = nil
+            laaEmployeeChatPreview.clear()
+            laaOpeningEmployeeChat = nil
         }
         // Ended receives the result after pendingLink becomes nil. Keep the
         // selected employee and their copy until that result is known.
@@ -7069,6 +7111,9 @@ final class AppState: ObservableObject {
     func deviceConditionsChanged(_ conditions: DeviceConditions) {
         let wasUsable = networkPathUsable
         if networkPathUsable != conditions.pathSatisfied { networkPathUsable = conditions.pathSatisfied }
+        #if LAA_BUILD
+        if !wasUsable, networkPathUsable { laaResumeQueuedEmployeeSendAfterReconnect() }
+        #endif
         guard conditions.pathGeneration != lastPathGeneration else { return }
         lastPathGeneration = conditions.pathGeneration
         networkPathChanged(satisfied: conditions.pathSatisfied, cameBack: !wasUsable)
@@ -13819,6 +13864,10 @@ final class AppState: ObservableObject {
         let client = makeClient(connection: conn, profile: profile)
         self.client = client
         previousClient?.disconnect()
+        #if LAA_BUILD
+        laaBootstrappingClient = client
+        defer { finishLAAEmployeeBootstrap(for: client) }
+        #endif
 
         do {
             try await connectChatResumeClient(client)
@@ -17235,6 +17284,13 @@ final class AppState: ObservableObject {
             }
             schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
             #if LAA_BUILD
+            if conversationScopeProfile == nil {
+                if let durableID = context?.resolvedDurableSessionId {
+                    laaRecordEmployeeAttachment(using: client, runtimeID: result.sessionId, durableID: durableID)
+                } else if laaAttachedEmployeeClient === client {
+                    laaEmployeeAttachment = nil
+                }
+            }
             // An employee preview makes this ancillary read after its lease
             // finishes; an ordinary refresh keeps its layout ordering fence.
             if laaOpeningEmployeeChat == nil {
@@ -17722,6 +17778,9 @@ final class AppState: ObservableObject {
                 updated.isActive = false
                 return updated
             }
+            #if LAA_BUILD
+            laaRecordEmployeeAttachment(using: client, runtimeID: runtimeSessionID, durableID: created.storedSessionId)
+            #endif
             if resumePurpose == .automaticReturn {
                 _ = selectChatResumeTarget(
                     in: [summary],
@@ -19123,6 +19182,10 @@ final class AppState: ObservableObject {
         let client = makeClient(connection: connection, profile: profile)
         self.client = client
         previousClient?.disconnect()
+        #if LAA_BUILD
+        laaBootstrappingClient = client
+        defer { finishLAAEmployeeBootstrap(for: client) }
+        #endif
 
         do {
             try await connectChatResumeClient(client)
@@ -19481,6 +19544,13 @@ final class AppState: ObservableObject {
                 }
                 return nil
             }
+            #if LAA_BUILD
+            // A cold/overlay activation can race the socket bootstrap. It
+            // already owns the live catalog and attach; don't open a second
+            // ticket or start a second sync. Real background returns still
+            // verify transport and recover any work that was interrupted.
+            if !didReturnFromBackground, laaEmployeeBootstrapInFlight { return nil }
+            #endif
             // The preferred return surface belongs to the authenticated
             // app: MainView presents the drawer while the automatic resume
             // sync restores the chat underneath, and explicit navigation
@@ -19907,7 +19977,12 @@ final class AppState: ObservableObject {
         guard scenePhaseAttemptID == id else { return }
         scenePhaseAttemptID = nil
         scenePhaseTask = nil
-        if widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
+        if widgetForegroundReady {
+            widgetLaunchCoordinator.readinessChanged()
+            #if LAA_BUILD
+            laaResumeQueuedEmployeeSendAfterReconnect()
+            #endif
+        }
     }
 
     private var turnStateLogValue: String {
@@ -21103,10 +21178,9 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// The chat list for a widget action waiting on it. A failed read says
-    /// nothing in the composer: the launch retries on its next readiness
-    /// change and reports its own failure if it runs out of time.
-    func loadSessionsForWidgetLaunch() async {
+    /// A failed read stays out of the composer; the widget owns its error.
+    @discardableResult
+    func loadSessionsForWidgetLaunch() async -> Bool {
         await loadSessions(
             forceRefresh: false,
             requiredViewportTransitionGeneration: nil,
@@ -24906,12 +24980,99 @@ final class AppState: ObservableObject {
     @Published private(set) var laaOpeningEmployeeChat: String?
     let laaEmployeeChatPreview = LAAEmployeeChatPreview()
 
+    func laaIsEmployeeChatWaiting(for workspace: WidgetWorkspaceID) -> Bool {
+        guard isSceneActive, networkPathUsable, !isVoiceCallInProgress,
+              laaOpeningEmployeeChat == workspace.profile, laaEmployeeChatPreview.workspace == workspace,
+              laaEmployeeChatPreview.failure == nil,
+              let pending = widgetLaunchCoordinator.pendingLink, pending.action == .employeeChat,
+              pending.workspace == workspace else { return false }
+        return !(showLogin && widgetAwaitingInteractiveAuthenticationDashboardID == workspace.dashboardID)
+    }
+
+    private weak var laaAttachedEmployeeClient: HermesClient?
+    private var laaEmployeeTransportLoss: (workspace: WidgetWorkspaceID, lease: WidgetLaunchLease)?
+    private var laaEmployeeAttachment: (workspace: WidgetWorkspaceID, runtimeID: String, durableID: String)?
+
+    private func laaRecordEmployeeAttachment(using client: HermesClient, runtimeID: String, durableID: String?) {
+        guard let dashboardID = activeDashboardID, client.profile == activeProfile,
+              self.client === client, client.laaHasAttachment(runtimeID) else { return }
+        laaAttachedEmployeeClient = client
+        laaEmployeeAttachment = nil
+        if let durableID, !durableID.isEmpty {
+            laaEmployeeAttachment = (WidgetWorkspaceID(dashboardID: dashboardID, profile: activeProfile), runtimeID, durableID)
+        }
+    }
+
+    // Catalog aliases can be stale or shared; only an admitted create or
+    // resume on this exact transport can prove the selected durable chat.
+    func laaReuseAttachedEmployeeChat(_ row: SessionSummary, workspace: WidgetWorkspaceID, lease: WidgetLaunchLease) -> Bool {
+        guard lease.isCurrent, widgetSettledCatalogOwner == workspace,
+              let attachment = laaCurrentEmployeeAttachment(workspace),
+              attachment.durableID == (row.storedSessionId ?? row.id),
+              row.source == .chat, !row.isArchived, sessionBelongsToProfile(row, profile: workspace.profile),
+              activeRoomSurface == nil, offlineChatPresentation == nil, reconciliation == nil, !turnStateIsStale,
+              turnState == .idle || turnState == .running else { return false }
+        cancelChatResumeRestoration()
+        if isSessionUnread(row) { chatReplyStartLandingRequest &+= 1 }
+        noteActiveChatSeen()
+        return true
+    }
+
+    private func laaCurrentEmployeeAttachment(_ workspace: WidgetWorkspaceID)
+        -> (workspace: WidgetWorkspaceID, runtimeID: String, durableID: String)? {
+        guard activeDashboardID == workspace.dashboardID, activeProfile == workspace.profile,
+              activeBotChatProfile == nil, let client, client.profile == workspace.profile,
+              client.connection == connection, isConnected, !isConnecting,
+              laaAttachedEmployeeClient === client, let attachment = laaEmployeeAttachment,
+              attachment.workspace == workspace, activeSessionId == attachment.runtimeID,
+              client.laaHasAttachment(attachment.runtimeID) else { return nil }
+        return attachment
+    }
+
+    private func laaResumeQueuedEmployeeSendAfterReconnect() {
+        let preview = laaEmployeeChatPreview
+        guard isSceneActive, networkPathUsable, isConnected, client?.isConnected == true, !showLogin,
+              widgetLaunchCoordinator.pendingLink == nil, preview.workspace?.dashboardID == activeDashboardID,
+              preview.queuedSend != nil, preview.recoversAfterTransportLoss else { return }
+        laaRetryEmployeeChat()
+    }
+
+    // The recovery decision is tied to this route's lease, never to the
+    // wording of the banner (auth and timeout failures can look similar).
+    func laaEmployeeOfflineFailure(workspace: WidgetWorkspaceID, lease: WidgetLaunchLease) -> WidgetLaunchOutcome {
+        if lease.isCurrent, laaEmployeeChatPreview.workspace == workspace, activeDashboardID == workspace.dashboardID,
+           !(showLogin && widgetAwaitingInteractiveAuthenticationDashboardID == workspace.dashboardID) {
+            laaEmployeeTransportLoss = (workspace, lease)
+        }
+        return .failed(LAAEmployeeWidgetLinks.offlineMessage)
+    }
+
     func laaEmployeeChatLaunchEnded(_ link: WidgetLaunchLink, outcome: WidgetLaunchOutcome?) {
-        guard link.action == .employeeChat else { return }
-        laaEmployeeChatPreview.finish(outcome)
-        if case .failed = outcome { return }
+        guard link.action == .employeeChat, let workspace = link.workspace,
+              laaEmployeeChatPreview.workspace == workspace else { return }
+        let transportLoss = laaEmployeeTransportLoss?.workspace == workspace && laaEmployeeTransportLoss?.lease.isCurrent == true
+        defer { laaEmployeeTransportLoss = nil }
+        if case .handled = outcome, activeDashboardID == workspace.dashboardID, activeProfile == workspace.profile,
+           laaEmployeeChatPreview.queuedSend != nil, client?.isConnected != true {
+            // The saved draft remains reserved while its transport recovers.
+            laaEmployeeChatPreview.finish(.failed(LAAEmployeeWidgetLinks.offlineMessage), recoversAfterTransportLoss: !showLogin)
+            return
+        }
+        if case .handled = outcome, laaCurrentEmployeeAttachment(workspace) != nil,
+           composerIsEnabled, !isSettlingConnection {
+            laaEmployeeChatPreview.noteLiveReady()
+        }
+        laaEmployeeChatPreview.finish(outcome, recoversAfterTransportLoss: transportLoss)
+        if case .failed = outcome {
+            // A replacement can become ready before the failed RPC unwinds.
+            // Check once after the coordinator has finished the old request.
+            if transportLoss {
+                Task { [weak self] in self?.laaResumeQueuedEmployeeSendAfterReconnect() }
+            }
+            return
+        }
         laaOpeningEmployeeChat = nil
-        if case .handled = outcome, let workspace = link.workspace,
+        if case .handled = outcome,
            workspace.dashboardID == activeDashboardID, workspace.profile == activeProfile,
            let client, let sessionID = activeSessionId {
             laaAdmitEmployeeOpeningSend(workspace: workspace, sessionID: sessionID, client: client)
@@ -24934,33 +25095,42 @@ final class AppState: ObservableObject {
         let preview = laaEmployeeChatPreview
         guard let workspace = preview.workspace, laaOpeningEmployeeChat == workspace.profile,
               draftKey.dashboardID == workspace.dashboardID, draftKey.profile == workspace.profile,
+              let targetID = preview.queueTargetSessionID, draftKey.sessionID == targetID, !draftKey.isNewConversation,
               preview.canQueue(text, isComposing: false) else { return false }
-        let targetID = preview.presentation?.composerSessionID
+        let persisted = composerDraftStore.draft(for: draftKey)
+        // Reserve only the complete text-only record this preview owns.
+        // Anything the preview cannot display (or newer text) stays put.
+        guard persisted.attachments.isEmpty, persisted.replyReference == nil, persisted.roomRecipients == nil,
+              persisted.text.isEmpty || persisted.text.trimmingCharacters(in: .whitespacesAndNewlines) == text else { return false }
         let pending = PendingComposerSend(draftText: text, replyReference: nil, dashboardID: workspace.dashboardID,
-            profile: workspace.profile, sessionIDs: preview.presentation?.chatSessionIDs ?? [],
-            draftSessionID: targetID ?? ComposerDraftKey.newConversationSessionID,
-            isNewChat: targetID == nil, title: LAAStaff(profile: workspace.profile)?.name ?? "")
+            profile: workspace.profile, sessionIDs: [targetID], draftSessionID: targetID, isNewChat: false,
+            title: LAAStaff(profile: workspace.profile)?.name ?? "")
         let transfer = ComposerDraftStore.Submission(id: pending.id, key: draftKey, dashboardID: workspace.dashboardID,
-            draft: pending.draft, pendingSendID: pending.id)
+            draft: persisted.isEmpty ? pending.draft : persisted, pendingSendID: pending.id)
         // Do not register an auto-sendable file until its target is admitted.
         // A process kill during the preview leaves an editable reservation,
         // not a file that could create a different chat on the next launch.
         guard composerDraftStore.beginSubmission(transfer, clearingDraft: true) else { return false }
         preview.queuedSend = pending
+        laaResumeQueuedEmployeeSendAfterReconnect()
         return true
     }
 
     private func laaAdmitEmployeeOpeningSend(workspace: WidgetWorkspaceID, sessionID: String, client: HermesClient) {
         guard let queued = laaEmployeeChatPreview.queuedSend else { return }
-        guard queued.profile == workspace.profile, queued.dashboardID == workspace.dashboardID,
-              queued.isNewChat || queued.chatSessionIDs.contains(where: liveChatOwnsComposerDraftSessionID),
+        guard queued.profile == workspace.profile, queued.dashboardID == workspace.dashboardID, !queued.isNewChat,
+              let attachment = laaCurrentEmployeeAttachment(workspace), attachment.runtimeID == sessionID,
+              queued.draftSessionID == attachment.durableID,
+              // A catalog remapping after attach must not change the draft
+              // key or send the queued text into a different conversation.
+              durableComposerDraftKeyOnScreen.sessionID == attachment.durableID,
               client.laaHasAttachment(sessionID), pendingComposerSend == nil else {
             laaReleaseEmployeeOpeningSend()
             return
         }
         let key = durableComposerDraftKeyOnScreen
         let live = PendingComposerSend(id: queued.id, draftText: queued.draftText, replyReference: nil,
-            dashboardID: queued.dashboardID, profile: queued.profile, sessionIDs: liveChatSessionIDs(),
+            dashboardID: queued.dashboardID, profile: queued.profile, sessionIDs: [attachment.durableID],
             draftSessionID: key.sessionID, isNewChat: false, title: activeSessionTitle, queuedAt: queued.queuedAt)
         guard recordPendingComposerSendFile(live) else { laaReleaseEmployeeOpeningSend(); return }
         guard composerDraftStore.finishSubmission(queued.id, restoring: false) else {
@@ -24993,6 +25163,7 @@ final class AppState: ObservableObject {
             widgetLaunchCoordinator.supersede()
         }
         laaReleaseEmployeeOpeningSend()
+        laaEmployeeTransportLoss = nil
         laaEmployeeChatPreview.clear()
         laaOpeningEmployeeChat = nil
     }
