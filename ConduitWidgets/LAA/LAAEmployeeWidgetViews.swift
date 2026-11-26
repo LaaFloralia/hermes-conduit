@@ -238,23 +238,19 @@ struct LAAEmployeeWidgetView: View {
     private func actions(lastCentre: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             if hasCall {
-                iconAction(entry.call.url, icon: "LAAWidgetIconCall", label: LAACopy.widgetCall)
+                iconAction(entry.call.url, icon: .call, label: LAACopy.widgetCall)
                     .position(x: lastCentre - LAAWidgetPeek.target, y: LAAWidgetPeek.iconCentre)
             }
-            iconAction(entry.chat.url, icon: "LAAWidgetIconChat", label: LAACopy.widgetChat)
+            iconAction(entry.chat.url, icon: .chat, label: LAACopy.widgetChat)
                 .position(x: lastCentre, y: LAAWidgetPeek.iconCentre)
         }
     }
 
-    // Bare line icons, like the system's own widget controls: a filled
-    // plate reads as a hazy glow on tinted and clear Home Screens.
-    private func iconAction(_ url: URL, icon: String, label: String) -> some View {
+    // Bare line icons (LAA Kit's Phosphor set), like the system's own widget
+    // controls: a filled plate reads as a hazy glow on tinted and clear Home Screens.
+    private func iconAction(_ url: URL, icon: LAAIcon, label: String) -> some View {
         Link(destination: url) {
-            widgetImage(icon)
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: LAAWidgetPeek.iconSize, height: LAAWidgetPeek.iconSize)
+            LAAIconImage(icon, size: LAAWidgetPeek.iconSize)
                 .foregroundStyle(LAAColor.link)
                 .frame(width: LAAWidgetPeek.target, height: LAAWidgetPeek.target)
                 .contentShape(Rectangle())
@@ -343,9 +339,7 @@ struct LAAEmployeeWidgetView: View {
                         .foregroundStyle(LAAColor.text)
                         .minimumScaleFactor(0.55)
                     HStack(spacing: LAASpacing.x2) {
-                        widgetImage(hasCall ? "LAAWidgetIconCall" : "LAAWidgetIconChat")
-                            .renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 16, height: 16)
+                        LAAIconImage(hasCall ? .call : .chat, size: 16)
                         Text(verbatim: accessoryLabel)
                             .font(.system(size: 13, weight: .medium))
                     }

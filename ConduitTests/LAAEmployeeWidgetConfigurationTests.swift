@@ -42,7 +42,7 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
     }
 
     /// Direction B draws each hero trimmed to its figure (the eye-line
-    /// anchor assumes it), the two line icons as templates, and no company icon.
+    /// anchor assumes it) and no company icon.
     func testPeekAssetsAreBundled() throws {
         let bundle = Bundle(for: Self.self)
         for employee in LAAWidgetEmployee.allCases {
@@ -51,10 +51,6 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
             XCTAssertLessThanOrEqual(max(cg.width, cg.height), 1024, employee.rawValue)
             XCTAssertGreaterThanOrEqual(cg.height, 534, "\(employee.rawValue): the medium peek is 178 pt tall at @3x")
             XCTAssertTrue(Self.touchesEveryEdge(cg), "\(employee.rawValue): trimmed to its figure")
-        }
-        for icon in ["LAAWidgetIconCall", "LAAWidgetIconChat"] {
-            let image = try XCTUnwrap(UIImage(named: icon, in: bundle, with: nil), icon)
-            XCTAssertEqual(image.renderingMode, .alwaysTemplate, icon)
         }
         XCTAssertNil(UIImage(named: "LAAWidgetCompanyIcon", in: bundle, with: nil))
     }
