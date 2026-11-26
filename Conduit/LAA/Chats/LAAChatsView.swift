@@ -42,9 +42,9 @@ struct LAAChatsView: View {
         let people = LAAStaff.allCases.compactMap { staff -> LAAChatsPerson? in
             let expected = "laa-\(staff.rawValue)"
             let found = appState.profiles.first { AppState.profilesMatch($0, expected) }
-            // Monet and the contractors always have a row; one the Mac does
-            // not have reads unavailable, as an employee's row does.
-            guard staff == .monet || staff.placement == .contractor || found != nil else { return nil }
+            // Monet always has a row; when the Mac does not have it, the row
+            // reads unavailable.
+            guard staff == .monet || found != nil else { return nil }
             let profile = found ?? expected
             let name = staff.name
             let localMessage = appState.activeRoomSurface == nil && appState.conversationIdentityProfile == profile

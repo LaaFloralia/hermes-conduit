@@ -3,8 +3,8 @@ import XCTest
 @testable import Conduit
 
 /// Chat's placement (owner, 2026-11-23): Monet at the top, the employees,
-/// then the contractors (派遣社員: Muse and Monet（Dots）), then the groups;
-/// and a new Session always goes into a project.
+/// then the groups; the contractors (Muse, Monet（Dots）) left Chat on
+/// 2026-11-26. A new Session always goes into a project.
 final class LAAStaffPlacementTests: XCTestCase {
     private func person(_ staff: LAAStaff, available: Bool = true) -> LAAChatsPerson {
         LAAChatsPerson(profile: "laa-\(staff.rawValue)", name: staff.name, role: staff.role, available: available)
@@ -13,7 +13,6 @@ final class LAAStaffPlacementTests: XCTestCase {
     func testEveryPersonHasOnePlaceInTheListsOrder() {
         XCTAssertEqual(LAAStaff.members(of: .monet), [.monet, .monetUncensored])
         XCTAssertEqual(LAAStaff.members(of: .employee), [.argus, .cfo, .cio, .cos, .cso, .cto])
-        XCTAssertEqual(LAAStaff.members(of: .contractor), [.monetDots, .soap])
         XCTAssertEqual(LAAStaff.Placement.allCases.flatMap(LAAStaff.members(of:)).count, LAAStaff.allCases.count)
 
         let people = LAAStaff.allCases.map { person($0) }
@@ -21,27 +20,32 @@ final class LAAStaffPlacementTests: XCTestCase {
         XCTAssertEqual(LAAChatsPlacement.monetVariants(people).map(\.staff), [.monetUncensored],
                        "Dots left Monet's variants; the uncensored Monet stays")
         XCTAssertEqual(LAAChatsPlacement.people(people, in: .employee).map(\.staff), [.argus, .cfo, .cio, .cos, .cso, .cto])
-        XCTAssertEqual(LAAChatsPlacement.people(people, in: .contractor).map(\.staff), [.monetDots, .soap])
+        XCTAssertEqual(LAAStaff.Placement.allCases, [.monet, .employee])
     }
 
-    /// The profile IDs decide the place (Hermes names no group), so Muse
-    /// reads as a contractor even when Hermes lists laa-soap without a name.
+    /// The profile IDs decide the place (Hermes names no group). The
+    /// contractors' profiles still on the host match no one: no place, no
+    /// link (their conversations stay on the host, owner 2026-11-26).
     func testTheProfileIDDecidesThePlace() {
         XCTAssertEqual(LAAStaff(profile: "laa-monet")?.placement, .monet)
-        XCTAssertEqual(LAAStaff(profile: "laa-soap")?.placement, .contractor)
-        XCTAssertEqual(LAAStaff(profile: "laa-monet-dots")?.placement, .contractor)
-        let unnamed = LAAChatsPerson(profile: "laa-soap", name: "", role: "", available: true)
-        XCTAssertEqual(unnamed.placement, .contractor)
+        XCTAssertEqual(LAAStaff(profile: "laa-cto")?.placement, .employee)
+        for profile in ["laa-soap", "laa-monet-dots", "laa-duet"] {
+            XCTAssertNil(LAAStaff(profile: profile), profile)
+            XCTAssertNil(LAAChatsPerson(profile: profile, name: "", role: "", available: true).placement, profile)
+            XCTAssertTrue(LAAStaff.isHidden(profile: profile), profile)
+        }
+        for profile in ["laa-monet", "laa-monet-uncensored", "default", "research"] {
+            XCTAssertFalse(LAAStaff.isHidden(profile: profile), profile)
+        }
     }
 
     /// The new group's member choice shows the same sections, Monet's
     /// uncensored variant left out as before.
     @MainActor func testTheGroupPickerUsesTheSamePlacement() {
         XCTAssertEqual(LAAGroupCandidates.sections.map(\.title),
-                       [LAACopy.groupSelectEmployees, LAACopy.chatsEmployees, LAACopy.chatsContractors])
-        XCTAssertEqual(LAAGroupCandidates.all, [.monet, .argus, .cfo, .cio, .cos, .cso, .cto, .monetDots, .soap])
+                       [LAACopy.groupSelectEmployees, LAACopy.chatsEmployees])
+        XCTAssertEqual(LAAGroupCandidates.all, [.monet, .argus, .cfo, .cio, .cos, .cso, .cto])
         XCTAssertFalse(LAAGroupCandidates.all.contains(.monetUncensored))
-        XCTAssertEqual(LAAChatPerson.name(LAAStaff.monetDots.name), "Monet · Dots")
     }
 
     // MARK: Sessions inside projects

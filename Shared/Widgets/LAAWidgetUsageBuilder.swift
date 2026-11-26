@@ -7,9 +7,9 @@ import UIKit
 #endif
 
 enum LAAWidgetUsageBuilder {
-    /// One ordered list for the app's AI Usage screen. The first three are the
-    /// provider cards (Codex, Claude, Google); the rest are the ruled rows below
-    /// them. Only the cards feed the widget.
+    /// One ordered list for the app's AI Usage screen. The first four are the
+    /// provider cards (Codex, Claude, Google, Muse); the rest are the ruled
+    /// rows below them. Muse is the one card the widget does not show.
     struct Slot {
         /// `accountGroup`: the rows whose `group` is `provider`, one per
         /// account, shown together.
@@ -20,7 +20,8 @@ enum LAAWidgetUsageBuilder {
         /// Whether the home-screen widget lists this provider.
         let showsInWidget: Bool
         /// One of the Usage screen's provider cards (Orca layout).
-        var isCard: Bool { showsInWidget }
+        var card = false
+        var isCard: Bool { showsInWidget || card }
     }
 
     static let slots: [Slot] = [
@@ -28,6 +29,10 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
         // Sub2・Sub3・Sub4 (2026-11-23): the card shows the account in use.
         Slot(provider: "google-ai-pro", name: "Google", reading: .accountGroup, showsInWidget: true),
+        // Muse1・Muse2・Muse3 (2026-11-26): the Free accounts LAA's harness
+        // switches between for TTS and video, each one's weekly allowance.
+        // App only: the widget's six rows stay as they are.
+        Slot(provider: "muse", name: "Muse", reading: .accountGroup, showsInWidget: false, card: true),
         // Below the cards, folded (2026-11-25). OpenCode left the widget.
         Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, showsInWidget: false),
         Slot(provider: "magnific", name: "Magnific", reading: .credits, showsInWidget: false),

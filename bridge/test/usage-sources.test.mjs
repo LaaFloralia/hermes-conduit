@@ -542,9 +542,9 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
     { id: 'antigravity', available: true, updatedAt: '2026-10-29T04:58:00Z',
       windows: [{ label: 'Weekly', remaining: 90 }] },
   ]);
-  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 11),
+  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 14),
     ['codex', 'opencode-go', 'claude', 'google-ai-pro-sub2', 'google-ai-pro-sub3', 'google-ai-pro-sub4',
-      'magnific', 'openai-api', 'claude-api', 'liquid', 'venice']);
+      'muse-Muse1', 'muse-Muse2', 'muse-Muse3', 'magnific', 'openai-api', 'claude-api', 'liquid', 'venice']);
   assert.equal(items.some(item => item.id.startsWith('provider.antigravity.')), false);
   assert.equal(items.some(item => item.id.startsWith('provider.nanogpt.')), false);
   const venice = byId(items, 'provider.venice.balance');
@@ -591,4 +591,37 @@ test('Google AI Pro accounts pass through as one group with the 5-hour and weekl
   // Another source spelling is not automatic.
   const foreign = usageItemsFromFeed({ ...feed, providers: [{ ...feed.providers[0], source: 'scraped' }] }, { now, receivedAt: now });
   assert.equal(byId(foreign, 'provider.google-ai-pro-sub2.quota').availability, 'unavailable');
+});
+
+test('Muse accounts pass through as one group with the weekly Free allowance, the active resident and a sign-in reason', () => {
+  const now = Date.parse('2026-11-26T12:45:00Z');
+  // The shape usage-meters' muse_usage.py publishes.
+  const row = (account, extra) => ({ id: `muse-${account}`, name: account, group: 'muse', groupName: 'Muse', kind: 'quota',
+    source: 'muse-usage', ...extra });
+  const feed = { version: 1, fetchedAt: '2026-11-26T12:44:00Z', providers: [
+    row('Muse1', { available: true, active: true, updatedAt: '2026-11-26T12:41:29.593575+00:00',
+      freshUntil: '2026-11-26T12:51:29.593575+00:00', device: 'Mac mini', accountState: 'ok', additionalBalance: '3B',
+      windows: [{ label: '週間', remaining: 94, resetsAt: null, windowMinutes: 10080 }] }),
+    row('Muse2', { available: false, active: false, updatedAt: null, reason: 'fetch_failed', accountState: 'unknown' }),
+    row('Muse3', { available: false, active: false, updatedAt: null, reason: 'needs_owner_login', accountState: 'needs_owner_login' }),
+  ] };
+  const items = usageItemsFromFeed(feed, { now, receivedAt: now });
+  const muse1 = byId(items, 'provider.muse-Muse1.quota');
+  assert.deepEqual([muse1.availability, muse1.value, muse1.label, muse1.group, muse1.groupName, muse1.active],
+    ['available', 94, 'Muse1', 'muse', 'Muse', true]);
+  assert.deepEqual(muse1.detail.windows.map(w => [w.label, w.remainingPercent, w.resetsAt, w.windowMinutes]), [['週間', 94, null, 10080]]);
+  // Nothing beyond the allowance: no device, account state or Additional balance reaches the app.
+  assert.equal(JSON.stringify(muse1).includes('Mac mini'), false);
+  assert.equal(JSON.stringify(muse1).includes('3B'), false);
+  const muse2 = byId(items, 'provider.muse-Muse2.quota');
+  assert.deepEqual([muse2.availability, muse2.value, muse2.nullReason, muse2.active], ['unavailable', null, 'fetch_failed', false]);
+  const muse3 = byId(items, 'provider.muse-Muse3.quota');
+  assert.deepEqual([muse3.availability, muse3.value, muse3.nullReason], ['unavailable', null, 'auth_required']);
+  // Past its own freshUntil the reading carries no number.
+  const late = usageItemsFromFeed(feed, { now: Date.parse('2026-11-26T12:52:00Z'), receivedAt: now });
+  assert.deepEqual([byId(late, 'provider.muse-Muse1.quota').availability, byId(late, 'provider.muse-Muse1.quota').value], ['unavailable', null]);
+  // needs_owner_login is Muse's word only.
+  const google = usageItemsFromFeed({ ...feed, providers: [{ id: 'google-ai-pro-sub2', available: false, reason: 'needs_owner_login' }] },
+    { now, receivedAt: now });
+  assert.equal(byId(google, 'provider.google-ai-pro-sub2.quota').nullReason, 'fetch_failed');
 });

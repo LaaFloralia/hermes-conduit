@@ -5,10 +5,6 @@ extension LAACopy {
     static let chatsNew = "新しいグループ"
     static let chatsMonet = "Monet"
     static let chatsEmployees = "Employees"
-    /// 派遣社員 (owner, 2026-11-23): Muse and Monet（Dots）.
-    static let chatsContractors = "Contractors"
-    /// What VoiceOver reads for that heading.
-    static let chatsContractorsSpoken = "派遣社員"
     static let chatsGroups = "Groups"
     static let chatsNewGroup = "新しいグループ"
     static let groupDone = "完了"

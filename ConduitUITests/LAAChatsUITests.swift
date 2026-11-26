@@ -26,6 +26,14 @@ final class LAAChatsUITests: XCTestCase {
         closeSelection(app, expected: "person:laa-monet")
         XCTAssertFalse(app.buttons["laa.chats.seeAll.employees"].exists)
         XCTAssertFalse(app.staticTexts["RECENT"].exists)
+        // The contractors left Chat (owner, 2026-11-26): the host still lists
+        // their profiles, but no row, section or name shows.
+        for profile in ["laa-soap", "laa-monet-dots"] {
+            XCTAssertFalse(app.buttons["laa.chats.person.\(profile)"].exists, profile)
+        }
+        for text in ["Contractors", "派遣社員", "薬用石鹸", "Monet（Dots）", "Monet · Dots"] {
+            XCTAssertFalse(app.staticTexts[text].exists, text)
+        }
         app.buttons["laa.chats.person.laa-cto"].tap()
         closeSelection(app, expected: "person:laa-cto")
         app.buttons["laa.chats.group.team"].tap()
