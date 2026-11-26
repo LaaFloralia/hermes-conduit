@@ -17,7 +17,7 @@
 # Environment (all optional):
 #   CURRENT_PROJECT_VERSION  build number; default is the UTC time (YYMMDDHHMM)
 #   MARKETING_VERSION        the TestFlight version; default from project.yml
-#   CONDUIT_DISPLAY_NAME     home screen name; default LAA
+#   CONDUIT_DISPLAY_NAME     home screen name; default Hortensia
 #   LAA_TEAM_ID              default PAW258GB42
 #   LAA_APP_ID               App Store Connect app; default 6828276003 (LAA)
 #   LAA_BETA_GROUP_ID        default 90513640-2a93-493f-952b-cf431090174f (LAA Internal)

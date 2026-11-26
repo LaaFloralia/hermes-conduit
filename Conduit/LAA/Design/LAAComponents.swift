@@ -1,11 +1,13 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 struct LAAScreenHeader: View {
     let title: String
     var identifier = ""
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = LAAType.canvas.title * LAAType.platformScale
     var body: some View {
-        Text(verbatim: title).font(LAAType.title(title)).foregroundStyle(LAAColor.text)
+        Text(verbatim: title).font(LAAType.display(titleSize)).foregroundStyle(LAAColor.text)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier(identifier)
     }
@@ -106,7 +108,7 @@ struct LAABackToolbar: ToolbarContent {
 
     private var item: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            LAAToolbarIconButton(systemName: "chevron.left", label: "戻る", identifier: "BackButton",
+            LAAToolbarIconButton(systemName: "chevron.left", label: "Back", identifier: "BackButton",
                                  tint: LAAColor.text, action: action)
         }
     }
@@ -116,8 +118,10 @@ struct LAASettingsToolbar: ToolbarContent {
     let action: () -> Void
 
     @ToolbarContentBuilder var body: some ToolbarContent {
-        if #available(iOS 26.0, *) { item.sharedBackgroundVisibility(.hidden) }
-        else { item }
+        if LAASettingsEntry.showsToolbarGear {
+            if #available(iOS 26.0, *) { item.sharedBackgroundVisibility(.hidden) }
+            else { item }
+        }
     }
 
     private var item: some ToolbarContent {
@@ -237,6 +241,18 @@ struct LAAListRowStyle: ButtonStyle {
     }
 }
 
+/// Keep the sheet's toolbar placement and use the kit's platform hit area.
+struct LAACloseButton: View {
+    var label = "Close"
+    var glass = false
+    let action: () -> Void
+
+    var body: some View {
+        LAAIconButton(.close, label: label, glass: glass, action: action)
+            .macTooltip(label)
+    }
+}
+
 struct LAAToolbarIconButton: View {
     let systemName: String
     let label: String
@@ -245,11 +261,39 @@ struct LAAToolbarIconButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName).font(.system(size: 20, weight: .regular))
-                .foregroundStyle(tint).frame(width: 44, height: 44).contentShape(Circle())
+            LAACompactGlassIcon(icon: Self.phosphor(for: systemName), systemName: systemName, tint: tint)
         }
-        .buttonStyle(.plain).laaGlass(in: Circle())
+        .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: label)).accessibilityIdentifier(identifier).macTooltip(label)
+    }
+
+    private static func phosphor(for name: String) -> LAAIcon? {
+        switch name {
+        case "plus": .new
+        case "chevron.left": .back
+        case "gearshape": .settings
+        default: nil
+        }
+    }
+}
+
+struct LAACompactGlassIcon: View {
+    let icon: LAAIcon?
+    var systemName = ""
+    var tint = LAAColor.link
+    private var visual: CGFloat { LAAType.iconButton.visual * LAAType.platformScale }
+    private var glyph: CGFloat { LAAType.iconButton.icon * LAAType.platformScale }
+
+    var body: some View {
+        Group {
+            if let icon { LAAIconImage(icon, size: glyph) }
+            else { Image(systemName: systemName).font(.system(size: glyph)) }
+        }
+        .foregroundStyle(tint)
+        .frame(width: visual, height: visual)
+        .laaGlass(in: Circle(), interactive: true)
+        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+        .contentShape(Rectangle())
     }
 }
 
@@ -264,10 +308,10 @@ struct LAAScreenToolbar: ToolbarContent {
     @ToolbarContentBuilder var body: some ToolbarContent {
         if #available(iOS 26.0, *) {
             if canCreate { createItem.sharedBackgroundVisibility(.hidden) }
-            if !desktop { settingsItem.sharedBackgroundVisibility(.hidden) }
+            if !desktop && LAASettingsEntry.showsToolbarGear { settingsItem.sharedBackgroundVisibility(.hidden) }
         } else {
             if canCreate { createItem }
-            if !desktop { settingsItem }
+            if !desktop && LAASettingsEntry.showsToolbarGear { settingsItem }
         }
     }
     private var createItem: some ToolbarContent {
@@ -277,7 +321,7 @@ struct LAAScreenToolbar: ToolbarContent {
     }
     private var settingsItem: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            LAAToolbarIconButton(systemName: "gearshape", label: "設定", identifier: "laa.settings.open", action: settings)
+            LAAToolbarIconButton(systemName: "gearshape", label: LAACopy.settings, identifier: "laa.settings.open", action: settings)
         }
     }
 
@@ -356,7 +400,7 @@ struct LAALoadingDots: View {
             .frame(maxWidth: .infinity, minHeight: 88)
             .overlay { if visible { LAAActivityDots() } }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: "読み込み中"))
+            .accessibilityLabel(Text(verbatim: "Loading"))
             #if DEBUG
             .accessibilityIdentifier("laa.lab.loading")
             #endif
@@ -375,7 +419,7 @@ struct LAAInlineFailure: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             Spacer(minLength: 0)
-            Button(action: retry) { Text(verbatim: "再試行") }.laaButton(.text).fixedSize()
+            Button(action: retry) { Text(verbatim: "Retry") }.laaButton(.text).fixedSize()
         }
     }
 }

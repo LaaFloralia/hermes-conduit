@@ -39,6 +39,61 @@ final class GroupChatModelsTests: XCTestCase {
         return GroupDecoders.logPage(any(payload))!
     }
 
+    func testChairedRoomSettingsRoundTripAndLegacyFieldsAreAbsent() throws {
+        let room = try XCTUnwrap(GroupDecoders.room(any([
+            "room_id": "room-1", "chair": "chair-seat", "confidential": true,
+            "policy": ["staff_rounds": 1, "max_messages": 10],
+        ])))
+        XCTAssertEqual(room.chair, "chair-seat")
+        XCTAssertEqual(room.confidential, true)
+        XCTAssertEqual(room.policy, .standard)
+        let legacy = try XCTUnwrap(GroupDecoders.room(any(["room_id": "room-2"])))
+        XCTAssertNil(legacy.chair)
+        XCTAssertNil(legacy.policy)
+        XCTAssertNil(legacy.confidential)
+        let original = GroupCreateAttempt.Inputs(name: "Planning", members: ["one", "two"])
+        var changed = original
+        changed.confidential = true
+        XCTAssertNotEqual(GroupCreateAttempt.roomID(for: changed, current: "room-1", attempted: original), "room-1")
+    }
+
+    func testCreateNegotiatesChairAndPrivacyIndependently() {
+        let members = [["profile": "laa-monet", "member_id": "chair-seat"]]
+        func params(_ features: [String]) -> [String: Any] {
+            let capabilities = GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw",
+                features: features, methods: GroupWire.requiredMethods, maxLogLimit: 500)
+            return HermesClient.groupsCreateParameters(roomID: "r", name: "Plan", members: members,
+                                                       capabilities: capabilities, confidential: true)
+        }
+        XCTAssertEqual(Set(params([]).keys), ["room_id", "name", "members"])
+        XCTAssertNil(params(["room_confidential"])["chair"])
+        XCTAssertNil(params(["room_chair"])["confidential"])
+        let negotiated = params(["room_chair", "room_confidential"])
+        XCTAssertEqual(negotiated["chair"] as? String, "chair-seat")
+        XCTAssertEqual(negotiated["policy"] as? [String: Int], ["staff_rounds": 1, "max_messages": 10])
+        XCTAssertEqual(negotiated["confidential"] as? Bool, true)
+    }
+
+    func testChairedTranscriptKeepsLegacyAndUnfinishedRowsAndFoldsOnlyMatchingStaff() {
+        func row(_ seq: Int, discussion: String, phase: String, actor: String) -> GroupEvent {
+            GroupDecoders.event(any(eventJSON(seq: seq, kind: "message.member", actor: ["kind": "member", "id": actor],
+                payload: ["discussion_event_id": discussion, "meeting_phase": phase])))!
+        }
+        let seed = GroupDecoders.event(any(eventJSON(seq: 1, kind: "message.chair",
+            actor: ["kind": "chair", "profile": "laa-monet"], payload: ["text": "agenda"])))!
+        XCTAssertTrue(seed.isChairSeed)
+        XCTAssertEqual(seed.messageText, "agenda")
+        let staff = row(3, discussion: "one", phase: "staff", actor: "staffer")
+        let unfinished = row(4, discussion: "two", phase: "staff", actor: "staffer")
+        let conclusion = row(5, discussion: "one", phase: "conclusion", actor: "chair-seat")
+        let ordinary = row(6, discussion: "one", phase: "", actor: "staffer")
+        let rows = [seed, staff, unfinished, conclusion, ordinary]
+        let transcript = GroupMeetingTranscript(events: rows, chair: "chair-seat")
+        XCTAssertEqual(transcript.events, [seed, unfinished, conclusion, ordinary])
+        XCTAssertEqual(transcript.staffByConclusion, [conclusion.id: [staff]])
+        XCTAssertEqual(GroupMeetingTranscript(events: rows, chair: nil).events, rows)
+    }
+
     // MARK: - Capabilities
 
     func testCapabilitiesDecodeAndNegotiation() {

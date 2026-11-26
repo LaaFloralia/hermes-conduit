@@ -160,7 +160,7 @@ struct LAAStudioRequestView: View {
         .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.requestDetail))
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog(LAACopy.Studio.stop, isPresented: $confirmStop, titleVisibility: .visible) {
+        .confirmationDialog(Text(verbatim: "制作を停止しますか？"), isPresented: $confirmStop, titleVisibility: .visible) {
             Button(LAACopy.Studio.stop, role: .destructive) { Task { await perform(.init(action: "stop", id: record.id)) } }
             Button(LAACopy.Studio.cancel, role: .cancel) { }
         }

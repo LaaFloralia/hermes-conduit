@@ -3,12 +3,13 @@ import XCTest
 
 final class LAAChatDesignUITests: XCTestCase {
     private func launch(_ fixture: String = "simple", dark: Bool = false, group: Bool = false, pushed: Bool = true,
-                        callable: Bool = false) -> XCUIApplication {
+                        callable: Bool = false, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", fixture,
                                "-LAA_CAPTURE_SURFACE", group ? "group" : "chat", "-LAA_CAPTURE_KIND", "paper"]
             + (dark ? ["-LAA_V2_DARK"] : []) + (pushed ? ["-LAA_FIXTURE_PUSH_CHAT"] : [])
         if callable { app.launchArguments.append("-LAA_FIXTURE_CALLABLE") }
+        app.launchArguments += extra
         app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews[group ? "room.composer.field" : "composer.field"].waitForExistence(timeout: 15))
@@ -79,6 +80,16 @@ final class LAAChatDesignUITests: XCTestCase {
         }
     }
 
+    func testLargestTextKeepsTheTranscriptBelowTheEmployeeHeader() {
+        let app = launch(extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        let header = app.buttons["laa.employee.header"]
+        let transcript = app.scrollViews["chat.transcript"]
+        XCTAssertTrue(header.isHittable)
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(transcript.frame.minY, header.frame.maxY)
+        XCTAssertGreaterThan(transcript.frame.height, 0)
+    }
+
     func testRichConversationScreenshots() {
         for dark in [false, true] {
             let app = launch("rich", dark: dark)
@@ -127,7 +138,7 @@ final class LAAChatDesignUITests: XCTestCase {
             conversation.tap()
             XCTAssertTrue(app.navigationBars["会話の情報"].waitForExistence(timeout: 5))
             capture(app, "intro-conversation-after-\(theme)")
-            app.navigationBars["会話の情報"].buttons["完了"].tap()
+            app.buttons["laa.staff.info.close"].tap()
             XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 5))
             app.terminate()
         }
@@ -200,7 +211,7 @@ final class LAAChatDesignUITests: XCTestCase {
             capture(app, "conversation-information-after-\(dark ? "dark" : "light")")
             app.buttons["conversation.background"].tap()
             XCTAssertTrue(app.buttons["background.choice.paper"].waitForExistence(timeout: 5))
-            app.navigationBars["背景"].buttons["完了"].tap()
+            app.buttons["laa.background.close"].tap()
             XCTAssertTrue(app.buttons["会話内を検索"].waitForExistence(timeout: 5))
             app.terminate()
         }

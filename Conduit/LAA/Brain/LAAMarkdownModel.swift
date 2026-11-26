@@ -371,6 +371,7 @@ enum LAAMarkdownParser {
     static func lines(in text: String) -> [LAAMarkdownLine] {
         let rawLines = split(text)
         var result: [LAAMarkdownLine] = []
+        result.reserveCapacity(rawLines.count)
         var fence: (marker: Character, count: Int)?
         var offset = 0
         var frontmatterOpen = false
@@ -1040,17 +1041,24 @@ enum LAAMarkdownInline {
 /// Source ranges are retained so links work without rewriting Markdown.
 enum LAAMarkdownSourceLinks {
     struct Link { let range: NSRange; let target: String }
+    private static let patterns = [#"(?<!!)\[\[([^\]]+)\]\]"#, #"(?<!!)\[[^\]]+\]\(([^)]+)\)"#]
+        .compactMap { try? NSRegularExpression(pattern: $0) }
+
     static func links(in source: String) -> [Link] {
+        links(in: LAAMarkdownParser.lines(in: source))
+    }
+
+    static func links(in lines: [LAAMarkdownLine], intersecting limit: NSRange? = nil) -> [Link] {
         var result: [Link] = []
-        for line in LAAMarkdownParser.lines(in: source) {
+        for line in lines where line.text.contains("[") {
+            if let limit, NSIntersectionRange(limit, line.range).length == 0 { continue }
             switch line.kind { case .code, .fence, .frontmatter: continue; default: break }
             let text = line.text as NSString
-            for pattern in [#"(?<!!)\[\[([^\]]+)\]\]"#, #"(?<!!)\[[^\]]+\]\(([^)]+)\)"#] {
-                guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-                for match in regex.matches(in: line.text, range: NSRange(location: 0, length: text.length)) {
-                    let inCode = LAAMarkdownInline.spans(in: line.text, contentRange: line.contentRange).contains {
-                        $0.style == .code && NSIntersectionRange($0.range, match.range).length > 0
-                    }
+            let code = line.text.contains("`") ? LAAMarkdownInline.spans(in: line.text, contentRange: line.contentRange)
+                .filter { $0.style == .code } : []
+            for pattern in patterns {
+                for match in pattern.matches(in: line.text, range: NSRange(location: 0, length: text.length)) {
+                    let inCode = code.contains { NSIntersectionRange($0.range, match.range).length > 0 }
                     guard !inCode else { continue }
                     result.append(Link(range: NSRange(location: line.range.location + match.range.location, length: match.range.length), target: text.substring(with: match.range(at: 1))))
                 }

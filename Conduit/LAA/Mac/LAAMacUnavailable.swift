@@ -8,7 +8,7 @@ extension LAACopy {
     static let macScanReason = "QR codes can't be read on this Mac. Paste the pairing code or address."
     static let macScanField = "コードまたはアドレス"
     static let macScanContinue = "続ける"
-    static let macScanCancel = "キャンセル"
+    static let macScanCancel = "Cancel"
     static let macScanInvalid = "That code isn't a pairing code."
 }
 
@@ -66,7 +66,7 @@ final class LiveTurnActivities {
     func adoptExisting() {}
     func endAll() {}
     func turnSubmitting(sessionIDs: Set<String>) {}
-    func turnStarted(sessionIDs: Set<String>, primaryID: String, linkID: String? = nil, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil, dashboardID: String? = nil) {}
+    func turnStarted(sessionIDs: Set<String>, primaryID: String, linkID: String? = nil, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil, dashboardID: String? = nil, thinkingWord: String? = nil) {}
     func observe(_ event: StreamEvent, sessionID: String) {}
     func reconcile(liveSessionIDs: Set<String>, profile: String, dashboardID: String?, now: Date = Date()) -> Bool { false }
     func endTurns(ofDashboard dashboardID: String?, keepingThoseOnRelay: Bool = false) {}

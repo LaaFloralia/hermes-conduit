@@ -1,6 +1,7 @@
 import { daemonSessionID } from '../sessions/daemon.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 import { BridgeError, badRequest } from '../errors.mjs';
+import { assertOwnerSurface } from '../owner-surface.mjs';
 
 const SYNC_RETRY_MS = 5_000, MAX_NOTIFICATION_RETRY_MS = 5 * 60_000;
 
@@ -225,7 +226,18 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
   return {
     view, hasOpen, sync, list, deliverWaiting,
     get: (id) => view(store.get(id)),
-    add(body) {
+    image: (id, imgId, size) => store.image(id, imgId, size),
+    add(body, imageInputs, { author = 'owner' } = {}) {
+      // C-5: what an agent files reaches the owner verbatim, so it must read as owner text.
+      if (author === 'agent') {
+        assertOwnerSurface(body.title, 'title');
+        assertOwnerSurface(body.summary, 'summary');
+        for (const [i, option] of (Array.isArray(body.options) ? body.options : []).entries()) {
+          assertOwnerSurface(option?.label, `options[${i}].label`);
+          if (option?.detail) assertOwnerSurface(option.detail, `options[${i}].detail`);
+        }
+        if (body.source?.name != null) assertOwnerSurface(body.source.name, 'name');
+      }
       let agent = body.source?.paseoAgentId ?? null;
       // A short id (the first 8 characters Paseo prints) is resolved to the
       // single full id it names, or delivery later finds no conversation.
@@ -234,7 +246,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
         if (new Set(matches).size === 1) agent = matches[0];
       }
       const session = agent && sessionStore?.all().find((r) => r.delegate?.sessionId === agent);
-      return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } });
+      return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } }, imageInputs);
     },
     withdraw: (id, reason) => view(store.withdraw(id, reason)),
     stats(since) {

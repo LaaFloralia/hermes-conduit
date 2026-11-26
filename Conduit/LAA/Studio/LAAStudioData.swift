@@ -10,22 +10,22 @@ extension LAACopy {
         static let requests = "依頼"
         static let requestDetail = "依頼"
         static let newRequest = "制作を依頼"
-        static let newWork = "新規"
+        static let newWork = "New"
         static let work = "作品"
         static let existingWork = "既存の作品"
         static let title = "題名"
         static let prompt = "依頼"
         static let principle = "原則"
         static let none = "なし"
-        static let choose = "選ぶ"
+        static let choose = "Select"
         static let yes = "はい"
         static let no = "いいえ"
         static let send = "依頼する"
-        static let retry = "再試行"
-        static let refresh = "更新"
+        static let retry = "Retry"
+        static let refresh = "Refresh"
         static let check = "状態を確認"
-        static let stop = "停止"
-        static let cancel = "キャンセル"
+        static let stop = "Stop"
+        static let cancel = "Cancel"
         static let allow = "許可"
         static let deny = "許可しない"
         static let persist = "この依頼で許可"
@@ -45,8 +45,6 @@ extension LAACopy {
         static let deliverables = "納品"
         static let assets = "素材"
         static let pages = "ページ"
-        static let open = "開く"
-        static let openOnMac = "Macで開く"
         static let disconnected = "Studioに接続できません"
         static let notAccepting = "Studioは制作中です"
         static let workBusy = "Studioが使用中です。少し待ってから送り直してください。"
@@ -185,8 +183,8 @@ enum LAAStudioData {
     @MainActor static func fixtureCover(path: String) -> UIImage? {
         let colors: (UIColor, UIColor)
         switch path {
-        case fixtureCoverPath("a"): colors = (UIColor(red: 0.12, green: 0.23, blue: 0.27, alpha: 1), UIColor(red: 0.62, green: 0.76, blue: 0.71, alpha: 1))
-        case fixtureCoverPath("b"): colors = (UIColor(red: 0.44, green: 0.25, blue: 0.31, alpha: 1), UIColor(red: 0.84, green: 0.69, blue: 0.64, alpha: 1))
+        case fixtureCoverPath("a"): colors = (UIColor(LAAColor.filledButton), UIColor(LAAColor.selectionFill))
+        case fixtureCoverPath("b"): colors = (UIColor(LAAColor.attention), UIColor(LAAColor.decorativeTan))
         default: return nil
         }
         let size = CGSize(width: 400, height: 533)
@@ -200,7 +198,7 @@ enum LAAStudioData {
             line.move(to: CGPoint(x: 100, y: 458)); line.addLine(to: CGPoint(x: 361, y: 218)); line.lineWidth = 1
             line.stroke()
             ("サービス紹介資料" as NSString).draw(at: CGPoint(x: 28, y: 44), withAttributes: [
-                .font: UIFont.systemFont(ofSize: 34, weight: .semibold), .foregroundColor: UIColor.white
+                .font: UIFont.systemFont(ofSize: 34, weight: .semibold), .foregroundColor: UIColor(LAAColor.ivory)
             ])
         }
     }
@@ -227,6 +225,16 @@ enum LAAStudioData {
         let project = LAAStudioProject(id: projectID, title: "サービス紹介資料", revision: 3,
                                        pages: pages, assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
         let principle = LAAStudioPrinciple(id: "principle1", name: "LAA", version: "6", revision: 3, status: "adopted")
+        if mode == "grouped" {
+            let mockProjects = ["image", "motion", "video", "model3d", "audio"].map { kind in
+                LAAStudioProject(id: "fixture-\(kind)", title: ["image": "表紙写真", "motion": "工程図", "video": "紹介映像",
+                    "model3d": "製品モデル", "audio": "ナレーション"][kind] ?? kind, revision: 1, pages: [],
+                    assets: [.init(id: kind, name: kind, kind: kind, url: nil, poster: nil, unavailable: nil, previewOnly: nil)],
+                    syncedAt: nil, driveUrl: nil, deliveredRevision: 1)
+            }
+            return LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: [project] + mockProjects,
+                                     principles: [principle], requests: [])
+        }
         var snapshot = LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: mode == "empty" ? [] : [project], principles: [principle], requests: mode == "empty" ? [] : [record])
         if mode.hasPrefix("v2") { snapshot.contract = 2 }
         return snapshot

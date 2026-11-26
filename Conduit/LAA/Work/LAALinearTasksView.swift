@@ -156,7 +156,7 @@ struct LAALinearTasksView: View {
             NavigationStack {
                 LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { taskRoute.target = nil } label: { Text(verbatim: LAACopy.close) }
+                        LAACloseButton { taskRoute.target = nil }.accessibilityIdentifier("work.task.route.close")
                     } }
             }
             .environmentObject(bridge)
@@ -170,7 +170,7 @@ struct LAALinearTasksView: View {
                     Task { await load(quiet: true) }
                 })
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { detail = nil } label: { Text(verbatim: LAACopy.close) }
+                        LAACloseButton { detail = nil }
                         #if DEBUG
                         .accessibilityIdentifier("work.task.detail.close")
                         #endif
@@ -189,7 +189,7 @@ struct LAALinearTasksView: View {
             Button(role: .destructive) {
                 if let task = deleting { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "archive") }
                 deleting = nil
-            } label: { Text(verbatim: "削除") }
+            } label: { Text(verbatim: "Delete") }
             Button(role: .cancel) { deleting = nil } label: { Text(verbatim: LAACopy.cancel) }
         } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
         .confirmationDialog(Text(verbatim: "完了にしますか？"), isPresented: Binding(get: { completing != nil },
@@ -197,7 +197,7 @@ struct LAALinearTasksView: View {
             Button {
                 if let task = completing { complete(task) }
                 completing = nil
-            } label: { Text(verbatim: "完了") }
+            } label: { Text(verbatim: "Complete") }
             Button(role: .cancel) { completing = nil } label: { Text(verbatim: LAACopy.cancel) }
         } message: {
             Text(verbatim: completing.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
@@ -231,7 +231,7 @@ struct LAALinearTasksView: View {
                         Button {
                             if let tasks = confirmingBatch { completeAll(tasks) }
                             confirmingBatch = nil
-                        } label: { Text(verbatim: "完了") }
+                        } label: { Text(verbatim: "Complete") }
                         Button(role: .cancel) { confirmingBatch = nil } label: { Text(verbatim: LAACopy.cancel) }
                     } message: {
                         Text(verbatim: LAATaskRunCopy.batchMessage(for: confirmingBatch ?? []))
@@ -378,21 +378,23 @@ struct LAALinearTasksView: View {
                 if archivedOnly {
                     Button {
                         submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
-                    } label: { Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") } }
+                    } label: { Label { Text(verbatim: "Restore") } icon: { Image(systemName: "arrow.uturn.backward") } }
                         .disabled(locked)
                 } else {
-                    Button { detail = task } label: { Label { Text(verbatim: "詳細・コメント") } icon: { Image(systemName: "doc.text") } }
+                    Button { detail = task } label: { Label { Text(verbatim: "Details") } icon: { Image(systemName: "doc.text") } }
                     Button { editor = Editor(id: task.id, task: task) } label: {
-                        Label { Text(verbatim: "編集") } icon: { Image(systemName: "pencil") }
-                    }.disabled(locked)
+                        Label { Text(verbatim: "Edit") } icon: { Image(systemName: "pencil") }
+                    }
+                    .accessibilityIdentifier("work.linear.edit")
+                    .disabled(locked)
                     if task.isOpen {
                         Button { completing = task } label: {
-                            Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark.circle") }
+                            Label { Text(verbatim: "Complete") } icon: { Image(systemName: "checkmark.circle") }
                         }.disabled(locked || task.completionBlockedReason != nil)
                     }
                     Divider()
                     Button(role: .destructive) { deleting = task } label: {
-                        Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                        Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                     }.disabled(locked)
                 }
             }
@@ -400,26 +402,26 @@ struct LAALinearTasksView: View {
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if archivedOnly {
                     Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
-                        Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") }
+                        Label { Text(verbatim: "Restore") } icon: { Image(systemName: "arrow.uturn.backward") }
                     }.tint(LAAColor.link).disabled(locked)
                 } else {
-                    // First on the trailing edge, so a swipe ends on 完了.
+                    // First on the trailing edge, so a swipe ends on Complete.
                     Button {
                         guard task.completionBlockedReason == nil else { return }
                         completing = task
                     } label: {
-                        Label { Text(verbatim: "完了") } icon: { Image(systemName: "checkmark") }
+                        Label { Text(verbatim: "Complete") } icon: { Image(systemName: "checkmark") }
                     }.tint(LAAColor.link)
                         .disabled(locked || task.completionBlockedReason != nil)
                     Button(role: .destructive) { deleting = task } label: {
-                        Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                        Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                     }.disabled(locked)
                 }
             }
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if !archivedOnly {
                     Button { editor = Editor(id: task.id, task: task) } label: {
-                        Label { Text(verbatim: "編集") } icon: { Image(systemName: "pencil") }
+                        Label { Text(verbatim: "Edit") } icon: { Image(systemName: "pencil") }
                     }.tint(LAAColor.decorativeTan).disabled(locked)
                 }
             }
@@ -520,17 +522,18 @@ struct LAALinearTasksView: View {
         let task = row.task
         return rowView(row, selected: selectedTask?.id == row.id)
             .contextMenu {
-                Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "開く") }
+                Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "Open") }
                 if task.isArchived {
                     Button {
                         submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore")
-                    } label: { Text(verbatim: "戻す") }
+                    } label: { Text(verbatim: "Restore") }
                 } else {
-                    Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "編集") }
-                    Button { completing = task } label: { Text(verbatim: "完了") }
+                    Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "Edit") }
+                        .accessibilityIdentifier("work.linear.edit")
+                    Button { completing = task } label: { Text(verbatim: "Complete") }
                         .disabled(locked || !task.isOpen || task.completionBlockedReason != nil)
                     Divider()
-                    Button(role: .destructive) { deleting = task } label: { Text(verbatim: "アーカイブ") }
+                    Button(role: .destructive) { deleting = task } label: { Text(verbatim: "Archive") }
                 }
             }
             .disabled(locked)
@@ -780,7 +783,7 @@ struct LAALinearTasksView: View {
         } catch is CancellationError { return }
         catch {
             guard loadID == epoch, device == bridge.deviceID, !quiet else { return }
-            failure = loaded ? "最新のタスクを取得できません。前回の内容を表示しています。" : "Linearのタスクを取得できません。接続を確認して読み直してください。"
+            failure = loaded ? "タスクの更新が止まっています。Linearの接続を確認してください。" : "Linearのタスク一覧が応答しません。接続を確認して再試行してください。"
         }
     }
 }
@@ -867,15 +870,15 @@ struct LAALinearTaskEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(text: $title, axis: .vertical) { Text(verbatim: "題名") }
+                    TextField(text: $title, axis: .vertical) { Text(verbatim: "Title") }
                         .accessibilityIdentifier("work.linear.title")
-                    TextField(text: $detail, axis: .vertical) { Text(verbatim: "説明") }.lineLimit(4...10)
+                    TextField(text: $detail, axis: .vertical) { Text(verbatim: "Description") }.lineLimit(4...10)
                 }
                 Section {
                     if let task {
-                        LabeledContent { Text(verbatim: task.assigneeDisplay) } label: { Text(verbatim: "担当") }
+                        LabeledContent { Text(verbatim: task.assigneeDisplay) } label: { Text(verbatim: LAACopy.WorkTab.ownerFilter) }
                         if let model = task.run?.profileLabel ?? task.run?.profile {
-                            LabeledContent { Text(verbatim: model) } label: { Text(verbatim: "モデル") }
+                            LabeledContent { Text(verbatim: model) } label: { Text(verbatim: "Model") }
                         }
                         Text(verbatim: "担当とモデルは作成後に変えません。")
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -885,7 +888,7 @@ struct LAALinearTaskEditor: View {
                             ForEach(LAATaskStaff.assignable, id: \.rawValue) { item in
                                 Text(verbatim: item.name).tag(item.rawValue)
                             }
-                        } label: { Text(verbatim: "担当") }
+                        } label: { Text(verbatim: LAACopy.WorkTab.ownerFilter) }
                         .accessibilityIdentifier("work.linear.assignee")
                         if staff != nil { modelPicker }
                         if let footer = LAALinearTaskCreate.footer(staff: staff) {
@@ -897,11 +900,11 @@ struct LAALinearTaskEditor: View {
                     }
                 }
                 Section {
-                    Toggle(isOn: $hasDueDate) { Text(verbatim: "期限") }
-                    if hasDueDate { DatePicker(selection: $dueDate, displayedComponents: .date) { Text(verbatim: "期限日") } }
+                    Toggle(isOn: $hasDueDate) { Text(verbatim: "Due Date") }
+                    if hasDueDate { DatePicker(selection: $dueDate, displayedComponents: .date) { Text(verbatim: "Date") } }
                     Picker(selection: $priority) {
                         ForEach(0...4, id: \.self) { value in Text(verbatim: LAALinearTask.priorityLabel(value)).tag(value) }
-                    } label: { Text(verbatim: "優先度") }
+                    } label: { Text(verbatim: "Priority") }
                 }
                 if let message = localFailure ?? failure { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
@@ -909,7 +912,7 @@ struct LAALinearTaskEditor: View {
             .navigationTitle(Text(verbatim: task == nil ? "タスクを追加" : "タスクを編集"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.close) } }
+                ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.editor.close") }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { commit() } label: { Text(verbatim: LAACopy.save) }
                         .disabled(!canSave)
@@ -928,11 +931,11 @@ struct LAALinearTaskEditor: View {
         if let options, !options.profiles.isEmpty {
             let chosen = LAAWorkModelSelection.model(of: profile, in: options)
             HStack(spacing: LAASpacing.x2) {
-                Text(verbatim: "モデル").layoutPriority(1)
+                Text(verbatim: "Model").layoutPriority(1)
                 Spacer(minLength: LAASpacing.x2)
                 LAAModelEffortPickers(
                     model: selectedProfile?.model, provider: selectedProfile?.provider,
-                    effort: selectedProfile?.effort, name: chosen?.label ?? "モデルを選択",
+                    effort: selectedProfile?.effort, name: chosen?.label ?? "Select Model",
                     identifier: "work.linear"
                 ) {
                     ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(options)), id: \.name) { group in
@@ -962,9 +965,9 @@ struct LAALinearTaskEditor: View {
                 }
             }
         } else if optionsFailed {
-            Button { Task { await loadOptions(force: true) } } label: { Text(verbatim: "モデルを取得できません。読み直す") }
+            Button { Task { await loadOptions(force: true) } } label: { Text(verbatim: "Retry") }
         } else {
-            Text(verbatim: "モデルを読み込み中").foregroundStyle(LAAColor.secondaryText)
+            LAALoadingDots()
         }
     }
 

@@ -79,12 +79,14 @@ final class LAAChatsUITests: XCTestCase {
     }
 
     func testEmptyLoadingErrorAndOffline() {
-        for (mode, label) in [("empty", "グループはまだありません。"), ("loading", "読み込み中"),
+        for (mode, value) in [("empty", "グループはまだありません。"), ("loading", "laa.lab.loading"),
                               ("error", "Macから読み込めませんでした。"),
                               ("offline", "Macに接続できません。"),
                               ("unsupported", "この接続先はグループに対応していません。")] {
             let app = launch(mode)
-            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch.waitForExistence(timeout: 10), mode)
+            let key = mode == "loading" ? "identifier" : "label"
+            let state = app.descendants(matching: .any).matching(NSPredicate(format: "%K == %@", key, value)).firstMatch
+            XCTAssertTrue(state.waitForExistence(timeout: 10), mode)
             XCTAssertFalse(app.buttons["laa.chats.new"].isEnabled, mode)
             app.terminate()
         }

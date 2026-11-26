@@ -15,7 +15,6 @@
   {"id":"work-campaigns","title":"Work｜応募の判断","route":"Work → Campaigns","fixture":"Work campaign","mac":{"section":"work","launch":"campaigns","observe":"/v1/campaigns"}},
   {"id":"work-tasks","title":"Work｜タスク一覧","route":"Work → Tasks","fixture":"Work many tasks","mac":{"section":"work","launch":"tasks","observe":"/v1/linear-owner-tasks"}},
   {"id":"work-task-detail","title":"Work｜タスク詳細","route":"Tasks → 検索 → T30","fixture":"Work many tasks"},
-  {"id":"work-routines","title":"Work｜定期実行一覧","route":"Work → Routines","fixture":"Work routines","mac":{"section":"work","launch":"routines","observe":"/v1/routines"}},
   {"id":"today","title":"Today｜予定一覧","route":"Today 起動","fixture":"Work calendar","mac":{"section":"today","observe":"/v1/calendar/events"}},
   {"id":"today-event","title":"Today｜予定詳細","route":"Today → 見本の予定","fixture":"Work calendar"},
   {"id":"today-empty","title":"Today｜予定なし","route":"Today 起動","fixture":"Calendar empty"},

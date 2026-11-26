@@ -625,3 +625,31 @@ test('Muse accounts pass through as one group with the weekly Free allowance, th
     { now, receivedAt: now });
   assert.equal(byId(google, 'provider.google-ai-pro-sub2.quota').nullReason, 'fetch_failed');
 });
+
+test('A Muse reading taken around a job keeps its number for 24 hours while usage-meters vouches for it; the feed still expires in 10 minutes', () => {
+  // The live shape on 2026-11-27: observed at 12:41, read again by the proxy at 17:57.
+  const observed = '2026-11-26T12:41:29.593575+00:00';
+  const fetchedAt = '2026-11-26T17:57:38Z';
+  const now = Date.parse('2026-11-26T17:58:00Z');
+  const muse = (extra) => ({ id: 'muse-Muse1', name: 'Muse1', group: 'muse', groupName: 'Muse', kind: 'quota', source: 'muse-usage',
+    available: true, active: true, updatedAt: observed, freshUntil: '2026-11-26T18:07:38Z', accountState: 'ok',
+    windows: [{ label: '週間', remaining: 94, resetsAt: null, windowMinutes: 10080 }], ...extra });
+  const feed = (row, at = fetchedAt) => ({ version: 1, fetchedAt: at, providers: [row] });
+  const item = (f, at = now) => byId(usageItemsFromFeed(f, { now: at, receivedAt: at }), 'provider.muse-Muse1.quota');
+
+  const fresh = item(feed(muse()));
+  assert.deepEqual([fresh.availability, fresh.value, fresh.observedAt, fresh.stale], ['available', 94, '2026-11-26T12:41:29Z', false]);
+  // The deadline is the feed's, never later than the producer's.
+  assert.equal(fresh.detail.freshUntil, '2026-11-26T18:07:38.000Z');
+  // A feed older than 10 minutes carries no number, however fresh the producer says the reading is.
+  assert.equal(item(feed(muse()), Date.parse('2026-11-26T18:08:00Z')).value, null);
+  // Past 24 hours from the observation there is no number, even if freshUntil said later.
+  const dayOld = feed(muse({ freshUntil: '2026-11-27T12:50:00Z' }), '2026-11-27T12:42:00Z');
+  assert.equal(item(dayOld, Date.parse('2026-11-27T12:42:00Z')).value, null);
+  // Without the producer's freshUntil the ordinary 10-minute rule holds.
+  assert.equal(item(feed(muse({ freshUntil: undefined }))).value, null);
+  // Only Muse's source gets the longer reading: a CodexBar row of the same age has no number.
+  const codex = { id: 'codex', available: true, updatedAt: observed, freshUntil: '2026-11-26T18:07:38Z',
+    windows: [{ label: 'Weekly', remaining: 50, resetsAt: null, windowMinutes: 10080 }] };
+  assert.equal(byId(usageItemsFromFeed(feed(codex), { now, receivedAt: now }), 'provider.codex.quota').value, null);
+});

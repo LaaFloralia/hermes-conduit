@@ -34,7 +34,7 @@ struct LAAWorkSessionsSection: View {
 
     private var searchText: String { query ?? search }
     private var viewTitle: String {
-        showArchived ? LAACopy.WorkTab.archived : projectOrder ? String("プロジェクト別") : String("新しい順")
+        showArchived ? LAACopy.WorkTab.archived : projectOrder ? LAACopy.WorkTab.byProject : LAACopy.WorkTab.newest
     }
     private var searching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -43,11 +43,11 @@ struct LAAWorkSessionsSection: View {
             // The list's view is one pulldown labelled with the current
             // choice, the same control the Tasks list starts with.
             LAAWorkListPicker(title: viewTitle, identifier: "work.sessions.menu") {
-                LAAWorkPickerItem(title: "新しい順", selected: !projectOrder && !showArchived) {
+                LAAWorkPickerItem(title: LAACopy.WorkTab.newest, selected: !projectOrder && !showArchived) {
                     projectOrder = false
                     if showArchived { showArchived = false; Task { await load() } }
                 }
-                LAAWorkPickerItem(title: "プロジェクト別", selected: projectOrder && !showArchived,
+                LAAWorkPickerItem(title: LAACopy.WorkTab.byProject, selected: projectOrder && !showArchived,
                                   identifier: "work.sessions.byProject") {
                     projectOrder = true
                     if showArchived { showArchived = false; Task { await load() } }
@@ -81,24 +81,34 @@ struct LAAWorkSessionsSection: View {
                         Text(verbatim: project.name).laaTextStyle(.section)
                             .foregroundStyle(LAAColor.text).frame(minHeight: 32, alignment: .bottom)
                             .contextMenu {
-                                Button(String("開く")) { projectHome = project }
-                                Button(String("名前と指示を変更")) { editingProject = project }
-                                Button(String("アーカイブ")) {
+                                Button(String("Open")) { projectHome = project }
+                                Button(String("Edit")) { editingProject = project }
+                                Button(String("Archive")) {
                                     archivePrompt = .project(project) { Task { await archiveProject(project) } }
                                 }
                             }
                         let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
                         if rows.isEmpty { Text(verbatim: "セッションはありません").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                        else { group("", rows, children) }
+                        else { group("", headingID: "", rows, children) }
                     }
                 }
                 let ungrouped = shown((visible.pinned + visible.recent).filter { row in !projects.contains { $0.id == LAAWorkSessionOrder.projectID(row, in: matches) && !$0.isArchived } })
-                if !ungrouped.isEmpty { group("プロジェクトなし", ungrouped, children) }
+                if !ungrouped.isEmpty {
+                    group("No Project", headingID: "work.sessions.ungrouped.heading", ungrouped, children)
+                }
             } else {
                 let sections = LAAWorkSessionOrder.sections(matches)
-                if !sections.active.isEmpty { group("実行中・判断待ち", shown(sections.active), children) }
-                if !sections.pinned.isEmpty { group(LAACopy.WorkTab.pinned, shown(sections.pinned), children) }
-                if !sections.recent.isEmpty { group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent, shown(sections.recent), children) }
+                if !sections.active.isEmpty {
+                    group("Active", headingID: "work.sessions.active.heading", shown(sections.active), children)
+                }
+                if !sections.pinned.isEmpty {
+                    group(LAACopy.WorkTab.pinned, headingID: "work.sessions.pinned.heading", shown(sections.pinned), children)
+                }
+                if !sections.recent.isEmpty {
+                    group(showArchived ? LAACopy.WorkTab.archived : LAACopy.WorkTab.recent,
+                          headingID: showArchived ? "work.sessions.archived.heading" : "work.sessions.recent.heading",
+                          shown(sections.recent), children)
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -149,11 +159,12 @@ struct LAAWorkSessionsSection: View {
         searching ? rows : LAAWorkSessionOrder.visible(rows, expanded: expanded)
     }
 
-    private func group(_ title: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
+    private func group(_ title: String, headingID: String, _ rows: [LAAWorkSession], _ children: [String: [LAAWorkSession]]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !title.isEmpty {
                 HStack {
                     Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                        .accessibilityIdentifier(headingID)
                     Spacer()
                     Text(verbatim: String(rows.count)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }.padding(.bottom, LAASpacing.x2)
@@ -350,9 +361,10 @@ struct LAAWorkSessionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: LAASpacing.x1) {
                     Text(verbatim: session.name).laaTextStyle(.body).fontWeight(.medium)
-                        .foregroundStyle(LAAColor.text).lineLimit(2).multilineTextAlignment(.leading)
+                        .foregroundStyle(LAAColor.text).lineLimit(2).truncationMode(.middle)
+                        .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("work.session.\(session.id)")
-                    if session.isFavorite { Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(LAAColor.secondaryText) }
+                    if session.isFavorite { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(LAAColor.secondaryText) }
                 }
                 Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -402,7 +414,7 @@ struct LAAWorkChildDisclosure: View {
         Button(action: toggle) {
             HStack(spacing: LAASpacing.x1) {
                 Text(verbatim: "\(count)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                     .foregroundStyle(LAAColor.secondaryText)
                     .rotationEffect(.degrees(open ? 90 : 0))
             }
@@ -411,7 +423,7 @@ struct LAAWorkChildDisclosure: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: open ? "子エージェントを閉じる" : "子エージェントを開く"))
+        .accessibilityLabel(Text(verbatim: open ? "Collapse children" : "Expand children"))
         .accessibilityValue(Text(verbatim: "\(count)"))
         .accessibilityIdentifier("work.session.\(id).children")
     }
@@ -511,7 +523,7 @@ enum LAAWorkSessionStyle {
     }
 
     static func profileLabel(_ profile: LAAWorkSessionOptions.Profile, fast: Bool = false) -> String {
-        [displayModel(profile.label), effort(profile.effort)].compactMap { $0 }.joined(separator: " ") + (fast ? " ⚡︎" : "")
+        [displayModel(profile.label), effort(profile.effort)].compactMap { $0 }.joined(separator: " ") + (fast ? " · Fast" : "")
     }
 
     static func model(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
@@ -807,9 +819,9 @@ struct LAAWorkSwipeRow<Content: View>: View {
         Button { finish(action) } label: {
             VStack(spacing: 2) {
                 Image(systemName: action.systemImage).font(.system(size: 16, weight: .semibold))
-                Text(verbatim: action.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                Text(verbatim: action.title).font(.caption.weight(.semibold)).lineLimit(1)
             }
-            .foregroundStyle(Color.white)
+            .foregroundStyle(LAAColor.filledButtonText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(action.tint)
         }

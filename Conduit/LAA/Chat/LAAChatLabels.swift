@@ -97,7 +97,7 @@ enum LAAChatLabels {
         "Resolve delivery": "送信を確認",
         "Restore to draft": "下書きに戻す",
         "Review message": "メッセージを確認",
-        "Resume call": "通話に戻る",
+        "Resume call": "Call",
         "Steer with message": "メッセージで指示",
         "Stop response": "応答を中断",
         "Stop waiting": "待機を終了",

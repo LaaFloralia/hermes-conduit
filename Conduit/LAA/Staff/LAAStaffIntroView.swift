@@ -99,7 +99,7 @@ struct LAAStaffIntroView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: onClose) { Text(verbatim: LAACopy.close) }
+                    LAACloseButton(action: onClose).accessibilityIdentifier("laa.staff.intro.close")
                 }
             }
         }
@@ -127,7 +127,7 @@ struct LAAStaffIntroView: View {
             .frame(height: 256)
             if turns && !reduceMotion {
                 Text(verbatim: LAACopy.staffIntroTurnHint)
-                    .font(.system(size: 11, weight: .medium))
+                    .laaTextStyle(.section)
                     .tracking(0.6)
                     .foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)
@@ -144,10 +144,7 @@ struct LAAStaffIntroView: View {
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
             if let role = staff?.role {
-                Text(verbatim: role)
-                    .font(.system(size: 13, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(LAAColor.link)
+                LAATranscriptRoleLabel(role: role)
                     .multilineTextAlignment(.center)
             }
             if !status.isEmpty {
@@ -198,7 +195,7 @@ struct LAAStaffIntroView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
-                                Button(action: onClose) { Text(verbatim: LAACopy.done) }
+                                LAACloseButton(action: onClose).accessibilityIdentifier("laa.staff.info.close")
                             }
                         }
                 } label: {

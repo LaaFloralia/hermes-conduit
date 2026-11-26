@@ -8,7 +8,7 @@ import XCTest
 final class LAAWorkRefUITests: XCTestCase {
     private let port = Int(ProcessInfo.processInfo.environment["LAA_WORK_FIXTURE_PORT"] ?? "") ?? 19584
 
-    private func launch(_ appearance: String = "light") throws -> XCUIApplication {
+    private func launch(_ appearance: String = "light", extra: [String] = []) throws -> XCUIApplication {
         guard (try? LabUI.data(LabUI.origin("work-control", legacyPort: port + 1), "/reset")) != nil else {
             throw XCTSkip("Start scripts/laa/work-ui-fixture.mjs")
         }
@@ -16,7 +16,7 @@ final class LAAWorkRefUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", appearance,
-                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + extra
         app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = LabUI.origin("work", legacyPort: port)
         app.launchInLab()
         XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 30))
@@ -28,8 +28,11 @@ final class LAAWorkRefUITests: XCTestCase {
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
-        // The title is the row's open button, found by its label.
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch.waitForExistence(timeout: 20))
+        // The title is the row's open button, found by its label. At the
+        // largest text sizes the first rows can start below the screen.
+        let first = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
+        for _ in 0..<4 where !first.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(first.waitForExistence(timeout: 20))
         return app
     }
 
@@ -37,11 +40,11 @@ final class LAAWorkRefUITests: XCTestCase {
         for _ in 0..<3 where !app.buttons["work.section.sessions"].isHittable {
             app.navigationBars.buttons.firstMatch.tap()
         }
-        if value == "projects" {
-            app.buttons["work.section.projects"].tap()
-        } else if value == "skills" {
+        if value == "skills" {
             LAASettingsSkillsUI.open(in: app)
-        } else { app.buttons["work.section.\(value)"].tap() }
+        } else {
+            LAAWorkSectionUI.open(value, in: app)
+        }
     }
 
     private func searchField(_ app: XCUIApplication) -> XCUIElement {
@@ -69,12 +72,12 @@ final class LAAWorkRefUITests: XCTestCase {
         let task = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
         XCTAssertTrue(task.waitForExistence(timeout: 10))
         task.press(forDuration: 1.5)
-        let open = app.buttons["詳細・コメント"]
+        let open = app.buttons["Details"]
         XCTAssertTrue(open.waitForExistence(timeout: 5)); open.tap()
         let meta = app.staticTexts["work.task.detail.ref"]
         XCTAssertTrue(meta.waitForExistence(timeout: 10))
         XCTAssertEqual(meta.label, "T12 · BUS-TEST1")
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["work.task.detail.close"].tap()
 
         // Sessions: every row and the session's own header.
         section(app, "sessions")
@@ -97,21 +100,25 @@ final class LAAWorkRefUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["work.ref.P1"].exists)
         app.navigationBars.buttons.firstMatch.tap()
 
-        // Routines: the scheduled row, then the resident one.
-        section(app, "routines")
-        XCTAssertTrue(app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.waitForExistence(timeout: 20))
-        app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["work.ref.R1"].waitForExistence(timeout: 10))
-        // The resident routine ends the day on 「常時」, matched by its label.
-        app.buttons.containing(.staticText, identifier: "常駐の確認用").firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["R2"].waitForExistence(timeout: 10))
-
         // Skills: the row and the skill's detail.
         section(app, "skills")
         XCTAssertTrue(app.staticTexts["work.ref.K1"].waitForExistence(timeout: 15))
         app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.skill.detail"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["K1"].exists)
+    }
+
+    func testLargestTextKeepsTheTaskReferenceOnOneLine() throws {
+        let app = try launch(extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        let task = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
+        if !task.isHittable { app.swipeUp() }
+        task.press(forDuration: 1.5)
+        let open = app.buttons["詳細・コメント"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5)); open.tap()
+        let meta = app.staticTexts["work.task.detail.ref"]
+        XCTAssertTrue(meta.waitForExistence(timeout: 10))
+        XCTAssertEqual(meta.label, "T12 · BUS-TEST1")
+        XCTAssertGreaterThan(meta.frame.width, meta.frame.height * 3)
     }
 
     func testSearchFindsAShortNumberAndTheRowText() throws {

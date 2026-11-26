@@ -55,7 +55,8 @@ final class NotificationService: UNNotificationServiceExtension {
         ) {
         case .legacy:
             #if LAA_BUILD
-            decorated(content, sessionID: NotificationE2E.routingStub(userInfo)?["session_id"] as? String, answers: false)
+            let stub = NotificationE2E.routingStub(userInfo)
+            decorated(content, sessionID: stub?["session_id"] as? String, profile: stub?["profile"] as? String, answers: false)
             #else
             deliver(content)
             #endif
@@ -81,7 +82,8 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
             #if LAA_BUILD
-            decorated(content, sessionID: verified.content["session_id"] as? String, answers: true)
+            decorated(content, sessionID: verified.content["session_id"] as? String,
+                      profile: verified.content["profile"] as? String, answers: true)
             #else
             deliver(content)
             #endif
@@ -92,7 +94,12 @@ final class NotificationService: UNNotificationServiceExtension {
     /// An LAA Bridge notification gets quiet delivery from its session id
     /// (LAANotificationMeta), and its answer buttons only when that id came
     /// sealed and verified; every other notification is delivered as it is.
-    private func decorated(_ content: UNMutableNotificationContent, sessionID: String?, answers: Bool) {
+    /// Either way it carries the speaking employee's mascot when there is
+    /// one (LAANotificationStaffArt); an untrusted push never reaches here.
+    private func decorated(_ content: UNMutableNotificationContent, sessionID: String?, profile: String?, answers: Bool) {
+        let meta = LAANotificationMeta.parse(sessionID)
+        LAANotificationStaffArt.decorate(content, kind: meta?.kind, profile: profile, staffHint: meta?.staff)
+        LAAMonetReportLedger.note(kind: meta?.kind)
         LAANotificationActions.decorate(content, sessionID: sessionID, answers: answers) { [weak self] in self?.deliver(content) }
     }
     #endif

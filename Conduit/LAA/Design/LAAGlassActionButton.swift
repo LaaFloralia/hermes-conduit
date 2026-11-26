@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// The round Liquid Glass button of a composer's bottom row: attach, stop and
@@ -34,8 +35,8 @@ struct LAAGlassActionButton: View {
     var identifier: String? = nil
     let action: () -> Void
 
-    static let size: CGFloat = 36
-    static let touch: CGFloat = 44
+    static let size = LAAType.iconButton.visual * LAAType.platformScale
+    static let touch = LAASpacing.minimumTouchTarget
 
     init(systemImage: String, label: String, role: Role = .send, enabled: Bool = true,
          identifier: String? = nil, action: @escaping () -> Void) {
@@ -75,12 +76,10 @@ struct LAAGlassActionFace: View {
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: role == .stop ? 12 : 15, weight: .bold))
+            .font(.system(size: LAAType.iconButton.icon * LAAType.platformScale, weight: .regular))
             .foregroundStyle(ink)
             .frame(width: LAAGlassActionButton.size, height: LAAGlassActionButton.size)
-            .conduitGlassControl(cornerRadius: LAAGlassActionButton.size / 2,
-                                 tint: role == .stop ? LAAColor.end.opacity(0.10) : .clear,
-                                 interactive: enabled)
+            .laaGlass(in: Circle(), interactive: enabled)
             .overlay { if role == .send { LAAGlassRimReflection() } }
             // 36 pt to the eye, 44 pt to the finger.
             .contentShape(Circle().inset(by: -(LAAGlassActionButton.touch - LAAGlassActionButton.size) / 2))
@@ -114,13 +113,18 @@ struct LAAGlassRimReflection: View {
 
     var body: some View {
         let rim = Self.rim(dark: colorScheme == .dark)
-        Circle()
-            .inset(by: 0.5)
-            .stroke(AngularGradient(stops: Self.stops.map { .init(color: $0.lit ? rim.peak : rim.rest, location: $0.at) },
-                                    center: .center),
-                    lineWidth: 1)
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .animation(turning ? .linear(duration: Self.period).repeatForever(autoreverses: false) : nil, value: turning)
+        let arcs = zip(Self.stops, Self.stops.dropFirst()).filter { $0.lit && $1.lit }
+        Circle().strokeBorder(rim.rest, lineWidth: LAAStroke.rule)
+            .overlay {
+                ZStack {
+                    ForEach(Array(arcs.enumerated()), id: \.offset) { _, arc in
+                        Circle().inset(by: LAAStroke.rule / 2).trim(from: arc.0.at, to: arc.1.at)
+                            .stroke(rim.peak, style: StrokeStyle(lineWidth: LAAStroke.rule, lineCap: .round))
+                    }
+                }
+                .rotationEffect(.degrees(turning ? 360 : 0))
+                .animation(turning ? .linear(duration: Self.period).repeatForever(autoreverses: false) : nil, value: turning)
+            }
             .onAppear { turning = !reduceMotion }
             .onChange(of: reduceMotion) { _, still in turning = !still }
             .allowsHitTesting(false)

@@ -235,7 +235,7 @@ struct LAADrivePlayerContent: View {
             case .failed(let message):
                 Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                 if owner.canRetry {
-                    Button(String("再試行")) { owner.playback.retry() }
+                    Button(String("Retry")) { owner.playback.retry() }
                         .accessibilityIdentifier("laa.drive.player.retry")
                 }
             case .ended:

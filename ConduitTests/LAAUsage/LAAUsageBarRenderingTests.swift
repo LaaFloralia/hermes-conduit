@@ -51,13 +51,13 @@ final class LAAUsageBarRenderingTests: XCTestCase {
 
     func testPaintKeepsTrackAndFillApartOutsideFullColour() {
         for mode in [WidgetRenderingMode.accented, .vibrant] {
-            let paint = LAAUsageBar.Paint(mode: mode, level: .normal)
+            let paint = LAAUsageMeterTrack.Paint(mode: mode, level: .normal)
             XCTAssertNotEqual(paint.track, paint.fill, "\(Self.modeName(mode))")
-            XCTAssertLessThan(LAAUsageBar.Paint.tintedTrackOpacity, 0.5)
+            XCTAssertLessThan(LAAUsageMeterTrack.Paint.tintedTrackOpacity, 0.5)
         }
-        let full = LAAUsageBar.Paint(mode: .fullColor, level: .caution)
+        let full = LAAUsageMeterTrack.Paint(mode: .fullColor, level: .caution)
         XCTAssertEqual(full.track, LAAColor.separator)
-        XCTAssertEqual(full.fill, LAAUsageBar.caution)
+        XCTAssertEqual(full.fill, LAAUsageMeterTrack.caution)
     }
 
     // MARK: Fixture

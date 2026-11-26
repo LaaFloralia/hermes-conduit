@@ -10,23 +10,8 @@ import UniformTypeIdentifiers
 /// project is not a full disk.
 struct LAAWorkProjectMeter: View {
     let fraction: Double
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var clamped: Double { fraction.isFinite ? min(max(fraction, 0), 1) : 0 }
-
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(LAAColor.subtleSurface).frame(height: LAAUsageMeter.height)
-                Capsule().fill(LAAColor.link)
-                    .frame(width: clamped > 0 ? max(proxy.size.width * clamped, LAAUsageMeter.height) : 0,
-                           height: LAAUsageMeter.height)
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .frame(height: LAAUsageMeter.totalHeight)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: clamped)
-        .accessibilityHidden(true)
+        LAAUsageMeterTrack(fraction: fraction, level: .normal)
     }
 }
 
@@ -44,7 +29,7 @@ struct LAAWorkProjectRow: View {
             HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                 LAAWorkRefLabel(ref: project.ref)
                 Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
-                    .foregroundStyle(LAAColor.text).lineLimit(1)
+                    .foregroundStyle(LAAColor.text).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: LAASpacing.x2)
                 activityMark
             }
@@ -69,8 +54,8 @@ struct LAAWorkProjectRow: View {
                 LAAWorkStatusMark(status: activity == .running(count) ? .running : .decision)
                 // The word goes with the number, so it never reads as the
                 // requirements' 9 / 13 beside it (BUS-508).
-                Text(verbatim: "\(activity == .running(count) ? LAAWorkStatus.running.label : LAAWorkStatus.decision.label) \(count)")
-                    .laaTextStyle(.secondary).monospacedDigit()
+                Text(verbatim: "\(LAACopy.WorkProject.sessionStatus(activity == .running(count) ? .running : .decision)) \(count)")
+                    .laaTextStyle(.secondary).monospacedDigit().fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(activity == .running(count) ? LAAColor.secondaryText : LAAColor.attention)
             }
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
@@ -94,7 +79,7 @@ struct LAAWorkProjectRow: View {
             }
             .accessibilityIdentifier("laa.work.project.progress.\(project.id)")
         } else {
-            Text(verbatim: [LAACopy.WorkProject.noRequirementsShort, time].compactMap { $0 }.joined(separator: " · "))
+            Text(verbatim: ["—", LAACopy.WorkProject.noRequirementsShort, time].compactMap { $0 }.joined(separator: " · "))
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
         }
     }
@@ -182,7 +167,10 @@ struct LAAWorkProjectPage: View {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 heading
                 banners
-                if let board, board.summary.total > 0 { LAAWorkProjectSummary(board: board) }
+                if let board {
+                    if board.summary.rate != nil { LAAWorkProjectSummary(board: board) }
+                    else { Text(verbatim: "—").laaTextStyle(.secondary).accessibilityLabel(LAACopy.WorkProject.noRequirementsShort) }
+                }
                 if let note = detail?.progressNote { LAAWorkProjectNote(text: note) }
             }
             requirementsSection
@@ -242,6 +230,18 @@ struct LAAWorkProjectPage: View {
                                ? (LAACopy.WorkProject.add, "plus", "laa.work.project.addRequirement", actions.addRequirement)
                                : nil)
             requirementsContent
+            if let log = detail?.requirementDenominatorLog, !log.isEmpty {
+                DisclosureGroup {
+                    ForEach(Array(log.reversed().enumerated()), id: \.offset) { _, change in
+                        let date = LAAWorkFreshness.date(change.at).map { LAADateText.string($0, .monthDay) } ?? ""
+                        Text(verbatim: "\(date) \(change.delta > 0 ? "+" : "")\(change.delta) · \(change.reason)")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                } label: {
+                    Text(verbatim: "要件数の変更").laaTextStyle(.secondary)
+                }
+                .padding(.vertical, LAASpacing.x2)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.work.project.requirements")
@@ -454,7 +454,7 @@ struct LAAWorkProjectPage: View {
                         .background(LAAColor.surface)
                         .contextMenu {
                             Button(role: .destructive) { actions.removeFile(file) } label: {
-                                Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                                Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                             }
                         }
                         if file.id != files.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 50) }
@@ -662,7 +662,7 @@ struct LAAWorkRequirementStatusControl: View {
         .buttonStyle(.plain)
         .disabled(busy || !canChange)
         .padding(.leading, -12)
-        .accessibilityLabel(Text(verbatim: "\(requirement.status.label)、\(requirement.addedByAI ? LAACopy.WorkProject.addedByAIHint : LAACopy.WorkProject.ownerHint)"))
+        .accessibilityLabel(Text(verbatim: "\(requirement.status.label), \(requirement.addedByAI ? LAACopy.WorkProject.addedByAI : LAACopy.WorkProject.owner)"))
         .accessibilityHint(Text(verbatim: LAACopy.WorkProject.changeStatus))
         .accessibilityIdentifier("laa.work.project.requirement.status.\(requirement.id)")
     }

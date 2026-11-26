@@ -6,7 +6,7 @@ import XCTest
 /// below the sheet; scroll the sheet until the whole link is in view.
 enum LAASettingsSkillsUI {
     static func open(in app: XCUIApplication) {
-        app.buttons["laa.settings.open"].tap()
+        app.openLAASettings()
         let scroller = app.scrollViews.containing(.button, identifier: "settings.skills").firstMatch
         XCTAssertTrue(scroller.waitForExistence(timeout: 10), "Settings must present the scroll view that contains Skills")
         let skills = scroller.buttons["settings.skills"]

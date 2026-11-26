@@ -16,6 +16,9 @@ private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if LAA_BUILD
+        _ = LAAReadingStyle.fontsAvailable
+        #endif
         #if LAA_BUILD && !targetEnvironment(macCatalyst)
         let badgeColor = UIColor(LAAColor.attention)
         let tabAppearance = UITabBarAppearance()
@@ -25,6 +28,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             layout.selected.badgeBackgroundColor = badgeColor
         }
         UITabBar.appearance().standardAppearance = tabAppearance
+        #endif
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        MainActor.assumeIsolated { LAAAmbientActivityFixture.startIfRequested() }
+        LAAAmbientNotificationFixture.startIfRequested()
         #endif
         #if DEBUG
         // No production push/Watch registration, queued answers, or OS-driven
@@ -375,6 +382,7 @@ struct ConduitApp: App {
         // RootView first-window guard instead: never an iPad multi-window
         // product.
         WindowGroup(id: "conduit-primary") {
+            Group {
 #if DEBUG
             // The fixture is compiled out of release builds, so the launch
             // argument branch must be too.
@@ -402,6 +410,10 @@ struct ConduitApp: App {
 #else
             rootContent
 #endif
+            }
+            #if LAA_BUILD
+            .modifier(LAAAppThemeModifier())
+            #endif
         }
         #if LAA_BUILD && targetEnvironment(macCatalyst)
         .defaultSize(width: LAAMacWindow.initialWidth, height: LAAMacWindow.initialHeight)
@@ -417,8 +429,9 @@ struct ConduitApp: App {
                 .environmentObject(appState)
                 .environment(\.locale, appLanguage.resolvedLocale)
                 .environment(\.laaDesktop, true)
-                .preferredColorScheme(appState.themePreference.colorScheme)
+                .preferredColorScheme(LAAAppTheme.colorScheme(appState.themePreference.colorScheme))
                 .tint(LAAColor.link)
+                .modifier(LAAAppThemeModifier())
         }
         .defaultSize(width: LAAMacSettingsWindow.initialWidth, height: LAAMacSettingsWindow.initialHeight)
         .windowResizability(.contentMinSize)
@@ -458,10 +471,11 @@ struct ConduitApp: App {
                 NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
                 HermesCallNotifications.registerCategory()
             }
-            .preferredColorScheme(appState.themePreference.colorScheme)
             #if LAA_BUILD
+            .preferredColorScheme(LAAAppTheme.colorScheme(appState.themePreference.colorScheme))
             .tint(LAAColor.link)
             #else
+            .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)
             .background(WindowAccentTint(choice: accentChoice))
             #endif

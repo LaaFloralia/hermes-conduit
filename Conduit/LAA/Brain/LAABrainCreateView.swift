@@ -108,7 +108,7 @@ struct LAABrainCreateView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Text(verbatim: LAACopy.Brain.close) }.disabled(saving)
+                    LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.create.close").disabled(saving)
                 }
                 #if DEBUG
                 ToolbarItemGroup(placement: .primaryAction) {

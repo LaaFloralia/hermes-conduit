@@ -1038,6 +1038,31 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 1060, "m3 is back where it was, and m2 above it")
     }
 
+    #if LAA_BUILD
+    func testPrependRevealsTheSavedRowWhenTheEstimateMissesEveryFrame() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 492, maxY: 700, order: 2)])
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+        engine.transcriptChanged(messages: Self.messages(-5..<10), transcriptRevision: 2, viewportTransitionGeneration: 1)
+        runScheduled()
+        XCTAssertFalse(events.contains(.revealRow(id: "m2")), "do not reveal in the old layout")
+        engine.rowFramesChanged([:])
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 1100, "estimate is applied before revealing")
+
+        runScheduled()
+        XCTAssertEqual(events.filter { $0 == .revealRow(id: "m2") }.count, 1)
+        surface.contentOffsetY = 2510 // ScrollViewProxy reveals the unmeasured row at the top.
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 2510, "the estimate must not undo the reveal")
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 2500, maxY: 2700, order: 7)])
+        XCTAssertEqual(surface.contentOffsetY, 2508, "the saved row returns to its original screen Y")
+        runScheduled()
+        XCTAssertEqual(events.filter { $0 == .revealRow(id: "m2") }.count, 1)
+    }
+    #endif
+
     /// Once the reader's row is in place by its own frame, the hold lasts
     /// `prependHoldDuration` more, for heights still settling.
     func testPrependHoldEndsShortlyAfterTheReadersRowIsInPlace() {

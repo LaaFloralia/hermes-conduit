@@ -190,7 +190,7 @@ struct LAADriveDetailView: View {
         .background(LAAColor.background.ignoresSafeArea())
         .navigationTitle(Text(verbatim: usesNavigationTitle ? LAACopy.Drive.details : ""))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .task(id: bridge.revision) { await load() }
         .onDisappear { saveTask?.cancel() }
         // The copy is saved on the device the app runs on: this Mac on the Mac.
@@ -303,7 +303,7 @@ struct LAADrivePreviewView: View {
         .background(LAAColor.background.ignoresSafeArea())
         .tint(LAAColor.link)
         .navigationTitle(Text(verbatim: item.isMedia ? "" : item.name)).navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .toolbar {
             if localFile != nil {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -52,7 +52,7 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertFalse(requirements[0].addedByAI)
         XCTAssertTrue(requirements[1].addedByAI)
         XCTAssertEqual(requirements[1].details, "補足")
-        XCTAssertEqual(value.sessions?.first?.statusLabel, "待機")
+        XCTAssertEqual(value.sessions?.first?.statusLabel, "Idle")
         XCTAssertEqual(value.sessions?.first?.mark, .waiting)
         // The detail's own rows win over the list's summary.
         XCTAssertEqual(value.progress, LAAWorkRequirementSummary(completed: 1, total: 2))
@@ -154,6 +154,17 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertEqual(row.mark, .pending)
     }
 
+    func testVerificationFieldsDoNotExposeEvidenceAndEmptyRateIsAbsent() throws {
+        let data = Data(#"{"id":"r","title":"Title","status":"completed","verifiedAt":"2026-11-26T00:00:00Z","verifiedBy":"monet","requestId":"r1","note":"試験で確認","evidence":"Internal text"}"#.utf8)
+        let row = try JSONDecoder().decode(LAAWorkRequirement.self, from: data)
+        XCTAssertEqual(row.verifiedBy, "monet")
+        XCTAssertEqual(row.requestId, "r1")
+        XCTAssertEqual(row.note, "試験で確認")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(row), as: UTF8.self).contains("Internal text"))
+        XCTAssertNil(LAAWorkRequirementSummary([]).rate)
+        XCTAssertEqual(LAAWorkRequirementSummary([row]).rate, 1)
+    }
+
     func testSummaryFraction() {
         XCTAssertEqual(LAAWorkRequirementSummary(completed: 0, total: 0).fraction, 0)
         XCTAssertEqual(LAAWorkRequirementSummary(completed: 3, total: 4).fraction, 0.75)
@@ -187,7 +198,7 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         let full = [LAAWorkProjectFixtureView.session("ses_00000000000000a1", ref: "S4", name: "new", phase: "awaiting_decision",
                                                       model: "claude-opus-5-5", effort: "high", updated: "2026-11-23T00:00:00Z")]
         let only = LAAWorkLinkedSession.lookup(compact: compact, full: [])
-        XCTAssertEqual(only["ses_00000000000000a1"]?.statusLabel, "待機")
+        XCTAssertEqual(only["ses_00000000000000a1"]?.statusLabel, "Idle")
         let both = LAAWorkLinkedSession.lookup(compact: compact, full: full)
         XCTAssertEqual(both["ses_00000000000000a1"]?.name, "new")
         XCTAssertEqual(both["ses_00000000000000a1"]?.ref, "S4")

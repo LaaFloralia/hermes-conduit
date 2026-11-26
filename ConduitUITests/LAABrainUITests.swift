@@ -100,7 +100,7 @@ final class LAABrainUITests: XCTestCase {
         let raw = app.buttons["laa.brain.rawToggle"]
         XCTAssertTrue(raw.waitForExistence(timeout: 15)); raw.tap()
         XCTAssertEqual(app.staticTexts["laa.brain.raw"].label, "AUTOSAVED-SECOND")
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["laa.brain.raw.close"].tap()
         app.buttons["laa.brain.back"].tap()
         let daily = app.buttons["laa.brain.daily"]
         XCTAssertTrue(daily.waitForExistence(timeout: 15)); daily.tap()
@@ -172,12 +172,13 @@ final class LAABrainUITests: XCTestCase {
         let confirm = app.buttons["laa.brain.manage.confirmTrash"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Trash confirmation missing. Tree:\n\(app.debugDescription)"); confirm.tap()
         XCTAssertTrue(app.buttons["laa.brain.gallery.note"].firstMatch.waitForNonExistence(timeout: 15))
-        app.buttons["一覧に戻る"].tap()
+        app.buttons["laa.brain.filter.back"].tap()
         XCTAssertTrue(filters.waitForExistence(timeout: 15))
     }
 
     func testBrowseReadRawAndSearch() {
         let app = launch("normal")
+        openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.buttons["Tags"].exists)
         app.staticTexts["Start"].tap()
@@ -188,10 +189,6 @@ final class LAABrainUITests: XCTestCase {
         let back = app.buttons["laa.brain.back"]
         XCTAssertTrue(back.waitForExistence(timeout: 5))
         back.tap()
-        let folder = app.staticTexts["Company"]
-        XCTAssertTrue(folder.waitForExistence(timeout: 5))
-        if !folder.isHittable { app.swipeUp() }
-        folder.tap()
         XCTAssertTrue(app.staticTexts["Other"].waitForExistence(timeout: 5))
         app.staticTexts["Other"].tap()
         XCTAssertTrue(back.waitForExistence(timeout: 5))
@@ -208,11 +205,14 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 10))
     }
 
-    func testRecentShowsAvailableNotesWithoutExpansionControls() {
-        let app = launch("many")
-        XCTAssertTrue(app.staticTexts["Note 4"].waitForExistence(timeout: 30))
-        XCTAssertFalse(app.buttons["See all"].exists)
-        XCTAssertFalse(app.buttons["Show less"].exists)
+    func testNoteHomeStartsWithFoldersNotRecent() {
+        let app = launch("normal")
+        XCTAssertTrue(app.staticTexts["Folders"].waitForExistence(timeout: 30))
+        XCTAssertFalse(app.staticTexts["最近"].exists)
+        XCTAssertFalse(app.staticTexts["Recent"].exists)
+        XCTAssertFalse(app.staticTexts["Start"].exists)
+        openLocalCompany(app)
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 10))
     }
 
     func testCreateReportsTheConflictSafePath() {
@@ -267,14 +267,15 @@ final class LAABrainUITests: XCTestCase {
 
     func testMarkdownWikiLinkAndFrontmatter() {
         let app = launch("normal")
+        openLocalCompany(app)
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
         openNoteMenu(app)
-        let metadata = app.buttons["情報"]
+        let metadata = app.buttons["Info"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
         metadata.tap()
         XCTAssertTrue(app.staticTexts["---\nstatus: draft\n---"].waitForExistence(timeout: 5))
-        app.buttons["閉じる"].tap()
+        app.buttons["laa.brain.note.info.close"].tap()
         // On recent iOS, UITextView exposes this attributed link as a text
         // view with an external-link suffix instead of as a Link element.
         let nativeLink = app.links["次のメモ"]
@@ -335,7 +336,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(offline.staticTexts["Macに届きません。TailscaleとMacの接続を確認してください。"].waitForExistence(timeout: 30))
         offline.terminate()
         let failed = launch("failed")
-        XCTAssertTrue(failed.staticTexts["Macからデータを取得できませんでした。"].waitForExistence(timeout: 30))
+        XCTAssertTrue(failed.descendants(matching: .any)["laa.brain.readError"].waitForExistence(timeout: 30))
     }
 
     func testUnpairedStateOffersPairing() {
@@ -465,8 +466,8 @@ final class LAABrainUITests: XCTestCase {
         case "laa.markdown.format.table": return "表を挿入"
         case "laa.markdown.format.indent": return "インデントを進める"
         case "laa.markdown.format.outdent": return "インデントを戻す"
-        case "laa.markdown.format.undo": return "取り消す"
-        case "laa.markdown.format.dismiss": return "キーボードを閉じる"
+        case "laa.markdown.format.undo": return "Undo"
+        case "laa.markdown.format.dismiss": return "Hide Keyboard"
         default: return ""
         }
     }
@@ -513,13 +514,11 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(pin.waitForExistence(timeout: 10))
         pin.tap()
         openNoteMenu(app)
-        XCTAssertEqual(app.buttons["laa.brain.pin"].label, "ピン留めを外す")
+        XCTAssertEqual(app.buttons["laa.brain.pin"].label, "Unpin")
         app.tap()
         app.buttons["laa.brain.back"].tap()
-        app.buttons["一覧に戻る"].tap()
-        display.tap()
-        app.buttons["laa.brain.filter.recent"].tap()
-        XCTAssertTrue(app.staticTexts["ピン留め"].waitForExistence(timeout: 10))
+        app.buttons["laa.brain.filter.back"].tap()
+        XCTAssertTrue(app.staticTexts["Pinned"].waitForExistence(timeout: 10))
         let search = app.textFields["laa.brain.search"]
         search.tap()
         search.typeText("fixture-search\n")
@@ -735,7 +734,8 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         name.tap(); name.typeText("Projects")
         app.buttons["laa.brain.localCreate.confirm"].tap()
-        XCTAssertTrue(app.navigationBars["Projects"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["laa.brain.folder.current"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.staticTexts["laa.brain.folder.current"].label, "Projects")
         app.buttons["laa.brain.localCreate"].tap()
         app.buttons["laa.brain.localCreate.note"].tap()
         XCTAssertTrue(name.waitForExistence(timeout: 10))
@@ -769,9 +769,13 @@ final class LAABrainUITests: XCTestCase {
                                "-conduit.themePreference", style]
         app.launchInLab()
         XCTAssertTrue(app.buttons["laa.brain.daily"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["最近"].exists)
-        XCTAssertFalse(app.staticTexts["ピン留め"].exists)
+        XCTAssertFalse(app.staticTexts["最近"].exists)
+        XCTAssertFalse(app.staticTexts["Pinned"].exists)
+        XCTAssertFalse(app.buttons["laa.brain.recovery.open"].isHittable)
         let home = XCTAttachment(screenshot: app.screenshot()); home.name = "doc-list-" + style; home.lifetime = .keepAlways; add(home)
+        openLocalCompany(app)
+        XCTAssertEqual(app.staticTexts["laa.brain.folder.current"].label, "Company")
+        let folder = XCTAttachment(screenshot: app.screenshot()); folder.name = "doc-folder-" + style; folder.lifetime = .keepAlways; add(folder)
         app.staticTexts["Start"].firstMatch.tap()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
@@ -787,6 +791,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["laa.brain.raw"].label.contains("追記"))
         app.terminate()
         app.launchInLab()
+        openLocalCompany(app)
         let dateNote = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@",
                                                          "laa.brain.note", "11月11日")).firstMatch
         XCTAssertTrue(dateNote.waitForExistence(timeout: 10))
@@ -801,6 +806,7 @@ final class LAABrainUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-laa-brain-document-fixture"]
         app.launchInLab()
+        openLocalCompany(app)
         let start = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 30)); start.tap()
         let editor = app.textViews["laa.brain.edit.text"].firstMatch
@@ -815,7 +821,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(raw.hasPrefix("---\r\ncustom: [keep, exact]\r\nunknown: |\r\n  untouched\r\n---\r\n"))
         XCTAssertTrue(raw.contains(":::custom unsupported"))
         XCTAssertTrue(raw.contains("追加"))
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["laa.brain.raw.close"].tap()
         let link = app.buttons["laa.brain.embed.note"].firstMatch
         for _ in 0..<14 {
             if link.exists && link.isHittable { break }

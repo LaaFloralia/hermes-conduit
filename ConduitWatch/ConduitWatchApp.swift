@@ -70,7 +70,9 @@ struct ConduitWatchApp: App {
 
     @ViewBuilder private var root: some View {
         #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
-        if Self.labLaunch && ProcessInfo.processInfo.arguments.contains("-laa-watch-lab-force-ax5") {
+        if LAAMonetWatchGallery.requested {
+            LAAMonetWatchGallery()
+        } else if Self.labLaunch && ProcessInfo.processInfo.arguments.contains("-laa-watch-lab-force-ax5") {
             WatchRootView().dynamicTypeSize(.accessibility5)
         } else {
             WatchRootView()

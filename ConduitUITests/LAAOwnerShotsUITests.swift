@@ -36,9 +36,7 @@ final class LAAOwnerShotsUITests: XCTestCase {
     func testSettingsShots() throws {
         for (theme, avatar) in [("light", false), ("dark", false), ("light", true), ("dark", true)] {
             let app = try launchWork(theme, avatar: avatar)
-            let settings = app.navigationBars.buttons.matching(identifier: "laa.settings.open").firstMatch
-            XCTAssertTrue(settings.waitForExistence(timeout: 15))
-            settings.tap()
+            app.openLAASettings()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
             Thread.sleep(forTimeInterval: 2)
             capture(app, "settings-\(theme)\(avatar ? "-avatar" : "")")
@@ -53,25 +51,27 @@ final class LAAOwnerShotsUITests: XCTestCase {
             ("chat", false, "paper", false), ("group", true, "paper", false),
         ] {
             let app = XCUIApplication()
-            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
+            let isGroup = surface == "group"
+            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", isGroup ? "simple" : "rich",
                                    "-LAA_CAPTURE_SURFACE", surface, "-LAA_CAPTURE_KIND", kind]
                 + (dark ? ["-LAA_V2_DARK"] : []) + (avatar ? ["-LAA_UI_TEST_OWNER_AVATAR"] : [])
             app.launchInLab()
             XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 25))
-            if surface == "group" {
-                XCTAssertTrue(app.textViews["room.composer.field"].waitForExistence(timeout: 20))
-            }
-            // The rich reply is drawn. Its code block's Copy carries the
-            // reply's identifier (chat.message.assistant) since the visible
-            // message actions, so it is found by the code it copies.
-            XCTAssertTrue(app.descendants(matching: .any)
-                .matching(NSPredicate(format: "label CONTAINS %@", "next_step")).firstMatch
-                .waitForExistence(timeout: 15))
-            let transcript = app.scrollViews[surface == "chat" ? "chat.transcript" : "room.transcript"]
+            let transcript = app.scrollViews[isGroup ? "room.transcript" : "chat.transcript"]
             XCTAssertTrue(transcript.waitForExistence(timeout: 10))
-            // The owner's question opens the example; show it with the answer.
-            transcript.swipeDown(velocity: .fast)
-            Thread.sleep(forTimeInterval: 1)
+            if isGroup {
+                // Keep the owner and the members in the same frame without
+                // flinging a long reply through the lazy room transcript.
+                XCTAssertTrue(app.textViews["room.composer.field"].waitForExistence(timeout: 20))
+                XCTAssertTrue(transcript.staticTexts["chat.sender.owner"].waitForExistence(timeout: 10))
+            } else {
+                // The rich reply's Copy button names the code it copies.
+                XCTAssertTrue(transcript.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label CONTAINS %@", "next_step")).firstMatch
+                    .waitForExistence(timeout: 15))
+                transcript.swipeDown(velocity: .fast)
+                Thread.sleep(forTimeInterval: 1)
+            }
             capture(app, "\(surface)-\(dark ? "dark" : "light")-\(kind)\(avatar ? "-avatar" : "")")
             app.terminate()
         }

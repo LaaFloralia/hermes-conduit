@@ -152,19 +152,32 @@ struct LAABrainSaveJournal {
     }
 
     func summaries(vault: String, path: String) throws -> [VersionSummary] {
+        try prepareSummaries(vault: vault, path: path, inspectHealth: false).versions
+    }
+
+    func inspect(vault: String, path: String) throws -> (versions: [VersionSummary], corrupt: Bool, unreadable: Bool) {
+        try prepareSummaries(vault: vault, path: path, inspectHealth: true)
+    }
+
+    private func prepareSummaries(vault: String, path: String, inspectHealth: Bool) throws
+        -> (versions: [VersionSummary], corrupt: Bool, unreadable: Bool) {
         Self.recordLock.lock(); defer { Self.recordLock.unlock() }
         try prepare()
         let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
         var result: [VersionSummary] = []
+        var unreadable = false
         for file in files where file.pathExtension == "json" {
             do {
                 if let item = try readSummary(file, folder: folder, vault: vault, path: path) { result.append(item) }
-            } catch JournalError.unsupportedSchema { continue }
+            } catch JournalError.unsupportedSchema { unreadable = true }
         }
         result.sort { $0.created == $1.created ? $0.id.uuidString > $1.id.uuidString : $0.created > $1.created }
         let removed = try prune(folder: folder, records: result)
-        return result.filter { !removed.contains($0.id) }
+        // Count quarantine after validation, which may itself quarantine bad records.
+        let corrupt = inspectHealth ? try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .contains { $0.lastPathComponent.contains(".json.corrupt") } : false
+        return (result.filter { !removed.contains($0.id) }, corrupt, unreadable)
     }
 
     private static func isProtected(_ kind: Kind) -> Bool { kind == .displaced || kind == .interrupted || kind == .conflict }

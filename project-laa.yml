@@ -5,7 +5,7 @@
 #   xcodegen generate --spec project-laa.yml
 #   xcodebuild archive -project Conduit.xcodeproj -scheme Conduit ...
 #
-# The app alone under the LAA team (PAW258GB42), display name "LAA", bundle
+# The app alone under the LAA team (PAW258GB42), display name "Hortensia", bundle
 # IDs under com.laa-inc.laa and the LAA App Groups, signed automatically.
 # Everything upstream is untouched: the App Store app keeps its own bundle
 # IDs, group, entitlements and relay.
@@ -40,12 +40,23 @@ settings:
     # is why project.yml doesn't carry this: without it, no archive of the full
     # app (Watch app and extensions included) gets past the build description.
     EXCLUDED_SOURCE_FILE_NAMES: Info.plist
+packages:
+  # The shared LAA Kit, vendored by laa-brand-system scripts/snapshot.py (never edit by hand).
+  LAAKit:
+    path: Vendor/LAAKit
 targets:
   ConduitTests:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: Shared/Widgets/LAAEmployeeWidget.swift
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
+        buildPhase: resources
+      # The call card's views, drawn by LAAAmbientSnapshotTests.
+      - path: ConduitWidgets/LAA/LAAStaffCallLiveActivity.swift
+      - path: ConduitWidgets/Resources/LAAStaffAvatars.xcassets
         buildPhase: resources
     settings:
       base:
@@ -79,6 +90,11 @@ targets:
     # the LAA team; the Location Push extension is not among them.
     dependencies:REPLACE:
       - package: WebRTC
+      # LAA Kit (Vendor/LAAKit, pinned kit-v0.1.0 snapshot; Vendor/laa-kit.pin.json).
+      - package: LAAKit
+        product: LAAKit
+      - package: LAAKit
+        product: LAAFonts
       - target: ConduitWatch
         platformFilter: iOS
       - target: ConduitNotificationService
@@ -126,7 +142,7 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --input-info "$SRCROOT/Conduit/Info.plist" \
             --output-info "$SRCROOT/$INFOPLIST_FILE" --kind app --source "$SRCROOT" \
-            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
+            --name "${CONDUIT_DISPLAY_NAME:-Hortensia}" --bundle-name Hortensia
     postBuildScripts:
       # ProcessInfoPlistFile may otherwise overwrite branding after this phase
       # in incremental builds; the input makes the build system order it first.
@@ -135,10 +151,14 @@ targets:
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
-            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
+            --name "${CONDUIT_DISPLAY_NAME:-Hortensia}" --bundle-name Hortensia
   ConduitWatch:
     sources:
       - path: Conduit/LAA/Staff/StaffAssets.swift
+      # Monet's state from the iPhone's application context (HO-06).
+      - path: Shared/Widgets/LAAWatchAmbient.swift
+      # The Monet widget's views, for the DEBUG gallery (LAAMonetWatchGallery).
+      - path: ConduitWatch/Widgets/LAAMonetWatchWidget.swift
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAAColorValues.swift
@@ -175,9 +195,9 @@ targets:
           mkdir -p "$DERIVED_FILE_DIR"
           cp "$SCRIPT_INPUT_FILE_0" "$SCRIPT_OUTPUT_FILE_0"
           /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName LAA" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName LAA Watch" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription LAA uses the microphone to talk with Monet from your wrist." "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Hortensia" "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Hortensia Watch" "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Hortensia uses the microphone to talk with Monet from your wrist." "$SCRIPT_OUTPUT_FILE_0"
     postBuildScripts:
       - name: LAA watch staff avatars
         basedOnDependencyAnalysis: false
@@ -192,6 +212,9 @@ targets:
     sources:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
+      # The Monet widget's plan and its relevant intent (HO-06).
+      - path: Shared/Widgets/LAAWatchAmbient.swift
+      - path: ConduitWatch/LAA/LAAWatchMonetIntent.swift
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
@@ -200,12 +223,20 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
+      # Monet's still for the Monet widget (staff/monet.png).
+      - name: LAA watch widget staff avatars
+        basedOnDependencyAnalysis: false
+        script: |
+          "$SRCROOT/scripts/laa/watch-staff-avatars.sh" 120
       - name: Brand LAA watch widget resources
         basedOnDependencyAnalysis: false
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch-widget --source "$SRCROOT"
   ConduitNotificationService:
+    sources:
+      # The staff list the mascot attachment picks from (HO-08).
+      - path: Conduit/LAA/Staff/StaffAssets.swift
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
@@ -219,18 +250,30 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
+      # Each employee's still for the notification's attachment
+      # (LAANotificationStaffArt, staff/<id>.png).
+      - name: LAA notification staff avatars
+        basedOnDependencyAnalysis: false
+        script: |
+          "$SRCROOT/scripts/laa/watch-staff-avatars.sh" 512
       - name: Brand LAA notification resources
         basedOnDependencyAnalysis: false
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAAColorValues.swift
       - path: Shared/LAAProductBrand.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
+        buildPhase: resources
+      # The employees' small stills for the Live Activities (HO-15).
+      - path: ConduitWidgets/Resources/LAAStaffAvatars.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAATokens.swift
       - path: Conduit/LAA/LAAColors.swift
@@ -239,7 +282,7 @@ targets:
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_EXTENSION"
         INFOPLIST_FILE: scripts/laa/Widget-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
@@ -252,6 +295,9 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind widgets --source "$SRCROOT"
   ConduitShareExtension:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: Shared/Widgets/LAAUsageReading.swift
       - path: assets/laa/LAAAccent.xcassets

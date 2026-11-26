@@ -23,6 +23,7 @@ import {
 } from '../config.mjs';
 import { createUsageFeedSource } from '../usage/feed.mjs';
 import { createCapacitySource } from '../usage/capacity.mjs';
+import { createRoutineUsage, isRoutineUsage } from '../usage/routine.mjs';
 import {
   createHostSampler,
   readDiskStatus,
@@ -38,7 +39,9 @@ export function usageRoutes({
   autoStaleMs,
   sampler,
   capacitySource,
+  collectMacBook = capacitySource != null,
   storageStatusFile,
+  routineFile,
   registerCleanup,
   now = () => Date.now(),
 } = {}) {
@@ -56,7 +59,7 @@ export function usageRoutes({
   const capacity = capacitySource ?? createCapacitySource({ host, now });
   registerCleanup?.(capacity.close);
 
-  async function usage() {
+  async function projection() {
     let items;
     const { feed, receivedAt, observationAnchors } = await feedSource.read();
     if (feed === null) {
@@ -72,8 +75,31 @@ export function usageRoutes({
         items = unavailableUsageItems('fetch_failed');
       }
     }
-    items.push(...capacity.read());
-    return { status: 200, data: { items, nextCursor: null, fetchedAt: receivedAt === null ? null : new Date(receivedAt).toISOString() } };
+    return { items, receivedAt };
+  }
+
+  const routine = createRoutineUsage({ file: routineFile, now, async collect(publish) {
+    // This GET reads the existing local proxy cache, never a paid provider or
+    // billing page. The in-flight startup/periodic fetch is shared if present.
+    const balances = feedSource.refresh().then(async () => publish((await projection()).items));
+    const macbook = collectMacBook && capacity.refreshMacBook
+      ? capacity.refreshMacBook().then(() => publish(capacity.read({ sample: false }))) : null;
+    await Promise.allSettled([balances, macbook]);
+  } });
+  registerCleanup?.(routine.close);
+
+  async function usage({ req } = {}) {
+    const force = req && new URL(req.url, 'http://localhost').searchParams.get('refresh') === '1';
+    // Local measurements can sample immediately; the proxy keeps its
+    // existing cadence, so user input cannot trigger a provider call.
+    if (force) await capacity.refreshInstant?.();
+    const { items, receivedAt } = await projection();
+    const scheduled = new Map(routine.read().map(item => [item.id, item]));
+    const placeholders = new Map(unavailableUsageItems('fetch_failed').map(item => [item.id, item]));
+    const rows = items.map(item => isRoutineUsage(item) ? scheduled.get(item.id) ?? placeholders.get(item.id) : item);
+    rows.push(...capacity.read().map(item => isRoutineUsage(item) && capacity.refreshMacBook
+      ? scheduled.get(item.id) ?? item : item));
+    return { status: 200, data: { items: rows, nextCursor: null, fetchedAt: receivedAt === null ? null : new Date(receivedAt).toISOString() } };
   }
 
   async function macStatus() {

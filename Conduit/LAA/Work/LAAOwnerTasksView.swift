@@ -162,7 +162,7 @@ struct LAAOwnerTasksView: View {
                                         Button(String("下書きに戻す")) { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
                                             .disabled(sending.contains(request.taskID))
                                     } else {
-                                        Button(String("再試行")) { pendingAction = PendingAction(kind: .retry, item: item) }
+                                        Button(String("Retry")) { pendingAction = PendingAction(kind: .retry, item: item) }
                                             .disabled(bridge.status != .paired || sending.contains(request.taskID) || !LAAOwnerTaskOutbox.canRetry(request))
                                     }
                                     Button(LAAOwnerTaskCopy.inspectCurrent) { Task { await inspect(item) } }
@@ -216,7 +216,7 @@ struct LAAOwnerTasksView: View {
                 }
             }
             .navigationTitle(LAAOwnerTaskCopy.pending)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showingPending = false } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showingPending = false }.accessibilityIdentifier("work.ownerTasks.pending.close") } }
         }
         .accessibilityIdentifier("work.ownerTasks.pending.sheet")
         .confirmationDialog(LAAOwnerTaskCopy.confirmAction,
@@ -259,7 +259,7 @@ struct LAAOwnerTasksView: View {
                     }
                 }
             }
-            Button("キャンセル", role: .cancel) { }
+            Button(String("Cancel"), role: .cancel) { }
         } message: { action in
             Text(verbatim: action.kind == .retry
                  ? "未反映なら、この再送で初めて保存されます。同じ識別子と内容を使います。"
@@ -343,7 +343,7 @@ struct LAAOwnerTasksView: View {
                 if let previous = cache.details.first(where: { $0.id == task.id }) {
                     message = "前回取得した内容で編集します。保存時に更新の競合を確認します。"
                     editor = Editor(draft: LAAOwnerTaskDraft(task: previous), deviceID: deviceID)
-                } else { message = "タスクの内容を取得できません。接続を確認してください。" }
+                } else { message = "タスクが応答しません。接続を確認して再試行してください。" }
             }
         }
     }
@@ -552,7 +552,7 @@ struct LAAOwnerTasksView: View {
         } catch {
             if loadID == id && bridge.deviceID == deviceID {
                 listIsStale = true
-                message = loaded ? "最新の一覧を取得できません。前回の内容を表示しています。" : "タスクを取得できません。Macとの接続を確認してください。"
+                message = loaded ? "一覧の更新が止まっています。接続を確認して再試行してください。" : "タスク一覧が応答しません。Macとの接続を確認してください。"
             }
         }
     }

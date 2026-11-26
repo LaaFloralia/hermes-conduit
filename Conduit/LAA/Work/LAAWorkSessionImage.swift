@@ -29,11 +29,11 @@ struct LAAWorkSessionImage: View {
                 .accessibilityHint(Text(verbatim: "全画面で開く"))
                 .accessibilityIdentifier("work.session.image")
             }
-            else if failed { Text(verbatim: "画像を取得できません。") }
+            else if failed { Text(verbatim: "画像が応答しません。接続を確認してください。") }
             else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous).fill(LAAColor.subtleSurface)
                     .frame(width: Self.placeholderWidth, height: Self.height)
-                    .accessibilityLabel(String("添付画像を読み込み中"))
+                    .accessibilityLabel(String("Loading attachment"))
             }
         }.task(id: imageID) {
             do {

@@ -5,8 +5,8 @@ extension LAACopy.WorkTab {
     static let newTask = "New Task"
     static let editTask = "Edit Task"
     static let myTasks = "My Tasks"
-    static let inProgress = "進行中"
-    static let backlog = "バックログ"
+    static let inProgress = "In Progress"
+    static let backlog = "Backlog"
     static let searchTasks = "Search tasks"
     static let loadMore = "Load More"
     static let views = "Saved Views"
@@ -93,7 +93,8 @@ struct LAAPersonalTaskList: View {
             if !submittedSearch.isEmpty {
                 HStack {
                     Text(verbatim: "Search: \(submittedSearch)").laaTextStyle(.secondary)
-                    Button(LAACopy.WorkTab.close) { search = ""; submittedSearch = "" }
+                    LAACloseButton(label: "Clear Search") { search = ""; submittedSearch = "" }
+                        .accessibilityIdentifier("work.personalTask.search.clear")
                 }
             }
             ScrollView(.horizontal, showsIndicators: false) {

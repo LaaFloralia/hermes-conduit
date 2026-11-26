@@ -14,6 +14,18 @@ extension EnvironmentValues {
     }
 }
 
+/// Where Settings is entered. On the iPhone the app icon in the glass tab bar opens the settings card, whose
+/// last row is Settings, so no tab draws a gear (2026-11-26). The Mac keeps its sidebar entry and ⌘,.
+enum LAASettingsEntry {
+    static var showsToolbarGear: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        false
+        #endif
+    }
+}
+
 /// The same system toolbar control is used at the root of each tab. The Mac
 /// keeps one Settings entry instead — the row under its sidebar — so the
 /// toolbar button stays on the phone.
@@ -22,7 +34,7 @@ struct LAASettingsButton: View {
     let action: () -> Void
 
     var body: some View {
-        if !laaDesktop {
+        if !laaDesktop, LAASettingsEntry.showsToolbarGear {
             LAAToolbarIconButton(systemName: "gearshape", label: "設定", action: action)
                 .accessibilityLabel(Text(verbatim: "設定"))
                 .accessibilityIdentifier("laa.settings.open")

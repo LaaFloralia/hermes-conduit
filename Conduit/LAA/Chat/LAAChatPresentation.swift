@@ -23,11 +23,7 @@ enum LAAChatPerson {
 struct LAARoleBadge: View {
     let role: String
     var body: some View {
-        Text(verbatim: role)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(LAAColor.link).lineLimit(1).fixedSize()
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(LAAColor.selectionFill, in: RoundedRectangle(cornerRadius: 4))
+        LAATranscriptRoleLabel(role: role)
     }
 }
 
@@ -101,7 +97,9 @@ struct LAAWorkRecordsSheet: View {
                     }
                 }
             }.navigationTitle(String("作業の記録")).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了"), action: done) } }
+                .toolbar { ToolbarItem(placement: .confirmationAction) {
+                    LAACloseButton(action: done).accessibilityIdentifier("laa.chat.records.close")
+                } }
         }.laaSheetSize(.page)
     }
 }
@@ -187,7 +185,7 @@ struct LAAChatTypingRow: View {
         .frame(minHeight: LAASpacing.minimumTouchTarget)
         .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
         .accessibilityLabel(String("入力中、作業の記録を表示"))
-        .accessibilityValue(LAAChatLiveThoughtRow.liveLine(repliesElsewhere ? nil : projection.reasoningSegment?.content) ?? phrase)
+        .accessibilityValue(LAAChatLiveThoughtRow.liveLine(repliesElsewhere ? nil : projection.reasoningSegment?.content) ?? spokenPhrase)
         .accessibilityIdentifier("chat.typing")
         .sheet(isPresented: $showingRecords) { LAAWorkRecordsSheet(records: records) { showingRecords = false } }
         .laaChatColumn(.leading)
@@ -202,7 +200,16 @@ struct LAAChatTypingRow: View {
         if let currentToolName {
             return ChatStepLabel(toolName: currentToolName, input: currentToolInput, catalog: rowState.toolCatalog).runningTitle
         }
-        return LAACopy.chatThinking
+        // An employee's chat: the pill's word for this wait (D-01).
+        return LAAChatWorking.rowPhrase(profile: appState.conversationIdentityProfile)
+    }
+    /// What VoiceOver reads: the employee's word without its emoji.
+    private var spokenPhrase: String {
+        let phrase = phrase
+        guard !repliesElsewhere, currentToolTitle == nil, currentToolName == nil,
+              phrase != LAACopy.chatThinking else { return phrase }
+        let spoken = LAASpokenWords.label(phrase)
+        return spoken.isEmpty ? phrase : spoken
     }
     private var records: [ChatMessage] {
         var result = appState.messages.filter { $0.role == .tool || $0.role == .reasoning }

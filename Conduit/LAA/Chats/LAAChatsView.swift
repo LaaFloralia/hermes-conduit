@@ -140,8 +140,8 @@ struct LAAChatsView: View {
         }
         .sheet(isPresented: $showingGroupCreator) {
             NavigationStack {
-                LAAGroupCreateView(roster: appState.botRoster) { name, bots, roomID in
-                    let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID)
+                LAAGroupCreateView(roster: appState.botRoster, capabilities: appState.groupCapabilities) { name, bots, roomID, confidential in
+                    let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID, confidential: confidential)
                     if created { showingGroupCreator = false }
                     return created
                 }

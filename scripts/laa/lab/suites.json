@@ -7,6 +7,7 @@
     "ui_batch": 6,
     "exclude_classes": {
       "LAALabCaptureUITests": "Capture tool, not a behavior test: it runs only from scripts/laa/lab/capture.py, which supplies its own fixtures and environment. Its pass/fail is capture.py's exit code.",
+      "LAAAmbientCaptureUITests": "Capture tool, not a behavior test: it photographs the staff Live Activities from the app's DEBUG fixture for the ambient (HO-15) evidence. Its shots, not a pass, are its output.",
       "LAAPerformanceUITests": "Measurement tool, not a behavior test: it runs only from scripts/laa/lab/perf.py, which supplies its own fixture, quiet-machine rule and baseline comparison.",
       "ConnectionRepairUITests": "Upstream-only entry point: the LAA build replaces this screen with its own shell, so the class cannot reach it. It runs where it applies, in the default build (upstream suite).",
       "ConnectionSetupSettingsUITests": "Upstream-only entry point: the LAA build replaces this screen with its own shell, so the class cannot reach it. It runs where it applies, in the default build (upstream suite).",

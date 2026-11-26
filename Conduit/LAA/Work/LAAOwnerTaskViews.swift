@@ -4,25 +4,25 @@ import SwiftUI
 // LAA's owner-specific explanatory copy is Japanese, like the rest of Work's
 // body text. Shared control labels use the app's translated catalog keys.
 enum LAAOwnerTaskCopy {
-    static let addTask = "タスクを追加"
-    static let editTask = "タスクを編集"
-    static let setDueDate = "期限を設定"
-    static let addLink = "リンクを追加"
+    static let addTask = "New Task"
+    static let editTask = "Edit Task"
+    static let setDueDate = "Due Date"
+    static let addLink = "Add Link"
     static let saveMine = "自分の変更をこの内容に保存"
     static let useCurrent = "現在の内容を使う"
     static let keepDraft = "下書きを残す"
     static let compare = "変更を比較"
     static let confirmUseCurrent = "現在の内容を使いますか？"
     static let discardAndUseCurrent = "自分の入力を破棄して現在の内容を使う"
-    static let restoreCanceled = "取消から未完了に戻す"
-    static let cancelTask = "タスクを取り消す"
-    static let inspectCurrent = "現在を確認"
-    static let discard = "破棄"
+    static let restoreCanceled = "Reopen"
+    static let cancelTask = "Cancel Task"
+    static let inspectCurrent = "Check Status"
+    static let discard = "Discard"
     static let otherDevices = "別の端末・別の本人"
-    static let move = "移す"
+    static let move = "Move"
     static let pending = "送信待ち・下書き"
     static let confirmAction = "選択した操作を確認"
-    static let retryRequest = "再送する"
+    static let retryRequest = "Resend"
     static let discardRecord = "端末の記録を破棄"
     static let moveToDevice = "この端末へ移す"
     static let moveDraft = "この端末の下書きへ移す"
@@ -55,7 +55,7 @@ struct LAAOwnerTaskListContent: View {
                     .onSubmit(createTask)
                     .disabled(!inputEnabled)
                     .accessibilityIdentifier("work.ownerTasks.newTitle")
-                Button(String("追加"), action: createTask)
+                Button(String("Add"), action: createTask)
                     .disabled(!inputEnabled || adding || newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("work.ownerTasks.create")
             }
@@ -69,13 +69,13 @@ struct LAAOwnerTaskListContent: View {
                 DisclosureGroup(isExpanded: $doneExpanded) {
                     ForEach(groups.done) { task in row(task) }
                 } label: {
-                    Text(verbatim: "完了済み（\(groups.done.count)）")
+                    Text(verbatim: "Done \(groups.done.count)")
                 }
                 .accessibilityIdentifier("work.ownerTasks.done")
                 DisclosureGroup(isExpanded: $canceledExpanded) {
                     ForEach(groups.canceled) { task in row(task) }
                 } label: {
-                    Text(verbatim: "取消済み（\(groups.canceled.count)）")
+                    Text(verbatim: "Canceled \(groups.canceled.count)")
                 }
                 .accessibilityIdentifier("work.ownerTasks.canceled")
             }
@@ -92,7 +92,7 @@ struct LAAOwnerTaskListContent: View {
             }
             .buttonStyle(.plain)
             .disabled(disabledIDs.contains(task.id) || checkboxDisabledIDs.contains(task.id))
-            .accessibilityLabel(Text(verbatim: task.status == .done ? "未完了に戻す" : "完了にする"))
+            .accessibilityLabel(Text(verbatim: task.status == .done ? "Reopen" : "Complete"))
             .accessibilityValue(Text(verbatim: task.title))
             .accessibilityIdentifier("work.ownerTasks.check.\(task.id.uuidString)")
             Button { openTask(task) } label: {
@@ -104,7 +104,7 @@ struct LAAOwnerTaskListContent: View {
                             .foregroundStyle(dueDate.urgent ? LAAColor.attention : LAAColor.secondaryText)
                     }
                     if task.status == .doing {
-                        Text(verbatim: "進行中").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "In Progress").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
@@ -112,7 +112,7 @@ struct LAAOwnerTaskListContent: View {
             }
             .buttonStyle(.plain)
             .disabled(disabledIDs.contains(task.id))
-            .accessibilityHint(Text(verbatim: "タップして編集"))
+            .accessibilityHint(Text(verbatim: "Edit Task"))
             .accessibilityIdentifier("work.ownerTasks.row.\(task.id.uuidString)")
         }
         .workListRow()
@@ -144,7 +144,7 @@ struct LAAOwnerTaskEditor: View {
         NavigationStack {
             Form {
                 Section("Task") {
-                    TextField(String("題名"), text: $draft.title)
+                    TextField(String("Title"), text: $draft.title)
                         .accessibilityIdentifier("work.ownerTasks.editor.title")
                     Toggle(LAAOwnerTaskCopy.setDueDate, isOn: dueDateEnabled)
                     if !draft.dueDateText.isEmpty {
@@ -159,20 +159,20 @@ struct LAAOwnerTaskEditor: View {
                 Section {
                     ForEach($linkFields) { $field in
                         HStack {
-                            TextField(String("リンク"), text: $field.value)
+                            TextField(String("Link"), text: $field.value)
                             if let url = LAAOwnerTaskLink.openableURL(field.value) {
                                 Link(destination: url) { Image(systemName: "arrow.up.right.square") }
-                                    .accessibilityLabel(Text(verbatim: "リンクを開く"))
+                                    .accessibilityLabel(Text(verbatim: "Open Link"))
                             }
                             Button {
                                 let id = field.id
                                 linkFields.removeAll { $0.id == id }
                             } label: { Image(systemName: "minus.circle") }
-                            .accessibilityLabel(Text(verbatim: "リンクを外す"))
+                            .accessibilityLabel(Text(verbatim: "Remove Link"))
                         }
                     }
                     Button(LAAOwnerTaskCopy.addLink) { linkFields.append(LinkField(value: "")) }
-                } header: { Text(verbatim: "関連リンク") }
+                } header: { Text(verbatim: "Links") }
                 if let task = draft.base {
                     Section("Details") {
                         Text(verbatim: "作成元: \(task.source.label)")
@@ -193,9 +193,9 @@ struct LAAOwnerTaskEditor: View {
             }
             .navigationTitle(draft.base == nil ? LAAOwnerTaskCopy.addTask : LAAOwnerTaskCopy.editTask)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.ownerTasks.editor.close") }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { saveIfValid() }
+                    Button(String("Save")) { saveIfValid() }
                         .accessibilityIdentifier("work.ownerTasks.editor.save")
                 }
             }

@@ -44,13 +44,13 @@ struct LAAPersonalTaskUpload: View {
                 Section() {
                     if let prepared { Text(verbatim: prepared.filename); Text(verbatim: "\(prepared.size) bytes").laaTextStyle(.secondary) }
                     else { Text(verbatim: "ファイルを選んでください（最大20 MiB）。") }
-                    Button() { selecting = true } label: { Text(verbatim: "ファイルを選択") }.disabled(pending != nil)
-                    Button() { submit() } label: { Text(verbatim: "追加") }.disabled(prepared == nil || pending != nil || drafts.persistenceFailed)
+                    Button() { selecting = true } label: { Text(verbatim: "Select File") }.disabled(pending != nil)
+                    Button() { submit() } label: { Text(verbatim: "Add") }.disabled(prepared == nil || pending != nil || drafts.persistenceFailed)
                 } header: { Text(verbatim: "ファイル") }
             }
             .disabled(busy)
             .navigationTitle(Text(verbatim: "ファイルを追加"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.upload.close") } }
             .fileImporter(isPresented: $selecting, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url): stage(url)

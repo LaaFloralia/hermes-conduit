@@ -17,6 +17,9 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
         let detail: String
         /// What the owner has to answer is never switched off.
         let canTurnOff: Bool
+        /// Shown and sent only when the Mac lists this kind: an older Bridge
+        /// rejects a kind it does not know, so the row would only fail.
+        var needsMacSupport = false
         var levels: [Level] { canTurnOff ? Level.allCases : [.alert, .quiet] }
     }
     /// The order the settings show, and the Bridge's keys.
@@ -25,6 +28,7 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
         .init(id: "question", title: "質問", detail: "会話が質問の回答を待っている時", canTurnOff: false),
         .init(id: "approval", title: "承認", detail: "会話が操作の許可を待っている時", canTurnOff: false),
         .init(id: "error", title: "エラー", detail: "会話がエラーで止まった時", canTurnOff: true),
+        .init(id: "report", title: "Monetの報告", detail: "依頼ごとに1回、Monetが確かめた完了の報告", canTurnOff: true, needsMacSupport: true),
         .init(id: "finished", title: "手番の終了", detail: "エージェントの手番が終わった時", canTurnOff: true),
         .init(id: "task", title: "タスク", detail: "Linearの通知", canTurnOff: true),
         .init(id: "calendar", title: "予定", detail: "予定のリマインダー", canTurnOff: true),
@@ -44,6 +48,13 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
     }
 
     func level(_ kind: String) -> Level { kinds[kind] ?? .alert }
+
+    /// The rows this Mac can save: every kind it lists, plus the long-standing
+    /// ones an older Bridge always had. The level shown is always the Mac's.
+    var shownKinds: [Kind] { Self.kinds.filter { !$0.needsMacSupport || kinds[$0.id] != nil } }
+    func canChange(_ kind: String, to level: Level) -> Bool {
+        shownKinds.first { $0.id == kind }?.levels.contains(level) == true
+    }
 }
 
 @MainActor final class LAAWorkNotificationSettingsModel: ObservableObject {
@@ -72,7 +83,7 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
     }
 
     func set(_ kind: String, to level: LAAWorkNotificationPreferences.Level, bridge: LAABridgeSession) async {
-        guard saving == nil, preferences.level(kind) != level else { return }
+        guard saving == nil, preferences.canChange(kind, to: level), preferences.level(kind) != level else { return }
         saving = kind
         defer { saving = nil }
         do {
@@ -127,7 +138,7 @@ struct LAAWorkNotificationSettingsRows: View {
             case .failed(let message):
                 caption(message)
             case .loaded:
-                ForEach(LAAWorkNotificationPreferences.kinds) { kind in
+                ForEach(model.preferences.shownKinds) { kind in
                     VStack(alignment: .leading, spacing: 4) {
                         ConduitMenuPicker(
                             value: model.preferences.level(kind.id),
@@ -142,6 +153,9 @@ struct LAAWorkNotificationSettingsRows: View {
                         .accessibilityIdentifier("notifications.work.\(kind.id)")
                         Text(verbatim: kind.detail).font(.caption).foregroundStyle(.secondary)
                     }
+                }
+                if model.preferences.shownKinds.count < LAAWorkNotificationPreferences.kinds.count {
+                    caption("Monetの報告は、Macのアップデート後に選べます。")
                 }
                 caption("「静かに」は、音と手首への通知なしで通知センターに入ります。iPhone・Mac・Apple Watchで共通です。")
             }

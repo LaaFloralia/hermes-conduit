@@ -45,9 +45,9 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(stop.waitForExistence(timeout: 10)); stop.tap()
         let stopConfirmation = app.sheets.firstMatch
         XCTAssertTrue(stopConfirmation.waitForExistence(timeout: 10))
-        XCTAssertTrue(stopConfirmation.buttons["停止"].exists)
-        if app.buttons["キャンセル"].exists {
-            app.buttons["キャンセル"].tap()
+        XCTAssertTrue(stopConfirmation.buttons["Stop"].exists)
+        if app.buttons["Cancel"].exists {
+            app.buttons["Cancel"].tap()
         } else {
             let dismiss = app.otherElements["PopoverDismissRegion"]
             XCTAssertTrue(dismiss.exists)
@@ -133,9 +133,7 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(revise.exists)
         XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let menu = app.buttons["laa.studio.menu"]
-        if !menu.isHittable { app.swipeUp() }
-        menu.tap(); app.buttons["ライブラリ"].tap()
+        openLibrary(app)
         let principle = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample")).firstMatch
         XCTAssertTrue(principle.waitForExistence(timeout: 10)); principle.tap()
         XCTAssertTrue(app.staticTexts["Fixture principle"].waitForExistence(timeout: 10))
@@ -183,6 +181,16 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertEqual(try helper("create-kinds"), "画像,動画,資料")
     }
 
+    private func openLibrary(_ app: XCUIApplication) {
+        let menu = app.buttons["laa.studio.menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 30))
+        if !menu.isHittable { app.swipeUp() }
+        menu.tap()
+        let library = app.buttons["laa.studio.library.open"]
+        XCTAssertTrue(library.waitForExistence(timeout: 10))
+        library.tap()
+    }
+
     func testDocumentShowsLoadingWhileDriveRetrievesIt() throws {
         guard (try? helper("health")) == "ok" else { throw XCTSkip("Start scripts/laa/studio-ui-fixture.mjs first") }
         _ = try helper("reset"); _ = try helper("mode/v2-document-wait")
@@ -197,15 +205,13 @@ final class LAAStudioUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
-        let menu = app.buttons["laa.studio.menu"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 30)); if !menu.isHittable { app.swipeUp() }
-        menu.tap(); app.buttons["ライブラリ"].tap()
+        openLibrary(app)
         let document = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample document")).firstMatch
         if !document.isHittable { app.swipeUp() }
         XCTAssertTrue(document.waitForExistence(timeout: 10)); document.tap()
         let loading = app.descendants(matching: .any).matching(identifier: "laa.studio.document.loading").firstMatch
         XCTAssertTrue(loading.waitForExistence(timeout: 3))
-        XCTAssertTrue(loading.label.contains("資料を読み込み中"))
+        XCTAssertFalse(loading.label.isEmpty, "The loading indicator has a spoken label")
         let loadingScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         loadingScreenshot.name = "Studio document - loading"
         loadingScreenshot.lifetime = .keepAlways

@@ -76,17 +76,34 @@ without it `ref` and `sourceRef` are null.
 
 ```sh
 laa-bridge decide add --title '公開日を決める' --summary '日付を選んでください' \
-  --option '明日' --option '来週::確認時間を確保' --recommended 2 --request-id release-date
+  --option '明日' --option '来週::確認時間を確保' --impact '【任せられる】日程' \
+  --recommended 2 --request-id release-date
 laa-bridge decide status dec_<16hex> --json
 laa-bridge decide list --json
 laa-bridge decide withdraw dec_<16hex> --reason '解決済み'
 ```
 
-`--agent` defaults to `$PASEO_AGENT_ID`; `--name`, `--impact`, `--deadline` (ISO
-8601) and `--no-other` are optional. End the agent turn after posting. The server
+`--agent` defaults to `$PASEO_AGENT_ID`; `--name`, `--deadline` (ISO 8601) and
+`--no-other` are optional. `--impact` must start with `【任せられる】` or
+`【必ず社長：…】`. End the agent turn after posting. The server
 detects CLI records on the existing five-second session sync and sends through
 the existing notifier. Posting an open board decision suppresses that session's
 finished notification. CLI reads do not consume pending notifications.
+
+Use `--image /absolute/path.png` up to six times for general images, in display
+order. Append `::image=/absolute/path.png` to an option (`label::detail::image=…`
+or `label::image=…`) to attach one image to it. Only readable PNG, JPEG, HEIC
+and WebP files up to 40 MB are accepted by signature (`decision_image_invalid`
+otherwise). The Mac CLI uses `sips` to make metadata-free full and thumbnail
+copies (long side at most 3000 and 720 px, no upscaling; PNG stays PNG, other
+formats become JPEG). Copies are staged under `decision-images/.staging/`,
+then moved into `decision-images/<decId>/` under the decision store lock;
+directories are 0700 and files 0600. A request-ID replay does not add copies.
+`images: [{id,width,height,option?}]` is omitted on image-free decisions;
+`option` is the zero-based index in **stored**, recommended-first order. Sync
+removes copies seven days after a decision is answered or withdrawn without
+removing its image metadata, and reclaims orphan/staging directories after an
+hour. Lane CLI source files must also be inside the lane.
 
 Answers use the existing daemon adapter with a stable
 `<id>:answer:<attempt>` message ID and steering behavior. A fresh agent read
@@ -108,6 +125,7 @@ answers; another answer after closure is `409 decision_closed`.
 |---|---|---|
 | `GET /v1/decisions` | `sessions:read` | `{items,fetchedAt}`; board open/failed/waiting plus native pending sessions, failed first, then deadline, then newest |
 | `GET /v1/decisions/{dec_id}` | `sessions:read` | One record, any status; omits posting `requestId` |
+| `GET /v1/decisions/{dec_id}/images/{img_id}` | `sessions:read` | Full copy, or `?size=thumb`. `{contentType,width,height,etag,data}` with base64 bytes. `ETag` / `If-None-Match` → 304; 404 `decision_image_not_found`; 410 `decision_image_expired`. |
 | `POST /v1/decisions/{dec_id}/answer` | `sessions:write` | `{optionIndex,note?,requestId,quick?}` → `{decision}` after delivery; null index requires a free answer and `allowOther` |
 | `POST /v1/decisions/{dec_id}/retry` | `sessions:write` | `{requestId}` → `{decision}`; only failed delivery |
 
@@ -117,21 +135,19 @@ continue to use `/v1/sessions/{id}/decision` and `/reply`. Optional boolean
 changing the record; closed decisions remain `decision_closed`. Device/request-ID
 replays are checked before expiry and ignore `quick` in the answer digest.
 
-Campaign decisions (Work › Campaigns, 2026-11-15) pass through the
-campaign-hunt skill's ledger commands; the Bridge never opens the ledger file.
-It runs `ledger.py pending --all` and `ledger.py decide <key> approve|decline
-[--kind <kind>]` (`/usr/bin/python3` and
-`~/.agents/skills/campaign-hunt/scripts/ledger.py`, overridable with
-`LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`), one decision at a time, and
-drops the ledger's path from the answer. Three kinds wait for the owner, and
-approving means something different for each: `site` (`action:"agent_apply"`,
-the routine applies at its next run), `x` (`self`, the owner applies on X) and
-`grant` (`draft`, the routine drafts the application).
+Work › Campaigns uses the campaign-hunt skill's `ledger.py list` (v4) and
+`ledger.py decide <key> approve|decline [--kind <kind>]`. Install the v4 skill
+before this Bridge. The Bridge never reads the ledger file or profile; it runs
+`/usr/bin/python3 ~/.agents/skills/campaign-hunt/scripts/ledger.py` (overridable
+with `LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`) and forwards only approved
+response fields, not the receipt, eligibility reason, or ledger path. Rows must
+have `eligible:true` and a live deadline day in Asia/Tokyo. Earlier ledger clients
+can still use `pending --all` with its original shape.
 
 | method / path | scope | response |
 |---|---|---|
-| `GET /v1/campaigns?kind=all\|<kind>` | `sessions:read` | `{count,items[{key,kind,action,category,categoryLabel,genre,service,addedAt,status,waiting,title,organizer,benefit,deadline,reason,conditions,nextStep,gbizid,url,at,decidedAt}]}`; waiting is `needs_owner` or `candidate`, decided is `approved`, `declined` or `drafted`; `count` is the waiting ones. Without `kind` only `site` rows come back, for apps that predate the kinds. Kinds, actions and categories (`prize`, `signup`, `grant`, `unlock`, `perk`, or a new one) pass through as lowercase names; a row without `category` reads as `grant` for a grant and `prize` otherwise. `categoryLabel`, `genre` and `service` come from the ledger's version 3; `addedAt` falls back to `at`. A row without a 16-hex key, title, usable kind or http(s) URL is dropped. `503 campaigns_unavailable` (retryable) when the ledger cannot be read |
-| `POST /v1/campaigns/{key}/decide` | `sessions:write` + `Idempotency-Key` | `{choice:"approve"\|"decline",kind?}` → `{key,kind,status,decidedAt}`; `404 campaign_not_found`, `409 campaign_not_pending` (applied, failed, drafted), `409 campaign_kind_required` when the key names two kinds. A decided entry may change until the next run; a failed attempt frees its key |
+| `GET /v1/campaigns?kind=all\|<kind>&status=current\|applied\|all&q=<search>` | `sessions:read` | `{count,items,categories:[{category,label}]}`. The unfiltered legacy route defaults to `site`; status/keyword queries default to all kinds. `status` defaults to `current` (excludes `applied`). `q` matches title, organizer, benefit, category label, genre, service or URL, ignoring case and width. `count` counts matching waiting rows. Each row has `key`, `kind`, `status`, `eligible`, `waiting`, `category`, `categoryLabel`, `action`, plus display metadata. Deals are `kind:deal`, `status:listed`, `action:browse`. `503 campaigns_unavailable` if the v4 ledger is unavailable. |
+| `POST /v1/campaigns/{key}/decide` | `sessions:write` + `Idempotency-Key` | `{choice:"approve"\|"decline",kind?}` → `{key,kind,status,decidedAt}`; `404 campaign_not_found`, `409 campaign_not_pending` for rows that cannot be decided, and `409 campaign_kind_required` when the key names two kinds. A choice may change until acted on; a failed attempt frees its key. |
 
 `POST /v1/sessions/{id}/quick-reply` (`sessions:write`, `Idempotency-Key`) accepts
 `{requestHash,choice}` with a 64-hex hash and `choice: "allow" | "deny" |
@@ -167,15 +183,22 @@ the exact same encoded value. A link that exceeds 512 bytes even without metadat
 is rejected as `invalid_notification`, preserving the plugin limit.
 
 `GET /v1/notifications/preferences` (`sessions:read`) returns
-`{kinds:{decision,question,approval,error,finished,task,calendar},updatedAt}`.
+`{kinds:{decision,question,approval,error,finished,task,calendar,report},updatedAt}`.
 `PUT` on that path (`sessions:write`, `Idempotency-Key`) partially merges
 `{kinds:{key:value}}`. Values are `alert`, `quiet` or `off`; unknown keys/values
 and `off` for decision/question/approval return 400
-`notification_preferences_invalid`. Defaults are alert except finished=quiet;
-`updatedAt` is ISO or null. Preferences use locked atomic 0600
-`notification-preferences.json`. Quiet adds `lv:"p"` for silent notification-center
+`notification_preferences_invalid`. Defaults are alert except `finished=off`;
+`updatedAt` is ISO or null. Only stored overrides persist in locked atomic 0600
+`notification-preferences.json`; legacy `finished: quiet` is preserved because
+it can be an explicit choice. Quiet adds `lv:"p"` for silent notification-center
 delivery. Off returns `{delivered:false,reason:"muted"}` without sending or queuing;
 callers mark it processed. Unknown notification kinds use alert.
+
+The `report` preference governs `monet.report`, keyed by
+`monet.report:<projectId>:<requestId>` with a separate 10,000-entry delivered
+ledger. The staged completion producer has no live caller or public route. It
+requires a trusted top-level Monet caller, verified requirements for the request,
+and no pending decision for the project.
 
 | method / path | 認証 | 応答 |
 |---|---|---|

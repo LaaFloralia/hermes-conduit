@@ -33,10 +33,10 @@ enum LAACopy {
     static let pairingTitle = "Macに接続"
     static let pairingAddress = "アドレス"
     static let pairingCode = "接続コード"
-    static let pairingConnect = "接続"
+    static let pairingConnect = "Connect"
     static let mac = "Mac"
     static let macRePair = "接続し直す"
-    static let macRefresh = "再試行"
+    static let macRefresh = "Retry"
     static let macChecking = "接続中"
     static let macConnected = "接続済み"
     static let macOffline = "未接続"
@@ -45,18 +45,16 @@ enum LAACopy {
     static let macKeychainError = "認証情報を読み取れません"
     static let macConnectionError = "接続できません"
     static let macConnectingBody = "Macに接続中…"
-    static let macVoiceSettingsUnavailable = "音声設定を取得できません"
+    static let macVoiceSettingsUnavailable = "Macの音声設定が応答しません。接続を確認してください。"
     static let callsFromMonet = "着信"
     static let callsFromMonetDetail = "着信を受ける条件"
     static let screenQuestionAddShortcut = "ショートカットを追加"
     static let dataAndLicenses = "データとライセンス"
     static let dataAndLicensesDetail = "端末のデータとライセンス"
     static let openSourceLicenses = "オープンソースライセンス"
-    static let back = "戻る"
-    static let close = "閉じる"
-    static let cancel = "キャンセル"
-    static let save = "保存"
-    static let done = "完了"
+    static let back = "Back"
+    static let cancel = "Cancel"
+    static let save = "Save"
     static let call = "電話"
     static let callMute = "消音"
     static let callUnmute = "消音を解除"
@@ -66,7 +64,7 @@ enum LAACopy {
     static let callAudioRoute = "音声の出力先"
     static let callReceiver = "受話口"
     static let callNoOutput = "出力先なし"
-    static let callReturn = "通話に戻る"
+    static let callReturn = "Call"
     static let pluginVersion = "バージョン"
     static let pluginDashboard = "Mac"
     static let pluginConnection = "接続"
@@ -79,7 +77,7 @@ enum LAACopy {
     static let pluginCardsUnavailable = "このAI社員は確認カードに対応していません"
     static let pluginEncryptionUnavailable = "暗号化されていないため、通知の本文と会話への移動は利用できません"
     static let pluginRotationUnavailable = "通知はこのiPhoneだけで読める暗号化で保護されます。暗号鍵の自動更新は利用できません。"
-    static let loading = "読み込み中"
+    static let loading = "Loading"
     static let notFetched = "未取得"
     static let needsAttention = "要確認"
     static let refreshedAt = "更新時刻"
@@ -97,7 +95,7 @@ enum LAACopy {
     static let phoneUseOperating = "iPhoneを操作中"
     static let phoneUseAllow = "許可"
     static let phoneUseDeny = "許可しない"
-    static let phoneUseStop = "停止"
+    static let phoneUseStop = "Stop"
     static let phoneUseOperatingShort = "操作中"
 
     #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -107,6 +105,21 @@ enum LAACopy {
         case .stopped: return "操作を止めました"
         case .expired: return "時間切れのため操作しません"
         case .ended, .ask, .operating: return "操作を終えました"
+        }
+    }
+    #endif
+
+    // MARK: Employee call (Live Activity)
+
+    #if os(iOS)
+    static func staffCallState(_ phase: LAAStaffCallPhase) -> String {
+        switch phase {
+        case .connecting: return "接続中"
+        case .listening: return "聞いています"
+        case .thinking: return "考え中"
+        case .speaking: return "話しています"
+        case .muted: return "ミュート中"
+        case .ended: return "通話終了"
         }
     }
     #endif

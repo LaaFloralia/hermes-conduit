@@ -45,9 +45,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 }
 
-/// The heading over the transcript: the mascot on the navigation row and the
-/// name under it. It is a top bar of the conversation (`v2EdgeBar`), so the
-/// transcript rests below it and scrolls beneath it.
+/// The heading above the transcript: the mascot on the navigation row and
+/// the name under it. The conversation lays this out separately from the transcript.
 struct LAAEmployeeConversationHeader: View {
     var screenWidth: CGFloat
     var menu: AnyView? = nil
@@ -235,12 +234,12 @@ struct LAAEmployeeHeader: View {
                             scrolling: showDetails || isObscured, activity: activity)
             VStack(spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(verbatim: LAAChatPerson.name(name)).font(LAAType.title(name, size: 17, relativeTo: .headline))
+                    Text(verbatim: LAAChatPerson.name(name)).laaTextStyle(.body)
                         .lineLimit(1).minimumScaleFactor(0.8)
-                    if let role = LAAChatPerson.role(profile: profile) { LAARoleBadge(role: role) }
+                    if let role = LAAChatPerson.role(profile: profile) { LAATranscriptRoleLabel(role: role) }
                 }
                 if !status.isEmpty {
-                    Text(verbatim: status).font(.caption2).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                    Text(verbatim: status).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                 }
             }.modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
         }.fixedSize(horizontal: false, vertical: true)
@@ -258,10 +257,9 @@ private struct LAAEmployeeHeaderGlass: ViewModifier {
         // share a center line.
         if clear {
             content
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), interactive: false)
+                .padding(.horizontal, LAASpacing.x2)
+                .padding(.vertical, LAASpacing.x1)
+                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         } else {
             content
                 .padding(.horizontal, LAASpacing.x2)
@@ -277,16 +275,11 @@ struct LAAEmployeeCallButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: "phone.fill")
-                .font(.system(size: 20))
-                .foregroundStyle(LAAColor.link)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+            LAACompactGlassIcon(icon: .call)
         }
         .buttonStyle(.plain)
-        .laaComposerGlass(in: Circle())
         .disabled(reason != nil)
-        .accessibilityLabel(Text(verbatim: "電話"))
+        .accessibilityLabel(Text(verbatim: "Call"))
         .accessibilityHint(reason ?? hint ?? "この会話の社員と通話します")
         .accessibilityIdentifier("laa.employee.call")
     }

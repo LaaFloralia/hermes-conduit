@@ -78,7 +78,7 @@ struct LAAAssetsView: View {
         }
         .confirmationDialog(String("このフォルダを端末に保存しますか？"), isPresented: $confirmFolder, titleVisibility: .visible) {
             Button(String("ファイルを保存")) { if let folderPlan { saveFolder(folderPlan) } }
-            Button("キャンセル", role: .cancel) { folderPlan = nil }
+            Button(String("Cancel"), role: .cancel) { folderPlan = nil }
         } message: {
             if let folderPlan {
                 let minimumSpace = ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)
@@ -104,7 +104,7 @@ struct LAAAssetsView: View {
                         if let folderMessage {
                             HStack {
                                 Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                                if folderTask != nil { Button("キャンセル") { folderTask?.cancel() } }
+                                if folderTask != nil { Button(String("Cancel")) { folderTask?.cancel() } }
                             }
                         }
                     } else {

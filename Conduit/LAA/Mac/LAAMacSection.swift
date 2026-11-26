@@ -97,6 +97,7 @@ final class LAAMacCommandsModel: ObservableObject {
     @Published var toggleSidebar = 0
     @Published var openSettings = 0
     @Published var closeConversation = 0
+    @Published var fitWindow = 0
 }
 
 extension LAACopy {
@@ -111,8 +112,8 @@ extension LAACopy {
 
     static let macMenuGo = "移動"
     static let macToggleSidebar = "サイドバーを切り替える"
-    static let macSearch = "検索"
-    static let macReload = "再読み込み"
+    static let macSearch = "Search"
+    static let macReload = "Reload"
     static let macSettingsMenu = "設定…"
     static let macCloseConversation = "会話を閉じる"
 }
@@ -183,8 +184,6 @@ extension LAACopy {
     static let macNoChatTitle = "会話を選んでください。"
     static let macNoSessionTitle = "セッションを選んでください。"
     static let macNoProjectTitle = "プロジェクトを選んでください。"
-    static let macNoRoutineTitle = "定期実行を選んでください。"
-    static let macNoSkillTitle = "スキルを選んでください。"
     static let macNoEventTitle = "予定を選んでください。"
 
     // MARK: List states
@@ -193,8 +192,6 @@ extension LAACopy {
     static let macNoArchivedSessions = "アーカイブしたセッションはありません。"
     static let macNoProjects = "プロジェクトはまだありません。"
     static let macNoArchivedProjects = "アーカイブしたプロジェクトはありません。"
-    static let macNoRoutines = "定期実行はありません。"
-    static let macNoSkills = "スキルはありません。"
     static let macNoEvents = "この期間に予定はありません。"
     static let macSessionsUnreadable = "セッションを読み取れません。"
     static let macProjectsUnreadable = "プロジェクトを読み取れません。"

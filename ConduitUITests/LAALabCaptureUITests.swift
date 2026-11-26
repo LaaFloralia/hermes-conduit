@@ -74,7 +74,7 @@ final class LAALabCaptureUITests: XCTestCase {
         }
 
         batch(["work-projects", "work-requirements", "work-sessions", "work-session-history", "work-session-running",
-               "work-session-waiting", "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail", "work-routines",
+               "work-session-waiting", "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail",
                "work-campaigns", "usage", "usage-capacity"], tab: "work") { app in
             let row = wait(project, app)
             if env["LAA_LAB_LONG_JAPANESE"] == "1" {
@@ -103,6 +103,7 @@ final class LAALabCaptureUITests: XCTestCase {
                     // has an on-screen hit point at this Dynamic Type size.
                     let session = row.dropFirst("work.session.".count)
                     app.open(URL(string: "laa://work/sessions/\(session)")!)
+                    wait("work.session.detail.new", app)
                     shot(id, after: ready, app)
                     back(to: "work.section.sessions", app)
                 }
@@ -140,10 +141,6 @@ final class LAALabCaptureUITests: XCTestCase {
                     tap("work.task.detail.close", app)
                 }
             }
-            if selected.contains("work-routines") {
-                segment("routines", app)
-                shot("work-routines", after: "work.routines.tree", app)
-            }
             if needs("usage", "usage-capacity") {
                 tap("work.usage", app)
                 let updated = wait("laa.usage.updated", app)
@@ -163,7 +160,7 @@ final class LAALabCaptureUITests: XCTestCase {
             }
         }
         batch(["settings"], tab: "work") { app in
-            tap("laa.settings.open", app)
+            app.openLAASettings()
             shot("settings", after: "settings.chat", app)
         }
         for (mode, expected) in [("empty", "laa.lab.empty"), ("loading", "laa.lab.loading"),
@@ -183,13 +180,11 @@ final class LAALabCaptureUITests: XCTestCase {
             }
         }
         batch(["doc", "doc-note"], tab: "brain", ["-laa-brain-fixture", "normal"]) { app in
-            shot("doc", after: "laa.brain.note", app)
+            shot("doc", after: "laa.brain.folder.Company", app)
             if selected.contains("doc-note") {
-                // A plain NavigationLink only hit-tests its visible content.
-                // The row centre can be the spacer between name and date.
-                let icon = app.buttons.matching(identifier: "laa.brain.note").firstMatch.images["doc.text"]
-                XCTAssertTrue(icon.waitForExistence(timeout: 15))
-                icon.tap()
+                tap("laa.brain.folder.Company", app)
+                let note = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "Start")).firstMatch
+                XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
                 shot("doc-note", after: "laa.brain.back", app)
             }
         }
@@ -285,14 +280,8 @@ final class LAALabCaptureUITests: XCTestCase {
     }
 
     private func segment(_ name: String, _ app: XCUIApplication) {
-        let row = wait("work.segment", app)
-        let button = element("work.section.\(name)", app)
-        for _ in 0..<5 {
-            if button.exists && button.isHittable && button.frame.midX > 28 && button.frame.midX < app.frame.width - 28 { break }
-            let y = row.frame.midY / app.frame.height
-            swipe(app, from: CGVector(dx: 0.85, dy: y), to: CGVector(dx: 0.25, dy: y))
-        }
-        tap("work.section.\(name)", app)
+        wait("work.segment", app)
+        LAAWorkSectionUI.open(name, in: app)
     }
 
     private func shot(_ id: String, after ready: String, _ app: XCUIApplication) {

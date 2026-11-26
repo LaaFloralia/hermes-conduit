@@ -17,7 +17,7 @@ struct HermesTurnLiveActivity: Widget {
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    HermesTurnPhaseDisc(state: state, size: 40)
+                    HermesTurnMark(attributes: attributes, state: state, size: 40)
                         .padding(.leading, 2)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -41,20 +41,20 @@ struct HermesTurnLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                HermesTurnPhaseIcon(state: state)
+                HermesTurnCompactMark(attributes: attributes, state: state, size: 24)
                     .font(.footnote.weight(.semibold))
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
+                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.spokenStatus(state, language: attributes.language, thinkingWord: attributes.thinkingWord)))
             } compactTrailing: {
                 HermesTurnElapsed(attributes: attributes, state: state)
                     .font(.caption2.monospacedDigit().weight(.semibold))
                     .foregroundStyle(HermesTurnStyle.timerTint(for: state.turnPhase))
                     .frame(maxWidth: 48)
             } minimal: {
-                HermesTurnPhaseIcon(state: state)
+                HermesTurnCompactMark(attributes: attributes, state: state, size: 22)
                     .font(.footnote.weight(.semibold))
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
+                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.spokenStatus(state, language: attributes.language, thinkingWord: attributes.thinkingWord)))
             }
             .widgetURL(attributes.link)
             .keylineTint(HermesTurnStyle.tint(for: state.turnPhase))
@@ -120,7 +120,7 @@ private struct HermesTurnLockScreenView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
-                HermesTurnPhaseDisc(state: state, size: 40)
+                HermesTurnMark(attributes: attributes, state: state, size: 40)
                 HermesTurnHeadline(attributes: attributes, state: state)
                 Spacer(minLength: 0)
                 HermesTurnElapsed(attributes: attributes, state: state)
@@ -162,10 +162,11 @@ private struct HermesTurnHeadline: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Text(verbatim: HermesTurnCopy.status(state, language: attributes.language))
+            Text(verbatim: HermesTurnCopy.status(state, language: attributes.language, thinkingWord: attributes.thinkingWord))
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+                .accessibilityLabel(Text(verbatim: HermesTurnCopy.spokenStatus(state, language: attributes.language, thinkingWord: attributes.thinkingWord)))
         }
     }
 
@@ -249,6 +250,51 @@ private struct HermesTurnContextMeter: View {
         }
         .frame(height: 4)
         .accessibilityHidden(true)
+    }
+}
+
+/// Who the turn belongs to: in the LAA build the employee's mascot (from
+/// the chat link's profile, HO-15), the status disc otherwise. The headline
+/// beside it carries the status in words.
+private struct HermesTurnMark: View {
+    let attributes: HermesTurnAttributes
+    let state: HermesTurnAttributes.ContentState
+    let size: CGFloat
+
+    var body: some View {
+        #if LAA_BUILD
+        if LAAWidgetStaffArt.imageName(profile: LAAWidgetStaffArt.profile(fromLink: attributes.link)) != nil {
+            LAAWidgetStaffAvatar(profile: LAAWidgetStaffArt.profile(fromLink: attributes.link), size: size + 8)
+                .frame(width: size, height: size)
+        } else {
+            HermesTurnPhaseDisc(state: state, size: size)
+        }
+        #else
+        HermesTurnPhaseDisc(state: state, size: size)
+        #endif
+    }
+}
+
+/// The island's small mark: the employee's mascot while the turn runs or
+/// has finished well, the status symbol when it waits on you or failed, so
+/// what needs you still shows without opening the island.
+private struct HermesTurnCompactMark: View {
+    let attributes: HermesTurnAttributes
+    let state: HermesTurnAttributes.ContentState
+    let size: CGFloat
+
+    var body: some View {
+        #if LAA_BUILD
+        let profile = LAAWidgetStaffArt.profile(fromLink: attributes.link)
+        if !state.turnPhase.waitsOnUser, state.turnPhase != .failed,
+           LAAWidgetStaffArt.imageName(profile: profile) != nil {
+            LAAWidgetStaffAvatar(profile: profile, size: size)
+        } else {
+            HermesTurnPhaseIcon(state: state)
+        }
+        #else
+        HermesTurnPhaseIcon(state: state)
+        #endif
     }
 }
 

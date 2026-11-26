@@ -121,13 +121,13 @@ final class LAAStopgapTests: XCTestCase {
                     try session("ses_7", phase: "closed"), try session("ses_8", phase: "running", archived: true)]
         let tally = LAAWorkSessionTally(sessions: rows)
         XCTAssertEqual(tally, LAAWorkSessionTally(running: 2, decision: 1, waiting: 3))
-        XCTAssertEqual(tally.accessibilityText, "実行中 2件、判断待ち 1件、待機 3件")
+        XCTAssertEqual(tally.accessibilityText, "Running 2, Waiting 1, Idle 3")
     }
 
     func testSevenWaitingSessionsSayNothingIsRunning() {
         let tally = LAAWorkSessionTally(counts: .init(active: 7, archived: 0, running: 0, awaitingDecision: 0, waiting: 7), compact: nil)
-        XCTAssertEqual(tally.parts.map(\.label), ["実行中", "待機"])
-        XCTAssertEqual(tally.accessibilityText, "実行中 0件、待機 7件")
+        XCTAssertEqual(tally.parts.map(\.label), ["Running", "Idle"])
+        XCTAssertEqual(tally.accessibilityText, "Running 0, Idle 7")
     }
 
     func testAnOlderBridgeFallsBackToTheCompactRows() throws {

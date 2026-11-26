@@ -15,7 +15,7 @@ struct LAAConversationRoute: View {
                     compositionChanged: { composingProfile = $0 ? profile : nil })
                     .id(profile)
             } else { V2ConversationScreen() }
-        }.toolbar(.hidden, for: .tabBar)
+        }.laaHidesTabBar()
     }
 }
 

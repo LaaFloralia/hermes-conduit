@@ -55,6 +55,7 @@ struct ConduitWidgets: WidgetBundle {
         HermesTurnLiveActivity()
         #if LAA_BUILD && os(iOS) && !targetEnvironment(macCatalyst)
         LAAPhoneUseLiveActivity()
+        LAAStaffCallLiveActivity()
         #endif
     }
 }

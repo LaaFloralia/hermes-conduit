@@ -46,6 +46,11 @@ enum LAAWorkingControlMetrics {
 /// What the pill says. Nil while no turn runs.
 struct LAAWorkingStatus: Equatable {
     var word: String
+    /// What VoiceOver reads for the word: without emoji and kaomoji.
+    var spokenWord: String {
+        let words = LAASpokenWords.label(word)
+        return words.isEmpty ? LAAStaffThinking.fallback : words
+    }
     /// The turn's stable start: the timer is derived from it, never counted.
     var startedAt: Date?
     var orb: LAAOrbState = .thinking
@@ -171,6 +176,9 @@ struct LAAWorkingPill: View {
                 .foregroundStyle(LAAColor.text)
                 .lineLimit(1)
                 .modifier(LAABreathing())
+                // An employee's emoji and kaomoji are for the eye only.
+                .accessibilityLabel(Text(verbatim: status.spokenWord))
+                .accessibilityIdentifier(identifier + ".word")
             if let startedAt = status.startedAt {
                 // Counts on its own: only the digits redraw, once a second.
                 Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)

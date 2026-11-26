@@ -39,7 +39,7 @@ struct LAAPersonalPendingOfflineView: View {
                     error = drafts.finishSubmission(item.id, restoring: false) ? nil : "記録を破棄できませんでした。"
                 }
             } label: { Text(verbatim: "端末から破棄") }
-            Button(LAACopy.WorkTab.close, role: .cancel) { }
+            Button(LAACopy.WorkTab.cancel, role: .cancel) { }
         } message: { Text(verbatim: "Linearで状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
     }
 }
@@ -195,17 +195,17 @@ struct LAAPersonalPendingView: View {
                     error = drafts.finishSubmission(item.id, restoring: false) ? nil : "記録を破棄できませんでした。"
                 }
             } label: { Text(verbatim: "端末から破棄") }
-            Button(LAACopy.WorkTab.close, role: .cancel) { }
+            Button(LAACopy.WorkTab.cancel, role: .cancel) { }
         } message: { Text(verbatim: "Linearで状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
         .confirmationDialog(Text(verbatim: "元の要求の確認結果を選んでください"), isPresented: $showOriginalConfirmation, titleVisibility: .visible) {
             Button() { if let item = originalToResolve { Task { await resolveOriginal(item, as: "applied") } } } label: { Text(verbatim: "反映済み") }
             Button() { if let item = originalToResolve { Task { await resolveOriginal(item, as: "not_applied") } } } label: { Text(verbatim: "未反映") }
-            Button(LAACopy.WorkTab.close, role: .cancel) { }
+            Button(LAACopy.WorkTab.cancel, role: .cancel) { }
         } message: { Text(verbatim: "Linearの対象を確認した結果を記録します。判断できない場合は保留してください。") }
         .confirmationDialog(Text(verbatim: "確認した結果を選んでください"), isPresented: $showConfirmation, titleVisibility: .visible) {
             Button() { if let selected { Task { await resolve(selected, as: "applied") } } } label: { Text(verbatim: "反映済み") }
             Button() { if let selected { Task { await resolve(selected, as: "not_applied") } } } label: { Text(verbatim: "未反映") }
-            Button(LAACopy.WorkTab.close, role: .cancel) { }
+            Button(LAACopy.WorkTab.cancel, role: .cancel) { }
         } message: {
             Text(verbatim: "Linearの対象を確認した結果を記録します。未適用と確認できた場合だけ下書きに戻してください。")
         }

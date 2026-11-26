@@ -11,12 +11,12 @@ from xml.parsers.expat import ExpatError
 
 # Each target's default home-screen name. A build that needs another one (the
 # personal build uses a distinct LAA name) passes --name.
-names = {"app": "LAA", "watch": "LAA", "watch-widget": "LAA Watch Widgets",
-         "widgets": "LAA Widgets", "notification": "LAA Notifications", "share": "LAA"}
+names = {"app": "Hortensia", "watch": "Hortensia", "watch-widget": "Hortensia Watch Widgets",
+         "widgets": "Hortensia Widgets", "notification": "Hortensia Notifications", "share": "Hortensia"}
 # CFBundleName can also be displayed by the system. Keep executable names,
 # bundle IDs and on-disk paths untouched; only supply short visible names.
-bundle_names = {"watch": "LAA Watch", "watch-widget": "LAA Watch",
-                "widgets": "LAA Widgets", "notification": "LAA Notices", "share": "LAA Share"}
+bundle_names = {"watch": "Hortensia Watch", "watch-widget": "Hortensia Watch",
+                "widgets": "Hortensia Widgets", "notification": "Hortensia Notices", "share": "Hortensia Share"}
 
 # These are catalog keys, not runtime data. Their upstream display copy
 # contains shell commands or internal configuration names that do not belong

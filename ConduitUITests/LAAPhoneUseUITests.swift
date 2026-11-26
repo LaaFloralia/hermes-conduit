@@ -96,7 +96,7 @@ final class LAAPhoneUseUITests: XCTestCase {
         allow.tap()
         XCTAssertTrue(poll(20) { status(id) == "allowed" })
         Thread.sleep(forTimeInterval: 2)
-        let stop = try XCTUnwrap(islandButton("停止"))
+        let stop = try XCTUnwrap(islandButton("Stop"))
         shot("2-operating")
         XCTAssertTrue(springboard.staticTexts["iPhoneを操作中"].exists)
         XCTAssertLessThan(stop.frame.maxY, allowFrame.minY, "Stop must stay above the former permission row")
@@ -150,7 +150,7 @@ final class LAAPhoneUseUITests: XCTestCase {
         try XCTUnwrap(islandButton("許可")).tap()
         XCTAssertTrue(poll(20) { status(id) == "allowed" })
         Thread.sleep(forTimeInterval: 2)
-        try XCTUnwrap(islandButton("停止")).tap()
+        try XCTUnwrap(islandButton("Stop")).tap()
         XCTAssertTrue(poll(20) { status(id) == "stopped" })
         shot("6-stopped")
     }

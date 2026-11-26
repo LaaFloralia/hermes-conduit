@@ -234,8 +234,8 @@ struct LAAChatsContent: View {
                     .accessibilityIdentifier("laa.chats.person.\(monet.profile)")
                 if let callPerson, monet.available {
                     Button { callPerson(monet) } label: {
-                        Image(systemName: "phone.fill").foregroundStyle(LAAColor.link).frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).laaComposerGlass(in: Circle())
+                        LAACompactGlassIcon(icon: .call)
+                    }.buttonStyle(.plain).fixedSize()
                         .disabled(!monet.available).accessibilityLabel(String("Monetに電話"))
                         .accessibilityIdentifier("laa.chats.monet.call")
                 }
@@ -363,8 +363,9 @@ struct LAAChatsContent: View {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 HStack(spacing: 6) {
                     Text(verbatim: LAAChatPerson.name(person.name)).font(LAAType.chatListName(person.name, japaneseSize: japaneseNameSize))
-                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        .lineLimit(1).truncationMode(.middle)
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                        .layoutPriority(1)
                     if let role = LAAChatPerson.role(profile: person.profile, existingRole: person.role) { LAARoleBadge(role: role) }
                 }
                 if let preview = person.lastMessage, !preview.isEmpty {

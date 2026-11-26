@@ -51,10 +51,10 @@ struct LAACapacityReading: Equatable {
 enum LAACapacity {
     /// Code-owned order and names; the feed's labels are not shown.
     static let slots: [(id: String, name: String)] = [
-        ("capacity.mac-mini.memory", "Mac mini メモリ"),
+        ("capacity.mac-mini.memory", "Mac mini Memory"),
         ("capacity.mac-mini.ssd", "Mac mini SSD"),
         ("capacity.google-drive", "Google Drive"),
-        ("capacity.macbook.memory", "MacBook メモリ"),
+        ("capacity.macbook.memory", "MacBook Memory"),
         ("capacity.macbook.ssd", "MacBook SSD"),
         ("capacity.icloud", "iCloud"),
     ]

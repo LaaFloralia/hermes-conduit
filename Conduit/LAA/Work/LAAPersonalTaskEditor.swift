@@ -139,7 +139,7 @@ struct LAAPersonalTaskEditor: View {
             }
             .disabled(busy)
             .navigationTitle(Text(verbatim: initialTask == nil ? LAACopy.WorkTab.newTask : LAACopy.WorkTab.editTask))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.personalTask.editor.close") } }
             .onChange(of: draft) { _, _ in if ready && pending == nil { saveDraft() } }
             .task { await prepare() }
             .sheet(isPresented: $showFollowup) {

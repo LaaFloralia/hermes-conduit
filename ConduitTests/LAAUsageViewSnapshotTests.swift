@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class LAAUsageViewSnapshotTests: XCTestCase {
-    func testUnavailableReasonsAndCodeOwnedServiceLinks() async throws {
+    func testMissingReadingsAndCodeOwnedServiceLinks() async throws {
         let rows: [[String: Any]] = [
             ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "nullReason": "not_auto"],
             ["id": "provider.openai-api.cost-today", "kind": "cost", "label": "GPT API", "nullReason": "not_configured"],
@@ -17,8 +17,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
                          "availability": "unavailable", "stale": false, "estimated": false, "expired": false]) { original, _ in original }
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
-        XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません",
-                                                             "自動取得なし"])
+        XCTAssertTrue(items.allSatisfy { $0.availableValue == nil })
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
         XCTAssertNil(LAAUsageGroup(id: "unknown", label: "Unknown", items: []).serviceURL)
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.openai-api.balance")?.host, "platform.openai.com")
@@ -106,35 +105,33 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
     }
 
     func testACreditsLapseDayReadsAsMonthAndDay() {
-        XCTAssertEqual(LAAUsageView.expiryNote("2026-12-13"), "期限 12月13日")
-        XCTAssertEqual(LAAUsageView.expiryNote("2027-01-05"), "期限 1月5日")
+        XCTAssertEqual(LAAUsageView.expiryNote("2026-12-13"), "Expires 12/13")
+        XCTAssertEqual(LAAUsageView.expiryNote("2027-01-05"), "Expires 1/5")
         for text in [nil, "", "soon", "2026-12-13T00:00:00Z", "2026-13-01", "2026-12-00", "20261213ab"] {
             XCTAssertNil(LAAUsageView.expiryNote(text))
         }
     }
 
-    /// The threshold tick used to be a laid-out sibling of the track, so a row
-    /// with a mark was taller than one without. It is drawn over the track now.
-    func testMeterHeightIsTheSameWithAndWithoutATick() {
-        for tick in [nil, 0.35, 0.9] as [Double?] {
-            let host = UIHostingController(rootView: LAAUsageMeter(fraction: 0.6, tick: tick).frame(width: 240))
+    func testEveryUsageTrackMeasuresFourPoints() {
+        let tracks = [LAAUsageMeterTrack(fraction: nil), LAAUsageMeterTrack(fraction: 0.6),
+                      LAAUsageMeterTrack(fraction: 0.95, level: .critical),
+                      LAAUsageMeterTrack(fraction: 0.17, animates: false)]
+        for track in tracks {
+            let host = UIHostingController(rootView: track.frame(width: 240))
             host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 60)
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             let measured = host.view.systemLayoutSizeFitting(
                 CGSize(width: 240, height: UIView.layoutFittingCompressedSize.height)).height
-            XCTAssertEqual(measured, LAAUsageMeter.totalHeight, accuracy: 0.5,
-                           "tick \(String(describing: tick)) changed the meter's height")
+            XCTAssertEqual(measured, 4, accuracy: 0.5)
         }
-        XCTAssertEqual(LAAUsageMeter.totalHeight, LAAUsageMeter.height + 2 * 3,
-                       "the 4pt track keeps 3pt above and below for the 10pt tick")
     }
 
     func testCapacityStatesLightAndDark() async throws {
         for name in ["normal", "warning", "critical", "stale", "unavailable"] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let state = LAAUsageState(widgetStore: nil)
-                let items = try fixture(stale: false) + capacityFixture(name)
+                let items = try fixture(stale: false, lowCapacity: ["warning", "critical"].contains(name)) + capacityFixture(name)
                 await state.refreshUsage { items }
                 try capture(state: state, paired: true, style: style,
                             name: "usage-capacity-\(name)-\(style == .dark ? "dark" : "light")")
@@ -176,13 +173,15 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
     }
 
-    private func fixture(stale: Bool, balanceOnly: Bool = false, extrasOnly: Bool = false, costOnly: Bool = false) throws -> [LAAUsageItem] {
+    private func fixture(stale: Bool, balanceOnly: Bool = false, extrasOnly: Bool = false,
+                         costOnly: Bool = false, lowCapacity: Bool = false) throws -> [LAAUsageItem] {
         let now = Date()
         let formatter = ISO8601DateFormatter()
         let observed = formatter.string(from: now.addingTimeInterval(stale ? -3600 : -60))
         let freshUntil = formatter.string(from: now.addingTimeInterval(stale ? -2400 : 1140))
         let reset = formatter.string(from: now.addingTimeInterval(3600))
-        let providers: [(String, String, Double)] = [("claude", "Claude", 62), ("codex", "Codex", 25), ("opencode-go", "OpenCode Go", 90)]
+        let providers: [(String, String, Double)] = [("claude", "Claude", lowCapacity ? 18 : 62),
+                                                     ("codex", "Codex", lowCapacity ? 8 : 66), ("opencode-go", "OpenCode Go", 90)]
         var json: [[String: Any]] = providers.map { id, label, percent in
             ["id": "provider.\(id).quota", "kind": "quota", "label": label, "value": percent,
              "unit": "percent", "source": "codexbar-usage-proxy", "observedAt": observed,
@@ -190,7 +189,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
              "detail": ["freshUntil": freshUntil, "windows": [["label": "週間", "windowMinutes": 10080, "remainingPercent": percent, "resetsAt": reset]]]]
         }
         json[0]["detail"] = ["freshUntil": freshUntil,
-            "windows": [["label": "Weekly", "windowMinutes": 10080, "remainingPercent": 62, "resetsAt": reset]],
+            "windows": [["label": "Weekly", "windowMinutes": 10080, "remainingPercent": lowCapacity ? 18 : 62, "resetsAt": reset]],
             "credits": ["remaining": 7, "updatedAt": observed]]
         let balance: [String: Any] = ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "value": 236025,
             "unit": "credits", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",

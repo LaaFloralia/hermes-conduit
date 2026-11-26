@@ -117,7 +117,7 @@ struct LAAWorkSessionLauncher: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { dismiss() } label: { Text(verbatim: LAACopy.close) }
+                    LAACloseButton { dismiss() }.accessibilityIdentifier("work.session.launcher.close")
                 }
             }
         }
@@ -204,13 +204,13 @@ struct LAAWorkSessionLauncher: View {
             LAAModelEffortPickers(
                 harness: running?.harness,
                 model: selected?.model, provider: selected?.provider, effort: selected?.effort,
-                name: chosen?.label ?? (options == nil ? "読み込み中" : "モデルを選択"),
+                name: chosen?.label ?? "Model",
                 identifier: "work.launch"
             ) {
                 LAAWorkHarnessMenu(groups: harnesses, current: running, chosen: chosen,
                                    identifier: "work.launch.harness") { group, model in chooseModel(model, in: group) }
             } modelMenu: {
-                if options == nil { LAAMenuReason(text: "モデルを読み込み中です。") }
+                if options == nil { LAAMenuReason(text: "モデルの一覧を準備中です。") }
                 ForEach(LAAWorkModelSelection.providers(models), id: \.name) { group in
                     Section(group.name) {
                         ForEach(group.models) { item in
@@ -241,7 +241,7 @@ struct LAAWorkSessionLauncher: View {
                         }
                     }
                 } else {
-                    LAAMenuReason(text: options == nil ? "モデルを読み込み中です。" : "先にモデルを選んでください。")
+                    LAAMenuReason(text: options == nil ? "モデルの一覧を準備中です。" : "先にモデルを選んでください。")
                 }
             }
 

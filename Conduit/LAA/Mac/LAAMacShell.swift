@@ -1,4 +1,5 @@
 #if LAA_BUILD && targetEnvironment(macCatalyst)
+import LAAKit
 import SwiftUI
 
 /// The Mac window: a sidebar of sections beside a detail column, in place of
@@ -75,6 +76,7 @@ struct LAAMacShell: View {
             .environment(\.laaSettingsAction, onRequestSettings)
             .environment(\.laaDesktop, true)
             .laaOwnerAvatarSync(bridge, active: scenePhase == .active)
+            .laaStaffThinkingSync(bridge, active: scenePhase == .active)
             .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
                 let active = scenePhase == .active
                 await usageState.synchronize(bridge: bridge, active: active)
@@ -147,11 +149,30 @@ struct LAAMacShell: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             LAAMacSidebar(section: sectionBinding, onRequestSettings: onRequestSettings)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 286, max: 364)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) { fitButton }
+                }
         } detail: {
-            detail
+            // One navigation identity per section: a page pushed in one
+            // (Drive Rules) must not stay on screen after choosing another.
+            detail.id(section)
         }
         .navigationSplitViewStyle(.balanced)
         .background(LAAColor.background.ignoresSafeArea())
+    }
+
+    private var fitButton: some View {
+        Button { commands.fitWindow += 1 } label: {
+            LAAIconImage(.windowFit, size: LAAControl.Mac.iconButton.icon / LAAMacWindow.scale)
+                .frame(width: LAAControl.Mac.hitArea / LAAMacWindow.scale,
+                       height: LAAControl.Mac.hitArea / LAAMacWindow.scale)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(LAAColor.link)
+        .accessibilityLabel("Fit Window")
+        .accessibilityIdentifier("laa.mac.window.fit")
+        .help("Fit Window")
     }
 
     @ViewBuilder

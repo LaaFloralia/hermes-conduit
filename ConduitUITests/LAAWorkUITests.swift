@@ -58,7 +58,7 @@ final class LAAWorkUITests: XCTestCase {
     }
 
     private func saveProject(in app: XCUIApplication) {
-        let save = app.buttons["保存"].firstMatch
+        let save = app.buttons["work.project.editor.save"].firstMatch
         if !save.isHittable { app.swipeUp() }
         XCTAssertTrue(waitUntilReady(save, timeout: 15))
         save.tap()
@@ -232,16 +232,14 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.textFields["laa.bridge.address"].waitForExistence(timeout: 10))
     }
 
-    func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() {
+    func testWorkSegmentsAndCampaignsWhenUnpaired() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
-        for name in ["sessions", "tasks", "routines"] {
-            let segment = app.buttons["work.section.\(name)"]
-            if !segment.isHittable { app.scrollViews["work.segment"].swipeLeft() }
-            XCTAssertTrue(segment.exists)
-            segment.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.segment"].firstMatch.exists)
+        for name in ["sessions", "tasks", "campaigns"] {
+            LAAWorkSectionUI.open(name, in: app)
             XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 5))
         }
         XCTAssertTrue(app.buttons["work.usage"].exists)
@@ -386,7 +384,7 @@ final class LAAWorkUITests: XCTestCase {
             WorkLaneUI.composer(app)
             XCTAssertTrue(app.navigationBars["新しいセッション"].exists)
             XCTAssertTrue(app.buttons["入力欄を広げる"].exists)
-            app.buttons["閉じる"].tap()
+            app.buttons["work.session.launcher.close"].tap()
             app.buttons["work.section.projects"].tap()
             let newProject = app.buttons["work.projects.new"]
             XCTAssertTrue(newProject.waitForExistence(timeout: 10)); newProject.tap()
@@ -403,18 +401,16 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["文字サイズ"].exists)
         XCTAssertTrue(app.buttons["入力欄を広げる"].exists)
-        app.buttons["閉じる"].tap()
+        app.buttons["work.session.launcher.close"].tap()
         app.buttons["work.section.projects"].tap()
         let addProject = app.buttons["work.projects.new"]
         XCTAssertTrue(addProject.waitForExistence(timeout: 10))
         addProject.tap()
         XCTAssertTrue(app.navigationBars["新しいプロジェクト"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.textFields["プロジェクト名"].exists)
-        app.buttons["閉じる"].tap()
+        app.buttons["work.project.editor.close"].tap()
         app.buttons["Tasks"].tap()
         XCTAssertTrue(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].waitForExistence(timeout: 30))
-        app.buttons["Routines"].tap()
-        XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
     }
 
     // Separating workspace creation from session creation makes each external
@@ -741,7 +737,7 @@ final class LAAWorkUITests: XCTestCase {
         let inline = app.textViews["work.launch.composer.field"]
         XCTAssertTrue(inline.waitForExistence(timeout: 10))
         XCTAssertTrue((inline.value as? String ?? "").contains("Draft survives relaunch"))
-        app.buttons["閉じる"].tap()
+        app.buttons["work.session.launcher.close"].tap()
         app.terminate()
         app.launchInLab()
         let work = app.buttons["Work"]
@@ -770,7 +766,9 @@ final class LAAWorkUITests: XCTestCase {
             add(attachment)
         }
         XCTAssertTrue(waitUntilReady(app.buttons["work.create"], timeout: 30))
-        XCTAssertTrue(app.staticTexts["ピン留め"].waitForExistence(timeout: 30))
+        let pinned = app.staticTexts["work.sessions.pinned.heading"]
+        XCTAssertTrue(pinned.waitForExistence(timeout: 30))
+        XCTAssertEqual(pinned.label, "Pinned")
         shot("sessions")
         app.buttons["work.create"].tap(); app.buttons["work.sessions.new"].tap()
         XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 10))
@@ -780,7 +778,7 @@ final class LAAWorkUITests: XCTestCase {
         app.buttons["work.launch.model"].tap()
         shot("model-menu")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
-        let close = app.buttons["閉じる"]
+        let close = app.buttons["work.session.launcher.close"]
         XCTAssertTrue(waitUntilReady(close, timeout: 10))
         close.tap()
         app.buttons["work.section.projects"].tap()

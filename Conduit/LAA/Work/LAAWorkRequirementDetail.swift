@@ -61,7 +61,7 @@ struct LAAWorkRequirementDetail<SessionView: View>: View {
                     Text(verbatim: requirement.status.label).laaTextStyle(.secondary).fontWeight(.semibold)
                         .foregroundStyle(requirement.status == .awaitingDecision ? LAAColor.attention : LAAColor.text)
                         .padding(.leading, -LAASpacing.x2)
-                    Text(verbatim: requirement.addedByAI ? LAACopy.WorkProject.addedByAI : LAACopy.WorkProject.ownerHint)
+                    Text(verbatim: requirement.addedByAI ? LAACopy.WorkProject.addedByAI : LAACopy.WorkProject.owner)
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     Spacer(minLength: 0)
                     if let updated = Self.updated(requirement.updatedAt) {
@@ -80,6 +80,12 @@ struct LAAWorkRequirementDetail<SessionView: View>: View {
                         .textSelection(.enabled)
                         .accessibilityIdentifier("laa.work.requirement.details")
                 }
+            }
+            // Monet's verification note (C-3): shown once the requirement is verified.
+            if requirement.verifiedAt != nil, let note = requirement.note, !note.isEmpty {
+                Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("laa.work.requirement.verification")
             }
             if !linked.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -126,7 +132,8 @@ struct LAAWorkRequirementDetail<SessionView: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "\(linked.name)、\(linked.statusLabel)"))
+        .accessibilityLabel(Text(verbatim: linked.name))
+        .accessibilityValue(Text(verbatim: linked.statusLabel == linked.name ? "" : linked.statusLabel))
         .accessibilityIdentifier("laa.work.requirement.session.\(linked.id)")
     }
 

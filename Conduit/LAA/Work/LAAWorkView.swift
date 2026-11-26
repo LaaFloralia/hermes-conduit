@@ -19,7 +19,6 @@ struct LAAWorkView: View {
     @State private var section = 0
     @State private var projects: [LAAWorkProject] = []
     private let workspaces: [LAAWorkWorkspace] = []
-    @State private var routines: [LAAWorkRoutine] = []
     @State private var projectInstructionsAvailable = false
     @State private var failure: String?
     @State private var isLoading = false
@@ -51,20 +50,20 @@ struct LAAWorkView: View {
                 .laaPageWidth()
                 .laaTextStyle(.body).foregroundStyle(LAAColor.text)
             }
-            .refreshable {
-                if section == 3 { await load() } else { refreshID += 1 }
-            }
+            .refreshable { refreshID += 1 }
         }
         .navigationTitle(Text(verbatim: embeddedSection == nil ? "" : "Work"))
         .navigationBarTitleDisplayMode(embeddedSection == nil ? .inline : .large)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if embeddedSection == nil { LAASettingsButton(action: onRequestSettings) }
-                else if section == 1 {
-                    Button { showNewProject = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text(verbatim: "プロジェクトを追加"))
-                        .disabled(bridge.status != .paired)
+            if embeddedSection != nil || LAASettingsEntry.showsToolbarGear {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if embeddedSection == nil { LAASettingsButton(action: onRequestSettings) }
+                    else if section == 1 {
+                        Button { showNewProject = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel(Text(verbatim: "プロジェクトを追加"))
+                            .disabled(bridge.status != .paired)
+                    }
                 }
             }
         }
@@ -127,22 +126,6 @@ struct LAAWorkView: View {
         .accessibilityIdentifier("work.segment")
     }
 
-    private var routineList: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            if routines.isEmpty && !isLoading && failure == nil {
-                Text(verbatim: "ルーティンはありません。").foregroundStyle(LAAColor.secondaryText)
-            }
-            ForEach(routines) { routine in
-                VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: routine.name).fontWeight(.semibold)
-                    Text(verbatim: "次回: " + (routine.nextRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
-                    Text(verbatim: "前回: " + (routine.lastRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
-                    Text(verbatim: "結果: " + routine.previousRunSummary())
-                }.laaTextStyle(.secondary).workCard()
-            }
-        }
-    }
-
     private var connection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if bridge.status == .keychainError {
@@ -166,7 +149,7 @@ struct LAAWorkView: View {
     @ViewBuilder private var content: some View {
         if let failure {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Label(LAAWorkPresentation.japanese("取得できませんでした"), systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("作業情報が応答しません。Macとの接続を確認してください。"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
                 Text(verbatim: failure).foregroundStyle(LAAColor.text)
                 Text(verbatim: "残っている一覧は前回取得した内容です。")
@@ -178,7 +161,7 @@ struct LAAWorkView: View {
         switch section {
         case 0: sessionList
         case 1: projectList
-        default: routineList
+        default: EmptyView()
         }
     }
 
@@ -208,9 +191,6 @@ struct LAAWorkView: View {
                     guard !Task.isCancelled, loadID == id else { return }
                     projectInstructionsAvailable = detail?.hasInstructionBody == true && detail?.instructionError == nil
                 } else { projectInstructionsAvailable = false }
-            } else if selected == 3 {
-                let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
-                if !Task.isCancelled && loadID == id { routines = page.items }
             }
         } catch is CancellationError {
             return

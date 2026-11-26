@@ -55,10 +55,10 @@ final class LAAFullTaskUITests: XCTestCase {
         let notificationID = "work.inbox.item.fixture-notification-1"
         let mark = app.buttons.matching(NSPredicate(
             format: "identifier == %@ AND label IN %@",
-            notificationID, ["既読にする", "未読に戻す"]
+            notificationID, ["Mark Read", "Mark Unread"]
         )).firstMatch
         XCTAssertTrue(mark.waitForExistence(timeout: 10))
-        if mark.label == "既読にする" {
+        if mark.label == "Mark Read" {
             XCTAssertTrue(mark.isEnabled)
             mark.tap()
         }

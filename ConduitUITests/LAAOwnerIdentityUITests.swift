@@ -39,14 +39,17 @@ final class LAAOwnerIdentityUITests: XCTestCase {
     func testChatAndGroupNameTheOwnerOnly() {
         for surface in ["chat", "group"] {
             let app = XCUIApplication()
-            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
+            let isGroup = surface == "group"
+            // The simple room keeps the owner and both members on screen;
+            // this check needs speaker headers, not an offscreen Markdown reply.
+            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", isGroup ? "simple" : "rich",
                                    "-LAA_CAPTURE_SURFACE", surface, "-LAA_CAPTURE_KIND", "paper"]
             app.launchInLab()
             XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 25))
-            let transcript = app.scrollViews[surface == "chat" ? "chat.transcript" : "room.transcript"]
+            let transcript = app.scrollViews[isGroup ? "room.transcript" : "chat.transcript"]
             XCTAssertTrue(transcript.waitForExistence(timeout: 20))
-            transcript.swipeDown(velocity: .fast)
-            assertSpeakers(app, agent: surface == "chat" ? "Monet" : nil)
+            if !isGroup { transcript.swipeDown(velocity: .fast) }
+            assertSpeakers(app, agent: isGroup ? nil : "Monet")
             app.terminate()
         }
     }
@@ -102,9 +105,7 @@ final class LAAOwnerIdentityUITests: XCTestCase {
     func testSettingsOffersChooseAndRemove() throws {
         for avatar in [false, true] {
             let app = try launchWork(avatar: avatar)
-            let settings = app.navigationBars.buttons.matching(identifier: "laa.settings.open").firstMatch
-            XCTAssertTrue(settings.waitForExistence(timeout: 15))
-            settings.tap()
+            app.openLAASettings()
             let choose = app.buttons["laa.settings.ownerIcon.choose"]
             XCTAssertTrue(choose.waitForExistence(timeout: 15))
             XCTAssertTrue(choose.isEnabled, "a paired device can choose a photo")

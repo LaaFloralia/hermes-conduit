@@ -70,15 +70,15 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["保存結果を確認できませんでした。"].waitForNonExistence(timeout: 2))
         let row = taskRow(app, updatedTitle)
         row.swipeLeft()
-        app.buttons["削除"].firstMatch.tap()
-        let confirm = app.sheets.buttons["削除"]
+        app.buttons["Delete"].firstMatch.tap()
+        let confirm = app.sheets.buttons["Delete"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["アーカイブに移り、あとで戻せます。"].exists)
         if app.sheets.buttons["Cancel"].exists { app.sheets.buttons["Cancel"].tap() }
         else { app.otherElements["PopoverDismissRegion"].tap() }
         XCTAssertTrue(taskRow(app, updatedTitle).exists)
         taskRow(app, updatedTitle).swipeLeft()
-        app.buttons["削除"].firstMatch.tap()
+        app.buttons["Delete"].firstMatch.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(taskRow(app, updatedTitle).waitForNonExistence(timeout: 10))
         // The archive is a choice in the count menu, shown in place.
@@ -87,7 +87,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         let archived = taskRow(app, updatedTitle)
         XCTAssertTrue(archived.waitForExistence(timeout: 10))
         archived.swipeLeft()
-        app.buttons["戻す"].tap()
+        app.buttons["Restore"].tap()
         XCTAssertTrue(archived.waitForNonExistence(timeout: 10))
         app.buttons["work.tasks.quick"].tap()
         app.buttons["work.tasks.quick.all"].tap()
@@ -123,41 +123,15 @@ final class LAAWorkLinearUITests: XCTestCase {
         app.navigationBars.buttons.firstMatch.tap()
     }
 
-    func testRoutinesFoldThePausedOnesLight() throws { try routines("light") }
-    func testRoutinesFoldThePausedOnesDark() throws { try routines("dark") }
-
-    /// 「停止中（n）」 holds the paused routines, closed at first; resident ones
-    /// end the day on 「常時」 (owner, 2026-11-23).
-    private func routines(_ appearance: String) throws {
-        let app = try launch(appearance)
-        selectSection(app, "routines")
-        XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["常時"].exists)
-        for label in ["最終実行", "業務結果", "配信", "最終結果"] { XCTAssertFalse(app.staticTexts[label].exists) }
-        // Resident routines end the day on 「常時」; paused ones fold under 「停止中」.
-        XCTAssertTrue(app.staticTexts["常駐の確認用"].exists)
-        XCTAssertFalse(app.staticTexts["停止中の確認用"].exists)
-        let paused = app.buttons["work.routines.services"]
-        XCTAssertTrue(paused.label.contains("停止中（1）"), paused.label)
-        XCTAssertEqual(paused.value as? String, "閉じています")
-        attach("work-routine-paused-closed-\(appearance)")
-        paused.tap()
-        XCTAssertTrue(app.staticTexts["停止中の確認用"].waitForExistence(timeout: 5))
-        XCTAssertEqual(paused.value as? String, "開いています")
-        attach("work-routine-paused-open-\(appearance)")
-    }
-
     private func capture(_ appearance: String) throws {
         let app = try launch(appearance)
-        for section in ["tasks", "sessions", "projects", "routines", "skills"] {
+        for section in ["tasks", "sessions", "projects", "skills"] {
             selectSection(app, section)
             switch section {
             case "sessions", "projects":
                 XCTAssertTrue(app.buttons["work.section.\(section)"].isSelected)
             case "tasks":
                 XCTAssertTrue(taskRow(app, "次の打ち合わせを確認する").waitForExistence(timeout: 10))
-            case "routines":
-                XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
             default:
                 XCTAssertTrue(app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.waitForExistence(timeout: 10))
             }
@@ -165,10 +139,10 @@ final class LAAWorkLinearUITests: XCTestCase {
             shot.name = "work-\(section)-\(appearance)"; shot.lifetime = .keepAlways; add(shot)
             if section == "tasks" {
                 let row = taskRow(app, "次の打ち合わせを確認する")
-                row.swipeLeft(); app.buttons["削除"].firstMatch.tap()
-                XCTAssertTrue(app.sheets.buttons["削除"].waitForExistence(timeout: 5))
+                row.swipeLeft(); app.buttons["Delete"].firstMatch.tap()
+                XCTAssertTrue(app.sheets.buttons["Delete"].waitForExistence(timeout: 5))
                 attach("work-delete-confirm-\(appearance)")
-                app.sheets.buttons["削除"].tap()
+                app.sheets.buttons["Delete"].tap()
                 XCTAssertTrue(row.waitForNonExistence(timeout: 10))
                 app.buttons["work.tasks.quick"].tap()
                 app.buttons["work.linear.archive"].tap()
@@ -184,11 +158,6 @@ final class LAAWorkLinearUITests: XCTestCase {
                 app.navigationBars.buttons.firstMatch.tap()
                 XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
                 app.buttons["laa.settings.done"].tap()
-            } else if section == "routines" {
-                attach("work-routine-paused-closed-\(appearance)")
-                app.buttons["work.routines.services"].tap()
-                XCTAssertTrue(app.staticTexts["停止中の確認用"].exists)
-                attach("work-routine-paused-open-\(appearance)")
             }
         }
         // Usage has one entry, in the Work toolbar, since 5babcbac.
@@ -203,7 +172,9 @@ final class LAAWorkLinearUITests: XCTestCase {
     func testWorkScreensDark() throws { try capture("dark") }
     private func openEditor(_ app: XCUIApplication, _ row: XCUIElement) {
         row.press(forDuration: 1.2)
-        let edit = app.buttons["編集"].firstMatch
+        let identified = app.buttons["work.linear.edit"].firstMatch
+        // Some OS versions drop the identifier when bridging to a native menu.
+        let edit = identified.waitForExistence(timeout: 2) ? identified : app.buttons["Edit"].firstMatch
         XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
     }
     private func taskRow(_ app: XCUIApplication, _ title: String) -> XCUIElement {
@@ -214,7 +185,7 @@ final class LAAWorkLinearUITests: XCTestCase {
             // Skills moved into Settings (2b5760d5).
             LAASettingsSkillsUI.open(in: app)
         } else {
-            app.buttons["work.section.\(section)"].tap()
+            LAAWorkSectionUI.open(section, in: app)
         }
     }
     private func attach(_ name: String) {

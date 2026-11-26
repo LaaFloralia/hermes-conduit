@@ -33,7 +33,10 @@ struct LAADecisionBoardView: View {
     #endif
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            content
+            if !board.monetAnswers.isEmpty { monetAnswersList }
+        }
             .background(LAAColor.background)
             .tint(LAAColor.link)
             .refreshable { await board.load(bridge) }
@@ -81,6 +84,35 @@ struct LAADecisionBoardView: View {
         }
     }
 
+    // MARK: Monet's answers
+
+    /// Stage 3 (AI-OPERATING-MODEL 「判断の移譲」): items filed 【任せられる】 are
+    /// answered by Monet with a one-line reason. They are listed apart, read-only.
+    private var monetAnswersList: some View {
+        DisclosureGroup {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    ForEach(board.monetAnswers) { item in
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            Text(verbatim: item.title).laaTextStyle(.body)
+                            if let answer = item.answer {
+                                Text(verbatim: [answer.label, answer.reason].compactMap { $0 }.joined(separator: " · "))
+                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .frame(maxHeight: 160)
+        } label: { sectionText("Monetが決めた件", count: board.monetAnswers.count) }
+        .padding(LAASpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LAAColor.surface)
+        .accessibilityIdentifier("laa.decisions.monetAnswers")
+    }
+
     // MARK: Rows
 
     private var openItems: [LAADecision] { board.items.filter { $0.answer == nil } }
@@ -104,7 +136,7 @@ struct LAADecisionBoardView: View {
             if case .failed(let text) = board.phase {
                 Section {
                     Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                    Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                    Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                 }
             }
             if !openItems.isEmpty {
@@ -152,7 +184,7 @@ struct LAADecisionBoardView: View {
                         if case .failed(let text) = board.phase {
                             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                                 Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                             }
                             .padding(LAASpacing.x3)
                         }
@@ -230,9 +262,9 @@ struct LAADecisionBoardView: View {
     }
 
     @ViewBuilder private func rowMenu(_ item: LAADecision) -> some View {
-        Button { show(item) } label: { Text(verbatim: "開く") }
+        Button { show(item) } label: { Text(verbatim: "Open") }
         if item.deliveryFailed {
-            Button { Task { await retry(item) } } label: { Text(verbatim: "届け直す") }
+            Button { Task { await retry(item) } } label: { Text(verbatim: "Resend") }
         }
     }
 
@@ -255,9 +287,9 @@ struct LAADecisionBoardView: View {
             Spacer(minLength: 0)
             Button { Task { await retry(item) } } label: {
                 Group {
-                    if retrying == item.id { Text(verbatim: "送信中") }
+                    if retrying == item.id { Text(verbatim: "Sending…") }
                     else {
-                        Label { Text(verbatim: "届け直す") } icon: { Image(systemName: "arrow.clockwise") }
+                        Label { Text(verbatim: "Resend") } icon: { Image(systemName: "arrow.clockwise") }
                             .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)
                     }
                 }
@@ -284,7 +316,7 @@ struct LAADecisionBoardView: View {
                     .multilineTextAlignment(.center)
             }
             if retry {
-                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                     .laaGlassButton()
             }
         }
@@ -409,7 +441,7 @@ struct LAADecisionBoardView: View {
                     answer: item.answer,
                     delivery: .init(state: "delivered", attempts: item.delivery?.attempts,
                                     deliveredAt: item.delivery?.deliveredAt, error: nil),
-                    sessionId: item.sessionId, images: item.images)
+                    sessionId: item.sessionId, category: item.category, images: item.images)
     }
 
     // MARK: Text
@@ -430,6 +462,7 @@ struct LAADecisionBoardView: View {
             line += piece
         }
         if let source = item.sourceLine { add(source) }
+        if item.isMonetQueue { add("Monet担当") }
         if let deadline = LAADecisionDeadline.describe(item.deadline, now: now) {
             add(deadline.text, color: deadline.urgent ? LAAColor.attention : LAAColor.secondaryText, strong: deadline.urgent)
         }
@@ -445,6 +478,12 @@ struct LAADecisionBoardView: View {
         var line = AttributedString()
         if let source = item.sourceLine {
             var piece = AttributedString(source)
+            piece.foregroundColor = LAAColor.secondaryText
+            line += piece
+        }
+        if answer.answeredBy == "monet" {
+            if !line.characters.isEmpty { line += AttributedString(" · ") }
+            var piece = AttributedString("Monetが代理回答")
             piece.foregroundColor = LAAColor.secondaryText
             line += piece
         }
@@ -480,7 +519,8 @@ struct LAADecisionBoardView: View {
     /// A row that wants the owner now: a deadline inside a day, or an answer
     /// that did not reach its conversation.
     static func needsAttention(_ item: LAADecision) -> Bool {
-        if item.answer != nil { return item.deliveryFailed }
+        if item.answer != nil { return item.deliveryFailed && !item.canOverturn }
+        if item.isMonetQueue { return false }
         return item.deliveryFailed || LAADecisionDeadline.describe(item.deadline)?.urgent == true
     }
 }

@@ -29,6 +29,30 @@ final class LAAWorkDesktopUITests: XCTestCase {
         return app
     }
 
+    #if targetEnvironment(macCatalyst)
+    func testNewSessionOpensLauncherWithSessionPaneOpen() throws {
+        let app = try launch(tab: "work")
+        defer { app.terminate() }
+        let sessions = app.buttons["work.section.sessions"]
+        XCTAssertTrue(sessions.waitForExistence(timeout: 25))
+        sessions.tap()
+        let row = app.buttons["work.session.ses_3333333333333333"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        row.tap()
+        let title = app.descendants(matching: .any)["work.session.detail.title"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        let new = app.buttons["work.sessions.new"].firstMatch
+        XCTAssertTrue(new.waitForExistence(timeout: 10))
+        XCTAssertTrue(new.isHittable)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "mac-work-session-new"
+        shot.lifetime = .keepAlways
+        add(shot)
+        new.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.launch.project"].firstMatch.waitForExistence(timeout: 10))
+    }
+    #endif
+
     func testTaskListSelectsIntoDetailColumn() throws {
         let app = try launch(tab: "work")
         let list = app.descendants(matching: .any)["work.desktop.tasks.list"].firstMatch

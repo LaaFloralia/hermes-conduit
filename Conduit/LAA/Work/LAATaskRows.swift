@@ -42,7 +42,7 @@ struct LAATaskSelectBox: View {
             .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: state)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "選択"))
+        .accessibilityLabel(Text(verbatim: "Select"))
         .accessibilityValue(Text(verbatim: state == .picked ? "選択中" : ""))
         .accessibilityAddTraits(state == .picked ? .isSelected : [])
         .accessibilityHint(Text(verbatim: state == .blocked ? LAATaskRunCopy.runningReason : ""))
@@ -322,8 +322,8 @@ struct LAATaskSectionHeader: View {
         .buttonStyle(.plain)
         .textCase(nil)
         .accessibilityLabel(Text(verbatim: "\(section.title)、\(section.rows.count)件"))
-        .accessibilityValue(Text(verbatim: folded ? "畳んでいます" : "開いています"))
-        .accessibilityHint(Text(verbatim: folded ? "開く" : "畳む"))
+        .accessibilityValue(Text(verbatim: folded ? "Collapsed" : "Expanded"))
+        .accessibilityHint(Text(verbatim: folded ? "Expand" : "Collapse"))
         .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier("work.tasks.section.\(section.id)")
     }

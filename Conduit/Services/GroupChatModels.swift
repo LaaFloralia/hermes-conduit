@@ -58,6 +58,8 @@ struct GroupCapabilities: Equatable {
     let maxLogLimit: Int
 
     func supports(_ method: String) -> Bool { methods.contains(method) }
+    var supportsRoomChair: Bool { features.contains("room_chair") }
+    var supportsConfidentialRooms: Bool { features.contains("room_confidential") }
     var foundationSupported: Bool { GroupWire.requiredMethods.isSubset(of: methods) }
 }
 
@@ -121,7 +123,7 @@ struct GroupActor: Equatable {
     /// who spoke.
     func displayLabel(members: [GroupMember]) -> String {
         let idKey = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        if kind == "member", !idKey.isEmpty {
+        if (kind == "member" || kind == "chair"), !idKey.isEmpty {
             if let member = members.first(where: {
                 $0.memberID?.caseInsensitiveCompare(idKey) == .orderedSame
                     || $0.profile?.caseInsensitiveCompare(idKey) == .orderedSame
@@ -130,7 +132,7 @@ struct GroupActor: Equatable {
                 if let name, !name.isEmpty { return name }
             }
         }
-        if let profile, !profile.isEmpty, kind == "member" { return profile }
+        if let profile, !profile.isEmpty, kind == "member" || kind == "chair" { return profile }
         return displayName ?? ""
     }
 }
@@ -152,7 +154,8 @@ struct GroupEvent: Equatable, Identifiable {
 
     var isUserMessage: Bool { kind == "message.user" }
     var isMemberMessage: Bool { kind == "message.member" }
-    var isChatMessage: Bool { isUserMessage || isMemberMessage }
+    var isChairSeed: Bool { kind == "message.chair" && actor.kind == "chair" }
+    var isChatMessage: Bool { isUserMessage || isMemberMessage || isChairSeed }
 
     /// The message text of a chat-message event (payload key `text`).
     var messageText: String? {
@@ -178,9 +181,52 @@ struct GroupRoom: Equatable, Identifiable {
     let disbandedAt: Double?
     /// The replay horizon: the highest seq the room log ever assigned.
     let latestSeq: Int?
+    var chair: String? = nil
+    var policy: GroupMeetingPolicy? = nil
+    var confidential: Bool? = nil
 
     var id: String { roomID }
     var isDisbanded: Bool { disbandedAt != nil }
+}
+
+struct GroupMeetingPolicy: Equatable {
+    let staffRounds: Int
+    let maxMessages: Int
+
+    static let standard = Self(staffRounds: 1, maxMessages: 10)
+}
+
+/// Fold only server-designated staff messages in a completed meeting. An
+/// uncompleted round or an older gateway's ordinary replies stay in place.
+struct GroupMeetingTranscript {
+    let events: [GroupEvent]
+    let staffByConclusion: [String: [GroupEvent]]
+
+    init(events: [GroupEvent], chair: String?) {
+        guard let chair else {
+            self.events = events
+            staffByConclusion = [:]
+            return
+        }
+        var pending: [String: [GroupEvent]] = [:]
+        var folded = Set<String>()
+        var byConclusion: [String: [GroupEvent]] = [:]
+        for event in events where event.isMemberMessage {
+            guard let discussion = event.payload["discussion_event_id"]?.stringValue, !discussion.isEmpty else { continue }
+            switch event.payload["meeting_phase"]?.stringValue {
+            case "staff" where event.actor.id != chair:
+                pending[discussion, default: []].append(event)
+            case "conclusion" where event.actor.id == chair:
+                if let staff = pending.removeValue(forKey: discussion), !staff.isEmpty {
+                    byConclusion[event.id] = staff
+                    folded.formUnion(staff.map(\.id))
+                }
+            default: break
+            }
+        }
+        self.events = events.filter { !folded.contains($0.id) }
+        staffByConclusion = byConclusion
+    }
 }
 
 /// `HostedRoomService.status(room_id)` — the live driver view. Unknown
@@ -334,8 +380,18 @@ enum GroupDecoders {
             createdAt: object["created_at"]?.doubleValue ?? 0,
             updatedAt: object["updated_at"]?.doubleValue ?? 0,
             disbandedAt: object["disbanded_at"]?.doubleValue,
-            latestSeq: HermesClient.exactIntValue(object["latest_seq"])
+            latestSeq: HermesClient.exactIntValue(object["latest_seq"]),
+            chair: object["chair"]?.stringValue,
+            policy: meetingPolicy(object["policy"]),
+            confidential: object["confidential"]?.boolValue
         )
+    }
+
+    private static func meetingPolicy(_ value: AnyCodable?) -> GroupMeetingPolicy? {
+        guard let fields = value?.objectValue,
+              let rounds = HermesClient.exactIntValue(fields["staff_rounds"]), (1...2).contains(rounds),
+              let maximum = HermesClient.exactIntValue(fields["max_messages"]), (3...10).contains(maximum) else { return nil }
+        return GroupMeetingPolicy(staffRounds: rounds, maxMessages: maximum)
     }
 
     static func driverStatus(_ value: AnyCodable?) -> GroupDriverStatus? {
@@ -569,6 +625,7 @@ enum GroupCreateAttempt {
     struct Inputs: Equatable {
         let name: String
         let members: Set<String>
+        var confidential = false
     }
 
     static func mintRoomID() -> String {

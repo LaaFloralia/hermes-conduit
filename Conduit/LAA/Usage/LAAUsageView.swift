@@ -1,26 +1,19 @@
 #if LAA_BUILD
 import SwiftUI
 import Combine
+import LAAKit
 
 extension LAACopy {
     enum Usage {
-        static let noAutomaticBalance = "自動取得できる残高がありません"
-        static let billingReading = "請求画面の確認値"
-        static let noBalanceLeft = "残高なし"
-        static let granted = "付与"
-        static let toppedUp = "補充後"
-        static let left = "残り"
-        static let expires = "期限"
-        static let lapsed = "期限切れ"
-        static let meter = "利用枠"
-        static let lowestWeekly = "週間の残りが最も少ない枠"
-        static let inUse = "In use"
-        static let windows = "5時間・週間"
-        static let expanded = "開いています"
-        static let collapsed = "閉じています"
-        static let others = "そのほか"
-        static let accounts = "アカウント"
-        static let updated = "更新"
+        static let expires = "Expires"
+        static let lapsed = "Expired"
+        static let lowestWeekly = "Lowest weekly allowance"
+        static let inUse = "Active"
+        static let expanded = "Expanded"
+        static let collapsed = "Collapsed"
+        static let others = "Others"
+        static let accounts = "Accounts"
+        static let updated = "Updated"
     }
 }
 
@@ -47,6 +40,7 @@ struct LAARefreshGlyph: View {
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
+    @Environment(\.laaThemeID) private var themeID
     @Environment(\.dismiss) private var dismiss
     private let locale = LAADateText.locale
     @Environment(\.scenePhase) private var scenePhase
@@ -88,13 +82,19 @@ struct LAAUsageView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
+        .laaTheme(themeID)
         .background(LAAColor.background.ignoresSafeArea())
         .tint(LAAColor.link)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(laaDesktop ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
-            if !laaDesktop { LAABackToolbar(action: { dismiss() }) }
+            if !laaDesktop {
+                ToolbarItem(placement: .topBarLeading) {
+                    LAAToolbarIconButton(systemName: "chevron.left", label: "Back", identifier: "BackButton",
+                                         tint: LAAColor.text, action: { dismiss() })
+                }
+            }
         }
         .navigationBarBackButtonHidden(!laaDesktop)
         .refreshable { await refresh() }
@@ -113,55 +113,50 @@ struct LAAUsageView: View {
         .accessibilityIdentifier(laaDesktop ? "laa.usage.desktop" : "laa.usage")
     }
 
-    /// The title, the age of the last reading, and the refresh as a button
-    /// that looks like one (owner, 2026-11-11: "今すぐ更新" had disappeared into
-    /// the age text, which nobody reads as pressable).
     private var header: some View {
-        HStack(alignment: .center, spacing: LAASpacing.x3) {
-            Text(verbatim: "Usage").font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                .accessibilityAddTraits(.isHeader)
-            Text(verbatim: state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                .monospacedDigit()
-                .accessibilityLabel(Text(verbatim: LAACopy.Usage.updated))
-                .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "未取得")
-                .accessibilityIdentifier("laa.usage.updated")
-            Spacer(minLength: 0)
-            refreshButton
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: LAASpacing.x3) {
+                usageTitle.fixedSize()
+                Spacer(minLength: 0)
+                refreshButton.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                usageTitle
+                refreshButton.frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
+    }
+
+    private var usageTitle: some View {
+        Text(verbatim: "Usage").font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(state.updatedAt == nil ? "" : LAACopy.Usage.updated)
+            .accessibilityIdentifier("laa.usage.updated")
     }
 
     private var refreshButton: some View {
         Button { Task { await refresh() } } label: {
-            HStack(spacing: 6) {
-                LAARefreshGlyph(spinning: state.isRefreshing)
-                Text(verbatim: state.isRefreshing ? "更新中" : "今すぐ更新")
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
+            HStack(spacing: LAASpace.s4) {
+                if state.isRefreshing { LAARefreshGlyph(spinning: true) }
+                Text(verbatim: "Sync").font(.callout.weight(.medium))
             }
-            .foregroundStyle(state.isRefreshing ? LAAColor.secondaryText : LAAColor.link)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 36)
-            .conduitGlassControl(cornerRadius: 18, tint: LAAColor.link.opacity(state.isRefreshing ? 0 : 0.08),
-                                 interactive: !state.isRefreshing)
-            .contentShape(Capsule())
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .foregroundStyle(state.isRefreshing || bridge.status != .paired ? LAAColor.secondaryText : LAAColor.link)
+            .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(state.isRefreshing || bridge.status != .paired)
-        .opacity(bridge.status == .paired ? 1 : 0.45)
-        .accessibilityLabel(Text(verbatim: "今すぐ更新"))
-        .accessibilityValue(state.updatedAt.map { LAAUsageAge.text($0, at: evaluatedAt) } ?? "—")
+        .accessibilityValue(state.isRefreshing ? AppLocalization.string("Syncing") : "")
         .accessibilityIdentifier("laa.usage.refresh")
     }
 
     private var connection: some View {
         HStack(spacing: LAASpacing.x3) {
             Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
-                 ? "接続が無効になりました" : "Macに接続していません")
+                 ? "接続が無効です。Macと再接続してください。" : "Macとの接続が必要です。「Connect」から設定してください。")
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             Spacer(minLength: 0)
-            Button { showPairing = true } label: { Text(verbatim: "接続") }
+            Button { showPairing = true } label: { Text(verbatim: "Connect") }
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
                 .accessibilityIdentifier("laa.bridge.openPairing")
         }
@@ -174,7 +169,7 @@ struct LAAUsageView: View {
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .accessibilityIdentifier("laa.usage.error")
                 Spacer(minLength: 0)
-                Button { Task { await refresh() } } label: { Text(verbatim: "再試行") }
+                Button { Task { await refresh() } } label: { Text(verbatim: "Retry") }
                     .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                     .disabled(state.isRefreshing)
             }
@@ -283,7 +278,7 @@ struct LAAUsageView: View {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                     Text(verbatim: LAACopy.Usage.others).font(.body).foregroundStyle(LAAColor.text)
                     if !open, groups.contains(where: needsLook) {
-                        Text(verbatim: "▲").font(.caption).foregroundStyle(LAAUsageBar.caution)
+                        LAAUsageMeterMark(level: .caution).font(.caption)
                     }
                     Spacer(minLength: LAASpacing.x2)
                     Image(systemName: "chevron.down")
@@ -298,7 +293,7 @@ struct LAAUsageView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: LAACopy.Usage.others))
             .accessibilityValue(Text(verbatim: (open ? LAACopy.Usage.expanded : LAACopy.Usage.collapsed)
-                                     + (!open && groups.contains(where: needsLook) ? "、要確認" : "")))
+                                     + (!open && groups.contains(where: needsLook) ? ", attention" : "")))
             .accessibilityIdentifier("laa.usage.others")
             if open {
                 ForEach(groups) { group in
@@ -308,7 +303,7 @@ struct LAAUsageView: View {
                             apiBalanceRow(group.items.first { $0.id == group.id + ".balance" },
                                           groupID: group.id, name: group.label)
                         } else if group.items.isEmpty {
-                            readingRow(name: group.label, result: LAACopy.notFetched, age: nil, fraction: nil, note: nil)
+                            readingRow(name: group.label, result: nil, age: nil, fraction: nil, note: nil)
                         } else {
                             ForEach(group.items) { item in serviceRow(item, name: group.label) }
                         }
@@ -335,22 +330,19 @@ struct LAAUsageView: View {
         }
     }
 
-    /// `windowsOnly`: the row is named by its window alone ("5時間", "週間"),
-    /// because a heading above it already names the account.
-    @ViewBuilder private func serviceRow(_ item: LAAUsageItem, name: String, windowsOnly: Bool = false) -> some View {
+    @ViewBuilder private func serviceRow(_ item: LAAUsageItem, name: String) -> some View {
         let age = age(item)
         if item.availability == "available", item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
-                let label = windowsOnly ? LAAUsageLabel.window(window)
-                    : windows.count > 1 ? name + " " + LAAUsageLabel.window(window) : name
-                let reset = LAAUsageFreshness.windowExpired(window, at: evaluatedAt)
-                readingRow(name: label, result: value(window.remainingPercent, unit: "percent"), age: age,
-                           fraction: window.remainingPercent.map { $0 / 100 }, countsDown: true,
-                           note: item.retainedReason.map { Self.unavailableReason($0) }
-                               ?? (reset ? "リセット済み" : LAAUsageItem.date(window.resetsAt).map { LAAUsageResetText.full($0, now: evaluatedAt) }))
+                let label = windows.count > 1 ? name + " " + LAAUsageLabel.period(window) : name
+                let remaining = LAAUsageFreshness.windowExpired(window, at: evaluatedAt) ? nil : window.remainingPercent
+                readingRow(name: label, result: value(remaining, unit: "percent"), age: age,
+                           fraction: remaining.map { $0 / 100 }, note: remaining == nil ? nil :
+                               LAAUsageItem.date(window.resetsAt).map { LAAUsageResetText.full($0, now: evaluatedAt) })
             }
         } else {
-            let amount = item.kind == "usage" ? item.detail?.recordedCostUsd : item.availableValue
+            let amount = item.isExpired(now: evaluatedAt) ? nil
+                : (item.kind == "usage" ? item.detail?.recordedCostUsd : item.availableValue)
             let unit = item.kind == "usage" ? "usd" : item.detail?.creditUnit ?? item.unit
             let granted = item.kind == "usage" ? nil : item.detail?.grantedAmount ?? item.detail?.monthlyGrantedAmount
             // A money balance counts down from its level after the last
@@ -358,61 +350,31 @@ struct LAAUsageView: View {
             let money = item.kind == "balance" && unit == "usd"
             let fraction = money ? LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
                 : LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
-            readingRow(name: windowsOnly ? LAACopy.Usage.windows : name, result: value(amount, unit: unit), age: age,
-                       fraction: fraction, countsDown: true,
-                       note: reason(item) ?? (item.kind == "usage" ? "記録済み費用" : grantNote(granted, fraction: fraction, money: money)))
+            readingRow(name: name, result: value(amount, unit: unit), age: age,
+                       fraction: fraction, note: nil)
         }
     }
 
-    /// What a meter counts down from, so the bar has a scale: a credit grant,
-    /// or a balance's level after its last top-up.
-    private func grantNote(_ granted: Double?, fraction: Double?, money: Bool = false) -> String? {
-        guard let granted, let fraction else { return nil }
-        let total = money ? LAAUsageMoney.text(granted, locale: locale)
-            : granted.formatted(.number.locale(locale).precision(.fractionLength(0...2)))
-        let left = (fraction * 100).formatted(.number.locale(locale).precision(.fractionLength(0)))
-        return (money ? LAACopy.Usage.toppedUp : LAACopy.Usage.granted) + " " + total + " · " + LAACopy.Usage.left + " " + left + "%"
-    }
-
-    /// "期限 12月13日": the day a credit lapses, as its billing page names it
+    /// The day a credit lapses, as its billing page names it
     /// (a UTC date). Nil for anything that is not such a date.
     static func expiryNote(_ text: String?) -> String? {
         guard let text, text.count == 10 else { return nil }
         let parts = text.split(separator: "-", omittingEmptySubsequences: false).map { Int($0) }
         guard parts.count == 3, let month = parts[1], let day = parts[2], parts[0] != nil,
               (1...12).contains(month), (1...31).contains(day) else { return nil }
-        return LAACopy.Usage.expires + " \(month)月\(day)日"
+        return LAACopy.Usage.expires + " \(month)/\(day)"
     }
 
     /// GPT API and Claude API: the credit left, never the spend. Neither
     /// provider publishes a balance API, so the reading is the billing page's,
-    /// carried with the moment it was checked; without one the row still
-    /// stands, reads 未取得 and links to that page.
+    /// so the row has an empty meter until a reading has been recorded.
     @ViewBuilder private func apiBalanceRow(_ item: LAAUsageItem?, groupID: String, name: String) -> some View {
         let billing = LAAUsageGroup.billingURL(for: groupID + ".balance")
-        if let item, let amount = item.availableValue {
-            let checked = item.detail?.sourceKind == "verified"
-                ? LAAUsageItem.date(item.observedAt).map { LAACopy.Usage.billingReading + " " + LAADateText.string($0, .monthDayTime) }
-                : nil
-            let empty = !(amount > 0)
-            // Credit past the day its billing page names no longer stands.
-            let lapsed = !empty && item.isExpired(now: evaluatedAt)
-            // The meter the other rows draw: what is left since the last
-            // top-up, and an empty bar when nothing is.
-            let granted = item.detail?.grantedAmount
-            let fraction = LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
-            let parts = [item.retainedReason.map { Self.unavailableReason($0) }, empty ? LAACopy.Usage.noBalanceLeft : nil,
-                         lapsed ? LAACopy.Usage.lapsed : nil,
-                         empty || lapsed ? nil : grantNote(granted, fraction: fraction, money: true),
-                         empty ? nil : Self.expiryNote(item.detail?.expiresOnUtc), checked]
-            let note = parts.compactMap { $0 }.joined(separator: " · ")
-            readingRow(name: name, result: value(amount, unit: "usd"), age: age(item), fraction: fraction, countsDown: true,
-                       note: note.isEmpty ? nil : note, noteLink: billing, alert: empty || lapsed)
-        } else {
-            let note = item.map { $0.nullReason == "not_auto" || $0.nullReason == nil ? LAACopy.Usage.noAutomaticBalance : Self.unavailable($0) }
-                ?? LAACopy.Usage.noAutomaticBalance
-            readingRow(name: name, result: LAACopy.notFetched, age: nil, fraction: nil, note: note, noteLink: billing)
-        }
+        let lapsed = item?.isExpired(now: evaluatedAt) == true
+        let amount = lapsed ? nil : item?.availableValue
+        let fraction = LAAUsageMeterRule.balanceFraction(remaining: amount, granted: item?.detail?.grantedAmount)
+        readingRow(name: name, result: value(amount, unit: "usd"), age: item.flatMap(age), fraction: fraction,
+                   note: lapsed ? LAACopy.Usage.lapsed : Self.expiryNote(item?.detail?.expiresOnUtc), nameLink: billing)
     }
 
     @ViewBuilder private var storage: some View {
@@ -421,17 +383,22 @@ struct LAAUsageView: View {
             sectionTitle("Storage")
             VStack(spacing: 0) {
                 if items.isEmpty {
-                    readingRow(name: "容量", result: LAACopy.notFetched, age: nil, fraction: nil, note: nil)
+                    readingRow(name: "Capacity", result: nil, age: nil, fraction: nil, note: nil)
                 }
                 ForEach(items) { item in
                     let reading = LAACapacity.reading(item, at: evaluatedAt, allowHistorical: true)
-                    let result = reading.map { "空き " + LAACapacity.bytes($0.availableBytes, locale: locale) } ?? LAACopy.notFetched
-                    let note = reason(item) ?? reading.map {
-                        "使用 " + LAACapacity.bytes($0.usedBytes, locale: locale) + " / " + LAACapacity.bytes($0.totalBytes, locale: locale)
+                    let result = reading.map { "Free " + LAACapacity.bytes($0.availableBytes, locale: locale) }
+                    let note = reading.map {
+                        "Used " + LAACapacity.bytes($0.usedBytes, locale: locale) + " / " + LAACapacity.bytes($0.totalBytes, locale: locale)
                     }
                     readingRow(name: LAACapacity.name(item.id), result: result, age: age(item),
-                               fraction: reading?.usedFraction, tick: reading?.warningFraction, note: note,
-                               alert: reading.map { $0.level == .warning || $0.level == .critical } ?? false)
+                               fraction: reading?.usedFraction, level: reading.map {
+                                   switch $0.level {
+                                   case .critical: .critical
+                                   case .warning: .caution
+                                   default: LAAMeterLevel(remaining: 1 - $0.usedFraction)
+                                   }
+                               }, note: note)
                         .accessibilityIdentifier("laa.capacity.\(item.id)")
                 }
             }
@@ -454,62 +421,53 @@ struct LAAUsageView: View {
         LAASectionHeader(text)
     }
 
-    private func readingRow(name: String, result: String, age: String?, fraction: Double?, countsDown: Bool = false,
-                            tick: Double? = nil, note: String?, noteLink: URL? = nil, alert: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+    private func readingRow(name: String, result: String?, age: String?, fraction: Double?,
+                            level: LAAMeterLevel? = nil, note: String?, nameLink: URL? = nil) -> some View {
+        let status = level ?? LAAMeterLevel(remaining: fraction)
+        return VStack(alignment: .leading, spacing: LAASpace.s8) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                    Text(verbatim: name).font(.body).foregroundStyle(LAAColor.text)
-                    Spacer(minLength: LAASpacing.x2)
-                    readingValue(result, age: age)
+                HStack(alignment: .firstTextBaseline, spacing: LAASpace.s8) {
+                    readingName(name, link: nameLink).fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: LAASpace.s8)
+                    readingValue(result, age: age, level: status).fixedSize()
                 }
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: name).font(.body).foregroundStyle(LAAColor.text)
-                    readingValue(result, age: age)
+                VStack(alignment: .leading, spacing: LAASpace.s4) {
+                    readingName(name, link: nameLink)
+                    readingValue(result, age: age, level: status)
                 }
             }
-            if let fraction, fraction.isFinite {
-                LAAUsageMeter(fraction: fraction, countsDown: countsDown, alert: alert, tick: tick)
-                    .accessibilityLabel(name + " " + LAACopy.Usage.meter)
-                    .accessibilityValue(result)
-            }
+            LAAUsageMeterTrack(fraction: fraction, level: level)
             if let note {
-                let text = Text(verbatim: note).laaTextStyle(.secondary)
-                    .foregroundStyle(alert ? LAAColor.attention : LAAColor.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let noteLink {
-                    Link(destination: noteLink) {
-                        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-                            text
-                            Image(systemName: "arrow.up.right").font(.caption2.weight(.semibold))
-                                .foregroundStyle(LAAColor.secondaryText).accessibilityHidden(true)
-                        }
-                        .frame(minHeight: LAASpacing.minimumTouchTarget / 2, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("laa.usage.billing")
-                } else {
-                    text
-                }
+                Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
         }
-        .padding(.vertical, LAASpacing.x3)
+        .padding(.vertical, LAASpace.s12)
         .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
         .accessibilityElement(children: .contain)
     }
 
-    private func readingValue(_ result: String, age: String?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-            let parts = result.hasSuffix(" credits") ? result.split(separator: " ", maxSplits: 1) : [result[...]]
-            let missing = result == LAACopy.notFetched || result == LAACopy.never
-            Text(verbatim: String(parts[0]))
-                .font(missing ? .system(size: 15) : LAAType.usageRowValue)
-                .foregroundStyle(missing ? LAAColor.secondaryText : LAAColor.text)
-            if parts.count > 1 {
-                Text(verbatim: String(parts[1])).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+    @ViewBuilder private func readingName(_ name: String, link: URL?) -> some View {
+        if let link {
+            Link(destination: link) {
+                Label { Text(verbatim: name) } icon: { Image(systemName: "arrow.up.right").font(.caption2) }
+                    .foregroundStyle(LAAColor.link)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                    .contentShape(Rectangle())
             }
-            if let age { Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("laa.usage.billing")
+        } else {
+            Text(verbatim: name).font(.body).foregroundStyle(LAAColor.text)
+        }
+    }
+
+    private func readingValue(_ result: String?, age: String?, level: LAAMeterLevel) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
+            if result == nil || level != .unknown { LAAUsageMeterMark(level: level).font(.caption2) }
+            if let result {
+                Text(verbatim: result).font(LAAType.usageRowValue).foregroundStyle(LAAColor.text)
+                if let age { Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+            }
         }
     }
 
@@ -518,36 +476,13 @@ struct LAAUsageView: View {
         return LAAUsageAge.text(observed, at: evaluatedAt)
     }
 
-    private func reason(_ item: LAAUsageItem) -> String? {
-        if let reason = item.retainedReason { return Self.unavailableReason(reason, kind: item.kind) }
-        if item.availability != "available" { return Self.unavailable(item) }
-        if item.kind != "quota", item.isExpired(now: evaluatedAt) { return "期限切れ" }
-        return nil
-    }
-
     private func refresh() async {
-        await state.refreshAndPublish(bridge: bridge)
+        await state.refreshAndPublish(bridge: bridge, manual: true)
         evaluatedAt = Date()
     }
 
-    static func unavailable(_ item: LAAUsageItem) -> String {
-        unavailableReason(item.nullReason, kind: item.kind)
-    }
-
-    static func unavailableReason(_ reason: String?, kind: String = "") -> String {
-        switch reason {
-        case "not_configured": return kind == "cost" ? "管理者キー未設定" : "利用不可・未設定"
-        case "not_auto": return "自動取得なし"
-        case "freshness_unknown": return "使用額を確認できません"
-        case "fetch_failed": return "取得失敗"
-        case "unsupported": return "取得経路なし"
-        case "auth_required": return "認証が必要"
-        default: return "未取得"
-        }
-    }
-
-    private func value(_ number: Double?, unit: String) -> String {
-        guard let number, number.isFinite else { return LAACopy.notFetched }
+    private func value(_ number: Double?, unit: String) -> String? {
+        guard let number, number.isFinite else { return nil }
         if unit == "usd" { return LAAUsageMoney.text(number, locale: locale) }
         if unit == "percent", number > 0, number < 0.01 { return "<0.01%" }
         if unit == "percent", number < 100, number > 99.99 { return ">99.99%" }
@@ -557,73 +492,11 @@ struct LAAUsageView: View {
         case "percent": return shown + "%"
         case "jpy": return shown.hasPrefix("<") ? "<¥0.000001" : "¥" + shown
         case "credits": return shown + " credits"
-        case "count": return shown + " 回"
+        case "count": return shown
         default: return shown + " " + unit
         }
     }
 
 }
 
-/// The Usage screen's one meter: AI limits, balances and storage share its
-/// track, height and colors, so every bar on the screen reads the same. The
-/// threshold tick is drawn over the track rather than laid out with it: it was
-/// the extra height of that tick that made the rows with a mark twice as thick.
-///
-/// The bar follows the reading: it grows to its value when the row appears and
-/// slides to each new value a refresh brings, and its colour says whether the
-/// value needs a look. A quota or a credit grant counts down (`countsDown`),
-/// so it turns to the attention colour below a fifth left; storage counts up
-/// and turns past nine tenths used or at its warning level (`alert`).
-struct LAAUsageMeter: View {
-    /// 0...1; values outside are clamped.
-    let fraction: Double
-    /// True for a share left (quotas, credits); false for a share used.
-    var countsDown = false
-    var alert = false
-    /// Where a threshold begins, drawn as a short tick across the track.
-    var tick: Double? = nil
-    /// A nonzero amount keeps a sliver visible even when it rounds to nothing.
-    var showsSliver = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
-
-    static let height: CGFloat = 4
-    /// Tall enough for the tick, which stands 3pt above and below the track.
-    static let totalHeight: CGFloat = 10
-
-    private var clamped: Double { fraction.isFinite ? min(max(fraction, 0), 1) : 0 }
-    var needsAttention: Bool { alert || LAAUsageMeterRule.needsAttention(clamped, countsDown: countsDown) }
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let drawn = appeared || reduceMotion ? clamped : 0
-            ZStack(alignment: .leading) {
-                Capsule().fill(LAAColor.subtleSurface).frame(height: Self.height)
-                Capsule().fill(needsAttention ? LAAColor.attention : LAAColor.link)
-                    .frame(width: max(width * drawn, showsSliver && clamped > 0 ? Self.height : 0),
-                           height: Self.height)
-            }
-            .frame(width: width, height: Self.height)
-            .frame(maxHeight: .infinity, alignment: .center)
-            .overlay(alignment: .leading) {
-                if let tick, tick > 0, tick < 1 {
-                    Capsule().fill(LAAColor.secondaryText.opacity(0.55))
-                        .frame(width: 2, height: Self.totalHeight)
-                        .offset(x: width * tick - 1)
-                }
-            }
-        }
-        .frame(height: Self.totalHeight)
-        .accessibilityElement()
-        // Grows to its value once, then slides between readings; Reduce
-        // Motion draws each value in place.
-        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: clamped)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: needsAttention)
-        .onAppear {
-            guard !appeared else { return }
-            if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 0.35)) { appeared = true } }
-        }
-    }
-}
 #endif

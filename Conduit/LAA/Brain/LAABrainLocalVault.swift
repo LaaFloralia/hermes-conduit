@@ -97,6 +97,17 @@ import Darwin
                         try FileManager.default.setAttributes([.modificationDate: updated], ofItemAtPath: note.path)
                     }
                 }
+                #if targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-open-benchmark") {
+                    for (name, paragraphs) in [("Small", 4), ("Medium", 90), ("Large", 600)] {
+                        let body = (1...paragraphs).map { index in
+                            "## Section \(index)\n\nAn **editable** paragraph with `inline code` and [a link](https://example.invalid).\n\n- [ ] An item"
+                        }.joined(separator: "\n\n")
+                        try Data("\(body)\n\nEnd of \(name) fixture.".utf8)
+                            .write(to: root.appendingPathComponent("Company/\(name).md"))
+                    }
+                }
+                #endif
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-document-fixture") {
                     let lines = (1...45).map { "段落\($0)：長いノートを読み進めても、リンクから戻った位置を保持します。" }
                     let text = "---\r\ncustom: [keep, exact]\r\nunknown: |\r\n  untouched\r\n---\r\n" + lines.joined(separator: "\n\n") + "\n\n[[Other#Details|次のメモ]]\n\n:::custom unsupported\n\n![[Other]]\n"

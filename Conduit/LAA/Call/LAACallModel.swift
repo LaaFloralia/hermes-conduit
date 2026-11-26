@@ -74,7 +74,9 @@ struct LAAEmployeeCallConsent: Identifiable {
 
 @MainActor
 final class LAAEmployeeCallCoordinator: ObservableObject {
-    @Published private(set) var snapshot: LAAEmployeeCallSnapshot?
+    @Published private(set) var snapshot: LAAEmployeeCallSnapshot? {
+        didSet { LAAStaffCallActivityController.shared.follow(snapshot) }
+    }
     @Published var isShowingCall = false
     @Published var consentRequest: LAAEmployeeCallConsent?
     private var pendingContext: LAAEmployeeCallContext?

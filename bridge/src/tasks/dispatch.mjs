@@ -257,7 +257,8 @@ export function createTaskDispatchService({ store, tasks, sessions = null, sessi
         else {
           if (!p) throw conflict('task_brief_missing', 'the task has no brief frozen from its create request');
           if (!sessionOptions().profiles.some((v) => v.id === r.profile)) throw badRequest('task_profile_unknown', 'the selected profile is no longer listed');
-          result = await sessions.createSession({ deviceId: r.deviceId, body: p.body });
+          // The name is the owner's existing task title, not automation-authored copy.
+          result = await sessions.createSession({ deviceId: r.deviceId, body: p.body, ownerName: true });
         }
         r = store.update(id, (v) => { v.sessionId = result.session.id; v.phase = v.report ? 'reported' : 'started'; v.pickedUpAt ??= stamp(); v.lastError = null; v.nextAttemptAt = null; });
         if (refs) { const item = sessionRefItem(result.session, refs.refFor); refs.assign('session', item.key, item.title, item.external); }

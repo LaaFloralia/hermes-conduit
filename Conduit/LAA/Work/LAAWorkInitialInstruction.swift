@@ -88,7 +88,7 @@ struct LAAWorkInitialInstruction: View {
                     } else if response != nil {
                         Text(verbatim: "記録なし").laaTextStyle(.body)
                     } else if failed {
-                        Text(verbatim: "最初の指示を取得できませんでした。").laaTextStyle(.body)
+                        Text(verbatim: "最初の指示が応答しません。Macとの接続を確認してください。").laaTextStyle(.body)
                         Button("Retry") { Task { await load() } }
                     } else {
                         ProgressView()
@@ -100,7 +100,9 @@ struct LAAWorkInitialInstruction: View {
             .foregroundStyle(LAAColor.text)
             .navigationTitle(Text(verbatim: "名前と最初の指示"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("work.initialInstruction.done") } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) {
+                LAACloseButton { dismiss() }.accessibilityIdentifier("work.initialInstruction.done")
+            } }
         }
         .tint(LAAColor.link)
         .task(id: sessionID) { await load() }

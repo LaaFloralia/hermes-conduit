@@ -11,13 +11,19 @@ final class LAABackgroundFixture: ObservableObject {
 
     init(chatFixtureOverride: String? = nil, defaultsSuiteName: String = "LAABackgroundUITestFixture",
          conversationID: String = "fixture-chat") {
-        let members = [
+        let chaired = ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_CHAIRED_MEETING")
+        var members = [
             GroupMember(memberID: "laa-monet", profile: "laa-monet", handle: "monet", displayName: "Monet", target: nil, extra: [:]),
             GroupMember(memberID: "laa-cto", profile: "laa-cto", handle: "ada", displayName: "Ada", target: nil, extra: [:]),
         ]
+        if chaired {
+            members.append(GroupMember(memberID: "laa-cos", profile: "laa-cos", handle: "merlin", displayName: "Merlin", target: nil, extra: [:]))
+        }
         let room = GroupRoom(roomID: "fixture-room", name: LAALabCaptureFixture.expanded("企画チーム"), members: members,
                              authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1,
-                             createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: 2)
+                             createdAt: 1, updatedAt: 1, disbandedAt: nil, latestSeq: chaired ? 5 : 2,
+                             chair: chaired ? "laa-monet" : nil, policy: chaired ? .standard : nil,
+                             confidential: chaired ? true : nil)
         self.room = room
         let bots = LAAWidgetEmployee.allCases.map { employee in
             BotProfile(name: employee.profile, botTitle: nil, displayName: employee.name, profileDescription: "", model: nil,
@@ -60,11 +66,29 @@ final class LAABackgroundFixture: ObservableObject {
                     authorityEpoch: 1, payload: ["text": .string("午後の資料は私が用意します。")], createdAt: now)
             ]
         }
+        if chaired {
+            let seed = GroupEvent(roomID: room.roomID, seq: 1, eventID: "fixture-topic", kind: "message.user",
+                actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+                authorityEpoch: 1, payload: ["text": .string("資料の方針を決めて。"), "thread_id": .string("main")], createdAt: now - 120)
+            let lines = [
+                ("laa-monet", "agenda", "構成と順番について意見を集めます。"),
+                ("laa-cto", "staff", "POSITION: Start with a one-page outline."),
+                ("laa-cos", "staff", "POSITION: Collect the supporting figures first."),
+                ("laa-monet", "conclusion", "資料は1ページにまとめます。先に数値をそろえ、構成案と一緒に確認します。"),
+            ]
+            events = [seed] + lines.enumerated().map { index, line in
+                GroupEvent(roomID: room.roomID, seq: index + 2, eventID: "fixture-meeting-\(index)", kind: "message.member",
+                    actor: GroupActor(kind: "member", id: line.0, profile: line.0, displayName: nil, connectionID: nil),
+                    authorityEpoch: 1, payload: ["text": .string(line.2), "member_id": .string(line.0), "thread_id": .string("main"),
+                        "discussion_event_id": .string(seed.id), "meeting_phase": .string(line.1)], createdAt: now - 30 + Double(index))
+            }
+        }
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in
                 if mode == "error" { throw URLError(.cannotConnectToHost) }
                 return GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "fixture",
-                    features: [], methods: GroupWire.requiredMethods.union(["groups.rename"]), maxLogLimit: 500)
+                    features: chaired ? ["room_chair", "room_confidential"] : [],
+                    methods: GroupWire.requiredMethods.union(["groups.rename"]), maxLogLimit: 500)
             },
             list: { _ in (mode == "empty" ? [] : [room], nil) }, state: { _, _ in (room, nil) },
             log: { _, _, since, _ in GroupLogPage(events: events.filter { $0.seq > since }, cursor: events.count,
@@ -125,6 +149,24 @@ final class LAABackgroundFixture: ObservableObject {
             if chatFixture == "typing" {
                 app.messages.removeLast()
                 app.messages.append(ChatMessage(id: "reason", role: .reasoning, content: "予定を確認しています。", timestamp: String(now)))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+            }
+        }
+        // Two waits in a row, for the employee's thinking word
+        // (LAAStaffThinking): the first runs 16 s, the reply lands, and the
+        // second starts 6 s later (past the resume grace), so it picks
+        // again. With "-LAA_FIXTURE_STAFF_THINKING -LAA_FIXTURE_THINKING_SEED
+        // <n>" the words are the owner's table and the picks fixed.
+        if chatFixture == "typing", args.contains("-LAA_FIXTURE_WAIT_CYCLE") {
+            Task { @MainActor [weak app] in
+                try? await Task.sleep(for: .seconds(16))
+                guard let app else { return }
+                app.handleStreamEvent(.messageComplete(sessionId: conversationID, messageId: "fixture-first",
+                                                       content: "午前は予定を確認し、午後は資料を仕上げましょう。", reasoning: nil))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: false))
+                try? await Task.sleep(for: .seconds(6))
+                app.messages.append(ChatMessage(id: "user-second", role: .user, content: "資料の順番も決めて。",
+                                                timestamp: String(Date().timeIntervalSince1970), rowId: 3))
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
             }
         }
@@ -287,6 +329,9 @@ struct LAABackgroundUITestFixtureScreen: View {
                         Button(String("接続")) { sheet = .pairing }.accessibilityIdentifier("fixture.bridge")
                         Button(String("一覧")) { sheet = .groupList }.accessibilityIdentifier("fixture.groups.list")
                     }.font(.caption).padding(4)
+                    // The employee's mascot reaches up into the navigation
+                    // row by design; the test controls stay above it.
+                    .zIndex(1)
                 }
                 if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_REAL_BRIDGE") {
                     HStack {
@@ -300,6 +345,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                         }.accessibilityIdentifier("fixture.bridge.verify")
                         Text(bridgeResult).accessibilityIdentifier("fixture.bridge.result")
                     }
+                    .zIndex(1)
                 }
                 if let name = fake.createdName { Text(verbatim: "作成済み：\(name)").accessibilityIdentifier("fixture.created") }
                 conversationScreen.environmentObject(fake.state)
@@ -313,7 +359,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                 switch selected {
                 case .create:
                     NavigationStack {
-                        LAAGroupCreateView(roster: fake.bots) { name, bots, _ in
+                        LAAGroupCreateView(roster: fake.bots, capabilities: appState.groupCapabilities) { name, bots, _, _ in
                             guard (2...6).contains(bots.count) else { return false }
                             fake.createdName = name
                             sheet = nil

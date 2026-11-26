@@ -211,7 +211,7 @@ final class LAADecisionUITests: XCTestCase {
         app.buttons["work.decision.send"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.decision.undelivered"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["届いていません"].exists)
-        XCTAssertEqual(app.buttons["work.decision.send"].label, "届け直す")
+        XCTAssertEqual(app.buttons["work.decision.send"].label, "Resend")
         screenshot("ui-decisions-undelivered-light", app)
         app.buttons["work.decision.close"].tap()
 
@@ -341,9 +341,6 @@ final class LAADecisionUITests: XCTestCase {
             app.buttons["work.section.tasks"].tap()
             XCTAssertTrue(app.buttons["work.tasks.quick"].waitForExistence(timeout: 15))
             screenshot("work-tasks-after-\(style)", app)
-            app.buttons["work.section.routines"].tap()
-            XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 15))
-            screenshot("work-routines-after-\(style)", app)
             XCTAssertEqual(app.activityIndicators.count, 0)
             app.buttons["work.usage"].tap()
             XCTAssertTrue(app.staticTexts["Usage"].waitForExistence(timeout: 15))

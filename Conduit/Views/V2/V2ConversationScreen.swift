@@ -54,6 +54,7 @@ struct V2ConversationScreen: View {
     private var usesLAAChatBack: Bool { shell.isRootCovered && !shell.isSplit && !laaDesktop }
     #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
@@ -149,6 +150,7 @@ struct V2ConversationScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
 #if LAA_BUILD
+        .laaHidesTabBar()
         .modifier(LAAInCallBarModifier())
         .navigationBarBackButtonHidden(usesLAAChatBack)
         // Hiding the system Back for LAA's also turns off the edge swipe;
@@ -183,21 +185,37 @@ struct V2ConversationScreen: View {
         }
     }
 
+#if LAA_BUILD
+    private var separatesEmployeeHeader: Bool { laaDesktop || dynamicTypeSize.isAccessibilitySize }
+
+    private var employeeHeader: some View {
+        LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+#endif
+
     private var chatColumn: some View {
         ZStack {
             // A Bot Chat glows in its bot's color, as its working line does;
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             VStack(spacing: 0) {
+#if LAA_BUILD
+                // At accessibility text sizes and on a Mac the heading takes
+                // its own row, so a tall heading never hides the newest
+                // message (2026-11-26 capture findings 5 and 12).
+                if separatesEmployeeHeader, appState.activeRoomSurface == nil {
+                    employeeHeader.layoutPriority(1)
+                }
+#endif
                 conversation
             }
 #if LAA_BUILD
-                // The employee's heading is a bar over the transcript, which
+                // Otherwise the heading is a bar over the transcript, which
                 // rests below it and scrolls beneath it (owner, 2026-11-13).
                 .v2EdgeBar(.top) {
-                    if appState.activeRoomSurface == nil {
-                        LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
-                            .fixedSize(horizontal: false, vertical: true)
+                    if !separatesEmployeeHeader, appState.activeRoomSurface == nil {
+                        employeeHeader
                     }
                 }
 #endif

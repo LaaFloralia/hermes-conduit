@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 struct LAAWorkHub: View {
     let onRequestSettings: () -> Void
@@ -18,14 +19,18 @@ struct LAAWorkHub: View {
     @State private var refreshID = 0
     @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var search = ""
+    @FocusState private var searchFocused: Bool
+    @Environment(\.laaThemeID) private var themeID
+    @Environment(\.laaPalette) private var palette
     @State private var decisionDevice: String?
+    @State private var linkedProject: String?
 
     /// Projects opens first: opening a project shows its requirements, done
     /// and under way, with its Sessions (owner, 2026-11-23; Sessions had
     /// opened first since 2026-11-11). The board stays beside Sessions, so
     /// what waits for the owner is one tap away.
     enum Section: String, CaseIterable, Identifiable {
-        case projects, sessions, decisions, campaigns, tasks, routines
+        case projects, sessions, decisions, campaigns, tasks
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -34,84 +39,94 @@ struct LAAWorkHub: View {
             case .decisions: String("Decisions")
             case .campaigns: LAACampaignCopy.section
             case .tasks: String("Tasks")
-            case .routines: String("Routines")
             }
         }
         /// The board keeps its own list and pull to refresh; nothing to search.
         var searchable: Bool { self != .decisions && self != .campaigns }
     }
 
-    private func segmentTitle(_ value: Section) -> String {
-        switch value {
-        case .decisions where decisions.count > 0: "\(value.title) \(decisions.count)"
-        case .campaigns where campaigns.count > 0: "\(value.title) \(campaigns.count)"
-        default: value.title
-        }
+    private func select(_ value: Section) {
+        guard value != section else { return }
+        searchFocused = false
+        search = ""
+        section = value
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             LAAScreenHeader(title: "Work", identifier: "laa.work.title")
                 .padding(.horizontal, LAASpacing.horizontal)
-            LAASegmentedControl(values: Section.allCases, selection: $section, title: segmentTitle,
-                                identifier: { "work.section.\($0.rawValue)" })
-            .padding(.horizontal, LAASpacing.horizontal)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("work.segment")
+            LAAWorkSectionSelector(selection: Binding(get: { section }, set: select),
+                                   decisions: decisions.count, campaigns: campaigns.count)
+                .padding(.horizontal, LAASpacing.horizontal)
             if bridge.status != .paired { connectionState }
             else {
                 if !laaDesktop && section.searchable {
-                    LAASearchField(placeholder: "検索", text: $search, identifier: "laa.work.search")
-                        .padding(.horizontal, 20)
+                    LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search", focus: $searchFocused)
+                        .padding(.horizontal, LAASpacing.horizontal)
+                        .id(section)
                 }
                 sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.top, LAASpacing.x2)
+        .laaTheme(themeID)
         .background(LAAColor.background.ignoresSafeArea()).foregroundStyle(LAAColor.text)
         .navigationTitle(Text(verbatim: "")).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 let lowest = LAAUsageGauge.lowestWeeklyRemaining(usageState.usage.value ?? [])
+                let usageLevel = LAAMeterLevel(remainingPercent: lowest)
                 Button { showUsage = true } label: {
                     Image(systemName: LAAUsageGauge.symbol(lowest))
-                        .foregroundStyle(lowest.map { LAAUsageMeterRule.needsAttention($0 / 100, countsDown: true) } == true
-                                         ? LAAColor.attention : LAAColor.link)
+                        .foregroundStyle(usageLevel == .unknown ? LAAColor.secondaryText : palette.meter(usageLevel))
                         .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 44, height: 44)
                 }
-                    .accessibilityLabel(Text(verbatim: "Usage")).accessibilityIdentifier("work.usage")
-                    .accessibilityValue(Text(verbatim: lowest.map {
-                        LAACopy.Usage.lowestWeekly + " " + $0.formatted(.number.precision(.fractionLength(0))) + "%"
-                    } ?? LAACopy.notFetched))
-                if section == .sessions {
-                    // A new project is the Projects section's own first button.
-                    Menu {
-                        Button(String("新しいセッション")) { createID += 1 }.accessibilityIdentifier("work.sessions.new")
-                    } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
-                    .accessibilityLabel("作成").accessibilityIdentifier("work.create")
-                    .disabled(bridge.status != .paired)
-                } else if section != .projects && section != .decisions && section != .campaigns {
-                    Button { if section == .routines { section = .tasks }; createID += 1 } label: {
-                        Image(systemName: "plus").frame(width: 44, height: 44)
+                .accessibilityLabel(Text(verbatim: "Usage")).accessibilityIdentifier("work.usage")
+                .accessibilityValue(Text(verbatim: lowest.map {
+                    LAACopy.Usage.lowestWeekly + " " + $0.formatted(.number.precision(.fractionLength(0))) + "%"
+                } ?? ""))
+            }
+            LAASettingsToolbar(action: onRequestSettings)
+            // Separate item: a grouped toolbar control can collapse into a
+            // menu on Catalyst, where the session stays open in its pane.
+            if section == .sessions {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if laaDesktop {
+                        Button { createID += 1 } label: { Label("New", systemImage: "plus") }
+                            .accessibilityIdentifier("work.sessions.new")
+                            .disabled(bridge.status != .paired)
+                    } else {
+                        Menu {
+                            Button("New Session") { createID += 1 }.accessibilityIdentifier("work.sessions.new")
+                        } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("New").accessibilityIdentifier("work.create")
+                            .disabled(bridge.status != .paired)
                     }
-                    .accessibilityLabel(String("新しいタスク")).accessibilityIdentifier("work.linear.add")
+                }
+            } else if section == .tasks {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { createID += 1 } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("New Task").accessibilityIdentifier("work.linear.add")
                     .disabled(bridge.status != .paired)
                 }
             }
-            LAASettingsToolbar(action: onRequestSettings)
         }
         .tint(LAAColor.link)
         .scrollDismissesKeyboard(.interactively)
-        .onChange(of: section) { _, _ in search = "" }
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
             guard linkRequest.url?.host == "work", linkRequest.claim("work.hub") != nil else { return }
-            if linkRequest.decisionsLink {
+            linkedProject = linkRequest.projectTarget
+            if linkedProject != nil {
+                section = .projects
+            } else if linkRequest.decisionsLink {
                 decisions.linkedID = linkRequest.decisionTarget
-                section = .decisions
+                select(.decisions)
             } else {
-                section = linkRequest.sessionTarget == nil ? .tasks : .sessions
+                select(linkRequest.sessionTarget == nil ? .tasks : .sessions)
             }
         }
         .task(id: "\(bridge.revision)-\(scenePhase == .active)") {
@@ -147,15 +162,15 @@ struct LAAWorkHub: View {
     @ViewBuilder private var sectionContent: some View {
         switch section {
         case .projects:
-            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID) }
+            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID, linkedProject: $linkedProject) }
             else {
                 ScrollView {
-                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search)
+                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject)
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1 }
             }
         case .sessions:
-            if laaDesktop { LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0, createID: createID, onCreateConsumed: { createID = 0 }) }
+            if laaDesktop { LAAWorkDesktopSessionsView(drafts: drafts, refreshID: refreshID, createID: createID, onCreateConsumed: { createID = 0 }) }
             else {
                 ScrollView {
                     LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID, query: search, createID: createID, onCreateConsumed: { createID = 0 })
@@ -165,9 +180,6 @@ struct LAAWorkHub: View {
         case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
         case .campaigns: LAACampaignBoardView(board: campaigns)
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
-        case .routines:
-            if laaDesktop { LAAWorkDesktopCatalogView(kind: .routines) }
-            else { LAAWorkCatalogView(kind: .routines, query: search) }
         }
     }
 

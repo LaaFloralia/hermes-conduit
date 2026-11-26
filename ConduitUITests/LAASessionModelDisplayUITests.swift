@@ -53,8 +53,8 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         app.buttons["work.section.sessions"].tap()
         let tally = any("laa.work.sessions.tally", app)
         XCTAssertTrue(tally.waitForExistence(timeout: 15))
-        XCTAssertTrue(tally.label.hasPrefix("実行中 "), tally.label)
-        XCTAssertTrue(tally.label.contains("待機 "), tally.label)
+        XCTAssertTrue(tally.label.hasPrefix("Running "), tally.label)
+        XCTAssertTrue(tally.label.contains("Idle "), tally.label)
         capture(app, "sessions-tally-light")
     }
 

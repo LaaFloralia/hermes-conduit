@@ -383,7 +383,7 @@ struct LAAPersonalDependencyEditor: View {
                 Button() { reserve() } label: { Text(verbatim: "追加依頼を保存") }.disabled(!ready || !value.valid || drafts.persistenceFailed)
             }
             .navigationTitle(Text(verbatim: "後続操作"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.queue.close") } }
             .task { restore() }
             .onChange(of: value.kind) { _, _ in save() }
             .onChange(of: value.first) { _, _ in save() }

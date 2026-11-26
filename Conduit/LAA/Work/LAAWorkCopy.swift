@@ -6,11 +6,10 @@ extension LAACopy {
     enum WorkTab {
         static let title = "Work"
         static let subtitle = "Sessions, projects and tasks."
-        static let segments = ["Sessions", "Projects", "Tasks", "Routines"]
+        static let segments = ["Sessions", "Projects", "Tasks"]
         static let sessions = "Sessions"
         static let projects = "Projects"
         static let tasks = "Tasks"
-        static let routines = "Routines"
         static let decisions = "Decisions"
         static let skills = "Skills"
         static let project = "Project"
@@ -21,18 +20,17 @@ extension LAACopy {
         static let successor = "続きのセッション"
         static let settings = "Settings"
         static let connect = "Macに接続"
-        static let retry = "再試行"
-        static let reconnect = "接続し直す"
-        static let ownerFilter = "担当"
-        static let statusFilter = "状態"
-        static let all = "すべて"
-        static let create = "作成"
-        static let close = "閉じる"
-        static let cancel = "キャンセル"
+        static let retry = "Retry"
+        static let reconnect = "Reconnect"
+        static let ownerFilter = "Assignee"
+        static let statusFilter = "Status"
+        static let all = "All"
+        static let create = "Create"
+        static let cancel = "Cancel"
         static let retryRequest = "もう一度送る"
         static let textSize = "文字サイズ"
         static let fullEditor = "入力欄を広げる"
-        static let send = "送信"
+        static let send = "Send"
         /// Send's explicit choice to wait for the running turn (owner 2026-11-15).
         static let sendAfterTurn = "この手番の後に送る"
         static let checkSuccessor = "続きのセッションを確認"
@@ -42,8 +40,8 @@ extension LAACopy {
         static let hold = "保留する"
         static let checkStop = "中断状況を確認"
         static let retryStop = "もう一度中断を要求"
-        static let resume = "再開"
-        static let stop = "中断"
+        static let resume = "Resume"
+        static let stop = "Stop"
         static let openSuccessor = "続きを開く"
         static let startSuccessor = "続きの会話を開始"
         static let resumeNewConversation = "続きは別の会話で開始します。履歴は引き継がれません。"
@@ -52,26 +50,27 @@ extension LAACopy {
         static let followUpQueued = "追加指示を送信待ちに入れました。"
         static let followUpDecisionDraft = "追加指示は下書きに残しました。判断後に送信できます。"
         static let log = "作業の記録"
-        static let edit = "編集"
+        static let edit = "Edit"
         static let clearLegacy = "古い参照を外す"
         static let undoClearLegacy = "参照を残す"
         static let useCurrent = "現在の内容を使う"
         static let saveMine = "変更を保存"
         static let compare = "現在の内容と比較"
-        static let save = "保存"
+        static let save = "Save"
         static let openLinear = "Linearで開く"
         static let projectName = "プロジェクト名"
 
-        // One name per action across the Work list, its swipe rows and the
-        // context menu. States stay Japanese; actions are short English.
-        static let searchSessions = "検索"
-        static let pinned = "ピン留め"
-        static let recent = "最近"
-        static let archived = "アーカイブ"
-        static let pin = "ピン留め"
-        static let unpin = "ピンを外す"
-        static let archive = "アーカイブ"
-        static let unarchive = "戻す"
+        // Keep Work list headings and actions consistent with its menus.
+        static let searchSessions = "Search"
+        static let newest = "Newest"
+        static let byProject = "By Project"
+        static let pinned = "Pinned"
+        static let recent = "Recent"
+        static let archived = "Archived"
+        static let pin = "Pin"
+        static let unpin = "Unpin"
+        static let archive = "Archive"
+        static let unarchive = "Restore"
         static let showArchive = "Archived"
         static let backToRecent = "Recent"
     }
@@ -91,21 +90,20 @@ extension LAACopy {
         static let requirementDetails = "補足（任意）"
         static let addFooter = "社長の要件として登録します。題名は後から変えず、補足と状態で進みを表します。"
         static let changeStatus = "状態を変える"
-        static let withdraw = "取り下げる"
+        static let withdraw = "Withdraw"
         static func withdrawTitle(_ title: String) -> String { "「\(title)」を取り下げますか？" }
         static let withdrawMessage = "一覧から外します。元の文はMacに残ります。"
-        static let addedByAI = "AI追加"
-        static let addedByAIHint = "AIが足した項目"
-        static let ownerHint = "社長の要件"
+        static let addedByAI = "AI-added"
+        static let owner = "Owner"
         static let startSession = "New"
         static let startSessionHint = "このプロジェクトで新しいセッションを開始"
         static let showArchived = "Archived"
         static let hideArchived = "Hide"
         /// Spoken names of the disclosure chevron: the control itself is an icon.
-        static let expandHint = "開く"
-        static let collapseHint = "閉じる"
-        static let expandedValue = "開いている"
-        static let collapsedValue = "閉じている"
+        static let expandHint = "Expand"
+        static let collapseHint = "Collapse"
+        static let expandedValue = "Expanded"
+        static let collapsedValue = "Collapsed"
         static let noRequirements = "要件はまだありません。社長の依頼を、Monetがここへ項目に分けて登録します。"
         static let noRequirementsShort = "要件なし"
         static let noSessions = "まだありません。"
@@ -146,21 +144,20 @@ extension LAACopy {
             }
         }
 
-        static func sessionStatus(_ raw: String) -> String {
-            switch raw {
-            case "running": "実行中"
-            case "waiting": "待機"
-            case "awaiting_decision": "判断待ち"
-            case "completed": "完了"
-            default: "状態不明"
+        static func sessionStatus(_ status: LAAWorkStatus) -> String {
+            switch status {
+            case .decision: "Waiting"
+            case .waiting: "Idle"
+            case .pending: "Unknown"
+            default: status.displayLabel
             }
         }
 
         static func activity(_ activity: LAAWorkProjectActivity) -> String? {
             switch activity {
             case .idle: nil
-            case .running(let count): "実行中のセッション \(count)件"
-            case .decision(let count): "判断待ちのセッション \(count)件"
+            case .running(let count): "\(sessionStatus(.running)) \(count)"
+            case .decision(let count): "\(sessionStatus(.decision)) \(count)"
             }
         }
     }

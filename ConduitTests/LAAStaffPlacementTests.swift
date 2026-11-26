@@ -39,8 +39,9 @@ final class LAAStaffPlacementTests: XCTestCase {
         }
     }
 
-    /// The new group's member choice shows the same sections, Monet's
-    /// uncensored variant left out as before.
+    /// The new group's member choice offers Monet and the seated employees
+    /// only: dispatch staff (派遣社員) have no meeting seat (contract C-1.4,
+    /// Wave 3), and Monet's uncensored variant stays out as before.
     @MainActor func testTheGroupPickerUsesTheSamePlacement() {
         XCTAssertEqual(LAAGroupCandidates.sections.map(\.title),
                        [LAACopy.groupSelectEmployees, LAACopy.chatsEmployees])

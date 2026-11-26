@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// The LAA tabs reuse Conduit's chat list and conversation screens. The
@@ -6,7 +7,6 @@ import SwiftUI
 struct LAAAppShell: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.scenePhase) private var scenePhase
     let onRequestSettings: () -> Void
 
@@ -16,6 +16,8 @@ struct LAAAppShell: View {
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var showUsage = false
+    @State private var settingsCardOpen = false
+    @ObservedObject private var tabBarVisibility = LAATabBarVisibility.shared
     @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var chatsPath: [V2Route] = []
     #if DEBUG
@@ -69,6 +71,7 @@ struct LAAAppShell: View {
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
             .laaOwnerAvatarSync(bridge, active: scenePhase == .active)
+            .laaStaffThinkingSync(bridge, active: scenePhase == .active)
             .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
                 let active = scenePhase == .active
                 await usageState.synchronize(bridge: bridge, active: active)
@@ -215,24 +218,12 @@ struct LAAAppShell: View {
         #endif
     }
 
-    @ViewBuilder
+    /// The tabs keep TabView's resident roots and selection; the system bar is hidden and the LAA glass bar
+    /// (two capsules: tabs and the app icon that opens the settings card) takes its place (2026-11-26).
     private var normalBar: some View {
-        if #available(iOS 26.0, *) {
-            tabs.tabBarMinimizeBehavior(.never)
-        } else if reduceTransparency {
-            tabs.toolbarBackground(LAAColor.surface, for: .tabBar)
-                .toolbarBackground(.visible, for: .tabBar)
-        } else {
-            tabs.toolbarBackground(.ultraThinMaterial, for: .tabBar)
-                .toolbarBackground(.visible, for: .tabBar)
-        }
-    }
-
-    private var tabs: some View {
         TabView(selection: $selectedTab) {
             chatsTab
-                .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
-                .tabItem { tabLabel(.chats) }
+                .modifier(LAATabRoot(barVisible: !barHidden && !requiresLogin))
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
                 LAANonChatTab(tab: tab, isActive: selectedTab == tab,
@@ -243,27 +234,37 @@ struct LAAAppShell: View {
                               usageState: usageState, selectedTab: $selectedTab,
                               onRequestSettings: onRequestSettings)
                     .equatable()
-                .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
-                .tabItem { tabLabel(tab) }
-                .badge(tab == .work ? decisionCount : 0)
+                .modifier(LAATabRoot(barVisible: !barHidden))
                 .tag(tab)
             }
         }
+        // While the settings card is open, the screen behind it (including its navigation bar's actions, which
+        // live outside the card's modal scope in UIKit) leaves the accessibility tree; the card and Close stay.
+        .accessibilityHidden(settingsCardOpen)
+        .laaGlassTabBar(glassTabs, selection: $selectedTab, isExpanded: $settingsCardOpen, isHidden: barHidden,
+                        app: .hortensia) {
+            LAAAppSettingsCard(openSettings: {
+                settingsCardOpen = false
+                onRequestSettings()
+            })
+        }
+        .onChange(of: selectedTab) { _, _ in settingsCardOpen = false }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { settingsCardOpen = false } }
     }
 
-    private func tabLabel(_ tab: LAATab) -> some View {
-        Label {
-            Text(verbatim: tab.title).font(.system(size: 10, weight: .semibold))
-        } icon: {
-            Image(systemName: tab.symbol).environment(\.symbolVariants, .none).fontWeight(.regular)
+    private var glassTabs: [LAAGlassTab<LAATab>] {
+        LAATab.destinations.map { tab in
+            LAAGlassTab(tab, title: tab.title, icon: tab.icon, badge: tab == .work ? decisionCount : 0)
         }
-        .environment(\.symbolVariants, .none)
     }
+
+    /// A call covering the tabs, or a screen that hid the system bar (a conversation, a detail page).
+    private var barHidden: Bool { callCoveringTabs || tabBarVisibility.isHidden }
 
     @ViewBuilder
     private var chatsTab: some View {
         if requiresLogin {
-            LoginView()
+            LoginView(tabBarClearance: barHidden ? 0 : LAAGlassTabBarLayout.contentClearance)
         } else {
             NavigationStack(path: $chatsPath) {
                 // LAAChatsContent owns the bar (an empty title and the
@@ -278,7 +279,7 @@ struct LAAAppShell: View {
                             V2ProjectPage(project: project)
                         case .artifacts:
                             V2ArtifactsPage()
-                                .toolbar(.hidden, for: .tabBar)
+                                .laaHidesTabBar()
                         }
                     }
             }
@@ -341,28 +342,14 @@ private struct LAANonChatTab: View, Equatable {
     }
 }
 
-enum LAATabBarVisibility {
-    static func isCovered(legacyCallPresented: Bool, employeeCallActive: Bool,
-                          employeeCallPresented: Bool) -> Bool {
-        employeeCallActive ? employeeCallPresented : legacyCallPresented
-    }
-}
-
-private struct LAAHideTabBarForCall: ViewModifier {
-    let isPresented: Bool
+/// Each tab root hides the system bar and keeps its last row clear of the glass bar.
+private struct LAATabRoot: ViewModifier {
+    let barVisible: Bool
 
     func body(content: Content) -> some View {
-        // Emit the preference without replacing the tab content or overriding
-        // a detail screen's own hidden preference when the call is dismissed.
-        content.overlay(alignment: .topLeading) {
-            if isPresented {
-                Color.clear
-                    .frame(width: 0, height: 0)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                    .toolbar(.hidden, for: .tabBar)
-            }
-        }
+        content
+            .toolbar(.hidden, for: .tabBar)
+            .laaTabBarClearance(barVisible)
     }
 }
 #endif

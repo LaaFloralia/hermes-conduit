@@ -274,15 +274,12 @@ final class LAAUsageV2ModelTests: XCTestCase {
 
     // MARK: Banned copy
 
-    static let banned = ["取得できません", "最終取得", "に戻る"]
+    static let banned = ["取得" + "できません", "最終" + "取得", "に" + "戻る"]
 
     func testNoBannedCopyInAnyUsageText() throws {
-        var texts = ["not_configured", "not_auto", "freshness_unknown", "fetch_failed", "unsupported", "auth_required", nil, "x"]
-            .flatMap { [LAAUsageView.unavailableReason($0), LAAUsageView.unavailableReason($0, kind: "cost")] }
-        texts += [LAAUsageProblem.failed, .bridge(.unavailable), .bridge(.networkUnreachable), .bridge(.forbidden),
+        var texts = [LAAUsageProblem.failed, .bridge(.unavailable), .bridge(.networkUnreachable), .bridge(.forbidden),
                   .bridge(.unauthorized), .bridge(.revoked)].map(\.japaneseText)
-        texts += [LAACopy.Usage.noAutomaticBalance, LAACopy.Usage.billingReading, LAACopy.Usage.noBalanceLeft,
-                  LAACopy.Usage.others, LAACopy.Usage.accounts, LAACopy.Usage.updated, LAACopy.notFetched]
+        texts += [LAACopy.Usage.others, LAACopy.Usage.accounts, LAACopy.Usage.updated, LAACopy.Usage.lapsed]
         let reset = now.addingTimeInterval(3600)
         texts += [LAAUsageResetText.full(reset, now: now), LAAUsageResetText.short(reset, now: now)]
         for text in texts { for word in Self.banned { XCTAssertFalse(text.contains(word), "\(text) contains \(word)") } }

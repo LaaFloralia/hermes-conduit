@@ -34,7 +34,7 @@ struct LAATaskSessionsSection: View {
                 }
             }
             if sessions.isEmpty {
-                Text(verbatim: failure ? "会話との紐付けを取得できませんでした。" : loaded ? "参照された会話は見つかりません。" : "会話を確認中…")
+                Text(verbatim: failure ? "参照先の会話が応答しません。Macとの接続を確認してください。" : loaded ? "参照された会話は見つかりません。" : "…")
                     .foregroundStyle(LAAColor.secondaryText)
             }
             if !sessions.isEmpty { Text(verbatim: "説明・コメントの会話名またはIDから推定しています。")

@@ -20,9 +20,6 @@ struct LAABrainNoteView: View {
     /// title from the shell.
     var showsBackButton = true
     var usesNavigationTitle = true
-    /// The Mac detail column paints the whole column and narrows only this
-    /// card, so no second colour shows down its sides.
-    var contentMaxWidth: CGFloat? = nil
     /// Leaves this note once it has moved or gone to the trash: the phone
     /// pops it, the Mac detail column clears its selection.
     var leave: (() -> Void)? = nil
@@ -46,26 +43,25 @@ struct LAABrainNoteView: View {
                         updatedAt: files.first { $0.path == reference.path }.flatMap { MessageTimestampFormatter.date(from: $0.modifiedAt) },
                         showsBackButton: showsBackButton, isPinned: isPinned, togglePin: togglePin,
                         leave: { if let leave { leave() } else if !path.isEmpty { path.removeLast() } },
-                        manage: { managedNote = note; editorIsOpen = true; showManage = true },
+                        manage: { editorIsOpen = true; showManage = true },
                         readingPositions: readingPositions,
                         onOpenLink: { target in openLink(target) },
                         attachments: { source in AnyView(attachmentPreviews(source)) },
                         relatedNotes: { open in
                             AnyView(relatedNotes(path: reference.path, open: open))
-                        }) { Task { await load() } }
+                        }) {}
                         .id(root.absoluteString + reference.path)
                 } else {
             ZStack {
-                LAAColor.background.ignoresSafeArea()
+                LAAColor.surface.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                        let breadcrumb = reference.path.split(separator: "/").dropLast().joined(separator: " › ")
+                        let breadcrumb = reference.path.split(separator: "/").dropLast().joined(separator: " / ")
                         if !breadcrumb.isEmpty {
                             Text(verbatim: breadcrumb).laaTextStyle(.secondary)
-                                .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                                .foregroundStyle(LAAColor.secondaryText).lineLimit(1).truncationMode(.head)
                         }
-                        Text(verbatim: LAADateText.noteTitle(URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent))
-                            .font(.system(size: 30, weight: .bold))
+                        LAADocTitle(title: LAADateText.noteTitle(URL(fileURLWithPath: reference.path).deletingPathExtension().lastPathComponent))
                         if let file = files.first(where: { $0.path == reference.path }),
                            let updated = MessageTimestampFormatter.date(from: file.modifiedAt) {
                             Text(verbatim: LAADateText.string(updated, .monthDay) + " 更新")
@@ -108,11 +104,11 @@ struct LAABrainNoteView: View {
                             }
                         }
                     }
-                    .padding(LAASpacing.horizontal)
-                    .frame(maxWidth: contentMaxWidth ?? 720, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .laaDocPaper()
                     .foregroundStyle(LAAColor.text)
+                    .environment(\.laaRichContentStyle, true)
                 }
+                .modifier(LAADocPaperTopEdge())
                 .modifier(LAABrainReadingPosition(store: readingPositions,
                           key: ((try? local.snapshot())?.absoluteString ?? "bridge") + reference.path,
                           loaded: note != nil, hasAnchor: reference.anchor != nil))
@@ -122,20 +118,22 @@ struct LAABrainNoteView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
+            .toolbarBackground(LAAColor.surface, for: .navigationBar)
+            .toolbarBackground(usesNavigationTitle ? .visible : .hidden, for: .navigationBar)
             .toolbar {
                 if !isLocal || LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     if showsBackButton {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { if !path.isEmpty { path.removeLast() } } label: { Image(systemName: "chevron.left") }
-                                .accessibilityLabel(String("戻る")).accessibilityIdentifier("laa.brain.back")
+                                .accessibilityLabel("Back").accessibilityIdentifier("laa.brain.back")
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button(String("文書内検索")) { showQuickSwitch = true }
-                            Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), action: togglePin)
-                            Button(raw ? String("本文を表示") : String("Markdownを表示")) { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
-                            Button(String("情報")) { showInfo = true }
+                            Button(String("Find")) { showQuickSwitch = true }
+                            Button(isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin, action: togglePin)
+                            Button(raw ? String("Preview") : String("Markdown")) { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
+                            Button(String("Info")) { showInfo = true }
                         } label: { Image(systemName: "ellipsis") }
                             .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
                     }
@@ -180,6 +178,11 @@ struct LAABrainNoteView: View {
                             path.append(.note(LAABrainReference(path: destination, includeInbox: true)))
                         }
                     }
+                } else if let localError {
+                    Text(verbatim: localError).foregroundStyle(LAAColor.attention)
+                } else {
+                    LAALoadingDots()
+                        .task { await load(); managedNote = note }
                 }
             }
             .sheet(isPresented: $showQuickSwitch) {
@@ -195,10 +198,14 @@ struct LAABrainNoteView: View {
                             Text(verbatim: metadata).textSelection(.enabled)
                         }
                     }.navigationTitle(String("情報"))
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showInfo = false }.accessibilityIdentifier("laa.brain.note.info.close") } }
                 }
             }
-            .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : 0, isLocal: isLocal)) { await load() }
+            .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : bridge.revision, isLocal: isLocal)) {
+                // The inline save editor already reads and validates the same local note.
+                // Read metadata for Manage only when the sheet is opened.
+                if !isLocal || LAABrainSaveCoordinator.isConflictCopy(reference.path) { await load() }
+            }
             .onAppear { if autoEditPath == reference.path { autoFocusRequested = true; autoEditPath = nil } }
         }
     }
@@ -294,7 +301,7 @@ private struct LAABrainQuickSwitch: View {
             }
             .searchable(text: $query, prompt: "ノートを検索")
             .navigationTitle(String("ノートを切り替える"))
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.note.local.close") } }
         }
     }
 }

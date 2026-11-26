@@ -1,0 +1,23 @@
+{
+  "kitVersion": "0.2.4",
+  "tokensVersion": "2026.11.4",
+  "tokensStatus": "provisional",
+  "tokenHash": "2db00e7402b5d125d4e476ccf0674b26b1bb72027bf49157723ae56a0c580c6f",
+  "generator": "scripts/generate.py",
+  "files": {
+    "LICENSES.md": "41d821817bce8a51a37a8a9c01791092d79bb4c79865e7c94e7baf94b9e82365",
+    "Sources/LAAFonts/Resources/Fonts/CormorantGaramond[wght].ttf": "b20b7d9626dd956b2c5e558692ad328b1f19e3275e2782db4fa07670d83f35e0",
+    "Sources/LAAFonts/Resources/Fonts/Newsreader-Italic[opsz,wght].ttf": "796668611f80b64d5adf182fde3b6f29ed83b4e7cbec7b96937e84ac01364792",
+    "Sources/LAAFonts/Resources/Fonts/Newsreader[opsz,wght].ttf": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1",
+    "Sources/LAAFonts/Resources/Fonts/OFL-CormorantGaramond.txt": "60700d351cac4650c51f3f9db318d2a420f8b45052dba2715eb5fec41f0f6956",
+    "Sources/LAAFonts/Resources/Fonts/OFL-Newsreader.txt": "fdfad38143ec470553cae82a1e45320bdd1b9ec70415d37bd0171051d8a4ded8",
+    "Sources/LAAFonts/Resources/Fonts/OFL-ShipporiMincho.txt": "41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38",
+    "Sources/LAAFonts/Resources/Fonts/ShipporiMincho-Medium.ttf": "700e505afc4cded2338eba29478a041e04c1c2ea5114fbb3e0b04e76c302c5d8",
+    "Sources/LAAFonts/Resources/Fonts/ShipporiMincho-SemiBold.ttf": "bc7925544894a91466449adb73c6d943f50c3e53eb1c74d0673fe2dbafcd4d2d",
+    "Sources/LAATokens/LAAIcon.generated.swift": "fa941002434df880906333fe604655b65bdec03f02ae8fe8abac91bb32a45d6f",
+    "Sources/LAATokens/LAATokens.generated.swift": "199e5bdf02c8138785d9b2e44f71e007117513cbef3e89b5114b335373877d25",
+    "web/tokens.css": "ab4c601890e1e6ec0794a354b943811e332bf3336d0c0ac390ae5646d5dbda7b",
+    "web/tokens.json": "f9346dd704bef4bca213bba0b0a6a49af2a75b041f993bedc922725b43736f6e",
+    "web/tokens.ts": "b432f6aedfc3e93f6538c9b09aa29584a79b40c1a85fb61bc5f4ed83f828449b"
+  }
+}

@@ -3,6 +3,7 @@
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { resolveStateDir } from './config.mjs';
+import { monetPost } from './cli-monet.mjs';
 import { badRequest, conflict, notFound } from './errors.mjs';
 import { createDecisionStore } from './decisions/store.mjs';
 import { isWaiting } from './decisions/service.mjs';
@@ -16,6 +17,7 @@ import { assignSessionProject, projectSessionViews, resolveProject } from './ses
 export const PROJECTS_USAGE = `laa-bridge projects assign <project name|id> <Work agent UUID|Bridge session ID>
   laa-bridge projects list|get [project] [--json]
   laa-bridge projects sessions [--json]      export Work session project membership
+  laa-bridge projects report <project-id> --request-id <id> [--json]  trusted Monet runner only
   laa-bridge projects rpc                 read an internal project-tool request from stdin`;
 
 const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -52,6 +54,12 @@ export async function projectsCommand(positional, flags, { stateDir = resolveSta
   const [command, target, sessionId] = positional;
   try {
     if (flags.help) { console.log(PROJECTS_USAGE); return 0; }
+    if (command === 'report') {
+      if (sessionId !== undefined || !/^prj_[0-9a-f]{12}$/.test(target ?? '') || typeof flags['request-id'] !== 'string'
+        || Object.keys(flags).some((flag) => !['request-id', 'json'].includes(flag))) throw badRequest('project_operation_invalid', PROJECTS_USAGE);
+      console.log(JSON.stringify({ ok: true, data: await monetPost('/v1/monet/completion-report', { projectId: target, requestId: flags['request-id'] }) }));
+      return 0;
+    }
     const sessionStore = createSessionStore({ file: join(stateDir, 'sessions.json') });
     if (command === 'sessions') {
       if (target !== undefined || Object.keys(flags).some((flag) => flag !== 'json')) {
@@ -74,7 +82,7 @@ export async function projectsCommand(positional, flags, { stateDir = resolveSta
     const handle = (method, path, body) => {
       const route = routes.find((row) => row.method === method && (row.path === path || row.pattern?.test(path)));
       if (!route) throw badRequest('project_operation_invalid', 'unsupported project operation');
-      const { status, data } = route.handler({ params: route.pattern?.exec(path).slice(1) ?? [], reuseName: true, internalFullSessions: command === 'rpc',
+      const { status, data } = route.handler({ params: route.pattern?.exec(path).slice(1) ?? [], reuseName: true, internalFullSessions: command === 'rpc', author: 'agent',
         rawBody: body === undefined ? undefined : Buffer.from(JSON.stringify(body)),
         req: { url: `${path}${request.op === 'list' ? `?limit=25${request.cursor ? `&cursor=${encodeURIComponent(request.cursor)}` : ''}` : ''}`,
           headers: { 'if-match': request.etag } }, device: { id: 'local-operator' } });
@@ -96,7 +104,7 @@ export async function projectsCommand(positional, flags, { stateDir = resolveSta
       case 'requirement_add': result = handle('POST', `${pathFor()}/requirements`, request.body); break;
       case 'requirement_update': result = handle('PATCH', requirementPath(), request.body); break;
       case 'requirement_order': result = handle('PUT', `${pathFor()}/requirements/order`, request.body); break;
-      case 'requirement_withdraw': result = handle('DELETE', requirementPath()); break;
+      case 'requirement_withdraw': result = handle('DELETE', requirementPath(), request.body); break;
       case 'prepare': {
         const project = resolve();
         if (project.archivedAt) throw conflict('project_archived', 'choose an active project');
@@ -136,7 +144,7 @@ export async function projectsCommand(positional, flags, { stateDir = resolveSta
     return 0;
   } catch (error) {
     const safeCode = error.status === 404 ? 'project_or_session_not_found' : error.status ? error.code : 'projects_unavailable';
-    console.log(JSON.stringify({ ok: false, error: safeCode }));
+    console.log(JSON.stringify({ ok: false, error: safeCode, ...(error.status === 422 ? { status: 422, message: error.message } : {}) }));
     return error.status === 404 ? 3 : error.status === 409 || error.status === 412 ? 4 : 1;
   }
 }

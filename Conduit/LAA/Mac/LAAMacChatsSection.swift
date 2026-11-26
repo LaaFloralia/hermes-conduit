@@ -74,6 +74,7 @@ struct LAAMacChatsSection: View {
                 .environment(\.v2Shell, V2ShellContext(values: .init(isTabActive: true, isRootCovered: false, isSplit: true)))
                 .environment(\.horizontalSizeClass, .compact)
                 .modifier(LAAMacFlatTopEdge())
+                .laaStaffAmbientPanel(LAAStaffAmbientInputs(appState))
         }
     }
     #endif
@@ -158,6 +159,7 @@ struct LAAMacChatsSection: View {
                 .environment(\.horizontalSizeClass, .compact)
                 .modifier(LAAMacFlatTopEdge())
                 .accessibilityIdentifier("laa.mac.conversation")
+                .laaStaffAmbientPanel(LAAStaffAmbientInputs(appState))
                 // Escape returns to the list from anywhere in the column. The
                 // column takes focus as it appears, and the handler sits on it
                 // so the composer's keys reach it too; it is the only handler,

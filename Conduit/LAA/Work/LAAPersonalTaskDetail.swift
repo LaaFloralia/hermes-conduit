@@ -1,10 +1,12 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 struct LAAPersonalTaskDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dismiss) private var dismiss
     @Environment(\.laaDesktop) private var laaDesktop
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
     /// The list row's short number; this route does not carry one itself.
@@ -40,18 +42,7 @@ struct LAAPersonalTaskDetailView: View {
                     }
                     if let task {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            HStack(spacing: LAASpacing.x2) {
-                                // The short number the owner says, then Linear's
-                                // own identifier.
-                                Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
-                                    .compactMap { $0 }.joined(separator: " · "))
-                                    .laaTextStyle(.secondary).monospacedDigit()
-                                    .foregroundStyle(LAAColor.secondaryText)
-                                    .accessibilityIdentifier("work.task.detail.ref")
-                                if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
-                                Spacer(minLength: LAASpacing.x2)
-                                if let ownerTask, ownerTask.isOpen { completeButton(ownerTask) }
-                            }
+                            taskMetadata(task)
                             Text(verbatim: task.title)
                                 .font(LAAType.title(task.title, size: laaDesktop ? 30 : 26, relativeTo: .title))
                                 .foregroundStyle(LAAColor.text)
@@ -84,7 +75,7 @@ struct LAAPersonalTaskDetailView: View {
         .navigationTitle(Text(verbatim: LAACopy.WorkTab.task))
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .laaHidesTabBar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(LAACopy.WorkTab.edit) { showEdit = true }.disabled(task == nil || viewerId == nil || error != nil)
@@ -96,12 +87,40 @@ struct LAAPersonalTaskDetailView: View {
         .confirmationDialog(Text(verbatim: "完了にしますか？"),
                             isPresented: Binding(get: { confirmingComplete }, set: { confirmingComplete = $0 }),
                             titleVisibility: .visible) {
-            Button { if let ownerTask { Task { await complete(ownerTask) } } } label: { Text(verbatim: "完了") }
+            Button { if let ownerTask { Task { await complete(ownerTask) } } } label: { Text(verbatim: "Complete") }
             Button(role: .cancel) {} label: { Text(verbatim: LAACopy.cancel) }
         } message: {
             Text(verbatim: ownerTask.map(LAATaskRunCopy.completionMessage(for:)) ?? "")
         }
         .task(id: "\(id):\(bridge.revision)") { task = nil; viewerId = nil; await load() }
+    }
+
+    private func taskMetadata(_ task: LAAPersonalTask) -> some View {
+        // Give the spoken task number and Linear identifier a full row when
+        // the action and genre cannot fit without breaking the number apart.
+        let reference = Text(verbatim: [LAAWorkRef.display(ref), identifier(task.sourceId)]
+            .compactMap { $0 }.joined(separator: " · "))
+            .laaTextStyle(.secondary).monospacedDigit()
+            .foregroundStyle(LAAColor.secondaryText)
+            .accessibilityIdentifier("work.task.detail.ref")
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: LAASpace.s8) {
+                reference.fixedSize()
+                taskActions
+            }
+            VStack(alignment: .leading, spacing: LAASpace.s8) {
+                reference.fixedSize(horizontal: false, vertical: true)
+                taskActions
+            }
+        }
+    }
+
+    private var taskActions: some View {
+        HStack(spacing: LAASpace.s8) {
+            if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
+            Spacer(minLength: 0)
+            if let ownerTask, ownerTask.isOpen { completeButton(ownerTask) }
+        }
     }
 
     /// 完了 beside the number, at the size of the list's glass capsules: a
@@ -111,27 +130,16 @@ struct LAAPersonalTaskDetailView: View {
     private func completeButton(_ owner: LAALinearTask) -> some View {
         let blocked = owner.completionBlockedReason != nil
         return Button { confirmingComplete = true } label: {
-            HStack(spacing: 5) {
-                if completing {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .semibold))
-                }
-                Text(verbatim: completing ? "保存中" : "完了にする").fontWeight(.medium)
+            HStack(spacing: LAASpace.s4) {
+                if completing { ProgressView().controlSize(.mini) }
+                else { Image(systemName: "checkmark.circle").accessibilityHidden(true) }
+                Text(verbatim: "Done")
             }
-            .laaTextStyle(.secondary)
-            .foregroundStyle(blocked ? LAAColor.secondaryText : LAAColor.link)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 30)
-            .laaGlass(in: Capsule())
-            .opacity(blocked ? 0.6 : 1)
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LAAButtonStyle(.compact))
         .fixedSize()
         .disabled(completing || blocked)
-        .accessibilityLabel(Text(verbatim: "完了にする"))
+        .accessibilityLabel(Text(verbatim: "Done"))
         .accessibilityHint(Text(verbatim: owner.completionBlockedReason ?? ""))
         .accessibilityIdentifier("work.task.detail.complete")
     }
@@ -253,31 +261,47 @@ struct LAAPersonalTaskDetailView: View {
         .accessibilityIdentifier("work.task.detail.properties")
     }
 
+    @ViewBuilder
     private func property<Value: View>(_ symbol: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
-        GridRow {
-            Label { Text(verbatim: label) } icon: {
-                Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: 18)
-            }
-            .laaTextStyle(.secondary)
-            .foregroundStyle(LAAColor.secondaryText)
-            .gridColumnAlignment(.leading)
-            value()
-                .laaTextStyle(.body)
-                .foregroundStyle(LAAColor.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        let key = Label { Text(verbatim: label) } icon: {
+            Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: LAAIconSize.row)
         }
-        .accessibilityElement(children: .combine)
+        .laaTextStyle(.secondary)
+        .foregroundStyle(LAAColor.secondaryText)
+        let content = value().laaTextStyle(.body).foregroundStyle(LAAColor.text)
+        if typeSize.isAccessibilitySize {
+            // Fit each pair on its own rather than letting a long label in
+            // one property squeeze the value column for the whole grid.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: LAASpace.s12) {
+                    key.fixedSize()
+                    content.fixedSize()
+                }
+                VStack(alignment: .leading, spacing: LAASpace.s4) {
+                    key
+                    content.fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else {
+            GridRow {
+                key.gridColumnAlignment(.leading)
+                content.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     private func genreChip(_ genre: LAATaskGenre) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: genre.symbol).font(.system(size: 10, weight: .semibold))
+            Image(systemName: genre.symbol).font(.caption2.weight(.semibold))
             Text(verbatim: genre.title)
         }
         .laaTextStyle(.secondary).fontWeight(.medium)
         .foregroundStyle(genre.tint)
         .padding(.horizontal, 8).padding(.vertical, 2)
-        .background(genre.tint.opacity(0.12), in: Capsule())
+        .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.control))
         .accessibilityLabel(Text(verbatim: "ジャンル \(genre.title)"))
     }
 
