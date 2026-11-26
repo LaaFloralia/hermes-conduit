@@ -38,6 +38,8 @@ struct LAADriveOperatingRulesView: View {
         .background(LAAColor.surface.ignoresSafeArea())
         .navigationBarBackButtonHidden()
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(LAAColor.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .task(id: [bridge.revision, attempt]) {
             markdown = nil; failed = false; missing = false

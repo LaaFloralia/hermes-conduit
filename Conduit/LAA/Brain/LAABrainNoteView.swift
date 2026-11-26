@@ -117,6 +117,8 @@ struct LAABrainNoteView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
+            .toolbarBackground(LAAColor.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 if !isLocal || LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     if showsBackButton {

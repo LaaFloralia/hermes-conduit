@@ -146,6 +146,8 @@ struct LAABrainSaveEditor: View {
             .navigationTitle(Text(verbatim: inline ? "" : noteTitle))
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(inline)
+            .toolbarBackground(LAAColor.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 if inline {
                     if showsBackButton {
@@ -157,18 +159,18 @@ struct LAABrainSaveEditor: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button(String("文書内検索"), systemImage: "magnifyingglass") { showFind = true }
+                            Button("Find", systemImage: "magnifyingglass") { showFind = true }
                             Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), systemImage: "pin", action: togglePin)
                                 .accessibilityIdentifier("laa.brain.pin")
                             Button("History", systemImage: "clock.arrow.circlepath") { showHistory = true }
                                 .accessibilityIdentifier("laa.brain.history")
-                            Button(String("Markdownを表示"), systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
+                            Button("Markdown", systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
                                 .accessibilityIdentifier("laa.brain.rawToggle")
-                            Button(String("情報"), systemImage: "info.circle") { showInfo = true }
-                            if let manage { Button(String("名前・保存先を変更"), systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
+                            Button("Info", systemImage: "info.circle") { showInfo = true }
+                            if let manage { Button("Manage", systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
                             if autoSaveBlocked { Button(String("保存を再試行")) { autoSaveBlocked = false; Task { await save(automatically: true) } } }
                         } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
+                            .accessibilityLabel("Note Menu").accessibilityIdentifier("laa.brain.menu")
                     }
                 } else {
                     ToolbarItem(placement: .cancellationAction) { Button("閉じる") { Task { await close() } }.disabled(busy || saving) }
