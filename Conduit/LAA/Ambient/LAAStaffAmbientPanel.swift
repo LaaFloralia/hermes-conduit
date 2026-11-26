@@ -144,8 +144,9 @@ struct LAAStaffAmbientPanel: View {
                 infoRow("最後の活動", model.lastActivity)
             }
             .padding(.top, LAASpacing.x6)
-            Text(verbatim: "定期実行")
-                .font(.system(size: 12, weight: .medium))
+            // The Work tab's name for them.
+            Text(verbatim: "Routines")
+                .laaTextStyle(.section)
                 .foregroundStyle(LAAColor.secondaryText)
                 .padding(.top, LAASpacing.x8)
                 .padding(.bottom, LAASpacing.x2)
@@ -219,7 +220,7 @@ struct LAAStaffAmbientPanel: View {
             .foregroundStyle(LAAColor.secondaryText)
             .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
-            .accessibilityLabel(Text(verbatim: "定期実行"))
+            .accessibilityLabel(Text(verbatim: "Routines"))
     }
 
     private func load() async {
