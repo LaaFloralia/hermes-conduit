@@ -19,7 +19,7 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchEnvironment["LAA_UI_TEST_THEME_SUITE"] = "laa.appearance-test.\(UUID().uuidString)"
-        if dark { app.launchEnvironment["LAA_UI_TEST_DARK_APPEARANCE"] = "1" }
+        app.launchEnvironment["LAA_UI_TEST_APPEARANCE_SCHEME"] = dark ? "Dark" : "Light"
         app.launchArguments += ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-tab", "today", "-laa-mac-section", "today"]
         app.launchInLab()
         let prefix = dark ? "dark" : "light"
@@ -27,7 +27,7 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         XCTAssertTrue(today.waitForExistence(timeout: 20))
         #if !targetEnvironment(macCatalyst)
         let tabs = app.tabBars.firstMatch
-        for (id, label) in [("chats", "Chat"), ("work", "Work"), ("today", "Today"), ("brain", "Brain"), ("studio", "Studio")] {
+        for (id, label) in [("chats", "Chat"), ("work", "Work"), ("today", "Today"), ("brain", "Doc"), ("studio", "Studio")] {
             let tab = tabs.buttons["laa.tab.\(id)"]
             XCTAssertTrue(tab.waitForExistence(timeout: 10))
             XCTAssertTrue(tab.label.hasPrefix(label), "The icon-only tab keeps an English accessibility label (and any badge)")

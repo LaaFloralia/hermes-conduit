@@ -7,6 +7,17 @@ import WidgetKit
 enum LAAAppTheme {
     static let store = LAAThemeStore(appGroup: LAASelectedTheme.appGroup)
 
+    static func colorScheme(_ preference: ColorScheme?) -> ColorScheme? {
+        #if DEBUG
+        switch ProcessInfo.processInfo.environment["LAA_UI_TEST_APPEARANCE_SCHEME"] {
+        case "Light": return .light
+        case "Dark": return .dark
+        default: break
+        }
+        #endif
+        return preference
+    }
+
     static func select(_ id: String) {
         guard id != store.themeID else { return }
         store.select(id)
@@ -26,7 +37,7 @@ struct LAAAppThemeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.laaTheme(store.themeID)
             #if DEBUG
-            .preferredColorScheme(ProcessInfo.processInfo.environment["LAA_UI_TEST_DARK_APPEARANCE"] == "1" ? .dark : nil)
+            .preferredColorScheme(LAAAppTheme.colorScheme(nil))
             #endif
             .onChange(of: store.themeID, initial: true) { _, id in LAASelectedTheme.shared.apply(id) }
             .onChange(of: phase, initial: true) { _, phase in

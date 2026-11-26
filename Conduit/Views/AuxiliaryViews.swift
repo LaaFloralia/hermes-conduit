@@ -652,7 +652,11 @@ struct SettingsView: View {
                         .v2TabBarClearance()
                 }
         }
+        #if LAA_BUILD
+        .preferredColorScheme(LAAAppTheme.colorScheme(appState.themePreference.colorScheme))
+        #else
         .preferredColorScheme(appState.themePreference.colorScheme)
+        #endif
         .onAppear {
             // A link's page is already open as the sheet comes up; Back
             // leads to the Settings home.
@@ -3688,7 +3692,10 @@ private struct AppearanceSettingsDetail: View {
                 }
             }
             #endif
-        }.navigationTitle("Appearance")
+        }
+        #if !LAA_BUILD
+        .navigationTitle("Appearance")
+        #endif
     }
 }
 
