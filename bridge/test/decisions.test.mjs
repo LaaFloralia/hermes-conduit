@@ -163,7 +163,7 @@ test('answer: fixed Japanese text, stable message id, readback, device replay, c
   const a = await f.service.answer({ id: r.id, deviceId: 'phone', body });
   assert.equal(a.decision.delivery.state, 'delivered');
   assert.equal(a.decision.answer.deviceId, 'phone');
-  assert.deepEqual(f.sent, [{ id: 'agent-1', messageId: `${r.id}:answer:1`, text: `【判断ボードの回答】${r.id}「公開日を決める」\n選択: 来週\n補足: お願いします\n（社長が判断ボードで選びました。この判断で作業を続けてください。）` }]);
+  assert.deepEqual(f.sent, [{ id: 'agent-1', messageId: `${r.id}:answer:1`, queue: true, text: `【判断ボードの回答】${r.id}「公開日を決める」\n選択: 来週\n補足: お願いします\n（社長が判断ボードで選びました。この判断で作業を続けてください。）` }]);
   assert.deepEqual(await f.service.answer({ id: r.id, deviceId: 'phone', body }), a);
   assert.equal(f.sent.length, 1);
   await assert.rejects(f.service.answer({ id: r.id, deviceId: 'phone', body: { ...body, optionIndex: 1 } }), code('decision_request_conflict'));
@@ -634,6 +634,58 @@ test('waiting: an archived or deleted conversation leaves the board quietly; a s
   g.state.busy = false;
   const retried = await g.service.answer({ id: d.id, deviceId: 'phone', body: { requestId: 'retry' }, retry: true });
   assert.equal(retried.decision.delivery.state, 'delivered'); assert.equal(retried.decision.delivery.attempts, 2);
+});
+
+// The LAA Work engine queues a message behind a running turn, once per message id.
+function engineFixture(t) {
+  const f = busyFixture(t);
+  const status = f.daemon.status;
+  f.daemon.status = async (...args) => ({ ...(await status(...args)), engine: 'laa-work' });
+  f.daemon.send = async (id, message) => {
+    if (f.state.busy && !message.queue) throw new BridgeError(409, 'session_busy', 'busy');
+    if (!f.sent.some((m) => m.messageId === message.messageId)) f.sent.push({ id, ...message });
+    return { queued: f.state.busy };
+  };
+  return f;
+}
+
+test('waiting: a Work engine conversation that never idles gets the answer queued behind its turn, once, and it leaves the board (2026-11-26)', async (t) => {
+  const f = engineFixture(t);
+  const r = f.service.add(request()).decision;
+  const a = await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(a.decision.delivery.state, 'delivered');
+  assert.equal(a.decision.delivery.queued, true);
+  assert(!('waiting' in a.decision.delivery));
+  assert.deepEqual(f.sent.map((m) => m.messageId), [`${r.id}:answer:1`]);
+  assert.equal((await f.service.list()).items.find((i) => i.id === r.id), undefined);
+  for (let i = 0; i < 5; i += 1) { f.advance(60_000); await f.service.deliverWaiting(); }
+  assert.equal(f.sent.length, 1);
+  assert.equal(failedNotices(f).length, 0);
+});
+
+test('waiting: an answer already held for a busy Work engine conversation is queued on the next pass, not after the turn ends', async (t) => {
+  const f = busyFixture(t);
+  const r = f.service.add(request()).decision;
+  await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(f.store.get(r.id).delivery.waiting, true);
+  // The Bridge restarts with the engine-aware path while the conversation is still working.
+  const g = engineFixture(t);
+  const service = createDecisionService({ store: f.store, now: f.now, daemon: g.daemon, notify: null });
+  g.state.busy = true;
+  await service.deliverWaiting();
+  const done = f.store.get(r.id);
+  assert.equal(done.delivery.state, 'delivered'); assert.equal(done.delivery.queued, true);
+  assert.deepEqual(g.sent.map((m) => m.messageId), [`${r.id}:answer:1`]);
+  await service.deliverWaiting();
+  assert.equal(g.sent.length, 1);
+  // A conversation asking its own question still keeps the answer waiting.
+  const h = engineFixture(t);
+  const status = h.daemon.status;
+  h.daemon.status = async (...args) => ({ ...(await status(...args)), pending: [{ id: 'perm' }] });
+  const q = h.service.add(request()).decision;
+  const answered = await h.service.answer({ id: q.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(answered.decision.delivery.state, 'failed'); assert.equal(answered.decision.delivery.error, 'pending_decision_requires_reply');
+  assert.equal(h.sent.length, 0);
 });
 
 test('waiting: survives a Bridge restart, and an answer an earlier Bridge filed as failed(session_busy) is picked up', async (t) => {

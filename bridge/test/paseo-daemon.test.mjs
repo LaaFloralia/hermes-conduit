@@ -64,6 +64,21 @@ test('directory follows every daemon page; an idle send carries steer, a stable 
   await assert.rejects(f.daemon.send('parent', { text: 'extra' }), { code: 'pending_decision_requires_reply' });
 });
 
+test('a queued send goes to a working Work engine session only; a Paseo session still refuses it (2026-11-26)', async () => {
+  const f = fixture();
+  f.rows[0].status = 'running';
+  // A working Paseo session: queue is not honoured, the caller keeps holding.
+  await assert.rejects(f.daemon.send('parent', { text: '回答', messageId: 'm-q', queue: true }), { code: 'session_busy' });
+  f.rows[0].engine = 'laa-work';
+  await assert.rejects(f.daemon.send('parent', { text: '回答', messageId: 'm-q' }), { code: 'session_busy' });
+  assert.equal(f.calls.filter((c) => c[0] === 'send').length, 0);
+  assert.deepEqual(await f.daemon.send('parent', { text: '回答', messageId: 'm-q', queue: true }), { queued: true });
+  assert.equal(f.calls.filter((c) => c[0] === 'send')[0][3].messageId, 'm-q');
+  assert.equal((await f.daemon.status('parent')).engine, 'laa-work');
+  f.rows[0].pendingPermissions = [{ id: 'p1' }];
+  await assert.rejects(f.daemon.send('parent', { text: '回答', messageId: 'm-r', queue: true }), { code: 'pending_decision_requires_reply' });
+});
+
 test('decision rejects changed hashes, expiry and incomplete answers; confirms actual consumption', async () => {
   const f = fixture();
   f.rows[0].pendingPermissions = [{ id: 'p1', kind: 'question', name: 'request_user_input_async', input: { questions: [{ question: 'どちら？', options: [{ label: 'A' }] }] } }];
