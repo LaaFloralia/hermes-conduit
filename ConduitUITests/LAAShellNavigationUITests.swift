@@ -23,10 +23,14 @@ final class LAAShellNavigationUITests: XCTestCase {
             segment.tap()
             XCTAssertTrue(segment.isSelected)
         }
-        LAAWorkSectionUI.open("routines", in: app)
         let more = app.buttons["work.section.more"]
+        XCTAssertTrue(more.isHittable)
+        more.tap()
+        XCTAssertTrue(app.buttons["work.section.campaigns"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["work.section.routines"].exists)
+        LAAWorkSectionUI.open("campaigns", in: app)
         XCTAssertTrue(more.isSelected)
-        XCTAssertEqual(more.value as? String, "Routines")
+        XCTAssertEqual(more.value as? String, "Campaigns")
         XCTAssertTrue(app.buttons["work.section.projects"].exists)
         XCTAssertFalse(app.buttons["work.section.skills"].exists)
         XCTAssertTrue(app.buttons["work.usage"].exists)

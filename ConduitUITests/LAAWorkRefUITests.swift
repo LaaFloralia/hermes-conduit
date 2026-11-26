@@ -97,15 +97,6 @@ final class LAAWorkRefUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["work.ref.P1"].exists)
         app.navigationBars.buttons.firstMatch.tap()
 
-        // Routines: the scheduled row, then the resident one.
-        section(app, "routines")
-        XCTAssertTrue(app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.waitForExistence(timeout: 20))
-        app.buttons.containing(.staticText, identifier: "朝の確認").firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["work.ref.R1"].waitForExistence(timeout: 10))
-        // The resident routine ends the day on 「常時」, matched by its label.
-        app.buttons.containing(.staticText, identifier: "常駐の確認用").firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["R2"].waitForExistence(timeout: 10))
-
         // Skills: the row and the skill's detail.
         section(app, "skills")
         XCTAssertTrue(app.staticTexts["work.ref.K1"].waitForExistence(timeout: 15))

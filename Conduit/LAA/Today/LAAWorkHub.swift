@@ -30,7 +30,7 @@ struct LAAWorkHub: View {
     /// opened first since 2026-11-11). The board stays beside Sessions, so
     /// what waits for the owner is one tap away.
     enum Section: String, CaseIterable, Identifiable {
-        case projects, sessions, decisions, campaigns, tasks, routines
+        case projects, sessions, decisions, campaigns, tasks
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -39,7 +39,6 @@ struct LAAWorkHub: View {
             case .decisions: String("Decisions")
             case .campaigns: LAACampaignCopy.section
             case .tasks: String("Tasks")
-            case .routines: String("Routines")
             }
         }
         /// The board keeps its own list and pull to refresh; nothing to search.
@@ -106,9 +105,9 @@ struct LAAWorkHub: View {
                             .disabled(bridge.status != .paired)
                     }
                 }
-            } else if section == .tasks || section == .routines {
+            } else if section == .tasks {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { if section == .routines { select(.tasks) }; createID += 1 } label: {
+                    Button { createID += 1 } label: {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel("New Task").accessibilityIdentifier("work.linear.add")
@@ -181,9 +180,6 @@ struct LAAWorkHub: View {
         case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
         case .campaigns: LAACampaignBoardView(board: campaigns)
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
-        case .routines:
-            if laaDesktop { LAAWorkDesktopCatalogView(kind: .routines) }
-            else { LAAWorkCatalogView(kind: .routines, query: search) }
         }
     }
 

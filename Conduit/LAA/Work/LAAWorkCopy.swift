@@ -6,11 +6,10 @@ extension LAACopy {
     enum WorkTab {
         static let title = "Work"
         static let subtitle = "Sessions, projects and tasks."
-        static let segments = ["Sessions", "Projects", "Tasks", "Routines"]
+        static let segments = ["Sessions", "Projects", "Tasks"]
         static let sessions = "Sessions"
         static let projects = "Projects"
         static let tasks = "Tasks"
-        static let routines = "Routines"
         static let decisions = "Decisions"
         static let skills = "Skills"
         static let project = "Project"
