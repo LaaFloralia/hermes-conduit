@@ -31,8 +31,7 @@ final class LAAWorkShotsUITests: XCTestCase {
         return payload
     }
 
-    /// Work's four lists as the owner opens them: Sessions first, then the
-    /// board, Tasks with its count menu open, and the routines' day tree.
+    /// Sessions, Decisions, Tasks, and the overflow that opens Campaigns.
     func testListShotsLight() throws { try listShots("light") }
     func testListShotsDark() throws { try listShots("dark") }
 
@@ -59,13 +58,16 @@ final class LAAWorkShotsUITests: XCTestCase {
         capture(app, "list-tasks-menu-\(theme)")
         app.buttons["work.tasks.quick.all"].tap()
 
-        LAAWorkSectionUI.open("routines", in: app)
-        XCTAssertTrue(app.staticTexts["昼の市況メモ"].waitForExistence(timeout: 20))
+        let more = app.buttons["work.section.more"]
+        XCTAssertTrue(more.isHittable)
+        more.tap()
+        XCTAssertTrue(app.buttons["work.section.campaigns"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["work.section.routines"].exists)
+        capture(app, "work-overflow-\(theme)")
+        LAAWorkSectionUI.open("campaigns", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["work.campaigns"].firstMatch.waitForExistence(timeout: 10))
         settle(1)
-        capture(app, "list-routines-\(theme)")
-        app.buttons.containing(.staticText, identifier: "昼の市況メモ").firstMatch.tap()
-        settle(1)
-        capture(app, "list-routines-open-\(theme)")
+        capture(app, "list-campaigns-\(theme)")
     }
 
     /// The task list at the owner's size (about thirty tasks in eight

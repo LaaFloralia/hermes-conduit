@@ -232,16 +232,14 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.textFields["laa.bridge.address"].waitForExistence(timeout: 10))
     }
 
-    func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() {
+    func testWorkSegmentsAndCampaignsWhenUnpaired() {
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchInLab()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 30))
-        for name in ["sessions", "tasks", "routines"] {
-            let segment = app.buttons["work.section.\(name)"]
-            if !segment.isHittable { app.scrollViews["work.segment"].swipeLeft() }
-            XCTAssertTrue(segment.exists)
-            segment.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["work.segment"].firstMatch.exists)
+        for name in ["sessions", "tasks", "campaigns"] {
+            LAAWorkSectionUI.open(name, in: app)
             XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 5))
         }
         XCTAssertTrue(app.buttons["work.usage"].exists)
@@ -413,8 +411,6 @@ final class LAAWorkUITests: XCTestCase {
         app.buttons["閉じる"].tap()
         app.buttons["Tasks"].tap()
         XCTAssertTrue(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].waitForExistence(timeout: 30))
-        app.buttons["Routines"].tap()
-        XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
     }
 
     // Separating workspace creation from session creation makes each external

@@ -2,8 +2,7 @@
 import SwiftUI
 import LAAKit
 
-/// Four frequent destinations. On iPhone, swipe to the remaining sections
-/// or use the same menu as Mac and accessibility text sizes.
+/// Four frequent destinations, with Campaigns in the overflow.
 struct LAAWorkSectionSelector: View {
     typealias Section = LAAWorkHub.Section
     @Binding var selection: Section
@@ -13,39 +12,23 @@ struct LAAWorkSectionSelector: View {
     @Environment(\.laaDesktop) private var desktop
 
     private static let primary: [Section] = [.projects, .sessions, .decisions, .tasks]
-    private static let secondary: [Section] = [.routines, .campaigns]
     private var hit: CGFloat { desktop ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea }
     private var control: LAAControlSize { desktop ? LAAControl.Mac.secondary : LAAControl.IPhone.compact }
 
     var body: some View {
-        if desktop || typeSize.isAccessibilitySize {
-            HStack(spacing: LAASpace.s4) {
-                if typeSize.isAccessibilitySize {
-                    VStack(spacing: 0) {
-                        row(Self.primary.prefix(2))
-                        row(Self.primary.suffix(2))
-                    }
-                } else {
-                    row(Self.primary[...])
+        HStack(spacing: LAASpace.s4) {
+            if typeSize.isAccessibilitySize {
+                VStack(spacing: 0) {
+                    row(Self.primary.prefix(2))
+                    row(Self.primary.suffix(2))
                 }
-                overflow
+            } else {
+                row(Self.primary[...])
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("work.segment")
-        } else {
-            HStack(spacing: LAASpace.s4) {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        row(Self.primary[...]).containerRelativeFrame(.horizontal)
-                        row(Self.secondary[...]).containerRelativeFrame(.horizontal)
-                    }
-                }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
-                .accessibilityIdentifier("work.segment")
-                overflow
-            }
+            overflow
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("work.segment")
     }
 
     private func row(_ sections: ArraySlice<Section>) -> some View {
@@ -87,12 +70,10 @@ struct LAAWorkSectionSelector: View {
     }
 
     private var overflow: some View {
-        let selected = Self.secondary.contains(selection)
+        let selected = selection == .campaigns
         return Menu {
-            ForEach(Self.secondary) { section in
-                LAAWorkPickerItem(title: label(section), selected: selection == section,
-                                  identifier: "work.section.\(section.rawValue)") { selection = section }
-            }
+            LAAWorkPickerItem(title: label(.campaigns), selected: selected,
+                              identifier: "work.section.campaigns") { selection = .campaigns }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.body)

@@ -2,12 +2,12 @@
 import SwiftUI
 import LAAKit
 
-/// What a session or routine row says about its last state, read at a glance:
+/// What a session row says about its last state, read at a glance:
 /// a filled teal check is done, a filled red mark is an error, a plum mark
 /// waits for the owner, a pulsing teal dot is working, and a hollow ring has
 /// no result yet. Shape and colour both carry it, so neither is needed alone.
 enum LAAWorkStatus: Equatable {
-    case running, decision, error, done, waiting, stopped, paused, pending
+    case running, decision, error, done, waiting, stopped, pending
 
     /// A session's phase from the Bridge (`awaiting_review` is a finished turn).
     static func session(_ phase: String) -> LAAWorkStatus {
@@ -24,17 +24,6 @@ enum LAAWorkStatus: Equatable {
         }
     }
 
-    /// A routine's current state and its last run's result.
-    static func routine(_ routine: LAAWorkRoutine) -> LAAWorkStatus {
-        if routine.state == "running" { return .running }
-        let status = routine.businessStatus == nil || routine.businessStatus == "unknown" ? routine.result : routine.businessStatus
-        if routine.state == "error" || ["failed", "error", "partial", "timeout"].contains(status ?? "")
-            || ["schedule_overdue", "read_unavailable"].contains(routine.reasonCode ?? "") { return .error }
-        if routine.state == "paused" { return .paused }
-        if ["success", "ok", "succeeded", "completed"].contains(status ?? "") { return .done }
-        return .pending
-    }
-
     var label: String {
         switch self {
         case .running: String("実行中")
@@ -43,7 +32,6 @@ enum LAAWorkStatus: Equatable {
         case .done: String("完了")
         case .waiting: String("待機")
         case .stopped: String("停止済み")
-        case .paused: String("一時停止")
         case .pending: String("結果なし")
         }
     }
@@ -56,7 +44,6 @@ enum LAAWorkStatus: Equatable {
         case .done: "Done"
         case .waiting: "Waiting"
         case .stopped: "Stopped"
-        case .paused: "Paused"
         case .pending: "Pending"
         }
     }
@@ -66,7 +53,7 @@ enum LAAWorkStatus: Equatable {
         case .running, .done, .waiting: LAAColor.link
         case .decision: LAAColor.attention
         case .error: LAAColor.end
-        case .stopped, .paused, .pending: LAAColor.secondaryText
+        case .stopped, .pending: LAAColor.secondaryText
         }
     }
 
@@ -81,7 +68,6 @@ enum LAAWorkStatus: Equatable {
         // The turn's check, outlined: finished, and nothing running.
         case .waiting: "checkmark.circle"
         case .stopped: "stop.circle"
-        case .paused: "pause.circle"
         case .pending: "circle"
         }
     }
@@ -89,19 +75,15 @@ enum LAAWorkStatus: Equatable {
 
 struct LAAWorkStatusMark: View {
     let status: LAAWorkStatus
-    /// The rail of the routines tree puts the mark on a line, so the mark
-    /// keeps an opaque disc behind it instead of letting the line through.
-    var background: Color? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var size: CGFloat = 16
     @State private var pulse = false
 
     init(phase: String) { status = LAAWorkStatus.session(phase) }
-    init(status: LAAWorkStatus, background: Color? = nil) { self.status = status; self.background = background }
+    init(status: LAAWorkStatus) { self.status = status }
 
     var body: some View {
         ZStack {
-            if let background { Circle().fill(background).frame(width: size + 4, height: size + 4) }
             if let symbol = status.symbol {
                 // Filled marks draw their glyph in the surface colour, so the
                 // check or the exclamation reads as cut out of a solid disc.

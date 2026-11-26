@@ -74,7 +74,7 @@ final class LAALabCaptureUITests: XCTestCase {
         }
 
         batch(["work-projects", "work-requirements", "work-sessions", "work-session-history", "work-session-running",
-               "work-session-waiting", "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail", "work-routines",
+               "work-session-waiting", "work-decisions", "work-decision-detail", "work-tasks", "work-task-detail",
                "work-campaigns", "usage", "usage-capacity"], tab: "work") { app in
             let row = wait(project, app)
             if env["LAA_LAB_LONG_JAPANESE"] == "1" {
@@ -140,17 +140,6 @@ final class LAALabCaptureUITests: XCTestCase {
                     shot("work-task-detail", after: "work.task.detail.title", app)
                     tap("work.task.detail.close", app)
                 }
-            }
-            if selected.contains("work-routines") {
-                segment("tasks", app)
-                let search = wait("laa.work.search", app)
-                search.tap()
-                search.typeText("T30")
-                segment("routines", app)
-                let keyboard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
-                                                         object: app.keyboards.firstMatch)
-                XCTAssertEqual(XCTWaiter.wait(for: [keyboard], timeout: 5), .completed)
-                shot("work-routines", after: "work.routines.tree", app)
             }
             if needs("usage", "usage-capacity") {
                 tap("work.usage", app)

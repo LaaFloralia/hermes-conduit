@@ -184,8 +184,6 @@ extension LAACopy {
     static let macNoChatTitle = "会話を選んでください。"
     static let macNoSessionTitle = "セッションを選んでください。"
     static let macNoProjectTitle = "プロジェクトを選んでください。"
-    static let macNoRoutineTitle = "定期実行を選んでください。"
-    static let macNoSkillTitle = "スキルを選んでください。"
     static let macNoEventTitle = "予定を選んでください。"
 
     // MARK: List states
@@ -194,8 +192,6 @@ extension LAACopy {
     static let macNoArchivedSessions = "アーカイブしたセッションはありません。"
     static let macNoProjects = "プロジェクトはまだありません。"
     static let macNoArchivedProjects = "アーカイブしたプロジェクトはありません。"
-    static let macNoRoutines = "定期実行はありません。"
-    static let macNoSkills = "スキルはありません。"
     static let macNoEvents = "この期間に予定はありません。"
     static let macSessionsUnreadable = "セッションを読み取れません。"
     static let macProjectsUnreadable = "プロジェクトを読み取れません。"
