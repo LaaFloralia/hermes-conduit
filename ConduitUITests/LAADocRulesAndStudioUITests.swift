@@ -33,7 +33,7 @@ final class LAADocRulesAndStudioUITests: XCTestCase {
         #if targetEnvironment(macCatalyst)
         app.buttons["laa.mac.section.drive"].click()
         #else
-        app.buttons["studio.section.drive"].tap()
+        app.buttons["studio.drive"].tap()
         #endif
         openRules(app, menu: app.buttons["laa.drive.browser.menu"].firstMatch, entry: "laa.drive.rules")
         capture(app, "drive-rules-" + variant)
