@@ -2,12 +2,8 @@
 import Foundation
 import SwiftUI
 
-/// One campaign entry from `GET /v1/campaigns?kind=all`. The Bridge passes on
-/// the campaign-hunt ledger's rows; personal details never reach the ledger.
-/// The row's `action` says what approving means: `agent_apply` (the routine
-/// applies), `self` (the owner applies, as on X), `draft` (the routine drafts
-/// a grant application). Kinds and categories are open: the ledger may add one
-/// without an app release.
+/// A campaign-hunt ledger entry. Only verified, live rows are shown. Kinds
+/// and categories are open; `browse` is a deal without an application.
 struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
     struct Kind: RawRepresentable, Codable, Hashable, Sendable {
         let rawValue: String
@@ -15,6 +11,7 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
         static let site = Kind(rawValue: "site")
         static let x = Kind(rawValue: "x")
         static let grant = Kind(rawValue: "grant")
+        static let deal = Kind(rawValue: "deal")
     }
 
     /// The owner's grouping (2026-11-15 19:05): prizes, sign-up rewards,
@@ -27,7 +24,8 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
         static let grant = Category(rawValue: "grant")
         static let unlock = Category(rawValue: "unlock")
         static let perk = Category(rawValue: "perk")
-        static let known: [Category] = [.prize, .signup, .grant, .unlock, .perk]
+        static let deal = Category(rawValue: "deal")
+        static let known: [Category] = [.prize, .signup, .grant, .unlock, .perk, .deal]
     }
 
     let key: String
@@ -41,6 +39,7 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
     var service: String? = nil
     var addedAt: String? = nil
     let status: String
+    let eligible: Bool
     let title: String
     let organizer: String?
     let benefit: String?
@@ -61,22 +60,26 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
         case .x: return "self"
         case .grant: return "draft"
         case .site: return "agent_apply"
+        case .deal: return "browse"
         default: return "proceed"
         }
     }
-    var waiting: Bool { status == "needs_owner" || status == "candidate" }
+    var waiting: Bool { kind != .deal && (status == "needs_owner" || status == "candidate") }
+    var applied: Bool { status == "applied" }
+    var listed: Bool { kind == .deal && status == "listed" }
     var approved: Bool { status == "approved" }
     /// A drafted grant has been acted on; the ledger no longer takes a change.
     var changeable: Bool { status == "approved" || status == "declined" }
 
     private enum CodingKeys: String, CodingKey {
-        case key, kind, action, category, categoryLabel, genre, service, addedAt, status, title, organizer, benefit, prize, deadline, reason, conditions, nextStep, gbizid, url, at, decidedAt
+        case key, kind, action, category, categoryLabel, genre, service, addedAt, status, eligible, title, organizer, benefit, prize, deadline, reason, conditions, nextStep, gbizid, url, at, decidedAt
     }
 
-    init(key: String, kind: Kind, action: String? = nil, category: Category? = nil, status: String, title: String, organizer: String?, benefit: String?, deadline: String?,
+    init(key: String, kind: Kind, action: String? = nil, category: Category? = nil, status: String, eligible: Bool = false, title: String, organizer: String?, benefit: String?, deadline: String?,
          reason: String?, conditions: String?, nextStep: String?, gbizid: Bool?, url: String, at: String?, decidedAt: String?) {
         self.key = key; self.kind = kind; self.action = action
-        self.category = category ?? (kind == .grant ? .grant : .prize); self.status = status; self.title = title; self.organizer = organizer
+        self.category = category ?? (kind == .grant ? .grant : kind == .deal ? .deal : .prize)
+        self.status = status; self.eligible = eligible; self.title = title; self.organizer = organizer
         self.benefit = benefit; self.deadline = deadline; self.reason = reason; self.conditions = conditions
         self.nextStep = nextStep; self.gbizid = gbizid; self.url = url; self.at = at; self.decidedAt = decidedAt
     }
@@ -90,6 +93,7 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
                   action: try values.decodeIfPresent(String.self, forKey: .action),
                   category: try values.decodeIfPresent(Category.self, forKey: .category),
                   status: try values.decode(String.self, forKey: .status),
+                  eligible: try values.decodeIfPresent(Bool.self, forKey: .eligible) ?? false,
                   title: try values.decode(String.self, forKey: .title),
                   organizer: try values.decodeIfPresent(String.self, forKey: .organizer),
                   benefit: try values.decodeIfPresent(String.self, forKey: .benefit)
@@ -112,7 +116,7 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(key, forKey: .key); try values.encode(kind, forKey: .kind)
         try values.encodeIfPresent(action, forKey: .action); try values.encode(category, forKey: .category); try values.encode(status, forKey: .status)
-        try values.encode(title, forKey: .title); try values.encodeIfPresent(organizer, forKey: .organizer)
+        try values.encode(eligible, forKey: .eligible); try values.encode(title, forKey: .title); try values.encodeIfPresent(organizer, forKey: .organizer)
         try values.encodeIfPresent(benefit, forKey: .benefit); try values.encodeIfPresent(deadline, forKey: .deadline)
         try values.encodeIfPresent(reason, forKey: .reason); try values.encodeIfPresent(conditions, forKey: .conditions)
         try values.encodeIfPresent(nextStep, forKey: .nextStep); try values.encodeIfPresent(gbizid, forKey: .gbizid)
@@ -123,7 +127,7 @@ struct LAACampaign: Codable, Equatable, Identifiable, Sendable {
     }
 
     func with(status: String, decidedAt: String?) -> LAACampaign {
-        var copy = LAACampaign(key: key, kind: kind, action: action, category: category, status: status, title: title,
+        var copy = LAACampaign(key: key, kind: kind, action: action, category: category, status: status, eligible: eligible, title: title,
                                organizer: organizer, benefit: benefit, deadline: deadline, reason: reason, conditions: conditions,
                                nextStep: nextStep, gbizid: gbizid, url: url, at: at, decidedAt: decidedAt)
         copy.categoryLabel = categoryLabel; copy.genre = genre; copy.service = service; copy.addedAt = addedAt
@@ -196,7 +200,7 @@ enum LAACampaignSchedule {
         case .deadline: return byDeadline(live, now: now)
         case .newest:
             let items = live.sorted { ($0.addedAt ?? $0.at ?? "") > ($1.addedAt ?? $1.at ?? "") }
-            return items.isEmpty ? [] : [Group(id: "newest", title: LAACampaignCopy.waiting, urgent: false, items: items)]
+            return items.isEmpty ? [] : [Group(id: "newest", title: "追加順", urgent: false, items: items)]
         case .category:
             let soonest: (LAACampaign, LAACampaign) -> Bool = { a, b in
                 switch (day(a.deadline, now: now), day(b.deadline, now: now)) {
@@ -205,9 +209,7 @@ enum LAACampaignSchedule {
                 default: false
                 }
             }
-            let present = Set(live.map(\.category))
-            let order = LAACampaign.Category.known.filter(present.contains)
-                + present.subtracting(LAACampaign.Category.known).sorted { $0.rawValue < $1.rawValue }
+            let order = categories(in: live)
             // Within a category, one group per genre by name; rows without a genre last.
             return order.flatMap { category -> [Group] in
                 let rows = live.filter { $0.category == category }
@@ -220,6 +222,12 @@ enum LAACampaignSchedule {
                 }
             }
         }
+    }
+
+    static func categories(in items: [LAACampaign]) -> [LAACampaign.Category] {
+        let present = Set(items.map(\.category))
+        return LAACampaign.Category.known.filter(present.contains)
+            + present.subtracting(LAACampaign.Category.known).sorted { $0.rawValue < $1.rawValue }
     }
 
     private static func byDeadline(_ live: [LAACampaign], now: Date) -> [Group] {
@@ -249,15 +257,14 @@ enum LAACampaignSchedule {
 enum LAACampaignCopy {
     static let section = "Campaigns"
     static let heading = "応募の判断"
-    static let waiting = "判断待ち"
     static let decided = "判断済み"
+    static let applied = "応募済み"
+    static let appliedFilter = "応募済"
     static let decline = "見送る"
     static let open = "ページを開く"
-    static let empty = "判断待ちの応募はありません"
+    static let empty = "該当する応募・特典はありません"
     static let unsupported = "Macのアップデート待ちです"
     static let unsupportedDetail = "MacのLAA Bridgeを更新すると、応募の判断を表示します。"
-
-    static let allHidden = "表示する種類を選んでください"
 
     static func order(_ order: LAACampaignSchedule.Order) -> String {
         switch order {
@@ -274,6 +281,7 @@ enum LAACampaignCopy {
         case .grant: "助成金・補助金"
         case .unlock: "機能追加"
         case .perk: "利用者特典"
+        case .deal: "セール"
         default: "その他"
         }
     }
@@ -321,7 +329,7 @@ enum LAACampaignCopy {
     }
 
     /// Every row says its category, what it gives, its deadline and when it
-    /// was added (the owner, 2026-11-15); X posts say X, since the owner applies.
+    /// was added (the owner, 2026-11-15); X posts retain their source mark.
     static func meta(_ item: LAACampaign) -> String {
         [category(item), item.kind == .x ? "X" : nil, item.organizer, item.service == item.organizer ? nil : item.service, item.benefit,
          item.deadline.map { "締切 \($0)" }, added(item), item.gbizid == true ? "GビズID要" : nil]
@@ -336,8 +344,8 @@ enum LAACampaignCopy {
 
     /// `応募させる · 11月15日（日） 17:30`: what was chosen and when.
     static func decision(_ item: LAACampaign) -> String {
-        let choice = item.status == "drafted" ? "下書き済み" : item.approved ? approve(item.act) : decline
-        guard let date = LAAWorkFreshness.date(item.decidedAt) else { return choice }
+        let choice = item.applied ? applied : item.status == "drafted" ? "下書き済み" : item.approved ? approve(item.act) : decline
+        guard let date = LAAWorkFreshness.date(item.applied ? item.at : item.decidedAt) else { return choice }
         return choice + " · " + LAADateText.string(date, .dayTime)
     }
 
@@ -367,20 +375,28 @@ enum LAACampaignCopy {
     private var loadedAt: Date?
     private var now: () -> Date = { Date() }
 
-    /// Rows whose deadline day has passed leave the list on their own.
-    var current: [LAACampaign] { items.filter { !LAACampaignSchedule.expired($0, now: now()) } }
+    /// Expiration also advances locally between reads from the Bridge.
+    var current: [LAACampaign] {
+        let date = now()
+        return items.filter { $0.eligible && !LAACampaignSchedule.expired($0, now: date) }
+    }
     var waiting: [LAACampaign] { current.filter(\.waiting) }
     func waiting(_ kind: LAACampaign.Kind) -> [LAACampaign] { waiting.filter { $0.kind == kind } }
-    /// Newest choice first, so the one just made sits at the top of 判断済み.
-    var decided: [LAACampaign] {
-        current.filter { !$0.waiting }.sorted { ($0.decidedAt ?? "") > ($1.decidedAt ?? "") }
-    }
-    /// The toggles: the five categories always, then any other the ledger sends.
-    var categories: [LAACampaign.Category] {
-        let others = Set(current.map(\.category)).subtracting(LAACampaign.Category.known)
-        return LAACampaign.Category.known + others.sorted { $0.rawValue < $1.rawValue }
-    }
+    var categories: [LAACampaign.Category] { LAACampaignSchedule.categories(in: current) }
     var count: Int { waiting.count }
+
+    func visible(category: LAACampaign.Category?, appliedOnly: Bool, query: String) -> [LAACampaign] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return current.filter { item in
+            guard category == nil || category == item.category else { return false }
+            if appliedOnly && !item.applied { return false }
+            if term.isEmpty { return appliedOnly || !item.applied }
+            return [item.title, item.organizer, item.benefit, LAACampaignCopy.category(item), item.genre, item.service, item.url,
+                    item.applied ? LAACampaignCopy.applied : nil].compactMap { $0 }.contains {
+                $0.range(of: term, options: [.caseInsensitive, .widthInsensitive]) != nil
+            }
+        }
+    }
 
     func reset() { items = []; phase = .idle; loadedAt = nil; failures = [:] }
 
@@ -394,7 +410,7 @@ enum LAACampaignCopy {
         loading = true
         defer { loading = false }
         do {
-            let page: LAACampaignPage = try await bridge.read("/v1/campaigns?kind=all")
+            let page: LAACampaignPage = try await bridge.read("/v1/campaigns?kind=all&status=all")
             items = page.items
             phase = .loaded
             loadedAt = Date()
@@ -410,7 +426,7 @@ enum LAACampaignCopy {
     /// Records the owner's choice. The same choice twice records the same
     /// state, so a failure simply allows another tap.
     func decide(_ item: LAACampaign, approve: Bool, bridge: LAABridgeSession) async {
-        guard sending == nil else { return }
+        guard sending == nil, let live = current.first(where: { $0.id == item.id }), live.waiting || live.changeable else { return }
         struct Body: Encodable { let choice: String; let kind: String }
         sending = item.id
         failures[item.id] = nil
@@ -436,19 +452,17 @@ enum LAACampaignCopy {
     #endif
 }
 
-/// Work › Campaigns: entries the campaign-hunt routine could not decide on
-/// its own. Toggles above the list show or hide each category, and the menu at
-/// their right end picks the order; both are remembered. Each row says what it is, why it waits, and takes
-/// the owner's choice in place; chosen rows move under 判断済み and can still
-/// change until the next run.
+/// Work › Campaigns: eligible opportunities and choices. Applied entries
+/// stay out of the default list but match searches or the 応募済 filter.
 struct LAACampaignBoardView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.laaDesktop) private var laaDesktop
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var board: LAACampaignBoard
-    /// Hidden categories, comma-separated, so a new category shows by default.
-    @AppStorage("laa.work.campaigns.hidden") private var hiddenRaw = ""
+    @State private var categoryRaw = ""
+    @State private var appliedOnly = false
+    @State private var query = ""
+    @FocusState private var searching: Bool
     @AppStorage("laa.work.campaigns.order") private var orderRaw = LAACampaignSchedule.Order.category.rawValue
     #if DEBUG
     var loadsOnAppear = true
@@ -474,7 +488,7 @@ struct LAACampaignBoardView: View {
         case .failed(let text) where board.items.isEmpty:
             message("応募の判断を読めません", detail: text, identifier: "work.campaigns.failure", retry: true)
         case .idle where board.loading:
-            LAALoadingDots().padding(20)
+            LAALoadingDots().padding(LAASpacing.x6)
         default:
             if board.items.isEmpty && !board.loading {
                 message(LAACampaignCopy.empty, identifier: "work.campaigns.empty")
@@ -496,25 +510,30 @@ struct LAACampaignBoardView: View {
                     .padding(.bottom, LAASpacing.x3)
                 }
                 controls.padding(.bottom, LAASpacing.x4)
-                let waiting = board.waiting.filter(shown)
-                if waiting.isEmpty {
-                    sectionTitle(LAACampaignCopy.waiting, count: 0)
-                    Text(verbatim: hidden.count == board.categories.count ? LAACampaignCopy.allHidden : LAACampaignCopy.empty)
+                let rows = board.visible(category: selectedCategory, appliedOnly: appliedOnly, query: query)
+                if rows.isEmpty {
+                    Text(verbatim: LAACampaignCopy.empty)
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         .padding(.vertical, LAASpacing.x4)
-                        .accessibilityIdentifier("work.campaigns.none-waiting")
+                        .accessibilityIdentifier("work.campaigns.no-results")
                 }
-                let groups = LAACampaignSchedule.groups(waiting, order: order)
+                let groups = LAACampaignSchedule.groups(rows.filter { $0.waiting || $0.listed }, order: order)
                 ForEach(groups) { group in
-                    sectionTitle(group.title, count: group.items.count, urgent: group.urgent)
+                    sectionTitle(group.title, urgent: group.urgent)
                         .padding(.top, group.id == groups.first?.id ? 0 : LAASpacing.x6)
                         .accessibilityIdentifier("work.campaigns.group.\(group.id)")
                     ForEach(group.items) { row($0) }
                 }
-                let decided = board.decided.filter(shown)
+                let decided = rows.filter { !$0.waiting && !$0.listed && !$0.applied }
+                    .sorted { ($0.decidedAt ?? "") > ($1.decidedAt ?? "") }
                 if !decided.isEmpty {
                     sectionTitle(LAACampaignCopy.decided).padding(.top, LAASpacing.x6)
                     ForEach(decided) { row($0) }
+                }
+                let applied = rows.filter(\.applied).sorted { ($0.at ?? "") > ($1.at ?? "") }
+                if !applied.isEmpty {
+                    sectionTitle(LAACampaignCopy.applied).padding(.top, appliedOnly ? 0 : LAASpacing.x6)
+                    ForEach(applied) { row($0) }
                 }
             }
             .padding(.horizontal, LAASpacing.horizontal)
@@ -527,63 +546,62 @@ struct LAACampaignBoardView: View {
     }
 
     private var order: LAACampaignSchedule.Order { LAACampaignSchedule.Order(rawValue: orderRaw) ?? .category }
-    private var hidden: Set<String> { Set(hiddenRaw.split(separator: ",").map(String.init)) }
-    private func shown(_ item: LAACampaign) -> Bool { !hidden.contains(item.category.rawValue) }
-
-    private func toggle(_ category: LAACampaign.Category) {
-        var next = hidden
-        if next.contains(category.rawValue) { next.remove(category.rawValue) } else { next.insert(category.rawValue) }
-        hiddenRaw = next.sorted().joined(separator: ",")
+    private var selectedCategory: LAACampaign.Category? { board.categories.first { $0.rawValue == categoryRaw } }
+    private func categoryName(_ category: LAACampaign.Category) -> String {
+        board.current.first { $0.category == category }.map(LAACampaignCopy.category) ?? LAACampaignCopy.category(category)
     }
 
-    /// Category toggles that scroll sideways, and the order menu at the right end.
     private var controls: some View {
-        HStack(spacing: LAASpacing.x2) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: LAASpacing.x2) {
-                    ForEach(board.categories, id: \.self) { chip($0) }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: LAASpacing.x4) {
+                Menu {
+                    Picker(selection: $categoryRaw) {
+                        Text(verbatim: "すべての種類").tag("")
+                        ForEach(board.categories, id: \.self) { category in
+                            Text(verbatim: categoryName(category)).tag(category.rawValue)
+                        }
+                    } label: { Text(verbatim: "種類") }
+                    .pickerStyle(.inline)
+                } label: {
+                    menuLabel(selectedCategory.map(categoryName) ?? "すべての種類")
                 }
+                .accessibilityIdentifier("work.campaigns.category")
+                Spacer(minLength: 0)
+                Menu {
+                    Picker(selection: $appliedOnly) {
+                        Text(verbatim: "通常").tag(false)
+                        Text(verbatim: LAACampaignCopy.appliedFilter).tag(true)
+                    } label: { Text(verbatim: "状態") }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Picker(selection: $orderRaw) {
+                        ForEach(LAACampaignSchedule.Order.allCases) { Text(verbatim: LAACampaignCopy.order($0)).tag($0.rawValue) }
+                    } label: { Text(verbatim: "表示順") }
+                    .pickerStyle(.inline)
+                } label: {
+                    menuLabel(appliedOnly ? LAACampaignCopy.appliedFilter : "表示")
+                }
+                .accessibilityIdentifier("work.campaigns.display")
             }
-            Menu {
-                Picker(selection: $orderRaw) {
-                    ForEach(LAACampaignSchedule.Order.allCases) { Text(verbatim: LAACampaignCopy.order($0)).tag($0.rawValue) }
-                } label: { Text(verbatim: "表示順") }
-                .pickerStyle(.inline)
-            } label: {
-                Label { Text(verbatim: LAACampaignCopy.order(order)) } icon: { Image(systemName: "arrow.up.arrow.down") }
-                    .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)
-                    .lineLimit(1).fixedSize()
-                    .frame(minHeight: LAASpacing.minimumTouchTarget)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel(Text(verbatim: "表示順: \(LAACampaignCopy.order(order))"))
-            .accessibilityIdentifier("work.campaigns.order")
-        }
-    }
-
-    private func chip(_ category: LAACampaign.Category) -> some View {
-        let on = !hidden.contains(category.rawValue)
-        let count = board.waiting.filter { $0.category == category }.count
-        let name = board.current.first { $0.category == category }.map { LAACampaignCopy.category($0) }
-            ?? LAACampaignCopy.category(category)
-        return Button { toggle(category) } label: {
-            Text(verbatim: "\(name) \(count)")
-                .laaTextStyle(.secondary).fontWeight(on ? .semibold : .regular).monospacedDigit()
-                .foregroundStyle(on ? LAAColor.text : LAAColor.secondaryText)
-                .lineLimit(1)
-                .padding(.horizontal, LAASpacing.x3)
+            TextField("", text: $query, prompt: Text(verbatim: "応募・特典を検索"))
+                .laaTextStyle(.body)
+                .textFieldStyle(.roundedBorder)
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
-                .background(on ? LAAColor.selectionFill : Color.clear, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
-                .overlay(RoundedRectangle(cornerRadius: LAARadius.selectionChip).stroke(LAAColor.separator, lineWidth: on ? 0 : 1))
-                .contentShape(RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                .focused($searching)
+                .onSubmit { searching = false }
+                .accessibilityIdentifier("work.campaigns.search")
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityIdentifier("work.campaigns.category.\(category.rawValue)")
     }
 
-    private func sectionTitle(_ title: String, count: Int? = nil, urgent: Bool = false) -> some View {
-        Text(verbatim: count.map { "\(title) \($0)" } ?? title)
+    private func menuLabel(_ title: String) -> some View {
+        Label { Text(verbatim: title) } icon: { Image(systemName: "chevron.down") }
+            .laaTextStyle(.secondary).fontWeight(.semibold).foregroundStyle(LAAColor.link)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+    }
+
+    private func sectionTitle(_ title: String, urgent: Bool = false) -> some View {
+        Text(verbatim: title)
             .laaTextStyle(.section).fontWeight(.semibold).monospacedDigit()
             .foregroundStyle(urgent ? LAAColor.attention : LAAColor.secondaryText)
             .padding(.bottom, LAASpacing.x1)
@@ -594,13 +612,13 @@ struct LAACampaignBoardView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: item.title)
                 .laaTextStyle(.body).fontWeight(.semibold)
-                .foregroundStyle(item.waiting ? LAAColor.text : LAAColor.secondaryText)
+                .foregroundStyle(item.waiting || item.listed ? LAAColor.text : LAAColor.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             let meta = LAACampaignCopy.meta(item)
             if !meta.isEmpty {
                 Text(verbatim: meta).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if item.waiting, let body = LAACampaignCopy.body(item) {
+            if (item.waiting || item.listed), let body = LAACampaignCopy.body(item) {
                 Text(verbatim: body).laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
                     .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
@@ -620,7 +638,7 @@ struct LAACampaignBoardView: View {
             .help(item.url)
             .accessibilityHint(Text(verbatim: URL(string: item.url)?.host() ?? item.url))
             .accessibilityIdentifier("work.campaign.open.\(item.id)")
-            if item.waiting { choices(item) } else { decided(item) }
+            if item.waiting { choices(item) } else if !item.listed { decided(item) }
             if let failure = board.failures[item.id] {
                 Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .accessibilityIdentifier("work.campaign.failure.\(item.id)")
@@ -646,7 +664,7 @@ struct LAACampaignBoardView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             HStack(spacing: LAASpacing.x3) {
                 Label { Text(verbatim: LAACampaignCopy.decision(item)) } icon: {
-                    Image(systemName: item.approved ? "checkmark.circle" : "minus.circle")
+                    Image(systemName: item.approved || item.applied ? "checkmark.circle" : "minus.circle")
                 }
                 .laaTextStyle(.secondary).fontWeight(.semibold)
                 .foregroundStyle(item.approved ? LAAColor.link : LAAColor.secondaryText)
