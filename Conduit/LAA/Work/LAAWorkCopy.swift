@@ -72,18 +72,19 @@ extension LAACopy {
         static let unpin = "ピンを外す"
         static let archive = "アーカイブ"
         static let unarchive = "戻す"
-        static let showArchive = "アーカイブを表示"
-        static let backToRecent = "最近のセッションに戻る"
+        static let showArchive = "Archived"
+        static let backToRecent = "Recent"
     }
 
     /// A project's detail: its requirements, Monet's note and its sessions.
-    /// The status names are the owner's own (2026-11-23).
+    /// Status names are short English words; the requirements stay Japanese
+    /// (DESIGN 「日本語と英語」, owner 2026-11-26).
     enum WorkProject {
-        static let requirements = "要件"
-        static let instructions = "指示"
-        static let files = "資料"
-        static let note = "進捗メモ"
-        static let add = "追加"
+        static let requirements = "Requirements"
+        static let instructions = "Instructions"
+        static let files = "Files"
+        static let note = "Note"
+        static let add = "Add"
         static let addRequirement = "要件を追加"
         static let requirementTitle = "要件"
         static let requirementTitlePrompt = "社長の言葉のまま"
@@ -96,22 +97,23 @@ extension LAACopy {
         static let addedByAI = "AI追加"
         static let addedByAIHint = "AIが足した項目"
         static let ownerHint = "社長の要件"
-        static let startSession = "開始"
+        static let startSession = "New"
         static let startSessionHint = "このプロジェクトで新しいセッションを開始"
-        static let showArchived = "アーカイブを表示"
-        static let hideArchived = "アーカイブを隠す"
-        static let showDone = "完了を表示"
-        static let hideDone = "完了をたたむ"
-        static let unfold = "表示"
-        static let fold = "たたむ"
+        static let showArchived = "Archived"
+        static let hideArchived = "Hide"
+        /// Spoken names of the disclosure chevron: the control itself is an icon.
+        static let expandHint = "開く"
+        static let collapseHint = "閉じる"
+        static let expandedValue = "開いている"
+        static let collapsedValue = "閉じている"
         static let noRequirements = "要件はまだありません。社長の依頼を、Monetがここへ項目に分けて登録します。"
         static let noRequirementsShort = "要件なし"
         static let noSessions = "まだありません。"
         static let requirementsUnread = "Macから読み取れた後に表示します。"
         static let unlistedSession = "一覧にないセッション"
-        static let readMore = "続きを読む"
+        static let readMore = "More"
         static let noArchived = "アーカイブしたセッションはありません。"
-        static func archivedCount(_ count: Int) -> String { "アーカイブ \(count)件" }
+        static func archivedCount(_ count: Int) -> String { "Archived \(count)" }
         static let bridgeTooOld = "MacのLAAアプリを更新すると、要件の一覧と進捗を表示できます。"
         static let conflict = "別の端末で更新されていました。読み直したので、もう一度操作してください。"
         static let limitReached = "このプロジェクトの要件は上限に達しています。"
@@ -121,23 +123,26 @@ extension LAACopy {
         static let instructionsEmpty = "このプロジェクトの全セッションに渡す指示を書けます。"
         static let filesEmpty = "PDF・画像・メモなどを追加すると、セッションが必要な時に読みます。"
         static let fileHint = "長押しで削除できます。"
-        static let edit = "編集"
+        static let details = "Details"
+        static let linkedSessions = "Sessions"
+        static func updated(_ text: String) -> String { "Updated \(text)" }
+        static let edit = "Edit"
         static let sending = "送信中"
 
         static func offline(since date: Date?) -> String {
             let when = date.map { LAADateText.string($0, .monthDayTime) } ?? "未確認"
             return "Macに届きません。\(when)に取得した内容です。"
         }
-        static func done(_ completed: Int, of total: Int) -> String { "完了 \(completed) / \(total)" }
+        static func done(_ completed: Int, of total: Int) -> String { "Done \(completed) / \(total)" }
         static func progressLabel(_ completed: Int, of total: Int) -> String { "要件 \(total)件中 \(completed)件完了" }
 
         static func status(_ status: LAAWorkRequirementStatus) -> String {
             switch status {
-            case .inProgress: "着手中"
-            case .awaitingDecision: "判断待ち"
-            case .notStarted: "未着手"
-            case .completed: "完了"
-            case .unknown: "状態不明"
+            case .inProgress: "In progress"
+            case .awaitingDecision: "Decision"
+            case .notStarted: "Not started"
+            case .completed: "Done"
+            case .unknown: "Unknown"
             }
         }
 

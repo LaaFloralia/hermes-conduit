@@ -88,6 +88,42 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertTrue(LAAWorkRequirementBoard([]).groups.isEmpty)
     }
 
+    /// The opened project leads with what needs the owner and what is moving;
+    /// not started and done start folded (owner, 2026-11-26).
+    func testOnlyGroupsThatNeedAttentionStartOpen() {
+        func board(_ statuses: [LAAWorkRequirementStatus]) -> LAAWorkRequirementBoard {
+            LAAWorkRequirementBoard(statuses.enumerated().map { .init(id: "req_\($0.offset)", title: "t", status: $0.element, order: $0.offset) })
+        }
+        XCTAssertEqual(board([.completed, .notStarted, .inProgress, .awaitingDecision]).openByDefault, [.inProgress, .awaitingDecision])
+        XCTAssertEqual(board([.completed, .notStarted]).openByDefault, [.notStarted], "nothing open: the first group opens")
+        XCTAssertEqual(board([.completed]).openByDefault, [.completed])
+        XCTAssertEqual(board([]).openByDefault, [])
+    }
+
+    /// A requirement's line is one line: the title up to its first line
+    /// break or sentence end; the full title is on its own page.
+    func testRequirementNameIsOneLine() {
+        XCTAssertEqual(LAAWorkRequirementName.short("Macの一覧も5秒ごとに読み直す"), "Macの一覧も5秒ごとに読み直す")
+        XCTAssertEqual(LAAWorkRequirementName.short("要件を短くする。長い説明が続く場合でも一覧は1行"), "要件を短くする")
+        XCTAssertEqual(LAAWorkRequirementName.short("1行目\n2行目"), "1行目")
+        XCTAssertEqual(LAAWorkRequirementName.short("v2.1を出す"), "v2.1を出す", "an ASCII dot is not a sentence end")
+        XCTAssertEqual(LAAWorkRequirementName.short("短い。続き"), "短い。続き", "too short a head keeps the line")
+    }
+
+    /// Status names and the disclosure controls follow DESIGN 「日本語と英語」
+    /// (2026-11-26): short English words, no Japanese open/close labels.
+    func testStatusNamesAndTogglesAreShortEnglish() {
+        for status in LAAWorkRequirementStatus.allCases {
+            let label = status.label
+            XCTAssertLessThanOrEqual(label.split(separator: " ").count, 2, label)
+            XCTAssertTrue(label.allSatisfy(\.isASCII), label)
+        }
+        for word in [LAACopy.WorkProject.readMore, LAACopy.WorkProject.showArchived, LAACopy.WorkProject.hideArchived,
+                     LAACopy.WorkProject.archivedCount(3), LAACopy.WorkProject.done(1, of: 2)] {
+            XCTAssertTrue(word.allSatisfy(\.isASCII), word)
+        }
+    }
+
     /// The paged detail (2026-11-23): unarchived sessions only, totals before
     /// paging and a cursor to the next page.
     func testDetailCarriesSessionTotalsAndCursor() throws {
