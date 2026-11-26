@@ -45,9 +45,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 }
 
-/// The heading over the transcript: the mascot on the navigation row and the
-/// name under it. It is a top bar of the conversation (`v2EdgeBar`), so the
-/// transcript rests below it and scrolls beneath it.
+/// The heading above the transcript: the mascot on the navigation row and
+/// the name under it. The conversation lays this out separately from the transcript.
 struct LAAEmployeeConversationHeader: View {
     var screenWidth: CGFloat
     var menu: AnyView? = nil

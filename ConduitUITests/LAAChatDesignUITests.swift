@@ -3,12 +3,13 @@ import XCTest
 
 final class LAAChatDesignUITests: XCTestCase {
     private func launch(_ fixture: String = "simple", dark: Bool = false, group: Bool = false, pushed: Bool = true,
-                        callable: Bool = false) -> XCUIApplication {
+                        callable: Bool = false, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", fixture,
                                "-LAA_CAPTURE_SURFACE", group ? "group" : "chat", "-LAA_CAPTURE_KIND", "paper"]
             + (dark ? ["-LAA_V2_DARK"] : []) + (pushed ? ["-LAA_FIXTURE_PUSH_CHAT"] : [])
         if callable { app.launchArguments.append("-LAA_FIXTURE_CALLABLE") }
+        app.launchArguments += extra
         app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.textViews[group ? "room.composer.field" : "composer.field"].waitForExistence(timeout: 15))
@@ -77,6 +78,16 @@ final class LAAChatDesignUITests: XCTestCase {
             capture(reactionApp, "reaction-after-\(theme)")
             reactionApp.terminate()
         }
+    }
+
+    func testLargestTextKeepsTheTranscriptBelowTheEmployeeHeader() {
+        let app = launch(extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        let header = app.buttons["laa.employee.header"]
+        let transcript = app.scrollViews["chat.transcript"]
+        XCTAssertTrue(header.isHittable)
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(transcript.frame.minY, header.frame.maxY)
+        XCTAssertGreaterThan(transcript.frame.height, 0)
     }
 
     func testRichConversationScreenshots() {

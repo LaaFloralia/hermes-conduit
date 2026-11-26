@@ -44,19 +44,21 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
 
         openAppearance(app)
         let laa = app.buttons["settings.theme.laa"]
-        let cacao = app.buttons["settings.theme.cacao-rose"]
+        let ayame = app.buttons["settings.theme.ayame"]
         XCTAssertTrue(laa.waitForExistence(timeout: 10))
         XCTAssertTrue(laa.isSelected)
         let window = app.windows.containing(.button, identifier: "settings.theme.laa").firstMatch
         func settingsShot() -> XCUIScreenshot { window.exists ? window.screenshot() : app.screenshot() }
         attach(settingsShot(), as: "appearance-laa-\(prefix)")
         let paperBefore = try paperSample(settingsShot())
-        cacao.tap()
-        XCTAssertTrue(cacao.isSelected)
+        XCTAssertTrue(ayame.waitForExistence(timeout: 5))
+        XCTAssertEqual(ayame.label, "Ayame")
+        ayame.tap()
+        XCTAssertTrue(ayame.isSelected)
         XCTAssertTrue(laa.exists, "Appearance did not pop on theme change")
         let after = settingsShot()
         XCTAssertNotEqual(try paperSample(after), paperBefore)
-        attach(after, as: "appearance-cacao-rose-\(prefix)")
+        attach(after, as: "appearance-ayame-\(prefix)")
 
         #if targetEnvironment(macCatalyst)
         app.typeKey("w", modifierFlags: .command)
@@ -76,8 +78,8 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         app.launchInLab()
         XCTAssertTrue(today.waitForExistence(timeout: 20))
         openAppearance(app)
-        XCTAssertTrue(cacao.waitForExistence(timeout: 10))
-        XCTAssertTrue(cacao.isSelected, "The app group theme survives relaunch")
+        XCTAssertTrue(ayame.waitForExistence(timeout: 10))
+        XCTAssertTrue(ayame.isSelected, "The app group theme survives relaunch")
     }
 
     private func openAppearance(_ app: XCUIApplication) {

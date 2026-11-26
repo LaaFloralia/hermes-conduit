@@ -189,18 +189,17 @@ struct V2ConversationScreen: View {
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             VStack(spacing: 0) {
-                conversation
-            }
 #if LAA_BUILD
-                // The employee's heading is a bar over the transcript, which
-                // rests below it and scrolls beneath it (owner, 2026-11-13).
-                .v2EdgeBar(.top) {
-                    if appState.activeRoomSurface == nil {
-                        LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                // Give the transcript its own viewport. An inset bar lets
+                // scrolled content draw behind the mascot and name.
+                if appState.activeRoomSurface == nil {
+                    LAAEmployeeConversationHeader(screenWidth: screenWidth, menu: AnyView(conversationMenu))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
                 }
 #endif
+                conversation
+            }
                 .overlay(alignment: .bottomTrailing) {
 #if !LAA_BUILD
                     if appState.activeRoomSurface == nil {

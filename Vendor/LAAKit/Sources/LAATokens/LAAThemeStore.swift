@@ -14,7 +14,10 @@ public final class LAAThemeStore {
     /// - Parameter appGroup: the app's App Group (`group.…`), or nil for standard defaults (previews, tests).
     public init(appGroup: String?) {
         defaults = appGroup.flatMap(UserDefaults.init(suiteName:)) ?? .standard
-        themeID = LAAThemeSets.set(id: defaults.string(forKey: Self.defaultsKey)).id
+        let stored = defaults.string(forKey: Self.defaultsKey)
+        themeID = LAAThemeSets.set(id: stored).id
+        // Rewrite a renamed identifier once, so widgets and other readers see the current one.
+        if let stored, LAAThemeSets.renamedIDs[stored] != nil { defaults.set(themeID, forKey: Self.defaultsKey) }
         observer = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: defaults,
                                                           queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
