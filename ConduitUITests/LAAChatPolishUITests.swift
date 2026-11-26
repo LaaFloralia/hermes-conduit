@@ -160,8 +160,8 @@ final class LAAChatPolishUITests: XCTestCase {
         usage.tap()
         let refresh = app.buttons["laa.usage.refresh"]
         XCTAssertTrue(refresh.waitForExistence(timeout: 25))
-        XCTAssertEqual(refresh.label, "今すぐ更新")
-        XCTAssertTrue(app.staticTexts["今すぐ更新"].exists, "the button names itself on screen")
+        XCTAssertEqual(refresh.label, "Sync")
+        XCTAssertTrue(app.staticTexts["Sync"].exists, "the button names itself on screen")
         refresh.tap()
         Thread.sleep(forTimeInterval: 2)
         capture(app, "polish-usage-\(theme)")
