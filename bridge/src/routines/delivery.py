@@ -227,6 +227,32 @@ def digest(receipt_path, since):
     return staff
 
 
+WORK_RUNS = Path.home() / '.local/state/laa-dots-jobs/run'
+
+
+def record_work_run(home, job, *, runs=WORK_RUNS, now=time.time):
+    """A code job that ran a Work conversation: add that conversation's verified model to the run's
+    usage audit, so the run record names the model that did the work (the Hermes side used none)."""
+    path = Path(runs) / f"{job.get('id')}.json"
+    try:
+        run = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    execution = job.get('execution_id')
+    if not execution or run.get('execution_id') or now() - float(run.get('at') or 0) > 900:
+        return None
+    line = {'ts': time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(now())) + 'Z', 'job_id': job['id'],
+            'execution_id': execution, 'model': run.get('model'), 'provider': run.get('provider'),
+            'reasoning_effort': run.get('effort'), 'route_reason': 'work_conversation',
+            'work_request': run.get('requestId'), 'work_session': run.get('sessionId'),
+            'runtime_verified': bool(run.get('verified')), 'deliver_target': job.get('deliver'), 'error': None}
+    audit = Path(home) / 'cron' / 'usage_audit.jsonl'
+    with audit.open('a', encoding='utf-8') as out:
+        out.write(json.dumps(line, ensure_ascii=False) + '\n')
+    path.write_text(json.dumps({**run, 'execution_id': execution}, ensure_ascii=False), encoding='utf-8')
+    return line
+
+
 def show(job, content, profile, *, for_failure=False):
     """Plugin entry: fail visibly rather than fall back into another chat."""
     try:
@@ -241,6 +267,10 @@ def show(job, content, profile, *, for_failure=False):
             from conduit_push import client, cron_runs, cron_bot_chat
             from conduit_push.cron_store import CronStore
             from conduit_push.events import push_event, plain_text
+        try:
+            record_work_run(get_hermes_home(), job)
+        except Exception:
+            pass  # the model line is evidence, never a reason to drop the report
         if cron_runs.is_silent(content) or str(content).strip() == 'NO_REPORT':
             job['_notification_all_targets_suppressed'] = True
             return None
