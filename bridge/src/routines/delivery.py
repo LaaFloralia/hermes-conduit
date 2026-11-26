@@ -86,7 +86,7 @@ def open_fix(profile, job, signature, content):
     title = f"定期実行の修理: {job.get('name') or job['id']}（{signature}）"[:120]
     summary = (f"目的: 定期実行「{job.get('name') or job['id']}」（{profile} / {job['id']}）が同じ障害で2回続けて止まった。\n"
                f"次の一手: 原因を直し、次の回が通ることを実行記録で確かめる。\n完了条件: 同じjobの回が成功する。\n\n"
-               f"直近の報告（先頭）:\n{str(content)[:600]}")
+               f"直近の報告（先頭、秘匿処理済み）:\n{str(content)[:300]}")
     try:
         done = subprocess.run([str(LAA_AGENT), 'request', '--title', title, '--summary', summary,
                                '--role', FIX_ROLE.get(profile, 'COS'), '--from', f"routine:{job['id']}"],
@@ -244,8 +244,12 @@ def show(job, content, profile, *, for_failure=False):
         if cron_runs.is_silent(content) or str(content).strip() == 'NO_REPORT':
             job['_notification_all_targets_suppressed'] = True
             return None
-        if not callable(getattr(cron_bot_chat._delivery_module(), '_redact_cron_payload', None)):
+        redact = getattr(cron_bot_chat._delivery_module(), '_redact_cron_payload', None)
+        if not callable(redact):
             raise RuntimeError('Hermes redaction is unavailable')
+        # Redacted once, before the note, the push body and the Linear fix summary all read it.
+        content = redact(str(content), 'routine report')
+        view = {**job, 'name': redact(str(job.get('name') or job['id']), 'job name')}
         running = Path(get_hermes_home())
         home = cron_bot_chat._target_home(profile)
         root = home.parent.parent if home.parent.name == 'profiles' else home
@@ -264,9 +268,12 @@ def show(job, content, profile, *, for_failure=False):
             finally:
                 reset_hermes_home_override(token)
 
-        store_report(job, content, profile, write_note=write_note, send=send,
+        store_report(view, content, profile, write_note=write_note, send=send,
                      receipt_path=root / 'conduit-routine-notifications.db',
                      muted=CronStore(running).is_muted(job['id']), for_failure=for_failure)
+        for key in ('_bot_chat_delivery_receipts', '_notification_all_targets_suppressed'):
+            if key in view:
+                job[key] = view[key]
         return None
     except Exception as error:
         return f'routine delivery to bot-chat:{profile} failed: {type(error).__name__}: {str(error)[:200]}'
