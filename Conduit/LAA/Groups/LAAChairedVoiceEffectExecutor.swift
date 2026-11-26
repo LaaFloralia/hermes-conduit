@@ -1,9 +1,8 @@
 #if LAA_BUILD
 import Foundation
 
-/// Side-effect edge: the audio-session lease. Live conformance wraps
-/// `VoiceAudioSessionCoordinator.acquire(.standalonePlayback, onTakenOver:)`
-/// / `release(_:)` (LAAChairedVoiceLiveEdges.swift); tests pass a fake.
+/// Side-effect edge: authorization before scheduling speech. The live
+/// player owns the single audio-session lease when rendering starts.
 @MainActor
 protocol LAAChairedVoiceAudioLeasing: AnyObject {
     /// Returns an opaque token; throws when the session cannot be taken.
@@ -128,6 +127,7 @@ final class LAAChairedVoiceEffectExecutor: LAAChairedVoiceEffectHandling {
             guard playing?.ticket == ticket else { return }
             stopPlayback()
         case .releaseAudio:
+            guard generation == self.generation else { return }
             stopPlayback()
             releaseLease()
         }
@@ -136,6 +136,7 @@ final class LAAChairedVoiceEffectExecutor: LAAChairedVoiceEffectHandling {
     /// AppState: the room surface closed or another room opened. Safe to
     /// call repeatedly; the binding's own flush normally precedes it.
     func roomChanged(generation: Int) {
+        guard generation >= self.generation else { return }
         tearDown()
         if generation > self.generation { self.generation = generation }
     }
@@ -211,12 +212,12 @@ final class LAAChairedVoiceEffectExecutor: LAAChairedVoiceEffectHandling {
         playing = nil
         current.cancelDeadlines.forEach { $0() }
         switch outcome {
-        case .cancelled:
-            return
         case .finished where !current.softExpired:
             break
-        case .finished, .failed:
-            // Error, or ended only after the soft stop request.
+        case .finished, .failed, .cancelled:
+            // Error, or ended only after the soft stop request. A soft
+            // expiry has already told the speaker to stop this ticket.
+            if !current.softExpired { speaker.stop() }
             releaseLease()
         }
         // The core decides: next line (lease kept/re-acquired) or releaseAudio.

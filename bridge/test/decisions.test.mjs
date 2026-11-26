@@ -379,7 +379,7 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
   assert.equal(runCli(f.dir, ['add']).status, 2);
   assert.equal(runCli(f.dir, ['add', '--title']).status, 2);
   assert.equal(runCli(f.dir, ['list', '--unknown', 'x']).status, 2);
-  assert.equal(runCli(f.dir, args.map((v) => v === '判断' ? 'x'.repeat(61) : v)).status, 5);
+  assert.equal(runCli(f.dir, args.map((v) => v === '判断' ? '題'.repeat(61) : v)).status, 5);
   const answered = f.service.add(request({ source: {}, requestId: 'stored' })).decision;
   f.store.reserve(answered.id, 'phone', { requestId: 'stored-answer', optionIndex: 0 });
   assert.equal(runCli(f.dir, ['withdraw', answered.id, '--reason', '解決']).status, 4);
@@ -389,7 +389,7 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
 
 test('real CLI: shows the J number the server assigned and accepts it for status, without writing refs.json', (t) => {
   const f = fixture(t);
-  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'cli-ref', '--json']);
+  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'cli-ref', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const id = JSON.parse(added.stdout).decision.id;
   assert.equal(JSON.parse(added.stdout).decision.ref, null);
@@ -405,7 +405,7 @@ test('real CLI: shows the J number the server assigned and accepts it for status
 
 test('real concurrent CLI writers keep one record for one idempotency key', async (t) => {
   const f = fixture(t);
-  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'race', '--json'];
+  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'race', '--json'];
   const run = () => new Promise((resolve, reject) => {
     const child = spawn(cli, args, { env: { ...process.env, PASEO_AGENT_ID: '', LAA_BRIDGE_STATE_DIR: f.dir }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = ''; child.stdout.on('data', (b) => { out += b; }); child.stderr.on('data', (b) => { err += b; });

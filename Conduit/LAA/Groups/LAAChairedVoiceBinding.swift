@@ -30,6 +30,7 @@ protocol LAAChairedVoiceEffectHandling: AnyObject {
 final class LAAChairedVoiceBinding {
     private(set) var core = LAAChairedVoicePlayback()
     private weak var handler: LAAChairedVoiceEffectHandling?
+    var onChange: (() -> Void)?
 
     init(handler: LAAChairedVoiceEffectHandling? = nil) {
         self.handler = handler
@@ -45,8 +46,8 @@ final class LAAChairedVoiceBinding {
     /// rows, an unsettled member message) maps to a non-final or no line.
     nonisolated static func voiceEvents(_ events: [GroupEvent]) -> [LAAChairedVoiceEvent] {
         let committed = Set(events.compactMap { event -> String? in
-            guard event.kind == "turn.settled" else { return nil }
-            return event.payload["message_event_id"]?.stringValue
+            guard event.kind == "turn.settled", let id = event.payload["message_event_id"]?.stringValue else { return nil }
+            return event.roomID + "\u{0}" + id
         })
         return events.filter(\.isMemberMessage).map { event in
             LAAChairedVoiceEvent(
@@ -54,7 +55,7 @@ final class LAAChairedVoiceBinding {
                 actorKind: event.actor.kind,
                 speakerID: event.actor.profile ?? event.actor.id,
                 text: event.messageText ?? "",
-                isFinal: committed.contains(event.eventID)
+                isFinal: committed.contains(event.roomID + "\u{0}" + event.eventID)
             )
         }
     }
@@ -83,7 +84,7 @@ final class LAAChairedVoiceBinding {
             apply(core.stop(generation: generation), generation: generation)
         }
         var effects: [LAAChairedVoiceEffect] = []
-        for event in Self.voiceEvents(events) {
+        for event in Self.voiceEvents(events).sorted(by: { $0.seq < $1.seq }) {
             effects += core.receive(event, generation: generation)
         }
         apply(effects, generation: generation)
@@ -110,6 +111,9 @@ final class LAAChairedVoiceBinding {
     func talk(generation: Int) { apply(core.talk(generation: generation), generation: generation) }
     func talkEnded(generation: Int) { apply(core.talkEnded(generation: generation), generation: generation) }
     func stop(generation: Int) { apply(core.stop(generation: generation), generation: generation) }
+    func flushRound(generation: Int) { apply(core.flushRound(generation: generation), generation: generation) }
+    func skip(generation: Int) { apply(core.skip(generation: generation), generation: generation) }
+    func toggleMute(generation: Int) { apply(core.toggleMute(generation: generation), generation: generation) }
 
     /// The handler reports the end (or failure) of a line with the
     /// generation it was given; a stale one is ignored by the core.
@@ -118,8 +122,10 @@ final class LAAChairedVoiceBinding {
     }
 
     private func apply(_ effects: [LAAChairedVoiceEffect], generation: Int) {
-        guard let handler else { return }
-        for effect in effects { handler.perform(effect, generation: generation) }
+        if let handler {
+            for effect in effects { handler.perform(effect, generation: generation) }
+        }
+        onChange?()
     }
 }
 #endif

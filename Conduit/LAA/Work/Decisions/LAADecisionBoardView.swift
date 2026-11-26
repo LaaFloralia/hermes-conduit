@@ -26,6 +26,10 @@ struct LAADecisionBoardView: View {
     @State private var retrying: String?
     @State private var retryFailure: [String: String] = [:]
     @State private var retried = 0
+    @State private var showDelegation = false
+    @State private var delegationUntil = Date().addingTimeInterval(3600)
+    @State private var policyBusy = false
+    @State private var policyError: String?
     @FocusState private var listFocused: Bool
     #if DEBUG
     /// Snapshots draw the list without a network read.
@@ -33,7 +37,10 @@ struct LAADecisionBoardView: View {
     #endif
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            content
+            if board.delegation != nil || !board.monetAnswers.isEmpty { monetControls }
+        }
             .background(LAAColor.background)
             .tint(LAAColor.link)
             .refreshable { await board.load(bridge) }
@@ -42,6 +49,7 @@ struct LAADecisionBoardView: View {
                 guard loadsOnAppear else { return }
                 #endif
                 await board.refreshIfStale(bridge)
+                await board.loadDelegation(bridge)
             }
             .onChange(of: board.linkedID, initial: true) { _, _ in openLinked() }
             .onChange(of: board.items) { _, _ in openLinked() }
@@ -77,6 +85,75 @@ struct LAADecisionBoardView: View {
                 desktopBoard
             } else {
                 phoneList
+            }
+        }
+    }
+
+    // MARK: Delegation
+
+    private var monetControls: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            if !board.monetAnswers.isEmpty {
+                DisclosureGroup {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                            ForEach(board.monetAnswers) { item in
+                                HStack(alignment: .top, spacing: LAASpacing.x2) {
+                                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                        Text(verbatim: item.title).laaTextStyle(.body)
+                                        if let answer = item.answer {
+                                            Text(verbatim: [answer.label, answer.note].compactMap { $0 }.joined(separator: " · "))
+                                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                    if item.canReopen == true {
+                                        Button("差し戻す") { changePolicy { try await board.reopen(item, bridge: bridge) } }
+                                            .disabled(policyBusy)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 160)
+                } label: { sectionText("Monetが決めた件", count: board.monetAnswers.count) }
+            }
+            if let delegation = board.delegation {
+                Button(delegation.mode == "off" ? "判断の委任：オフ" : "判断の委任を確認") { showDelegation = true }
+                    .laaTextStyle(.secondary)
+                    .popover(isPresented: $showDelegation) {
+                        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                            if let value = delegation.until, let until = LAAWorkFreshness.date(value) {
+                                Text(verbatim: "委任の終了：\(until.formatted())")
+                            }
+                            DatePicker("終了時刻", selection: $delegationUntil, in: Date()...)
+                            Button("この時刻まで委任") { changePolicy { try await board.setDelegation("window", until: delegationUntil, bridge: bridge) } }
+                            Button("常に委任") { changePolicy { try await board.setDelegation("always", bridge: bridge) } }
+                            Button("委任をオフ") { changePolicy { try await board.setDelegation("off", bridge: bridge) } }
+                        }
+                        .disabled(policyBusy)
+                        .padding(LAASpacing.x4)
+                    }
+            }
+            if let policyError { Text(verbatim: policyError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+        }
+        .padding(LAASpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LAAColor.surface)
+    }
+
+    private func changePolicy(_ operation: @escaping @MainActor () async throws -> Void) {
+        guard !policyBusy else { return }
+        policyBusy = true
+        policyError = nil
+        Task {
+            defer { policyBusy = false }
+            do { try await operation(); showDelegation = false }
+            catch {
+                showDelegation = false
+                policyError = LAADecisionCopy.answerError(error)
+                await board.loadDelegation(bridge)
+                await board.load(bridge)
             }
         }
     }

@@ -126,6 +126,26 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertTrue(app.textFields["groups.create.name"].waitForExistence(timeout: 5))
     }
 
+    func testChairedConclusionLeadsAndStaffTurnsExpand() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_FIXTURE_CHAIRED_MEETING", "-LAA_CAPTURE_SURFACE", "group"]
+        app.launchInLab()
+        defer { app.terminate() }
+        XCTAssertTrue(app.staticTexts["room.meeting.conclusion"].waitForExistence(timeout: 20))
+        let staff = app.buttons["room.meeting.staff"]
+        XCTAssertTrue(staff.waitForExistence(timeout: 5))
+        XCTAssertEqual(staff.value as? String, "折りたたみ中")
+        let firstTurn = app.descendants(matching: .any)["room.meeting.staff.fixture-meeting-1"].firstMatch
+        XCTAssertFalse(firstTurn.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "chaired-meeting-collapsed"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        staff.tap()
+        XCTAssertEqual(staff.value as? String, "展開中")
+        XCTAssertTrue(firstTurn.waitForExistence(timeout: 5))
+    }
+
     func testWhitePhotoIsDrawnAndAutomaticallyDimmedInChat() throws {
         try assertWhitePhotoIsDrawn(surface: "chat")
     }

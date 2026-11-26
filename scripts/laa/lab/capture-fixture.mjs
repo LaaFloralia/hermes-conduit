@@ -25,9 +25,21 @@ const requirements = ['in_progress', 'awaiting_decision', 'not_started', 'comple
   sessionIds: order === 0 ? ['ses_5555555555555555'] : order === 1 ? ['ses_2222222222222222'] : [],
 }));
 const progress = { requirementSummary: { completed: 1, total: 4 }, progressNote: '撮影手順を確認済み。見本の選択を待っています。' };
-const campaign = { key: 'capture-fixture', kind: 'site', category: 'prize', status: 'needs_owner',
-  title: '制作資料の見本を受け取る', organizer: '見本の主催者', benefit: '制作ノート',
-  conditions: '見本のため応募は行いません。', url: 'https://campaign.example.invalid/' };
+const campaign = (key, kind, category, categoryLabel, status, title, more = {}) => ({
+  key, kind, category, categoryLabel, eligible: true, status, title, url: `https://campaign.example.invalid/${key}`, ...more,
+});
+const campaignRows = [
+  campaign('aaaaaaaaaaaaaaaa', 'site', 'prize', '懸賞', 'needs_owner', '制作ノートの抽選', { benefit: '制作ノート', conditions: '送付先の入力が必要' }),
+  campaign('bbbbbbbbbbbbbbbb', 'site', 'signup', '登録特典', 'needs_owner', '資料ライブラリの登録特典'),
+  campaign('cccccccccccccccc', 'grant', 'grant', '助成金・補助金', 'candidate', '制作事業の助成制度'),
+  campaign('dddddddddddddddd', 'feature', 'unlock', '機能追加', 'candidate', '制作ツールの先行機能'),
+  campaign('eeeeeeeeeeeeeeee', 'perk', 'perk', '利用者特典', 'candidate', '現行サービスの利用者特典'),
+  campaign('ffffffffffffffff', 'deal', 'deal', 'セール', 'listed', 'Krea の期間限定割引', { service: 'Krea', action: 'browse', benefit: '利用料20%引き' }),
+  campaign('1111111111111111', 'site', 'prize', '懸賞', 'applied', 'Coffee ギフト券', { benefit: 'ギフト券' }),
+  campaign('2222222222222222', 'x', 'prize', '懸賞', 'applied', '制作カードの抽選'),
+  campaign('3333333333333333', 'site', 'prize', '懸賞', 'needs_owner', '対象外の見本', { eligible: false }),
+  campaign('4444444444444444', 'site', 'prize', '懸賞', 'applied', 'Coffee 期限切れ', { deadline: '2000-01-01' }),
+];
 const { api, control } = createStudioUIFixture();
 const listen = async (server) => { server.listen(0, '127.0.0.1'); await once(server, 'listening'); return server.address().port; };
 const studioPort = await listen(api);
@@ -57,7 +69,7 @@ function server(mode) {
       if (status == null || (status >= 200 && status < 300)) responded.add(path);
       json(res, mode === 'long' ? expand(body) : body, status, etag);
     };
-    if (path === '/v1/campaigns') { send(ok({ count: 1, items: [campaign] })); return; }
+    if (path === '/v1/campaigns') { send(ok({ count: 5, items: campaignRows })); return; }
     try {
       const isStudio = /^\/v1\/(studio|drive)\//.test(path);
       const isProject = path === '/v1/projects/proj_laa_fixture';

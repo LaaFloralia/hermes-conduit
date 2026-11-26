@@ -33,11 +33,6 @@ struct GroupChatView: View {
     /// Bumped to build the transcript's scroll view again when SwiftUI left
     /// it blank (GroupRoomFollow.isBlank).
     @State private var transcriptScrollID = 0
-#if LAA_BUILD
-    /// Bumped after a Voice / Talk / Stop tap so the bar re-reads the
-    /// chaired binding, which is not observable on its own.
-    @State private var chairedVoiceRevision = 0
-#endif
     /// The chat text size and style, and a wide window's steps
     /// (`readableChatColumn`): the room's messages draw as a chat's do.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
@@ -111,14 +106,24 @@ struct GroupChatView: View {
             pendingApprovals
             MinimisedLiveVoiceBar()
 #if LAA_BUILD
-            LAAChairedVoiceBar(state: chairedVoiceState, actions: chairedVoiceActions) {
-                chairedVoiceRevision &+= 1
-            }
-            // A staff call / Voice starting stops an engaged room (no
-            // preemption, no auto-resume) and redraws the bar.
-            .onChange(of: appState.isVoiceInUse) { _, _ in
-                appState.chairedVoiceAudioOwnerMayHaveChanged()
-                chairedVoiceRevision &+= 1
+            if let roomID = surface?.room.roomID, roomID == appState.chairedVoice.core.roomID,
+               LAAChairedVoiceSurface.playbackWired || LAAMeetingLab.isEnabled {
+                LAAMeetingControls(
+                    meeting: appState.chairedMeeting, members: members,
+                    queue: { appState.chairedVoice.core },
+                    hasCompetingAudio: { appState.chairedVoiceAudioOwner != .none },
+                    talk: { await appState.requestChairedVoiceTalk() },
+                    releaseTalk: appState.requestChairedVoiceListen,
+                    mute: { appState.chairedVoice.toggleMute(generation: appState.groupRoomEpoch) },
+                    skip: { appState.chairedVoice.skip(generation: appState.groupRoomEpoch) },
+                    end: { Task { await appState.endChairedMeeting() } },
+                    stop: appState.stopChairedMeeting,
+                    ownerChanged: appState.chairedVoiceAudioOwnerMayHaveChanged)
+                .id(roomID)
+                .onDisappear {
+                    if appState.chairedVoice.core.roomID == roomID { appState.stopChairedMeeting() }
+                }
+                .onChange(of: appState.isVoiceInUse) { _, _ in appState.chairedVoiceAudioOwnerMayHaveChanged() }
             }
 #endif
             GroupRoomComposer(members: members)
@@ -148,40 +153,6 @@ struct GroupChatView: View {
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
 
-#if LAA_BUILD
-    /// Shown only for the room the chaired binding holds (AppState binds a
-    /// 「壁打ち」 room on open and leaves any other), never on its own.
-    private var chairedVoiceState: LAAChairedVoiceSurfaceState {
-        _ = chairedVoiceRevision
-        let core = appState.chairedVoice.core
-        return .make(
-            roomID: surface?.room.roomID,
-            boundRoomID: core.roomID,
-            phase: core.phase,
-            owner: appState.chairedVoiceAudioOwner,
-            playbackWired: LAAChairedVoiceSurface.playbackWired
-        )
-    }
-
-    /// Real binding calls, each value read from AppState at tap time.
-    private var chairedVoiceActions: LAAChairedVoiceActions {
-        let appState = appState
-        let mapped = LAAChairedVoiceActions.binding(
-            appState.chairedVoice,
-            generation: { appState.groupRoomEpoch },
-            backlogThroughSeq: { appState.activeRoomReplay.events.last?.seq },
-            owner: { appState.chairedVoiceAudioOwner }
-        )
-        // Talk also starts the room composer's real dictation.
-        return LAAChairedVoiceActions(
-            engage: mapped.engage,
-            talk: { mapped.talk(); appState.requestChairedVoiceTalk() },
-            talkEnded: { appState.requestChairedVoiceListen() },
-            stop: mapped.stop
-        )
-    }
-#endif
-
     /// Named as the bots are now, not as they were when they joined.
     private var members: [GroupMember] {
         GroupRoomTurns.members(surface?.room.members ?? [], namedBy: appState.botRoster)
@@ -203,22 +174,31 @@ struct GroupChatView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                let rendered = self.visibleEvents
+                let visible = self.visibleEvents
+#if LAA_BUILD
+                let meeting = GroupMeetingTranscript(events: visible, chair: surface?.room.chair)
+                let rendered = meeting.events
+#else
+                let rendered = visible
+#endif
                 LazyVStack(spacing: 14) {
                     ForEach(Array(rendered.enumerated()), id: \.element.id) { index, event in
                         // A member's run of replies shows its picture and
                         // name once, like a group thread in Messages.
                         let previous = index > 0 ? rendered[index - 1] : nil
-                        GroupEventRow(
-                            event: event,
-                            members: members,
-                            continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false
-                        )
 #if LAA_BUILD
+                        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                            transcriptRow(event, previous: previous)
+                            if let staff = meeting.staffByConclusion[event.id] {
+                                GroupMeetingStaffDisclosure(events: staff, members: members)
+                            }
+                        }
                         .laaChatDaySection(date: event.createdAt > 0 ? Date(timeIntervalSince1970: event.createdAt) : nil,
                             previous: previous.flatMap { $0.createdAt > 0 ? Date(timeIntervalSince1970: $0.createdAt) : nil })
-#endif
                         .reportsGroupRoomRowFrame(id: event.id)
+#else
+                        transcriptRow(event, previous: previous).reportsGroupRoomRowFrame(id: event.id)
+#endif
                     }
                     if let pending = appState.pendingRoomMessage {
                         GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
@@ -296,8 +276,17 @@ struct GroupChatView: View {
                 let previousLastID = lastSeenEventID
                 lastSeenEventID = visibleEvents.last?.id
                 guard followFlag.isFollowing else { return }
+                let visible = visibleEvents
+#if LAA_BUILD
+                let meeting = GroupMeetingTranscript(events: visible, chair: surface?.room.chair)
+                let startEvents = meeting.events
+                let anchor = meeting.staffByConclusion.first { $0.value.contains { $0.id == previousLastID } }?.key ?? previousLastID
+#else
+                let startEvents = visible
+                let anchor = previousLastID
+#endif
                 if ChatReplyStartPreference.isOn,
-                   let start = GroupRoomFollow.replyStart(in: visibleEvents, after: previousLastID) {
+                   let start = GroupRoomFollow.replyStart(in: startEvents, after: anchor) {
                     landAtTop(of: start, proxy)
                 } else {
                     withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
@@ -354,6 +343,27 @@ struct GroupChatView: View {
                 handler: appState.quoteIntoRoomComposer
             )
         )
+    }
+
+    @ViewBuilder
+    private func transcriptRow(_ event: GroupEvent, previous: GroupEvent?) -> some View {
+        let row = GroupEventRow(event: event, members: members,
+                                continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false)
+#if LAA_BUILD
+        if event.isMemberMessage, let chair = surface?.room.chair, chair == event.actor.id,
+           event.payload["meeting_phase"]?.stringValue == "conclusion" {
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                Text(verbatim: LAACopy.groupConclusion)
+                    .laaTextStyle(.section)
+                    .foregroundStyle(LAAColor.text)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("room.meeting.conclusion")
+                GroupEventRow(event: event, members: members)
+            }
+        } else { row }
+#else
+        row
+#endif
     }
 
     private var emptyState: some View {
@@ -757,6 +767,43 @@ struct GroupApprovalCard: View {
 /// the accent bubble a chat uses, members' lead with their picture, and
 /// every other (or unknown future) kind is a compact system caption — a room
 /// this client predates still renders, never crashes.
+#if LAA_BUILD
+private struct GroupMeetingStaffDisclosure: View {
+    let events: [GroupEvent]
+    let members: [GroupMember]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Button {
+                expanded.toggle()
+            } label: {
+                HStack(spacing: LAASpacing.x2) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .accessibilityHidden(true)
+                    Text(verbatim: LAACopy.groupStaffTurns)
+                    Text(events.count.formatted())
+                }
+                .laaTextStyle(.secondary)
+                .foregroundStyle(LAAColor.text)
+                .frame(minHeight: 44, alignment: .leading) // LAA app minimum hit target
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(Text(verbatim: expanded ? LAACopy.groupStaffExpanded : LAACopy.groupStaffCollapsed))
+            .accessibilityIdentifier("room.meeting.staff")
+            if expanded {
+                ForEach(events) { event in
+                    GroupEventRow(event: event, members: members)
+                        .accessibilityIdentifier("room.meeting.staff.\(event.id)")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+#endif
+
 struct GroupEventRow: View {
     let event: GroupEvent
     let members: [GroupMember]
@@ -775,7 +822,7 @@ struct GroupEventRow: View {
                 EmptyView()
             }
 #endif
-        } else if event.isMemberMessage {
+        } else if event.isMemberMessage || event.isChairSeed {
             GroupMemberBubble(
                 member: GroupRoomTurns.member(for: event, members: members),
                 name: speakerLabel,
@@ -1053,7 +1100,9 @@ struct GroupMemberBubble: View {
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .response)
                         if let roomEventID {
                             GroupMessageQuoteButton(text: parts.text, authorName: name, authorHandle: handle)
+                            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
                             GroupReadAloudButton(eventID: roomEventID, text: parts.text, memberProfile: member?.profile)
+                            #endif
                         }
                     }
                     .padding(.leading, 4)

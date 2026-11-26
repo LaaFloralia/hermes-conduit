@@ -5,6 +5,19 @@ import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 
 const RETENTION = 30 * 86400_000;
 const WAIT_FIELDS = ['waiting', 'waitingSince', 'holds'];
+const OWNER_KINDS = new Set(['money', 'contract', 'trade', 'deletion', 'brand', 'publish', 'physical', 'scope', 'resume']);
+const CLASSES = new Set(['unclassified', 'owner_only', 'delegable']);
+export const EMPTY_DELEGATION = Object.freeze({ mode: 'off', grantedAt: null, grantedBy: null });
+export const delegationOpen = (grant, now) => grant?.grantedBy === 'owner'
+  && (grant.mode === 'always' || (grant.mode === 'window' && Date.parse(grant.until) > now));
+export const canReopen = (row) => row.status === 'answered' && row.answeredBy === 'monet'
+  && (row.delivery?.state === 'stored' || (row.delivery?.state === 'pending' && row.delivery.waiting === true));
+
+function classification(kind = 'unclassified', ownerKind, impact) {
+  if (!CLASSES.has(kind) || (ownerKind != null && (kind !== 'owner_only' || !OWNER_KINDS.has(ownerKind)))
+    || (kind === 'delegable' && typeof impact === 'string' && impact.trim().startsWith('【必ず社長'))) throw badRequest('decision_class_invalid', '判断の区分を確認してください。');
+  return { class: kind, ...(ownerKind == null ? {} : { ownerKind }) };
+}
 export function text(value, field, max, { optional = false } = {}) {
   if (value == null && optional) return null;
   if (typeof value !== 'string') throw badRequest('decision_invalid', `${field} must be text`);
@@ -61,8 +74,11 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       if (!r || !/^dec_[0-9a-f]{16}$/.test(r.id) || !['open', 'answered', 'withdrawn'].includes(r.status)
         || !validTime(r.createdAt) || !validTime(r.updatedAt) || (r.ref !== null && text(r.ref, 'ref', 80) !== r.ref)) return false;
       const normalized = input(r);
+      classification(r.class, r.ownerKind, r.impact);
       if (Object.entries(normalized).some(([k, v]) => JSON.stringify(r[k]) !== JSON.stringify(v))) return false;
-      if (r.status !== 'answered') return r.answer === null && r.delivery === null;
+      if (r.answeredBy !== undefined && !['owner', 'monet'].includes(r.answeredBy)) return false;
+      if (r.status !== 'answered') return r.answer === null && r.delivery === null && r.answeredBy === undefined;
+      if (r.answeredBy === 'monet' && (r.class !== 'delegable' || !r.answer?.note || r.answer?.optionIndex == null)) return false;
       const a = r.answer, d = r.delivery;
       if (!a || !d || !validTime(a.answeredAt) || !['pending', 'delivered', 'failed', 'stored', 'gone'].includes(d.state)
         || !Number.isSafeInteger(d.attempts) || d.attempts < 1 || d.messageId !== `${r.id}:answer:${d.attempts}`
@@ -78,6 +94,11 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     } catch { return false; }
   }
   function checked(s) {
+    const grant = s.delegation;
+    if (grant !== undefined && (!grant || !['off', 'window', 'always'].includes(grant.mode) || grant.grantedBy !== 'owner'
+      || !validTime(grant.grantedAt) || (grant.mode === 'window' ? !validTime(grant.until) : grant.until !== undefined))) {
+      throw new Error('invalid decision delegation');
+    }
     if (!Array.isArray(s.records) || !s.operations || typeof s.operations !== 'object' || Array.isArray(s.operations)
       || !s.notifications || typeof s.notifications !== 'object' || Array.isArray(s.notifications)
       || s.records.some((r) => !validRecord(r)) || new Set(s.records.map((r) => r.id)).size !== s.records.length
@@ -105,10 +126,15 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     if (!r) throw notFound('decision not found');
     return r;
   }
-  function reserve(s, id, deviceId, body, retry) {
+  function reserve(s, id, deviceId, body, retry, actor) {
     if (body.quick !== undefined && typeof body.quick !== 'boolean') throw badRequest('decision_invalid', 'quick must be boolean');
     const r = find(s, id);
-    const key = JSON.stringify([deviceId, requestKey(body.requestId)]);
+    if (actor === 'monet') {
+      if (r.class !== 'delegable') throw new BridgeError(403, 'decision_owner_required', 'この判断は社長の確認が必要です。');
+      if (!delegationOpen(s.delegation, now())) throw new BridgeError(403, 'decision_delegation_closed', '判断の委任は現在オフです。');
+      if (r.deadline && Date.parse(r.deadline) <= now()) throw conflict('decision_expired', '回答期限を過ぎています。');
+    }
+    const key = JSON.stringify([actor === 'monet' ? 'monet' : deviceId, requestKey(body.requestId)]);
     const note = retry ? null : answerNote(body.note);
     const optionIndex = body.optionIndex ?? null;
     const digest = createHash('sha256').update(JSON.stringify([r.id, retry, optionIndex, note])).digest('hex');
@@ -124,8 +150,9 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       if (optionIndex === null ? (!r.allowOther || !note) : (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= r.options.length)) throw badRequest('decision_invalid', 'choose an option or provide a free answer');
       r.answer = { optionIndex, label: optionIndex === null ? note : r.options[optionIndex].label, note: optionIndex === null ? null : note, answeredAt: stamp(), deviceId };
       r.status = 'answered';
+      r.answeredBy = actor;
     }
-    const attempts = (r.delivery?.attempts ?? 0) + 1;
+    const attempts = (r.delivery?.attempts ?? r.overturned?.attempts ?? 0) + 1;
     r.delivery = { state: r.source.paseoAgentId ? 'pending' : 'stored', attempts, messageId: `${r.id}:answer:${attempts}`, deliveredAt: null, error: null };
     r.updatedAt = stamp();
     s.operations[key] = { id: r.id, digest };
@@ -137,6 +164,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     get: (id) => access(() => { const s = checked(file.read()); prune(s); return structuredClone(find(s, id)); }),
     add(body) {
       const value = input(body);
+      Object.assign(value, classification(body.class, body.ownerKind, value.impact));
       return mutate((s) => {
         const existing = s.records.find((r) => r.requestId === value.requestId && r.source.paseoAgentId === value.source.paseoAgentId);
         if (existing) return { decision: existing, replayed: true };
@@ -157,7 +185,39 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
         if (r.status !== 'answered' || d?.state !== 'failed') return r;
         Object.assign(d, { state: 'gone', error: reason, deliveredAt: null }); r.updatedAt = stamp(); return r; });
     },
-    reserve: (id, deviceId, body, retry = false) => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry)),
+    delegation: () => access(() => checked(file.read()).delegation ?? EMPTY_DELEGATION),
+    setDelegation(body) {
+      if (Object.keys(body).some((key) => !['mode', 'until'].includes(key)) || !['off', 'window', 'always'].includes(body.mode)
+        || (body.mode === 'window' ? !validTime(body.until) || Date.parse(body.until) <= now() : body.until !== undefined)) {
+        throw badRequest('delegation_invalid', '委任の設定と終了時刻を確認してください。');
+      }
+      return mutate((s) => s.delegation = { mode: body.mode, grantedAt: stamp(), grantedBy: 'owner',
+        ...(body.mode === 'window' ? { until: new Date(body.until).toISOString() } : {}) });
+    },
+    classify(id, body) {
+      return mutate((s) => {
+        const r = find(s, id);
+        if (r.status !== 'open' || r.class === 'owner_only') throw conflict('decision_class_locked', 'この判断の区分は変更できません。');
+        if (Object.keys(body).some((key) => !['class', 'ownerKind'].includes(key)) || !['owner_only', 'delegable'].includes(body.class)) {
+          throw badRequest('decision_class_invalid', '判断の区分を確認してください。');
+        }
+        Object.assign(r, classification(body.class, body.ownerKind, r.impact), { classifiedBy: 'monet', updatedAt: stamp() });
+        return r;
+      });
+    },
+    reopen(id) {
+      return mutate((s) => {
+        const r = find(s, id);
+        if (r.status === 'open' && r.overturned) return r;
+        if (!canReopen(r)) throw conflict('decision_irreversible', 'すでに届けた回答は差し戻せません。');
+        if (r.deadline && Date.parse(r.deadline) <= now()) throw conflict('decision_expired', '回答期限を過ぎています。');
+        r.overturned = { answer: r.answer, attempts: r.delivery.attempts, at: stamp(), by: 'owner' };
+        Object.assign(r, { status: 'open', class: 'owner_only', classifiedBy: 'owner', answer: null, delivery: null, updatedAt: stamp() });
+        delete r.answeredBy;
+        return r;
+      });
+    },
+    reserve: (id, deviceId, body, retry = false, actor = 'owner') => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry, actor)),
     settle(id, messageId, state, error = null) {
       return mutate((s) => { const r = find(s, id); if (r.delivery?.messageId !== messageId || r.delivery.state !== 'pending') return r;
         for (const key of WAIT_FIELDS) delete r.delivery[key];

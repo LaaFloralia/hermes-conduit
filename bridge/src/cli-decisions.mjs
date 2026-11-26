@@ -5,12 +5,16 @@ import { createSessionStore } from './sessions/store.mjs';
 import { exitCodeFor } from './cli-tasks.mjs';
 import { BridgeError } from './errors.mjs';
 import { createRefRegistry, normalizeRefInput } from './refs/registry.mjs';
+import { monetPost } from './cli-monet.mjs';
 
 export const DECISIONS_USAGE = `laa-bridge decide — 判断ボード
   decide add --title <t> --summary <s> --option <label>[::<detail>] (2..6)
              [--recommended <1-based index>] [--impact <t>] [--deadline <ISO>]
+             [--class owner_only|delegable] [--owner-kind <kind>]
              [--no-other] [--agent <paseo id>] [--name <title>] --request-id <id> [--json]
   decide status <id|ref> [--json]
+  decide classify <id|ref> --class owner_only|delegable [--owner-kind <kind>] [--json]
+  decide answer <id|ref> --option <1-based board index> --as monet --reason <t> [--json]
   decide withdraw <id|ref> --reason <t> [--json]
   decide list [--json]
 `;
@@ -22,9 +26,10 @@ export async function decisionsCommand(argv, flags, io = {}) {
   try {
     const [sub, given] = argv;
     if (!sub || sub === 'help') { write(DECISIONS_USAGE); return 0; }
-    const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id json', status: 'json', withdraw: 'reason json', list: 'json' };
+    const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id class owner-kind json', status: 'json', withdraw: 'reason json', list: 'json',
+      classify: 'class owner-kind json', answer: 'option as reason json' };
     if (!allowed[sub]) usage('unknown decide subcommand');
-    if (argv.length !== (['status', 'withdraw'].includes(sub) ? 2 : 1)) usage('invalid positional arguments');
+    if (argv.length !== (['status', 'withdraw', 'classify', 'answer'].includes(sub) ? 2 : 1)) usage('invalid positional arguments');
     for (const flag of Object.keys(flags)) if (!allowed[sub].split(' ').includes(flag)) usage(`unknown flag --${flag}`);
     const requireFlag = (key) => { if (typeof flags[key] !== 'string' || !flags[key]) usage(`--${key} is required`); return flags[key]; };
     const dir = resolveStateDir();
@@ -44,11 +49,22 @@ export async function decisionsCommand(argv, flags, io = {}) {
       if (!Array.isArray(flags.option) || flags.option.length < 2 || flags.option.length > 6) usage('repeat --option 2..6 times');
       const recommended = flags.recommended === undefined ? null : Number(flags.recommended);
       if (recommended !== null && (!Number.isInteger(recommended) || recommended < 1 || recommended > flags.option.length)) usage('--recommended is a 1-based option index');
-      result = service.add({ title: flags.title, summary: flags.summary,
+      if (flags.class !== undefined && !['owner_only', 'delegable'].includes(flags.class)) usage('--class must be owner_only or delegable');
+      result = service.add({ title: flags.title, summary: flags.summary, class: flags.class, ownerKind: flags['owner-kind'],
         options: flags.option.map((value, i) => { const split = value.indexOf('::'); return { label: split < 0 ? value : value.slice(0, split), detail: split < 0 ? null : value.slice(split + 2), recommended: recommended === i + 1 }; }),
         impact: flags.impact, deadline: flags.deadline, allowOther: !flags['no-other'], requestId: flags['request-id'],
-        source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } });
+        source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } }, { author: 'agent' });
       result.decision = service.view(result.decision);
+    } else if (sub === 'classify' || sub === 'answer') {
+      if (!/^dec_[0-9a-f]{16}$/.test(id)) usage('specify a decision ID or active J number');
+      if (sub === 'classify') {
+        result = await monetPost(`/v1/monet/decisions/${id}/classify`, { class: requireFlag('class'), ownerKind: flags['owner-kind'] });
+      } else {
+        if (flags.as !== 'monet' || !Array.isArray(flags.option) || flags.option.length !== 1 || !/^[1-6]$/.test(flags.option[0])) {
+          usage('answer requires --as monet and exactly one 1-based --option');
+        }
+        result = await monetPost(`/v1/monet/decisions/${id}/answer`, { option: Number(flags.option[0]), reason: requireFlag('reason') });
+      }
     } else if (sub === 'status') result = { decision: service.get(id) };
     else if (sub === 'withdraw') result = { decision: service.withdraw(id, requireFlag('reason')) };
     else result = { items: (await service.list()).items };
@@ -58,7 +74,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
     else for (const r of result.items) write(`${r.ref ?? r.id}  ${r.status}  ${r.title}\n`);
     return 0;
   } catch (e) {
-    const body = e instanceof BridgeError ? { code: e.code, message: e.message } : { code: 'internal_error', message: 'unexpected failure' };
+    const body = e instanceof BridgeError ? { code: e.code, message: e.message, ...(e.status === 422 ? { status: 422 } : {}) } : { code: 'internal_error', message: 'unexpected failure' };
     if (flags.json) write(`${JSON.stringify({ ok: false, error: body })}\n`);
     writeErr(`laa-bridge: ${body.code}: ${body.message}\n`);
     return exitCodeFor(e);

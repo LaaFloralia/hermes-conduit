@@ -22,12 +22,11 @@ struct LAAGroupSelection {
 /// Who a new group can include, sectioned as the Chat list is. The
 /// uncensored Monet stays out of groups.
 enum LAAGroupCandidates {
-    struct Section { let title: String; var spoken: String? = nil; let staff: [LAAStaff] }
+    struct Section { let title: String; let staff: [LAAStaff] }
 
     static var sections: [Section] {
         [Section(title: LAACopy.groupSelectEmployees, staff: [.monet]),
-         Section(title: LAACopy.chatsEmployees, staff: LAAStaff.members(of: .employee)),
-         Section(title: LAACopy.chatsContractors, spoken: LAACopy.chatsContractorsSpoken, staff: LAAStaff.members(of: .contractor))]
+         Section(title: LAACopy.chatsEmployees, staff: LAAStaff.members(of: .employee))]
     }
 
     static var all: [LAAStaff] { sections.flatMap(\.staff) }
@@ -49,8 +48,8 @@ struct LAAGroupListView: View {
                     case .failed(let message): Text(verbatim: "グループを読み込めませんでした：\(message)")
                     case .available:
                         NavigationLink(LAACopy.chatsNewGroup) {
-                            LAAGroupCreateView(roster: appState.botRoster) { name, bots, roomID in
-                                let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID)
+                            LAAGroupCreateView(roster: appState.botRoster, capabilities: appState.groupCapabilities) { name, bots, roomID, confidential in
+                                let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID, confidential: confidential)
                                 if created { dismiss() }
                                 return created
                             }
@@ -92,8 +91,10 @@ struct LAAGroupListView: View {
 @MainActor
 struct LAAGroupCreateView: View {
     let roster: [BotProfile]
-    let create: (String, [BotProfile], String) async -> Bool
+    var capabilities: GroupCapabilities? = nil
+    let create: (String, [BotProfile], String, Bool) async -> Bool
     @State private var name = ""
+    @State private var confidential = false
     @State private var selected = Set<String>()
     @State private var roomID = GroupCreateAttempt.mintRoomID()
     @State private var attempted: GroupCreateAttempt.Inputs?
@@ -114,8 +115,12 @@ struct LAAGroupCreateView: View {
             Section(LAACopy.groupName) {
                 TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.create.name")
             }
-            // The same placement and order as the Chat list: Monet, the
-            // employees, then the contractors (owner, 2026-11-23).
+            if capabilities?.supportsConfidentialRooms == true {
+                Toggle(isOn: $confidential) { Text(verbatim: LAACopy.groupConfidential) }
+                    .disabled(creating)
+                    .accessibilityIdentifier("groups.create.confidential")
+            }
+            // The same order as Chat, but only roles with a meeting seat.
             ForEach(LAAGroupCandidates.sections, id: \.title) { section in
                 Section {
                     ForEach(section.staff, id: \.self) { staff in
@@ -137,7 +142,7 @@ struct LAAGroupCreateView: View {
                         .accessibilityIdentifier("groups.employee.\(profile)")
                     }
                 } header: {
-                    Text(verbatim: section.title).accessibilityLabel(Text(verbatim: section.spoken ?? section.title))
+                    Text(verbatim: section.title)
                 }
             }
             if failed { Text(verbatim: "作成できませんでした。接続先と選択した社員を確認して再試行してください。")
@@ -148,13 +153,14 @@ struct LAAGroupCreateView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button(LAACopy.groupCreate) {
                     guard !creating else { return }
-                    let inputs = GroupCreateAttempt.Inputs(name: name.trimmingCharacters(in: .whitespacesAndNewlines), members: selected)
+                    let inputs = GroupCreateAttempt.Inputs(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                            members: selected, confidential: confidential)
                     roomID = GroupCreateAttempt.roomID(for: inputs, current: roomID, attempted: attempted)
                     attempted = inputs
                     let bots = available.filter { selected.contains($0.name) }
                     creating = true
                     Task {
-                        let ok = await create(inputs.name, bots, roomID)
+                        let ok = await create(inputs.name, bots, roomID, inputs.confidential)
                         failed = !ok
                         creating = false
                     }

@@ -1096,7 +1096,8 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
   links `laa://work/decisions[/<id>]`: `Conduit/LAA/Work/LAAWorkSessionCache.swift`; native questions reuse
   `Conduit/LAA/Work/LAAWorkSessionDecision.swift`
 - Bridge: `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/routes/decisions.mjs`,
-  `bridge/src/cli-decisions.mjs`; contract: `bridge/README.md`, `docs/laa/BRIDGE.md`; design: `docs/laa/DESIGN.md`
+  `bridge/src/cli-decisions.mjs`, `bridge/src/cli-monet.mjs` (trusted proxy), `bridge/src/routes/monet.mjs`;
+  contract: `bridge/README.md`, `docs/laa/BRIDGE.md`; design: `docs/laa/DESIGN.md`
 - Tests: `ConduitTests/LAADecisionTests.swift`, `ConduitTests/LAAStopgapTests.swift`, `ConduitTests/LAADecisionSnapshotTests.swift`,
   `ConduitUITests/LAADecisionUITests.swift`, `scripts/laa/work-ui-fixture.mjs`, `bridge/test/decisions.test.mjs`
 
@@ -1153,37 +1154,30 @@ notifications (`decision.new`, `decision.failed`, deep link) · Mac Work section
 
 ## LAA campaign decisions
 
-Work's section `Campaigns` (after Decisions) lists what the campaign-hunt routine could not decide on its own, so the owner chooses here instead of on the conversation-bound decision board (owner, 2026-11-15, J33). Waiting rows of every kind are grouped by category, then genre (懸賞 · 食品, 利用者特典 · 通信; owner, 2026-11-15 via the ledger's version 3); the order menu can instead group them by deadline day, soonest first, then 締切なし・要確認 (owner, 17:17: a calendar in words of what can be had and by when), or list the newest additions first. A row whose deadline day has passed (Asia/Tokyo) leaves the list on its own (owner, 19:05). Above the list, toggles show or hide each category — 懸賞, 登録特典, 助成金・補助金, 機能追加, 利用者特典 (the ledger's names), then any other it sends — and a menu at their right end orders the list 種類・ジャンル順, 期限順 or 追加が新しい順; both are remembered (owner, 19:05). Each row carries the title, its category (and X for an X post), organizer, a perk's service, prize or ceiling, deadline, the day it was added, why it waits (an X post's entry conditions), a grant's preparation, `ページを開く` (the default browser) and the action's own yes beside `見送る`: `応募させる` (the routine applies at its next 11:00 run), `応募した` (the owner applied from the post), `申請する` (the routine drafts the application; filing and GビズID stay with the owner), and `進める` for an action the app does not know. The segment reads `Campaigns 37` while anything waits; chosen rows move under 判断済み with the choice and time, and can still change before the next run, except a grant already drafted.
+Work › `Campaigns` lists confirmed eligible offers and choices without sending individual Decision Board questions. A type menu lists the categories present, using ledger labels: 懸賞, 登録特典, 助成金・補助金, 機能追加, 利用者特典, セール and future categories. Waiting rows and deals are ordered by category and genre, deadline, or newest. `応募済み` rows are hidden by default and appear by search or the `応募済` status filter. Deals only open the offer page. The Work count is the number waiting for a choice; chosen rows still move under 判断済み and can change until acted on.
 
-**Siblings:** the campaign-hunt skill's ledger and its `pending`/`decide` commands (owned by the skill, outside this
-repo) · the Bridge routes · the Work hub segment count · the Mac Work section (same view)
+**Siblings:** campaign-hunt routine and ledger `list`/`decide` (skill repo) · Bridge route and README · Work hub count · Mac Work (shared view) · shared `LAASearchField` · lab capture fixture
 
 **Code**
 - App: `Conduit/LAA/Work/Campaigns/LAACampaignBoard.swift`; hub section and count: `Conduit/LAA/Today/LAAWorkHub.swift`
 - Bridge: `bridge/src/routes/campaigns.mjs`, registered in `bridge/src/routes/index.mjs`; contract: `bridge/README.md`
-- Tests: `ConduitTests/LAACampaignBoardTests.swift`, `bridge/test/campaigns.test.mjs`
+- Tests: `ConduitTests/LAACampaignBoardTests.swift`, `bridge/test/campaigns.test.mjs`, `scripts/laa/lab/capture-fixture.mjs`
 
 **Rulings**
-- The Bridge never opens the ledger file. It runs `ledger.py pending --all` and `ledger.py decide <key> approve|decline
-  --kind <kind>` (`/usr/bin/python3`, overridable with `LAA_CAMPAIGN_PYTHON` and `LAA_CAMPAIGN_LEDGER`) and passes their
-  JSON on in camelCase, without the ledger's path. Decisions run one at a time.
-- The app asks for `?kind=all`; without it the Bridge returns site rows only, because the first app build (master
-  75f25177) labels every row 応募させる. A row is identified by kind and key: the same URL can be both a site entry and a
-  grant.
+- The Bridge runs the skill's `list` and `decide` commands, never reads the ledger file, and forwards only allowlisted fields. The app asks for `?kind=all&status=all` for local search; omitting `kind` keeps the older site-only route.
+- HO-20–23 (2026-11-26): the routine verifies conditions at runtime against 1Password and logs only the eligibility result/reason. It uses the Google Sub3 X account for authorized no-phone/no-address entries; offers without those fields do not wait for a choice. Applied rows require a read-back receipt; deals never take a decision.
 - Read with `sessions:read`, decide with `sessions:write` and `Idempotency-Key`, the decision board's scopes; no new
   scope. Choosing twice records the same state, so a failed attempt frees its key.
 - No confirmation dialog: the choice stays changeable until the run reads it.
-- Kinds, actions and categories are open strings: the ledger can add a kind without a Bridge or app release. A row
-  without `category` reads as `grant` for a grant and `prize` otherwise; a row without `action` takes its kind's.
-- Expired rows are hidden by the app, not dropped by the Bridge, so the count and the list agree on one clock.
+- Kinds, actions and categories are open strings. Unverified and expired rows are filtered in the ledger, Bridge and app, with deadline days evaluated in Asia/Tokyo.
 
 **Owner check on the device**
-- Open Work › Campaigns, open a row's page, and choose a row's yes or 見送る; the row should move under 判断済み.
+- Open Work › Campaigns. Use the type menu, then search or select 応募済; deals are browse-only and expired or ineligible rows never appear.
 
 **Open gaps**
 - No notification or link opens the section yet; the count refreshes with the hub every 15 seconds.
 
-**Checked:** 2026-11-15, df169956 (laa/campaign-categories): bridge campaigns tests 4, LAACampaignBoardTests and LAAWorkTests on LAA 16 Pro Max; category toggles, the order menu and hiding expired rows (owner, 19:05).
+**Checked:** 2026-11-26, cceebc05 (HO-20–23): Bridge and app coverage for verified eligibility, JST expiry, the category menu, applied search and browse-only deals.
 
 ## LAA answers from a notification, and which Mac notifications arrive
 
@@ -1210,14 +1204,15 @@ same extension and delegate) · the decision board and the session reply card (u
   `Conduit/Views/AuxiliaryViews.swift` (the section's place)
 - Bridge: `bridge/src/notify/index.mjs` (encodeNotificationSessionId), `bridge/src/notify/preferences.mjs`,
   `bridge/src/routes/notifications.mjs`, `bridge/src/sessions/quick-reply.mjs`, `bridge/src/sessions/service.mjs`,
-  `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/notify/completion-report.mjs`
-  (unwired producer); contract: `bridge/README.md`,
+  `bridge/src/decisions/store.mjs`, `bridge/src/decisions/service.mjs`, `bridge/src/notify/completion-report.mjs`,
+  `bridge/src/routes/monet.mjs` (verified request trigger), `bridge/src/owner-surface.mjs` (agent-only language gate);
+  contract: `bridge/README.md`,
   `docs/laa/BRIDGE.md`
 - Call policy: `scripts/laa/check-call-policy.py`
 - Tests: `ConduitTests/LAAQuickAnswerTests.swift`, `ConduitTests/LAACallPolicyTests.swift`,
   `ConduitTests/LAAWorkNotificationSettingsSnapshotTests.swift`, `bridge/test/notification-quick-reply.test.mjs`,
   `bridge/test/notify-lanes.test.mjs`, `bridge/test/notify-completion-report.test.mjs`,
-  `scripts/tests/test_laa_check_call_policy.py`
+  `bridge/test/ambient-wave3.test.mjs` (off-production request-to-report rehearsal), `scripts/tests/test_laa_check_call_policy.py`
 
 **Rulings**
 - The Bridge's own facts ride in the push's `session_id` as `laa-bridge:<link>#<base64url JSON>`, within the
@@ -1252,13 +1247,14 @@ same extension and delegate) · the decision board and the session reply card (u
   More than one pending request, more than one question, or a question with no listed choices gets no buttons: it
   opens the app.
 - Kinds and defaults: decision, question, approval, error, task, calendar and Monet's report alert; finished turns
-  are off by default. Previously stored choices are preserved, including legacy `finished: quiet` entries that cannot
-  be distinguished from a deliberate choice. Decision, question and approval cannot be turned off. Settings shares
+  are off by default. Unmarked legacy `finished: quiet` entries migrate once to off; choices with owner provenance
+  and other stored levels are preserved. Decision, question and approval cannot be turned off. Settings shares
   one set on the Bridge for every device and shows the report choice only if the Bridge advertises it. Employee chat
   notifications keep their own switches under "Notify me when".
-- `monet.report` uses a project/request key and a separate persisted, bounded dedupe ledger. The staged producer
-  requires a verified request, no open decision for its project, and a trusted top-level Monet caller; it is not wired
-  to a caller or route. The extension, Watch mirroring, routine policy and quick-answer routes are unchanged.
+- `monet.report` uses a project/request key and a separate persisted, bounded dedupe ledger. The report route
+  requires a verified request, no open decision for its project, and the trusted top-level Monet credential; a Work
+  child cannot call it. Child completions, child notices and silent Monet proposals never enqueue a push. The
+  extension, Watch mirroring, routine policy and quick-answer routes are unchanged.
 - An employee calls the owner when asked (`when_asked`). Calling on its own judgment (`decides`) and about approvals
   and failures (`alerts`) stay off unless the owner turns them on; `scripts/laa/check-call-policy.py` reads every
   employee profile and fails when one has either on. It changes nothing.
@@ -4503,23 +4499,43 @@ and rollback instructions · the upstream App Store build
 
 **Checked:** 2026-11-25, laa/v2-chat (shared transcript replaces employee reply bubbles; background picker still governs the owner bubble); 2026-11-16, laa/glass-real (glass by default over a picture, clear tinted glass on both bubbles; LAA 16 Pro Max-type simulator on iOS 27.0 and the Mac dev build); 2026-11-16, laa/glass-bubbles at 7f19300e (the bubble choice in the background sheet; LAA 16 Pro Max simulator and the Mac dev build); 2026-11-15, laa/chat-background (the bar's background button restored beside the call button; the chosen photo draws behind ChatView through `laaConversationBackground` on the LAA route LAAConversationRoute › V2ConversationScreen; LAA iOS Simulator Debug build on the MacBook); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats entry), c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
 
-## LAA chaired group Voice (staged)
+## LAA chaired text meetings
 
-**Siblings:** hosted group replay and composer · speech playback and audio ownership · staff and native calls · iPhone and Mac Catalyst group rooms · upstream group chat (unchanged) · Hermes chaired-room planner and notification routing (separate release work)
+**Siblings:** Chat and Groups room creation · hosted-group replay on iPhone and Mac Catalyst · Hermes room RPC, roster and planner (separate staged patch) · notifier search and preview filtering · upstream group chat (no LAA creation or folding) · chaired Voice (separate feature)
 
 **Code**
-- Playback, binding, executor, live audio edges and controls: `Conduit/LAA/Groups/LAAChairedVoicePlayback.swift`, `Conduit/LAA/Groups/LAAChairedVoiceBinding.swift`, `Conduit/LAA/Groups/LAAChairedVoiceEffectExecutor.swift`, `Conduit/LAA/Groups/LAAChairedVoiceLiveEdges.swift`, `Conduit/LAA/Groups/LAAChairedVoiceSurface.swift`, `Conduit/LAA/Groups/LAAChairedVoiceBar.swift`
-- Room, dictation and audio lifecycle: `Conduit/Services/AppState.swift`, `Conduit/Views/GroupChatView.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Voice/VoiceAudioSessionCoordinator.swift`
-- Tests: `ConduitTests/LAAChairedVoicePlaybackTests.swift`, `ConduitTests/LAAChairedVoiceBindingTests.swift`, `ConduitTests/LAAChairedVoiceEffectExecutorTests.swift`, `ConduitTests/LAAChairedVoiceSurfaceTests.swift`
+- Creation, capabilities and replay: `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Chats/LAAChatsCopy.swift`, `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/HermesClient.swift`, `Conduit/Services/GroupChatModels.swift`, `Conduit/Views/GroupChatView.swift`
+- Tests: `ConduitTests/GroupChatModelsTests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`, `Conduit/LAA/Backgrounds/LAABackgroundUITestFixture.swift`
 
 **Rulings**
-- The LAA-only room binding is silent by default. When enabled, explicit engagement listens to new settled lines only, one at a time. Talk yields playback to the room's existing dictation; Stop, staff/native call takeover or leaving the room releases playback. Ordinary groups and upstream Chat keep their existing behavior.
-- `playbackWired` remains `false`: the Voice control stays hidden and no room autoplays.
+- Only Monet and seated employees are offered. Send chair/policy and privacy only when negotiated; a private creation request must not downgrade to public. Changing the requested privacy starts a new create identity.
+- Display Monet's marked conclusion with a heading. Only turns explicitly marked as staff for that same discussion fold under the conclusion; pending and old-host turns keep their ordinary rows. No Voice behavior changes.
 
 **Open gaps**
-- Real settled-event and speaker-to-gateway coverage, audio handoff against the real coordinator, and iPhone/Mac behavior before enabling playback. No server planner, RPC, notification routing or Watch change is implied by this app code.
+- Activation of the staged Hermes/notifier patches and the Bridge conclusion adapter is an integration decision, not an app-side push.
 
-**Checked:** 2026-11-26, fe1321bd (staged implementation and fixture test coverage; playback disabled).
+**Checked:** 2026-11-26, b91a58cf (LAA C-1 wire, decoder, and fixture coverage).
+
+## LAA chaired group Voice
+
+**Siblings:** hosted group replay and composer · speech playback and audio ownership · staff and native calls · iPhone and Mac Catalyst group rooms · paired Bridge voice scope · upstream group chat (unchanged) · Hermes chair prompt (separate install)
+
+**Code**
+- Serial playback: `Conduit/LAA/Groups/LAAChairedVoicePlayback.swift`, `Conduit/LAA/Groups/LAAChairedVoiceBinding.swift`, `Conduit/LAA/Groups/LAAChairedVoiceEffectExecutor.swift`, `Conduit/LAA/Groups/LAAChairedVoiceLiveEdges.swift`, `Conduit/LAA/Groups/LAAChairedVoiceSurface.swift`
+- Meeting state and controls: `Conduit/LAA/Groups/LAAMeetingTurn.swift`, `Conduit/LAA/Groups/LAAMeetingSession.swift`, `Conduit/LAA/Groups/LAAMeetingEndpoint.swift`, `Conduit/LAA/Groups/LAAMeetingControls.swift`, `Conduit/LAA/Groups/LAAMeetingLab.swift`
+- Room, dictation and audio lifecycle: `Conduit/Services/AppState.swift`, `Conduit/Views/GroupChatView.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Voice/ComposerDictationService.swift` (optional RMS readout of its existing tap), `Conduit/Voice/VoiceAudioSessionCoordinator.swift`, `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
+- Ephemeral lease: `bridge/src/routes/voice-lease.mjs`, `bridge/src/routes/index.mjs`
+- Tests: `ConduitTests/LAAChairedVoicePlaybackTests.swift`, `ConduitTests/LAAChairedVoiceBindingTests.swift`, `ConduitTests/LAAChairedVoiceEffectExecutorTests.swift`, `ConduitTests/LAAChairedVoiceSurfaceTests.swift`, `ConduitTests/LAAMeetingVoiceTests.swift`, `ConduitTests/VoiceAudioSessionCoordinatorTests.swift`, `bridge/test/voice-lease.test.mjs`
+
+**Rulings**
+- A Monet-chaired `壁打ち Voice` room enters silently. Talk claims a 12-second, device-bound CAS lease (3-second renewal, conservative local expiry); another endpoint reads silently. Only explicit Talk captures; silence after speech leaves an editable iPhone draft, and releasing Space stops Mac capture. Muting flushes, Talk interrupts immediately, and End, leaving, backgrounding, staff/native call takeover, or lease loss stop local audio. End releases first and then submits the owner's minutes request to the existing room.
+- Only new `message.member` lines referenced by `turn.settled` for the locally submitted discussion are spoken, once and serially through the roster's Hermes profiles. The complete written transcript and minutes are still the room's own log. The Bridge holds neither audio nor meeting text.
+- `playbackWired` gates the real controls; the simulator-only fixture can exercise the path before enabling it. The Catalyst standalone room read-aloud button is hidden; upstream chat is unchanged.
+
+**Open gaps**
+- The device canary must verify music continuity, Apple speech capture, the per-profile Hermes output, dual-device handoff and Catalyst Space. Installing the separately prepared chair prompt and Bridge route is release work.
+
+**Checked:** 2026-11-26, `2342eca5`: 312 selected iOS unit tests, one LAA 16 Pro Max fixture smoke, Catalyst build, Bridge suite, and idle/Talk/speaking design checks passed. The playback surface is enabled; real-device audio is not claimed.
 
 ## LAA Chats list
 
@@ -4660,7 +4676,7 @@ The LAA employee transcript and composer, including the cached opening preview a
 **Code**
 - Follow-up field, message actions and the model menu: `Conduit/LAA/Work/LAAWorkComposer.swift`, `Conduit/LAA/Work/LAAWorkMessageForm.swift`, `Conduit/LAA/Work/LAAWorkMessageActions.swift`, `Conduit/LAA/Work/LAAWorkMessageRow.swift`, `Conduit/LAA/Work/LAAWorkSessionParts.swift`, `Conduit/LAA/Design/LAAEffortMark.swift`, `Conduit/LAA/Design/LAAModelMark.swift`, `Conduit/LAA/Design/LAAModelEffortPicker.swift`, `Conduit/LAA/Design/LAAGlassActionButton.swift`, `assets/laa/LAAAccent.xcassets/LAADeepSeekMark.imageset/Contents.json`, `Conduit/LAA/Work/LAAWorkPaneViews.swift`, `scripts/laa/work-ui-fixture.mjs`, `ConduitUITests/LAAChatPolishUITests.swift`, `ConduitUITests/LAAWorkSessionUITests.swift`, `ConduitUITests/LAASessionModelDisplayUITests.swift`
 - Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkArchivePrompt.swift`, `Conduit/LAA/Work/LAAWorkDesktop.swift`, `Conduit/LAA/Work/LAAWorkStatusMark.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkModelSelection.swift`, `Conduit/LAA/Work/LAAWorkSessionControls.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`, `Conduit/LAA/Work/LAAWorkTranscriptPages.swift`, `Conduit/Views/Components/TranscriptBackfillControl.swift`, `Conduit/LAA/Work/LAAWorkSessionProjectMove.swift`, `Conduit/LAA/Work/LAAWorkInitialInstruction.swift`
-- Project requirements and progress (list rows, detail page, owner's requirement changes, fixture): `Conduit/LAA/Work/LAAWorkProjectRequirements.swift`, `Conduit/LAA/Work/LAAWorkProjectOverview.swift`, `Conduit/LAA/Work/LAAWorkProjectHome.swift`, `Conduit/LAA/Work/LAAWorkProjectFixtureView.swift`, `Conduit/LAA/Work/LAAWorkCopy.swift`, `bridge/src/routes/projects.mjs`, `ConduitTests/LAAWorkProjectRequirementTests.swift`, `ConduitTests/LAAWorkProjectSnapshotTests.swift`
+- Project requirements and progress (list rows, detail page, owner's requirement changes, fixture): `Conduit/LAA/Work/LAAWorkProjectRequirements.swift`, `Conduit/LAA/Work/LAAWorkProjectOverview.swift`, `Conduit/LAA/Work/LAAWorkProjectHome.swift`, `Conduit/LAA/Work/LAAWorkProjectFixtureView.swift`, `Conduit/LAA/Work/LAAWorkCopy.swift`, `bridge/src/routes/projects.mjs`, `bridge/src/routes/project-requirements.mjs`, `ConduitTests/LAAWorkProjectRequirementTests.swift`, `ConduitTests/LAAWorkProjectSnapshotTests.swift`
 - Name and first instruction sheet: `Conduit/LAA/Work/LAAWorkInitialInstruction.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkPaneViews.swift`, `bridge/src/sessions/service.mjs` (initialInstruction), `bridge/src/routes/sessions.mjs`, `bridge/test/sessions.test.mjs`, `bridge/test/first-prompt.test.mjs`, `ConduitUITests/LAAWorkSessionUITests.swift`
 - Directory, decisions, images and notifications: `bridge/src/sessions/daemon.mjs`, `bridge/src/sessions/images.mjs`, `bridge/src/sessions/local-images.mjs`, `bridge/src/sessions/history.mjs`, `bridge/src/notify/index.mjs`, `bridge/src/notify/deliver.py`, `Conduit/LAA/Work/LAAWorkSessionCache.swift`, `Conduit/LAA/Work/LAAWorkSessionDecision.swift`, `Conduit/LAA/Work/LAAWorkSessionImage.swift`, `bridge/test/paseo-daemon.test.mjs`, `ConduitUITests/LAAPaseoUITests.swift`, `scripts/laa/paseo-ui-fixture.mjs`
 - Session question free answer (the same card on iPhone and Mac Catalyst): `Conduit/LAA/Studio/LAAStudioCreate.swift` (`studioInputField`), `ConduitUITests/LAATaskRunUITests.swift`, `ConduitUITests/LAALabCaptureUITests.swift`

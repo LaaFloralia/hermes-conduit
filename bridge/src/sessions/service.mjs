@@ -42,6 +42,7 @@ import { fastAvailable, fastValue } from './features.mjs';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
 import { approvalSummary, quickReply, sessionNotificationMeta } from './quick-reply.mjs';
 import { notifyOwner } from '../notify/index.mjs';
+import { assertOwnerSurface, isOwnerSurface } from '../owner-surface.mjs';
 import { createModelSwitcher, joinedHistory } from './model-switch.mjs';
 import { sessionOptionsReader } from './options.mjs';
 
@@ -152,7 +153,7 @@ export function createSessionService({
 
   // `owner`: the request came from a paired device (a route), not from automation such as task
   // dispatch; only then does the first instruction carry the owner's mark (work-origin.mjs).
-  async function createSession({ deviceId, body = {}, resumedFrom = null, owner = false }) {
+  async function createSession({ deviceId, body = {}, resumedFrom = null, owner = false, ownerName = owner }) {
     const requestId = parseRequestId(body.requestId);
     let profile;
     const prompt = asText(body.prompt, 'prompt');
@@ -230,8 +231,12 @@ export function createSessionService({
     const membership = projectId ?? parent?.projectId ?? defaultProject?.()?.id ?? null;
 
     let name = body.name === undefined || body.name === null ? null : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
-    const nameSource = name === null ? 'default' : 'owner';
-    if (name === null) name = defaultName(prompt) ?? `セッション ${id.slice(4, 10)}`;
+    if (name !== null && !ownerName) assertOwnerSurface(name, 'name');
+    const nameSource = name === null ? 'default' : ownerName ? 'owner' : 'agent';
+    if (name === null) {
+      const inferred = defaultName(prompt);
+      name = (owner || isOwnerSurface(inferred) ? inferred : null) ?? `セッション ${id.slice(4, 10)}`;
+    }
     if (parentId && !name.startsWith(CHILD_NAME_PREFIX)) name = `${CHILD_NAME_PREFIX}${name}`;
 
     // The delegation wrapper requires the task fields; a plain chat session
@@ -468,19 +473,24 @@ export function createSessionService({
         } catch { /* Recording must never prevent a conversation from continuing. */ }
       }
       await markDeletedAgents(agents);
+      const children = new Set(agents.filter((a) => a.labels?.['paseo.parent-agent-id']).map((a) => ids.get(a.id)));
       for (const { previous, current } of transitions) {
         const phase = current.phase;
         const kind = phase === 'awaiting_decision' ? (current.pending.kinds.includes('question') ? 'question' : 'approval')
           : phase === 'error' ? 'error' : phase === 'awaiting_review' && (previous === 'running' || current.attentionReason === 'finished') ? 'finished' : null;
-        if (kind && !current.archivedAt && !current.daemonArchivedAt && !current.routine && !(kind === 'finished' && decisions?.hasOpen(current))) {
+        if (kind && !current.archivedAt && !current.daemonArchivedAt && !current.routine && !(kind === 'finished' && (current.parentId || children.has(current.id) || decisions?.hasOpen(current)))) {
           let detail;
           if (kind === 'question' || kind === 'approval') {
             try { detail = await decision(current.id); } catch { /* Delivery survives an unavailable daemon. */ }
           }
           const meta = sessionNotificationMeta(current.id, kind, detail);
           const approvalBody = meta.a === 1 ? approvalSummary(detail.requests[0]) : null;
-          void notify({ meta, kind: `session.${kind}`, title: current.name,
-            body: approvalBody ?? { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
+          // Work's legacy directory has no owner-vs-agent title provenance.
+          // Do not copy an unvetted import into an alert, or change its raw log.
+          const ownerNamed = current.nameSource === 'owner';
+          const title = ownerNamed || isOwnerSurface(current.name) ? current.name : 'セッション';
+          void notify({ meta, kind: `session.${kind}`, title, author: ownerNamed ? 'owner' : 'agent',
+            body: (isOwnerSurface(approvalBody) ? approvalBody : null) ?? { question: '質問への回答をお願いします。', approval: '操作の承認をお願いします。', error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
         }
       }
@@ -996,7 +1006,7 @@ export function createSessionService({
   // restored agent loads again in Paseo. Owner rename stays Bridge-side and
   // favourites mirror a Paseo workspace pin when one is available. None of
   // these actions stops a turn: the adapter refuses a tree with a turn running.
-  async function updateSession({ id, body = {} }) {
+  async function updateSession({ id, body = {}, owner = true }) {
     switcher.assertUnlocked(id);
     if (body.projectId !== undefined) {
       if (!moveProject || Object.keys(body).length !== 1 || typeof body.projectId !== 'string' || !/^prj_[0-9a-f]{12}$/.test(body.projectId)) {
@@ -1008,6 +1018,8 @@ export function createSessionService({
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
     const archived = body.archived === undefined ? undefined : parseBoolean(body.archived, 'archived');
     const name = body.name === undefined ? undefined : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
+    if (name !== undefined && !owner) assertOwnerSurface(name, 'name');
+    const nameSource = owner ? 'owner' : 'agent';
     const effort = body.effort === undefined ? undefined : parseEffort(body.effort);
     const fast = body.fast === undefined ? undefined : parseBoolean(body.fast, 'fast');
     const model = body.model === undefined ? undefined : parseModel(body.model);
@@ -1101,10 +1113,10 @@ export function createSessionService({
         events.push({ type: 'session.favorite', payload: { favorite } });
       }
       if (archiving) events.push(...setArchived(current));
-      if (name !== undefined && (current.name !== name || current.nameSource !== 'owner')) {
+      if (name !== undefined && (current.name !== name || current.nameSource !== nameSource)) {
         current.name = name;
-        current.nameSource = 'owner';
-        events.push({ type: 'session.renamed', payload: { name, nameSource: 'owner' } });
+        current.nameSource = nameSource;
+        events.push({ type: 'session.renamed', payload: { name, nameSource } });
       }
       return events;
     });

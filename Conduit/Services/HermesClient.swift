@@ -3748,13 +3748,29 @@ final class HermesClient: ObservableObject {
     /// proposed roster rows (`member_id`/`profile`/`handle`/`display_name`
     /// for local bots); the gateway re-validates the frozen 2–6 roster and
     /// refuses ambiguous, duplicated, or reserved handles.
-    func groupsCreate(roomID: String, name: String, members: [[String: Any]]) async throws -> GroupRoom {
-        let result = try await rpc(
-            "groups.create",
-            params: ["room_id": roomID, "name": name, "members": members],
-            scoped: false
-        )
-        guard let room = GroupDecoders.room(result.objectValue?["room"]) else {
+    nonisolated static func groupsCreateParameters(roomID: String, name: String, members: [[String: Any]],
+                                       capabilities: GroupCapabilities?, confidential: Bool) -> [String: Any] {
+        var params: [String: Any] = ["room_id": roomID, "name": name, "members": members]
+        if capabilities?.supportsRoomChair == true,
+           let monet = members.first(where: { $0["profile"] as? String == "laa-monet" }),
+           let memberID = monet["member_id"] as? String {
+            let policy = GroupMeetingPolicy.standard
+            params["chair"] = memberID
+            params["policy"] = ["staff_rounds": policy.staffRounds, "max_messages": policy.maxMessages]
+        }
+        if capabilities?.supportsConfidentialRooms == true { params["confidential"] = confidential }
+        return params
+    }
+
+    func groupsCreate(roomID: String, name: String, members: [[String: Any]],
+                      capabilities: GroupCapabilities? = nil, confidential: Bool = false) async throws -> GroupRoom {
+        // Never create a public room on a capability downgrade after a private pick.
+        guard !confidential || capabilities?.supportsConfidentialRooms == true else { throw HermesError.invalidResponse }
+        let params = Self.groupsCreateParameters(roomID: roomID, name: name, members: members,
+                                                 capabilities: capabilities, confidential: confidential)
+        let result = try await rpc("groups.create", params: params, scoped: false)
+        guard let room = GroupDecoders.room(result.objectValue?["room"]),
+              !confidential || room.confidential == true else {
             throw HermesError.invalidResponse
         }
         return room

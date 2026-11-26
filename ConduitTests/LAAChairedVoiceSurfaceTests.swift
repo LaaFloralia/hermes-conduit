@@ -42,7 +42,7 @@ final class LAAChairedVoiceSurfaceTests: XCTestCase {
         XCTAssertEqual(state(b, room: "other"), .hidden, "binding of another room")
         XCTAssertEqual(state(b, room: nil), .hidden, "no room on screen")
         XCTAssertEqual(state(b, wired: false), .hidden, "no executor: no button that plays nothing")
-        XCTAssertEqual(LAAChairedVoiceSurface.playbackWired, false, "flipped only with the AppState handler")
+        XCTAssertEqual(LAAChairedVoiceSurface.playbackWired, true, "enabled after the meeting gates passed (Wave 3)")
         b.leaveRoom()
         XCTAssertEqual(state(b), .hidden, "left / non-chaired room")
     }

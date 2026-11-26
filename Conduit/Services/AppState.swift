@@ -11776,18 +11776,38 @@ final class AppState: ObservableObject {
     /// the bar's explicit Voice tap (`engage`); the bar stays hidden while
     /// `LAAChairedVoiceSurface.playbackWired` is false.
     let chairedVoice = LAAChairedVoiceBinding()
+    let chairedMeeting = LAAMeetingSession()
+    var chairedMeetingEndCapture: ((Bool) -> Void)?
+    private var chairedMeetingReadyEpoch: Int?
+    #if DEBUG && targetEnvironment(simulator)
+    private var chairedFixtureCapture: VoiceAudioLease?
+    #endif
 
     /// Strong owner: the binding holds its handler weakly. Created only for a
     /// bound chaired room (openGroupRoom), never at launch or scenePhase.
     private(set) lazy var chairedVoiceExecutor: LAAChairedVoiceEffectExecutor = {
+        let level: (Double) -> Void = { [weak self] in self?.chairedMeeting.speechLevel = $0 }
+        var speaker: LAAChairedVoiceSpeaking = LAAChairedVoiceReadAloudSpeaker(
+            gateway: { [weak self] speaker in self?.chairedMeetingGateway(speaker: speaker) },
+            endpointGeneration: { [weak self] in self?.liveChairedGeneration }, onLevel: level)
+        #if DEBUG && targetEnvironment(simulator)
+        if LAAMeetingLab.isEnabled { speaker = LAAMeetingLab.Speaker(level: level) }
+        #endif
         let executor = LAAChairedVoiceEffectExecutor(
-            leasing: LAAChairedVoiceCoordinatorLeasing(),
-            speaker: LAAChairedVoiceReadAloudSpeaker(gateway: { [weak self] speaker in
-                self?.makeVoiceGateway(profile: speaker)
-            }),
+            leasing: LAAChairedVoiceCoordinatorLeasing { [weak self] in self?.liveChairedGeneration != nil },
+            speaker: speaker,
             audioOwner: { [weak self] in self?.chairedVoiceAudioOwner ?? .staffCall })
         executor.sink = chairedVoice
         chairedVoice.setHandler(executor)
+        chairedVoice.onChange = { [weak self] in self?.updateChairedMeeting() }
+        chairedMeeting.endpoint.onLoss = { [weak self] in
+            self?.stopChairedMeeting()
+            self?.chairedMeeting.note = "音声接続が切れました。履歴で確認できます。"
+        }
+        chairedMeeting.onTimeout = { [weak self] in
+            guard let self else { return }
+            self.chairedVoice.flushRound(generation: self.groupRoomEpoch)
+        }
         return executor
     }()
 
@@ -11795,10 +11815,95 @@ final class AppState: ObservableObject {
     /// dictation on it (the one capture path, no second mic).
     @Published private(set) var chairedVoiceTalkRequest = 0
 
-    /// Talk tapped in the bar: hand the mic to the composer's dictation.
-    func requestChairedVoiceTalk() {
-        guard chairedVoice.core.phase != .silent else { return }
+    var liveChairedGeneration: String? {
+        guard isSceneActive, chairedMeeting.endpoint.canUseAudio else { return nil }
+        return chairedMeeting.endpoint.generation
+    }
+
+    private func chairedMeetingGateway(speaker: String) -> HermesVoiceGateway? {
+        guard let member = activeRoomSurface?.room.members.first(where: { $0.memberID == speaker || $0.profile == speaker }),
+              (member.target?["kind"]?.stringValue ?? "local") == "local",
+              let profile = member.profile, let bridge = dashboardTicketBridge, let connection else { return nil }
+        // Reuse the roster member's existing Hermes voice, not the owner's
+        // active profile or a generic fallback voice.
+        return HermesVoiceGateway(bridge: bridge, baseURL: connection.baseUrl, profile: profile,
+                                  profileParameter: notifierPlugin.dashboardProfileParameter, speechOutput: { .hermes })
+    }
+
+    /// Silent followers claim only on explicit Talk; a late grant cannot
+    /// start the mic after release, room change, or backgrounding.
+    func requestChairedVoiceTalk() async {
+        guard let room = activeRoomSurface?.room, room.roomID == chairedVoice.core.roomID,
+              chairedMeetingReadyEpoch == groupRoomEpoch, chairedMeetingEndCapture != nil,
+              isSceneActive, chairedVoiceAudioOwner == .none,
+              !chairedMeeting.claiming, !chairedMeeting.turn.ownerTalking else { return }
+        let epoch = groupRoomEpoch
+        chairedMeeting.note = nil
+        if liveChairedGeneration == nil {
+            chairedMeeting.claiming = true
+            defer { if epoch == groupRoomEpoch { chairedMeeting.claiming = false } }
+            do {
+                let client: LAAMeetingLeaseClient
+                #if DEBUG && targetEnvironment(simulator)
+                client = try LAAMeetingLab.isEnabled ? LAAMeetingLab.leaseClient() : LAAMeetingLeaseClient.bridge()
+                #else
+                client = try LAAMeetingLeaseClient.bridge()
+                #endif
+                guard try await chairedMeeting.endpoint.claim(room: room.roomID, using: client),
+                      epoch == groupRoomEpoch, liveChairedGeneration != nil else { return }
+            } catch {
+                guard epoch == groupRoomEpoch, chairedMeeting.claiming else { return }
+                chairedMeeting.note = (error as? LAABridgeHTTPError)?.code == "meeting_audio_busy"
+                    ? "別の端末が音声を使っています。" : "音声に接続できません。文字で参加できます。"
+                return
+            }
+            guard chairedVoice.engage(generation: epoch, backlogThroughSeq: max(activeRoomReplay.cursor, room.latestSeq ?? 0),
+                                      owner: chairedVoiceAudioOwner) == nil else { stopChairedMeeting(); return }
+            chairedMeeting.apply(.join)
+        }
+        chairedMeeting.apply(chairedVoice.core.current == nil ? .tapTalk : .bargeIn)
+        chairedVoice.talk(generation: epoch)
+        #if DEBUG && targetEnvironment(simulator)
+        if LAAMeetingLab.isEnabled {
+            chairedFixtureCapture = try? VoiceAudioSessionCoordinator.shared.acquire(.meetingCapture)
+            return
+        }
+        #endif
         chairedVoiceTalkRequest &+= 1
+    }
+
+    func stopChairedMeeting() {
+        #if DEBUG && targetEnvironment(simulator)
+        releaseChairedFixtureCapture()
+        #endif
+        chairedVoice.stop(generation: chairedVoice.core.generation)
+        chairedMeetingEndCapture?(false)
+        chairedMeeting.endpoint.leave()
+        chairedMeeting.claiming = false
+        chairedMeeting.apply(.leave)
+    }
+
+    func endChairedMeeting() async {
+        guard chairedMeeting.endpoint.canUseAudio else { return }
+        stopChairedMeeting()
+        let epoch = groupRoomEpoch
+        let accepted = await sendGroupRoomMessage("会議を終了。要点を3行で")
+        if !accepted, groupRoomEpoch == epoch { chairedMeeting.note = "議事録を依頼できませんでした。" }
+    }
+
+    private func updateChairedMeeting() {
+        if chairedVoice.core.phase == .silent, chairedMeeting.endpoint.generation != nil {
+            chairedMeetingEndCapture?(false)
+            chairedMeeting.endpoint.leave()
+            chairedMeeting.apply(.leave)
+        }
+        let roundStillOpen = chairedMeeting.roundID.map { round in
+            !activeRoomReplay.events.contains { event in
+                event.kind == "room.activity" && event.payload["discussion_event_id"]?.stringValue == round
+                    && GroupRoomTurns.roomActivityOutcome(event) != .other
+            }
+        } ?? false
+        chairedMeeting.update(chairedVoice.core, memberRunning: roundStillOpen || activeRoomSendInFlight)
     }
 
     /// The room composer's dictation began or ended (send, stop, cancel,
@@ -11810,6 +11915,7 @@ final class AppState: ObservableObject {
             guard chairedVoice.core.phase != .ownerTalking else { return }
             chairedVoice.talk(generation: groupRoomEpoch)
         } else {
+            chairedMeeting.apply(.vadEnd)
             chairedVoice.talkEnded(generation: groupRoomEpoch)
         }
     }
@@ -11817,21 +11923,53 @@ final class AppState: ObservableObject {
     /// A staff call / Voice started or ended: an engaged room stops and stays
     /// silent until a new explicit engage. Never takes audio back.
     func chairedVoiceAudioOwnerMayHaveChanged() {
-        guard chairedVoice.core.phase != .silent else { return }
-        chairedVoice.audioOwnerChanged(chairedVoiceYieldOwner, generation: groupRoomEpoch)
+        if chairedVoiceYieldOwner != .none || chairedVoiceAudioOwner != .none { stopChairedMeeting() }
     }
 
-    /// Bumped by the bar's Listen; the composer stops (keeps) its dictation.
-    @Published private(set) var chairedVoiceListenRequest = 0
-
-    /// Listen tapped: stop dictation keeping its words, then resume the room.
-    /// No capture running (composer absent, or Talk never started one): resume now.
+    /// End capture while keeping the final words editable in the room draft.
     func requestChairedVoiceListen() {
-        chairedVoiceListenRequest &+= 1
-        if !VoiceAudioSessionCoordinator.shared.hasCaptureOwner {
-            chairedVoice.talkEnded(generation: groupRoomEpoch)
+        if chairedMeeting.claiming { stopChairedMeeting(); return }
+        guard chairedMeeting.turn.ownerTalking else { return }
+        #if DEBUG && targetEnvironment(simulator)
+        if LAAMeetingLab.isEnabled {
+            releaseChairedFixtureCapture()
+            chairedVoiceDictationChanged(active: false)
+            Task { _ = await sendGroupRoomMessage("合成の質問です。") }
+            return
+        }
+        #endif
+        chairedMeetingEndCapture?(true)
+    }
+
+    #if DEBUG && targetEnvironment(simulator)
+    private func releaseChairedFixtureCapture() {
+        if let lease = chairedFixtureCapture {
+            chairedFixtureCapture = nil
+            VoiceAudioSessionCoordinator.shared.release(lease)
         }
     }
+
+    private func installChairedMeetingFixture() {
+        groupRoomEpoch &+= 1
+        let room = LAAMeetingLab.room
+        activeRoomSurface = GroupRoomSurface(dashboardID: activeDashboardID ?? UUID(), room: room)
+        activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
+        chairedVoice.bind(roomID: room.roomID, generation: groupRoomEpoch)
+        _ = chairedVoiceExecutor
+        chairedMeetingReadyEpoch = groupRoomEpoch
+        appendChairedFixtureEvents(LAAMeetingLab.settled(seq: 1, text: "これは履歴です。"))
+    }
+
+    private func appendChairedFixtureEvents(_ events: [GroupEvent]) {
+        let cursor = events.last?.seq ?? 0
+        let page = GroupLogPage(events: events, cursor: cursor, latestSeq: cursor, hasMore: false,
+                                authorityGatewayID: "fixture", authorityEpoch: 1)
+        var replay = activeRoomReplay
+        if replay.cursor == 0 { replay.adoptInitialTail(page: page) } else { replay.adopt(page: page) }
+        activeRoomReplay = replay
+        feedChairedVoice(epoch: groupRoomEpoch)
+    }
+    #endif
 
     /// M1 rule, pure for tests. Stop side only: while the owner talks, the
     /// room's own dictation applies the conversation policy, so the policy
@@ -11859,7 +11997,8 @@ final class AppState: ObservableObject {
     /// never takes it over.
     var chairedVoiceAudioOwner: LAAChairedVoiceAudioOwner {
         let audio = VoiceAudioSessionCoordinator.shared
-        return audio.isInNativeCall || audio.appliedPolicy == .conversation ? .staffCall : .none
+        return isVoiceInUse || audio.isInNativeCall || audio.appliedPolicy == .conversation ||
+            audio.appliedPolicy == .standalonePlayback ? .staffCall : .none
     }
 
     /// Re-feed the whole current replay; the core dedupes. A silent core
@@ -11867,7 +12006,14 @@ final class AppState: ObservableObject {
     private func feedChairedVoice(epoch: Int) {
         guard groupRoomEpoch == epoch else { return }
         let owner: LAAChairedVoiceAudioOwner = chairedVoice.core.phase == .silent ? .none : chairedVoiceYieldOwner
-        chairedVoice.ingest(activeRoomReplay.events, generation: epoch, owner: owner)
+        let replay = activeRoomReplay.events
+        let settled = replay.filter { event in
+            guard let round = chairedMeeting.roundID else { return false }
+            return event.kind == "turn.settled" && event.payload["discussion_event_id"]?.stringValue == round
+        }
+        let messageIDs = Set(settled.compactMap { $0.payload["message_event_id"]?.stringValue })
+        let eligible = replay.filter { $0.isMemberMessage && messageIDs.contains($0.eventID) } + settled
+        chairedVoice.ingest(eligible, generation: epoch, owner: owner)
     }
 #endif
 
@@ -11903,10 +12049,15 @@ final class AppState: ObservableObject {
         return try await client.groupsSend(roomID: roomID, eventID: eventID, text: text, threadID: threadID)
     }
 
-    private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]])
-        async throws -> GroupRoom {
+    private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]],
+                              confidential: Bool) async throws -> GroupRoom {
         if let operation = groupChatOperations.create { return try await operation(client, roomID, name, members) }
+#if LAA_BUILD
+        return try await client.groupsCreate(roomID: roomID, name: name, members: members,
+                                             capabilities: groupCapabilities, confidential: confidential)
+#else
         return try await client.groupsCreate(roomID: roomID, name: name, members: members)
+#endif
     }
 
     private func groupsStop(_ client: HermesClient, roomID: String) async throws -> Int {
@@ -12233,7 +12384,9 @@ final class AppState: ObservableObject {
             parkActiveRoomSend()
         }
 #if LAA_BUILD
+        stopChairedMeeting()
         chairedVoice.leaveRoom()
+        chairedMeeting.note = nil
 #endif
         groupRoomEpoch &+= 1
         groupRoomPollTask?.cancel()
@@ -12349,10 +12502,17 @@ final class AppState: ObservableObject {
         // A newer destination than a New Chat or widget action on its way.
         widgetLaunchCoordinator.supersede()
 
+#if LAA_BUILD
+        stopChairedMeeting()
+        chairedMeeting.note = nil
+        chairedMeetingReadyEpoch = nil
+#endif
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
 #if LAA_BUILD
-        if room.name.contains("壁打ち") {
+        if room.name.contains("壁打ち"), room.name.contains("Voice"), room.members.contains(where: {
+            $0.profile == "laa-monet" || $0.profile == "laa-monet-work"
+        }) {
             chairedVoice.bind(roomID: room.roomID, generation: epoch)
             _ = chairedVoiceExecutor
         } else {
@@ -12423,6 +12583,9 @@ final class AppState: ObservableObject {
             var replay = GroupRoomReplay(roomID: room.roomID)
             replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
+#if LAA_BUILD
+            chairedMeetingReadyEpoch = epoch
+#endif
             if let report, replay.events.contains(where: { $0.eventID == report.eventID && $0.seq == report.seq }) {
                 roomNotificationFocusEventID = report.eventID
             }
@@ -12550,6 +12713,18 @@ final class AppState: ObservableObject {
     ) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
+        #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
+        if LAAMeetingLab.isEnabled, activeRoomSurface?.room.roomID == LAAMeetingLab.roomID {
+            let seq = activeRoomReplay.cursor + 1
+            chairedMeeting.registerRound("u\(seq)")
+            appendChairedFixtureEvents([LAAMeetingLab.user(seq: seq, text: text)])
+            if text != "会議を終了。要点を3行で" {
+                appendChairedFixtureEvents(LAAMeetingLab.settled(seq: seq + 1, text: "合成の返事です。短い確認です。", roundID: "u\(seq)"))
+            }
+            onRegistered?()
+            return true
+        }
+        #endif
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
               !activeRoomSendInFlight else { return false }
@@ -12590,6 +12765,9 @@ final class AppState: ObservableObject {
             }
         }
         pendingRoomMessage = groupRoomOutbox.pending
+#if LAA_BUILD
+        chairedMeeting.registerRound(logical.eventID)
+#endif
         onRegistered?()
         let sendKey = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
         activeRoomSendInFlight = true
@@ -12825,7 +13003,7 @@ final class AppState: ObservableObject {
     /// the CALLER owns its lifetime (the create sheet holds one per logical
     /// room) so a retry of an ambiguous create reuses the SAME id and the
     /// gateway deduplicates instead of forking a twin room.
-    func createGroupRoom(name: String, bots: [BotProfile], roomID: String) async -> Bool {
+    func createGroupRoom(name: String, bots: [BotProfile], roomID: String, confidential: Bool = false) async -> Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         // Each refusal explains itself: the sheet's own gate cannot see a
         // dropped connection or a roster that changed under the selection.
@@ -12867,7 +13045,8 @@ final class AppState: ObservableObject {
             ])
         }
         do {
-            let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members)
+            let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members,
+                                              confidential: confidential)
             await refreshGroupRooms()
             await openGroupRoom(room)
             return true
@@ -13722,6 +13901,15 @@ final class AppState: ObservableObject {
                 lifecycleLog.notice("UI-test profile roster seeded: \(seededProfiles.count, privacy: .public) profiles")
                 profiles = orderedProfiles(seededProfiles + [activeProfile, "default"])
             }
+            #if LAA_BUILD && targetEnvironment(simulator)
+            if LAAMeetingLab.isEnabled {
+                Task { [weak self] in
+                    // Let the real Chats shell mount its room-change observer.
+                    try? await Task.sleep(for: .seconds(1))
+                    self?.installChairedMeetingFixture()
+                }
+            }
+            #endif
             return
         }
         if LAALabNetworkPolicy.current.isActive {
