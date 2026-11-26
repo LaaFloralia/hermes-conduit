@@ -20,7 +20,6 @@ import SwiftUI
 
     @Published private(set) var items: [LAADecision] = []
     @Published private(set) var monetAnswers: [LAADecision] = []
-    @Published private(set) var delegation: LAADecisionDelegation?
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var loading = false
     /// The hub picks the board once, the first time it has something waiting.
@@ -54,7 +53,7 @@ import SwiftUI
     var count: Int { items.count }
 
     func reset() {
-        items = []; monetAnswers = []; delegation = nil; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
+        items = []; monetAnswers = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
     }
 
     func restoreIfNeeded(_ cached: [LAADecision]) {
@@ -86,8 +85,9 @@ import SwiftUI
         do {
             let page: LAADecisionPage = try await bridge.read("/v1/decisions")
             guard start == loadsStarted else { return }
-            monetAnswers = page.monetAnswers ?? []
-            let fresh = Self.visible(page.items, answeredHere: answeredHere)
+            // Monet's stage-3 answers stay listed apart until their delivery is gone.
+            monetAnswers = page.items.filter(\.answeredByMonet)
+            let fresh = Self.visible(page.items.filter { !$0.answeredByMonet }, answeredHere: answeredHere)
             for item in fresh { records[item.id] = item }
             items = LAADecisionOrder.sorted(fresh)
             phase = .loaded
@@ -100,26 +100,6 @@ import SwiftUI
         } catch {
             phase = .failed(LAABridgeError.invalidResponse.japaneseText)
         }
-    }
-
-    func loadDelegation(_ bridge: LAABridgeSession) async {
-        delegation = try? await bridge.read("/v1/decisions/delegation")
-    }
-
-    func setDelegation(_ mode: String, until: Date? = nil, bridge: LAABridgeSession) async throws {
-        let body = LAADecisionDelegation(mode: mode, until: until.map { ISO8601DateFormatter().string(from: $0) })
-        delegation = try await LAAWorkHTTP.write(bridge, path: "/v1/decisions/delegation", body: JSONEncoder().encode(body),
-                                                 key: LAABridgeIdempotencyKey(), method: "PUT")
-        await load(bridge)
-    }
-
-    func reopen(_ item: LAADecision, bridge: LAABridgeSession) async throws {
-        let result: LAADecisionAnswerResult = try await LAAWorkHTTP.write(bridge, path: "/v1/decisions/\(item.id)/reopen",
-            body: Data("{}".utf8), key: LAABridgeIdempotencyKey())
-        records[item.id] = result.decision
-        answeredHere.remove(item.id)
-        monetAnswers.removeAll { $0.id == item.id }
-        await load(bridge)
     }
 
     #if DEBUG

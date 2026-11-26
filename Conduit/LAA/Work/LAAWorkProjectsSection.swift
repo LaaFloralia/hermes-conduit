@@ -69,7 +69,7 @@ struct LAAWorkProjectsSection: View {
             Button {
                 showArchived.toggle()
             } label: {
-                Label { Text(verbatim: showArchived ? "プロジェクトへ戻る" : "アーカイブを表示") }
+                Label { Text(verbatim: showArchived ? "Back" : "Archived") }
                     icon: { Image(systemName: showArchived ? "arrow.uturn.left" : "archivebox") }
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
                     .frame(minHeight: LAASpacing.minimumTouchTarget)

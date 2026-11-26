@@ -12,13 +12,14 @@ import SwiftUI
 /// `error`, `offline` (the copy kept on the device), `legacy` (a Bridge
 /// without requirements), `done` (every requirement completed) and `many`
 /// (the default project: no requirements, the first 200 of many sessions and
-/// a large archive, like the owner's 「未分類」). On the Mac
+/// a large archive, like the owner's 「未分類」), `requirement` (one
+/// requirement's own page, opened from its line). On the Mac
 /// every state draws the list beside its detail.
 struct LAAWorkProjectFixtureView: View {
     static let launchArgument = "-LAA_WORK_PROJECT_FIXTURE"
 
     enum Mode: String, CaseIterable {
-        case list, detail, empty, loading, error, offline, legacy, done, many
+        case list, detail, empty, loading, error, offline, legacy, done, many, requirement
     }
 
     let state: Mode
@@ -49,7 +50,7 @@ struct LAAWorkProjectFixtureView: View {
 
     @ViewBuilder private var phone: some View {
         NavigationStack {
-            if state == .list { phoneList } else { detailScreen }
+            if state == .list { phoneList } else if state == .requirement { requirementScreen } else { detailScreen }
         }
         .tint(LAAColor.link)
     }
@@ -89,6 +90,15 @@ struct LAAWorkProjectFixtureView: View {
         .accessibilityIdentifier("laa.work.project.fixture.\(state.rawValue)")
     }
 
+    private var requirementScreen: some View {
+        let requirement = Self.requirements[0]
+        let lookup = LAAWorkLinkedSession.lookup(compact: Self.compactSessions, full: Self.appSessions)
+        return LAAWorkRequirementDetail(requirement: requirement,
+                                        linked: requirement.sessionIds.map { lookup[$0] ?? .unlisted($0) },
+                                        setStatus: { _ in }, withdraw: { _ in }) { _ in EmptyView() }
+            .accessibilityIdentifier("laa.work.project.fixture.requirement")
+    }
+
     #if targetEnvironment(macCatalyst)
     private var desktop: some View {
         LAAMacListDetail {
@@ -103,7 +113,7 @@ struct LAAWorkProjectFixtureView: View {
                 .padding(.vertical, LAASpacing.x3)
             }
         } detail: {
-            NavigationStack { detailScreen }
+            NavigationStack { if state == .requirement { requirementScreen } else { detailScreen } }
         }
     }
     #endif
@@ -166,7 +176,7 @@ struct LAAWorkProjectFixtureView: View {
     static let requirements: [LAAWorkRequirement] = [
         .init(id: "req_000000000001", title: "プロジェクトを開いたら、要件の完了と着手中が一目で分かる",
               details: "Session一覧に加えて、社長の要件とAIが足した項目の状態を一覧で出す。",
-              status: .inProgress, sessionIds: ["ses_00000000000000a1"], order: 0),
+              status: .inProgress, sessionIds: ["ses_00000000000000a1"], order: 0, updatedAt: "2026-11-23T05:40:00Z"),
         .init(id: "req_000000000002", title: "Sessionは必ずプロジェクトの中に作る", status: .completed,
               sessionIds: ["ses_00000000000000a2"], order: 1),
         .init(id: "req_000000000003", title: "Macの一覧も5秒ごとに読み直す", details: "iPhoneと同じ間隔。画面を開いている間だけ。",

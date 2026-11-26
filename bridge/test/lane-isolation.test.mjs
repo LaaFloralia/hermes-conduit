@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -20,7 +20,7 @@ const state = (root) => join(root, 'state');
 const production = productionStateDir();
 const id = 'lane-test-a';
 const timeoutMs = 90_000;
-const seed = { title: 'Synthetic decision', summary: 'No delivery off this Mac', options: [{ label: 'A' }, { label: 'B' }], requestId: 'seed' };
+const seed = { title: 'Synthetic decision', summary: 'No delivery off this Mac', impact: '【必ず社長：選択】', options: [{ label: 'A' }, { label: 'B' }], requestId: 'seed' };
 
 function layout(t, beforeRemove = () => {}) {
   const root = mkdtempSync(join(tmpdir(), 'laa-lane-'));
@@ -115,6 +115,44 @@ test('Node tests, CLI and fixtures refuse the default live state and a symlink a
   const phone = run(join(here, '../../scripts/laa/phone-use-ui-fixture.mjs'), [production], env);
   assert.equal(phone.status, 1);
   assert.match(phone.stderr, /LAA_BRIDGE_STATE_DIR.*production/);
+});
+
+test('the CLI delivers a proxy response through the lane Work adapter only once', (t) => {
+  const { root, env } = layout(t);
+  const client = join(root, 'runtime/client');
+  mkdirSync(client, { recursive: true, mode: 0o700 });
+  const sink = join(root, 'sink', 'work.jsonl');
+  env.LAA_WORK_SOCKET = join(realpathSync(root), 'w.sock');
+  writeFileSync(join(client, 'engine-client.mjs'), `
+    import { appendFileSync } from 'node:fs';
+    export async function connectEngine({ socket }) {
+      if (socket !== ${JSON.stringify(env.LAA_WORK_SOCKET)}) throw Error('unexpected socket');
+      let sent = false;
+      return {
+        fetchAgent: async ({ agentId }) => ({ agent: { id: agentId, status: sent ? 'running' : 'idle',
+          updatedAt: new Date().toISOString(), ...(sent ? { activeTurn: { id: 'turn-1' } } : {}) } }),
+        fetchWorkspaces: async () => ({ entries: [] }),
+        sendMessage: async (agentId, text, options) => {
+          sent = true;
+          appendFileSync(${JSON.stringify(sink)}, JSON.stringify({ agentId, text, ...options }) + '\\n');
+        },
+        close: async () => {},
+      };
+    }`);
+  const decision = createDecisionStore({ dir: state(root) }).add({ ...seed, impact: '【任せられる】', source: { paseoAgentId: 'test-agent' } }).decision;
+  const args = ['decide', 'answer', decision.id, '--option', '2', '--by', 'monet', '--reason', 'テスト', '--json'];
+  const first = run(cli, args, env);
+  assert.equal(first.status, 0, first.stderr);
+  const delivery = JSON.parse(first.stdout).decision.delivery;
+  assert.equal(delivery.state, 'delivered', delivery.error);
+  const replay = run(cli, args, env);
+  assert.equal(replay.status, 0, replay.stderr);
+  assert.equal(JSON.parse(replay.stdout).replayed, true);
+  const events = readFileSync(sink, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].agentId, 'test-agent');
+  assert.equal(events[0].messageId, `${decision.id}:answer:1`);
+  assert.match(events[0].text, /選択: B/);
 });
 
 test('a production-mode Bridge drops lane-tagged decisions, before any body/Continue or store access', async (t) => {

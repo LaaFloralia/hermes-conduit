@@ -282,8 +282,11 @@ private struct LAAPersonalCommentRow: View {
                 LAAPersonalMarkdownFiles(taskPath: taskPath, viewerId: viewerId, commentId: comment.id)
             }
             HStack {
-                Button() { onReply(comment.id) } label: { Text(verbatim: "返信") }
-                Button() { showReplies.toggle() } label: { Text(verbatim: showReplies ? "返信を閉じる" : "返信を表示") }
+                Button() { onReply(comment.id) } label: { Text(verbatim: "Reply") }
+                Button() { showReplies.toggle() } label: {
+                    Label { Text(verbatim: "Replies") } icon: { Image(systemName: showReplies ? "chevron.up" : "chevron.down") }
+                }
+                .accessibilityValue(Text(verbatim: showReplies ? "開いている" : "閉じている"))
             }.buttonStyle(.bordered)
             if showReplies {
                 LAAPersonalDetailSection("Replies", path: taskPath + "/comments/" + LAAPersonalPath.component(comment.id) + "/replies",

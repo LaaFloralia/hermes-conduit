@@ -435,7 +435,7 @@ struct LAATaskControls: View {
             }
             Divider()
             Button { foldAll(!allFolded) } label: {
-                Label { Text(verbatim: allFolded ? "すべて開く" : "すべて畳む") }
+                Label { Text(verbatim: allFolded ? "Expand all" : "Collapse all") }
                 icon: { Image(systemName: allFolded ? "rectangle.expand.vertical" : "rectangle.compress.vertical") }
             }
             .accessibilityIdentifier("work.tasks.foldAll")

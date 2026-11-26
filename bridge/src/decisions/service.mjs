@@ -2,7 +2,6 @@ import { daemonSessionID } from '../sessions/daemon.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 import { BridgeError, badRequest } from '../errors.mjs';
 import { assertOwnerSurface } from '../owner-surface.mjs';
-import { canReopen, delegationOpen } from './store.mjs';
 
 const SYNC_RETRY_MS = 5_000, MAX_NOTIFICATION_RETRY_MS = 5 * 60_000;
 
@@ -11,14 +10,35 @@ const SYNC_RETRY_MS = 5_000, MAX_NOTIFICATION_RETRY_MS = 5 * 60_000;
 // 50 refused sends; Paseo may be unreachable for five minutes of that.
 export const WAIT_LIMITS = Object.freeze({ fastMs: 15_000, fastForMs: 600_000, slowMs: 60_000, maxMs: 86_400_000, maxHolds: 50, unavailableMs: 300_000 });
 export const isWaiting = (r) => r.status === 'answered' && r.delivery?.state === 'pending' && r.delivery.waitingSince !== undefined;
+export const onDecisionBoard = (r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)
+  || (r.answer?.answeredBy === 'monet' && r.delivery?.state !== 'gone');
+export function mayDeliverDecisionNotice(kind, link, store) {
+  if (kind === 'session.question' || kind === 'session.approval') return false;
+  const id = /^laa-bridge:laa:\/\/work\/decisions\/(dec_[0-9a-f]{16})(?:#|$)/.exec(link)?.[1];
+  if (!id) return !kind?.startsWith('decision.');
+  try { return store.get(id).category === 'owner'; }
+  catch (e) {
+    if (e instanceof BridgeError && e.status === 404) return false;
+    throw e; // An unreadable store defers the push rather than dropping it.
+  }
+}
+const awaitingNative = (r) => r.phase === 'awaiting_decision' && !r.archivedAt && !r.daemonArchivedAt && !r.daemonDeletedAt;
+const proxyAnswer = (r) => r.monetAnswer ?? (r.answer?.answeredBy === 'monet' ? r.answer : null);
+function sinceTime(since) {
+  if (since === undefined) return -Infinity;
+  if (typeof since !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,9})?)?(?:Z|[+-]\d\d:\d\d)$/.test(since)
+    || !Number.isFinite(Date.parse(since)) || new Date(Date.parse(since.slice(0, 10))).toISOString().slice(0, 10) !== since.slice(0, 10)) {
+    throw badRequest('decision_invalid', '--since must be an ISO 8601 timestamp');
+  }
+  return Date.parse(since);
+}
 
 export function createDecisionService({ store, sessionStore = null, sessions = null, daemon = null, notify = notifyOwner,
   refs = null, observeRefs = null, log = null, now = () => Date.now(), limits = WAIT_LIMITS }) {
   const sessionRef = (id) => refs?.('session', id) ?? null;
   function view(record) {
-    const { requestId, ...visible } = record;
-    return { class: 'unclassified', ...visible, ...(canReopen(record) && (!record.deadline || Date.parse(record.deadline) > now()) ? { canReopen: true } : {}),
-      ref: refs?.('decision', record.id) ?? record.ref, sourceRef: sessionRef(record.source.sessionId) };
+    const { requestId, previousAttempt, ...visible } = record;
+    return { ...visible, ref: refs?.('decision', record.id) ?? record.ref, sourceRef: sessionRef(record.source.sessionId) };
   }
   const hasOpen = (session) => store.all().some((r) => r.status === 'open' &&
     (r.source.sessionId === session.id || (r.source.paseoAgentId && r.source.paseoAgentId === session.delegate?.sessionId)));
@@ -33,14 +53,12 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       // Number new decisions before announcing them, so the notice carries J….
       await observeRefs?.();
       const due = new Set();
-      const delegated = delegationOpen(store.delegation(), now());
       for (let r of store.all()) {
         // An interrupted Bridge must not leave an accepted answer pending forever.
         // A waiting answer is not interrupted: `deliverWaiting` owns it.
         if (r.delivery?.state === 'pending' && !r.delivery.waiting && now() - Date.parse(r.updatedAt) > 60_000) r = store.settle(r.id, r.delivery.messageId, 'failed', 'delivery_unconfirmed');
-        if (r.status === 'open' && r.class === 'delegable' && delegated) continue;
-        const key = r.status === 'open' ? (r.overturned ? 'reopened' : 'new') : r.delivery?.state === 'failed' ? `failed:${r.delivery.attempts}` : null;
-        if (!notify || !key || store.notificationDone(r.id, key)) continue;
+        const key = r.status === 'open' ? 'new' : r.delivery?.state === 'failed' ? `failed:${r.delivery.attempts}` : null;
+        if (!notify || r.category !== 'owner' || !key || store.notificationDone(r.id, key)) continue;
         const dedupeKey = `${r.id}:${key}`, previous = notificationRetry.get(dedupeKey);
         due.add(dedupeKey);
         if (previous && now() < previous.at) continue;
@@ -96,45 +114,35 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     };
     for (const r of store.all()) {
       if (r.status === 'open') {
-        if (r.deadline && Date.parse(r.deadline) < now()) { store.withdraw(r.id, 'deadline_passed'); continue; }
-        if (await askerGone(r.source, confirmedDeleted)) store.withdraw(r.id, 'source_gone');
+        if (r.deadline && Date.parse(r.deadline) < now()) { store.withdraw(r.id, 'deadline_passed', { ifOpen: true }); continue; }
+        if (await askerGone(r.source, confirmedDeleted)) store.withdraw(r.id, 'source_gone', { ifOpen: true });
       } else if (r.status === 'answered' && r.delivery?.state === 'failed') {
         const reason = GONE.includes(r.delivery.error) ? r.delivery.error : await askerGone(r.source, confirmedDeleted);
-        if (reason) store.retire(r.id, reason);
+        if (reason) store.retire(r.id, reason, r.delivery.messageId);
       }
     }
   }
-  const boardView = (r) => ({ kind: 'board', ...view(r) });
-  function digest(since) {
-    const cutoff = since === null ? -Infinity : Date.parse(since);
-    if (Number.isNaN(cutoff)) throw badRequest('decision_since_invalid', 'since must be an ISO date');
-    const items = store.all().filter((r) => r.answeredBy === 'monet' && Date.parse(r.answer.answeredAt) >= cutoff)
-      .sort((a, b) => b.answer.answeredAt.localeCompare(a.answer.answeredAt)).map(boardView);
-    return { items, fetchedAt: new Date(now()).toISOString() };
-  }
-  async function list() {
-    await sessions?.syncDaemon();
-    await reconcile();
-    await sync();
-    const rows = store.all();
-    const delegated = delegationOpen(store.delegation(), now());
-    const items = rows.filter((r) => (r.status === 'open' && !(delegated && r.class === 'delegable'))
-      || (r.status === 'answered' && r.delivery?.state === 'failed') || (r.answeredBy !== 'monet' && isWaiting(r))).map(boardView);
-    for (const r of sessions ? sessionStore?.all() ?? [] : []) {
-      // A conversation Paseo no longer holds has nobody left to answer.
-      if (r.phase !== 'awaiting_decision' || r.archivedAt || r.daemonArchivedAt || r.daemonDeletedAt) continue;
-      // Use the existing ticket/read path. Failure is surfaced, never converted
-      // to a misleading empty board while Paseo is unavailable.
-      const detail = await sessions.decision(r.id);
-      const first = detail.requests?.[0];
-      items.push({ kind: 'session', sessionId: r.id, ref: sessionRef(r.id), title: r.name,
-        summary: first?.questions?.[0]?.question || first?.name || '判断待ち', kinds: r.pending?.kinds ?? [], createdAt: r.createdAt, deadline: null });
+  async function list({ local = false } = {}) {
+    if (!local) {
+      await sessions?.syncDaemon();
+      await reconcile();
+      await sync();
+    }
+    const items = store.all().filter(onDecisionBoard).map((r) => ({ kind: 'board', ...view(r) }));
+    for (const r of (local || sessions) ? sessionStore?.all() ?? [] : []) {
+      if (!awaitingNative(r)) continue;
+      // Native requests stay in their persisted session records and use the
+      // existing typed ticket/reply path. The local CLI reads the synced mirror.
+      const detail = !local && await sessions.decision(r.id);
+      const first = detail?.requests?.[0];
+      items.push({ kind: 'session', sessionId: r.id, ref: sessionRef(r.id), title: r.name, status: 'open', category: 'unmarked', ownerKind: null,
+        summary: first?.questions?.[0]?.question || first?.name || '判断待ち', kinds: r.pending?.kinds ?? [],
+        ...(local ? { requestHash: r.pending?.hash ?? null } : {}), createdAt: r.createdAt, deadline: null });
     }
     items.sort((a, b) => Number(b.delivery?.state === 'failed') - Number(a.delivery?.state === 'failed')
       || (a.deadline === null ? Infinity : Date.parse(a.deadline)) - (b.deadline === null ? Infinity : Date.parse(b.deadline))
       || Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    return { items, monetAnswers: rows.filter((r) => r.answeredBy === 'monet')
-      .sort((a, b) => b.answer.answeredAt.localeCompare(a.answer.answeredAt)).map(boardView), fetchedAt: new Date(now()).toISOString() };
+    return { items, fetchedAt: new Date(now()).toISOString() };
   }
   const KNOWN = ['agent_archived', 'pending_decision_requires_reply', 'session_busy', 'paseo_unavailable', 'delivery_unconfirmed', 'not_found'];
   const failure = (e) => (KNOWN.includes(e?.code ?? e?.message) ? (e.code ?? e.message) : 'paseo_unavailable');
@@ -148,8 +156,9 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       if (before.pending?.length) throw new Error('pending_decision_requires_reply');
       const sentAt = now();
       const a = record.answer;
-      const provenance = record.answeredBy === 'monet' ? 'Monetが委任を受けて' : '社長が';
-      const message = `【判断ボードの回答】${refs?.('decision', record.id) ?? record.ref ?? record.id}「${record.title}」\n選択: ${a.label}${a.note ? `\n補足: ${a.note}` : ''}\n（${provenance}判断ボードで選びました。この判断で作業を続けてください。）`;
+      const who = a.answeredBy === 'monet' ? `Monetが代理回答しました。理由: ${a.reason}`
+        : record.overturned ? '社長がMonetの回答を変更しました。こちらを優先してください。' : '社長が判断ボードで選びました。この判断で作業を続けてください。';
+      const message = `【判断ボードの回答】${refs?.('decision', record.id) ?? record.ref ?? record.id}「${record.title}」\n選択: ${a.label}${a.note ? `\n補足: ${a.note}` : ''}\n（${who}）`;
       await daemon.send(record.source.paseoAgentId, { text: message, messageId: record.delivery.messageId });
       const after = await daemon.status(record.source.paseoAgentId);
       if (!after.activeTurn && after.daemonStatus !== 'running' && !(Date.parse(after.updatedAt) > sentAt && Date.parse(after.updatedAt) > Date.parse(before.updatedAt))) throw new Error('delivery_unconfirmed');
@@ -161,7 +170,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     // turn ends, instead of asking the owner to resend (2026-11-13).
     if (error === 'session_busy' && (record.delivery.holds ?? 0) < limits.maxHolds) return store.hold(record.id, record.delivery.messageId);
     let updated = store.settle(record.id, record.delivery.messageId, error ? 'failed' : 'delivered', error === 'session_busy' ? 'delivery_wait_expired' : error);
-    if (GONE.includes(error)) updated = store.retire(record.id, error);
+    if (GONE.includes(error)) updated = store.retire(record.id, error, record.delivery.messageId);
     await sync();
     return updated;
   }
@@ -178,7 +187,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       let settled = false;
       for (const r of waiting) {
         const key = r.delivery.messageId, waited = now() - Date.parse(r.delivery.waitingSince);
-        const fail = (error) => { const claimed = store.release(r.id, key); if (claimed) { store.settle(r.id, key, 'failed', error); if (GONE.includes(error)) store.retire(r.id, error); settled = true; } };
+        const fail = (error) => { const claimed = store.release(r.id, key); if (claimed) { store.settle(r.id, key, 'failed', error); if (GONE.includes(error)) store.retire(r.id, error, key); settled = true; } };
         if (waited > limits.maxMs) { fail('delivery_wait_expired'); continue; }
         if (now() < (nextCheck.get(key) ?? 0)) continue;
         nextCheck.set(key, now() + (waited < limits.fastForMs ? limits.fastMs : limits.slowMs));
@@ -209,23 +218,10 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     return delivering;
   }
   return {
-    view, hasOpen, sync, list, digest, deliverWaiting,
-    delegation: () => store.delegation(),
-    setDelegation: (body) => store.setDelegation(body),
-    classify: (id, body) => view(store.classify(id, body)),
-    reopen: (id) => view(store.reopen(id)),
-    async answerAsMonet(id, body) {
-      if (!Number.isInteger(body.option) || body.option < 1 || typeof body.reason !== 'string' || !body.reason.trim()
-        || [...body.reason].length > 200 || /[\r\n\u2028\u2029]/u.test(body.reason) || Object.keys(body).some((k) => !['option', 'reason'].includes(k))) {
-        throw badRequest('decision_invalid', '選択番号と200文字以内の理由を指定してください。');
-      }
-      assertOwnerSurface(body.reason, 'reason');
-      const row = store.get(id);
-      const result = store.reserve(row.id, 'monet', { requestId: `${row.id}:proxy`, optionIndex: body.option - 1, note: body.reason }, false, 'monet');
-      return { decision: view(result.replayed ? result.decision : await deliver(result.decision)), replayed: result.replayed };
-    },
+    view, hasOpen, sync, list, deliverWaiting,
     get: (id) => view(store.get(id)),
     add(body, { author = 'owner' } = {}) {
+      // C-5: what an agent files reaches the owner verbatim, so it must read as owner text.
       if (author === 'agent') {
         assertOwnerSurface(body.title, 'title');
         assertOwnerSurface(body.summary, 'summary');
@@ -246,6 +242,31 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       return store.add({ ...body, source: { paseoAgentId: agent, sessionId: session?.id ?? (agent ? daemonSessionID(agent) : null), name: body.source?.name ?? session?.name ?? null } });
     },
     withdraw: (id, reason) => view(store.withdraw(id, reason)),
+    stats(since) {
+      const cutoff = sinceTime(since);
+      const within = (answer) => answer && Date.parse(answer.answeredAt) >= cutoff;
+      const counts = { answeredByMonet: 0, overturnedByOwner: 0, ownerOnlyOpen: 0, ownerAnswered: 0 };
+      for (const r of store.all()) {
+        if (within(proxyAnswer(r))) counts.answeredByMonet++;
+        if (r.answer?.answeredBy !== 'monet' && within(r.answer)) {
+          counts.ownerAnswered++;
+          if (r.overturned) counts.overturnedByOwner++;
+        }
+        if (r.category === 'owner' && r.status === 'open') counts.ownerOnlyOpen++;
+      }
+      return counts;
+    },
+    monetLog(since) {
+      const cutoff = sinceTime(since);
+      return store.all().flatMap((r) => {
+        const a = proxyAnswer(r);
+        return a && Date.parse(a.answeredAt) >= cutoff ? [{ subject: r.title, chosenOption: a.label, reason: a.reason, time: a.answeredAt }] : [];
+      }).sort((a, b) => b.time.localeCompare(a.time));
+    },
+    async answerAsMonet({ id, body, reason }) {
+      const result = store.reserveMonet(id, body, reason);
+      return { decision: view(result.replayed ? result.decision : await deliver(result.decision)), replayed: result.replayed };
+    },
     async answer({ id, deviceId, body, retry = false }) {
       const result = store.reserve(id, deviceId, body, retry);
       return { decision: view(result.replayed ? result.decision : await deliver(result.decision)) };

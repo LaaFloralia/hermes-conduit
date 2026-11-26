@@ -102,7 +102,7 @@ test('C-2/C-3: live verified Monet report, two parent finishes, one child finish
   assert.equal(delivered.length, priorEvents);
   assert.equal(observed.filter((k) => k === 'session.finished').length, 2);
   assert.equal((await current()).body.data.requirementSummary.rate, 0);
-  const open = await addDecision(h, 'same-project', ['--agent', 'a1', '--class', 'owner_only']);
+  const open = await addDecision(h, 'same-project', ['--agent', 'a1', '--impact', '【必ず社長：お金】支払いが発生します']);
   assert.equal(open.status, 0);
   for (const [i, id] of ids.entries()) {
     const updated = await update(id, { status: 'completed', verifiedBy: 'monet', note: '実行結果を確認', evidence: 'raw fixture evidence\nsecond line' });
@@ -134,60 +134,6 @@ test('C-2/C-3: live verified Monet report, two parent finishes, one child finish
   t.diagnostic(JSON.stringify({ fixture: 'in-process loopback-only', parentFinishes: 2, childFinishes: 1,
     observedParentCompletionAttempts: observed.filter((k) => k === 'session.finished').length,
     captures, sessionFinishedPushes: 0, monetReportPushes: 1, replay: 'no_op', projectLink: true }));
-});
-
-test('C-4: gated grant, class, exact-once proxy CLI delivery, owner reopen and digest', async (t) => {
-  const serviceToken = credential(), sent = [];
-  let clock = Date.parse('2026-11-25T01:00:00Z');
-  const agents = [agent('sender', '確認の会話', {}, 'idle')];
-  const mute = async () => ({ delivered: false, reason: 'muted' });
-  const h = await startBridge({ now: () => clock, sessions: { daemon: fixtureDaemon(agents, sent), notify: mute }, decisions: { notify: mute }, monet: { tokenHash: hash(serviceToken), notify: mute } });
-  t.after(() => h.close());
-  const ordinary = await h.token(fields);
-  const owner = await h.token([...fields, 'decisions:delegate']);
-  const set = (mode, token = owner, until) => h.request('/v1/decisions/delegation', { method: 'PUT', token, key: `${token === owner ? 'owner' : 'ordinary'}-${mode}`, body: { mode, until } });
-  const pick = (id, trusted = true) => runCli(h, ['decide', 'answer', id, '--option', '1', '--as', 'monet', '--reason', '安全な案を採用'], { token: trusted ? serviceToken : undefined });
-  const ids = [];
-  for (const [key, extra] of [['owner', ['--class', 'owner_only', '--owner-kind', 'trade']], ['proxy', ['--agent', 'sender']], ['reopen', ['--class', 'delegable']]]) {
-    const result = await addDecision(h, key, extra);
-    assert.equal(result.status, 0);
-    ids.push(result.data.decision.id);
-  }
-  const [ownerId, proxy, reversible] = ids;
-  assert.equal((await set('always', ordinary)).status, 403);
-  assert.equal((await set('window', owner, new Date(clock + 5_000).toISOString())).body.data.grantedBy, 'owner');
-  assert.equal((await pick(proxy)).data.error.code, 'decision_owner_required'); // unclassified
-  assert.equal((await pick(ownerId)).data.error.code, 'decision_owner_required');
-  const classify = await runCli(h, ['decide', 'classify', proxy, '--class', 'delegable'], { token: serviceToken });
-  assert.equal(classify.data.decision.classifiedBy, 'monet');
-  assert.equal((await pick(proxy, false)).data.error.code, 'monet_caller_required');
-  const board = () => h.request('/v1/decisions', { token: owner });
-  assert.deepEqual((await board()).body.data.items.map((r) => r.id), [ownerId]);
-  clock += 6000;
-  assert.equal((await pick(proxy)).data.error.code, 'decision_delegation_closed');
-  assert.equal((await set('always')).status, 200);
-  const answer = await pick(proxy);
-  assert.equal(answer.status, 0, JSON.stringify(answer.data));
-  assert.equal(answer.data.decision.status, 'answered');
-  assert.equal(answer.data.decision.answeredBy, 'monet');
-  assert.equal(answer.data.decision.delivery.state, 'delivered');
-  assert.equal((await pick(proxy)).data.replayed, true);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].message, /Monetが委任を受けて/);
-  const digest = await h.request('/v1/decisions?answeredBy=monet&since=2026-11-25T00:00:00Z', { token: owner });
-  assert.deepEqual(digest.body.data.items.map((r) => r.id), [proxy]);
-  const reopen = (id, token = owner) => h.request(`/v1/decisions/${id}/reopen`, post({}, token, `reopen-${id}`));
-  assert.equal((await reopen(proxy)).status, 409);
-  assert.equal((await pick(reversible)).data.decision.canReopen, true);
-  assert.equal((await reopen(reversible, ordinary)).status, 403);
-  const reopened = await reopen(reversible);
-  assert.equal(reopened.body.data.decision.status, 'open');
-  assert.equal(reopened.body.data.decision.class, 'owner_only');
-  assert.equal(reopened.body.data.decision.overturned.answer.note, '安全な案を採用');
-  assert.equal((await set('off')).status, 200);
-  const late = await addDecision(h, 'off', ['--class', 'delegable']);
-  assert.equal((await pick(late.data.decision.id)).data.error.code, 'decision_delegation_closed');
-  assert.equal((await pick(ownerId)).data.error.code, 'decision_owner_required');
 });
 
 test('C-5: agent fields reject English and handoffs; owner text remains verbatim', async (t) => {

@@ -59,15 +59,11 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertTrue(decoded.items[2].allowOther)
     }
 
-    func testMonetDigestDecodesReasonAndReopenability() throws {
-        let decoded = try page(#"{"items":[],"monetAnswers":[{"id":"dec_a","title":"方法を選択","status":"answered","answeredBy":"monet","canReopen":true,"answer":{"label":"案一","note":"安全な範囲","optionIndex":0}}]}"#)
-        XCTAssertTrue(decoded.items.isEmpty)
-        XCTAssertEqual(decoded.monetAnswers?.first?.answeredBy, "monet")
-        XCTAssertEqual(decoded.monetAnswers?.first?.answer?.note, "安全な範囲")
-        XCTAssertEqual(decoded.monetAnswers?.first?.canReopen, true)
-        let grant = LAADecisionDelegation(mode: "window", until: "2026-11-26T01:00:00Z")
-        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(grant)) as? [String: String])
-        XCTAssertEqual(body, ["mode": "window", "until": "2026-11-26T01:00:00Z"])
+    func testMonetProxyAnswerDecodesFromTheBoardItems() throws {
+        let decoded = try page(#"{"items":[{"kind":"board","id":"dec_a","title":"方法を選択","status":"answered","category":"delegable","answer":{"label":"案一","note":null,"optionIndex":0,"answeredBy":"monet","reason":"安全な範囲"}},{"kind":"board","id":"dec_b","title":"支払い","status":"open","category":"owner","options":[{"label":"払う","recommended":true}]}]}"#)
+        XCTAssertTrue(decoded.items[0].answeredByMonet)
+        XCTAssertEqual(decoded.items[0].answer?.reason, "安全な範囲")
+        XCTAssertFalse(decoded.items[1].answeredByMonet)
     }
 
     func testReportLinkResolvesProjectWithoutTreatingItAsADecisionOrSession() throws {

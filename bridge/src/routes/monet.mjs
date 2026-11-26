@@ -8,7 +8,7 @@ import { parseObjectBody } from './state-file.mjs';
 const MONET = Object.freeze({ kind: 'monet' });
 export const resolveMonetTrigger = (caller) => caller === MONET ? MONET : null;
 
-export function monetRoutes({ reporter, decisions, tokenHash }) {
+export function monetRoutes({ reporter, tokenHash }) {
   const expected = typeof tokenHash === 'string' && /^[a-f0-9]{64}$/i.test(tokenHash) ? Buffer.from(tokenHash, 'hex') : null;
   const authorize = (req) => {
     const token = parseBearer(req.headers.authorization);
@@ -28,13 +28,5 @@ export function monetRoutes({ reporter, decisions, tokenHash }) {
       if (['duplicate', 'muted'].includes(data.reason) || data.sent || data.queued) return { status: data.queued ? 202 : 200, data };
       throw new BridgeError(data.reason === 'report_ledger_full' ? 503 : 409, data.reason ?? 'report_unavailable', '完了報告の条件がそろっていません。');
     } },
-    ...['classify', 'answer'].map((action) => ({ method: 'POST',
-      pattern: new RegExp(`^/v1/monet/decisions/(dec_[0-9a-f]{16})/${action}$`), auth: false, bodyLimit: 4096,
-      handler: async ({ req, rawBody, params }) => {
-        authorize(req);
-        const body = parseObjectBody(rawBody);
-        const data = action === 'answer' ? await decisions.answerAsMonet(params[0], body) : { decision: decisions.classify(params[0], body) };
-        return { status: 200, data };
-      } })),
   ];
 }

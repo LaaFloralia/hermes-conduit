@@ -30,6 +30,8 @@ struct LAAWorkProjectHome: View {
     @State private var showImporter = false
     @State private var showAddRequirement = false
     @State private var openedID: String?
+    /// The requirement whose own page is open.
+    @State private var openedRequirement: String?
     @State private var uploading = false
     @State private var busyRequirement: String?
     @State private var actionError: String?
@@ -66,6 +68,18 @@ struct LAAWorkProjectHome: View {
         .navigationDestination(item: $openedID) { id in
             LAAWorkSessionDetail(id: id, projects: [project], workspaces: [], drafts: drafts)
         }
+        .navigationDestination(item: $openedRequirement) { id in
+            let requirement = detail?.requirements?.first { $0.id == id }
+            let lookup = LAAWorkLinkedSession.lookup(compact: detail?.sessions, full: sessions + (archivedSessions ?? []))
+            LAAWorkRequirementDetail(requirement: requirement,
+                                     linked: (requirement?.sessionIds ?? []).map { lookup[$0] ?? .unlisted($0) },
+                                     busy: busyRequirement == id,
+                                     canChange: project.etag != nil && !project.isArchived,
+                                     setStatus: { status in if let requirement { Task { await setStatus(status, of: requirement) } } },
+                                     withdraw: { requirement in Task { await withdraw(requirement) } }) { sessionID in
+                LAAWorkSessionDetail(id: sessionID, projects: [project], workspaces: [], drafts: drafts)
+            }
+        }
         .sheet(isPresented: $showEditor, onDismiss: { Task { await load() } }) {
             LAAWorkProjectEditor(project: project, canEditInstructions: project.hasInstructionBody && project.instructionError == nil,
                                  drafts: drafts)
@@ -101,6 +115,7 @@ struct LAAWorkProjectHome: View {
             openSession: { openedID = $0 },
             setStatus: { requirement, status in Task { await setStatus(status, of: requirement) } },
             withdraw: { requirement in Task { await withdraw(requirement) } },
+            openRequirement: { openedRequirement = $0 },
             addRequirement: { actionError = nil; showAddRequirement = true },
             startSession: { showLauncher = true },
             editInstructions: { showEditor = true },

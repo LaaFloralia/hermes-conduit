@@ -132,6 +132,8 @@ struct LAAWorkProjectActions {
     var openSession: (String) -> Void = { _ in }
     var setStatus: (LAAWorkRequirement, LAAWorkRequirementStatus) -> Void = { _, _ in }
     var withdraw: (LAAWorkRequirement) -> Void = { _ in }
+    /// Opens one requirement's own page (full text, notes and sessions).
+    var openRequirement: (String) -> Void = { _ in }
     var addRequirement: () -> Void = {}
     var startSession: () -> Void = {}
     var editInstructions: () -> Void = {}
@@ -169,13 +171,11 @@ struct LAAWorkProjectPage: View {
     var canChange = true
     var actions = LAAWorkProjectActions()
 
-    @State private var doneOpen: Bool?
+    /// Groups the owner opened or closed; the rest follow `openByDefault`.
+    @State private var groupOpen: [LAAWorkRequirementStatus: Bool] = [:]
     @State private var withdrawing: LAAWorkRequirement?
 
     private var board: LAAWorkRequirementBoard? { detail?.requirements.map(LAAWorkRequirementBoard.init) }
-    private var linked: [String: LAAWorkLinkedSession] {
-        LAAWorkLinkedSession.lookup(compact: detail?.sessions, full: sessions + (archivedSessions ?? []))
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x8) {
@@ -270,7 +270,7 @@ struct LAAWorkProjectPage: View {
                     .padding(.vertical, LAASpacing.x3)
                     .accessibilityIdentifier("laa.work.project.requirements.empty")
             } else {
-                ForEach(board.groups) { group in groupView(group, folds: board.foldsCompleted) }
+                ForEach(board.groups) { group in groupView(group, opensByDefault: board.openByDefault.contains(group.status)) }
             }
         } else if phase == .loading {
             LAALoadingDots()
@@ -287,55 +287,53 @@ struct LAAWorkProjectPage: View {
         }
     }
 
-    @ViewBuilder private func groupView(_ group: LAAWorkRequirementBoard.Group, folds: Bool) -> some View {
-        let isDone = group.status == .completed
-        let open = !isDone || (doneOpen ?? !folds)
+    /// One status: a heading that opens and closes it (a chevron, no words)
+    /// and, when open, one line per requirement.
+    @ViewBuilder private func groupView(_ group: LAAWorkRequirementBoard.Group, opensByDefault: Bool) -> some View {
+        let open = groupOpen[group.status] ?? opensByDefault
         VStack(alignment: .leading, spacing: 0) {
-            if isDone && folds {
-                Button { withAnimation(.snappy) { doneOpen = !open } } label: {
-                    groupHeading(group, chevron: open)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: "\(group.status.label) \(group.items.count)件"))
-                .accessibilityHint(Text(verbatim: open ? LAACopy.WorkProject.hideDone : LAACopy.WorkProject.showDone))
-                .accessibilityIdentifier("laa.work.project.group.completed.toggle")
-            } else {
-                groupHeading(group, chevron: nil)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isHeader)
+            Button { withAnimation(.snappy) { groupOpen[group.status] = !open } } label: {
+                groupHeading(group, open: open)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: "\(group.status.label) \(group.items.count)"))
+            .accessibilityValue(Text(verbatim: open ? LAACopy.WorkProject.expandedValue : LAACopy.WorkProject.collapsedValue))
+            .accessibilityHint(Text(verbatim: open ? LAACopy.WorkProject.collapseHint : LAACopy.WorkProject.expandHint))
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("laa.work.project.group.\(group.status.rawValue).toggle")
             if open {
                 ForEach(group.items) { requirement in
-                    LAAWorkRequirementRow(requirement: requirement, linked: requirement.sessionIds.map { linked[$0] ?? .unlisted($0) },
+                    LAAWorkRequirementRow(requirement: requirement,
                                           busy: busyRequirement == requirement.id, canChange: canChange,
                                           setStatus: { actions.setStatus(requirement, $0) },
                                           withdraw: { withdrawing = requirement },
-                                          openSession: actions.openSession)
-                    Rectangle().fill(LAAColor.separator).frame(height: 1).accessibilityHidden(true)
+                                          open: { actions.openRequirement(requirement.id) })
+                    if requirement.id != group.items.last?.id {
+                        Rectangle().fill(LAAColor.separator).frame(height: 1).padding(.leading, 32).accessibilityHidden(true)
+                    }
                 }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.work.project.group.\(group.status.rawValue)")
     }
 
-    private func groupHeading(_ group: LAAWorkRequirementBoard.Group, chevron: Bool?) -> some View {
+    private func groupHeading(_ group: LAAWorkRequirementBoard.Group, open: Bool) -> some View {
         HStack(spacing: LAASpacing.x2) {
+            LAAWorkStatusMark(status: group.status.mark)
             Text(verbatim: group.status.label).laaTextStyle(.secondary).fontWeight(.semibold)
-                .foregroundStyle(group.status == .awaitingDecision ? LAAColor.attention : LAAColor.secondaryText)
+                .foregroundStyle(group.status == .awaitingDecision ? LAAColor.attention : LAAColor.text)
             Text(verbatim: "\(group.items.count)").laaTextStyle(.secondary).monospacedDigit()
                 .foregroundStyle(LAAColor.secondaryText)
             Spacer(minLength: 0)
-            // Words rather than a chevron: no row ends in ">" (design rule).
-            if let chevron {
-                Text(verbatim: chevron ? LAACopy.WorkProject.fold : LAACopy.WorkProject.unfold)
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-            }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(LAAColor.secondaryText)
+                .rotationEffect(.degrees(open ? 0 : -90))
+                .accessibilityHidden(true)
         }
-        // Only the finished group's heading is a button and needs the full
-        // touch height; the others are labels and sit closer to their rows.
-        .frame(maxWidth: .infinity, minHeight: chevron == nil ? 32 : LAASpacing.minimumTouchTarget, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
         .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1) }
-        .padding(.top, LAASpacing.x2)
         .contentShape(Rectangle())
     }
 
@@ -525,8 +523,8 @@ struct LAAWorkProjectPage: View {
 
 // MARK: - Summary and note
 
-/// "完了 3 / 7" on the meter, then how many are moving, waiting for the owner
-/// and not begun. Each count carries the mark its rows carry below.
+/// "Done 3 / 7" on the meter. The counts per status are the group headings
+/// below, so they are not repeated here.
 struct LAAWorkProjectSummary: View {
     let board: LAAWorkRequirementBoard
 
@@ -540,23 +538,6 @@ struct LAAWorkProjectSummary: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: LAACopy.WorkProject.progressLabel(board.summary.completed, of: board.summary.total)))
             .accessibilityIdentifier("laa.work.project.summary.progress")
-            let open = LAAWorkRequirementStatus.allCases.filter { $0 != .completed && board.count($0) > 0 }
-            if !open.isEmpty {
-                LAATaskMetaFlow(spacing: LAASpacing.x4, lineSpacing: 4) {
-                    ForEach(open, id: \.self) { status in
-                        HStack(spacing: 6) {
-                            LAAWorkStatusMark(status: status.mark)
-                            Text(verbatim: status.label).laaTextStyle(.secondary)
-                                .foregroundStyle(status == .awaitingDecision ? LAAColor.attention : LAAColor.text)
-                            Text(verbatim: "\(board.count(status))").laaTextStyle(.secondary).monospacedDigit()
-                                .foregroundStyle(status == .awaitingDecision ? LAAColor.attention : LAAColor.text)
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(Text(verbatim: "\(status.label) \(board.count(status))件"))
-                        .accessibilityIdentifier("laa.work.project.summary.\(status.rawValue)")
-                    }
-                }
-            }
         }
     }
 }
@@ -565,19 +546,46 @@ struct LAAWorkProjectSummary: View {
 /// one teal rule on its left, never a box.
 struct LAAWorkProjectNote: View {
     let text: String
+    /// Three lines until the owner opens it: the page leads with the
+    /// requirements, not the note (owner, 2026-11-26).
+    @State private var expanded = false
+
+    static let foldedLines = 3
+    /// Long enough that three lines on the phone may not hold it.
+    var folds: Bool { text.count > 90 || text.filter(\.isNewline).count >= Self.foldedLines }
 
     var body: some View {
         HStack(alignment: .top, spacing: LAASpacing.x3) {
             Rectangle().fill(LAAColor.link).frame(width: 2).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: LAACopy.WorkProject.note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                HStack(spacing: LAASpacing.x2) {
+                    Text(verbatim: LAACopy.WorkProject.note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    Spacer(minLength: 0)
+                    if folds {
+                        Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(LAAColor.secondaryText)
+                                .rotationEffect(.degrees(expanded ? 180 : 0))
+                                .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, -12)
+                        .accessibilityLabel(Text(verbatim: LAACopy.WorkProject.note))
+                        .accessibilityValue(Text(verbatim: expanded ? LAACopy.WorkProject.expandedValue : LAACopy.WorkProject.collapsedValue))
+                        .accessibilityIdentifier("laa.work.project.note.toggle")
+                    }
+                }
                 Text(verbatim: text).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                    .lineLimit(expanded || !folds ? nil : Self.foldedLines)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
+                    .accessibilityIdentifier("laa.work.project.note.text")
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.work.project.note")
     }
 }
@@ -614,67 +622,53 @@ struct LAAWorkProjectNotice: View {
 
 // MARK: - Requirement row
 
-/// One requirement: its mark (which is also where its state is changed), the
-/// owner's words, the note under them, who added it when the AI did, and the
-/// sessions working on it, each a tap away.
+/// One requirement in the list: its mark (where its state is changed) and a
+/// one-line name. Selecting the row opens its page; nothing of the detail is
+/// drawn here.
 struct LAAWorkRequirementRow: View {
     let requirement: LAAWorkRequirement
-    let linked: [LAAWorkLinkedSession]
     var busy = false
     var canChange = true
     let setStatus: (LAAWorkRequirementStatus) -> Void
     let withdraw: () -> Void
-    let openSession: (String) -> Void
-    @State private var expanded = false
+    let open: () -> Void
 
     private var done: Bool { requirement.status == .completed }
 
     var body: some View {
-        HStack(alignment: .top, spacing: LAASpacing.x1) {
-            statusControl
-            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: requirement.title)
+        HStack(alignment: .center, spacing: LAASpacing.x1) {
+            LAAWorkRequirementStatusControl(requirement: requirement, busy: busy, canChange: canChange,
+                                            setStatus: setStatus, withdraw: withdraw)
+            Button(action: open) {
+                Text(verbatim: LAAWorkRequirementName.short(requirement.title))
                     .laaTextStyle(.body).fontWeight(done ? .regular : .medium)
                     .foregroundStyle(done ? LAAColor.secondaryText : LAAColor.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("laa.work.project.requirement.title.\(requirement.id)")
-                if let details = requirement.details {
-                    Text(verbatim: details).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(expanded ? nil : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .onTapGesture { withAnimation(.snappy) { expanded.toggle() } }
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityHint(Text(verbatim: expanded ? "補足をたたむ" : "補足を全部表示"))
-                }
-                if requirement.verifiedAt != nil, let note = requirement.note, !note.isEmpty {
-                    Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("laa.work.project.requirement.verification.\(requirement.id)")
-                }
-                if requirement.addedByAI {
-                    Text(verbatim: LAACopy.WorkProject.addedByAI).laaTextStyle(.note)
-                        .foregroundStyle(LAAColor.secondaryText)
-                        .accessibilityLabel(Text(verbatim: LAACopy.WorkProject.addedByAIHint))
-                        .accessibilityIdentifier("laa.work.project.requirement.ai.\(requirement.id)")
-                }
-                if !linked.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(linked) { session in sessionLink(session) }
-                    }
-                    .padding(.vertical, -6)
-                }
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                    .contentShape(Rectangle())
             }
-            .padding(.vertical, LAASpacing.x3)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: requirement.title))
+            .accessibilityValue(Text(verbatim: requirement.status.label))
+            .accessibilityIdentifier("laa.work.project.requirement.title.\(requirement.id)")
         }
         .opacity(busy ? 0.5 : 1)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.work.project.requirement.\(requirement.id)")
-        .contextMenu { if canChange { menuItems } }
+        .contextMenu { if canChange { LAAWorkRequirementMenu(requirement: requirement, setStatus: setStatus, withdraw: withdraw) } }
     }
+}
 
-    private var statusControl: some View {
-        Menu { menuItems } label: {
+/// The status mark, which is also the menu that changes the state.
+struct LAAWorkRequirementStatusControl: View {
+    let requirement: LAAWorkRequirement
+    var busy = false
+    var canChange = true
+    let setStatus: (LAAWorkRequirementStatus) -> Void
+    let withdraw: () -> Void
+
+    var body: some View {
+        Menu { LAAWorkRequirementMenu(requirement: requirement, setStatus: setStatus, withdraw: withdraw) } label: {
             LAAWorkStatusMark(status: requirement.status.mark)
                 .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
                 .contentShape(Rectangle())
@@ -687,8 +681,14 @@ struct LAAWorkRequirementRow: View {
         .accessibilityHint(Text(verbatim: LAACopy.WorkProject.changeStatus))
         .accessibilityIdentifier("laa.work.project.requirement.status.\(requirement.id)")
     }
+}
 
-    @ViewBuilder private var menuItems: some View {
+struct LAAWorkRequirementMenu: View {
+    let requirement: LAAWorkRequirement
+    let setStatus: (LAAWorkRequirementStatus) -> Void
+    let withdraw: () -> Void
+
+    var body: some View {
         Section(LAACopy.WorkProject.changeStatus) {
             ForEach(LAAWorkRequirementStatus.choices, id: \.self) { status in
                 Button { if status != requirement.status { setStatus(status) } } label: {
@@ -705,28 +705,6 @@ struct LAAWorkRequirementRow: View {
             Label { Text(verbatim: LAACopy.WorkProject.withdraw) } icon: { Image(systemName: "minus.circle") }
         }
         .accessibilityIdentifier("laa.work.project.requirement.withdraw")
-    }
-
-    private func sessionLink(_ session: LAAWorkLinkedSession) -> some View {
-        Button { openSession(session.id) } label: {
-            HStack(spacing: 6) {
-                LAAWorkStatusMark(status: session.mark).scaleEffect(0.8)
-                if let ref = LAAWorkRef.display(session.ref) {
-                    Text(verbatim: ref).laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.secondaryText)
-                }
-                Text(verbatim: session.name).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                    .lineLimit(1).truncationMode(.tail)
-                Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(LAAColor.link)
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "\(session.name)、\(session.statusLabel)"))
-        .accessibilityHint(Text(verbatim: "セッションを開く"))
-        .accessibilityIdentifier("laa.work.project.requirement.session.\(session.id)")
     }
 }
 #endif

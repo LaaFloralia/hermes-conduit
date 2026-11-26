@@ -31,6 +31,10 @@ struct LAADecision: Codable, Identifiable, Equatable {
         let label: String
         let note: String?
         let answeredAt: String?
+        /// "monet" when Monet answered a delegable item for the owner (stage 3); nil or "owner" otherwise.
+        var answeredBy: String? = nil
+        /// Monet's one-line reason, present with answeredBy == "monet".
+        var reason: String? = nil
     }
     struct Delivery: Codable, Equatable {
         let state: String
@@ -58,8 +62,6 @@ struct LAADecision: Codable, Identifiable, Equatable {
     let createdAt: String?
     let answer: Answer?
     let delivery: Delivery?
-    var answeredBy: String? = nil
-    var canReopen: Bool? = nil
     /// Session items only: the Bridge session that holds the native question.
     let sessionId: String?
 
@@ -102,15 +104,15 @@ struct LAADecision: Codable, Identifiable, Equatable {
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         answer = try c.decodeIfPresent(Answer.self, forKey: .answer)
         delivery = try c.decodeIfPresent(Delivery.self, forKey: .delivery)
-        answeredBy = try c.decodeIfPresent(String.self, forKey: .answeredBy)
-        canReopen = try c.decodeIfPresent(Bool.self, forKey: .canReopen)
     }
     private enum CodingKeys: String, CodingKey {
         case kind, id, ref, status, title, summary, options, allowOther, impact, deadline, source, sourceRef
-        case createdAt, answer, delivery, sessionId, answeredBy, canReopen
+        case createdAt, answer, delivery, sessionId
     }
 
     var recommended: Option? { options.first(where: \.recommended) }
+    /// Monet answered it for the owner; the owner may still choose again (an overturn).
+    var answeredByMonet: Bool { answer?.answeredBy == "monet" }
     var deliveryFailed: Bool { delivery?.state == "failed" }
     /// The asker is gone (archived, deleted, past its deadline) or the
     /// decision was withdrawn: it no longer belongs on the board.
@@ -136,14 +138,6 @@ struct LAADecision: Codable, Identifiable, Equatable {
 struct LAADecisionPage: Codable {
     let items: [LAADecision]
     let fetchedAt: String?
-    var monetAnswers: [LAADecision]? = nil
-}
-
-struct LAADecisionDelegation: Codable, Equatable {
-    let mode: String
-    let until: String?
-    var grantedAt: String? = nil
-    var grantedBy: String? = nil
 }
 
 /// The answer endpoint's envelope.
