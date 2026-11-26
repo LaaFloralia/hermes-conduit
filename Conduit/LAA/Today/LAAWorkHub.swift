@@ -19,6 +19,7 @@ struct LAAWorkHub: View {
     @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var search = ""
     @State private var decisionDevice: String?
+    @State private var linkedProject: String?
 
     /// Projects opens first: opening a project shows its requirements, done
     /// and under way, with its Sessions (owner, 2026-11-23; Sessions had
@@ -107,7 +108,10 @@ struct LAAWorkHub: View {
         .onChange(of: section) { _, _ in search = "" }
         .onChange(of: linkRequest.generation, initial: true) { _, _ in
             guard linkRequest.url?.host == "work" else { return }
-            if linkRequest.decisionsLink {
+            linkedProject = linkRequest.projectTarget
+            if linkedProject != nil {
+                section = .projects
+            } else if linkRequest.decisionsLink {
                 decisions.linkedID = linkRequest.decisionTarget
                 section = .decisions
             } else {
@@ -147,10 +151,10 @@ struct LAAWorkHub: View {
     @ViewBuilder private var sectionContent: some View {
         switch section {
         case .projects:
-            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID) }
+            if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID, linkedProject: $linkedProject) }
             else {
                 ScrollView {
-                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search)
+                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject)
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1 }
             }
