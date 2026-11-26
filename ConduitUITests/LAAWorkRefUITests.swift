@@ -28,8 +28,11 @@ final class LAAWorkRefUITests: XCTestCase {
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
         XCTAssertTrue(app.buttons["work.section.tasks"].waitForExistence(timeout: 15)); app.buttons["work.section.tasks"].tap()
-        // The title is the row's open button, found by its label.
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch.waitForExistence(timeout: 20))
+        // The title is the row's open button, found by its label. At the
+        // largest text sizes the first rows can start below the screen.
+        let first = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "次の打ち合わせを確認する")).firstMatch
+        for _ in 0..<4 where !first.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(first.waitForExistence(timeout: 20))
         return app
     }
 
