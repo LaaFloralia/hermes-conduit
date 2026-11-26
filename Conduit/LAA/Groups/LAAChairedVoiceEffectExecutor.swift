@@ -215,8 +215,9 @@ final class LAAChairedVoiceEffectExecutor: LAAChairedVoiceEffectHandling {
         case .finished where !current.softExpired:
             break
         case .finished, .failed, .cancelled:
-            // Error, or ended only after the soft stop request.
-            speaker.stop()
+            // Error, or ended only after the soft stop request. A soft
+            // expiry has already told the speaker to stop this ticket.
+            if !current.softExpired { speaker.stop() }
             releaseLease()
         }
         // The core decides: next line (lease kept/re-acquired) or releaseAudio.
