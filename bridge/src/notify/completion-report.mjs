@@ -1,22 +1,16 @@
-// C-3 → C-2 completion report producer (staged, offline).
-// Pure evaluation of one owner request plus a trigger seam onto the staged C-2 notifier.
-// No route, no scope, no caller identity is created here: the caller must be resolved by an
-// injected trusted resolver, and the default resolver refuses everything (fail closed).
-import { projectRequirements } from '../routes/project-requirements.mjs';
-import { SESSION_ID_PATTERN } from '../sessions/store.mjs';
+// C-3 → C-2: only a verified owner request and an authenticated Monet trigger
+// can enqueue a completion report. The default resolver refuses all callers.
+import { isVerifier, projectRequirements, REQUEST_ID_PATTERN, validVerificationNote } from '../routes/project-requirements.mjs';
 
 export const REPORT_KIND = 'monet.report';
 const PROJECT_ID = /^prj_[0-9a-f]{12}$/;
-const REQUEST_ID = /^[A-Za-z0-9._:-]{1,200}$/;
-const NOTE_MAX = 200;
 
 const validIso = (v) => typeof v === 'string' && Number.isFinite(Date.parse(v));
 
 // C-3.1/3.2: verified = completed + verifiedAt + verifiedBy (monet | Work session id) + note ≤200.
 export function isVerified(req) {
   return req?.status === 'completed' && validIso(req.verifiedAt)
-    && (req.verifiedBy === 'monet' || (typeof req.verifiedBy === 'string' && SESSION_ID_PATTERN.test(req.verifiedBy)))
-    && typeof req.note === 'string' && req.note.trim().length > 0 && req.note.length <= NOTE_MAX;
+    && isVerifier(req.verifiedBy) && validVerificationNote(req.note);
 }
 
 // Open decisions are linked to a project only through their source session (decision records carry no projectId).
@@ -25,14 +19,17 @@ export function hasPendingDecision({ project, requirements, openDecisions = [], 
   if (requirements.some((r) => r.status === 'awaiting_decision')) return true;
   const projectSessions = new Set(sessions.filter((s) => s.projectId === project.id).map((s) => s.id));
   for (const r of requirements) for (const id of r.sessionIds ?? []) projectSessions.add(id);
-  return openDecisions.some((d) => d?.status === 'open' && (projectSessions.has(d.source?.sessionId)));
+  const live = sessions.filter((s) => projectSessions.has(s.id) && !s.archivedAt && !s.daemonArchivedAt && !s.daemonDeletedAt);
+  const agents = new Set(live.map((s) => s.delegate?.sessionId).filter(Boolean));
+  return live.some((s) => s.phase === 'awaiting_decision') || openDecisions.some((d) => d?.status === 'open'
+    && (projectSessions.has(d.source?.sessionId) || agents.has(d.source?.paseoAgentId)));
 }
 
 // Returns { ready:false, reason } or { ready:true, notification }. Never reads evidence/details/note into the payload.
 export function evaluateCompletion({ project, requestId, openDecisions = [], sessions = [] }) {
   if (!project || typeof project !== 'object' || !PROJECT_ID.test(project.id ?? '')) return { ready: false, reason: 'unknown_project' };
   if (project.archivedAt) return { ready: false, reason: 'project_archived' };
-  if (typeof requestId !== 'string' || !REQUEST_ID.test(requestId)) return { ready: false, reason: 'invalid_request' };
+  if (typeof requestId !== 'string' || !REQUEST_ID_PATTERN.test(requestId)) return { ready: false, reason: 'invalid_request' };
   const requirements = projectRequirements(project).filter((r) => r.requestId === requestId); // non-withdrawn, same request only
   if (!requirements.length) return { ready: false, reason: 'no_requirements' };
   if (hasPendingDecision({ project, requirements, openDecisions, sessions })) return { ready: false, reason: 'decision_pending' };
@@ -51,7 +48,7 @@ export function evaluateCompletion({ project, requestId, openDecisions = [], ses
   };
 }
 
-// Default: no trusted Monet identity exists in Bridge today, so nobody may trigger.
+// Trust is passed in by the authenticated route, never read from the request fields.
 export const refuseAllCallers = () => null;
 
 // Seam. `resolveCaller(caller)` must return { kind:'monet' } only for an already-authenticated Monet caller.

@@ -41,7 +41,7 @@ test('the owner can still choose alert, quiet or off for finished and report; de
   for (const kind of ['decision', 'question', 'approval']) assert.throws(() => prefs.update({ kinds: { [kind]: 'off' } }));
 });
 
-test('legacy stored finished=quiet (schema 1 and schema-less) is kept on read and on an unrelated update', (t) => {
+test('legacy finished=quiet migrates once, except for a recorded owner choice', (t) => {
   const dir = dirFor(t);
   // Pre-change files carry every default materialized by the first update, so quiet has unknown provenance.
   const legacyKinds = { decision: 'alert', question: 'alert', approval: 'alert', error: 'alert', finished: 'quiet', task: 'alert', calendar: 'alert' };
@@ -50,11 +50,16 @@ test('legacy stored finished=quiet (schema 1 and schema-less) is kept on read an
     const file = join(dir, name), original = JSON.stringify(doc);
     writeFileSync(file, original);
     const prefs = createNotificationPreferences({ file, now: () => 2000 });
-    assert.equal(prefs.get().kinds.finished, 'quiet');
+    assert.equal(prefs.get().kinds.finished, 'off');
     assert.equal(prefs.get().kinds.report, 'alert');
-    assert.equal(readFileSync(file, 'utf8'), original, 'a read never rewrites');
+    const migrated = readFileSync(file, 'utf8');
+    assert.equal(JSON.parse(migrated).finishedDefaultMigratedAt, new Date(2000).toISOString());
+    prefs.get();
+    assert.equal(readFileSync(file, 'utf8'), migrated, 'migration happens once');
+    writeFileSync(file, JSON.stringify({ ...doc, updatedBy: 'owner' }));
+    assert.equal(prefs.get().kinds.finished, 'quiet');
     prefs.update({ kinds: { task: 'off' } });
-    assert.equal(JSON.parse(readFileSync(file, 'utf8')).kinds.finished, 'quiet', 'an unrelated update never migrates finished');
+    assert.equal(JSON.parse(readFileSync(file, 'utf8')).kinds.finished, 'quiet');
   }
 });
 
@@ -81,6 +86,18 @@ test('report dedupe survives restarts and the 7-day / 2000-row window of other k
   assert.equal((await make()(report())).reason, 'duplicate');
   assert.equal((await make()(report('req_2'))).delivered, true);
   assert.deepEqual(sent.map((e) => decode(e).k), ['monet.report', 'session.error', 'monet.report']);
+});
+
+test('a replay cannot re-queue a report with an expired ambiguous delivery', async (t) => {
+  const file = join(dirFor(t), 'n.json');
+  let now = 1000, attempts = 0;
+  const notify = createOwnerNotifier({ file, now: () => now, deliver: async () => { attempts++; return { delivered: false }; } });
+  assert.equal((await notify(report())).queued, true);
+  assert.equal((await notify(report())).reason, 'duplicate');
+  now += 8 * 86400_000;
+  await notify.flush();
+  assert.equal((await notify(report())).reason, 'duplicate');
+  assert.equal(attempts, 1);
 });
 
 test('a report whose dedupe key is not derived from its request is refused', async (t) => {

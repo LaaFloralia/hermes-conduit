@@ -67,7 +67,7 @@ test('schema-less notification preferences retain all kinds and persist the sche
   assert.equal(readFileSync(file, 'utf8'), original, 'a read must not rewrite the stored preferences');
   const updated = preferences.update({ kinds: { error: 'quiet' } });
   assert.deepEqual(updated, { kinds: { ...legacy.kinds, error: 'quiet' }, updatedAt: new Date(2000).toISOString() });
-  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { schema: 1, ...updated });
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { schema: 1, ...updated, finishedDefaultMigratedAt: new Date(2000).toISOString() });
 });
 
 test('preferences migration rejects unknown schemas and malformed schema-less documents without writing', (t) => {

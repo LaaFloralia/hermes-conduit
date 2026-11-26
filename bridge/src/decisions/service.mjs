@@ -1,6 +1,8 @@
 import { daemonSessionID } from '../sessions/daemon.mjs';
 import { notifyOwner } from '../notify/index.mjs';
-import { BridgeError } from '../errors.mjs';
+import { BridgeError, badRequest } from '../errors.mjs';
+import { assertOwnerSurface } from '../owner-surface.mjs';
+import { canReopen, delegationOpen } from './store.mjs';
 
 const SYNC_RETRY_MS = 5_000, MAX_NOTIFICATION_RETRY_MS = 5 * 60_000;
 
@@ -15,7 +17,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
   const sessionRef = (id) => refs?.('session', id) ?? null;
   function view(record) {
     const { requestId, ...visible } = record;
-    return { ...visible, ref: refs?.('decision', record.id) ?? record.ref, sourceRef: sessionRef(record.source.sessionId) };
+    return { class: 'unclassified', ...visible, ...(canReopen(record) && (!record.deadline || Date.parse(record.deadline) > now()) ? { canReopen: true } : {}),
+      ref: refs?.('decision', record.id) ?? record.ref, sourceRef: sessionRef(record.source.sessionId) };
   }
   const hasOpen = (session) => store.all().some((r) => r.status === 'open' &&
     (r.source.sessionId === session.id || (r.source.paseoAgentId && r.source.paseoAgentId === session.delegate?.sessionId)));
@@ -30,11 +33,13 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       // Number new decisions before announcing them, so the notice carries J….
       await observeRefs?.();
       const due = new Set();
+      const delegated = delegationOpen(store.delegation(), now());
       for (let r of store.all()) {
         // An interrupted Bridge must not leave an accepted answer pending forever.
         // A waiting answer is not interrupted: `deliverWaiting` owns it.
         if (r.delivery?.state === 'pending' && !r.delivery.waiting && now() - Date.parse(r.updatedAt) > 60_000) r = store.settle(r.id, r.delivery.messageId, 'failed', 'delivery_unconfirmed');
-        const key = r.status === 'open' ? 'new' : r.delivery?.state === 'failed' ? `failed:${r.delivery.attempts}` : null;
+        if (r.status === 'open' && r.class === 'delegable' && delegated) continue;
+        const key = r.status === 'open' ? (r.overturned ? 'reopened' : 'new') : r.delivery?.state === 'failed' ? `failed:${r.delivery.attempts}` : null;
         if (!notify || !key || store.notificationDone(r.id, key)) continue;
         const dedupeKey = `${r.id}:${key}`, previous = notificationRetry.get(dedupeKey);
         due.add(dedupeKey);
@@ -99,11 +104,22 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       }
     }
   }
+  const boardView = (r) => ({ kind: 'board', ...view(r) });
+  function digest(since) {
+    const cutoff = since === null ? -Infinity : Date.parse(since);
+    if (Number.isNaN(cutoff)) throw badRequest('decision_since_invalid', 'since must be an ISO date');
+    const items = store.all().filter((r) => r.answeredBy === 'monet' && Date.parse(r.answer.answeredAt) >= cutoff)
+      .sort((a, b) => b.answer.answeredAt.localeCompare(a.answer.answeredAt)).map(boardView);
+    return { items, fetchedAt: new Date(now()).toISOString() };
+  }
   async function list() {
     await sessions?.syncDaemon();
     await reconcile();
     await sync();
-    const items = store.all().filter((r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)).map((r) => ({ kind: 'board', ...view(r) }));
+    const rows = store.all();
+    const delegated = delegationOpen(store.delegation(), now());
+    const items = rows.filter((r) => (r.status === 'open' && !(delegated && r.class === 'delegable'))
+      || (r.status === 'answered' && r.delivery?.state === 'failed') || (r.answeredBy !== 'monet' && isWaiting(r))).map(boardView);
     for (const r of sessions ? sessionStore?.all() ?? [] : []) {
       // A conversation Paseo no longer holds has nobody left to answer.
       if (r.phase !== 'awaiting_decision' || r.archivedAt || r.daemonArchivedAt || r.daemonDeletedAt) continue;
@@ -117,7 +133,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     items.sort((a, b) => Number(b.delivery?.state === 'failed') - Number(a.delivery?.state === 'failed')
       || (a.deadline === null ? Infinity : Date.parse(a.deadline)) - (b.deadline === null ? Infinity : Date.parse(b.deadline))
       || Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    return { items, fetchedAt: new Date(now()).toISOString() };
+    return { items, monetAnswers: rows.filter((r) => r.answeredBy === 'monet')
+      .sort((a, b) => b.answer.answeredAt.localeCompare(a.answer.answeredAt)).map(boardView), fetchedAt: new Date(now()).toISOString() };
   }
   const KNOWN = ['agent_archived', 'pending_decision_requires_reply', 'session_busy', 'paseo_unavailable', 'delivery_unconfirmed', 'not_found'];
   const failure = (e) => (KNOWN.includes(e?.code ?? e?.message) ? (e.code ?? e.message) : 'paseo_unavailable');
@@ -131,7 +148,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       if (before.pending?.length) throw new Error('pending_decision_requires_reply');
       const sentAt = now();
       const a = record.answer;
-      const message = `【判断ボードの回答】${refs?.('decision', record.id) ?? record.ref ?? record.id}「${record.title}」\n選択: ${a.label}${a.note ? `\n補足: ${a.note}` : ''}\n（社長が判断ボードで選びました。この判断で作業を続けてください。）`;
+      const provenance = record.answeredBy === 'monet' ? 'Monetが委任を受けて' : '社長が';
+      const message = `【判断ボードの回答】${refs?.('decision', record.id) ?? record.ref ?? record.id}「${record.title}」\n選択: ${a.label}${a.note ? `\n補足: ${a.note}` : ''}\n（${provenance}判断ボードで選びました。この判断で作業を続けてください。）`;
       await daemon.send(record.source.paseoAgentId, { text: message, messageId: record.delivery.messageId });
       const after = await daemon.status(record.source.paseoAgentId);
       if (!after.activeTurn && after.daemonStatus !== 'running' && !(Date.parse(after.updatedAt) > sentAt && Date.parse(after.updatedAt) > Date.parse(before.updatedAt))) throw new Error('delivery_unconfirmed');
@@ -191,9 +209,32 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     return delivering;
   }
   return {
-    view, hasOpen, sync, list, deliverWaiting,
+    view, hasOpen, sync, list, digest, deliverWaiting,
+    delegation: () => store.delegation(),
+    setDelegation: (body) => store.setDelegation(body),
+    classify: (id, body) => view(store.classify(id, body)),
+    reopen: (id) => view(store.reopen(id)),
+    async answerAsMonet(id, body) {
+      if (!Number.isInteger(body.option) || body.option < 1 || typeof body.reason !== 'string' || !body.reason.trim()
+        || [...body.reason].length > 200 || /[\r\n\u2028\u2029]/u.test(body.reason) || Object.keys(body).some((k) => !['option', 'reason'].includes(k))) {
+        throw badRequest('decision_invalid', '選択番号と200文字以内の理由を指定してください。');
+      }
+      assertOwnerSurface(body.reason, 'reason');
+      const row = store.get(id);
+      const result = store.reserve(row.id, 'monet', { requestId: `${row.id}:proxy`, optionIndex: body.option - 1, note: body.reason }, false, 'monet');
+      return { decision: view(result.replayed ? result.decision : await deliver(result.decision)), replayed: result.replayed };
+    },
     get: (id) => view(store.get(id)),
-    add(body) {
+    add(body, { author = 'owner' } = {}) {
+      if (author === 'agent') {
+        assertOwnerSurface(body.title, 'title');
+        assertOwnerSurface(body.summary, 'summary');
+        for (const [i, option] of (Array.isArray(body.options) ? body.options : []).entries()) {
+          assertOwnerSurface(option?.label, `options[${i}].label`);
+          if (option?.detail) assertOwnerSurface(option.detail, `options[${i}].detail`);
+        }
+        if (body.source?.name != null) assertOwnerSurface(body.source.name, 'name');
+      }
       let agent = body.source?.paseoAgentId ?? null;
       // A short id (the first 8 characters Paseo prints) is resolved to the
       // single full id it names, or delivery later finds no conversation.
