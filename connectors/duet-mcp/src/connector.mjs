@@ -1,6 +1,6 @@
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import { hasPullToken, verifyAccessOwner } from './access.mjs';
-import { cursor, InputError, jsonObject, readBytes, validateNote } from './input.mjs';
+import { clientKey, cursor, InputError, jsonObject, readBytes, validateNote } from './input.mjs';
 import { mcp } from './mcp.mjs';
 import { ackItems, noteStatus, prune, pullItems, putNote, takeRate } from './store.mjs';
 
@@ -22,11 +22,6 @@ const oauth = new Map([
 const mac = new Map([['/pull', 'GET'], ['/ack', 'POST'], ['/notes', 'POST'], ['/notes/status', 'GET']]);
 const escape = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const jsonError = (error, status, headers) => Response.json({ error }, { status, headers });
-// One IPv6 host usually holds a whole /64, so it counts as one client.
-const clientKey = (request) => {
-  const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-  return ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip;
-};
 
 function secured(response) {
   const headers = new Headers(response.headers);
@@ -118,8 +113,8 @@ export function createConnector({ verifyOwner = verifyAccessOwner, allowedRedire
         // /token has no global bucket on purpose: a shared one would let anyone
         // starve the refresh, and a rejected code or refresh writes nothing.
         if (path === '/register' || path === '/token') {
-          const limited = (path === '/register' && !await takeRate(env.DB, 'register', 30))
-            || !await takeRate(env.DB, `${path.slice(1)}:${clientKey(request)}`, path === '/register' ? 5 : 30);
+          const limited = !await takeRate(env.DB, `${path.slice(1)}:${clientKey(request)}`, path === '/register' ? 5 : 30)
+            || (path === '/register' && !await takeRate(env.DB, 'register', 30));
           if (limited) return jsonError('rate_limited', 429, { 'Retry-After': '60' });
         }
         if (path === '/token' || path === '/register') request = new Request(request, { body: await readBytes(request, 16_384) });

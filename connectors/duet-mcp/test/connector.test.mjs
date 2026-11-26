@@ -4,7 +4,7 @@ import test from 'node:test';
 import { clients, oauthClient, registration } from '../scripts/fixture-client.mjs';
 import { localWorker } from '../scripts/local-worker.mjs';
 import { verifyAccessOwner } from '../src/access.mjs';
-import { cursor, validateNote, validatePost } from '../src/input.mjs';
+import { clientKey, cursor, validateNote, validatePost } from '../src/input.mjs';
 import { prune } from '../src/store.mjs';
 
 const sample = { kind: 'needs_owner', title: '<h1>Input?</h1>', body: '[text](javascript:ignored)', link: 'https://example.invalid' };
@@ -188,4 +188,15 @@ test('rolling MCP rate follows the grant across a token refresh; the Mac limit i
   assert.equal((await mac('/notes/status')).status, 429);
   await db.prepare('UPDATE rate_limit SET at_ms = ?').bind(Date.now() - 60_001).run();
   assert.equal((await mac('/pull')).status, 200);
+});
+
+test('rate-limit keys give one key per IPv4 address and per expanded IPv6 /64', () => {
+  const key = (ip) => clientKey(new Request('https://x.invalid/', { headers: ip === undefined ? {} : { 'CF-Connecting-IP': ip } }));
+  assert.equal(key('2001:db8:a:b::1'), '2001:0db8:000a:000b');
+  assert.equal(key('2001:0DB8:000a:b:1:2:3:4'), '2001:0db8:000a:000b');
+  assert.equal(key('2001:db8::1'), '2001:0db8:0000:0000');
+  assert.equal(key('2001:db8:0:0:1::'), '2001:0db8:0000:0000');
+  assert.equal(key('::ffff:1.2.3.4'), '1.2.3.4');
+  assert.equal(key('1.2.3.4'), '1.2.3.4');
+  for (const bad of ['bogus::1::2', '1:2:3', '', undefined, '12345::1']) assert.equal(key(bad), 'unknown');
 });

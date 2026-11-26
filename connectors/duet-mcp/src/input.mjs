@@ -79,3 +79,19 @@ export function cursor(value, { zero = false } = {}) {
   }
   return Number(value);
 }
+
+// One IPv6 host usually holds a whole /64, so it counts as one client. The
+// address is expanded first so every spelling of a /64 gives the same key.
+export function clientKey(request) {
+  const ip = (request.headers.get('CF-Connecting-IP') ?? '').trim().toLowerCase();
+  if (!ip.includes(':')) return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) ? ip : 'unknown';
+  const mapped = /^(?:0{0,4}:){0,5}(?:0{0,4}:)?ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(ip.replace(/^::/, '0:'));
+  if (mapped) return mapped[1];
+  const halves = ip.split('::');
+  if (halves.length > 2) return 'unknown';
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const groups = halves.length === 2 ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail] : head;
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return 'unknown';
+  return groups.slice(0, 4).map((g) => g.padStart(4, '0')).join(':');
+}
