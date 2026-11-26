@@ -23,6 +23,11 @@ struct LoginView: View {
     /// has no address field: Add a dashboard opens with it once the
     /// assistant has closed.
     @State private var setupSeed: LoginSeed?
+    private let tabBarClearance: CGFloat
+
+    init(tabBarClearance: CGFloat = 0) {
+        self.tabBarClearance = tabBarClearance
+    }
 
     private var showsFirstLoginScreen: Bool {
         #if LAA_BUILD && DEBUG
@@ -36,13 +41,18 @@ struct LoginView: View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop(drifts: true)
-                if showsFirstLoginScreen {
-                    LoginAddressStep(flow: flow, context: .firstLaunch)
-                } else {
-                    LoginDashboardsScreen(flow: flow) {
-                        addDashboard = .blank
+                Group {
+                    if showsFirstLoginScreen {
+                        LoginAddressStep(flow: flow, context: .firstLaunch)
+                    } else {
+                        LoginDashboardsScreen(flow: flow) {
+                            addDashboard = .blank
+                        }
                     }
                 }
+                // Give the login GeometryReaders a smaller viewport, not just
+                // a scroll inset outside the stack that leaves their minHeight unchanged.
+                .padding(.bottom, tabBarClearance)
             }
             #if LAA_BUILD
             .navigationTitle("")
@@ -65,6 +75,7 @@ struct LoginView: View {
             // the list underneath this page.
             .navigationDestination(isPresented: $flow.showsCredentials) {
                 LoginCredentialsPage(flow: flow)
+                    .padding(.bottom, tabBarClearance)
             }
         }
         .modifier(LoginFlowPresentations(

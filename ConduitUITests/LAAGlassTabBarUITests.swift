@@ -72,6 +72,59 @@ final class LAAGlassTabBarUITests: XCTestCase {
         assertCollapsed(app, selected: "Chat")
     }
 
+    private func attachScreen(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testExpandedCardHidesRootToolbarFromAccessibility() {
+        let app = launch(tab: "studio")
+        let drive = app.buttons["studio.drive"]
+        XCTAssertTrue(drive.waitForExistence(timeout: 10))
+        drive.tap()
+        let layout = app.buttons["laa.drive.layout"]
+        XCTAssertTrue(layout.waitForExistence(timeout: 10))
+        XCTAssertTrue(layout.isHittable, "Drive layout is a visible root toolbar action before opening the card")
+
+        let icon = app.laaSettingsEntry
+        XCTAssertTrue(icon.isHittable)
+        icon.tap()
+        let card = app.descendants(matching: .any)["laa.tabbar.card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        attachScreen(app, named: "drive-card-expanded")
+        let inTree = layout.exists
+        let hittable = inTree && layout.isHittable
+        // XCTest cannot traverse VoiceOver focus. Require the background action
+        // to be absent from its accessibility snapshot, not merely covered.
+        XCTAssertFalse(inTree, "Drive layout leaked behind the card (hittable: \(hittable))\n\(app.debugDescription)")
+
+        app.buttons["laa.tabbar.close"].tap()
+        XCTAssertTrue(card.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(layout.waitForExistence(timeout: 10))
+        XCTAssertTrue(layout.isHittable)
+    }
+
+    func testFirstLoginFootActionsClearCollapsedBar() {
+        let app = launch(["-LAA_UI_TEST_FORCE_LOGIN", "-LAA_UI_TEST_FIRST_LOGIN"])
+        let icon = app.laaSettingsEntry
+        XCTAssertTrue(icon.waitForExistence(timeout: 10))
+        XCTAssertTrue(icon.isHittable)
+        let tab = app.laaTab("Chat")
+        XCTAssertTrue(tab.isHittable)
+        let barTop = min(icon.frame.minY, tab.frame.minY)
+        let setup = app.buttons["login.connection-setup"]
+        XCTAssertTrue(setup.waitForExistence(timeout: 10))
+        attachScreen(app, named: "first-login-tab-clearance")
+        for action in [app.buttons["login.connect"], setup] {
+            XCTAssertTrue(action.exists)
+            XCTAssertLessThanOrEqual(action.frame.maxY, barTop,
+                                     "\(action.identifier) overlaps the glass tab bar\n\(app.debugDescription)")
+        }
+        XCTAssertTrue(setup.isHittable)
+    }
+
     func testCloseButtonCollapsesWithoutChangingSelection() {
         let app = launch(tab: "work")
         assertCollapsed(app, selected: "Work")

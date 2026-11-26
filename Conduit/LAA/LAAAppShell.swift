@@ -222,7 +222,7 @@ struct LAAAppShell: View {
     private var normalBar: some View {
         TabView(selection: $selectedTab) {
             chatsTab
-                .modifier(LAATabRoot(barVisible: !barHidden))
+                .modifier(LAATabRoot(barVisible: !barHidden && !requiresLogin))
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
                 LAANonChatTab(tab: tab, isActive: selectedTab == tab,
@@ -260,7 +260,7 @@ struct LAAAppShell: View {
     @ViewBuilder
     private var chatsTab: some View {
         if requiresLogin {
-            LoginView()
+            LoginView(tabBarClearance: barHidden ? 0 : LAAGlassTabBarLayout.contentClearance)
         } else {
             NavigationStack(path: $chatsPath) {
                 // LAAChatsContent owns the bar (an empty title and the
