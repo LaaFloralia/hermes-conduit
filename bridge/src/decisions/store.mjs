@@ -198,13 +198,14 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     },
     reserve: (id, deviceId, body, retry = false) => mutate((s) => reserve(s, id, text(deviceId, 'deviceId', 200), body, retry)),
     reserveMonet: (id, body, reason) => mutate((s) => reserve(s, id, 'monet', body, false, proxyReason(reason))),
-    settle(id, messageId, state, error = null) {
+    // `queued`: the conversation accepted the answer into its queue behind a running turn.
+    settle(id, messageId, state, error = null, { queued = false } = {}) {
       return mutate((s) => { const r = find(s, id);
         if (r.previousAttempt?.messageId === messageId) delete r.previousAttempt;
         if (r.delivery?.messageId !== messageId || r.delivery.state !== 'pending') return r;
         delete r.previousAttempt;
         for (const key of WAIT_FIELDS) delete r.delivery[key];
-        Object.assign(r.delivery, { state, error, deliveredAt: state === 'delivered' ? stamp() : null }); r.updatedAt = stamp(); return r; });
+        Object.assign(r.delivery, { state, error, deliveredAt: state === 'delivered' ? stamp() : null, ...(state === 'delivered' && queued ? { queued: true } : {}) }); r.updatedAt = stamp(); return r; });
     },
     // The conversation is busy: keep the accepted answer and let the Bridge
     // deliver it, with the same message id, once that turn ends.
