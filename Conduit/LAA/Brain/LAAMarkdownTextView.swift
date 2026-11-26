@@ -60,8 +60,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: LAAMarkdownUITextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width > 0, width.isFinite else { return nil }
-        return CGSize(width: width, height: max(LAASpacing.minimumTouchTarget,
-                      ceil(uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)))
+        return CGSize(width: width, height: context.coordinator.measuredHeight(of: uiView, width: width))
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -76,6 +75,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
         var autoFocus = false
         private var adoptGeneration = 0
         private var pendingHeight: CGFloat?
+        private var heightMeasure: (width: CGFloat, textSize: UIContentSizeCategory, height: CGFloat)?
 
         init(parent: LAAMarkdownTextView) {
             self.parent = parent
@@ -93,7 +93,7 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                 guard let self, let view else { return }
                 self.selectionChanged(view)
             }
-            restyle(view, full: true)
+            // updateUIView installs the source and styles it once, after attaching.
             // Reporting from inside a view update would publish the format
             // bar's state mid-update; do it on the next run loop turn.
             Task { @MainActor [weak self, weak view] in
@@ -267,7 +267,9 @@ struct LAAMarkdownTextView: UIViewRepresentable {
 
         private func apply(_ textView: UITextView, target: NSRange) {
             let text = textView.text ?? ""
-            let output = LAAMarkdownStyler.output(for: text, caretLocation: textView.selectedRange.location, limit: target)
+            let output = LAAMarkdownStyler.output(for: text, caretLocation: textView.selectedRange.location,
+                                                   limit: target, detectsLinks: parent.onOpenLink != nil)
+            heightMeasure = nil
             let storage = textView.textStorage
             let limit = NSRange(location: 0, length: storage.length)
             styling = true
@@ -282,12 +284,10 @@ struct LAAMarkdownTextView: UIViewRepresentable {
                     storage.addAttributes(run.attributes, range: clipped)
                 }
             }
-            if parent.onOpenLink != nil {
-                for link in LAAMarkdownSourceLinks.links(in: text) where NSIntersectionRange(link.range, target).length > 0 {
-                    var url = URLComponents(); url.scheme = "laabrain-source"; url.host = "open"
-                    url.queryItems = [URLQueryItem(name: "target", value: link.target)]
-                    if let value = url.url { storage.addAttribute(.link, value: value, range: link.range) }
-                }
+            for link in output.links where NSIntersectionRange(link.range, target).length > 0 {
+                var url = URLComponents(); url.scheme = "laabrain-source"; url.host = "open"
+                url.queryItems = [URLQueryItem(name: "target", value: link.target)]
+                if let value = url.url { storage.addAttribute(.link, value: value, range: link.range) }
             }
             storage.endEditing()
             // Hidden Markdown markers must never become the next character's
@@ -308,11 +308,21 @@ struct LAAMarkdownTextView: UIViewRepresentable {
             return NSRange(location: start, length: end - start)
         }
 
+        func measuredHeight(of textView: UITextView, width: CGFloat) -> CGFloat {
+            let textSize = textView.traitCollection.preferredContentSizeCategory
+            if !textView.isFirstResponder, let measure = heightMeasure, measure.width == width, measure.textSize == textSize {
+                return measure.height
+            }
+            let size = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+            let height = max(LAASpacing.minimumTouchTarget, ceil(size.height))
+            heightMeasure = textView.isFirstResponder ? nil : (width, textSize, height)
+            return height
+        }
+
         func refreshHeight(_ textView: UITextView) {
             let width = textView.bounds.width
             guard width > 0 else { return }
-            let size = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-            let height = max(LAASpacing.minimumTouchTarget, ceil(size.height))
+            let height = measuredHeight(of: textView, width: width)
             guard abs(height - parent.height) > 0.5 else { return }
             pendingHeight = height
             Task { @MainActor [weak self] in
@@ -658,8 +668,7 @@ final class LAAMarkdownUITextView: UITextView {
         guard !glyphs.isEmpty else { return }
         let ink = UIColor(LAAColor.secondaryText)
         let accent = UIColor(LAAColor.link)
-        for glyph in glyphs {
-            guard let line = lineRect(for: glyph.lineLocation), line.intersects(rect) else { continue }
+        for (glyph, line) in positionedGlyphs() where line.intersects(rect) {
             let x = max(line.minX - LAAMarkdownStyler.gutter + 2, 0)
             switch glyph.kind {
             case .bullet:
@@ -691,8 +700,44 @@ final class LAAMarkdownUITextView: UITextView {
         }
     }
 
+    private func positionedGlyphs() -> [(LAAMarkdownStyler.Glyph, CGRect)] {
+        // One forward layout walk, instead of one UIKit caret geometry request
+        // per bullet. Use the same boxes for drawing and hit testing.
+        guard glyphs.count >= 64, let manager = textLayoutManager else {
+            return glyphs.compactMap { glyph in lineRect(for: glyph.lineLocation).map { (glyph, $0) } }
+        }
+        let start = manager.documentRange.location
+        let inset = textContainerInset
+        var index = 0
+        var result: [(LAAMarkdownStyler.Glyph, CGRect)] = []
+        result.reserveCapacity(glyphs.count)
+        manager.enumerateTextLayoutFragments(from: start, options: [.ensuresLayout]) { fragment in
+            let range = fragment.rangeInElement
+            let lower = manager.offset(from: start, to: range.location)
+            let upper = manager.offset(from: start, to: range.endLocation)
+            let frame = fragment.layoutFragmentFrame
+            while index < self.glyphs.count, self.glyphs[index].lineLocation < upper {
+                let glyph = self.glyphs[index]
+                index += 1
+                let local = glyph.lineLocation - lower
+                if local >= 0, let line = fragment.textLineFragments.first(where: { NSLocationInRange(local, $0.characterRange) }) {
+                    let box = line.typographicBounds.offsetBy(dx: frame.minX + inset.left, dy: frame.minY + inset.top)
+                    if box.height > 0 { result.append((glyph, box)); continue }
+                }
+                if let box = self.lineRect(for: glyph.lineLocation) { result.append((glyph, box)) }
+            }
+            return index < self.glyphs.count
+        }
+        while index < glyphs.count {
+            let glyph = glyphs[index]
+            if let box = lineRect(for: glyph.lineLocation) { result.append((glyph, box)) }
+            index += 1
+        }
+        return result
+    }
+
     private func lineRect(for location: Int) -> CGRect? {
-        guard location >= 0, location <= (text as NSString).length,
+        guard location >= 0, location <= textStorage.length,
               let position = position(from: beginningOfDocument, offset: location),
               let range = textRange(from: position, to: position) else { return nil }
         let rect = firstRect(for: range)
@@ -717,8 +762,8 @@ final class LAAMarkdownUITextView: UITextView {
 
     func checkboxLocation(at point: CGPoint) -> Int? {
         var nearest: (location: Int, distance: CGFloat)?
-        for glyph in glyphs {
-            guard case .checkbox = glyph.kind, let line = lineRect(for: glyph.lineLocation) else { continue }
+        for (glyph, line) in positionedGlyphs() {
+            guard case .checkbox = glyph.kind else { continue }
             let target = checkboxRect(in: line).insetBy(dx: -11, dy: -11)
             guard target.contains(point) else { continue }
             let distance = abs(point.y - line.midY)

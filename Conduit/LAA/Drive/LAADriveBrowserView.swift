@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import ImageIO
+import LAAKit
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -54,6 +55,7 @@ struct LAADriveBrowserView: View {
     @State private var section: LAADriveBrowseSection = .my
     @State private var folders: [LAADriveListingItem] = []
     @State private var search = ""
+    @State private var showRules = false
     @State private var layout: Layout = .grid
     @State private var waiting = true
     @State private var displayedKey: LoadKey?
@@ -116,6 +118,7 @@ struct LAADriveBrowserView: View {
             results
         }
         .tint(LAAColor.link)
+        .sheet(isPresented: $showRules) { LAADriveOperatingRulesView(surface: .drive).laaSheetSize(.page) }
         .refreshable { await reload(key, debounce: false) }
         .task(id: preferenceKey) {
             layout = Layout(rawValue: UserDefaults.standard.string(forKey: preferenceKey + ".layout") ?? "") ?? (desktop ? .list : .grid)
@@ -183,7 +186,7 @@ struct LAADriveBrowserView: View {
             }
             .buttonStyle(.plain).frame(minHeight: LAASpacing.minimumTouchTarget)
             ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(LAAColor.secondaryText)
+                Text("/").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)
                 Button { folders = Array(folders.prefix(index + 1)); search = "" } label: {
                     Text(verbatim: folder.item.name).laaTextStyle(.secondary).lineLimit(1)
@@ -209,9 +212,11 @@ struct LAADriveBrowserView: View {
             Button { fileType = option; searchFocused = false } label: {
                 Text(verbatim: option.title).laaTextStyle(.secondary)
                     .foregroundStyle(option == fileType ? LAAColor.link : LAAColor.secondaryText)
-                    .padding(.horizontal, LAASpacing.x3).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    .background(option == fileType ? LAAColor.selectionFill : LAAColor.surface,
-                                in: Capsule())
+                    .padding(.horizontal, LAASpacing.x2).frame(minHeight: (desktop ? LAACanvas.mac : .iphone).touchTarget)
+                    .overlay(alignment: .bottom) {
+                        if option == fileType { Rectangle().fill(LAAColor.link).frame(height: LAAStroke.rule) }
+                    }
+                    .contentShape(Rectangle())
             }.buttonStyle(.plain)
                 .accessibilityAddTraits(option == fileType ? .isSelected : [])
                 .accessibilityIdentifier("laa.drive.filter.\(option.rawValue)")
@@ -223,7 +228,7 @@ struct LAADriveBrowserView: View {
             HStack(spacing: LAASpacing.x3) {
                 Image(systemName: "magnifyingglass").foregroundStyle(LAAColor.secondaryText)
                     .accessibilityHidden(true)
-                TextField(String("検索"), text: $search)
+                TextField("Search", text: $search)
                     .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
                     .accessibilityIdentifier("laa.drive.browser.search")
                 if !search.isEmpty {
@@ -241,20 +246,22 @@ struct LAADriveBrowserView: View {
 
     private var fileMenu: some View {
             Menu {
-                Picker(String("場所"), selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
+                Picker("Location", selection: Binding(get: { section }, set: { section = $0; folders = []; search = "" })) {
                     ForEach(LAADriveBrowseSection.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
-                Picker(String("並び順"), selection: $sort) {
+                Picker("Sort", selection: $sort) {
                     ForEach(LAADriveBrowseOrder.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
-                Button(String("アップロード"), systemImage: "plus") { upload(folders.last?.id) }
+                Button("Rules", systemImage: "doc.text") { showRules = true }
+                    .accessibilityIdentifier("laa.drive.rules")
+                Button("Upload", systemImage: "plus") { upload(folders.last?.id) }
                 if let folder = folders.last {
                     Button(String("この端末に保存"), systemImage: "arrow.down.circle") { saveFolder(folder) }
                 }
                 NavigationLink(String("この端末に保存済み")) { LAADriveOfflineScreen() }
             } label: {
                 Image(systemName: "ellipsis").frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-            }.accessibilityLabel(String("ファイルの表示と操作")).accessibilityIdentifier("laa.drive.browser.menu")
+            }.accessibilityLabel("Drive Menu").accessibilityIdentifier("laa.drive.browser.menu")
     }
 
     @ViewBuilder private var results: some View {
@@ -273,7 +280,7 @@ struct LAADriveBrowserView: View {
                     .frame(maxWidth: .infinity, minHeight: 160)
             }
             if controller.incompleteSearch == true {
-                Text(verbatim: "一部の結果を取得できませんでした").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                Text(verbatim: "表示は一部のみです。検索語を絞ってもう一度お試しください。").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             rows(visibleItems.filter { $0.item.isFolder })
             if layout == .grid {
@@ -285,7 +292,7 @@ struct LAADriveBrowserView: View {
                 rows(visibleItems.filter { !$0.item.isFolder })
             }
             if controller.cursor != nil && controller.error == nil {
-                Button(String("さらに読み込む")) { Task { await controller.loadMore(using: load) } }
+                Button("More") { Task { await controller.loadMore(using: load) } }
                     .disabled(controller.loading).frame(minHeight: LAASpacing.minimumTouchTarget).accessibilityIdentifier("laa.drive.browser.more")
             }
         }
@@ -317,15 +324,21 @@ struct LAADriveBrowserView: View {
                         .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                HStack(spacing: LAASpacing.x3) {
-                    Image(systemName: entry.item.symbol).font(.system(size: 24)).foregroundStyle(LAAColor.link).frame(width: 24)
-                    Text(verbatim: entry.item.name).font(.body).foregroundStyle(LAAColor.text).lineLimit(2)
-                    Spacer(minLength: 8)
+                let canvas = desktop ? LAACanvas.mac : .iphone
+                HStack(spacing: LAASpacing.x2) {
+                    Image(systemName: entry.item.symbol).font(.system(size: desktop ? LAAIconSize.inline : LAAIconSize.default))
+                        .foregroundStyle(LAAColor.link).accessibilityHidden(true)
+                    Text(verbatim: entry.item.name).laaTextStyle(.body).foregroundStyle(LAAColor.text).lineLimit(2)
+                    Spacer(minLength: LAASpacing.x2)
                     if !entry.item.isFolder, let text = entry.item.modifiedAt, let date = Self.date(text) {
-                        Text(verbatim: LAADateText.relative(date)).font(.footnote).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                        Text(verbatim: LAADateText.relative(date)).laaTextStyle(.secondary)
+                            .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                     }
-                }.padding(.horizontal, LAASpacing.x4).frame(minHeight: LAASpacing.minimumRowHeight)
-                    .background(selectedID == entry.id ? LAAColor.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .frame(minHeight: canvas.rowMinHeight)
+                .background(selectedID == entry.id ? LAAColor.selectionFill : .clear)
+                .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
+                .contentShape(Rectangle())
             }
         }
         .buttonStyle(LAAListRowStyle()).disabled(resolvingID != nil)
@@ -495,7 +508,7 @@ private struct LAADriveSearchPlacement: ViewModifier {
             content
         } else {
             content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic),
-                               prompt: Text(verbatim: "検索"))
+                               prompt: Text("Search"))
         }
     }
 }
@@ -503,11 +516,11 @@ private struct LAADriveSearchPlacement: ViewModifier {
 private extension LAADriveBrowseSection {
     var title: String {
         switch self {
-        case .my: return String("マイドライブ")
-        case .shared: return String("共有ドライブ")
-        case .sharedWithMe: return String("共有アイテム")
-        case .recent: return String("最近")
-        case .starred: return String("スター付き")
+        case .my: return "My Drive"
+        case .shared: return "Shared Drives"
+        case .sharedWithMe: return "Shared Items"
+        case .recent: return "Recent"
+        case .starred: return "Starred"
         }
     }
 }

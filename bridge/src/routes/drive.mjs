@@ -178,6 +178,24 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
       incompleteSearch: typeof page.incompleteSearch === 'boolean' ? page.incompleteSearch : null } };
   }
 
+  async function operatingRules({ res, params }) {
+    const drive = requireAdapter();
+    if (!drive.operatingRules) throw new BridgeError(503, 'rules_unavailable', 'Operating rules are unavailable');
+    const abort = new AbortController();
+    const onClose = () => { if (!res.writableEnded) abort.abort(); };
+    res.on('close', onClose);
+    try {
+      const rules = await drive.operatingRules(params[0], { signal: abort.signal });
+      if (abort.signal.aborted) return undefined;
+      if (!rules) throw new BridgeError(404, 'rules_missing', 'No operating rules at the canonical Drive location');
+      return { status: 200, data: rules };
+    } catch (error) {
+      if (abort.signal.aborted) return undefined;
+      if (error?.code === 'drive_export_too_large') throw new BridgeError(409, 'rules_too_large', 'Operating rules exceed the size limit');
+      throw driveError(error);
+    } finally { res.off('close', onClose); }
+  }
+
   async function fileMetadata({ params }) {
     const id = params[0];
     let found;
@@ -481,6 +499,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     { method: 'PUT', pattern: /^\/v1\/drive\/uploads\/([a-f0-9-]{36})\/chunks\/(\d{1,16})$/, auth: true, scope: 'media:write', idempotent: true,
       bodyLimit: 4 * 1024 * 1024, handler: uploadChunk },
     { method: 'GET', path: '/v1/drive/files', auth: true, scope: 'media:read', handler: listFiles },
+    { method: 'GET', pattern: /^\/v1\/drive\/rules\/(drive|studio)$/, auth: true, scope: 'media:read', handler: operatingRules },
     { method: 'GET', pattern: itemPattern, auth: true, scope: 'media:read', handler: fileMetadata },
     { method: 'GET', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },
     { method: 'HEAD', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },

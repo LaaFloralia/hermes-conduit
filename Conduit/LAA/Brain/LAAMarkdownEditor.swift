@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// Editing a note as formatted Markdown: headings, lists, checkboxes and
@@ -6,6 +7,8 @@ import SwiftUI
 /// block under the caret. The Markdown itself is still the document — nothing
 /// is converted to a private rich-text format.
 struct LAAMarkdownEditor: View {
+    @Environment(\.laaDesktop) private var desktop
+    @Environment(\.dynamicTypeSize) private var typeSize
     @StateObject private var model: LAAMarkdownDocumentModel
     @StateObject private var session = LAAMarkdownEditingSession()
     private struct AttachmentSelection: Identifiable { let id: UUID }
@@ -44,6 +47,9 @@ struct LAAMarkdownEditor: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let canvas = desktop ? LAACanvas.mac : .iphone
+            let margin = typeSize.isAccessibilitySize ? canvas.marginCompact : canvas.margin
+            let available = max(0, geometry.size.width - margin * 2)
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     if let title {
@@ -52,8 +58,7 @@ struct LAAMarkdownEditor: View {
                                 Text(verbatim: breadcrumb).laaTextStyle(.secondary)
                                     .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                             }
-                            Text(verbatim: title).font(.system(size: 30, weight: .bold))
-                                .foregroundStyle(LAAColor.text).accessibilityIdentifier("laa.brain.note.title")
+                            LAADocTitle(title: title).accessibilityIdentifier("laa.brain.note.title")
                             if let status {
                                 Text(verbatim: status).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                     .accessibilityIdentifier("laa.brain.edit.status")
@@ -65,9 +70,10 @@ struct LAAMarkdownEditor: View {
                     }
                     if !session.isEditing, let footer { footer }
                 }
-                .frame(width: max(0, geometry.size.width - LAASpacing.horizontal * 2), alignment: .leading)
-                .padding(.horizontal, LAASpacing.horizontal)
-                .padding(.vertical, LAASpacing.x3)
+                .frame(width: desktop ? min(available, canvas.readingMeasure) : available, alignment: .leading)
+                .padding(.horizontal, margin)
+                .padding(.vertical, LAASpacing.x6)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
             .modifier(BrainEditorReadingPosition(store: readingPositions, key: positionKey))
             .scrollDismissesKeyboard(.interactively)
@@ -79,7 +85,7 @@ struct LAAMarkdownEditor: View {
                 }
             }
         }
-        .background(LAAColor.background)
+        .background(LAAColor.surface.ignoresSafeArea())
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in session.editingChanged(true) }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in session.editingChanged(false) }
         .sheet(item: $attachmentSelection) { selected in

@@ -26,6 +26,27 @@ struct LAAStudioProject: Codable, Identifiable, Hashable {
         return Set(kinds).count == 1 ? kinds[0].capitalized : "Mixed"
     }
 }
+enum LAAStudioWorkKind: String, CaseIterable {
+    case documents = "Documents", images = "Images", videos = "Video", motion = "Motion"
+    case models = "3D", audio = "Audio", mixed = "Mixed", other = "Other"
+
+    init(project: LAAStudioProject) {
+        let kinds = Set((project.assets ?? []).map { asset -> Self in
+            switch asset.kind.lowercased() {
+            case "document", "presentation", "slides", "pdf", "page": .documents
+            case "image", "photo", "illustration", "photoalbum": .images
+            case "video", "film": .videos
+            case "motion", "animation": .motion
+            case "3d", "model", "model3d", "usdz": .models
+            case "audio", "music", "sound", "voice": .audio
+            default: .other
+            }
+        })
+        if kinds.count > 1 { self = .mixed }
+        else { self = kinds.first ?? (project.pages.isEmpty ? .other : .documents) }
+    }
+}
+
 struct LAAStudioPage: Codable, Identifiable, Hashable {
     let id: String
     let name: String
