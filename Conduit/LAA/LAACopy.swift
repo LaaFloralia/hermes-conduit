@@ -33,7 +33,7 @@ enum LAACopy {
     static let pairingTitle = "Macに接続"
     static let pairingAddress = "アドレス"
     static let pairingCode = "接続コード"
-    static let pairingConnect = "接続"
+    static let pairingConnect = "Connect"
     static let mac = "Mac"
     static let macRePair = "接続し直す"
     static let macRefresh = "Retry"
@@ -53,7 +53,6 @@ enum LAACopy {
     static let dataAndLicensesDetail = "端末のデータとライセンス"
     static let openSourceLicenses = "オープンソースライセンス"
     static let back = "Back"
-    static let close = "Close"
     static let cancel = "Cancel"
     static let save = "Save"
     static let call = "電話"
@@ -96,7 +95,7 @@ enum LAACopy {
     static let phoneUseOperating = "iPhoneを操作中"
     static let phoneUseAllow = "許可"
     static let phoneUseDeny = "許可しない"
-    static let phoneUseStop = "停止"
+    static let phoneUseStop = "Stop"
     static let phoneUseOperatingShort = "操作中"
 
     #if os(iOS) && !targetEnvironment(macCatalyst)

@@ -45,7 +45,7 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(stop.waitForExistence(timeout: 10)); stop.tap()
         let stopConfirmation = app.sheets.firstMatch
         XCTAssertTrue(stopConfirmation.waitForExistence(timeout: 10))
-        XCTAssertTrue(stopConfirmation.buttons["停止"].exists)
+        XCTAssertTrue(stopConfirmation.buttons["Stop"].exists)
         if app.buttons["Cancel"].exists {
             app.buttons["Cancel"].tap()
         } else {
