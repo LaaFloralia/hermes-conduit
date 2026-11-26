@@ -17,13 +17,20 @@ final class LAAShellNavigationUITests: XCTestCase {
         app.buttons["Doc"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
         app.buttons["Work"].tap()
-        // Selecting a visible section centers it and reveals the next section.
-        for name in ["sessions", "tasks", "routines"] {
+        for name in ["sessions", "tasks"] {
             let segment = app.buttons["work.section.\(name)"]
             XCTAssertTrue(segment.waitForExistence(timeout: 10))
             segment.tap()
+            XCTAssertTrue(segment.isSelected)
         }
-        XCTAssertTrue(app.buttons["work.section.routines"].isSelected)
+        let more = app.buttons["work.section.more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+        more.tap()
+        let routines = app.buttons["work.section.routines"]
+        XCTAssertTrue(routines.waitForExistence(timeout: 10))
+        routines.tap()
+        XCTAssertTrue(more.isSelected)
+        XCTAssertEqual(more.value as? String, "Routines")
         XCTAssertTrue(app.buttons["work.section.projects"].exists)
         XCTAssertFalse(app.buttons["work.section.skills"].exists)
         XCTAssertTrue(app.buttons["work.usage"].exists)
@@ -46,10 +53,15 @@ final class LAAShellNavigationUITests: XCTestCase {
 
     func testDocumentHidesTabBarAndBackRestoresIt() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "brain", "-laa-brain-fixture", "normal"]
+        app.launchArguments += ["-laa-tab", "brain", "-laa-brain-local-fixture", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchInLab()
-        let note = app.staticTexts["Start"]
-        XCTAssertTrue(note.waitForExistence(timeout: 30))
+        let company = app.buttons["laa.brain.folder.Company"]
+        XCTAssertTrue(company.waitForExistence(timeout: 30))
+        if !company.isHittable { app.swipeUp() }
+        company.tap()
+        let note = app.buttons.matching(identifier: "laa.brain.note")
+            .matching(NSPredicate(format: "label == %@", "Start")).firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Work"].exists)
         note.tap()
         let back = app.buttons["laa.brain.back"]
