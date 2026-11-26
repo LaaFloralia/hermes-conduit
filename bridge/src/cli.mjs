@@ -26,6 +26,7 @@ import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
 import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 import { PROJECTS_USAGE, projectsCommand } from './cli-projects.mjs';
+import { CALENDAR_USAGE, calendarCommand } from './cli-calendar.mjs';
 import { assertTestStateDir, laneEnabled, laneMissing, PRODUCTION_PORTS } from './lane/guard.mjs';
 import { laneClient } from './lane/client.mjs';
 
@@ -52,6 +53,7 @@ Usage:
   laa-bridge habits <week|history|events|add|update|archive|restore|check|uncheck>
                                            weekly habits (same store as the app; see below)
   ${REFS_USAGE}
+  laa-bridge calendar <events|calendars>   read-only events for agents (see below)
   laa-bridge version
 
 ${TASKS_USAGE}
@@ -59,6 +61,7 @@ ${HABITS_USAGE}
 ${DECISIONS_USAGE}
 ${PHONE_USE_USAGE}
 ${PROJECTS_USAGE}
+${CALENDAR_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
 Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
@@ -235,7 +238,7 @@ const command = positional.shift();
 if (!flags.help && command && !['help', '--help', 'version'].includes(command)) {
   try {
     assertTestStateDir(resolveStateDir());
-    if (laneEnabled() && (['phone-use', 'ref', 'refs'].includes(command)
+    if (laneEnabled() && (['phone-use', 'ref', 'refs', 'calendar'].includes(command)
         || (command === 'tasks' && !['add', 'list', 'get', 'update', 'status', 'report'].includes(positional[0])))) {
       throw laneMissing(`CLI ${command}`);
     }
@@ -248,6 +251,9 @@ if (flags.help) {
 } else switch (command) {
   case 'decide':
     process.exitCode = await decisionsCommand(positional, flags);
+    break;
+  case 'calendar':
+    process.exitCode = await calendarCommand(positional, flags);
     break;
   case 'phone-use':
     process.exitCode = await phoneUseCommand(positional, flags);
