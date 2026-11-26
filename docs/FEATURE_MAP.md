@@ -4474,6 +4474,23 @@ and rollback instructions · the upstream App Store build
 
 **Checked:** 2026-11-25, laa/v2-chat (shared transcript replaces employee reply bubbles; background picker still governs the owner bubble); 2026-11-16, laa/glass-real (glass by default over a picture, clear tinted glass on both bubbles; LAA 16 Pro Max-type simulator on iOS 27.0 and the Mac dev build); 2026-11-16, laa/glass-bubbles at 7f19300e (the bubble choice in the background sheet; LAA 16 Pro Max simulator and the Mac dev build); 2026-11-15, laa/chat-background (the bar's background button restored beside the call button; the chosen photo draws behind ChatView through `laaConversationBackground` on the LAA route LAAConversationRoute › V2ConversationScreen; LAA iOS Simulator Debug build on the MacBook); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats entry), c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
 
+## LAA chaired text meetings
+
+**Siblings:** Chat and Groups room creation · hosted-group replay on iPhone and Mac Catalyst · Hermes room RPC, roster and planner (separate staged patch) · notifier search and preview filtering · upstream group chat (no LAA creation or folding) · chaired Voice (separate feature)
+
+**Code**
+- Creation, capabilities and replay: `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Chats/LAAChatsCopy.swift`, `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/HermesClient.swift`, `Conduit/Services/GroupChatModels.swift`, `Conduit/Views/GroupChatView.swift`
+- Tests: `ConduitTests/GroupChatModelsTests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`, `Conduit/LAA/Backgrounds/LAABackgroundUITestFixture.swift`
+
+**Rulings**
+- Only Monet and seated employees are offered. Send chair/policy and privacy only when negotiated; a private creation request must not downgrade to public. Changing the requested privacy starts a new create identity.
+- Display Monet's marked conclusion with a heading. Only turns explicitly marked as staff for that same discussion fold under the conclusion; pending and old-host turns keep their ordinary rows. No Voice behavior changes.
+
+**Open gaps**
+- Activation of the staged Hermes/notifier patches and the Bridge conclusion adapter is an integration decision, not an app-side push.
+
+**Checked:** 2026-11-26, b91a58cf (LAA C-1 wire, decoder, and fixture coverage).
+
 ## LAA chaired group Voice
 
 **Siblings:** hosted group replay and composer · speech playback and audio ownership · staff and native calls · iPhone and Mac Catalyst group rooms · paired Bridge voice scope · upstream group chat (unchanged) · Hermes chair prompt (separate install)
