@@ -95,13 +95,13 @@ struct LAAWorkDesktopSessionsView: View {
                         Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
                         Menu {
-                            Button(String("新しい順")) { projectOrder = false }
-                            Button(String("プロジェクト別")) { projectOrder = true }
-                            Button(showArchived ? String("最近のセッションに戻る") : String("アーカイブを表示")) { showArchived.toggle(); reloadID += 1 }
+                            Button("Recent First") { projectOrder = false }
+                            Button("By Project") { projectOrder = true }
+                            Button(showArchived ? "Recent" : "Archive") { showArchived.toggle(); reloadID += 1 }
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
                     }
-                    LAASearchField(placeholder: "検索", text: $search,
+                    LAASearchField(placeholder: "Search", text: $search,
                                    identifier: "work.sessions.desktop.search", focus: $searchFocused)
                         .accessibilityIdentifier("work.sessions.search")
                     // Only running Sessions are 実行中; the rest wait (BUS-508).
@@ -717,7 +717,7 @@ struct LAAWorkDesktopCatalogView: View {
                                 HStack(spacing: LAASpacing.x2) {
                                     Text(verbatim: first.group).laaTextStyle(.section).fontWeight(.semibold)
                                         .foregroundStyle(LAAColor.secondaryText)
-                                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                                         .foregroundStyle(LAAColor.secondaryText)
                                         .rotationEffect(.degrees(pausedOpen ? 90 : 0))
                                     Spacer(minLength: 0)

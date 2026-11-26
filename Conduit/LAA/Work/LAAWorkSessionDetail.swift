@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 private struct LAAWorkScrollHeightReader: ViewModifier {
     let onChange: (CGFloat) -> Void
@@ -119,6 +120,7 @@ struct LAAWorkSessionDetail: View {
     @State private var childrenReadAt: Date?
     @State private var openedChildID: String?
     @State private var showingChildren = false
+    @State private var showingLauncher = false
     @State private var didInitialScroll = false
     /// True once the transcript can be placed: the cached copy counts, so a
     /// remembered conversation opens at its bottom without waiting for the Mac.
@@ -221,6 +223,21 @@ struct LAAWorkSessionDetail: View {
                         .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
                 }
             }
+            if !laaDesktop {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingLauncher = true } label: { Label("New", systemImage: "plus") }
+                        .accessibilityIdentifier("work.session.detail.new")
+                        .disabled(bridge.status != .paired)
+                }
+            }
+        }
+        .sheet(isPresented: $showingLauncher) {
+            LAAWorkSessionLauncher(projects: projects, options: options, drafts: drafts) { created in
+                showingLauncher = false
+                openedChildID = created.id
+            }
+            .environmentObject(bridge)
+            .laaSheetSize(.form)
         }
         .navigationDestination(item: $openedChildID) { childID in
             LAAWorkSessionDetail(id: childID, projects: projects, workspaces: workspaces, drafts: drafts)
@@ -283,7 +300,7 @@ struct LAAWorkSessionDetail: View {
                     }
                     if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 }.id("decision-start") }
                     if conversationUnavailable {
-                        Text(verbatim: "会話履歴を取得できません。更新して再確認してください。")
+                        Text(verbatim: "履歴の応答がありません。接続を確認し、もう一度お試しください。")
                             .foregroundStyle(LAAColor.attention)
                     } else if messages.isEmpty {
                         Text(verbatim: "会話はまだありません。").foregroundStyle(LAAColor.secondaryText)
@@ -824,15 +841,17 @@ struct LAAWorkSessionHeaderPill: View {
                          provider: (session.observed ?? session.requested)?.provider, size: 26)
             VStack(alignment: .center, spacing: 2) {
                 Text(verbatim: session.name)
-                    .font(.custom("Georgia", size: 16, relativeTo: .headline))
-                    .lineLimit(1).minimumScaleFactor(0.8).truncationMode(.tail)
+                    .font(LAAType.title(session.name, size: 16, relativeTo: .headline))
+                    .foregroundStyle(LAAColor.text)
+                    .lineLimit(1).truncationMode(.middle)
                     .accessibilityIdentifier("work.session.detail.title")
-                HStack(spacing: 0) {
+                let status = LAAWorkStatus.session(session.phase)
+                HStack(spacing: LAASpace.s4) {
                     Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase))
-                        .foregroundStyle(LAAWorkSessionStyle.statusColor(session.phase))
-                    Text(verbatim: " " + LAAWorkPresentation.phase(session.phase)).foregroundStyle(.secondary)
+                        .foregroundStyle(status.color).accessibilityHidden(true)
+                    Text(verbatim: status.displayLabel).foregroundStyle(LAAColor.secondaryText)
                 }
-                .font(.caption2).lineLimit(1)
+                .font(.caption).fixedSize()
             }
         }
         .modifier(LAAWorkSessionHeaderGlass(clear: clearGlass))
@@ -846,19 +865,14 @@ struct LAAWorkSessionHeaderPill: View {
 private struct LAAWorkSessionHeaderGlass: ViewModifier {
     let clear: Bool
 
-    @ViewBuilder func body(content: Content) -> some View {
-        if clear {
-            content
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), interactive: false)
-        } else {
-            content
-                .padding(.horizontal, LAASpacing.x2)
-                .padding(.vertical, 5)
-                .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.06), interactive: false)
-        }
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, LAASpace.s8)
+            .padding(.vertical, LAASpace.s4)
+            .background {
+                if clear { Capsule().fill(LAAColor.surface) }
+            }
+            .laaGlassCapsule(interactive: false, tinted: false)
     }
 }
 #endif

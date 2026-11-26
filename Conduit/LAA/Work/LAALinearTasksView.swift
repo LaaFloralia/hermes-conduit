@@ -780,7 +780,7 @@ struct LAALinearTasksView: View {
         } catch is CancellationError { return }
         catch {
             guard loadID == epoch, device == bridge.deviceID, !quiet else { return }
-            failure = loaded ? "最新のタスクを取得できません。前回の内容を表示しています。" : "Linearのタスクを取得できません。接続を確認して読み直してください。"
+            failure = loaded ? "タスクの更新が止まっています。Linearの接続を確認してください。" : "Linearのタスク一覧が応答しません。接続を確認して再試行してください。"
         }
     }
 }
@@ -962,9 +962,9 @@ struct LAALinearTaskEditor: View {
                 }
             }
         } else if optionsFailed {
-            Button { Task { await loadOptions(force: true) } } label: { Text(verbatim: "モデルを取得できません。読み直す") }
+            Button { Task { await loadOptions(force: true) } } label: { Text(verbatim: "Retry") }
         } else {
-            Text(verbatim: "モデルを読み込み中").foregroundStyle(LAAColor.secondaryText)
+            LAALoadingDots()
         }
     }
 

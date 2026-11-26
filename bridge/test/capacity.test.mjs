@@ -115,23 +115,28 @@ test('MacBook parser rejects partial, malformed and overflow responses; timeout 
   await assert.rejects(readMacBookCapacity({ exec: async () => { throw new Error('secret stderr'); } }), { message: 'MacBook capacity unavailable' });
 });
 
-test('MacBook single-flight, five minute cache, freshness, partial and failure are paired', async t => {
+test('MacBook samples only on the routine path, single-flight, and fails as a pair', async t => {
   let time = at, calls = 0, resolve;
   const source = create({ now: () => time, macbook: () => { calls++; return new Promise(r => { resolve = r; }); } }); t.after(source.close);
-  source.read(); await Promise.resolve();
-  const pending = source.refresh(3);
-  assert.equal(pending, source.refresh(3)); assert.equal(calls, 1);
+  source.read(); source.read({ force: true }); await Promise.resolve();
+  assert.equal(calls, 0);
+  const pending = source.refreshMacBook();
+  assert.equal(pending, source.refreshMacBook());
+  await Promise.resolve(); assert.equal(calls, 1);
   resolve(parseMacBookCapacity(macbookOutput)); await pending;
   let result = byId(source.read());
   assert.equal(result.get('capacity.macbook.memory').availability, 'available');
   assert.equal(result.get('capacity.macbook.ssd').availability, 'available');
-  time += 299_999; source.read(); assert.equal(calls, 1);
-  time = at + 300_000; source.read(); await Promise.resolve(); assert.equal(calls, 2);
-  const second = source.refresh(3); resolve({ memory: parseMacBookCapacity(macbookOutput).memory }); await second;
+  time += 300_000; source.read(); source.read({ force: true }); await Promise.resolve();
+  assert.equal(calls, 1);
+  const second = source.refreshMacBook(); await Promise.resolve(); assert.equal(calls, 2);
+  resolve({ memory: parseMacBookCapacity(macbookOutput).memory }); await second;
   result = byId(source.read());
   assert.equal(result.get('capacity.macbook.memory').value, null); assert.equal(result.get('capacity.macbook.ssd').value, null);
   const stale = create({ now: () => time, macbook: async () => parseMacBookCapacity(macbookOutput) }); t.after(stale.close);
-  stale.read(); await stale.refresh(3); time += 600_000; result = byId(stale.read());
+  await stale.refreshMacBook(); time += 600_000;
+  assert.equal(byId(stale.read()).get('capacity.macbook.memory').stale, false);
+  time += 86_400_000; result = byId(stale.read());
   assert.equal(result.get('capacity.macbook.memory').stale, true); assert.equal(result.get('capacity.macbook.ssd').stale, true);
   const failed = create({ macbook: async () => { throw new Error('timeout'); } }); t.after(failed.close); failed.read(); await failed.refresh(3);
   result = byId(failed.read()); assert.equal(result.get('capacity.macbook.memory').value, null); assert.equal(result.get('capacity.macbook.ssd').value, null);

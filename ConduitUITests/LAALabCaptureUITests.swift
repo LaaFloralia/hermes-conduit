@@ -103,6 +103,7 @@ final class LAALabCaptureUITests: XCTestCase {
                     // has an on-screen hit point at this Dynamic Type size.
                     let session = row.dropFirst("work.session.".count)
                     app.open(URL(string: "laa://work/sessions/\(session)")!)
+                    wait("work.session.detail.new", app)
                     shot(id, after: ready, app)
                     back(to: "work.section.sessions", app)
                 }
@@ -141,7 +142,14 @@ final class LAALabCaptureUITests: XCTestCase {
                 }
             }
             if selected.contains("work-routines") {
+                segment("tasks", app)
+                let search = wait("laa.work.search", app)
+                search.tap()
+                search.typeText("T30")
                 segment("routines", app)
+                let keyboard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                                         object: app.keyboards.firstMatch)
+                XCTAssertEqual(XCTWaiter.wait(for: [keyboard], timeout: 5), .completed)
                 shot("work-routines", after: "work.routines.tree", app)
             }
             if needs("usage", "usage-capacity") {
@@ -285,13 +293,8 @@ final class LAALabCaptureUITests: XCTestCase {
     }
 
     private func segment(_ name: String, _ app: XCUIApplication) {
-        let row = wait("work.segment", app)
-        let button = element("work.section.\(name)", app)
-        for _ in 0..<5 {
-            if button.exists && button.isHittable && button.frame.midX > 28 && button.frame.midX < app.frame.width - 28 { break }
-            let y = row.frame.midY / app.frame.height
-            swipe(app, from: CGVector(dx: 0.85, dy: y), to: CGVector(dx: 0.25, dy: y))
-        }
+        wait("work.segment", app)
+        if name == "routines" || name == "campaigns" { tap("work.section.more", app) }
         tap("work.section.\(name)", app)
     }
 

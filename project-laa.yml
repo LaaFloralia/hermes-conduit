@@ -46,6 +46,9 @@ packages:
     path: Vendor/LAAKit
 targets:
   ConduitTests:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: Shared/Widgets/LAAEmployeeWidget.swift
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
@@ -234,6 +237,9 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
+    dependencies:
+      - package: LAAKit
+        product: LAAKit
     sources:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources

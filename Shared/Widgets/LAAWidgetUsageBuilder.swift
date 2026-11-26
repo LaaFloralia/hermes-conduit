@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import Foundation
 import SwiftUI
+import LAAKit
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -204,83 +205,57 @@ enum LAAWidgetUsageBuilder {
 
 // MARK: The Usage bar (app cards and widget)
 
-/// The quota bar's colour band: accent, `caution` under 25% left, `critical`
-/// under 10% left (DESIGN `theme.semantic.meter`). Unknown draws the track only.
-enum LAAUsageBarLevel: Equatable {
-    case normal, caution, critical, unknown
+typealias LAAUsageBarLevel = LAAMeterLevel
 
-    static let cautionBelow = 25.0
-    static let criticalBelow = 10.0
-
+extension LAAMeterLevel {
     init(remainingPercent: Double?) {
-        guard let value = remainingPercent, value.isFinite else { self = .unknown; return }
-        if value < Self.criticalBelow { self = .critical }
-        else if value < Self.cautionBelow { self = .caution }
-        else { self = .normal }
-    }
-
-    var color: Color {
-        switch self {
-        case .normal, .unknown: LAAColor.link
-        case .caution: LAAUsageBar.caution
-        case .critical: LAAUsageBar.critical
-        }
+        self.init(remaining: remainingPercent.map { $0 / 100 })
     }
 }
 
-/// The Usage screen's and widget's own meter (`component.meter.bar`): a
-/// square-ended track the full width, filled to the share left. Elsewhere
-/// the app keeps its line-and-dot meter.
-struct LAAUsageBar: View {
-    /// 0...100; nil draws the track alone.
-    let remainingPercent: Double?
-    var height: CGFloat = LAAUsageBar.height
-    var animates = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
-
-    static let height: CGFloat = 4
-
-    #if canImport(UIKit)
-    static let caution = dynamic(light: (0x8A, 0x5A, 0x0B), dark: (0xE2, 0xB4, 0x5C))
-    static let critical = dynamic(light: (0xA2, 0x3B, 0x2A), dark: (0xEE, 0x8E, 0x7C))
-
-    private static func dynamic(light: (Int, Int, Int), dark: (Int, Int, Int)) -> Color {
-        Color(uiColor: UIColor { traits in
-            let rgb = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: CGFloat(rgb.0) / 255, green: CGFloat(rgb.1) / 255, blue: CGFloat(rgb.2) / 255, alpha: 1)
-        })
-    }
-    #else
-    static let caution = Color(red: 0x8A / 255, green: 0x5A / 255, blue: 0x0B / 255)
-    static let critical = Color(red: 0xA2 / 255, green: 0x3B / 255, blue: 0x2A / 255)
-    #endif
-
-    private var fraction: Double {
-        guard let value = remainingPercent, value.isFinite else { return 0 }
-        return min(max(value / 100, 0), 1)
-    }
+/// The same status mark is used on every Usage surface. Text in the row
+/// remains independently addressable; the mark isn't a second AX element.
+struct LAAUsageMeterMark: View {
+    let level: LAAMeterLevel
+    @Environment(\.laaPalette) private var palette
 
     var body: some View {
-        let level = LAAUsageBarLevel(remainingPercent: remainingPercent)
-        GeometryReader { proxy in
-            let drawn = !animates || appeared || reduceMotion ? fraction : 0
-            ZStack(alignment: .leading) {
-                Rectangle().fill(LAAColor.separator)
-                if level != .unknown {
-                    Rectangle().fill(level.color)
-                        // A nonzero share keeps a sliver visible.
-                        .frame(width: max(proxy.size.width * drawn, fraction > 0 ? min(2, proxy.size.width) : 0))
+        Text(verbatim: level.shape)
+            .foregroundStyle(level == .unknown ? palette.textMuted : palette.meter(level))
+            .accessibilityHidden(level != .unknown)
+    }
+}
+
+/// Use the kit bar for ordinary remaining fractions. Its static counterpart
+/// uses the same tokens for WidgetKit, and for capacity where the bar fills
+/// toward used space but colour describes remaining space.
+struct LAAUsageMeterTrack: View {
+    let fraction: Double?
+    var level: LAAMeterLevel? = nil
+    var animates = true
+    @Environment(\.laaPalette) private var palette
+
+    static let height = LAAComponentToken.Meter.barHeight
+
+    var body: some View {
+        let finite = fraction.flatMap { $0.isFinite ? min(max(0, $0), 1) : nil }
+        Group {
+            if animates && level == nil {
+                LAAKit.LAAUsageBar(remaining: finite)
+            } else {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(palette.rule)
+                        if let finite {
+                            Rectangle().fill(palette.meter(level ?? LAAMeterLevel(remaining: finite)))
+                                .frame(width: proxy.size.width * finite)
+                        }
+                    }
                 }
+                .frame(height: Self.height)
             }
         }
-        .frame(height: height)
         .accessibilityHidden(true)
-        .animation(animates && !reduceMotion ? .smooth(duration: 0.45) : nil, value: fraction)
-        .onAppear {
-            guard animates, !appeared else { return }
-            if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 0.35)) { appeared = true } }
-        }
     }
 }
 

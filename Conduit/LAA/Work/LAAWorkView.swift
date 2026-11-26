@@ -166,7 +166,7 @@ struct LAAWorkView: View {
     @ViewBuilder private var content: some View {
         if let failure {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Label(LAAWorkPresentation.japanese("取得できませんでした"), systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("作業情報が応答しません。Macとの接続を確認してください。"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
                 Text(verbatim: failure).foregroundStyle(LAAColor.text)
                 Text(verbatim: "残っている一覧は前回取得した内容です。")

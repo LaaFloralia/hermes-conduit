@@ -350,9 +350,10 @@ struct LAAWorkSessionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: LAASpacing.x1) {
                     Text(verbatim: session.name).laaTextStyle(.body).fontWeight(.medium)
-                        .foregroundStyle(LAAColor.text).lineLimit(2).multilineTextAlignment(.leading)
+                        .foregroundStyle(LAAColor.text).lineLimit(2).truncationMode(.middle)
+                        .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("work.session.\(session.id)")
-                    if session.isFavorite { Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(LAAColor.secondaryText) }
+                    if session.isFavorite { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(LAAColor.secondaryText) }
                 }
                 Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -402,7 +403,7 @@ struct LAAWorkChildDisclosure: View {
         Button(action: toggle) {
             HStack(spacing: LAASpacing.x1) {
                 Text(verbatim: "\(count)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                     .foregroundStyle(LAAColor.secondaryText)
                     .rotationEffect(.degrees(open ? 90 : 0))
             }
@@ -511,7 +512,7 @@ enum LAAWorkSessionStyle {
     }
 
     static func profileLabel(_ profile: LAAWorkSessionOptions.Profile, fast: Bool = false) -> String {
-        [displayModel(profile.label), effort(profile.effort)].compactMap { $0 }.joined(separator: " ") + (fast ? " ⚡︎" : "")
+        [displayModel(profile.label), effort(profile.effort)].compactMap { $0 }.joined(separator: " ") + (fast ? " · Fast" : "")
     }
 
     static func model(_ session: LAAWorkSession, options: LAAWorkSessionOptions?) -> String? {
@@ -807,9 +808,9 @@ struct LAAWorkSwipeRow<Content: View>: View {
         Button { finish(action) } label: {
             VStack(spacing: 2) {
                 Image(systemName: action.systemImage).font(.system(size: 16, weight: .semibold))
-                Text(verbatim: action.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                Text(verbatim: action.title).font(.caption.weight(.semibold)).lineLimit(1)
             }
-            .foregroundStyle(Color.white)
+            .foregroundStyle(LAAColor.filledButtonText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(action.tint)
         }

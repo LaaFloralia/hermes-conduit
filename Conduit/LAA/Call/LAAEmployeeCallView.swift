@@ -46,7 +46,7 @@ struct LAAEmployeeCallView: View {
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     .safeAreaInset(edge: .top, alignment: .leading, spacing: 0) {
-                        LAAToolbarIconButton(systemName: "chevron.left", label: "チャットに戻る",
+                        LAAToolbarIconButton(systemName: "chevron.left", label: "Chat",
                                              identifier: "laa.call.back", tint: LAAColor.text, action: calls.showChat)
                             .disabled(!snapshot.phase.isOngoing)
                             .padding(.horizontal, LAASpacing.horizontal)

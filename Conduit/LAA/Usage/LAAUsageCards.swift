@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 /// One quota window on a provider card: `5h`, `7d` or Claude's `Fable`.
 /// `remainingPercent` nil is unknown (track and ○ only), never zero.
@@ -79,10 +80,11 @@ struct LAAUsageProviderCard<Accessory: View, Extra: View>: View {
     @ViewBuilder var extra: () -> Extra
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: LAASpacing.x2) {
-                LAAModelMark(model: nil, provider: provider == "google-ai-pro" ? "gemini" : provider, size: 18)
-                Text(verbatim: name).font(.callout.weight(.medium)).foregroundStyle(LAAColor.text)
+        let tokens = LAAComponentToken.ProviderCard.self
+        VStack(alignment: .leading, spacing: tokens.gap) {
+            HStack(alignment: .center, spacing: LAASpace.s8) {
+                LAAModelMark(model: nil, provider: provider == "google-ai-pro" ? "gemini" : provider, size: tokens.headerIcon)
+                Text(verbatim: name).laaFont(tokens.headerName, weight: .medium).foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: LAASpacing.x2)
                 if let note {
@@ -94,11 +96,13 @@ struct LAAUsageProviderCard<Accessory: View, Extra: View>: View {
             LAAUsageWindowGrid(windows: windows, now: now)
             extra()
         }
-        .padding(16)
+        .padding(tokens.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: tokens.radius, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(LAAColor.separator, lineWidth: 1)
+            RoundedRectangle(cornerRadius: tokens.radius, style: .continuous)
+                .strokeBorder(LAAColor.separator, lineWidth: tokens.outline)
+                .allowsHitTesting(false)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.usage.card.\(provider)")
@@ -121,8 +125,9 @@ struct LAAUsageWindowGrid: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        let columns = typeSize.isAccessibilitySize ? 1 : 2
-        Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 8) {
+        let tokens = LAAComponentToken.ProviderCard.self
+        let columns = typeSize.isAccessibilitySize ? 1 : tokens.windowColumns
+        Grid(alignment: .topLeading, horizontalSpacing: tokens.windowColumnGap, verticalSpacing: tokens.windowRowGap) {
             ForEach(Array(stride(from: 0, to: windows.count, by: columns)), id: \.self) { start in
                 GridRow {
                     ForEach(windows[start..<min(start + columns, windows.count)]) { window in
@@ -145,19 +150,22 @@ struct LAAUsageWindowCell: View {
     let now: Date
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-                Text(verbatim: window.label).font(.caption).foregroundStyle(LAAColor.secondaryText)
-                Spacer(minLength: LAASpacing.x1)
-                Text(verbatim: window.remainingPercent.map(LAAEmployeeUsageText.percent) ?? "○")
-                    .font(.footnote.weight(window.remainingPercent == nil ? .regular : .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(window.remainingPercent == nil ? LAAColor.secondaryText : LAAColor.text)
+        let tokens = LAAComponentToken.ProviderCard.self
+        VStack(alignment: .leading, spacing: LAASpace.s4) {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
+                Text(verbatim: window.label).laaFont(tokens.windowLabel).foregroundStyle(LAAColor.secondaryText)
+                Spacer(minLength: LAASpace.s4)
+                LAAUsageMeterMark(level: LAAMeterLevel(remainingPercent: window.remainingPercent))
+                    .font(.caption2)
+                if let remaining = window.remainingPercent {
+                    Text(verbatim: LAAEmployeeUsageText.percent(remaining))
+                        .laaFont(tokens.windowValue, weight: .medium).monospacedDigit().foregroundStyle(LAAColor.text)
+                }
             }
-            LAAUsageBar(remainingPercent: window.remainingPercent)
+            LAAUsageMeterTrack(fraction: window.remainingPercent.map { $0 / 100 })
             if let reset = window.resetsAt {
                 Text(verbatim: LAAUsageResetText.full(reset, now: now))
-                    .font(.caption).monospacedDigit().foregroundStyle(LAAColor.secondaryText)
+                    .laaFont(tokens.windowLabel).monospacedDigit().foregroundStyle(LAAColor.secondaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,9 +176,9 @@ struct LAAUsageWindowCell: View {
     }
 
     private var accessibilityValue: String {
-        guard let value = window.remainingPercent else { return LAACopy.notFetched }
+        guard let value = window.remainingPercent else { return LAAShape.unknown }
         let text = LAAEmployeeUsageText.percent(value)
-        return window.resetsAt.map { text + "、リセット " + LAAUsageResetText.full($0, now: now) } ?? text
+        return window.resetsAt.map { text + ", Reset " + LAAUsageResetText.full($0, now: now) } ?? text
     }
 }
 

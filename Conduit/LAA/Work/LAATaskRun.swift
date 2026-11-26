@@ -162,7 +162,7 @@ extension LAALinearTask {
         case "awaiting_decision": base = "判断待"
         case "done": base = "完了"
         case "stopped": base = "停止"
-        case "failed": base = "取得できません"
+        case "failed": base = "Failed"
         default: base = state
         }
         let suffix = run.sessionRef.flatMap { $0.isEmpty ? nil : "（\($0)）" } ?? ""

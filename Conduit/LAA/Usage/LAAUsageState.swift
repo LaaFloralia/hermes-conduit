@@ -33,10 +33,10 @@ enum LAAUsageProblem: Error, Equatable {
 
     var japaneseText: String {
         switch self {
-        case .bridge(.networkUnreachable), .bridge(.unavailable): return "Macに接続できません"
-        case .bridge(.forbidden): return "利用枠を表示する権限がありません"
+        case .bridge(.networkUnreachable), .bridge(.unavailable): return "Macに接続できません。TailscaleとMacの接続を確認してください。"
+        case .bridge(.forbidden): return "利用枠を表示する権限がありません。Macと再接続してください。"
         case .bridge(let error): return error.japaneseText
-        case .failed: return "利用枠を読めませんでした。再試行できます"
+        case .failed: return "利用枠の応答を読めません。Macとの接続を確認して再試行してください。"
         }
     }
 }
@@ -82,7 +82,7 @@ final class LAAUsageState: ObservableObject {
     private let storage: LAAUsageStorage?
     private var isPublishing = false
     private let reloadWidgets: @MainActor () -> Void
-    private let loadUsage: @MainActor (LAABridgeSession) async throws -> [LAAUsageItem]
+    private let loadUsage: @MainActor (LAABridgeSession, Bool) async throws -> [LAAUsageItem]
 
     init(widgetStore: WidgetSnapshotStore? = WidgetSnapshotStore.production,
          reloadWidgets: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.employee) },
@@ -95,7 +95,10 @@ final class LAAUsageState: ObservableObject {
         self.storage = widgetStore.map(LAAUsageStorage.init)
         #endif
         self.reloadWidgets = reloadWidgets
-        self.loadUsage = loader ?? { try await Self.loadPages(bridge: $0) }
+        self.loadUsage = { bridge, manual in
+            if let loader { return try await loader(bridge) }
+            return try await Self.loadPages(bridge: bridge, manual: manual)
+        }
     }
 
     /// The shell owns this state so widgets update even if Usage is never opened.
@@ -156,7 +159,7 @@ final class LAAUsageState: ObservableObject {
         await refreshAndPublish(bridge: bridge, attemptedAt: current)
     }
 
-    func refreshAndPublish(bridge: LAABridgeSession, attemptedAt: Date? = nil) async {
+    func refreshAndPublish(bridge: LAABridgeSession, attemptedAt: Date? = nil, manual: Bool = false) async {
         if selectScope(bridgeRevision: bridge.revision) { await publish(nil) }
         guard bridge.status == .paired else { await publish(nil); return }
         guard !isRefreshing, !isPublishing else { return }
@@ -187,7 +190,7 @@ final class LAAUsageState: ObservableObject {
         }
         guard !Task.isCancelled, bridge.revision == revision else { return }
 
-        await refreshUsage { try await self.loadUsage(bridge) }
+        await refreshUsage { try await self.loadUsage(bridge, manual) }
         guard bridge.status == .paired else { usage = .init(); updatedAt = nil; await publish(nil); return }
         guard !Task.isCancelled, bridge.revision == revision else { return }
         if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
@@ -211,13 +214,14 @@ final class LAAUsageState: ObservableObject {
         if let storage, await storage.publish(snapshot) { reloadWidgets() }
     }
 
-    private static func loadPages(bridge: LAABridgeSession) async throws -> [LAAUsageItem] {
+    private static func loadPages(bridge: LAABridgeSession, manual: Bool) async throws -> [LAAUsageItem] {
         var items: [LAAUsageItem] = []
         var cursor: String?
         var seen = Set<String>()
         repeat {
             var parts = URLComponents(); parts.path = "/v1/usage"
             if let cursor { parts.queryItems = [URLQueryItem(name: "cursor", value: cursor)] }
+            else if manual { parts.queryItems = [URLQueryItem(name: "refresh", value: "1")] }
             guard let route = parts.string else { throw LAABridgeError.invalidResponse }
             let page: LAAUsagePage = try await bridge.read(route)
             items.append(contentsOf: page.items)

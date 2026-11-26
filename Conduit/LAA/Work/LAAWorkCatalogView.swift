@@ -62,8 +62,8 @@ enum LAAWorkCatalogFailure: Equatable {
     var japaneseText: String {
         switch self {
         case .warming: return "定期実行の一覧を準備しています。少し待つと表示されます。"
-        case .stale: return "最新の一覧を取得できません。前回の内容を表示しています。"
-        case .unavailable: return "一覧を取得できません。接続を確認してください。"
+        case .stale: return "一覧の更新が止まっています。接続を確認して再試行してください。"
+        case .unavailable: return "一覧が応答しません。Macとの接続を確認してください。"
         }
     }
 }
@@ -306,7 +306,7 @@ struct LAAWorkCatalogView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x3) {
                 if failure != nil {
-                    LAAWorkFailure(text: "一覧を取得できません") { Task { await load() } }
+                    LAAWorkFailure(text: "一覧が応答しません。Macとの接続を確認してください。") { Task { await load() } }
                 }
                 if loading && !loaded { LAALoadingDots() }
                 if skipped > 0 {
@@ -347,7 +347,7 @@ struct LAAWorkCatalogView: View {
                 HStack(spacing: LAASpacing.x2) {
                     Text(verbatim: LAAWorkRoutineShelf.pausedTitle(services.count))
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                         .foregroundStyle(LAAColor.secondaryText)
                         .rotationEffect(.degrees(servicesOpen ? 90 : 0))
                     Spacer(minLength: 0)
@@ -451,7 +451,7 @@ struct LAAWorkCatalogView: View {
     private var skillList: some View {
         List {
             if failure != nil {
-                LAAWorkFailure(text: "一覧を取得できません") { Task { await load() } }
+                LAAWorkFailure(text: "一覧が応答しません。Macとの接続を確認してください。") { Task { await load() } }
             }
             if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
             ForEach(skillGroups, id: \.self) { category in

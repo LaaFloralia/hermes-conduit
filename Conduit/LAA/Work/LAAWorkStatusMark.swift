@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 /// What a session or routine row says about its last state, read at a glance:
 /// a filled teal check is done, a filled red mark is an error, a plum mark
@@ -44,6 +45,19 @@ enum LAAWorkStatus: Equatable {
         case .stopped: String("停止済み")
         case .paused: String("一時停止")
         case .pending: String("結果なし")
+        }
+    }
+
+    var displayLabel: String {
+        switch self {
+        case .running: "Running"
+        case .decision: "Decision"
+        case .error: "Failed"
+        case .done: "Done"
+        case .waiting: "Waiting"
+        case .stopped: "Stopped"
+        case .paused: "Paused"
+        case .pending: "Pending"
         }
     }
 
@@ -178,24 +192,33 @@ struct LAAWorkSessionTallyLine: View {
     var identifier = "laa.work.sessions.tally"
 
     var body: some View {
-        HStack(spacing: LAASpacing.x3) {
-            ForEach(tally.parts, id: \.label) { part in
-                HStack(spacing: 4) {
-                    if part.status == .running && part.count == 0 {
-                        LAAWorkStatusMark(status: .pending)
-                    } else {
-                        LAAWorkStatusMark(status: part.status)
-                    }
-                    Text(verbatim: part.label).laaTextStyle(.secondary)
-                        .foregroundStyle(part.status == .decision ? LAAColor.attention : LAAColor.text)
-                    Text(verbatim: "\(part.count)").laaTextStyle(.secondary).monospacedDigit()
-                        .foregroundStyle(part.status == .decision ? LAAColor.attention : LAAColor.text)
-                }
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: LAASpace.s12) { parts.fixedSize() }
+            VStack(alignment: .leading, spacing: LAASpace.s4) { parts }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: tally.accessibilityText))
         .accessibilityIdentifier(identifier)
+    }
+
+    private var parts: some View {
+        ForEach(tally.parts, id: \.label) { part in
+            HStack(spacing: LAASpace.s4) {
+                LAAStatusMark(mark(part.status, count: part.count))
+                Text(verbatim: "\(part.status.displayLabel) \(part.count)")
+                    .laaTextStyle(.secondary).monospacedDigit()
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        }
+    }
+
+    private func mark(_ status: LAAWorkStatus, count: Int) -> LAAStatusMark.State {
+        switch status {
+        case .running: count == 0 ? .waiting : .running
+        case .decision: .attention
+        default: .waiting
+        }
     }
 }
 #endif

@@ -75,7 +75,7 @@ enum LAABridgeError: Error, Equatable {
         case .invalidAddress: return "接続先はTailscaleのHTTPSアドレスで入力してください。"
         case .networkUnreachable: return "Macに届きません。TailscaleとMacの接続を確認してください。"
         case .tlsFailed: return "安全な接続を確認できません。接続先と証明書を確認してください。"
-        case .invalidResponse: return "Macからの応答を読み取れませんでした。"
+        case .invalidResponse: return "Macの応答形式が合いません。Macのアプリを更新して再試行してください。"
         #if DEBUG
         case .laneMismatch: return "検証レーンの接続先を確認できませんでした。"
         #endif
@@ -88,7 +88,7 @@ enum LAABridgeError: Error, Equatable {
         case .rateLimited: return "試行が多すぎます。時間をおいてからお試しください。"
         case .unavailable: return "Mac側のサービスを利用できません。"
         case .other(503, "paseo_unavailable"): return "MacのWorkに接続できません。"
-        case .other: return "Macからデータを取得できませんでした。"
+        case .other: return "Macが要求を受け付けませんでした。接続を確認して再試行してください。"
         }
     }
 }

@@ -343,7 +343,7 @@ struct LAAOwnerTasksView: View {
                 if let previous = cache.details.first(where: { $0.id == task.id }) {
                     message = "前回取得した内容で編集します。保存時に更新の競合を確認します。"
                     editor = Editor(draft: LAAOwnerTaskDraft(task: previous), deviceID: deviceID)
-                } else { message = "タスクの内容を取得できません。接続を確認してください。" }
+                } else { message = "タスクが応答しません。接続を確認して再試行してください。" }
             }
         }
     }
@@ -552,7 +552,7 @@ struct LAAOwnerTasksView: View {
         } catch {
             if loadID == id && bridge.deviceID == deviceID {
                 listIsStale = true
-                message = loaded ? "最新の一覧を取得できません。前回の内容を表示しています。" : "タスクを取得できません。Macとの接続を確認してください。"
+                message = loaded ? "一覧の更新が止まっています。接続を確認して再試行してください。" : "タスク一覧が応答しません。Macとの接続を確認してください。"
             }
         }
     }

@@ -73,7 +73,7 @@ extension LAACopy {
         static let archive = "アーカイブ"
         static let unarchive = "戻す"
         static let showArchive = "アーカイブを表示"
-        static let backToRecent = "最近のセッションに戻る"
+        static let backToRecent = "Recent"
     }
 
     /// A project's detail: its requirements, Monet's note and its sessions.

@@ -10,23 +10,8 @@ import UniformTypeIdentifiers
 /// project is not a full disk.
 struct LAAWorkProjectMeter: View {
     let fraction: Double
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var clamped: Double { fraction.isFinite ? min(max(fraction, 0), 1) : 0 }
-
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(LAAColor.subtleSurface).frame(height: LAAUsageMeter.height)
-                Capsule().fill(LAAColor.link)
-                    .frame(width: clamped > 0 ? max(proxy.size.width * clamped, LAAUsageMeter.height) : 0,
-                           height: LAAUsageMeter.height)
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .frame(height: LAAUsageMeter.totalHeight)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: clamped)
-        .accessibilityHidden(true)
+        LAAUsageMeterTrack(fraction: fraction, level: .normal)
     }
 }
 
@@ -44,7 +29,7 @@ struct LAAWorkProjectRow: View {
             HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                 LAAWorkRefLabel(ref: project.ref)
                 Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
-                    .foregroundStyle(LAAColor.text).lineLimit(1)
+                    .foregroundStyle(LAAColor.text).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: LAASpacing.x2)
                 activityMark
             }
@@ -69,8 +54,8 @@ struct LAAWorkProjectRow: View {
                 LAAWorkStatusMark(status: activity == .running(count) ? .running : .decision)
                 // The word goes with the number, so it never reads as the
                 // requirements' 9 / 13 beside it (BUS-508).
-                Text(verbatim: "\(activity == .running(count) ? LAAWorkStatus.running.label : LAAWorkStatus.decision.label) \(count)")
-                    .laaTextStyle(.secondary).monospacedDigit()
+                Text(verbatim: "\(activity == .running(count) ? LAAWorkStatus.running.displayLabel : LAAWorkStatus.decision.displayLabel) \(count)")
+                    .laaTextStyle(.secondary).monospacedDigit().fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(activity == .running(count) ? LAAColor.secondaryText : LAAColor.attention)
             }
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
@@ -695,8 +680,8 @@ struct LAAWorkRequirementRow: View {
                     Text(verbatim: ref).laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.secondaryText)
                 }
                 Text(verbatim: session.name).laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                    .lineLimit(1).truncationMode(.tail)
-                Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1).truncationMode(.middle)
+                Image(systemName: "arrow.up.right").font(.caption2.weight(.semibold))
                     .foregroundStyle(LAAColor.link)
                 Spacer(minLength: 0)
             }

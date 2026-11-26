@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import AppIntents
 import SwiftUI
+import LAAKit
 import WidgetKit
 #if LAA_WIDGET_TEST
 @testable import Conduit
@@ -369,6 +370,7 @@ struct LAAEmployeeWidgetView: View {
 struct LAAWidgetUsageColumn: View {
     let entry: LAAEmployeeWidgetEntry
     let renderedAt: Date
+    @Environment(\.laaThemeID) private var themeID
     @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var noteSize: CGFloat = 11
     @ScaledMetric(relativeTo: .caption) private var providerWidth: CGFloat = 46
@@ -392,6 +394,7 @@ struct LAAWidgetUsageColumn: View {
                 usageList(rows: Self.rows(dropping: candidate / forms.count), reset: forms[candidate % forms.count])
             }
         }
+        .laaTheme(themeID)
     }
 
     /// The rows left once `count` have given way, still in widget order.
@@ -455,7 +458,7 @@ struct LAAWidgetUsageColumn: View {
             // A line never gives up height: squeezing it would shrink the
             // text and let ViewThatFits accept a list that does not fit.
             .fixedSize(horizontal: false, vertical: true)
-            LAAUsageBar(remainingPercent: value?.amount, animates: false)
+            LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false)
                 .padding(.leading, providerWidth + LAASpacing.x1)
         }
         .accessibilityElement(children: .ignore)
@@ -470,17 +473,20 @@ struct LAAWidgetUsageColumn: View {
                 Text(verbatim: reset).font(.system(size: labelSize)).monospacedDigit()
                     .foregroundStyle(LAAColor.secondaryText)
             }
-            // Unknown: the track alone and an open circle, no words.
-            Text(verbatim: value.map { LAAEmployeeWidgetView.percentageText($0.amount) } ?? "○")
-                .font(.system(size: labelSize, weight: value == nil ? .regular : .semibold)).monospacedDigit()
-                .foregroundStyle(value == nil ? LAAColor.secondaryText : LAAColor.text)
+            LAAUsageMeterMark(level: LAAMeterLevel(remainingPercent: value?.amount))
+                .font(.system(size: labelSize))
+            if let value {
+                Text(verbatim: LAAEmployeeWidgetView.percentageText(value.amount))
+                    .font(.system(size: labelSize, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(LAAColor.text)
+            }
         }
         .lineLimit(1)
         .fixedSize()
     }
 
     private func accessibilityValue(_ value: WidgetUsageMeter?, reset: Date?) -> String {
-        guard let value else { return LAACopy.notFetched }
+        guard let value else { return LAAShape.unknown }
         let text = LAAEmployeeWidgetView.displayValue(value, entryDate: entry.date, renderedAt: renderedAt,
                                                      anchor: entry.freshnessAnchor)
         return reset.map { text + "、リセット " + LAAUsageResetText.full($0, now: renderedAt) } ?? text

@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 struct LAAPersonalTaskDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -111,27 +112,16 @@ struct LAAPersonalTaskDetailView: View {
     private func completeButton(_ owner: LAALinearTask) -> some View {
         let blocked = owner.completionBlockedReason != nil
         return Button { confirmingComplete = true } label: {
-            HStack(spacing: 5) {
-                if completing {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .semibold))
-                }
-                Text(verbatim: completing ? "保存中" : "完了にする").fontWeight(.medium)
+            HStack(spacing: LAASpace.s4) {
+                if completing { ProgressView().controlSize(.mini) }
+                else { Image(systemName: "checkmark.circle").accessibilityHidden(true) }
+                Text(verbatim: "Done")
             }
-            .laaTextStyle(.secondary)
-            .foregroundStyle(blocked ? LAAColor.secondaryText : LAAColor.link)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 30)
-            .laaGlass(in: Capsule())
-            .opacity(blocked ? 0.6 : 1)
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LAAButtonStyle(.compact))
         .fixedSize()
         .disabled(completing || blocked)
-        .accessibilityLabel(Text(verbatim: "完了にする"))
+        .accessibilityLabel(Text(verbatim: "Done"))
         .accessibilityHint(Text(verbatim: owner.completionBlockedReason ?? ""))
         .accessibilityIdentifier("work.task.detail.complete")
     }
@@ -271,13 +261,13 @@ struct LAAPersonalTaskDetailView: View {
 
     private func genreChip(_ genre: LAATaskGenre) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: genre.symbol).font(.system(size: 10, weight: .semibold))
+            Image(systemName: genre.symbol).font(.caption2.weight(.semibold))
             Text(verbatim: genre.title)
         }
         .laaTextStyle(.secondary).fontWeight(.medium)
         .foregroundStyle(genre.tint)
         .padding(.horizontal, 8).padding(.vertical, 2)
-        .background(genre.tint.opacity(0.12), in: Capsule())
+        .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.control))
         .accessibilityLabel(Text(verbatim: "ジャンル \(genre.title)"))
     }
 

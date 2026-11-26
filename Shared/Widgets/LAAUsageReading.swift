@@ -178,7 +178,8 @@ enum LAAUsageFreshness {
         if item.stale || item.retainedReason != nil { return true }
         guard let observed = LAAUsageItem.date(item.observedAt),
               !(min(item.freshnessAnchor ?? now, now).addingTimeInterval(120) < observed) else { return true }
-        let limit = min(observed, item.freshnessAnchor ?? now, now).addingTimeInterval(10 * 60)
+        let routine = item.id.hasPrefix("capacity.macbook.") || (item.kind == "balance" && item.id.hasSuffix(".balance"))
+        let limit = min(observed, item.freshnessAnchor ?? now, now).addingTimeInterval(routine ? 24 * 3600 : 10 * 60)
         if item.detail?.sourceKind == "verified" { return true }
         if let raw = item.detail?.freshUntil {
             guard let deadline = LAAUsageItem.date(raw) else { return true }

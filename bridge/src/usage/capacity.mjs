@@ -9,6 +9,7 @@ import { availableItem, unavailableItem, isoFromMs } from './items.mjs';
 
 const CACHE_MS = 10_000;
 const FRESH_MS = 10 * 60_000;
+const MACBOOK_FRESH_MS = 24 * 60 * 60_000;
 const GIB = 1024 ** 3;
 const definitions = [
   ['capacity.mac-mini.memory', 'Mac mini · Memory', 'Mac mini', 'memory', 'bridge-host-sampler'],
@@ -39,8 +40,9 @@ function project(def, sample, now) {
     : critical !== null && available < critical ? 'critical' : warning !== null && available < warning ? 'warning' : warning !== null ? 'normal' : 'unknown';
   const driveUsage = bytes(sample.driveUsageBytes);
   const extra = def.resourceType === 'google-storage' ? { driveUsageBytes: driveUsage } : {};
-  return availableItem({ ...def, value: used, observedAt: isoFromMs(observed), stale: now >= observed + FRESH_MS,
-    detail: { totalBytes: total, availableBytes: available, freshUntil: isoFromMs(observed + FRESH_MS), deviceLabel: def.deviceLabel, resourceType: def.resourceType, status, warningFreeBytes: warning, criticalFreeBytes: critical, ...extra } });
+  const freshUntil = observed + (def.source === 'macbook-ssh' ? MACBOOK_FRESH_MS : FRESH_MS);
+  return availableItem({ ...def, value: used, observedAt: isoFromMs(observed), stale: now >= freshUntil,
+    detail: { totalBytes: total, availableBytes: available, freshUntil: isoFromMs(freshUntil), deviceLabel: def.deviceLabel, resourceType: def.resourceType, status, warningFreeBytes: warning, criticalFreeBytes: critical, ...extra } });
 }
 
 export async function readGoogleCapacity({ connection = googleConnection } = {}) {
@@ -123,9 +125,9 @@ export function createCapacitySource({ host, now = Date.now, cacheMs = CACHE_MS,
     return inflight[index];
   }
   return {
-    read() {
+    read({ sample = true } = {}) {
       const at = now();
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; sample && i < 3; i++) {
         const interval = i >= 2 ? 5 * 60_000 : cacheMs;
         if (attemptedAt[i] === null || at < attemptedAt[i] || at - attemptedAt[i] >= interval) refresh(i);
       }
@@ -137,6 +139,12 @@ export function createCapacitySource({ host, now = Date.now, cacheMs = CACHE_MS,
       });
     },
     refresh,
+    async refreshInstant() {
+      const at = now();
+      await Promise.all([0, 1].map(i => inflight[i] ??
+        (attemptedAt[i] === null || at < attemptedAt[i] || at - attemptedAt[i] >= 1000 ? refresh(i) : null)));
+    },
+    refreshMacBook: () => refresh(3),
     close() { closed = true; },
   };
 }

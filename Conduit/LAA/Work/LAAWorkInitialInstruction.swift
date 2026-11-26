@@ -88,7 +88,7 @@ struct LAAWorkInitialInstruction: View {
                     } else if response != nil {
                         Text(verbatim: "記録なし").laaTextStyle(.body)
                     } else if failed {
-                        Text(verbatim: "最初の指示を取得できませんでした。").laaTextStyle(.body)
+                        Text(verbatim: "最初の指示が応答しません。Macとの接続を確認してください。").laaTextStyle(.body)
                         Button("Retry") { Task { await load() } }
                     } else {
                         ProgressView()

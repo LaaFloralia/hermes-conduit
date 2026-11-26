@@ -208,7 +208,8 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     }),
     ...(lane ? laneUsageRoutes(lane, store.dir, now) : []),
     ...(!lane ? [
-      ...usageRoutes({ ...(options.usage ?? {}), now }),
+      ...usageRoutes({ collectMacBook: sessionOptions.live === true,
+        routineFile: `${store.dir}/usage-routine.json`, ...(options.usage ?? {}), now }),
       ...studioRoutes({ store, now, registerCleanup: sessionOptions.registerCleanup, ...options.studio }),
       ...routineRoutes({ ...(options.routines ?? {}), refs }),
       ...calendarRoutes({ ...calendarOptions, service: calendarService }),
