@@ -6,6 +6,7 @@ import { googleConnection } from '../google/connection.mjs';
 const fields = 'id,name,mimeType,size,version,modifiedTime,webViewLink,hasThumbnail,thumbnailLink,thumbnailVersion,capabilities(canDownload,canAddChildren),shortcutDetails,owners(displayName),videoMediaMetadata(durationMillis)';
 const api = 'https://www.googleapis.com/drive/v3';
 const folderType = 'application/vnd.google-apps.folder';
+const rulesByteLimit = 256 * 1024;
 const escapeQuery = value => value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
 const fail = (code, message, status = 503) => new BridgeError(status, code, message);
 export function driveItem(f) {
@@ -20,7 +21,8 @@ export function driveItem(f) {
     shortcut: f.shortcutDetails ? { targetId: f.shortcutDetails.targetId, targetMimeType: f.shortcutDetails.targetMimeType, requiresResourceKey: !!f.shortcutDetails.targetResourceKey } : null, owners: f.owners ?? [],
     exportFormats: workspace ? ['application/pdf'] : [], thumbnailLink: null };
 }
-export function createGoogleDrive({ connection = googleConnection, now = Date.now } = {}) {
+export function createGoogleDrive({ connection = googleConnection, now = Date.now,
+  studioRuleName = process.env.LAA_STUDIO_RULES_FILE_NAME || 'Studio運用ルール' } = {}) {
   const uploads = new Map();
   const request = async (url, options = {}) => {
     try { return await connection.request(url, options, 'drive'); }
@@ -51,8 +53,51 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
       { signal, headers: range ? { range } : {} });
     return { status: response.status, headers: response.headers, stream: response.body ? Readable.fromWeb(response.body) : Readable.from([]) };
   }
+  async function findRuleItem(parent, names, signal) {
+    const url = new URL(`${api}/files`);
+    const matchingNames = names.map(name => `name = '${escapeQuery(name)}'`).join(' or ');
+    url.search = new URLSearchParams({
+      q: `trashed = false and '${escapeQuery(parent)}' in parents and (${matchingNames})`,
+      pageSize: '2', spaces: 'drive', fields: `files(${fields}),nextPageToken,incompleteSearch`,
+    });
+    const result = await json(await request(url, { signal }));
+    if (!Array.isArray(result.files) || result.incompleteSearch || result.nextPageToken || result.files.length > 1) {
+      throw fail('rules_ambiguous', 'Operating rules could not be uniquely identified', 409);
+    }
+    return result.files.length ? driveItem(result.files[0]) : null;
+  }
   return {
     get,
+    async operatingRules(surface, { signal } = {}) {
+      const studio = surface === 'studio';
+      const folder = studio ? await findRuleItem('root', ['Studio'], signal) : null;
+      if (studio && folder?.kind !== 'folder') return null;
+      const names = studio ? (studioRuleName.endsWith('.md') ? [studioRuleName] : [studioRuleName, `${studioRuleName}.md`])
+        : ['Drive運用ルール', 'Drive運用ルール.md'];
+      const item = await findRuleItem(folder?.id ?? 'root', names, signal);
+      if (!item) return null;
+      if (item.downloadable !== true) throw fail('download_forbidden', 'Drive does not permit reading the rules', 403);
+      const workspace = item.mimeType === 'application/vnd.google-apps.document';
+      const rawMarkdown = item.kind === 'file' && item.name.endsWith('.md');
+      if ((!workspace && !rawMarkdown) || typeof item.version !== 'string' || !/^\d{1,30}$/.test(item.version)) {
+        throw fail('rules_unsupported', 'Operating rules must be a Google Doc or Markdown file', 409);
+      }
+      const file = `${api}/files/${encodeURIComponent(item.id)}`;
+      const response = await request(workspace ? `${file}/export?mimeType=text%2Fmarkdown` : `${file}?alt=media`, { signal });
+      if (workspace && response.headers.get('content-type')?.split(';')[0] !== 'text/markdown') {
+        throw fail('rules_unsupported', 'Drive did not export Markdown', 409);
+      }
+      const body = await bounded(response, rulesByteLimit);
+      const latest = await findRuleItem(folder?.id ?? 'root', names, signal);
+      if (latest?.id !== item.id || latest.version !== item.version || latest.downloadable !== true) {
+        throw fail('version_changed', 'The operating rules changed; reload to read the current version', 409);
+      }
+      try {
+        const markdown = new TextDecoder('utf-8', { fatal: true }).decode(body);
+        if (!markdown.trim() || markdown.includes('\0')) throw new Error('invalid Markdown');
+        return { markdown };
+      } catch { throw fail('rules_invalid', 'Operating rules are not UTF-8 Markdown', 409); }
+    },
     // Start only a bounded range while checking fresh permissions/version.
     // Nothing is returned to the client until both requests have succeeded.
     async prepareContent(id, { range, signal } = {}) {

@@ -6,6 +6,23 @@ import XCTest
 final class LAAStudioTests: XCTestCase {
     private let requestID = "0f6b1c2e-6f1a-4c55-9d43-0d5f6f3b8a11"
 
+    func testWorkKindUsesPagesAndNormalizesRelatedAssets() {
+        func project(_ kinds: [String], pages: Bool = false) -> LAAStudioProject {
+            .init(id: "test", title: "Fixture", revision: 1,
+                  pages: pages ? [.init(id: "cover", name: "Cover", preview: nil)] : [],
+                  assets: kinds.map { .init(id: $0, name: $0, kind: $0, url: nil, poster: nil, unavailable: nil, previewOnly: nil) },
+                  syncedAt: nil, driveUrl: nil, deliveredRevision: nil)
+        }
+        XCTAssertEqual(LAAStudioWorkKind(project: project([], pages: true)), .documents)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["image", "photo"])), .images)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["video"])), .videos)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["motion"])), .motion)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["usdz"])), .models)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["music"])), .audio)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["image", "audio"])), .mixed)
+        XCTAssertEqual(LAAStudioWorkKind(project: project(["unknown"])), .other)
+    }
+
     func testCachedSnapshotSurvivesRelaunchAndSeparatesPairings() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-cache-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

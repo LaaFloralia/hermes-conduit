@@ -21,12 +21,33 @@ final class LAAMacLibraryUITests: XCTestCase {
         button.tap()
     }
 
+    private func sourceMenu(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "laa.brain.source").firstMatch
+    }
+
+    private func sourceItem(_ app: XCUIApplication, _ name: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "laa.brain.location.\(name)").firstMatch
+    }
+
+    private func selectSource(_ app: XCUIApplication, _ name: String) {
+        sourceMenu(app).click()
+        let item = sourceItem(app, name)
+        XCTAssertTrue(item.waitForExistence(timeout: 15)); item.click()
+    }
+
     func testBrainAndHQAreVisibleAsSeparateLocalLocations() {
-        let app = launch(["-laa-brain-no-vault-fixture"])
+        let app = launch(["-laa-brain-mac-roots-fixture", "-conduit.themePreference", "light"])
         openSection(app, "brain")
-        XCTAssertTrue(app.buttons["laa.brain.location.Brain"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.buttons["laa.brain.location.HQ"].exists)
+        let menu = sourceMenu(app)
+        XCTAssertTrue(menu.waitForExistence(timeout: 30))
+        XCTAssertFalse(sourceItem(app, "HQ").isHittable)
+        XCTAssertFalse(app.buttons["laa.brain.recovery.open"].isHittable)
+        menu.click()
+        XCTAssertTrue(sourceItem(app, "HQ").waitForExistence(timeout: 15))
+        XCTAssertTrue(sourceItem(app, "Brain").exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "laa.brain.chooseFolder").firstMatch.exists)
         XCTAssertFalse(app.staticTexts["On this iPhone"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "doc-source-mac-light"; shot.lifetime = .keepAlways; add(shot)
     }
 
     func testSwitchingLocationsClearsPreviousDetailAndShowsNewNotes() {
@@ -34,17 +55,17 @@ final class LAAMacLibraryUITests: XCTestCase {
         openSection(app, "brain")
         let brain = app.buttons["laa.brain.note"].firstMatch
         XCTAssertTrue(brain.waitForExistence(timeout: 30))
-        app.buttons["laa.brain.location.Brain"].tap()
+        selectSource(app, "Brain")
         XCTAssertTrue(app.staticTexts["BrainOnly"].waitForExistence(timeout: 15))
         brain.tap()
-        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 15))
-        app.buttons["laa.brain.location.HQ"].tap()
+        XCTAssertTrue(app.textViews["laa.brain.edit.text"].firstMatch.waitForExistence(timeout: 15))
+        selectSource(app, "HQ")
         XCTAssertTrue(app.staticTexts["HQOnly"].waitForExistence(timeout: 15))
-        app.buttons["laa.brain.location.HQ"].tap()
+        selectSource(app, "HQ")
         XCTAssertTrue(app.staticTexts["HQOnly"].waitForExistence(timeout: 15))
-        XCTAssertFalse(app.buttons["laa.brain.rawToggle"].exists)
+        XCTAssertFalse(app.textViews["laa.brain.edit.text"].firstMatch.exists)
         XCTAssertFalse(app.staticTexts["BrainOnly"].exists)
-        app.buttons["laa.brain.location.Brain"].tap()
+        selectSource(app, "Brain")
         XCTAssertTrue(app.staticTexts["BrainOnly"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["HQOnly"].exists)
     }
@@ -55,22 +76,28 @@ final class LAAMacLibraryUITests: XCTestCase {
         let note = app.buttons["laa.brain.note"].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 30))
         note.tap()
-        let edit = app.buttons["laa.brain.edit"]
-        XCTAssertTrue(edit.waitForExistence(timeout: 15))
-        edit.tap()
-        XCTAssertTrue(app.buttons["laa.brain.edit.save"].waitForExistence(timeout: 15))
-        XCTAssertFalse(app.buttons["laa.brain.location.HQ"].isEnabled)
+        let editor = app.textViews["laa.brain.edit.text"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        // The selection guard applies while a modal note operation is open;
+        // inline notes themselves do not have a separate Edit mode.
+        app.buttons["laa.brain.menu"].click()
+        let manage = app.descendants(matching: .any).matching(identifier: "laa.brain.manage").firstMatch
+        XCTAssertTrue(manage.waitForExistence(timeout: 15)); manage.click()
+        XCTAssertTrue(app.textFields["laa.brain.manage.name"].waitForExistence(timeout: 15))
+        XCTAssertFalse(sourceMenu(app).isHittable)
     }
 
     func testBrainNoteOpensInTheDetailColumn() {
         let app = launch(["-laa-brain-fixture", "normal"])
         openSection(app, "brain")
+        let folder = app.staticTexts["Company"].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 30)); folder.click()
         let note = app.buttons.matching(identifier: "laa.brain.note").firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 30))
         note.tap()
         // The note's toolbar only exists in the detail column, and the list
         // must still be there beside it.
-        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["laa.brain.menu"].waitForExistence(timeout: 20))
         XCTAssertFalse(app.buttons["laa.brain.back"].exists, "A Mac detail column has no list to go back to")
         XCTAssertTrue(note.exists, "Choosing a note replaced the list instead of filling the detail column")
     }

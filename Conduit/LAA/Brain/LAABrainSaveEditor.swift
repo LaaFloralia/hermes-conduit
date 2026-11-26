@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -13,6 +14,7 @@ private struct BrainSaveConflict {
 struct LAABrainSaveEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.laaDesktop) private var desktop
     let root: URL
     let path: String
     let autoFocus: Bool
@@ -85,7 +87,7 @@ struct LAABrainSaveEditor: View {
     private var page: some View {
             Group {
                 if busy && snapshot == nil && pending.isEmpty {
-                    VStack(spacing: LAASpacing.x3) { ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface).frame(height: 20) } }.padding(LAASpacing.horizontal)
+                    LAALoadingDots()
                 } else if !pending.isEmpty {
                     interruptedView
                 } else if let conflict {
@@ -103,7 +105,7 @@ struct LAABrainSaveEditor: View {
                         }
                         LAAMarkdownEditor(text: visibleBody, autoFocus: autoFocus || visibleBody.isEmpty, isEnabled: !busy,
                                           title: inline ? noteTitle : nil,
-                                          breadcrumb: path.split(separator: "/").dropLast().joined(separator: " › "),
+                                          breadcrumb: path.split(separator: "/").dropLast().joined(separator: " / "),
                                           status: saveStatus,
                                           readingPositions: readingPositions, positionKey: root.absoluteString + path,
                                           attachments: attachments, footer: relatedNotes?(saveAndOpenLink),
@@ -134,10 +136,10 @@ struct LAABrainSaveEditor: View {
                     // reading-layer paper with a hairline, not glass.
                     Text(verbatim: message).font(.footnote).foregroundStyle(LAAColor.attention)
                         .padding()
-                        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAAKit.LAARadius.button, style: .continuous))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(LAAColor.separator, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: LAAKit.LAARadius.button, style: .continuous)
+                                .strokeBorder(LAAColor.separator, lineWidth: LAAStroke.rule)
                         }
                         .padding()
                 }
@@ -145,29 +147,31 @@ struct LAABrainSaveEditor: View {
             .navigationTitle(Text(verbatim: inline ? "" : noteTitle))
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(inline)
+            .toolbarBackground(LAAColor.surface, for: .navigationBar)
+            .toolbarBackground(desktop && inline ? .hidden : .visible, for: .navigationBar)
             .toolbar {
                 if inline {
                     if showsBackButton {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { Task { await close() } } label: { Image(systemName: "chevron.left") }
-                                .accessibilityLabel(String("戻る")).accessibilityIdentifier("laa.brain.back")
+                                .accessibilityLabel("Back").accessibilityIdentifier("laa.brain.back")
                                 .disabled(saving || busy)
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button(String("文書内検索"), systemImage: "magnifyingglass") { showFind = true }
+                            Button("Find", systemImage: "magnifyingglass") { showFind = true }
                             Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), systemImage: "pin", action: togglePin)
                                 .accessibilityIdentifier("laa.brain.pin")
-                            Button("履歴", systemImage: "clock.arrow.circlepath") { showHistory = true }
+                            Button("History", systemImage: "clock.arrow.circlepath") { showHistory = true }
                                 .accessibilityIdentifier("laa.brain.history")
-                            Button(String("Markdownを表示"), systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
+                            Button("Markdown", systemImage: "chevron.left.forwardslash.chevron.right") { showRaw = true }
                                 .accessibilityIdentifier("laa.brain.rawToggle")
-                            Button(String("情報"), systemImage: "info.circle") { showInfo = true }
-                            if let manage { Button(String("名前・保存先を変更"), systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
+                            Button("Info", systemImage: "info.circle") { showInfo = true }
+                            if let manage { Button("Manage", systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
                             if autoSaveBlocked { Button(String("保存を再試行")) { autoSaveBlocked = false; Task { await save(automatically: true) } } }
                         } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
+                            .accessibilityLabel("Note Menu").accessibilityIdentifier("laa.brain.menu")
                     }
                 } else {
                     ToolbarItem(placement: .cancellationAction) { Button("閉じる") { Task { await close() } }.disabled(busy || saving) }
@@ -345,11 +349,10 @@ struct LAABrainSaveEditor: View {
         var readingNote = false
         do {
             let vault = LAABrainSaveJournal.vaultID(root)
-            let (stored, unfinished) = try await Task.detached(priority: .userInitiated) {
-                (try coordinator.journal.summaries(vault: vault, path: path),
-                 try coordinator.journal.pending(vault: vault, path: path))
+            let unfinished = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.pending(vault: vault, path: path)
             }.value
-            versions = stored; pending = unfinished
+            pending = unfinished
             if unfinished.isEmpty {
                 readingNote = true
                 let opening = try await Task.detached(priority: .userInitiated) {
@@ -368,16 +371,13 @@ struct LAABrainSaveEditor: View {
                     snapshot = nil; draft = String(decoding: bytes, as: UTF8.self); canExportDraft = true
                     message = "ノートを読めません。保管庫へのアクセスを確認してください。"
                 }
-                versions = try await Task.detached(priority: .userInitiated) {
-                    try coordinator.journal.summaries(vault: vault, path: path)
-                }.value
             }
-            historyCorrupt = try await Task.detached(priority: .userInitiated) {
-                try coordinator.journal.corruptCount(vault: vault, path: path) > 0
+            let history = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.inspect(vault: vault, path: path)
             }.value
-            historyUnreadable = try await Task.detached(priority: .userInitiated) {
-                try coordinator.journal.unreadableCount(vault: vault, path: path) > 0
-            }.value
+            versions = history.versions
+            historyCorrupt = history.corrupt
+            historyUnreadable = history.unreadable
             recoveryUnavailable = false
         } catch LAABrainSaveCoordinator.SaveError.historyUnavailable {
             message = "履歴を読めません。端末内の保存領域を確認してください。"

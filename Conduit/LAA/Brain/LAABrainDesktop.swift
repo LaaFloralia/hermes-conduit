@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// Desktop-only Brain navigation. The phone keeps NavigationLinks; on the Mac
@@ -91,9 +92,10 @@ struct LAABrainDesktopNoteRow: View {
                 }
             }
             .padding(.horizontal, LAASpacing.x3)
-            .padding(.vertical, LAASpacing.x2)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(background, in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+            .padding(.vertical, LAASpacing.x1)
+            .frame(maxWidth: .infinity, minHeight: LAACanvas.mac.rowMinHeight, alignment: .leading)
+            .background(background)
+            .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -127,13 +129,11 @@ struct LAABrainDesktopFolderRow: View {
                     .accessibilityHidden(true)
                 Text(verbatim: name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(LAAColor.secondaryText)
-                    .accessibilityHidden(true)
             }
             .padding(.horizontal, LAASpacing.x3)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(hovering ? LAAColor.subtleSurface.opacity(0.7) : .clear,
-                        in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+            .frame(maxWidth: .infinity, minHeight: LAACanvas.mac.rowMinHeight, alignment: .leading)
+            .background(hovering ? LAAColor.subtleSurface : .clear)
+            .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -155,8 +155,8 @@ struct LAABrainDesktopHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                Text(verbatim: LAACopy.Brain.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                    .accessibilityAddTraits(.isHeader)
+                LAADocTitle(title: LAACopy.Brain.title)
+                    .accessibilityIdentifier("laa.brain.title")
                 Spacer(minLength: 0)
                 if canRefresh {
                     Button(action: refresh) {
@@ -188,7 +188,9 @@ struct LAABrainDesktopHeader: View {
 /// Breadcrumb for the folder opened inside the desktop list.
 struct LAABrainDesktopBreadcrumb: View {
     let folder: String
+    let rootName: String
     let open: (String) -> Void
+    @Environment(\.laaDesktop) private var desktop
 
     private var parts: [(String, String)] {
         var result: [(String, String)] = []
@@ -201,25 +203,26 @@ struct LAABrainDesktopBreadcrumb: View {
     }
 
     var body: some View {
-        HStack(spacing: LAASpacing.x1) {
-            Button { open("") } label: {
-                Text(verbatim: LAACopy.Brain.folders).laaTextStyle(.secondary)
-                    .foregroundStyle(parts.isEmpty ? LAAColor.text : LAAColor.link)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("laa.brain.desktop.root")
-            ForEach(parts, id: \.1) { name, path in
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(LAAColor.secondaryText)
-                    .accessibilityHidden(true)
-                Button { open(path) } label: {
-                    Text(verbatim: name).laaTextStyle(.secondary).lineLimit(1)
-                        .foregroundStyle(path == folder ? LAAColor.text : LAAColor.link)
+        let target = (desktop ? LAACanvas.mac : .iphone).touchTarget
+        HStack(spacing: LAASpacing.x2) {
+            Menu {
+                Button(rootName) { open("") }
+                    .accessibilityIdentifier("laa.brain.desktop.root")
+                ForEach(parts.dropLast(), id: \.1) { name, path in
+                    Button(name) { open(path) }
                 }
-                .buttonStyle(.plain)
+            } label: {
+                Text(verbatim: parts.count > 1 ? rootName + " / …" : rootName)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                    .frame(minHeight: target).contentShape(Rectangle())
             }
-            Spacer(minLength: 0)
+            .accessibilityLabel("Folders").accessibilityIdentifier("laa.brain.folder.parents")
+            Text("/").foregroundStyle(LAAColor.secondaryText).accessibilityHidden(true)
+            Text(verbatim: parts.last?.0 ?? rootName).foregroundStyle(LAAColor.text).lineLimit(1)
+                .truncationMode(.head).accessibilityIdentifier("laa.brain.folder.current")
         }
-        .frame(minHeight: LAASpacing.minimumTouchTarget)
+        .laaTextStyle(.secondary)
+        .frame(maxWidth: .infinity, minHeight: target, alignment: .leading)
     }
 }
 

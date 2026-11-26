@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -35,7 +36,6 @@ struct LAABrainView: View {
     @State private var hits: [LAABrainHit] = []
     @State private var query = ""
     @FocusState private var searchFocused: Bool
-    @State private var mode = 0
     @State private var includeInbox = false
     @State private var isLoading = false
     @State private var isSearching = false
@@ -69,6 +69,7 @@ struct LAABrainView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.section) {
                         heading
+                        if let localError { localErrorText(localError) }
                         if local.isSelected {
                             if local.state == .needsAccess { localAccessView }
                             else { localBrowser }
@@ -109,18 +110,23 @@ struct LAABrainView: View {
                         LAAColor.background.ignoresSafeArea()
                         ScrollView {
                             VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                                LAABrainDesktopBreadcrumb(folder: folder, rootName: local.location?.rawValue ?? "Brain") { parent in
+                                    if parent.isEmpty { path = []; return }
+                                    if let index = path.firstIndex(of: .folder(parent)) { path = Array(path.prefix(index + 1)) }
+                                }
                                 folderContents(folder)
                             }
-                            .padding(LAASpacing.horizontal)
+                            .padding(.horizontal, LAACanvas.iphone.margin)
+                            .padding(.vertical, LAASpacing.x2)
                             .laaPageWidth()
                         }
                     }
-                    .navigationTitle(Text(verbatim: folder.split(separator: "/").last.map(String.init) ?? folder))
+                    .navigationTitle("")
                     .navigationBarBackButtonHidden(true)
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { if !path.isEmpty { path.removeLast() } } label: {
-                                Label { Text(verbatim: local.isReady ? "戻る" : LAACopy.Brain.back) } icon: { Image(systemName: "chevron.left") }
+                                Label { Text("Back") } icon: { Image(systemName: "chevron.left") }
                             }.accessibilityIdentifier("laa.brain.back")
                         }
                         if local.isReady {
@@ -227,9 +233,7 @@ struct LAABrainView: View {
                                   },
                                   open: {}) {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                        #if targetEnvironment(macCatalyst)
-                        macLocalSelector
-                        #else
+                        #if !targetEnvironment(macCatalyst)
                         sourceSelector
                         #endif
                         #if targetEnvironment(macCatalyst)
@@ -251,6 +255,7 @@ struct LAABrainView: View {
                             localIntroduction
                         }
                         #endif
+                        if let localError { localErrorText(localError) }
                     }
                     .padding(.horizontal, LAASpacing.x4)
                     .padding(.vertical, LAASpacing.x4)
@@ -268,7 +273,6 @@ struct LAABrainView: View {
                              togglePin: { togglePin(selection.path) }, path: desktopPath,
                              autoEditPath: $autoEditPath, editorIsOpen: $editorIsOpen, readingPositions: readingPositions,
                              showsBackButton: false, usesNavigationTitle: false,
-                             contentMaxWidth: LAADesktopMetrics.documentWidth,
                              leave: { desktopSelection = nil; Task { await load() } })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -288,6 +292,9 @@ struct LAABrainView: View {
                     .accessibilityIdentifier("laa.brain.create")
             }
         }
+        #if targetEnvironment(macCatalyst)
+        ToolbarItem(placement: .topBarTrailing) { macLocalSelector }
+        #endif
         ToolbarItem(placement: .topBarTrailing) {
             LAASettingsButton(action: onRequestSettings)
         }
@@ -317,22 +324,17 @@ struct LAABrainView: View {
         if !term.isEmpty {
             return hits.compactMap { hit in files.first { $0.path == hit.path } }
         }
-        let browsingLocal = local.isSelected
-        let currentMode = browsingLocal ? localMode : mode
-        switch currentMode {
-        case let value where (value == 0 || value == 1) && desktopFolder.isEmpty:
-            let sorted = files.sorted { $0.modifiedAt > $1.modifiedAt }
-            let visible = Array(sorted.prefix(5)) + sorted.filter { pins.contains($0.path) } + files.filter { $0.folder.isEmpty }
-            var seen = Set<String>()
-            return visible.filter { seen.insert($0.path).inserted }
+        switch localMode {
+        case 1 where desktopFolder.isEmpty:
+            let pinned = files.filter { pins.contains($0.path) }.sorted { $0.modifiedAt > $1.modifiedAt }
+            return pinned + folderNotes("").filter { !pins.contains($0.path) }
         case 2:
             guard let selectedTag else { return [] }
             return index?.files(tag: selectedTag) ?? []
         case 3:
             return files.filter { $0.conflictOriginalPath != nil }
         default:
-            return files.filter { $0.folder == desktopFolder }
-                .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            return folderNotes(desktopFolder)
         }
     }
 
@@ -356,7 +358,7 @@ struct LAABrainView: View {
         }
         switch route {
         case .note(let reference): desktopSelection = reference
-        case .folder(let folder): desktopFolder = folder; mode = 1
+        case .folder(let folder): desktopFolder = folder; localMode = 1
         case nil: desktopSelection = nil
         }
         path = []
@@ -425,32 +427,31 @@ struct LAABrainView: View {
 
     #if targetEnvironment(macCatalyst)
     private var macLocalSelector: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack {
-                ForEach(LAABrainLocalVault.Location.allCases, id: \.rawValue) { target in
-                    Button(target.rawValue) {
-                        guard local.location != target || !local.isReady else { return }
-                        resetLocalNavigation()
-                        local.select(target)
-                        if !local.isReady { chooseFolder = true }
-                    }
-                    .disabled(dailyBlocked || dailyOpening)
-                    .accessibilityIdentifier("laa.brain.location.\(target.rawValue)")
+        Menu {
+            ForEach(LAABrainLocalVault.Location.allCases, id: \.rawValue) { target in
+                Button {
+                    guard local.location != target || !local.isReady else { return }
+                    resetLocalNavigation()
+                    local.select(target)
+                    if !local.isReady { chooseFolder = true }
+                } label: {
+                    if local.location == target { Label(target.rawValue, systemImage: "checkmark") }
+                    else { Text(verbatim: target.rawValue) }
                 }
-                Spacer()
-                if let location = local.location { Text(verbatim: location.rawValue).laaTextStyle(.secondary) }
+                .disabled(dailyBlocked || dailyOpening)
+                .accessibilityIdentifier("laa.brain.location.\(target.rawValue)")
             }
             if local.location != nil {
-                Button { chooseFolder = true } label: { Text(verbatim: "フォルダを選び直す") }
+                Divider()
+                Button("Choose Folder", systemImage: "folder") { chooseFolder = true }
                     .disabled(dailyBlocked || dailyOpening)
                     .accessibilityIdentifier("laa.brain.chooseFolder")
             }
-            if local.isReady {
-                Button("復元履歴") { showRecovery = true }
-                    .accessibilityIdentifier("laa.brain.recovery.open")
-            }
-            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+            if local.isReady { recoveryAction }
+        } label: {
+            Label(local.location?.rawValue ?? "Source", systemImage: "folder")
         }
+        .accessibilityIdentifier("laa.brain.source")
     }
     #endif
 
@@ -461,7 +462,6 @@ struct LAABrainView: View {
                 .laaGlassButton(prominent: true).accessibilityIdentifier("laa.brain.chooseFolder")
             Button("Mac接続で開く") { showMacSource = true }.laaTextStyle(.secondary)
                 .accessibilityIdentifier("laa.brain.openMac")
-            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }.foregroundStyle(LAAColor.text)
     }
 
@@ -492,13 +492,13 @@ struct LAABrainView: View {
             } else if isLoading && files.isEmpty && folderPaths.isEmpty {
                 skeletonRows
             } else if (2...4).contains(localMode) {
-                Button(String("一覧に戻る")) { localMode = 1 }
+                Button("Back") { localMode = 1 }
                 if localMode == 2 { tagBrowser }
                 else if localMode == 3 { conflictBrowser }
                 else { galleryBrowser }
             }
             else if laaDesktop && !desktopFolder.isEmpty {
-                LAABrainDesktopBreadcrumb(folder: desktopFolder) { desktopFolder = $0 }
+                LAABrainDesktopBreadcrumb(folder: desktopFolder, rootName: local.location?.rawValue ?? "Brain") { desktopFolder = $0 }
                 paperPanel { folderContents(desktopFolder) }
             } else { noteHome }
         }.foregroundStyle(LAAColor.text)
@@ -507,7 +507,7 @@ struct LAABrainView: View {
     private var skeletonRows: some View {
         VStack(spacing: LAASpacing.x2) {
             ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface).frame(height: LAASpacing.minimumRowHeight) }
-        }.accessibilityLabel(String("読み込み中"))
+        }.accessibilityLabel("Loading")
     }
 
     private func paperPanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -518,12 +518,11 @@ struct LAABrainView: View {
     }
 
     private var noteHome: some View {
-        let sorted = files.sorted { $0.modifiedAt > $1.modifiedAt }
-        let pinned = sorted.filter { pins.contains($0.path) }
+        let pinned = files.filter { pins.contains($0.path) }.sorted { $0.modifiedAt > $1.modifiedAt }
         return VStack(alignment: .leading, spacing: LAASpacing.section) {
             if local.isReady {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    sectionHeading("今日のノート")
+                    sectionHeading("Today")
                     paperPanel {
                         Button { dailyRequest.enqueue() } label: {
                             HStack(spacing: LAASpacing.x3) {
@@ -538,44 +537,54 @@ struct LAABrainView: View {
                     }
                 }
             }
-            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                sectionHeading("最近")
-                paperPanel {
-                    if sorted.isEmpty { Text(verbatim: "ノートはありません。").foregroundStyle(LAAColor.secondaryText).frame(minHeight: LAASpacing.minimumRowHeight) }
-                    ForEach(Array(sorted.prefix(5))) { noteLink($0) }
-                }
-            }
             if !pinned.isEmpty {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    sectionHeading("ピン留め")
+                    sectionHeading("Pinned")
                     paperPanel { ForEach(pinned) { noteLink($0) } }
                 }
             }
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 HStack {
-                    sectionHeading("フォルダ")
+                    sectionHeading("Folders")
                     Spacer()
                     Menu {
-                        Button(String("フォルダ")) { localMode = 1 }
-                        Button(String("最近")) { localMode = 0 }.accessibilityIdentifier("laa.brain.filter.recent")
-                        Button("タグ") { localMode = 2; selectedTag = nil }.accessibilityIdentifier("laa.brain.filter.tags")
-                        Button(String("ギャラリー")) { localMode = 4 }.accessibilityIdentifier("laa.brain.filter.gallery")
-                        if files.contains(where: { $0.conflictOriginalPath != nil }) { Button("競合") { localMode = 3 } }
+                        Button("Tags") { localMode = 2; selectedTag = nil }.accessibilityIdentifier("laa.brain.filter.tags")
+                        Button("Gallery") { localMode = 4 }.accessibilityIdentifier("laa.brain.filter.gallery")
+                        if files.contains(where: { $0.conflictOriginalPath != nil }) { Button("Conflicts") { localMode = 3 } }
                         Divider()
-                        Button(String("名前順")) { folderSortNewest = false }
-                        Button(String("更新日順")) { folderSortNewest = true }
-                        Button(String("保存先を変更")) { chooseFolder = true }
-                        Button("復元履歴") { showRecovery = true }.accessibilityIdentifier("laa.brain.recovery.open")
-                        Button(String("Mac接続を使う")) {
-                            do { try local.disconnect(); showMacSource = true; path = []; query = "" }
-                            catch { localError = LAABrainVaultError.unreadable.message }
+                        Button("Sort by Name") { folderSortNewest = false }
+                        Button("Sort by Date") { folderSortNewest = true }
+                        if !laaDesktop && local.isReady {
+                            Divider()
+                            Button("Choose Folder") { chooseFolder = true }
+                            recoveryAction
+                            Button("Use Mac") {
+                                do { try local.disconnect(); showMacSource = true; path = []; query = "" }
+                                catch { localError = LAABrainVaultError.unreadable.message }
+                            }
                         }
-                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                        .accessibilityLabel("フォルダの設定").accessibilityIdentifier("laa.brain.localOptions")
+                    } label: {
+                        let target = (laaDesktop ? LAACanvas.mac : .iphone).touchTarget
+                        Image(systemName: "ellipsis").frame(width: target, height: target)
+                    }
+                    .accessibilityLabel("Folder Menu").accessibilityIdentifier("laa.brain.localOptions")
                 }
-                paperPanel { folderContents("") }
+                if files.isEmpty && folderNames("").isEmpty {
+                    Text(verbatim: "ノートはありません。").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                } else {
+                    paperPanel { folderContents("", excluding: pins) }
+                }
             }
         }
+    }
+
+    private func localErrorText(_ message: String) -> some View {
+        Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+    }
+
+    private var recoveryAction: some View {
+        Button("Recovery", systemImage: "clock.arrow.circlepath") { showRecovery = true }
+            .accessibilityIdentifier("laa.brain.recovery.open")
     }
 
     private var sourceSelector: some View {
@@ -594,11 +603,6 @@ struct LAABrainView: View {
                     catch { localError = LAABrainVaultError.unreadable.message }
                 }.laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.useMac")
             }
-            if local.isReady {
-                Button("復元履歴") { showRecovery = true }
-                    .laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.recovery.open")
-            }
-            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }
     }
 
@@ -619,8 +623,7 @@ struct LAABrainView: View {
     }
 
     private var heading: some View {
-        Text(verbatim: LAACopy.Brain.title).font(.custom("Georgia", size: 34, relativeTo: .largeTitle))
-            .accessibilityAddTraits(.isHeader).accessibilityIdentifier("laa.brain.title")
+        LAADocTitle(title: LAACopy.Brain.title).accessibilityIdentifier("laa.brain.title")
     }
 
     private var browser: some View {
@@ -703,6 +706,7 @@ struct LAABrainView: View {
         let child = parent.isEmpty ? name : parent + "/" + name
         if let desktop = desktopActions {
             LAABrainDesktopFolderRow(name: name) { desktop.openFolder(child) }
+                .accessibilityIdentifier("laa.brain.folder.\(child)")
         } else {
             NavigationLink(value: LAABrainRoute.folder(child)) {
                 HStack(spacing: LAASpacing.x3) {
@@ -710,9 +714,10 @@ struct LAABrainView: View {
                     Text(verbatim: name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     Spacer(minLength: 0)
                 }
-                .padding(.vertical, LAASpacing.x3)
-                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            }.buttonStyle(.plain)
+                .frame(maxWidth: .infinity, minHeight: LAACanvas.iphone.rowMinHeight, alignment: .leading)
+                .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
+                .contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.folder.\(child)")
         }
     }
 
@@ -726,9 +731,15 @@ struct LAABrainView: View {
         }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    @ViewBuilder private func folderContents(_ folder: String) -> some View {
+    private func folderNotes(_ folder: String) -> [LAABrainFile] {
+        files.filter { $0.folder == folder }.sorted {
+            folderSortNewest ? $0.modifiedAt > $1.modifiedAt : $0.title.localizedStandardCompare($1.title) == .orderedAscending
+        }
+    }
+
+    @ViewBuilder private func folderContents(_ folder: String, excluding excluded: Set<String> = []) -> some View {
         let children = folderNames(folder)
-        let notes = files.filter { $0.folder == folder }.sorted { folderSortNewest ? $0.modifiedAt > $1.modifiedAt : $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        let notes = folderNotes(folder).filter { !excluded.contains($0.path) }
         if local.isReady && children.isEmpty && notes.isEmpty && !isLoading {
             Text("このフォルダは空です。右上の＋から作成できます。")
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -760,7 +771,10 @@ struct LAABrainView: View {
                         Text(verbatim: LAADateText.string(date, .monthDay)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                 }
-                .padding(.vertical, LAASpacing.x3).frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                .padding(.vertical, LAASpacing.x2)
+                .frame(maxWidth: .infinity, minHeight: LAACanvas.iphone.rowMinHeight, alignment: .leading)
+                .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
+                .contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.note")
         }
     }

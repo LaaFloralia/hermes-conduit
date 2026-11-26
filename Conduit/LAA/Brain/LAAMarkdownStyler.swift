@@ -31,6 +31,7 @@ enum LAAMarkdownStyler {
     struct Output {
         let runs: [Run]
         let glyphs: [Glyph]
+        let links: [LAAMarkdownSourceLinks.Link]
     }
 
     /// Width of one list level's gutter. Glyphs are drawn inside it.
@@ -74,13 +75,24 @@ enum LAAMarkdownStyler {
     /// `limit` restricts the runs that get built to one region (the paragraph
     /// being typed in): the parse is cheap, applying attributes to a long note
     /// on every keystroke is not.
-    static func output(for text: String, caretLocation: Int?, limit: NSRange? = nil) -> Output {
+    static func output(for text: String, caretLocation: Int?, limit: NSRange? = nil, detectsLinks: Bool = false) -> Output {
         let lines = LAAMarkdownParser.lines(in: text)
         var runs: [Run] = []
+        runs.reserveCapacity(lines.count)
         var glyphs: [Glyph] = []
         let ink = UIColor(LAAColor.text)
         let secondary = UIColor(LAAColor.secondaryText)
         let link = UIColor(LAAColor.link)
+        let paper = UIColor(LAAColor.subtleSurface)
+        let rule = UIColor(LAAColor.separator)
+        let font = bodyFont()
+        let strongFont = bodyFont(weight: .semibold)
+        let italic = italicBodyFont()
+        let headings = [headingFont(1), headingFont(2), headingFont(3)]
+        let monoSmall = monoFont(size: 13)
+        let monoMedium = monoFont(size: 14)
+        let monoInline = monoFont(size: 15)
+        let hiddenAttributes: [NSAttributedString.Key: Any] = [.font: hiddenFont, .foregroundColor: clearInk]
         let caretLine = caretLocation.flatMap { location in
             lines.first { NSLocationInRange(location, $0.range) || location == $0.range.location }
         }
@@ -113,17 +125,17 @@ enum LAAMarkdownStyler {
             }
 
             var attributes: [NSAttributedString.Key: Any] = [
-                .font: bodyFont(),
+                .font: font,
                 .foregroundColor: ink
             ]
             var markerIsGlyph = false
 
             switch line.kind {
             case .frontmatter:
-                attributes[.font] = monoFont(size: 13)
+                attributes[.font] = monoSmall
                 attributes[.foregroundColor] = secondary
             case .heading(let headingLevel):
-                attributes[.font] = headingFont(headingLevel)
+                attributes[.font] = headings[min(headingLevel, 3) - 1]
                 paragraph.paragraphSpacingBefore = 32
                 paragraph.paragraphSpacing = 10
                 markerIsGlyph = true
@@ -144,18 +156,18 @@ enum LAAMarkdownStyler {
                 paragraph.firstLineHeadIndent = indent + 2
                 paragraph.headIndent = indent + gutter
                 attributes[.foregroundColor] = secondary
-                attributes[.font] = italicBodyFont()
+                attributes[.font] = italic
             case .fence, .code:
-                attributes[.font] = monoFont(size: 14)
-                attributes[.backgroundColor] = UIColor(LAAColor.subtleSurface)
+                attributes[.font] = monoMedium
+                attributes[.backgroundColor] = paper
             case .table:
-                attributes[.font] = monoFont(size: 13)
+                attributes[.font] = monoSmall
                 attributes[.foregroundColor] = secondary
             case .raw:
-                attributes[.font] = monoFont(size: 14)
+                attributes[.font] = monoMedium
                 attributes[.foregroundColor] = secondary
             case .rule:
-                attributes[.foregroundColor] = UIColor(LAAColor.separator)
+                attributes[.foregroundColor] = rule
             case .blank:
                 paragraph.lineHeightMultiple = 1
                 paragraph.minimumLineHeight = 12
@@ -180,11 +192,11 @@ enum LAAMarkdownStyler {
 
             if markerIsGlyph, line.markerRange.length > 0 {
                 runs.append(Run(range: line.markerInDocument, reset: false,
-                                attributes: [.font: hiddenFont, .foregroundColor: clearInk]))
+                                attributes: hiddenAttributes))
             }
             if case .quote = line.kind, line.markerRange.length > 0 {
                 runs.append(Run(range: line.markerInDocument, reset: false,
-                                attributes: [.foregroundColor: UIColor(LAAColor.separator)]))
+                                attributes: [.foregroundColor: rule]))
             }
 
             // Inline spans: hide the markers on every line but the one being
@@ -196,12 +208,12 @@ enum LAAMarkdownStyler {
             for span in LAAMarkdownInline.spans(in: line.text, contentRange: line.contentRange) {
                 var spanAttributes: [NSAttributedString.Key: Any] = [:]
                 switch span.style {
-                case .bold: spanAttributes[.font] = bodyFont(weight: .semibold)
-                case .italic: spanAttributes[.font] = italicBodyFont()
+                case .bold: spanAttributes[.font] = strongFont
+                case .italic: spanAttributes[.font] = italic
                 case .strike: spanAttributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
                 case .code:
-                    spanAttributes[.font] = monoFont(size: 15)
-                    spanAttributes[.backgroundColor] = UIColor(LAAColor.subtleSurface)
+                    spanAttributes[.font] = monoInline
+                    spanAttributes[.backgroundColor] = paper
                 case .highlight:
                     spanAttributes[.backgroundColor] = UIColor.systemYellow.withAlphaComponent(0.35)
                 case .link:
@@ -216,12 +228,13 @@ enum LAAMarkdownStyler {
                     let length = (line.text as NSString).length
                     for marker in span.markers where marker.length > 0 && NSMaxRange(marker) <= length {
                         runs.append(Run(range: NSRange(location: line.range.location + marker.location, length: marker.length), reset: false,
-                                        attributes: [.font: hiddenFont, .foregroundColor: clearInk]))
+                                        attributes: hiddenAttributes))
                     }
                 }
             }
         }
-        return Output(runs: runs, glyphs: glyphs)
+        return Output(runs: runs, glyphs: glyphs,
+                      links: detectsLinks ? LAAMarkdownSourceLinks.links(in: lines, intersecting: limit) : [])
     }
 }
 #endif
