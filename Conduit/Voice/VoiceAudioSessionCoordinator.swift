@@ -26,6 +26,8 @@ enum VoiceAudioIntent: Equatable {
     case conversationPlayback
     /// Output-only speech outside a Voice Conversation (Read Aloud, TTS test).
     case standalonePlayback
+    case meetingCapture
+    case meetingPlayback
     /// Foreground wake phrase listening (#174). The lowest-priority owner:
     /// any other intent takes the session over, and AppState disarms the
     /// wake listener as soon as another owner appears.
@@ -221,7 +223,15 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// active, so code that reconfigures the session checks `isInNativeCall`
     /// too. Exposed read-only for diagnostics and deterministic ownership
     /// tests.
-    private(set) var appliedPolicy: Policy?
+    @Published private(set) var appliedPolicy: Policy?
+
+    /// The existing composer still owns its engine. This scoped capability
+    /// travels only with that explicit Talk task (including permission awaits).
+    @TaskLocal static var meetingCaptureAuthorization: (@MainActor @Sendable () -> Bool)?
+
+    #if DEBUG
+    var meetingOtherAudioPlaying: Bool { session.isOtherAudioPlaying }
+    #endif
 
     /// Raised when a policy transition failed partway — typically the
     /// category changed but activation did not. The physical session can no
@@ -263,6 +273,8 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         case conversation
         /// Output-only `.playback` with media coexistence: standalone speech.
         case standalonePlayback
+        case meetingCapture
+        case meetingPlayback
         /// `.playAndRecord` + `.default`, mixing with other apps' audio:
         /// foreground wake phrase listening.
         case wakeListening
@@ -295,7 +307,7 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
 
     /// True while anything holds the microphone for a conversation.
     var hasCaptureOwner: Bool {
-        leases.values.contains(.conversationCapture)
+        leases.values.contains(.conversationCapture) || leases.values.contains(.meetingCapture)
     }
 
     /// Optional injection instead of a default-constructed argument: default
@@ -320,10 +332,19 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// later main-actor turn, when another owner acquires capture. The owner
     /// still releases its own lease.
     func acquire(
-        _ intent: VoiceAudioIntent,
+        _ requested: VoiceAudioIntent,
         onTakenOver: (@MainActor () -> Void)? = nil
     ) throws -> VoiceAudioLease {
         guard !placedCallRequiresActivation || isNativeCallAudioActive else { throw CancellationError() }
+        var intent = requested
+        if requested == .conversationCapture, let authorize = Self.meetingCaptureAuthorization {
+            guard authorize() else { throw CancellationError() }
+            intent = .meetingCapture
+        }
+        if intent == .meetingCapture || intent == .meetingPlayback {
+            guard !isInNativeCall, appliedPolicy != .conversation, appliedPolicy != .standalonePlayback,
+                  !hasCaptureOwner, appliedPolicy != .meetingPlayback else { throw CancellationError() }
+        }
 #if LAA_BUILD
         // Mixing does not prevent routing interruption when an idle listener
         // grabs a microphone (notably with Bluetooth). Recheck at the session
@@ -551,6 +572,8 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         if leases.values.contains(.standalonePlayback) {
             return .standalonePlayback
         }
+        if leases.values.contains(.meetingCapture) { return .meetingCapture }
+        if leases.values.contains(.meetingPlayback) { return .meetingPlayback }
         if leases.values.contains(.wakeListening) {
             return .wakeListening
         }
@@ -642,6 +665,11 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
                 try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
                 try session.setActive(true, options: [])
                 appliedPolicy = .standalonePlayback
+            case .meetingCapture, .meetingPlayback:
+                let configuration: VoiceAudioSessionConfiguration = target == .meetingCapture ? .meetingCapture : .meetingPlayback
+                try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+                try session.setActive(true, options: [])
+                appliedPolicy = target
             case .wakeListening:
 #if LAA_BUILD
                 // Also covers a route-change recovery with an existing lease.
@@ -683,6 +711,8 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         case .conversationCapture: return "conversationCapture"
         case .conversationPlayback: return "conversationPlayback"
         case .standalonePlayback: return "standalonePlayback"
+        case .meetingCapture: return "meetingCapture"
+        case .meetingPlayback: return "meetingPlayback"
         case .wakeListening: return "wakeListening"
         }
     }
@@ -691,6 +721,8 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         switch policy {
         case .conversation: return "conversation"
         case .standalonePlayback: return "standalone"
+        case .meetingCapture: return "meetingCapture"
+        case .meetingPlayback: return "meetingPlayback"
         case .wakeListening: return "wakeListening"
         case nil: return "inactive"
         }

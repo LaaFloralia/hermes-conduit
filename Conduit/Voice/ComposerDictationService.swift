@@ -102,6 +102,7 @@ final class ComposerDictationService: ObservableObject {
         token: UInt64,
         engine choice: DictationEngine = .current(),
         words: [String] = DictationCustomWords.load(),
+        onInputLevel: (@Sendable (Double) -> Void)? = nil,
         hermesGateway: () -> HermesVoiceGateway? = { nil }
     ) async throws {
         guard startToken == token, !isDictating else { return }
@@ -136,7 +137,7 @@ final class ComposerDictationService: ObservableObject {
             lease = try audioCoordinator.acquire(.conversationCapture) { [weak self] in
                 self?.audioWasLost(generation: generation)
             }
-            format = try startAudio()
+            format = try startAudio(onInputLevel: onInputLevel)
             observeAudioLoss(generation: generation)
         } catch {
             recognizer.cancel()
@@ -345,18 +346,18 @@ final class ComposerDictationService: ObservableObject {
     }
 
     /// Opens the microphone and returns the format its buffers come in.
-    private func startAudio() throws -> AVAudioFormat {
+    private func startAudio(onInputLevel: (@Sendable (Double) -> Void)?) throws -> AVAudioFormat {
         var format: AVAudioFormat?
         try VoiceAudioEngineRecovery.startFresh(
             rebuild: { stopAudio() },
             reassert: { try audioCoordinator.reassert() },
-            start: { format = try startAudioAttempt() }
+            start: { format = try startAudioAttempt(onInputLevel: onInputLevel) }
         )
         guard let format else { throw VoiceAudioInputFormatUnavailable() }
         return format
     }
 
-    private func startAudioAttempt() throws -> AVAudioFormat {
+    private func startAudioAttempt(onInputLevel: (@Sendable (Double) -> Void)?) throws -> AVAudioFormat {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let hardwareFormat = input.inputFormat(forBus: 0)
@@ -370,8 +371,10 @@ final class ComposerDictationService: ObservableObject {
             hardware: hardwareFormat
         )
         let sink = audioSink
+        let meter = onInputLevel.map(DictationInputMeter.init)
         input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { buffer, _ in
             sink.append(buffer)
+            meter?.sample(buffer)
         }
         engine.prepare()
         do {
@@ -408,6 +411,30 @@ final class ComposerDictationService: ObservableObject {
             case .message(let text): return text
             }
         }
+    }
+}
+
+/// Owned by a single engine tap. Only a scalar RMS sample leaves that tap;
+/// no additional microphone, buffer copy, or retained audio.
+private final class DictationInputMeter: @unchecked Sendable {
+    private var frames = 0
+    private let onLevel: @Sendable (Double) -> Void
+
+    init(_ onLevel: @escaping @Sendable (Double) -> Void) { self.onLevel = onLevel }
+
+    func sample(_ buffer: AVAudioPCMBuffer) {
+        frames += Int(buffer.frameLength)
+        guard Double(frames) >= buffer.format.sampleRate / 12 else { return }
+        frames = 0
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+        var energy = 0.0
+        var count = 0
+        for index in stride(from: 0, to: Int(buffer.frameLength), by: 16) {
+            let sample = Double(samples[index * buffer.stride])
+            energy += sample * sample
+            count += 1
+        }
+        onLevel(sqrt(energy / Double(count)))
     }
 }
 

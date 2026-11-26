@@ -4471,23 +4471,24 @@ and rollback instructions · the upstream App Store build
 
 **Checked:** 2026-11-25, laa/v2-chat (shared transcript replaces employee reply bubbles; background picker still governs the owner bubble); 2026-11-16, laa/glass-real (glass by default over a picture, clear tinted glass on both bubbles; LAA 16 Pro Max-type simulator on iOS 27.0 and the Mac dev build); 2026-11-16, laa/glass-bubbles at 7f19300e (the bubble choice in the background sheet; LAA 16 Pro Max simulator and the Mac dev build); 2026-11-15, laa/chat-background (the bar's background button restored beside the call button; the chosen photo draws behind ChatView through `laaConversationBackground` on the LAA route LAAConversationRoute › V2ConversationScreen; LAA iOS Simulator Debug build on the MacBook); 2026-10-30, based on 1b4bdba5 (LAA v2 Chats entry), c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
 
-## LAA chaired group Voice (staged)
+## LAA chaired group Voice
 
-**Siblings:** hosted group replay and composer · speech playback and audio ownership · staff and native calls · iPhone and Mac Catalyst group rooms · upstream group chat (unchanged) · Hermes chaired-room planner and notification routing (separate release work)
+**Siblings:** hosted group replay and composer · speech playback and audio ownership · staff and native calls · iPhone and Mac Catalyst group rooms · paired Bridge voice scope · upstream group chat (unchanged) · Hermes chair prompt (separate install)
 
 **Code**
-- Playback, binding, executor, live audio edges and controls: `Conduit/LAA/Groups/LAAChairedVoicePlayback.swift`, `Conduit/LAA/Groups/LAAChairedVoiceBinding.swift`, `Conduit/LAA/Groups/LAAChairedVoiceEffectExecutor.swift`, `Conduit/LAA/Groups/LAAChairedVoiceLiveEdges.swift`, `Conduit/LAA/Groups/LAAChairedVoiceSurface.swift`, `Conduit/LAA/Groups/LAAChairedVoiceBar.swift`
-- Room, dictation and audio lifecycle: `Conduit/Services/AppState.swift`, `Conduit/Views/GroupChatView.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Voice/VoiceAudioSessionCoordinator.swift`
-- Tests: `ConduitTests/LAAChairedVoicePlaybackTests.swift`, `ConduitTests/LAAChairedVoiceBindingTests.swift`, `ConduitTests/LAAChairedVoiceEffectExecutorTests.swift`, `ConduitTests/LAAChairedVoiceSurfaceTests.swift`
+- Serial playback: `Conduit/LAA/Groups/LAAChairedVoicePlayback.swift`, `Conduit/LAA/Groups/LAAChairedVoiceBinding.swift`, `Conduit/LAA/Groups/LAAChairedVoiceEffectExecutor.swift`, `Conduit/LAA/Groups/LAAChairedVoiceLiveEdges.swift`, `Conduit/LAA/Groups/LAAChairedVoiceSurface.swift`
+- Meeting state and controls: `Conduit/LAA/Groups/LAAMeetingTurn.swift`, `Conduit/LAA/Groups/LAAMeetingSession.swift`, `Conduit/LAA/Groups/LAAMeetingEndpoint.swift`, `Conduit/LAA/Groups/LAAMeetingControls.swift`, `Conduit/LAA/Groups/LAAMeetingLab.swift`
+- Room, dictation and audio lifecycle: `Conduit/Services/AppState.swift`, `Conduit/Views/GroupChatView.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Voice/ComposerDictationService.swift` (optional RMS readout of its existing tap), `Conduit/Voice/VoiceAudioSessionCoordinator.swift`, `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
+- Ephemeral lease: `bridge/src/routes/voice-lease.mjs`, `bridge/src/routes/index.mjs`
+- Tests: `ConduitTests/LAAChairedVoicePlaybackTests.swift`, `ConduitTests/LAAChairedVoiceBindingTests.swift`, `ConduitTests/LAAChairedVoiceEffectExecutorTests.swift`, `ConduitTests/LAAChairedVoiceSurfaceTests.swift`, `ConduitTests/LAAMeetingVoiceTests.swift`, `ConduitTests/VoiceAudioSessionCoordinatorTests.swift`, `bridge/test/voice-lease.test.mjs`
 
 **Rulings**
-- The LAA-only room binding is silent by default. When enabled, explicit engagement listens to new settled lines only, one at a time. Talk yields playback to the room's existing dictation; Stop, staff/native call takeover or leaving the room releases playback. Ordinary groups and upstream Chat keep their existing behavior.
-- `playbackWired` remains `false`: the Voice control stays hidden and no room autoplays.
+- A Monet-chaired `壁打ち Voice` room enters silently. Talk claims a 12-second, device-bound CAS lease (3-second renewal, conservative local expiry); another endpoint reads silently. Only explicit Talk captures; silence after speech leaves an editable iPhone draft, and releasing Space stops Mac capture. Muting flushes, Talk interrupts immediately, and End, leaving, backgrounding, staff/native call takeover, or lease loss stop local audio. End releases first and then submits the owner's minutes request to the existing room.
+- Only new `message.member` lines referenced by `turn.settled` for the locally submitted discussion are spoken, once and serially through the roster's Hermes profiles. The complete written transcript and minutes are still the room's own log. The Bridge holds neither audio nor meeting text.
+- `playbackWired` gates the real controls; the simulator-only fixture can exercise the path before enabling it. The Catalyst standalone room read-aloud button is hidden; upstream chat is unchanged.
 
 **Open gaps**
-- Real settled-event and speaker-to-gateway coverage, audio handoff against the real coordinator, and iPhone/Mac behavior before enabling playback. No server planner, RPC, notification routing or Watch change is implied by this app code.
-
-**Checked:** 2026-11-26, fe1321bd (staged implementation and fixture test coverage; playback disabled).
+- The device canary must verify music continuity, Apple speech capture, the per-profile Hermes output, dual-device handoff and Catalyst Space. Installing the separately prepared chair prompt and Bridge route is release work.
 
 ## LAA Chats list
 

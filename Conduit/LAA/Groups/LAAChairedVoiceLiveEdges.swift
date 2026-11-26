@@ -7,24 +7,20 @@ import Foundation
 /// file talks to real audio.
 @MainActor
 final class LAAChairedVoiceCoordinatorLeasing: LAAChairedVoiceAudioLeasing {
-    private let coordinator: VoiceAudioSessionCoordinator
-    private var leases: [UUID: VoiceAudioLease] = [:]
+    private let canUseAudio: @MainActor () -> Bool
 
-    init(coordinator: VoiceAudioSessionCoordinator = .shared) {
-        self.coordinator = coordinator
+    init(canUseAudio: @escaping @MainActor () -> Bool) {
+        self.canUseAudio = canUseAudio
     }
 
     func acquirePlayback(onTakenOver: @escaping @MainActor () -> Void) throws -> UUID {
-        let lease = try coordinator.acquire(.standalonePlayback, onTakenOver: onTakenOver)
-        let token = UUID()
-        leases[token] = lease
-        return token
+        guard canUseAudio() else { throw CancellationError() }
+        // Authorization only. The player is the sole AVAudioSession lease
+        // owner, and only after it has actual speech data to render.
+        return UUID()
     }
 
-    func releasePlayback(_ token: UUID) {
-        guard let lease = leases.removeValue(forKey: token) else { return }
-        coordinator.release(lease)
-    }
+    func releasePlayback(_ token: UUID) {}
 }
 
 /// One line through the gateway speech stream into a playback service,
@@ -35,6 +31,8 @@ final class LAAChairedVoiceCoordinatorLeasing: LAAChairedVoiceAudioLeasing {
 final class LAAChairedVoiceReadAloudSpeaker: LAAChairedVoiceSpeaking {
     private let playback: SpeechPlaybackService
     private let gateway: @MainActor (String) -> VoiceGatewayService?
+    private let endpointGeneration: @MainActor () -> String?
+    private let onLevel: @MainActor (Double) -> Void
     private var stream: VoiceSpeechStream?
     /// Bumped by every `speak` and `stop`, as Read Aloud's generation: a
     /// callback, open or finish from an older line cannot re-acquire the
@@ -43,45 +41,57 @@ final class LAAChairedVoiceReadAloudSpeaker: LAAChairedVoiceSpeaking {
     private func isCurrent(_ e: UInt64) -> Bool { epoch == e }
 
     init(playback: SpeechPlaybackService? = nil,
-         gateway: @escaping @MainActor (String) -> VoiceGatewayService?) {
+         gateway: @escaping @MainActor (String) -> VoiceGatewayService?,
+         endpointGeneration: @escaping @MainActor () -> String?,
+         onLevel: @escaping @MainActor (Double) -> Void) {
         self.playback = playback ?? AVSpeechPlaybackService()
         self.gateway = gateway
+        self.endpointGeneration = endpointGeneration
+        self.onLevel = onLevel
     }
 
     struct NoGateway: Error {}
 
     func speak(text: String, speakerID: String) async throws {
-        guard let gateway = gateway(speakerID) else { throw NoGateway() }
+        guard let grant = endpointGeneration(), let gateway = gateway(speakerID) else { throw NoGateway() }
         epoch &+= 1
         let current = epoch
-        playback.ownershipIntent = .standalonePlayback
+        func authorized() -> Bool {
+            isCurrent(current) && endpointGeneration() == grant && !Task.isCancelled
+        }
+        let spoken = LAAMeetingTurn.spokenExcerpt(SpokenTextFilter.filter(text))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !spoken.isEmpty else { return }
+        defer { if isCurrent(current) { stop() } }
+        playback.ownershipIntent = .meetingPlayback
         playback.playbackRate = ReadAloudSpeed.closest(to: ReadAloudSpeed.current().rate).rate
         try await withTaskCancellationHandler {
             let playback = self.playback
             let opened = try await gateway.openSpeechStream(
-                onStart: { [weak self] rate in
-                    guard let self, self.isCurrent(current) else { return }
+                onStart: { rate in
+                    guard authorized() else { throw CancellationError() }
                     try playback.start(sampleRate: rate)
                 },
                 onPCM16: { [weak self] data, rate in
-                    guard let self, self.isCurrent(current) else { return }
+                    guard let self, authorized() else { throw CancellationError() }
+                    self.onLevel(Self.level(data))
                     _ = try playback.enqueuePCM16(data, sampleRate: rate)
                 },
                 onEncodedAudio: { [weak self] data in
-                    guard let self, self.isCurrent(current) else { return }
+                    guard let self, authorized() else { throw CancellationError() }
                     try playback.playEncodedAudioData(data)
+                    self.onLevel(0.22)
                 }
             )
             // The open can outlive a stop(): drop it instead of adopting it.
-            guard isCurrent(current), !Task.isCancelled else {
+            guard authorized() else {
                 opened.cancel()
                 throw CancellationError()
             }
             stream = opened
-            let spoken = SpokenTextFilter.filter(text)
-            try await opened.append(spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : spoken)
+            try await opened.append(spoken)
             _ = try await opened.finish()
-            guard isCurrent(current), !Task.isCancelled else { throw CancellationError() }
+            guard authorized() else { throw CancellationError() }
             stream = nil
             try playback.finish()
             await playback.drain()
@@ -101,6 +111,19 @@ final class LAAChairedVoiceReadAloudSpeaker: LAAChairedVoiceSpeaking {
         stream?.cancel()
         stream = nil
         playback.stop()
+        onLevel(0)
+    }
+
+    private static func level(_ pcm: Data) -> Double {
+        guard pcm.count >= 2 else { return 0 }
+        return pcm.withUnsafeBytes { raw in
+            var peak = 0
+            for i in stride(from: 0, to: raw.count - 1, by: 16) {
+                let sample = Int16(bitPattern: UInt16(raw[i]) | (UInt16(raw[i + 1]) << 8))
+                peak = max(peak, abs(Int(sample)))
+            }
+            return min(1, Double(peak) / 16_384)
+        }
     }
 }
 #endif
