@@ -152,7 +152,9 @@ struct LAAMacShell: View {
                     ToolbarItem(placement: .topBarTrailing) { fitButton }
                 }
         } detail: {
-            detail
+            // One navigation identity per section: a page pushed in one
+            // (Drive Rules) must not stay on screen after choosing another.
+            detail.id(section)
         }
         .navigationSplitViewStyle(.balanced)
         .background(LAAColor.background.ignoresSafeArea())
