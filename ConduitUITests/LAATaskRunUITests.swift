@@ -173,7 +173,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(app.buttons["work.linear.archive"].waitForExistence(timeout: 5))
         app.buttons["work.linear.archive"].tap()
         XCTAssertTrue(created.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(count.label.hasPrefix("表示、アーカイブ、"), count.label)
+        XCTAssertTrue(count.label.hasPrefix("表示、Archived、"), count.label)
         count.tap()
         XCTAssertTrue(app.buttons["work.tasks.quick.all"].waitForExistence(timeout: 5))
         app.buttons["work.tasks.quick.all"].tap()
