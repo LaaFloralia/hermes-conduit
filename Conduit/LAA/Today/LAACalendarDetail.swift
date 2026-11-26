@@ -39,10 +39,10 @@ struct LAACalendarDetail: View {
                 if writable {
                     if event.recurringEventId != nil {
                         Text(verbatim: "この回だけを変更します").font(.caption)
-                        Button { Task { await openSeries() } } label: { Text(verbatim: "繰り返し全体を開く") }.disabled(busy)
+                        Button { Task { await openSeries() } } label: { Text(verbatim: "Open Series") }.disabled(busy)
                     }
-                    Button { editing = true } label: { Text(verbatim: "編集") }.disabled(busy)
-                    Button(role: .destructive) { confirmDelete = true } label: { Text(verbatim: "削除") }.disabled(busy)
+                    Button { editing = true } label: { Text(verbatim: "Edit") }.disabled(busy)
+                    Button(role: .destructive) { confirmDelete = true } label: { Text(verbatim: "Delete") }.disabled(busy)
                 }
                     if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
                 }
@@ -57,7 +57,7 @@ struct LAACalendarDetail: View {
             .toolbar {
                 if onClose == nil {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button { dismiss() } label: { Text(verbatim: LAACopy.close) }
+                        LAACloseButton { dismiss() }.accessibilityIdentifier("laa.today.event.close")
                     }
                 }
             }
@@ -69,7 +69,7 @@ struct LAACalendarDetail: View {
             }
             .sheet(item: $series) { value in LAACalendarDetail(event: value, calendars: calendars) { changed(); dismiss() }.environmentObject(bridge) }
             .confirmationDialog(Text(verbatim: event.recurrence?.isEmpty == false ? "繰り返し全体を削除しますか？" : "この予定を削除しますか？"), isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button(role: .destructive) { Task { await remove() } } label: { Text(verbatim: "削除") }
+                Button(role: .destructive) { Task { await remove() } } label: { Text(verbatim: "Delete") }
             } message: { Text(verbatim: "参加者にはGoogleから取消通知が届きます。") }
         }
     }

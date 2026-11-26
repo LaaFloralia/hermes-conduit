@@ -92,7 +92,9 @@ final class LAAChromeUITests: XCTestCase {
                 code.typeText("123456")
                 XCTAssertTrue(connect.isEnabled)
             }
-            app.buttons["閉じる"].tap()
+            let close = app.buttons["laa.bridge.pair.close"]
+            XCTAssertEqual(close.label, "Close")
+            close.tap()
             app.terminate()
         }
     }

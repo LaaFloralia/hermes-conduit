@@ -97,7 +97,9 @@ struct LAAWorkRecordsSheet: View {
                     }
                 }
             }.navigationTitle(String("作業の記録")).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了"), action: done) } }
+                .toolbar { ToolbarItem(placement: .confirmationAction) {
+                    LAACloseButton(action: done).accessibilityIdentifier("laa.chat.records.close")
+                } }
         }.laaSheetSize(.page)
     }
 }

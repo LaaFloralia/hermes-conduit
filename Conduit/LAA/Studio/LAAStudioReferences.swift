@@ -14,7 +14,9 @@ struct LAAStudioReferencePicker: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     if folder != nil {
-                        Button(String("戻る")) { folder = parents.isEmpty ? nil : parents.removeLast(); Task { await load() } }.frame(minHeight: 44)
+                        LAAToolbarIconButton(systemName: "chevron.left", label: "Back", identifier: "laa.studio.reference.back") {
+                            folder = parents.isEmpty ? nil : parents.removeLast(); Task { await load() }
+                        }
                     }
                     ForEach(browser.items) { entry in
                         Button {
@@ -29,14 +31,22 @@ struct LAAStudioReferencePicker: View {
                                 .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                         }.buttonStyle(.plain)
                     }
-                    if browser.cursor != nil { Button(String("さらに表示")) { Task { await browser.loadMore(using: page) } }.frame(minHeight: 44) }
+                    if browser.cursor != nil {
+                        Button { Task { await browser.loadMore(using: page) } } label: {
+                            Image(systemName: "chevron.down")
+                                .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(Text(verbatim: "Show More"))
+                        .accessibilityIdentifier("laa.studio.reference.more")
+                    }
                     if browser.error != nil { LAAStudioConnectionLine(message: "Driveを読み込めません") { Task { await load() } } }
                     if browser.loading && browser.items.isEmpty { LAALoadingDots() }
                 }.padding(LAASpacing.horizontal)
             }.background(LAAColor.background).searchable(text: $search, prompt: "検索")
                 .onSubmit(of: .search) { Task { await load() } }
                 .navigationTitle(String("参考を添付")).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String("Cancel")) { dismiss() } } }
                 .task(id: bridge.revision) { browser.invalidate(); folder = nil; parents = []; await load() }
         }.tint(LAAColor.link)
     }

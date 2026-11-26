@@ -189,7 +189,7 @@ struct LAAWorkImagePreview: View {
             }
             .buttonStyle(.plain)
             .padding(LAASpacing.x4)
-            .accessibilityLabel(Text(verbatim: "閉じる"))
+            .accessibilityLabel(Text(verbatim: "Close"))
             .accessibilityIdentifier("work.image.preview.close")
             .keyboardShortcut(.cancelAction)
         }

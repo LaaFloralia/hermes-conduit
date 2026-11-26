@@ -110,7 +110,7 @@ struct LAAStudioWorkBody: View {
                             }
                         }
                         if let url = LAAStudioMedia.driveURL(driveURL) {
-                            ShareLink("共有", item: url).frame(minHeight: 44)
+                            ShareLink(String("Share"), item: url).frame(minHeight: 44)
                             Link("Driveで開く", destination: url).frame(minHeight: 44)
                         }
                     }

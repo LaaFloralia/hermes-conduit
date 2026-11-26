@@ -333,8 +333,8 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         XCTAssertTrue(model.waitForExistence(timeout: 10))
         Thread.sleep(forTimeInterval: 1)
         model.tap()
-        XCTAssertTrue(app.buttons["モデルの候補を取得できませんでした。"].waitForExistence(timeout: 10)
-                      || app.staticTexts["モデルの候補を取得できませんでした。"].exists)
+        let reason = "モデルの一覧を読み取れませんでした。"
+        XCTAssertTrue(app.buttons[reason].waitForExistence(timeout: 10) || app.staticTexts[reason].exists)
         XCTAssertTrue(app.buttons["読み直す"].exists)
         capture(app, "chat-unreachable-model-menu")
         app.terminate()

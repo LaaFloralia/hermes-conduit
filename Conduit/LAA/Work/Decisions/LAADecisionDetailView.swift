@@ -67,8 +67,7 @@ struct LAADecisionDetailView: View {
         .toolbar {
             if !laaDesktop {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { onFinished(false) } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel(Text(verbatim: LAACopy.close))
+                    LAACloseButton { onFinished(false) }
                         .accessibilityIdentifier("work.decision.close")
                 }
             }
@@ -328,7 +327,7 @@ struct LAADecisionDetailView: View {
     private var showsSend: Bool { item.kind == .board && ((item.status == "open" && item.answer == nil) || retrying) }
 
     private var sendTitle: String {
-        sending ? "届けています" : retrying ? "届け直す" : "この内容で返す"
+        sending ? "Sending…" : retrying ? "Resend" : "Send"
     }
 
     private var actionBar: some View {

@@ -8,7 +8,7 @@ extension LAACopy {
     static let macScanReason = "QR codes can't be read on this Mac. Paste the pairing code or address."
     static let macScanField = "コードまたはアドレス"
     static let macScanContinue = "続ける"
-    static let macScanCancel = "キャンセル"
+    static let macScanCancel = "Cancel"
     static let macScanInvalid = "That code isn't a pairing code."
 }
 

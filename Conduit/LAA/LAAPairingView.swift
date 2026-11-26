@@ -89,7 +89,7 @@ struct LAAPairingView: View {
             .navigationTitle(Text(verbatim: LAACopy.pairingTitle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.close) } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("laa.bridge.pair.close") } }
             .tint(LAAColor.link)
             .onAppear { address = bridge.address }
         }

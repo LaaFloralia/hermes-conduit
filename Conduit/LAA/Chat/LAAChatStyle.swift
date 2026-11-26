@@ -25,11 +25,9 @@ extension LAACopy {
     static let chatInk = "墨"
     static let chatDevicePhoto = "写真"
     static let chatSelected = "選択中"
-    static let chatDone = "完了"
     static let chatPhotoAdjustments = "写真の調整"
     static let chatPhotoDim = "暗さ"
     static let chatPhotoBlur = "ぼかし"
-    static let chatLoadingPhoto = "写真を読み込み中"
     static let chatFixturePhoto = "試験用の写真"
 }
 

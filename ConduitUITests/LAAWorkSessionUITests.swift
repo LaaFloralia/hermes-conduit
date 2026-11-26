@@ -443,8 +443,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertGreaterThan(photo.frame.minX, 4)
         // The values stay whole: only the model text truncates.
         XCTAssertEqual(fast.label, "Fastモード")
-        XCTAssertEqual(send.label, "送信")
-        XCTAssertEqual(stop.label, "中断")
+        XCTAssertEqual(send.label, "Send")
+        XCTAssertEqual(stop.label, "Stop")
         // No dictation control anywhere on this screen.
         XCTAssertFalse(app.buttons["音声入力"].exists)
         XCTAssertFalse(app.buttons["音声入力を停止"].exists)

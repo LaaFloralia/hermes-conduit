@@ -569,7 +569,7 @@ struct LAAWorkSessionDetail: View {
     /// stop's ring was larger than Send's); only the square and its colour
     /// say which one ends the turn.
     private var stopButton: some View {
-        LAAGlassActionButton(systemImage: "stop.fill", label: "中断", role: .stop, enabled: !stopping,
+        LAAGlassActionButton(systemImage: "stop.fill", label: LAACopy.WorkTab.stop, role: .stop, enabled: !stopping,
                              identifier: "work.session.stop") { beginStop() }
     }
 

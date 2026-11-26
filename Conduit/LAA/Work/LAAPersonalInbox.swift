@@ -80,7 +80,7 @@ struct LAAPersonalInboxView: View {
                 }
                 if loading { LAALoadingDots() }
                 HStack {
-                    Button() { Task { await refresh() } } label: { Text(verbatim: "更新") }.disabled(loading || working)
+                    Button() { Task { await refresh() } } label: { Text(verbatim: "Refresh") }.disabled(loading || working)
                     NavigationLink(destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId)) { Text(verbatim: "送信待ち") }
                 }
             }
@@ -106,7 +106,7 @@ struct LAAPersonalInboxView: View {
             HStack {
                 Button() {
                     Task { await change(item, action: item.isUnread ? "read" : "unread") }
-                } label: { Text(verbatim: item.isUnread ? "既読にする" : "未読に戻す") }
+                } label: { Text(verbatim: item.isUnread ? "Mark Read" : "Mark Unread") }
                 .accessibilityIdentifier("work.inbox.read.\(item.id)")
                 Button() {
                     Task { await change(item, action: item.isArchived ? "unarchive" : "archive") }
@@ -243,7 +243,7 @@ struct LAAPersonalInboxItemView: View {
                     LAAPersonalNotificationContent(item: item, drafts: drafts).workCard()
                     Text(verbatim: "取得: \(LAAWorkPresentation.date(observedAt))").laaTextStyle(.secondary)
                 } else if error == nil { LAALoadingDots() }
-                Button() { Task { await load() } } label: { Text(verbatim: "更新") }
+                Button() { Task { await load() } } label: { Text(verbatim: "Refresh") }
             }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
         }
         .navigationTitle(Text(verbatim: "通知"))

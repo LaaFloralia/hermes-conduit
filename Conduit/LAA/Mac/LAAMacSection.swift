@@ -112,8 +112,8 @@ extension LAACopy {
 
     static let macMenuGo = "移動"
     static let macToggleSidebar = "サイドバーを切り替える"
-    static let macSearch = "検索"
-    static let macReload = "再読み込み"
+    static let macSearch = "Search"
+    static let macReload = "Reload"
     static let macSettingsMenu = "設定…"
     static let macCloseConversation = "会話を閉じる"
 }

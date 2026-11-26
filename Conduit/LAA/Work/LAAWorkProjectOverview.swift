@@ -54,7 +54,7 @@ struct LAAWorkProjectRow: View {
                 LAAWorkStatusMark(status: activity == .running(count) ? .running : .decision)
                 // The word goes with the number, so it never reads as the
                 // requirements' 9 / 13 beside it (BUS-508).
-                Text(verbatim: "\(activity == .running(count) ? LAAWorkStatus.running.displayLabel : LAAWorkStatus.decision.displayLabel) \(count)")
+                Text(verbatim: "\(LAACopy.WorkProject.sessionStatus(activity == .running(count) ? .running : .decision)) \(count)")
                     .laaTextStyle(.secondary).monospacedDigit().fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(activity == .running(count) ? LAAColor.secondaryText : LAAColor.attention)
             }
@@ -454,7 +454,7 @@ struct LAAWorkProjectPage: View {
                         .background(LAAColor.surface)
                         .contextMenu {
                             Button(role: .destructive) { actions.removeFile(file) } label: {
-                                Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                                Label { Text(verbatim: "Delete") } icon: { Image(systemName: "trash") }
                             }
                         }
                         if file.id != files.last?.id { Divider().overlay(LAAColor.separator).padding(.leading, 50) }
@@ -662,7 +662,7 @@ struct LAAWorkRequirementStatusControl: View {
         .buttonStyle(.plain)
         .disabled(busy || !canChange)
         .padding(.leading, -12)
-        .accessibilityLabel(Text(verbatim: "\(requirement.status.label)、\(requirement.addedByAI ? LAACopy.WorkProject.addedByAIHint : LAACopy.WorkProject.ownerHint)"))
+        .accessibilityLabel(Text(verbatim: "\(requirement.status.label), \(requirement.addedByAI ? LAACopy.WorkProject.addedByAI : LAACopy.WorkProject.owner)"))
         .accessibilityHint(Text(verbatim: LAACopy.WorkProject.changeStatus))
         .accessibilityIdentifier("laa.work.project.requirement.status.\(requirement.id)")
     }

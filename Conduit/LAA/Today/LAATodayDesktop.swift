@@ -181,7 +181,7 @@ struct LAATodayDesktopView: View {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.system(size: 36, weight: .light)).foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: message).multilineTextAlignment(.center).foregroundStyle(LAAColor.text)
-                Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "再試行") }
+                Button { Task { await calendar.refresh(bridge: bridge) } } label: { Text(verbatim: "Retry") }
                     .laaGlassButton(prominent: true)
             }
             .padding(LAASpacing.x8).frame(maxWidth: 560)

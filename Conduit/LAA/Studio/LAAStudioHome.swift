@@ -158,7 +158,7 @@ struct LAAStudioConnectionLine: View {
         HStack(spacing: LAASpacing.x2) {
             Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             Spacer(minLength: 0)
-            Button(String("再試行"), action: retry).frame(minHeight: 44)
+            Button(String("Retry"), action: retry).frame(minHeight: 44)
         }
     }
 }

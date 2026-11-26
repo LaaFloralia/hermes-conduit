@@ -161,7 +161,7 @@ struct LAABrainSaveEditor: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button("Find", systemImage: "magnifyingglass") { showFind = true }
-                            Button(isPinned ? String("ピン留めを外す") : String("ピン留めする"), systemImage: "pin", action: togglePin)
+                            Button(isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin, systemImage: "pin", action: togglePin)
                                 .accessibilityIdentifier("laa.brain.pin")
                             Button("History", systemImage: "clock.arrow.circlepath") { showHistory = true }
                                 .accessibilityIdentifier("laa.brain.history")
@@ -174,7 +174,7 @@ struct LAABrainSaveEditor: View {
                             .accessibilityLabel("Note Menu").accessibilityIdentifier("laa.brain.menu")
                     }
                 } else {
-                    ToolbarItem(placement: .cancellationAction) { Button("閉じる") { Task { await close() } }.disabled(busy || saving) }
+                    ToolbarItem(placement: .cancellationAction) { LAACloseButton { Task { await close() } }.accessibilityIdentifier("laa.brain.saveEditor.close").disabled(busy || saving) }
                     ToolbarItem(placement: .topBarTrailing) { Button("履歴") { showHistory = true }.accessibilityIdentifier("laa.brain.history") }
                 }
             }
@@ -219,7 +219,7 @@ struct LAABrainSaveEditor: View {
                 ScrollView { Text(verbatim: draft).font(.body.monospaced()).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(LAASpacing.horizontal).accessibilityIdentifier("laa.brain.raw") }
                     .navigationTitle(String("Markdown"))
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showRaw = false } } }
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showRaw = false }.accessibilityIdentifier("laa.brain.raw.close") } }
             }
         }
         .sheet(isPresented: $showInfo) {
@@ -233,7 +233,7 @@ struct LAABrainSaveEditor: View {
                         Text(verbatim: metadata).font(.footnote.monospaced()).textSelection(.enabled)
                     }
                 }.navigationTitle(String("情報"))
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showInfo = false } } }
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showInfo = false }.accessibilityIdentifier("laa.brain.note.info.close") } }
             }
         }
         .sheet(isPresented: $showFind) {
@@ -243,7 +243,7 @@ struct LAABrainSaveEditor: View {
                         !findText.isEmpty && $0.element.localizedStandardContains(findText)
                     }, id: \.offset) { _, line in Text(verbatim: line).textSelection(.enabled) }
                 }.searchable(text: $findText, prompt: "文書内を検索").navigationTitle(String("文書内検索"))
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showFind = false } } }
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showFind = false }.accessibilityIdentifier("laa.brain.find.close") } }
             }
         }
         .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .data,
@@ -620,7 +620,7 @@ private struct BrainHistoryView: View {
             }
             .navigationTitle("履歴")
             .toolbar { ToolbarItem(placement: .cancellationAction) {
-                Button(LAACopy.Brain.close) { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
+                LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
             } }
         }
     }
@@ -773,7 +773,7 @@ struct LAABrainRecoveryCatalogueView: View {
                 } else { ProgressView() }
             }
             .navigationTitle("復元履歴")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LAACopy.Brain.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.recovery.close") } }
             .task { await refresh() }
             .refreshable { await refresh() }
         }

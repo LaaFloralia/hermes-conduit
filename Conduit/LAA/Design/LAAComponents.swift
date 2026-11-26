@@ -108,7 +108,7 @@ struct LAABackToolbar: ToolbarContent {
 
     private var item: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            LAAToolbarIconButton(systemName: "chevron.left", label: "戻る", identifier: "BackButton",
+            LAAToolbarIconButton(systemName: "chevron.left", label: "Back", identifier: "BackButton",
                                  tint: LAAColor.text, action: action)
         }
     }
@@ -238,6 +238,18 @@ struct LAAListRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.background(configuration.isPressed ? LAAColor.selectionFill : .clear,
                                        in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Keep the sheet's toolbar placement and use the kit's platform hit area.
+struct LAACloseButton: View {
+    var label = "Close"
+    var glass = false
+    let action: () -> Void
+
+    var body: some View {
+        LAAIconButton(.close, label: label, glass: glass, action: action)
+            .macTooltip(label)
     }
 }
 
@@ -407,7 +419,7 @@ struct LAAInlineFailure: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             Spacer(minLength: 0)
-            Button(action: retry) { Text(verbatim: "再試行") }.laaButton(.text).fixedSize()
+            Button(action: retry) { Text(verbatim: "Retry") }.laaButton(.text).fixedSize()
         }
     }
 }

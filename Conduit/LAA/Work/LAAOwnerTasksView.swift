@@ -162,7 +162,7 @@ struct LAAOwnerTasksView: View {
                                         Button(String("下書きに戻す")) { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
                                             .disabled(sending.contains(request.taskID))
                                     } else {
-                                        Button(String("再試行")) { pendingAction = PendingAction(kind: .retry, item: item) }
+                                        Button(String("Retry")) { pendingAction = PendingAction(kind: .retry, item: item) }
                                             .disabled(bridge.status != .paired || sending.contains(request.taskID) || !LAAOwnerTaskOutbox.canRetry(request))
                                     }
                                     Button(LAAOwnerTaskCopy.inspectCurrent) { Task { await inspect(item) } }
@@ -216,7 +216,7 @@ struct LAAOwnerTasksView: View {
                 }
             }
             .navigationTitle(LAAOwnerTaskCopy.pending)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showingPending = false } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showingPending = false }.accessibilityIdentifier("work.ownerTasks.pending.close") } }
         }
         .accessibilityIdentifier("work.ownerTasks.pending.sheet")
         .confirmationDialog(LAAOwnerTaskCopy.confirmAction,
@@ -259,7 +259,7 @@ struct LAAOwnerTasksView: View {
                     }
                 }
             }
-            Button("キャンセル", role: .cancel) { }
+            Button(String("Cancel"), role: .cancel) { }
         } message: { action in
             Text(verbatim: action.kind == .retry
                  ? "未反映なら、この再送で初めて保存されます。同じ識別子と内容を使います。"

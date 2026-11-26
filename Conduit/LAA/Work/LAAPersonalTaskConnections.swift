@@ -377,7 +377,7 @@ private struct LAAPersonalItemEditor: View {
                 Button() { submit() } label: { Text(verbatim: LAACopy.save) }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || draft.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .disabled(busy).navigationTitle(Text(verbatim: mode.caption))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.connection.close") } }
             .task(id: bridge.revision) { restore() }
             .onChange(of: draft.first) { _, _ in saveDraft() }
             .onChange(of: draft.second) { _, _ in saveDraft() }
@@ -497,7 +497,7 @@ private struct LAAPersonalCommentEditor: View {
             }
             .disabled(busy)
             .navigationTitle(Text(verbatim: parentId == nil ? "コメントを追加" : "返信"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.relation.close") } }
             .task(id: bridge.revision) { restore() }
             .onChange(of: text) { _, value in if ready && pending == nil { saveDraft(value) } }
         }

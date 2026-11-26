@@ -22,7 +22,7 @@ struct LAAHabitsView: View {
         .sheet(item: $editing) { LAAHabitEditor(habit: $0, model: model).environmentObject(bridge).laaSheetSize(.form) }
         .sheet(isPresented: $showHistory) {
             NavigationStack { ScrollView { LAAHabitsHistoryView(model: model).padding(LAASpacing.horizontal) }.navigationTitle(Text(verbatim: "履歴"))
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button { showHistory = false } label: { Text(verbatim: "閉じる") } } } }.environmentObject(bridge).laaSheetSize(.page)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showHistory = false }.accessibilityIdentifier("laa.habits.history.close") } } }.environmentObject(bridge).laaSheetSize(.page)
         }
         .task(id: model.selectedWeek) { if automaticallyRefresh { await model.refresh(bridge) } }
         .laaMacSectionCommands(LAAMacSectionCommands(newTitle: "習慣を追加", newShortcut: "n", newModifiers: [.command, .shift], canCreate: bridge.status == .paired, create: { showCreate = true }, canReload: true, reload: { Task { await model.refresh(bridge); await model.loadHistory(bridge) } }))
@@ -124,7 +124,7 @@ struct LAAHabitsHistoryView: View {
             if !model.archived.isEmpty {
                 LAASectionHeader("やめた習慣")
                 ForEach(model.archived) { habit in
-                    HStack { Text(verbatim: habit.title); Spacer(); Button { Task { await model.restore(habit, bridge: bridge) } } label: { Text(verbatim: "戻す") }.accessibilityIdentifier("laa.habits.restore.\(habit.id)") }
+                    HStack { Text(verbatim: habit.title); Spacer(); Button { Task { await model.restore(habit, bridge: bridge) } } label: { Text(verbatim: "Restore") }.accessibilityIdentifier("laa.habits.restore.\(habit.id)") }
                 }
             }
             LAASectionHeader("変更の記録")

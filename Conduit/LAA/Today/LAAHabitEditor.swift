@@ -69,8 +69,8 @@ struct LAAHabitEditor: View {
             }.disabled(busy).scrollContentBackground(.hidden).background(LAAColor.background).laaTextStyle(.body)
                 .navigationTitle(Text(verbatim: habit == nil ? "習慣を追加" : "習慣を編集")).navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "キャンセル") }.disabled(busy) }
-                    ToolbarItem(placement: .confirmationAction) { Button { Task { await save() } } label: { Text(verbatim: "保存") }.disabled(!valid || busy).accessibilityIdentifier("laa.habits.save") }
+                    ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "Cancel") }.disabled(busy) }
+                    ToolbarItem(placement: .confirmationAction) { Button { Task { await save() } } label: { Text(verbatim: "Save") }.disabled(!valid || busy).accessibilityIdentifier("laa.habits.save") }
                 }
                 .confirmationDialog(Text(verbatim: "この習慣をやめますか？"), isPresented: $confirmArchive, titleVisibility: .visible) {
                     Button { Task { await save(archive: true) } } label: { Text(verbatim: "やめる") }.accessibilityIdentifier("laa.habits.archive.confirm")

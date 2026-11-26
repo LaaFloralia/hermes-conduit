@@ -84,7 +84,7 @@ struct LAAWorkProjectMoveMenu: View {
                 .accessibilityIdentifier("work.session.project.\(project.id)")
             }
         } label: {
-            Label { Text(verbatim: "プロジェクトを変更") } icon: { Image(systemName: "folder") }
+            Label { Text(verbatim: "Move Project") } icon: { Image(systemName: "folder") }
         }
         .disabled(LAAWorkSessionProjects.choices(projects).count < 2 && session.projectId != nil)
         .accessibilityIdentifier("work.session.project")

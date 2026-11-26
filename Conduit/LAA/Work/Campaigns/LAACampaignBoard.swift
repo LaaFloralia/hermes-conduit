@@ -261,7 +261,7 @@ enum LAACampaignCopy {
     static let applied = "応募済み"
     static let appliedFilter = "応募済"
     static let decline = "見送る"
-    static let open = "ページを開く"
+    static let open = "Open"
     static let empty = "該当する応募・特典はありません"
     static let unsupported = "Macのアップデート待ちです"
     static let unsupportedDetail = "MacのLAA Bridgeを更新すると、応募の判断を表示します。"
@@ -505,7 +505,7 @@ struct LAACampaignBoardView: View {
                     HStack(spacing: LAASpacing.x3) {
                         Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                         Spacer(minLength: 0)
-                        Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }
+                        Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
                     }
                     .padding(.bottom, LAASpacing.x3)
                 }
@@ -579,8 +579,13 @@ struct LAACampaignBoardView: View {
                     } label: { Text(verbatim: "表示順") }
                     .pickerStyle(.inline)
                 } label: {
-                    menuLabel(appliedOnly ? LAACampaignCopy.appliedFilter : "表示")
+                    Image(systemName: appliedOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel(Text(verbatim: "Filter and Sort"))
+                .accessibilityValue(Text(verbatim: appliedOnly ? LAACampaignCopy.appliedFilter : ""))
                 .accessibilityIdentifier("work.campaigns.display")
             }
             LAASearchField(placeholder: "応募・特典を検索", text: $query,
@@ -703,7 +708,7 @@ struct LAACampaignBoardView: View {
                 Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).multilineTextAlignment(.center)
             }
             if retry {
-                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "再試行") }.laaGlassButton()
+                Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }.laaGlassButton()
             }
         }
         .padding(LAASpacing.x8)

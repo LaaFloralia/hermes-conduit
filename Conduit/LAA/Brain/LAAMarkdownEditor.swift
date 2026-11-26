@@ -94,7 +94,7 @@ struct LAAMarkdownEditor: View {
                 TextEditor(text: $attachmentSource).font(.body.monospaced()).padding(LAASpacing.x4)
                     .navigationTitle(String("添付のリンク"))
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { attachmentSelection = nil } }
+                        ToolbarItem(placement: .cancellationAction) { Button(String("Cancel")) { attachmentSelection = nil } }
                         ToolbarItem(placement: .confirmationAction) {
                             Button(String("適用")) { model.updateAttachment(selected.id, source: attachmentSource); attachmentSelection = nil }
                         }

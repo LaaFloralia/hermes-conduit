@@ -61,7 +61,7 @@ struct LAAWorkRequirementDetail<SessionView: View>: View {
                     Text(verbatim: requirement.status.label).laaTextStyle(.secondary).fontWeight(.semibold)
                         .foregroundStyle(requirement.status == .awaitingDecision ? LAAColor.attention : LAAColor.text)
                         .padding(.leading, -LAASpacing.x2)
-                    Text(verbatim: requirement.addedByAI ? LAACopy.WorkProject.addedByAI : LAACopy.WorkProject.ownerHint)
+                    Text(verbatim: requirement.addedByAI ? LAACopy.WorkProject.addedByAI : LAACopy.WorkProject.owner)
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     Spacer(minLength: 0)
                     if let updated = Self.updated(requirement.updatedAt) {
@@ -132,7 +132,8 @@ struct LAAWorkRequirementDetail<SessionView: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "\(linked.name)、\(linked.statusLabel)"))
+        .accessibilityLabel(Text(verbatim: linked.name))
+        .accessibilityValue(Text(verbatim: linked.statusLabel == linked.name ? "" : linked.statusLabel))
         .accessibilityIdentifier("laa.work.requirement.session.\(linked.id)")
     }
 

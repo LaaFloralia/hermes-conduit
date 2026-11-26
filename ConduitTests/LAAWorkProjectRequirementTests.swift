@@ -52,7 +52,7 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         XCTAssertFalse(requirements[0].addedByAI)
         XCTAssertTrue(requirements[1].addedByAI)
         XCTAssertEqual(requirements[1].details, "補足")
-        XCTAssertEqual(value.sessions?.first?.statusLabel, "待機")
+        XCTAssertEqual(value.sessions?.first?.statusLabel, "Idle")
         XCTAssertEqual(value.sessions?.first?.mark, .waiting)
         // The detail's own rows win over the list's summary.
         XCTAssertEqual(value.progress, LAAWorkRequirementSummary(completed: 1, total: 2))
@@ -198,7 +198,7 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
         let full = [LAAWorkProjectFixtureView.session("ses_00000000000000a1", ref: "S4", name: "new", phase: "awaiting_decision",
                                                       model: "claude-opus-5-5", effort: "high", updated: "2026-11-23T00:00:00Z")]
         let only = LAAWorkLinkedSession.lookup(compact: compact, full: [])
-        XCTAssertEqual(only["ses_00000000000000a1"]?.statusLabel, "待機")
+        XCTAssertEqual(only["ses_00000000000000a1"]?.statusLabel, "Idle")
         let both = LAAWorkLinkedSession.lookup(compact: compact, full: full)
         XCTAssertEqual(both["ses_00000000000000a1"]?.name, "new")
         XCTAssertEqual(both["ses_00000000000000a1"]?.ref, "S4")

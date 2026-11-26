@@ -45,7 +45,7 @@ struct LAABrainManageNoteView: View {
             .navigationTitle(Text(verbatim: "ノートの管理"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Text(verbatim: LAACopy.Brain.close) }.disabled(busy)
+                    LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.manage.close").disabled(busy)
                 }
             }
             .confirmationDialog(Text(verbatim: "このノートをゴミ箱へ移動しますか？"), isPresented: $confirmTrash, titleVisibility: .visible) {

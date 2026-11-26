@@ -147,7 +147,7 @@ final class LAATabModelTests: XCTestCase {
         XCTAssertEqual(LAACopy.pairingTitle, "Macに接続")
         XCTAssertEqual(LAACopy.pairingAddress, "アドレス")
         XCTAssertEqual(LAACopy.pairingCode, "接続コード")
-        XCTAssertEqual(LAACopy.pairingConnect, "接続")
+        XCTAssertEqual(LAACopy.pairingConnect, "Connect")
         XCTAssertEqual([LAACopy.call, LAACopy.callMute, LAACopy.callUnmute, LAACopy.callSpeaker,
                         LAACopy.callChat, LAACopy.callEnd, LAACopy.callAudioRoute],
                        ["電話", "消音", "消音を解除", "スピーカー", "チャット", "終了", "音声の出力先"])

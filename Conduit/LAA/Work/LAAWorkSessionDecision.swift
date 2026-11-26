@@ -95,7 +95,7 @@ struct LAAWorkSessionDecision: View {
                 }
             }
         }
-        catch { snapshot = nil; failure = "確認内容を取得できません。更新して再確認してください。" }
+        catch { snapshot = nil; failure = "確認内容を読み取れませんでした。更新して再確認してください。" }
     }
     private func reply(_ request: LAAWorkDecision.Request, decision: String) {
         guard let snapshot, let device = bridge.deviceID else { return }

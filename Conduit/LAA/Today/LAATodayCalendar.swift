@@ -198,7 +198,7 @@ struct LAACalendarResponse: Codable {
             case "calendar_unavailable": return "Googleカレンダーに接続できません"
             case "calendar_not_found": return "予定が見つかりません"
             case "calendar_conflict": return "予定が別の場所で変更されました"
-            case "calendar_too_many_events": return "予定が多すぎるため取得できません"
+            case "calendar_too_many_events": return "予定が多すぎます。表示するカレンダーを減らしてください。"
             case "calendar_invalid_response": return "カレンダーの応答を読み取れません"
             default:
                 if error.status == 401 { return "Macへの再接続が必要です" }
@@ -209,7 +209,7 @@ struct LAACalendarResponse: Codable {
         if let error = error as? LAABridgeError, error == .unauthorized || error == .revoked {
             return "Macへの再接続が必要です"
         }
-        return "予定を取得できません"
+        return "予定を読み取れませんでした。再試行してください。"
     }
 
     #if DEBUG

@@ -101,7 +101,7 @@ struct LAAStaffIntroView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: onClose) { Text(verbatim: LAACopy.close) }
+                    LAACloseButton(action: onClose).accessibilityIdentifier("laa.staff.intro.close")
                 }
             }
         }
@@ -197,7 +197,7 @@ struct LAAStaffIntroView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
-                                Button(action: onClose) { Text(verbatim: LAACopy.done) }
+                                LAACloseButton(action: onClose).accessibilityIdentifier("laa.staff.info.close")
                             }
                         }
                 } label: {

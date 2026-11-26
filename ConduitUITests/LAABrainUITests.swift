@@ -100,7 +100,7 @@ final class LAABrainUITests: XCTestCase {
         let raw = app.buttons["laa.brain.rawToggle"]
         XCTAssertTrue(raw.waitForExistence(timeout: 15)); raw.tap()
         XCTAssertEqual(app.staticTexts["laa.brain.raw"].label, "AUTOSAVED-SECOND")
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["laa.brain.raw.close"].tap()
         app.buttons["laa.brain.back"].tap()
         let daily = app.buttons["laa.brain.daily"]
         XCTAssertTrue(daily.waitForExistence(timeout: 15)); daily.tap()
@@ -271,11 +271,11 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
         openNoteMenu(app)
-        let metadata = app.buttons["情報"]
+        let metadata = app.buttons["Info"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
         metadata.tap()
         XCTAssertTrue(app.staticTexts["---\nstatus: draft\n---"].waitForExistence(timeout: 5))
-        app.buttons["閉じる"].tap()
+        app.buttons["laa.brain.note.info.close"].tap()
         // On recent iOS, UITextView exposes this attributed link as a text
         // view with an external-link suffix instead of as a Link element.
         let nativeLink = app.links["次のメモ"]
@@ -514,7 +514,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(pin.waitForExistence(timeout: 10))
         pin.tap()
         openNoteMenu(app)
-        XCTAssertEqual(app.buttons["laa.brain.pin"].label, "ピン留めを外す")
+        XCTAssertEqual(app.buttons["laa.brain.pin"].label, "Unpin")
         app.tap()
         app.buttons["laa.brain.back"].tap()
         app.buttons["laa.brain.filter.back"].tap()
@@ -821,7 +821,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(raw.hasPrefix("---\r\ncustom: [keep, exact]\r\nunknown: |\r\n  untouched\r\n---\r\n"))
         XCTAssertTrue(raw.contains(":::custom unsupported"))
         XCTAssertTrue(raw.contains("追加"))
-        app.buttons["閉じる"].firstMatch.tap()
+        app.buttons["laa.brain.raw.close"].tap()
         let link = app.buttons["laa.brain.embed.note"].firstMatch
         for _ in 0..<14 {
             if link.exists && link.isHittable { break }

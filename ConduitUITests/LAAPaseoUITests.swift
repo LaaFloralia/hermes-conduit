@@ -88,8 +88,8 @@ final class LAAPaseoUITests: XCTestCase {
         let row = app.staticTexts["work.session.ses_1111111111111111"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.press(forDuration: 1.2)
-        let move = app.buttons["プロジェクトを変更"].firstMatch
-        XCTAssertTrue(move.waitForExistence(timeout: 5), "the row's menu has 「プロジェクトを変更」")
+        let move = app.buttons["Move Project"].firstMatch
+        XCTAssertTrue(move.waitForExistence(timeout: 5), "the row's menu has Move Project")
         move.tap()
         let target = app.buttons["試験プロジェクト"].firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 5))
@@ -173,7 +173,7 @@ final class LAAPaseoUITests: XCTestCase {
         // committing the way a fast flick does.
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -90, dy: 0)),
                     withVelocity: XCUIGestureVelocity(120), thenHoldForDuration: 0.3)
-        let unpin = app.buttons["ピンを外す"]
+        let unpin = app.buttons["Unpin"]
         XCTAssertTrue(unpin.waitForExistence(timeout: 5), "A short swipe reveals the unpin action")
         XCTAssertTrue(unpin.isHittable)
         capture(app, "partial-swipe", "light")
