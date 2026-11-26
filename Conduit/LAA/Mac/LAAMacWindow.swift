@@ -99,21 +99,26 @@ struct LAAMacWindowConstraints: UIViewRepresentable {
         private static func visibleFrame(containing window: CGRect) -> CGRect? {
             // Catalyst does not import NSScreen, but AppKit's documented screen metrics are
             // available in the process. Resize the scene itself through public UIKit geometry.
+            func rect(_ screen: NSObject, _ property: String) -> CGRect? {
+                let selector = NSSelectorFromString(property)
+                guard let getter = screen.method(for: selector) else { return nil }
+                typealias GetRect = @convention(c) (AnyObject, Selector) -> CGRect
+                // A typed getter avoids unboxing an AppKit NSRect with UIKit's NSValue API.
+                return unsafeBitCast(getter, to: GetRect.self)(screen, selector)
+            }
             guard let type = NSClassFromString("NSScreen") as? NSObject.Type,
                   let screens = type.perform(NSSelectorFromString("screens"))?.takeUnretainedValue() as? [NSObject],
-                  let primary = screens.first?.value(forKey: "frame") as? NSValue else { return nil }
-            let primaryTop = primary.cgRectValue.maxY
-            func systemRect(_ value: NSValue) -> CGRect {
-                let rect = value.cgRectValue
-                return CGRect(x: rect.minX, y: primaryTop - rect.maxY, width: rect.width, height: rect.height)
+                  let primary = screens.first.flatMap({ rect($0, "frame") }) else { return nil }
+            func systemRect(_ rect: CGRect) -> CGRect {
+                CGRect(x: rect.minX, y: primary.maxY - rect.maxY, width: rect.width, height: rect.height)
             }
             func overlap(_ screen: NSObject) -> CGFloat {
-                guard let frame = screen.value(forKey: "frame") as? NSValue else { return 0 }
+                guard let frame = rect(screen, "frame") else { return 0 }
                 let area = systemRect(frame).intersection(window)
                 return area.isNull ? 0 : area.width * area.height
             }
             guard let screen = screens.max(by: { overlap($0) < overlap($1) }),
-                  let frame = screen.value(forKey: "visibleFrame") as? NSValue else { return nil }
+                  let frame = rect(screen, "visibleFrame") else { return nil }
             return systemRect(frame)
         }
 
