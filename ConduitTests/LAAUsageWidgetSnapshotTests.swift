@@ -256,6 +256,115 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: Direction B 「のぞくモネ」 at true size (proposals/B)
+
+    static let peekSizes: [(String, WidgetFamily, CGSize)] = [
+        ("small", .systemSmall, CGSize(width: 170, height: 170)),
+        ("medium-usage", .systemMedium, proMaxMedium),
+        ("rect", .accessoryRectangular, CGSize(width: 172, height: 76)),
+        ("circ", .accessoryCircular, CGSize(width: 76, height: 76)),
+    ]
+
+    /// Every family for every employee: the peek must draw each hero, and
+    /// Monet（無検閲） (no Call) must differ from Monet.
+    func testPeekDrawsEveryEmployeeInEveryFamily() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        for (label, family, size) in Self.peekSizes {
+            var shots: [LAAWidgetEmployee: Data] = [:]
+            for employee in LAAWidgetEmployee.allCases {
+                for style in [UIUserInterfaceStyle.light, .dark] {
+                    let name = "B-\(label)-\(employee.rawValue)-\(style == .dark ? "dark" : "light")"
+                    let png = try peek(employee: employee, family: family, size: size, style: style, now: now, name: name)
+                    if style == .light { shots[employee] = png }
+                }
+            }
+            XCTAssertEqual(Set(shots.values).count, LAAWidgetEmployee.allCases.count, "\(label): each employee draws its own hero")
+        }
+    }
+
+    /// StandBy removes the background and the cropping edge with it, so the
+    /// small widget shows the employee whole.
+    func testStandByShowsTheWholeEmployee() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        let size = CGSize(width: 170, height: 170)
+        let home = try peek(employee: .monet, family: .systemSmall, size: size, style: .dark, now: now, name: "B-small-home-dark")
+        let standBy = try peek(employee: .monet, family: .systemSmall, size: size, style: .dark, now: now,
+                               showsBackground: false, name: "B-standby-dark")
+        XCTAssertNotEqual(home, standBy)
+    }
+
+    /// The label and name stop growing at xxLarge, so the peek keeps its
+    /// layout at the largest accessibility sizes.
+    func testPeekTextStopsAtItsCap() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        for (label, family, size) in Self.peekSizes where family != .accessoryCircular {
+            let cap = try peek(employee: .monet, family: family, size: size, style: .light, now: now,
+                               dynamicTypeSize: .xxLarge, name: "B-\(label)-xxl")
+            let maximum = try peek(employee: .monet, family: family, size: size, style: .light, now: now,
+                                   dynamicTypeSize: .accessibility5, name: "B-\(label)-ax5")
+            XCTAssertEqual(cap, maximum, label)
+        }
+    }
+
+    func testPeekTintedHomeScreen() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        for (label, family, size) in Self.peekSizes.prefix(2) {
+            try peek(employee: .monet, family: family, size: size, style: .dark, mode: .accented, now: now, name: "B-\(label)-tinted")
+        }
+    }
+
+    /// One family at its true size, @3x, the widget's own background only;
+    /// with `LAA_WIDGET_SHOT_DIR` set the PNG is also written there.
+    @discardableResult
+    private func peek(employee: LAAWidgetEmployee, family: WidgetFamily, size: CGSize, style: UIUserInterfaceStyle,
+                      mode: WidgetRenderingMode = .fullColor, now: Date, showsBackground: Bool = true,
+                      dynamicTypeSize: DynamicTypeSize = .large, name: String) throws -> Data {
+        let rows: [(String, Double)] = [("codex.quota.weekly", 66), ("claude.quota.session", 49), ("claude.quota.weekly", 49),
+                                        ("google-ai-pro.quota.session", 83), ("google-ai-pro.quota.weekly", 18)]
+        let meters = rows.map { id, amount in
+            WidgetUsageMeter(id: "provider.\(id)", label: id, unit: .percent, amount: amount, observedAt: now,
+                freshUntil: now.addingTimeInterval(1200), resetsAt: now.addingTimeInterval(86_400), stale: false, retained: false)
+        }
+        let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
+            .withUsage(WidgetUsageSnapshot(meters: meters, checkedAt: now))
+        let entry = LAAEmployeeWidgetEntry.make(employee: employee, snapshot: snapshot, date: now)
+        let accessory = family == .accessoryRectangular || family == .accessoryCircular
+        let widget = LAAEmployeeWidgetView(entry: entry, familyOverride: family, renderingModeOverride: mode,
+                                           renderedAtOverride: now, showsBackgroundOverride: showsBackground)
+            .frame(width: size.width, height: size.height)
+            .background { if showsBackground && !accessory { LAAColor.surface } else { Color.black } }
+            .clipShape(family == .accessoryCircular ? AnyShape(Circle())
+                       : AnyShape(RoundedRectangle(cornerRadius: accessory ? 12 : LAARadius.photo, style: .continuous)))
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
+            .preferredColorScheme(style == .dark || accessory ? .dark : .light)
+        let screen = widget.frame(width: size.width, height: size.height).background(Color.black).ignoresSafeArea()
+        let host = UIHostingController(rootView: screen)
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+        let scene = try XCTUnwrap(previous?.windowScene ?? scenes.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(origin: .zero, size: size)
+        window.traitOverrides.userInterfaceStyle = style == .dark || accessory ? .dark : .light
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let format = UIGraphicsImageRendererFormat(); format.scale = 3
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let png = try XCTUnwrap(image.pngData())
+        if let directory = ProcessInfo.processInfo.environment["LAA_WIDGET_SHOT_DIR"], !directory.isEmpty {
+            try? png.write(to: URL(fileURLWithPath: directory).appendingPathComponent(name + ".png"))
+        }
+        return png
+    }
+
     private final class RowsBox: @unchecked Sendable { var value: Int? }
 
     @discardableResult

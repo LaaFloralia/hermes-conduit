@@ -1,4 +1,5 @@
 #if LAA_BUILD && LAA_WIDGET_TEST
+import UIKit
 import WidgetKit
 import XCTest
 @testable import Conduit
@@ -38,6 +39,37 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
                 XCTAssertEqual(decoded.workspace?.profile, employee.profile)
             }
         }
+    }
+
+    /// Direction B draws each hero trimmed to its figure (the eye-line
+    /// anchor assumes it), the two line icons as templates, and no company icon.
+    func testPeekAssetsAreBundled() throws {
+        let bundle = Bundle(for: Self.self)
+        for employee in LAAWidgetEmployee.allCases {
+            let image = try XCTUnwrap(UIImage(named: employee.heroImage, in: bundle, with: nil), employee.rawValue)
+            let cg = try XCTUnwrap(image.cgImage, employee.rawValue)
+            XCTAssertLessThanOrEqual(max(cg.width, cg.height), 1024, employee.rawValue)
+            XCTAssertGreaterThanOrEqual(cg.height, 534, "\(employee.rawValue): the medium peek is 178 pt tall at @3x")
+            XCTAssertTrue(Self.touchesEveryEdge(cg), "\(employee.rawValue): trimmed to its figure")
+        }
+        for icon in ["LAAWidgetIconCall", "LAAWidgetIconChat"] {
+            let image = try XCTUnwrap(UIImage(named: icon, in: bundle, with: nil), icon)
+            XCTAssertEqual(image.renderingMode, .alwaysTemplate, icon)
+        }
+        XCTAssertNil(UIImage(named: "LAAWidgetCompanyIcon", in: bundle, with: nil))
+    }
+
+    private static func touchesEveryEdge(_ image: CGImage) -> Bool {
+        let w = image.width, h = image.height
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let context = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        func alpha(_ x: Int, _ y: Int) -> UInt8 { pixels[(y * w + x) * 4 + 3] }
+        let top = (0..<w).contains { alpha($0, 0) > 8 }, bottom = (0..<w).contains { alpha($0, h - 1) > 8 }
+        let left = (0..<h).contains { alpha(0, $0) > 8 }, right = (0..<h).contains { alpha(w - 1, $0) > 8 }
+        return top && bottom && left && right
     }
 
     func testTimelineIncludesFreshnessAndResetDeadlines() throws {

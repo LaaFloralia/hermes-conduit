@@ -107,30 +107,54 @@ struct LAAWidgetUsageRowsKey: PreferenceKey {
     static func reduce(value: inout Int?, nextValue: () -> Int?) { value = nextValue() ?? value }
 }
 
+/// Direction B 「のぞくモネ」 (owner, 2026-11-27, decision J3): the employee
+/// peeks in from the widget's edge, enlarged and cropped by it, under a quiet
+/// "LAA" label and name, with icon-only Call and Chat at the top right.
+/// Geometry is authored at the 170 pt widget height and scales with it.
+enum LAAWidgetPeek {
+    static let designHeight: CGFloat = 170
+    /// The eye line as a share of the trimmed hero's height (Monet's figure;
+    /// every hero is trimmed to its figure, so the anchor carries over).
+    static let eye: CGFloat = 0.463
+    static let labelTop: CGFloat = 18
+    static let leading: CGFloat = 16
+    static let iconSize: CGFloat = 20
+    /// The actions' vertical centre (icons drawn at y 28–48).
+    static let iconCentre: CGFloat = 38
+    static let target: CGFloat = 44
+}
+
 struct LAAEmployeeWidgetView: View {
     let entry: LAAEmployeeWidgetEntry
     var familyOverride: WidgetFamily? = nil
     var renderingModeOverride: WidgetRenderingMode? = nil
     var renderedAtOverride: Date? = nil
+    /// Tests stand in for StandBy (no container background) with `false`.
+    var showsBackgroundOverride: Bool? = nil
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.showsWidgetContainerBackground) private var showsBackground
     private var effectiveRenderingMode: WidgetRenderingMode { renderingModeOverride ?? renderingMode }
     private var renderedAt: Date { max(entry.date, renderedAtOverride ?? Date()) }
+    private var hasCall: Bool { entry.employee != .monetUncensored }
 
     static func isPast(_ meter: WidgetUsageMeter, entryDate: Date, renderedAt: Date, anchor: Date? = nil) -> Bool {
         meter.isPast(at: max(entryDate, renderedAt), anchor: anchor ?? entryDate)
     }
 
     var body: some View {
+        let current = familyOverride ?? family
         Group {
-            switch familyOverride ?? family {
+            switch current {
             case .accessoryRectangular: rectangular
             case .accessoryCircular: circular
             case .systemMedium: medium
             default: small
             }
         }
-        .containerBackground(for: .widget) { LAAColor.surface }
+        .containerBackground(for: .widget) {
+            if current == .accessoryRectangular || current == .accessoryCircular { Color.clear } else { LAAColor.surface }
+        }
     }
 
     private var medium: some View {
@@ -138,61 +162,117 @@ struct LAAEmployeeWidgetView: View {
             // The employee keeps about 46% on the left; the quota rows take
             // the rest (T3's subscription list, 2026-11-25).
             let employeeWidth = max(0, (frame.size.width - LAASpacing.x3 * 2 - 1) * 0.46)
-            HStack(spacing: LAASpacing.x3) {
-                VStack(spacing: LAASpacing.x1) {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .topLeading) {
-                            employeeImage(entry.employee.heroImage)
-                                .scaledToFit()
-                                .frame(width: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)),
-                                       height: max(0, geometry.size.height - (entry.employee == .monetUncensored ? 28 : 0)))
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                                .accessibilityHidden(true)
-                            HStack(spacing: LAASpacing.x2) {
-                                companyIcon
-                                Text(verbatim: entry.employee.name).font(LAAType.employeeName)
-                                    .foregroundStyle(LAAColor.text).lineLimit(1)
-                                    .minimumScaleFactor(entry.employee == .monetUncensored ? 0.55 : 1)
-                            }
-                        }
-                    }
-                    // Bare symbols, like the system's own widget controls: a
-                    // filled plate reads as a hazy glow on tinted and clear Home
-                    // Screens.
-                    HStack(spacing: LAASpacing.x2) {
-                        if entry.employee != .monetUncensored {
-                            iconAction(entry.call.url, symbol: "phone.fill", label: LAACopy.widgetCall)
-                        }
-                        iconAction(entry.chat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat)
-                    }
+            let ruleX = LAASpacing.x3 + employeeWidth + LAASpacing.x3
+            let scale = frame.size.height / LAAWidgetPeek.designHeight
+            ZStack(alignment: .topLeading) {
+                // Cropped by the bottom and left edges, and by the rule.
+                peekingHero(height: 178 * scale, centreX: 78 * scale, eyeLine: 142 * scale)
+                    .frame(width: ruleX, height: frame.size.height, alignment: .topLeading)
+                    .clipped()
+                identity(nameWidth: nameWidth(firstActionCentre: ruleX - 26 - (hasCall ? LAAWidgetPeek.target : 0)))
+                actions(lastCentre: ruleX - 26)
+                HStack(spacing: LAASpacing.x3) {
+                    Color.clear.frame(width: employeeWidth)
+                    Rectangle().fill(LAAColor.separator).frame(width: 1)
+                    usageSummary.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-                .frame(width: employeeWidth)
-                Rectangle().fill(LAAColor.separator).frame(width: 1)
-                usageSummary.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(LAASpacing.x3)
             }
         }
-        .padding(LAASpacing.x3)
         .widgetURL(entry.usageLink.url)
         .dynamicTypeSize(...DynamicTypeSize.accessibility3)
     }
 
-    private var companyIcon: some View {
-        Group {
-            #if LAA_WIDGET_TEST
-            let image = Image("LAAWidgetCompanyIcon", bundle: Bundle(for: LAAWidgetTestResources.self))
-            #else
-            let image = Image("LAAWidgetCompanyIcon")
-            #endif
-            if #available(iOS 18.0, *) {
-                image.resizable().widgetAccentedRenderingMode(.accentedDesaturated)
-            } else {
-                image.resizable()
+    private var small: some View {
+        GeometryReader { frame in
+            let scale = frame.size.height / LAAWidgetPeek.designHeight
+            let lastCentre = frame.size.width - LAAWidgetPeek.target / 2
+            ZStack(alignment: .topLeading) {
+                if showsBackgroundOverride ?? showsBackground {
+                    peekingHero(height: 164 * scale, centreX: frame.size.width * 88 / 170, eyeLine: 134 * scale)
+                } else {
+                    // StandBy drops the background, and with it the edge
+                    // that crops the peek: the employee stands whole.
+                    peekingHero(height: 112 * scale, centreX: frame.size.width * 100 / 170, eyeLine: nil,
+                                bottom: 166 * scale)
+                }
+                identity(nameWidth: nameWidth(firstActionCentre: lastCentre - (hasCall ? LAAWidgetPeek.target : 0)))
+                actions(lastCentre: lastCentre)
             }
+            .frame(width: frame.size.width, height: frame.size.height, alignment: .topLeading)
+            .clipped()
         }
-        .scaledToFit()
-        .frame(width: 24, height: 24)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .accessibilityLabel(Text(verbatim: LAACopy.widgetBrand))
+        .widgetURL(entry.defaultLink(for: .systemSmall).url)
+    }
+
+    /// "LAA" over the employee's name, top left. Georgia carries both: the
+    /// widget bundles no display face (LAA Kit keeps fonts to app targets),
+    /// and Georgia is the display stack's first face iOS has.
+    private func identity(nameWidth: CGFloat, nameSize: CGFloat = 20) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: LAACopy.widgetBrand)
+                .font(.custom("Georgia", size: 12, relativeTo: .caption))
+                .tracking(12 * 0.11)
+                .foregroundStyle(LAAColor.secondaryText)
+                .lineLimit(1)
+            Text(verbatim: entry.employee.name)
+                .font(.custom("Georgia", size: nameSize, relativeTo: .title3))
+                .foregroundStyle(LAAColor.text)
+                .lineLimit(1)
+                .minimumScaleFactor(hasCall ? 0.7 : 0.55)
+                .frame(width: max(0, nameWidth), alignment: .leading)
+        }
+        .padding(.leading, LAAWidgetPeek.leading)
+        .padding(.top, LAAWidgetPeek.labelTop)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+
+    /// The name stops short of the first icon, so a tap on it stays the
+    /// widget's own link.
+    private func nameWidth(firstActionCentre: CGFloat) -> CGFloat {
+        firstActionCentre - LAAWidgetPeek.iconSize / 2 - 6 - LAAWidgetPeek.leading
+    }
+
+    /// Icon-only Call and Chat, side by side and ending at `lastCentre`;
+    /// each icon is 20 pt in a 44 pt target that does not overlap the other.
+    private func actions(lastCentre: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            if hasCall {
+                iconAction(entry.call.url, icon: "LAAWidgetIconCall", label: LAACopy.widgetCall)
+                    .position(x: lastCentre - LAAWidgetPeek.target, y: LAAWidgetPeek.iconCentre)
+            }
+            iconAction(entry.chat.url, icon: "LAAWidgetIconChat", label: LAACopy.widgetChat)
+                .position(x: lastCentre, y: LAAWidgetPeek.iconCentre)
+        }
+    }
+
+    // Bare line icons, like the system's own widget controls: a filled
+    // plate reads as a hazy glow on tinted and clear Home Screens.
+    private func iconAction(_ url: URL, icon: String, label: String) -> some View {
+        Link(destination: url) {
+            widgetImage(icon)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: LAAWidgetPeek.iconSize, height: LAAWidgetPeek.iconSize)
+                .foregroundStyle(LAAColor.link)
+                .frame(width: LAAWidgetPeek.target, height: LAAWidgetPeek.target)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(entry.employee.name), \(label)")
+    }
+
+    /// The selected employee's hero, fitted into a `height` square whose
+    /// centre is `centreX`. With `eyeLine` the figure's eye line sits there
+    /// and the widget edge crops the rest; with `bottom` it stands on it.
+    private func peekingHero(height: CGFloat, centreX: CGFloat, eyeLine: CGFloat?, bottom: CGFloat? = nil) -> some View {
+        let top = eyeLine.map { $0 - LAAWidgetPeek.eye * height } ?? ((bottom ?? height) - height)
+        return heroImage
+            .scaledToFit()
+            .frame(width: height, height: height, alignment: eyeLine == nil ? .bottom : .top)
+            .offset(x: centreX - height / 2, y: top)
+            .accessibilityHidden(true)
     }
 
     /// Its own view, so its text sizes read the medium widget's capped
@@ -243,122 +323,82 @@ struct LAAEmployeeWidgetView: View {
         return value.formatted(.number.precision(.fractionLength(0...2))) + "%"
     }
 
-    private func iconAction(_ url: URL, symbol: String, label: String) -> some View {
-        Link(destination: url) {
-            Image(systemName: symbol).font(.title3).fontWeight(.semibold)
-                .foregroundStyle(LAAColor.link)
-                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(entry.employee.name), \(label)")
-    }
+    private var accessoryLabel: String { hasCall ? LAACopy.widgetCall : LAACopy.widgetChat }
 
-    private var small: some View {
-        VStack(spacing: LAASpacing.x2) {
-            GeometryReader { geometry in
-                ZStack(alignment: .topLeading) {
-                    employeeImage(entry.employee.heroImage)
-                        .scaledToFit()
-                        .frame(width: geometry.size.height, height: geometry.size.height)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .offset(y: -LAASpacing.x1)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        Text(entry.employee.name)
-                            .font(LAAType.employeeName)
-                            .foregroundStyle(LAAColor.text)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Text(verbatim: LAACopy.widgetBrand)
-                            .laaTextStyle(.section)
-                            .fontWeight(.bold)
-                            .foregroundStyle(LAAColor.link)
-                    }
-                    .frame(width: geometry.size.width * 0.45, alignment: .topLeading)
-                }
-            }
-            HStack(spacing: LAASpacing.x2) {
-                if entry.employee != .monetUncensored { action(entry.call.url, title: LAACopy.widgetCall, primary: true) }
-                action(entry.chat.url, title: LAACopy.widgetChat, primary: false)
-            }
-        }
-        .padding(LAASpacing.x3)
-        .widgetURL(entry.defaultLink(for: .systemSmall).url)
-    }
-
+    /// Lock Screen: the employee peeks in from the bottom left of the OS
+    /// background, beside "LAA", the name and the one action.
     private var rectangular: some View {
-        HStack(spacing: LAASpacing.x2) {
-            Image(systemName: entry.employee == .monetUncensored ? "bubble.left.fill" : "phone.fill")
-                .laaTextStyle(.body)
-                .fontWeight(.semibold)
-                .foregroundStyle(LAAColor.link)
-                .frame(width: LAASpacing.minimumRowHeight, height: LAASpacing.minimumRowHeight)
-                .background(Circle().fill(LAAColor.selectionFill))
-            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(entry.employee.name)
-                    .laaTextStyle(.body)
-                    .fontWeight(.semibold)
+        GeometryReader { frame in
+            let scale = frame.size.height / 76
+            ZStack(alignment: .topLeading) {
+                AccessoryWidgetBackground()
+                peekingHero(height: 76 * scale, centreX: 30 * scale, eyeLine: 58 * scale)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: LAACopy.widgetBrand)
+                        .font(.custom("Georgia", size: 12, relativeTo: .caption))
+                        .tracking(12 * 0.11)
+                        .foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: entry.employee.name)
+                        .font(.custom("Georgia", size: 20, relativeTo: .title3))
+                        .foregroundStyle(LAAColor.text)
+                        .minimumScaleFactor(0.55)
+                    HStack(spacing: LAASpacing.x2) {
+                        widgetImage(hasCall ? "LAAWidgetIconCall" : "LAAWidgetIconChat")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 16, height: 16)
+                        Text(verbatim: accessoryLabel)
+                            .font(.system(size: 13, weight: .medium))
+                    }
                     .foregroundStyle(LAAColor.text)
-                    .lineLimit(1)
-                Text(verbatim: entry.employee == .monetUncensored ? LAACopy.widgetChat : LAACopy.widgetCall)
-                    .laaTextStyle(.secondary)
-                    .foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(1)
+                    .padding(.top, LAASpacing.x1)
+                }
+                .lineLimit(1)
+                .padding(.leading, 74 * scale)
+                .padding(.trailing, LAASpacing.x2)
+                .padding(.top, 8 * scale)
+                .frame(width: frame.size.width, alignment: .leading)
             }
-            Spacer(minLength: 0)
+            .clipShape(ContainerRelativeShape())
         }
-        .padding(LAASpacing.x2)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .widgetURL(entry.defaultLink(for: .accessoryRectangular).url)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(entry.employee.name), \(entry.employee == .monetUncensored ? LAACopy.widgetChat : LAACopy.widgetCall)")
+        .accessibilityLabel("\(entry.employee.name), \(accessoryLabel)")
     }
 
+    /// Lock Screen: the employee peeks in from the bottom of the OS disc,
+    /// the app icon's gesture.
     private var circular: some View {
-        Image("LAAWidgetMark")
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .foregroundStyle(LAAColor.link)
-            .padding(LAASpacing.x2)
-            .widgetURL(entry.defaultLink(for: .accessoryCircular).url)
-            .accessibilityLabel("\(entry.employee.name), \(entry.employee == .monetUncensored ? LAACopy.widgetChat : LAACopy.widgetCall)")
+        GeometryReader { frame in
+            let scale = min(frame.size.width, frame.size.height) / 76
+            ZStack(alignment: .topLeading) {
+                AccessoryWidgetBackground()
+                peekingHero(height: 72 * scale, centreX: frame.size.width / 2, eyeLine: 52 * scale)
+            }
+            .clipShape(Circle())
+        }
+        .widgetURL(entry.defaultLink(for: .accessoryCircular).url)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(entry.employee.name), \(accessoryLabel)")
     }
 
-    @ViewBuilder
-    private func employeeImage(_ name: String) -> some View {
+    private func widgetImage(_ name: String) -> Image {
         #if LAA_WIDGET_TEST
-        let image = Image(name, bundle: Bundle(for: LAAWidgetTestResources.self))
+        Image(name, bundle: Bundle(for: LAAWidgetTestResources.self))
         #else
-        let image = Image(name)
+        Image(name)
         #endif
-        if #available(iOS 18.0, *) {
-            image.resizable().widgetAccentedRenderingMode(.fullColor)
-        } else {
-            image.resizable()
-        }
     }
 
-    private func action(_ url: URL, title: String, primary: Bool) -> some View {
-        Link(destination: url) {
-            Text(verbatim: title)
-                .laaTextStyle(.secondary)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
-                .foregroundStyle(effectiveRenderingMode == .fullColor && primary ? LAAColor.filledButtonText : LAAColor.link)
-                .background {
-                    if effectiveRenderingMode == .fullColor {
-                        RoundedRectangle(cornerRadius: LAARadius.control)
-                            .fill(primary ? LAAColor.filledButton : LAAColor.subtleSurface)
-                    } else {
-                        RoundedRectangle(cornerRadius: LAARadius.control)
-                            .fill(LAAColor.text.opacity(primary ? 0.24 : 0.14))
-                    }
-                }
+    /// Tinted and clear Home Screens draw the hero desaturated in the accent
+    /// colour rather than in full colour (HIG: reserve full colour).
+    @ViewBuilder
+    private var heroImage: some View {
+        if #available(iOS 18.0, *) {
+            widgetImage(entry.employee.heroImage).resizable().widgetAccentedRenderingMode(.accentedDesaturated)
+        } else {
+            widgetImage(entry.employee.heroImage).resizable()
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(entry.employee.name), \(title)")
     }
 }
 
