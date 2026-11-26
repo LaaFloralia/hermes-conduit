@@ -166,6 +166,11 @@ struct SpokenTextFilter {
             scalars.append(scalar)
         }
         var result = String(scalars)
+        #if LAA_BUILD
+        // Employees' kaomoji and decorative marks too, keeping their sound
+        // words (D-01, owner 2026-11-26).
+        result = LAASpokenWords.strip(result)
+        #endif
         while result.contains("  ") { result = result.replacingOccurrences(of: "  ", with: " ") }
         return result
     }

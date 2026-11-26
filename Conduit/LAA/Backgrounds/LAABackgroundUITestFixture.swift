@@ -128,6 +128,24 @@ final class LAABackgroundFixture: ObservableObject {
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
             }
         }
+        // Two waits in a row, for the employee's thinking word
+        // (LAAStaffThinking): the first runs 16 s, the reply lands, and the
+        // second starts 6 s later (past the resume grace), so it picks
+        // again. With "-LAA_FIXTURE_STAFF_THINKING -LAA_FIXTURE_THINKING_SEED
+        // <n>" the words are the owner's table and the picks fixed.
+        if chatFixture == "typing", args.contains("-LAA_FIXTURE_WAIT_CYCLE") {
+            Task { @MainActor [weak app] in
+                try? await Task.sleep(for: .seconds(16))
+                guard let app else { return }
+                app.handleStreamEvent(.messageComplete(sessionId: conversationID, messageId: "fixture-first",
+                                                       content: "午前は予定を確認し、午後は資料を仕上げましょう。", reasoning: nil))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: false))
+                try? await Task.sleep(for: .seconds(6))
+                app.messages.append(ChatMessage(id: "user-second", role: .user, content: "資料の順番も決めて。",
+                                                timestamp: String(Date().timeIntervalSince1970), rowId: 3))
+                app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+            }
+        }
         // A reply streamed a few seconds after the chat opens, for the glass
         // bubbles' updates while the text grows: "-LAA_FIXTURE_STREAM".
         if args.contains("-LAA_FIXTURE_STREAM") {

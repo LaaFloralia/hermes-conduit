@@ -57,6 +57,10 @@ struct HermesTurnAttributes: Codable, Hashable {
     /// relaunched Conduit settles it only against that dashboard's live
     /// sessions. Optional: activities started by an older build have none.
     var dashboardID: String? = nil
+    /// What the thinking phase says for this turn: the employee's word,
+    /// picked once when the turn starts and held for the whole wait (LAA,
+    /// owner 2026-11-26). Nil reads Thinking; older activities have none.
+    var thinkingWord: String? = nil
 
     /// The glow color (`#rrggbb` only, as `ProfileGlowRGB.hex` writes it),
     /// nil when there is none or it doesn't parse.
@@ -121,14 +125,29 @@ enum HermesToolCategory: String, Codable, CaseIterable {
 /// The words the activity shows, in the app's language. Every key here is
 /// in Conduit/Localizable.xcstrings (the widget extension bundles it).
 enum HermesTurnCopy {
-    static func status(_ state: HermesTurnAttributes.ContentState, language: String) -> String {
+    static func status(_ state: HermesTurnAttributes.ContentState, language: String, thinkingWord: String? = nil) -> String {
 #if LAA_BUILD
         switch state.turnPhase {
-        case .thinking, .tool: return statusKey(state)
+        case .thinking:
+            if let word = thinkingWord?.trimmingCharacters(in: .whitespacesAndNewlines), !word.isEmpty { return word }
+            return statusKey(state)
+        case .tool: return statusKey(state)
         default: break
         }
 #endif
         return WidgetLocalization.string(statusKey(state), language: language)
+    }
+
+    /// What VoiceOver reads for the status: an employee's word without its
+    /// emoji and kaomoji (LAASpokenWords), Thinking when nothing is left.
+    static func spokenStatus(_ state: HermesTurnAttributes.ContentState, language: String, thinkingWord: String? = nil) -> String {
+        let text = status(state, language: language, thinkingWord: thinkingWord)
+#if LAA_BUILD
+        let words = LAASpokenWords.label(text)
+        return words.isEmpty ? statusKey(state) : words
+#else
+        return text
+#endif
     }
 
     static func statusKey(_ state: HermesTurnAttributes.ContentState) -> String {
