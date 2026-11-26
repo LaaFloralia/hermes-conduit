@@ -25,11 +25,24 @@ import {
 
 export const USAGE_FEED_VERSION = 1;
 const GOOGLE_AI_PRO = Object.freeze({ id: 'google-ai-pro', name: 'Google AI Pro' });
+const MUSE = Object.freeze({ id: 'muse', name: 'Muse' });
 const FABLE_ID = 'claude-weekly-scoped-fable';
 const WEEKLY_MINUTES = 10080;
-// Automatic readings: CodexBar's (no source, `live`, `local`, `codexbar-cli`) and the
-// Antigravity pool's own `/usage` reading (`agy-usage`, usage-meters).
-const AUTO_SOURCES = Object.freeze(['live', 'local', 'codexbar-cli', 'agy-usage']);
+// Automatic readings: CodexBar's (no source, `live`, `local`, `codexbar-cli`), the
+// Antigravity pool's own `/usage` reading (`agy-usage`) and the Muse resident's
+// Usage-screen snapshot (`muse-usage`), both from usage-meters.
+const AUTO_SOURCES = Object.freeze(['live', 'local', 'codexbar-cli', 'agy-usage', 'muse-usage']);
+// How old an observation may be while its producer still vouches for it in
+// freshUntil. Muse's weekly Free allowance moves only when the harness spends
+// it and the resident reads it around jobs, so usage-meters keeps a reading for
+// 24 hours. The feed itself (fetchedAt, receipt) still expires after 10 minutes.
+const OBSERVATION_LIMIT_MS = Object.freeze({ 'muse-usage': 24 * 60 * 60 * 1000 });
+
+function observationLimit(row, autoStaleMs) {
+  return row.freshUntil != null && Object.hasOwn(OBSERVATION_LIMIT_MS, row.source ?? '')
+    ? Math.max(autoStaleMs, OBSERVATION_LIMIT_MS[row.source])
+    : autoStaleMs;
+}
 const MAX_PROVIDERS = 32;
 const MAX_WINDOWS = 32;
 const MAX_COMPONENTS = 30;
@@ -55,6 +68,11 @@ export const USAGE_PROVIDERS = Object.freeze([
   // group that opens to the accounts; `active` marks the one the pool would use next.
   ...['sub2', 'sub3', 'sub4'].map((account) => ({ id: `google-ai-pro-${account}`, label: `Google ${account[0].toUpperCase()}${account.slice(1)}`,
     kind: 'quota', group: GOOGLE_AI_PRO.id, groupName: GOOGLE_AI_PRO.name })),
+  // Muse (2026-11-26, owner): the three Free accounts LAA's harness switches between for
+  // TTS and video, one row each with its weekly Free allowance; `active` is the resident
+  // the harness sends to. usage-meters reads the resident's snapshot (muse_usage.py).
+  ...['Muse1', 'Muse2', 'Muse3'].map((account) => ({ id: `muse-${account}`, label: account,
+    kind: 'quota', group: MUSE.id, groupName: MUSE.name })),
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
   { id: 'openai-api', label: 'GPT API', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
@@ -230,10 +248,8 @@ function isStale(row, feedFetchedAt, now, autoStaleMs, receivedAt = now) {
   if (row.source != null && ![...AUTO_SOURCES, 'verified'].includes(row.source)) return true;
   if (row.source === 'verified') return true;
   if (row.freshUntil != null && (isoTime(row.freshUntil) === null || Date.parse(row.freshUntil) <= now)) return true;
-  const times = [observed, feedFetchedAt]
-    .filter((value) => value !== null)
-    .map((value) => Date.parse(value));
-  return now - Math.min(...times) >= autoStaleMs;
+  if (feedFetchedAt !== null && now - Date.parse(feedFetchedAt) >= autoStaleMs) return true;
+  return now - Date.parse(observed) >= observationLimit(row, autoStaleMs);
 }
 
 function observedAtOf(row, feedFetchedAt) {
@@ -396,11 +412,18 @@ function costItem(row, provider, context) {
     detail: { sourceLag: expectedLag, periodTimezone: 'UTC' } });
 }
 
+// Muse's signed-out account (`needs_owner_login`) is a sign-in to make, like any
+// expired sign-in; every other unknown reason is a failed read.
+function unavailableReason(reason, provider) {
+  if (provider.group === MUSE.id && reason === 'needs_owner_login') return 'auth_required';
+  return ['not_configured', 'auth_required', 'not_auto', 'freshness_unknown', 'fetch_failed'].includes(reason) ? reason : 'fetch_failed';
+}
+
 function itemFromRow(row, provider, context) {
   if (row.available !== true) {
     return unavailableItem({
       ...baseOf(provider),
-      reason: ['not_configured', 'auth_required', 'not_auto', 'freshness_unknown', 'fetch_failed'].includes(row.reason) ? row.reason : 'fetch_failed',
+      reason: unavailableReason(row.reason, provider),
       expired: provider.kind === 'balance' || provider.kind === 'unitCredits'
         ? balanceExpired(row, context.now)
         : false,
@@ -468,7 +491,7 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
       const updated = isoTime(row.updatedAt);
       if (updated !== null && Date.parse(updated) <= Math.min(now, context.receivedAt) + 120_000) {
         item.detail ??= {};
-        const deadline = Math.min(Date.parse(updated) + context.autoStaleMs, Date.parse(fetchedAt) + context.autoStaleMs,
+        const deadline = Math.min(Date.parse(updated) + observationLimit(row, context.autoStaleMs), Date.parse(fetchedAt) + context.autoStaleMs,
           context.receivedAt + context.autoStaleMs,
           row.freshUntil == null ? Infinity : Date.parse(row.freshUntil));
         item.detail.freshUntil = new Date(deadline).toISOString();

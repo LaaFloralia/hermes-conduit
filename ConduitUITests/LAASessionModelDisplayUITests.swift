@@ -120,6 +120,28 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         app.descendants(matching: .any)[id].firstMatch
     }
 
+    /// Opens the harness capsule and picks the row under the harness's
+    /// heading. A menu row does not carry its identifier into the
+    /// accessibility tree on iOS, so it is found by its identifier where it
+    /// has one and else by its label.
+    private func pick(_ capsule: String, harness: String, row: String, label: String, _ app: XCUIApplication,
+                      capture name: String? = nil) {
+        any(capsule, app).tap()
+        let heading = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", harness)).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 5), harness)
+        if let name { capture(app, name) }
+        let item = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR ((label == %@ OR label BEGINSWITH %@) AND NOT (identifier BEGINSWITH %@))",
+            row, label, label + ",", "work.launch.model")).firstMatch
+        if !item.waitForExistence(timeout: 5) {
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "tree-\(row)"; tree.lifetime = .keepAlways; add(tree)
+            XCTFail("no row \(label) under \(harness)")
+            return
+        }
+        item.tap()
+    }
+
     private func dismissMenu(_ app: XCUIApplication) {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
         Thread.sleep(forTimeInterval: 0.6)
@@ -272,17 +294,20 @@ final class LAASessionModelDisplayUITests: XCTestCase {
         if (launchEffort.value as? String) != "XHigh" { xhighRow.tap() } else { dismissMenu(app) }
         expectation(for: NSPredicate(format: "value == %@", "XHigh"), evaluatedWith: launchEffort)
         waitForExpectations(timeout: 5)
-        models.tap()
-        let astra = app.buttons["GPT-6 Astra"].firstMatch
-        XCTAssertTrue(astra.waitForExistence(timeout: 5))
-        astra.tap()
+        // Another maker's model is on its own harness: picked there, the
+        // model menu then lists only that harness's models.
+        pick("work.launch.harness", harness: "Codex", row: "work.launch.harness.codex.codex.gpt-6-astra", label: "GPT-6 Astra", app,
+             capture: "launcher-harness-\(theme)")
         expectation(for: NSPredicate(format: "value == %@", "GPT-6 Astra"), evaluatedWith: models)
         waitForExpectations(timeout: 5)
         XCTAssertEqual(launchEffort.value as? String, "XHigh", "the same effort stays")
+        XCTAssertEqual(any("work.launch.harness", app).value as? String, "Codex")
         models.tap()
-        let sonnet = app.buttons["Sonnet 5.5"].firstMatch
-        XCTAssertTrue(sonnet.waitForExistence(timeout: 5))
-        sonnet.tap()
+        XCTAssertTrue(app.buttons["GPT-6 Astra"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Sonnet 5.5"].exists, "the model menu lists the running harness's models only")
+        dismissMenu(app)
+        pick("work.launch.harness", harness: "Claude Code", row: "work.launch.harness.claudeCode.claude.claude-sonnet-5-5",
+             label: "Sonnet 5.5", app)
         expectation(for: NSPredicate(format: "value == %@", "Claude Sonnet 5.5"), evaluatedWith: models)
         waitForExpectations(timeout: 5)
         XCTAssertEqual(launchEffort.value as? String, "High", "else High")

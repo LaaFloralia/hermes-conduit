@@ -484,8 +484,18 @@ private final class LAAChatModelFixture {
         let shown = app.laaChatRuntime.shown(for: [session])
         model = shown.model; provider = shown.provider
         let ids = variant == "single" ? ["claude-opus-5-5"] : ["claude-opus-5-5", "claude-mythos-5-2", "claude-sonnet-5-5"]
-        providers = [ProviderInfo(name: "claude", models: ids.map { ModelInfo(id: $0, label: nil, reasoningCapable: true) },
-                                  displayName: "Claude")]
+        func info(_ id: String) -> ModelInfo { ModelInfo(id: id, label: nil, reasoningCapable: true) }
+        if variant == "harness" {
+            // Hermes' rows as the gateway names them (hq/logs/refuseless-route-20261126.md §1).
+            providers = [
+                ProviderInfo(name: "claude-subscription-directsdk-experimental", models: ["claude-opus-5-5"].map(info)),
+                ProviderInfo(name: "openai-codex", models: ["gpt-6.2-sol"].map(info)),
+                ProviderInfo(name: "laa-dsh", models: ["deepseek-v4.1-flash"].map(info)),
+                ProviderInfo(name: "laa-agy", models: ["gemini-4-neon"].map(info)),
+            ]
+            return
+        }
+        providers = [ProviderInfo(name: "claude", models: ids.map(info), displayName: "Claude")]
     }
 
     var operations: LAAChatModelOperations {

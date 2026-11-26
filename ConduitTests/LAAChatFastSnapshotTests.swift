@@ -5,8 +5,8 @@ import XCTest
 @testable import Conduit
 
 /// 440 × 956 pt light and dark captures of the chat composer's three
-/// capsules (owner, 2026-11-14): model · effort · Fast in every speed, the
-/// locked state, and Monet · Dots' fixed Astra · Max · Ultrafast.
+/// capsules (owner, 2026-11-14): model · effort · Fast in every speed and
+/// the locked state.
 /// Attachments are exported from the result bundle.
 @MainActor
 final class LAAChatFastSnapshotTests: XCTestCase {
@@ -51,8 +51,7 @@ final class LAAChatFastSnapshotTests: XCTestCase {
     }
 
     private var gallery: some View {
-        let dots = LAAChatFixedRuntime.dots
-        return ScrollView {
+        ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x5) {
                 row("Opus 5.5 · High · 通常", composer("claude-opus-5-5", "claude", "high", fast(.normal)))
                 row("Opus 5.5 · High · Fast・Thinking", composer("claude-opus-5-5", "claude", "high", fast(.fast), running: true))
@@ -61,7 +60,6 @@ final class LAAChatFastSnapshotTests: XCTestCase {
                 row("Mythos 5.2 · Max · Fast", composer("claude-mythos-5-2", "claude", "max", fast(.fast)))
                 row("Mythos 5.2 · Ultra Code · Fast・Thinking", composer("claude-mythos-5-2", "claude", "ultracode", fast(.fast), running: true))
                 row("DeepSeek · High · 変更中", composer("deepseek-v4.1-flash", "laa-dsh", "high", fast(.normal, writing: true), changing: true))
-                row("Monet（Dots）固定", composer(dots.model, dots.provider, dots.effort, dots.fast, name: dots.name))
             }
             .padding(LAASpacing.horizontal)
         }

@@ -17,7 +17,7 @@ import { createRefService } from '../src/refs/service.mjs';
 const cli = fileURLToPath(new URL('../bin/laa-bridge', import.meta.url));
 const request = (extra = {}) => ({ title: '公開日を決める', summary: '公開準備が完了しました。日付を選んでください。',
   options: [{ label: '明日', detail: null, recommended: false }, { label: '来週', detail: '確認時間を確保', recommended: true }],
-  requestId: 'decision-1', source: { paseoAgentId: 'agent-1', name: 'HP｜公開' }, ...extra });
+  impact: '【必ず社長：公開】', requestId: 'decision-1', source: { paseoAgentId: 'agent-1', name: 'HP｜公開' }, ...extra });
 function fixture(t, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'laa-decisions-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -55,13 +55,92 @@ test('store: field limits, invalid options/deadlines and free answers are reject
   for (const extra of [ { title: 'x'.repeat(61) }, { summary: 'x'.repeat(601) }, { options: [] },
     { options: [{ label: 'x'.repeat(81) }, { label: 'y' }] }, { options: [{ label: 'x', detail: 'a'.repeat(201) }, { label: 'y' }] },
     { options: [{ label: 'x', recommended: true }, { label: 'y', recommended: true }] }, { allowOther: 'yes' },
-    { deadline: 'tomorrow' }, { deadline: '2026-02-30T00:00:00Z' }, { impact: 'x'.repeat(201) }, { requestId: '\n' }, { source: { name: 'x'.repeat(201) } } ]) {
+    { deadline: 'tomorrow' }, { deadline: '2026-02-30T00:00:00Z' }, { impact: `【必ず社長：公開】${'x'.repeat(201)}` }, { requestId: '\n' }, { source: { name: 'x'.repeat(201) } } ]) {
     assert.throws(() => f.service.add(request(extra)), code('decision_invalid'));
   }
   const r = f.service.add(request({ allowOther: false })).decision;
   assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'free', optionIndex: null, note: '自由回答' }), code('decision_invalid'));
   for (const optionIndex of [-1, 2, '0', 0.5]) assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'bad', optionIndex }), code('decision_invalid'));
   assert.throws(() => f.store.reserve(r.id, 'phone', { requestId: 'bad', optionIndex: 0, note: '\0' }), code('decision_invalid'));
+});
+
+test('strict impact prefix, legacy categories and owner-only pushes', async (t) => {
+  const f = fixture(t);
+  for (const impact of [null, '', ' 【任せられる】', 'prefix【任せられる】', '【必ず社長：】', '【必ず社長： 】', '【必ず社長:公開】', '【必ず社長：公\n開】']) {
+    assert.throws(() => f.service.add(request({ impact })), { code: 'decision_category_required', status: 428 });
+  }
+  assert.equal(existsSync(f.store.file), false);
+  const owner = f.service.add(request()).decision;
+  assert.equal(owner.category, 'owner'); assert.equal(owner.ownerKind, '公開');
+  const delegable = f.service.add(request({ requestId: 'delegable', impact: '【任せられる】運用' })).decision;
+  assert.equal(delegable.category, 'delegable'); assert.equal(delegable.ownerKind, null);
+  const disk = JSON.parse(readFileSync(f.store.file, 'utf8'));
+  const legacy = { ...disk.records[0], id: 'dec_0000000000000002', requestId: 'legacy', impact: null };
+  delete legacy.category; delete legacy.ownerKind;
+  disk.records.push(legacy);
+  writeFileSync(f.store.file, JSON.stringify(disk));
+  const { items } = await f.service.list();
+  assert.equal(items.find((item) => item.id === legacy.id).category, 'unmarked');
+  assert.deepEqual(f.notifications.map((n) => n.meta.id), [owner.id]);
+  await assert.rejects(f.service.answerAsMonet({ id: owner.id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
+  await assert.rejects(f.service.answerAsMonet({ id: delegable.id, body: { optionIndex: 0 }, reason: '二\n行' }), code('decision_invalid'));
+  assert.equal((await f.service.answerAsMonet({ id: legacy.id, body: { optionIndex: 0 }, reason: '任せられる件と確認' })).decision.answer.answeredBy, 'monet');
+});
+
+test('Monet delivery, idempotent replay, owner HTTP overturn, and answer-time stats', async (t) => {
+  const f = fixture(t);
+  const r = f.service.add(request({ impact: '【任せられる】' })).decision;
+  f.service.add(request({ requestId: 'protected' }));
+  const byMonet = () => f.service.answerAsMonet({ id: r.id, body: { optionIndex: 0 }, reason: '確認時間を確保' });
+  const proxy = await byMonet();
+  assert.equal(proxy.decision.delivery.state, 'delivered');
+  assert.deepEqual(proxy.decision.answer, { optionIndex: 0, label: '来週', note: null, answeredAt: new Date(f.now()).toISOString(),
+    deviceId: 'monet', answeredBy: 'monet', reason: '確認時間を確保' });
+  assert.equal(f.sent.length, 1);
+  assert.match(f.sent[0].text, /Monetが代理回答しました/);
+  assert.equal((await byMonet()).replayed, true);
+  assert.equal((await f.service.list()).items.find((row) => row.id === r.id).answer.answeredBy, 'monet');
+  f.advance(10_000);
+  const h = await startBridge({ decisions: { service: f.service } }); t.after(() => h.close());
+  const token = await h.token();
+  const post = (key) => h.request(`/v1/decisions/${r.id}/answer`, { method: 'POST', token, key, body: { requestId: key, optionIndex: 1, answeredBy: 'monet' } });
+  const reply = await post('overturn');
+  assert.equal(reply.status, 200);
+  const { decision } = reply.body.data;
+  assert.equal(decision.overturned, true);
+  assert.deepEqual(decision.monetAnswer, proxy.decision.answer);
+  assert.equal(decision.answer.answeredBy, 'owner'); assert.equal(decision.answer.label, '明日');
+  assert.equal(decision.delivery.state, 'delivered');
+  assert.match(f.sent[1].text, /社長がMonetの回答を変更/);
+  assert.equal((await post('overturn')).status, 200);
+  assert.equal((await post('another')).body.error.code, 'decision_closed');
+  assert.equal((await byMonet()).decision.overturned, true);
+  assert.equal(f.sent.length, 2);
+  assert.deepEqual(f.service.stats(), { answeredByMonet: 1, overturnedByOwner: 1, ownerOnlyOpen: 1, ownerAnswered: 1 });
+  const since = new Date(f.now()).toISOString();
+  assert.deepEqual(f.service.stats(since), { answeredByMonet: 0, overturnedByOwner: 1, ownerOnlyOpen: 1, ownerAnswered: 1 });
+  assert.deepEqual(f.service.monetLog(), [{ subject: r.title, chosenOption: '来週', reason: '確認時間を確保', time: proxy.decision.answer.answeredAt }]);
+  assert.deepEqual(f.service.monetLog(since), []);
+  assert.throws(() => f.service.stats('2026-02-30T00:00:00Z'), code('decision_invalid'));
+});
+
+test('owner overturn waits for an in-flight Monet delivery and sends only the current answer afterward', async (t) => {
+  const f = fixture(t);
+  let release, started;
+  const paused = new Promise((resolve) => { release = resolve; });
+  const inFlight = new Promise((resolve) => { started = resolve; });
+  f.daemon.send = async (_id, message) => { f.sent.push(message); if (f.sent.length === 1) { started(); await paused; } };
+  const r = f.service.add(request({ impact: '【任せられる】' })).decision;
+  const proxy = f.service.answerAsMonet({ id: r.id, body: { optionIndex: 0 }, reason: '手順' });
+  await inFlight;
+  const owner = await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'owner', optionIndex: 1 } });
+  assert.equal(owner.decision.delivery.waiting, true); assert.equal(owner.decision.overturned, true);
+  await f.service.deliverWaiting(); assert.equal(f.sent.length, 1);
+  release(); await proxy;
+  f.advance(15_001);
+  await f.service.deliverWaiting();
+  assert.equal(f.sent.length, 2);
+  assert.match(f.sent[1].text, /選択: 明日/);
 });
 
 test('store: corrupt JSON and invalid schema refuse writes without resetting', (t) => {
@@ -84,7 +163,7 @@ test('answer: fixed Japanese text, stable message id, readback, device replay, c
   const a = await f.service.answer({ id: r.id, deviceId: 'phone', body });
   assert.equal(a.decision.delivery.state, 'delivered');
   assert.equal(a.decision.answer.deviceId, 'phone');
-  assert.deepEqual(f.sent, [{ id: 'agent-1', messageId: `${r.id}:answer:1`, text: `【判断ボードの回答】${r.id}「公開日を決める」\n選択: 来週\n補足: お願いします\n（社長が判断ボードで選びました。この判断で作業を続けてください。）` }]);
+  assert.deepEqual(f.sent, [{ id: 'agent-1', messageId: `${r.id}:answer:1`, queue: true, text: `【判断ボードの回答】${r.id}「公開日を決める」\n選択: 来週\n補足: お願いします\n（社長が判断ボードで選びました。この判断で作業を続けてください。）` }]);
   assert.deepEqual(await f.service.answer({ id: r.id, deviceId: 'phone', body }), a);
   assert.equal(f.sent.length, 1);
   await assert.rejects(f.service.answer({ id: r.id, deviceId: 'phone', body: { ...body, optionIndex: 1 } }), code('decision_request_conflict'));
@@ -319,7 +398,7 @@ test('HTTP integration: CLI file + native questions, existing reply tickets, fai
   const token = await h.token();
   await h.request('/v1/sessions', { token });
   await h.refs.observeSource('session');
-  const added = runCli(h.stateDir, ['add', '--title', '公開日', '--summary', '公開日を選んでください', '--option', '明日', '--option', '来週', '--agent', 'board-agent', '--request-id', 'http-cli', '--json']);
+  const added = runCli(h.stateDir, ['add', '--title', '公開日', '--summary', '公開日を選んでください', '--option', '明日', '--option', '来週', '--agent', 'board-agent', '--request-id', 'http-cli', '--impact', '【必ず社長：公開】', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const r = JSON.parse(added.stdout).decision;
   assert.equal(r.source.name, '公開の会話');
@@ -362,9 +441,36 @@ test('daemon: delivery snapshot keeps activeTurn and archive state without chang
 function runCli(dir, args) {
   return spawnSync(cli, ['decide', ...args], { env: { ...process.env, PASEO_AGENT_ID: '', LAA_BRIDGE_STATE_DIR: dir }, encoding: 'utf8' });
 }
+test('real CLI: category enforcement, option/note proxy, replay, stats and report log', (t) => {
+  const f = fixture(t);
+  const base = ['add', '--title', '題', '--summary', '選択', '--option', 'A', '--option', 'B', '--request-id', 'proxy', '--json'];
+  const rejected = runCli(f.dir, base);
+  assert.notEqual(rejected.status, 0);
+  assert.equal(JSON.parse(rejected.stdout).error.code, 'decision_category_required');
+  const add = (...flags) => JSON.parse(runCli(f.dir, [...base, ...flags]).stdout).decision;
+  const owner = add('--impact', '【必ず社長：選択】');
+  const delegated = add('--impact', '【任せられる】', '--request-id', 'delegable');
+  const note = add('--impact', '【任せられる】', '--request-id', 'note');
+  const answer = (id, ...choice) => runCli(f.dir, ['answer', id, ...choice, '--by', 'monet', '--reason', '判断根拠', '--json']);
+  assert.equal(JSON.parse(answer(owner.id, '--option', '1').stdout).error.code, 'decision_owner_only');
+  const refStore = createRefService({ file: join(f.dir, 'refs.json') });
+  refStore.registerSource('decision', () => [{ key: delegated.id, title: delegated.title }]);
+  return refStore.observeSource('decision').then(() => {
+    const ref = refStore.refFor('decision', delegated.id);
+    assert.equal(JSON.parse(answer(ref, '--option', '2').stdout).decision.answer.label, 'B');
+    assert.equal(JSON.parse(answer(ref, '--option', '2').stdout).replayed, true);
+    assert.equal(JSON.parse(answer(note.id, '--note', '自由回答').stdout).decision.answer.label, '自由回答');
+    assert.deepEqual(JSON.parse(runCli(f.dir, ['stats', '--json']).stdout),
+      { ok: true, answeredByMonet: 2, overturnedByOwner: 0, ownerOnlyOpen: 1, ownerAnswered: 0 });
+    const log = JSON.parse(runCli(f.dir, ['list', '--monet-log', '--since', '2000-01-01T00:00:00Z', '--json']).stdout);
+    assert.deepEqual(log.items.map((row) => row.chosenOption).sort(), ['B', '自由回答']);
+    assert(log.items.every((row) => row.subject === '題' && row.reason === '判断根拠' && Date.parse(row.time) > 0));
+  });
+});
+
 test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input/store exit codes', (t) => {
   const f = fixture(t);
-  const args = ['add', '--title', '判断', '--summary', '説明', '--option', '案A::詳細', '--option', '案B', '--recommended', '2', '--no-other', '--request-id', 'cli', '--json'];
+  const args = ['add', '--title', '判断', '--summary', '説明', '--option', '案A::詳細', '--option', '案B', '--recommended', '2', '--no-other', '--request-id', 'cli', '--impact', '【必ず社長：公開】', '--json'];
   const added = runCli(f.dir, args); assert.equal(added.status, 0, added.stderr);
   const r = JSON.parse(added.stdout).decision;
   assert.equal(r.options[0].label, '案B'); assert.equal(r.allowOther, false);
@@ -389,7 +495,7 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
 
 test('real CLI: shows the J number the server assigned and accepts it for status, without writing refs.json', (t) => {
   const f = fixture(t);
-  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'cli-ref', '--json']);
+  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'cli-ref', '--impact', '【必ず社長：公開】', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const id = JSON.parse(added.stdout).decision.id;
   assert.equal(JSON.parse(added.stdout).decision.ref, null);
@@ -405,7 +511,7 @@ test('real CLI: shows the J number the server assigned and accepts it for status
 
 test('real concurrent CLI writers keep one record for one idempotency key', async (t) => {
   const f = fixture(t);
-  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'race', '--json'];
+  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', 'A', '--option', 'B', '--request-id', 'race', '--impact', '【必ず社長：公開】', '--json'];
   const run = () => new Promise((resolve, reject) => {
     const child = spawn(cli, args, { env: { ...process.env, PASEO_AGENT_ID: '', LAA_BRIDGE_STATE_DIR: f.dir }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = ''; child.stdout.on('data', (b) => { out += b; }); child.stderr.on('data', (b) => { err += b; });
@@ -528,6 +634,58 @@ test('waiting: an archived or deleted conversation leaves the board quietly; a s
   g.state.busy = false;
   const retried = await g.service.answer({ id: d.id, deviceId: 'phone', body: { requestId: 'retry' }, retry: true });
   assert.equal(retried.decision.delivery.state, 'delivered'); assert.equal(retried.decision.delivery.attempts, 2);
+});
+
+// The LAA Work engine queues a message behind a running turn, once per message id.
+function engineFixture(t) {
+  const f = busyFixture(t);
+  const status = f.daemon.status;
+  f.daemon.status = async (...args) => ({ ...(await status(...args)), engine: 'laa-work' });
+  f.daemon.send = async (id, message) => {
+    if (f.state.busy && !message.queue) throw new BridgeError(409, 'session_busy', 'busy');
+    if (!f.sent.some((m) => m.messageId === message.messageId)) f.sent.push({ id, ...message });
+    return { queued: f.state.busy };
+  };
+  return f;
+}
+
+test('waiting: a Work engine conversation that never idles gets the answer queued behind its turn, once, and it leaves the board (2026-11-26)', async (t) => {
+  const f = engineFixture(t);
+  const r = f.service.add(request()).decision;
+  const a = await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(a.decision.delivery.state, 'delivered');
+  assert.equal(a.decision.delivery.queued, true);
+  assert(!('waiting' in a.decision.delivery));
+  assert.deepEqual(f.sent.map((m) => m.messageId), [`${r.id}:answer:1`]);
+  assert.equal((await f.service.list()).items.find((i) => i.id === r.id), undefined);
+  for (let i = 0; i < 5; i += 1) { f.advance(60_000); await f.service.deliverWaiting(); }
+  assert.equal(f.sent.length, 1);
+  assert.equal(failedNotices(f).length, 0);
+});
+
+test('waiting: an answer already held for a busy Work engine conversation is queued on the next pass, not after the turn ends', async (t) => {
+  const f = busyFixture(t);
+  const r = f.service.add(request()).decision;
+  await f.service.answer({ id: r.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(f.store.get(r.id).delivery.waiting, true);
+  // The Bridge restarts with the engine-aware path while the conversation is still working.
+  const g = engineFixture(t);
+  const service = createDecisionService({ store: f.store, now: f.now, daemon: g.daemon, notify: null });
+  g.state.busy = true;
+  await service.deliverWaiting();
+  const done = f.store.get(r.id);
+  assert.equal(done.delivery.state, 'delivered'); assert.equal(done.delivery.queued, true);
+  assert.deepEqual(g.sent.map((m) => m.messageId), [`${r.id}:answer:1`]);
+  await service.deliverWaiting();
+  assert.equal(g.sent.length, 1);
+  // A conversation asking its own question still keeps the answer waiting.
+  const h = engineFixture(t);
+  const status = h.daemon.status;
+  h.daemon.status = async (...args) => ({ ...(await status(...args)), pending: [{ id: 'perm' }] });
+  const q = h.service.add(request()).decision;
+  const answered = await h.service.answer({ id: q.id, deviceId: 'phone', body: { requestId: 'answer', optionIndex: 0 } });
+  assert.equal(answered.decision.delivery.state, 'failed'); assert.equal(answered.decision.delivery.error, 'pending_decision_requires_reply');
+  assert.equal(h.sent.length, 0);
 });
 
 test('waiting: survives a Bridge restart, and an answer an earlier Bridge filed as failed(session_busy) is picked up', async (t) => {

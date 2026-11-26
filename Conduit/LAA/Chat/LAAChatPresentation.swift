@@ -4,7 +4,7 @@ import UIKit
 
 enum LAAChatPerson {
     static func name(_ value: String) -> String {
-        value.replacingOccurrences(of: "（Dots）", with: " · Dots").replacingOccurrences(of: "（無検閲）", with: " · 無検閲").replacingOccurrences(of: "[（(].*?[）)]", with: "", options: .regularExpression)
+        value.replacingOccurrences(of: "（無検閲）", with: " · 無検閲").replacingOccurrences(of: "[（(].*?[）)]", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     static func role(profile: String?, name: String = "", existingRole: String? = nil) -> String? {
@@ -12,7 +12,7 @@ enum LAAChatPerson {
         let staff = profile.flatMap(LAAStaff.init(profile:))
             ?? LAAStaff.allCases.first { Self.name($0.name).localizedCaseInsensitiveCompare(Self.name(name)) == .orderedSame }
         guard let staff else { return nil }
-        return [.monet, .monetDots, .monetUncensored].contains(staff) ? "Secretary" : staff.role
+        return [.monet, .monetUncensored].contains(staff) ? "Secretary" : staff.role
     }
     static func staff(member: GroupMember?, name: String) -> LAAStaff? {
         member?.profile.flatMap(LAAStaff.init(profile:))

@@ -24,7 +24,7 @@ extension LAAStaff {
     var defaultGPTLiveVoice: String {
         switch self {
         case .monet: return "vale"
-        case .monetUncensored, .monetDots, .soap: return "vale"
+        case .monetUncensored: return "vale"
         case .argus: return "ember"
         case .cfo: return "arbor"
         case .cio: return "cove"

@@ -88,6 +88,11 @@ extension AppState {
             #endif
             return isConnecting ? .deferred : .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
         }
+        #if LAA_BUILD
+        if LAAStaff.isHidden(profile: workspace.profile) {
+            return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        }
+        #endif
         guard profiles.contains(where: { $0 == workspace.profile })
                 || workspace.profile == "default"
                 || workspace.profile == defaultProfileName else {

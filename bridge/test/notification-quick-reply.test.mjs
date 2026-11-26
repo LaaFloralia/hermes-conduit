@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { encodeNotificationSessionId, createOwnerNotifier } from '../src/notify/index.mjs';
 import { createNotificationPreferences, DEFAULT_KINDS } from '../src/notify/preferences.mjs';
 import { createDecisionStore } from '../src/decisions/store.mjs';
-import { createDecisionService } from '../src/decisions/service.mjs';
+import { createDecisionService, mayDeliverDecisionNotice } from '../src/decisions/service.mjs';
 import { createOwnerTaskNotificationPoller } from '../src/tasks/owner-notifications.mjs';
 import { createCalendarReminders } from '../src/calendar/reminders.mjs';
 import { daemonAdapter, daemonSessionID, pendingHash } from '../src/sessions/daemon.mjs';
@@ -103,7 +103,7 @@ test('muted notifications are processed once by decisions, tasks and calendar', 
   const notify = async () => { calls++; return { delivered: false, reason: 'muted' }; };
   const store = createDecisionStore({ dir });
   const service = createDecisionService({ store, notify });
-  service.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], requestId: 'new' });
+  service.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], impact: '【必ず社長：選択】', requestId: 'new' });
   await service.sync(); await service.sync(); assert.equal(calls, 1);
   const poller = createOwnerTaskNotificationPoller({ notify, source: { ownerInboxAvailable: true, listCollection: async () => ({ items: [{ id: 'n', type: 'issueMention', updatedAt: 'v1', issue: { id: 'issue' } }], nextCursor: null }) } });
   await poller.poll(); await poller.poll(); assert.equal(calls, 2);
@@ -118,7 +118,7 @@ test('muted notifications are processed once by decisions, tasks and calendar', 
 test('quick board: expiry is atomic, normal answers unchanged, closed and replay precede expiry', async (t) => {
   const dir = dirFor(t); let now = 100000;
   const store = createDecisionStore({ dir, now: () => now });
-  const add = (requestId) => store.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
+  const add = (requestId) => store.add({ title: '題', summary: '本文', impact: '【必ず社長：選択】', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
   const expired = add('expired'), accepted = add('accepted');
   const body = { requestId: 'reply', optionIndex: 1, quick: true };
   store.reserve(accepted.id, 'phone', body); now += 2000;
@@ -144,13 +144,13 @@ function nativeFixture() {
   return { agent, question, sent, notices, daemon };
 }
 
-test('quick session HTTP: metadata hash matches decision; mismatch, invalid option, success, replay and double answer', async (t) => {
+test('quick session HTTP: ticket hash, mismatch, invalid option, success, replay and double answer without a push', async (t) => {
   const f = nativeFixture(); const h = await startBridge({ sessions: { daemon: f.daemon, notify: async (n) => f.notices.push(n) } }); t.after(() => h.close());
   const token = await h.token(), sid = daemonSessionID(f.agent.id), path = `/v1/sessions/${sid}`;
   await h.request('/v1/sessions', { token });
   const detail = (await h.request(`${path}/decision`, { token })).body.data;
   assert.equal(detail.requestHash, pendingHash([f.question]));
-  assert.equal(f.notices[0].meta.h, detail.requestHash); assert.deepEqual(f.notices[0].meta.o, ['A', 'B']);
+  assert.deepEqual(f.notices, []);
   const post = (body, key) => h.request(`${path}/quick-reply`, { token, method: 'POST', key, body });
   assert.equal((await post({ requestHash: 'a'.repeat(64), choice: 'deny' }, 'changed')).body.error.code, 'pending_request_changed');
   assert.equal((await post({ requestHash: detail.requestHash, choice: { optionIndex: 2 } }, 'invalid')).status, 400);
@@ -162,16 +162,14 @@ test('quick session HTTP: metadata hash matches decision; mismatch, invalid opti
   assert.equal((await post(body, 'twice')).body.error.code, 'pending_request_changed'); assert.equal(f.sent.length, 1);
 });
 
-test('quick session: approval summary, allow/deny, unsupported and failed metadata read', async (t) => {
+test('quick session: native allow/deny and unsupported choices without a push', async (t) => {
   const f = nativeFixture();
   f.agent.pendingPermissions = [{ id: 'tool', kind: 'tool', name: 'shell', input: { command: 'ls -la\n/tmp' } }];
   const h = await startBridge({ sessions: { daemon: f.daemon, notify: async (n) => f.notices.push(n) } }); t.after(() => h.close());
   const token = await h.token(), path = `/v1/sessions/${daemonSessionID(f.agent.id)}`;
   await h.request('/v1/sessions', { token });
   const detail = (await h.request(`${path}/decision`, { token })).body.data;
-  assert.deepEqual(f.notices[0].meta, { sid: daemonSessionID(f.agent.id), h: detail.requestHash, a: 1 });
-  // The whole request on one line, the newline visible as an escape.
-  assert.equal(f.notices[0].body, '承認: shell {"command":"ls -la\\n/tmp"}');
+  assert.deepEqual(f.notices, []);
   const post = (hash, choice, key) => h.request(`${path}/quick-reply`, { token, method: 'POST', key, body: { requestHash: hash, choice } });
   assert.equal((await post(detail.requestHash, 'allow', 'allow')).status, 200); assert.equal(f.sent[0].behavior, 'allow');
   f.agent.pendingPermissions = [f.question, { ...f.question, id: 'q2' }];
@@ -203,9 +201,7 @@ test('quick session: an approval that cannot be shown whole has no allow', async
   const token = await h.token(), sid = daemonSessionID(f.agent.id), path = `/v1/sessions/${sid}`;
   await h.request('/v1/sessions', { token });
   const detail = (await h.request(`${path}/decision`, { token })).body.data;
-  // No buttons and no tool text: the owner opens the conversation to read it.
-  assert.deepEqual(f.notices[0].meta, { sid });
-  assert.equal(f.notices[0].body, '操作の承認をお願いします。');
+  assert.deepEqual(f.notices, []);
   const post = (choice, key) => h.request(`${path}/quick-reply`, { token, method: 'POST', key, body: { requestHash: detail.requestHash, choice } });
   assert.equal((await post('allow', 'allow')).body.error.code, 'quick_reply_unsupported'); assert.equal(f.sent.length, 0);
   assert.equal((await post('deny', 'deny')).status, 200); assert.equal(f.sent[0].behavior, 'deny');
@@ -215,7 +211,7 @@ test('quick board HTTP: 409 expired, accepted before expiry, replay after expiry
   const dir = dirFor(t); let now = Date.now();
   const store = createDecisionStore({ dir, now: () => now });
   const service = createDecisionService({ store, now: () => now, notify: async () => ({ delivered: true }) });
-  const add = (requestId) => service.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
+  const add = (requestId) => service.add({ title: '題', summary: '本文', impact: '【必ず社長：選択】', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
   const a = add('a'), b = add('b');
   const h = await startBridge({ decisions: { service } }); t.after(() => h.close()); const token = await h.token();
   const post = (id, key, requestId = key) => h.request(`/v1/decisions/${id}/answer`, { token, method: 'POST', key, body: { requestId, optionIndex: 0, quick: true } });
@@ -229,13 +225,34 @@ test('quick board HTTP: 409 expired, accepted before expiry, replay after expiry
 });
 
 
-test('metadata lookup failure still delivers the ordinary question notification', async (t) => {
+test('metadata lookup failure does not affect session listing or push an unmarked question', async (t) => {
   const f = nativeFixture(); f.daemon.decision = async () => { throw new Error('unavailable'); };
   const h = await startBridge({ sessions: { daemon: f.daemon, notify: async (n) => f.notices.push(n) } }); t.after(() => h.close());
   const token = await h.token();
   assert.equal((await h.request('/v1/sessions', { token })).status, 200);
-  assert.equal(f.notices[0].body, '質問への回答をお願いします。');
-  assert.deepEqual(f.notices[0].meta, { sid: daemonSessionID(f.agent.id) });
+  assert.deepEqual(f.notices, []);
+});
+
+test('the outbox does not retry previously queued unclassified or delegated decisions', async (t) => {
+  const dir = dirFor(t), file = join(dir, 'notify.json');
+  const store = createDecisionStore({ dir });
+  const add = (requestId, impact) => store.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], impact, requestId }).decision.id;
+  const owner = add('owner', '【必ず社長：選択】'), delegated = add('delegated', '【任せられる】');
+  const sent = [];
+  let online = false;
+  const notify = createOwnerNotifier({ file, deliver: async (event) => {
+    if (online) sent.push(event.session_id);
+    return { delivered: online };
+  } });
+  for (const [kind, path] of [['decision.new', `decisions/${owner}`], ['decision.new', `decisions/${delegated}`],
+    ['session.question', `sessions/${daemonSessionID('native')}`]]) {
+    await notify({ kind, title: '題', body: '本文', deepLink: `laa://work/${path}`, dedupeKey: path });
+  }
+  online = true;
+  await notify.flush((kind, link) => mayDeliverDecisionNotice(kind, link, store));
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], new RegExp(`/decisions/${owner}#`));
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).pending, {});
 });
 
 test('an overlong UTF-8 link cannot produce an oversized plugin event', async (t) => {

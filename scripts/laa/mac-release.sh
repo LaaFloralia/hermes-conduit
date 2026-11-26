@@ -18,6 +18,11 @@ elif [ "$#" -ne 0 ]; then
 fi
 # Generation and archiving share Conduit.xcodeproj with the iPhone release.
 if [ "${LAA_MAC_RELEASE_IN_SLOT:-}" != 1 ]; then
+    if [ "$archive_only" -eq 1 ]; then
+        export LAA_BUILD_PRIORITY=unsigned LAA_BUILD_LABEL=hortensia-mac-archive
+    else
+        export LAA_BUILD_PRIORITY=release LAA_BUILD_LABEL=hortensia-mac-release
+    fi
     exec /bin/bash /Users/laa/hq/harness/build-slot.sh \
         /usr/bin/env LAA_MAC_RELEASE_IN_SLOT=1 /bin/bash "$repo/scripts/laa/mac-release.sh" "$@"
 fi
@@ -51,7 +56,6 @@ work="$repo/build/laa/mac/$build_number"
 mkdir -p "$repo/build/laa/mac"
 lock="$repo/build/laa/mac/.lock"
 storage=/Users/laa/hq/harness/build_storage.py
-slot=/Users/laa/hq/harness/build-slot.sh
 key_path=""
 key_root=""
 local_spec=""
@@ -175,7 +179,7 @@ printf 'External archive: %s\n' "$archive"
 signing=()
 [ "$archive_only" -eq 1 ] && signing=(CODE_SIGNING_ALLOWED=NO)
 printf 'Archiving universal Mac Catalyst build %s...\n' "$build_number"
-if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -scheme Conduit -configuration Release \
+if ! /usr/bin/python3 "$storage" guard xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -scheme Conduit -configuration Release \
     -destination 'generic/platform=macOS,variant=Mac Catalyst' -archivePath "$archive" -derivedDataPath "$external_run/DerivedData" \
     -jobs "$jobs" -packageAuthorizationProvider netrc ${auth[@]+"${auth[@]}"} DEVELOPMENT_TEAM="$team" \
     CURRENT_PROJECT_VERSION="$build_number" 'ARCHS=arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
@@ -237,7 +241,7 @@ plistlib.dump({
 }, open(sys.argv[2], "wb"))
 PY
 printf 'Exporting Developer ID application...\n'
-if ! /bin/bash "$slot" /usr/bin/python3 "$storage" guard xcodebuild -exportArchive -jobs "$jobs" -archivePath "$archive" -exportPath "$work/export" \
+if ! /usr/bin/python3 "$storage" guard xcodebuild -exportArchive -jobs "$jobs" -archivePath "$archive" -exportPath "$work/export" \
     -exportOptionsPlist "$work/ExportOptions.plist" 2>&1 | redact_signing_names > "$work/export.log"; then
     fail "export failed; see $work/export.log"
 fi

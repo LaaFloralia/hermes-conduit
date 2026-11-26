@@ -138,8 +138,8 @@ enum LAAChatModelCatalog {
         return true
     }
 
-    /// Muse and Dots run only for their own employees (薬用石鹸, Monet（Dots）):
-    /// another employee cannot switch to them (owner, 2026-11-23).
+    /// Muse and Dots are no Chat model: they ran only for the contractors,
+    /// who left Chat on 2026-11-26 (owner, 2026-11-23 and 11-26).
     static func isDedicated(model: String, provider: ProviderInfo) -> Bool {
         let model = model.lowercased()
         return ["muse", "dots"].contains(model) || ["custom:laa-muse", "custom:laa-dots", "laa-muse", "laa-dots"].contains { provider.matches($0) }
@@ -190,6 +190,24 @@ enum LAAChatModelCatalog {
                            current: id == runningModel && running)
                 }
             return extras + listed
+        }
+    }
+
+    /// True for a section of LAA's API routes (billed per use).
+    static func meteredSection(_ choices: [Choice]) -> Bool {
+        !choices.isEmpty && choices.allSatisfy { LAAHarness.metered(chatProvider: $0.provider) }
+    }
+
+    /// The harness a choice's turns run on (LAAHarness.chat).
+    static func harness(of choice: Choice) -> LAAHarness { LAAHarness.chat(provider: choice.provider) }
+
+    /// The harnesses the chat can switch to, in Hermes' order, each with
+    /// only its own choices: what Hermes lists for this chat's agent, after
+    /// the lineup and the hidden models. A harness with nothing left is not
+    /// listed.
+    static func harnesses(_ choices: [Choice]) -> [(harness: LAAHarness, choices: [Choice])] {
+        LAAHarness.ordered(choices.map(harness(of:))).map { item in
+            (item, choices.filter { harness(of: $0).id == item.id })
         }
     }
 
@@ -458,7 +476,6 @@ struct LAAChatModelPickers: View {
     @State private var writingEffort = false
     @State private var writingSpeed = false
     @State private var capability: ModelSpeedCapability?
-    @State private var fixed: LAAChatFixedRuntime?
     @State private var pending: Pending?
 
     private struct Pending: Identifiable {
@@ -485,10 +502,9 @@ struct LAAChatModelPickers: View {
                                        current: currentChoice, writing: writingEffort)
     }
 
-    /// The Fast capsule: the fixed one, or what Hermes reported for this chat.
+    /// The Fast capsule: what Hermes reported for this chat.
     private var fast: LAAChatFastControl.Display? {
-        if let fixed { return fixed.model == "muse" ? nil : fixed.fast }
-        return LAAChatFastControl.display(
+        LAAChatFastControl.display(
             speed: shown.speed, capability: capability, sessionID: activeSessionID, connected: connected,
             writable: appState.laaChatModelOperations?.setSpeed != nil, writing: writingSpeed)
     }
@@ -497,35 +513,17 @@ struct LAAChatModelPickers: View {
         // Model, effort and Fast wrap as whole capsules when the names are
         // long (LAAWrapRow); none is ever cut.
         LAAWrapRow {
-            if let fixed, fixed.model == "muse" {
-                Menu { LAAMenuReason(text: fixed.reason) } label: {
-                    LAAModelCapsule(model: fixed.model, provider: fixed.provider, name: fixed.name)
-                }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: "モデル"))
-                .accessibilityHint(Text(verbatim: fixed.reason))
-                .accessibilityIdentifier("composer.runtime.model")
-            } else if let fixed {
-                // Nothing here is Hermes' to change: no menu rows, no writes.
-                LAAModelEffortPickers(
-                    model: fixed.model, provider: fixed.provider, effort: fixed.effort, name: fixed.name,
-                    identifier: "composer.runtime", modelHint: fixed.reason, effortHint: fixed.reason
-                ) {
-                    LAAMenuReason(text: fixed.reason)
-                } effortMenu: {
-                    LAAMenuReason(text: fixed.reason)
-                }
-            } else {
-                LAAModelEffortPickers(
-                    model: shown.model, provider: shown.provider, effort: shown.effort,
-                    changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
-                    modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
-                ) {
-                    modelMenu
-                } effortMenu: {
-                    effortMenu
-                }
+            LAAModelEffortPickers(
+                harness: harness, harnessHint: modelLock ?? "この会話の実行基盤を変更",
+                model: shown.model, provider: shown.provider, effort: shown.effort,
+                changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
+                modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
+            ) {
+                harnessMenu
+            } modelMenu: {
+                modelMenu
+            } effortMenu: {
+                effortMenu
             }
             if let fast {
                 LAAChatFastCapsule(display: fast, changing: writingSpeed, identifier: "composer.runtime.fast") { changeSpeed($0) }
@@ -533,9 +531,8 @@ struct LAAChatModelPickers: View {
         }
         .onReceive(appState.$laaChatRuntime.removeDuplicates()) { runtime = $0 }
         .onReceive(appState.$activeSessionId.removeDuplicates()) { activeSessionID = $0 }
-        .onReceive(appState.$activeProfile.removeDuplicates()) { fixed = LAAChatFixedRuntime.of(profile: $0) }
         .onReceive(appState.$client.map { $0 != nil }.removeDuplicates()) { connected = $0 || appState.laaChatModelOperations != nil }
-        .task(id: "\(activeSessionID ?? "")|\(connected)|\(shown.model ?? "")|\(shown.provider ?? "")|\(fixed != nil)") { await load() }
+        .task(id: "\(activeSessionID ?? "")|\(connected)|\(shown.model ?? "")|\(shown.provider ?? "")") { await load() }
         .alert(Text(verbatim: "モデルを切り替えますか？"), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                presenting: pending) { item in
             Button { switchModel(item.choice, confirmed: true) } label: { Text(verbatim: "切り替える") }
@@ -545,6 +542,46 @@ struct LAAChatModelPickers: View {
         }
     }
 
+    /// The harness this chat's turns run on now: the one Hermes reports the
+    /// chat's provider under. Nil until Hermes has said.
+    private var harness: LAAHarness? {
+        if let currentChoice { return LAAChatModelCatalog.harness(of: currentChoice) }
+        return shown.provider.map { LAAHarness.chat(provider: $0) }
+    }
+    /// The choices on the running harness: the model menu offers only these.
+    private var harnessChoices: [LAAChatModelCatalog.Choice] {
+        guard let harness else { return choices }
+        let own = choices.filter { LAAChatModelCatalog.harness(of: $0).id == harness.id }
+        return own.isEmpty ? choices : own
+    }
+
+    /// One section per harness, headed by its name, holding only its own
+    /// models: picking one switches this chat to that model on that harness
+    /// through Hermes.
+    @ViewBuilder private var harnessMenu: some View {
+        if let modelLock { LAAMenuReason(text: modelLock) }
+        ForEach(LAAChatModelCatalog.harnesses(choices), id: \.harness.id) { group in
+            let sections = LAAChatModelCatalog.sections(group.choices)
+            Section(header: Text(verbatim: group.harness.name)) {
+                ForEach(sections, id: \.name) { section in
+                    let route = sections.count > 1 || LAAChatModelCatalog.meteredSection(section.choices)
+                        ? sectionTitle(section) : nil
+                    ForEach(section.choices) { choice in
+                        let isCurrent = choice.id == currentChoice?.id
+                        LAAHarnessModelRow(title: choice.label, route: route, current: isCurrent) { switchModel(choice) }
+                            .disabled(modelLock != nil || isCurrent)
+                            .accessibilityIdentifier("composer.runtime.harness.\(group.harness.id).\(choice.model)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// A metered route's heading says so (LAAHarness.metered).
+    private func sectionTitle(_ section: (name: String, choices: [LAAChatModelCatalog.Choice])) -> String {
+        LAAChatModelCatalog.meteredSection(section.choices) ? section.name + " · Metered" : section.name
+    }
+
     @ViewBuilder private var modelMenu: some View {
         if let modelLock { LAAMenuReason(text: modelLock) }
         if phase == .failed {
@@ -552,8 +589,8 @@ struct LAAChatModelPickers: View {
                 Label { Text(verbatim: "読み直す") } icon: { Image(systemName: "arrow.clockwise") }
             }
         }
-        ForEach(LAAChatModelCatalog.sections(choices), id: \.name) { section in
-            Section(section.name) {
+        ForEach(LAAChatModelCatalog.sections(harnessChoices), id: \.name) { section in
+            Section(sectionTitle(section)) {
                 ForEach(section.choices) { choice in
                     let isCurrent = choice.id == currentChoice?.id
                     Button { switchModel(choice) } label: {
@@ -582,7 +619,7 @@ struct LAAChatModelPickers: View {
     }
 
     @MainActor private func load() async {
-        guard fixed == nil, let sessionID = activeSessionID else {
+        guard let sessionID = activeSessionID else {
             phase = .idle; capability = nil; return
         }
         guard let operations = appState.laaChatModelOperations else {
@@ -665,7 +702,7 @@ struct LAAChatModelPickers: View {
     /// Writes the speed for this chat; the capsule changes when Hermes has
     /// accepted it, and a refusal leaves it as it was and says why.
     private func changeSpeed(_ speed: ModelSpeed) {
-        guard fixed == nil, !writingSpeed, speed != shown.speed, let sessionID = appState.activeSessionId,
+        guard !writingSpeed, speed != shown.speed, let sessionID = appState.activeSessionId,
               let setSpeed = appState.laaChatModelOperations?.setSpeed else { return }
         writingSpeed = true
         Task { @MainActor in

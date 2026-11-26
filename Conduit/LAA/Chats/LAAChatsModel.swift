@@ -16,13 +16,13 @@ struct LAAChatsPerson: Identifiable, Equatable {
 }
 
 /// The Chat list's sections, in order: Monet (with its uncensored variant),
-/// the employees, the contractors. Groups follow them.
+/// then the employees. Groups follow them.
 enum LAAChatsPlacement {
     static func monet(_ people: [LAAChatsPerson]) -> LAAChatsPerson? {
         people.first { $0.staff == .monet }
     }
 
-    /// Monet's own variants under it: only the uncensored one (Dots is a contractor).
+    /// Monet's own variants under it: only the uncensored one.
     static func monetVariants(_ people: [LAAChatsPerson]) -> [LAAChatsPerson] {
         people.filter { $0.staff != .monet && $0.placement == .monet }
     }

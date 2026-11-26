@@ -55,6 +55,56 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         waitForExpectations(timeout: 10)
     }
 
+    /// The harness first (owner, 2026-11-26): the capsule ahead of the model
+    /// names what runs this chat's Hermes provider; the model menu lists only
+    /// that harness's models; another harness's model is picked in its own
+    /// submenu and switches this chat through Hermes, read back.
+    func testHarnessCapsuleLeadsAndNarrowsTheModels() {
+        for dark in [false, true] {
+            let app = launch(profile: "laa-monet", runtime: "gemini-4-neon,laa-agy,high", dark: dark, models: "harness")
+            let harness = any("composer.runtime.harness", app), model = any("composer.runtime.model", app)
+            let effort = any("composer.runtime.effort", app)
+            XCTAssertTrue(harness.waitForExistence(timeout: 10))
+            waitValue(harness, "Antigravity")
+            waitValue(model, "Gemini 4 Neon")
+            XCTAssertEqual(harness.label, "実行基盤")
+            XCTAssertEqual(harness.frame.midY, model.frame.midY, accuracy: 1, "the harness sits on the model's line")
+            XCTAssertEqual(harness.frame.height, model.frame.height, accuracy: 1, "at the model's height")
+            XCTAssertLessThanOrEqual(harness.frame.maxX, model.frame.minX, "and leads it")
+            XCTAssertLessThanOrEqual(model.frame.maxX, effort.frame.minX)
+            capture(app, "chat-harness-\(dark ? "dark" : "light")")
+            guard !dark else { app.terminate(); continue }
+
+            model.tap()
+            XCTAssertTrue(menuRow("Gemini 4 Neon", app).waitForExistence(timeout: 5))
+            XCTAssertFalse(menuRow("Opus 5.5", app).exists, "the model menu lists the running harness's models only")
+            dismissMenu(app)
+
+            harness.tap()
+            // One level: each harness is a heading over its own models.
+            for name in ["Antigravity", "Hermes", "DSH", "Claude Code"] {
+                XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", name))
+                    .firstMatch.waitForExistence(timeout: 5), name)
+            }
+            capture(app, "chat-harness-menu")
+            // A menu row does not carry its identifier into the tree on iOS:
+            // found by identifier where present, else by label.
+            let opus = app.buttons.matching(NSPredicate(
+                format: "identifier == %@ OR (label CONTAINS %@ AND NOT (identifier BEGINSWITH %@))",
+                "composer.runtime.harness.claudeCode.claude-opus-5-5", "Opus 5.5", "composer.runtime.model")).firstMatch
+            if !opus.waitForExistence(timeout: 5) {
+                let tree = XCTAttachment(string: app.debugDescription)
+                tree.name = "tree-chat-harness-menu"; tree.lifetime = .keepAlways; add(tree)
+                XCTFail("no Opus row under Claude Code"); app.terminate(); return
+            }
+            opus.tap()
+            waitValue(model, "Claude Opus 5.5")
+            waitValue(harness, "Claude Code")
+            capture(app, "chat-harness-switched")
+            app.terminate()
+        }
+    }
+
     func testAstraSwitchReacquiresEffortsAndSwitchesBack() {
         let app = launch(profile: "laa-monet", runtime: "claude-mythos-5-2,claude,high", models: "astra")
         let model = any("composer.runtime.model", app)
@@ -253,11 +303,9 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         }
     }
 
-    /// A profile with one model (Dots, the uncensored one) still opens the
-    /// menu and says why; the effort stays changeable.
+    /// A profile with one model still opens the menu and says why; the
+    /// effort stays changeable.
     func testOneModelSaysWhyAndKeepsTheEffort() {
-        // Monet (Dots) shows a fixed runtime and writes nothing since b902d323
-        // (LAAChatFastTests); an employee whose runtime can change is used here.
         let app = launch(profile: "laa-monet", runtime: "claude-opus-5-5,claude,high", models: "single")
         let model = any("composer.runtime.model", app)
         XCTAssertTrue(model.waitForExistence(timeout: 10))

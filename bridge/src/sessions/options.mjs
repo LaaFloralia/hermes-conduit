@@ -16,10 +16,16 @@ const DEFAULT_PROFILE = 'opus-high';
 // engine's reason on its label (availability.mjs). Antigravity is the Google AI Pro
 // subscription (Sub2→Sub3→Sub4). Muse and Dots are not offered (2026-11-23: Work has no Muse
 // CLI, and Dots did not answer a live turn in 300 s); their own employees keep them in Chat.
-const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'hermes-openai-api', 'antigravity'];
-// Metered API routes: offered only by hand, with the route in the label.
+// Claude Code and Pi on their API keys (`claude-api`, `pi-openai-api`) are the same harnesses on
+// a metered key; HQ's delegation entry runs them (personal_agent_bridge.mjs) when a manual Work
+// entrance names the exact route (2026-11-26, the harness selector).
+const WORK_HARNESSES = ['claude', 'codex', 'dsh', 'dsh-venice', 'hermes-claude-api', 'hermes-openai-api', 'antigravity',
+  'claude-api', 'pi-openai-api'];
+// Metered API routes: offered only by hand, with the route in the label, and marked `metered`
+// so a client can say so without keeping its own list.
 const PAID_ROUTES = { 'hermes-claude-api': { prefix: 'anthropic:', suffix: '（API）' },
-  'hermes-openai-api': { prefix: 'openai-api:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' } };
+  'hermes-openai-api': { prefix: 'openai-api:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' },
+  'claude-api': { prefix: '', suffix: '（API）' }, 'pi-openai-api': { prefix: '', suffix: '（API）' } };
 // The model id a Work entrance and the launch body carry for a profile.
 function wireModel(harness, modelId) {
   if (harness === 'dsh' || harness === 'dsh-venice') return JSON.stringify([harness === 'dsh' ? 'opencode-go' : 'venice', modelId]);
@@ -91,6 +97,7 @@ export function sessionOptionsFrom(table, availability = null) {
         model: wireModel(profile.harness, model.modelId ?? profile.model),
         effort: profile.effort,
         fast: fastSupported(profile.harness, model.modelId),
+        ...(paidRoute(profile) ? { metered: true } : {}),
       }, availability?.(profile.harness) ?? null);
     });
   return {

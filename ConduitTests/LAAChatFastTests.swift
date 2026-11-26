@@ -3,21 +3,12 @@ import XCTest
 @testable import Conduit
 
 /// The chat composer's Fast capsule: it shows the speed Hermes reported for
-/// the chat on screen, offers what the model has, and Monet · Dots reads a
-/// fixed Astra · Max · Ultrafast with nothing to choose.
+/// the chat on screen and offers what the model has.
 final class LAAChatFastTests: XCTestCase {
     private func display(_ speed: ModelSpeed?, fast: Bool? = true, ultrafast: Bool = false, session: String? = "s",
                          connected: Bool = true, writable: Bool = true, writing: Bool = false) -> LAAChatFastControl.Display? {
         LAAChatFastControl.display(speed: speed, capability: fast.map { .init(fast: $0, ultrafast: ultrafast) },
                                    sessionID: session, connected: connected, writable: writable, writing: writing)
-    }
-
-    func testMuseRuntimeIsFixed() {
-        let runtime = LAAChatFixedRuntime.of(profile: "laa-soap")
-        XCTAssertEqual(runtime?.name, "Muse")
-        XCTAssertEqual(runtime?.provider, "custom:laa-muse")
-        XCTAssertEqual(runtime?.fast.choices, [])
-        XCTAssertFalse(LAAStaff.soap.supportsCalls)
     }
 
     func testSpeedIsKeptAgainstTheChatItWasReportedFor() {
@@ -89,22 +80,6 @@ final class LAAChatFastTests: XCTestCase {
         XCTAssertNil(LAAChatFastControl.capability([other, row], model: "claude-opus-5-5", provider: "claude"))
         XCTAssertNil(LAAChatFastControl.capability([other, row], model: "gpt-6-astra", provider: "laa-dsh"))
         XCTAssertNil(LAAChatFastControl.capability([other, row], model: nil, provider: "openai-codex"))
-    }
-
-    func testOnlyMonetDotsIsFixedAndReadsAstraUltraCodeFastOn() {
-        let fixed = LAAChatFixedRuntime.of(profile: "laa-monet-dots")
-        XCTAssertEqual(fixed, .dots)
-        XCTAssertEqual(fixed?.name, "GPT 6 Astra")
-        XCTAssertEqual(LAAModelCapsule.displayName(model: fixed?.model, provider: fixed?.provider), "GPT 6 Astra")
-        XCTAssertEqual(LAAEffort.name(fixed?.effort), "Ultra Code")
-        XCTAssertEqual(fixed?.fast.speed, .fast)
-        // Nothing to choose, and the menu says why.
-        XCTAssertEqual(fixed?.fast.choices, [])
-        XCTAssertEqual(fixed?.fast.toggles, false)
-        XCTAssertEqual(fixed?.fast.lock, "Monet（Dots）はモデルと推論を選べません。")
-        for profile in ["laa-monet", "laa-monet-uncensored", "laa-cto", "default", ""] {
-            XCTAssertNil(LAAChatFixedRuntime.of(profile: profile), profile)
-        }
     }
 }
 #endif

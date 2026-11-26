@@ -27,6 +27,47 @@ final class LAADecisionTests: XCTestCase {
         try JSONDecoder().decode(LAADecisionPage.self, from: Data(json.utf8))
     }
 
+    /// An answer on its way is not something the owner has to do: it is not
+    /// counted on the badge or the segment (2026-11-26).
+    func testOnlyOpenQuestionsAndFailedDeliveriesNeedTheOwner() throws {
+        func item(_ id: String, answered: Bool, delivery: String?) -> String {
+            """
+            { "kind": "board", "id": "\(id)", "ref": null, "status": "\(answered ? "answered" : "open")", "title": "t", "summary": "s",
+              "options": [ { "label": "A", "detail": null, "recommended": true } ], "allowOther": false, "impact": null, "deadline": null,
+              "source": null, "sourceRef": null, "createdAt": "2026-11-26T00:00:00Z",
+              "answer": \(answered ? "{ \"optionIndex\": 0, \"label\": \"A\", \"note\": null, \"answeredAt\": \"2026-11-26T00:01:00Z\" }" : "null"),
+              "delivery": \(delivery ?? "null") }
+            """
+        }
+        let decoded = try page("""
+        { "items": [
+          \(item("dec_000000000000000a", answered: false, delivery: nil)),
+          \(item("dec_000000000000000b", answered: true, delivery: #"{ "state": "pending", "attempts": 1, "deliveredAt": null, "error": null, "waiting": true }"#)),
+          \(item("dec_000000000000000c", answered: true, delivery: #"{ "state": "failed", "attempts": 1, "deliveredAt": null, "error": "agent_archived" }"#)),
+          \(item("dec_000000000000000d", answered: true, delivery: #"{ "state": "delivered", "attempts": 1, "deliveredAt": "2026-11-26T00:02:00Z", "error": null }"#)),
+          \(item("dec_000000000000000e", answered: true, delivery: #"{ "state": "gone", "attempts": 1, "deliveredAt": null, "error": "agent_archived" }"#))
+        ], "fetchedAt": "2026-11-26T00:03:00Z" }
+        """)
+        XCTAssertEqual(decoded.items.map(\.needsOwner), [true, false, true, false, false])
+        let board = LAADecisionBoard()
+        board.restoreIfNeeded(decoded.items)
+        XCTAssertEqual(board.count, 2)
+    }
+
+    /// A notification's board link opens the board once; building Work again
+    /// later does not replay it (2026-11-26).
+    func testAWorkLinkIsClaimedOncePerOpen() throws {
+        let link = LAAWorkLinkRequest()
+        XCTAssertNil(link.claim("work.hub"))
+        link.open(URL(string: "laa://work/decisions/dec_0123456789abcdef")!)
+        XCTAssertEqual(link.claim("work.hub")?.absoluteString, "laa://work/decisions/dec_0123456789abcdef")
+        XCTAssertNil(link.claim("work.hub"))
+        XCTAssertNotNil(link.claim("other"))
+        XCTAssertTrue(link.decisionsLink)
+        link.open(URL(string: "laa://work/decisions")!)
+        XCTAssertNotNil(link.claim("work.hub"))
+    }
+
     func testDecodesBoardAndSessionItemsWithNullRefs() throws {
         let decoded = try page("""
         { "items": [
