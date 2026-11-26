@@ -1,5 +1,6 @@
 """Staff-chat delivery and the repeated-failure rule, on a real receipt database."""
 import importlib.util
+import json
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -73,6 +74,7 @@ class RoutineDeliveryTests(unittest.TestCase):
         self.assertIsNone(delivery.failure_signature('告。新着2件'))
         self.assertEqual(delivery.failure_signature('[CRON_FAILURE]\nscript_timeout after 180s'), 'script_timeout')
         self.assertIsNotNone(delivery.failure_signature('Job timed out', for_failure=True))
+        self.assertEqual(delivery.failure_signature('障害: 画面を読めない（WINDOW_UNREADABLE／HTTP_503）'), 'WINDOW_UNREADABLE')
 
     def test_muted_job_stores_without_push(self):
         self.assertEqual(self.report(muted=True)['notification_status'], 'muted')
@@ -86,6 +88,22 @@ class RoutineDeliveryTests(unittest.TestCase):
         self.assertEqual(staff['laa-cos']['runs'], 2)
         self.assertEqual(staff['laa-cos']['failures'][0]['signature'], 'signed_out')
         self.assertEqual(staff['laa-cso']['runs'], 1)
+
+    def test_work_run_model_lands_on_the_hermes_run_once(self):
+        runs, home = self.root / 'run', self.root / 'home'
+        runs.mkdir(); (home / 'cron').mkdir(parents=True)
+        (runs / 'job-a.json').write_text(json.dumps({'at': 990.0, 'model': 'gpt-6.2-sol', 'provider': 'codex',
+                                                     'effort': 'high', 'verified': True, 'requestId': 'r1'}))
+        job = {'id': 'job-a', 'execution_id': 'e1', 'deliver': 'bot-chat:laa-cos'}
+        line = delivery.record_work_run(home, job, runs=runs, now=lambda: 1000.0)
+        self.assertEqual((line['execution_id'], line['model'], line['reasoning_effort']), ('e1', 'gpt-6.2-sol', 'high'))
+        self.assertIsNone(delivery.record_work_run(home, {**job, 'execution_id': 'e2'}, runs=runs, now=lambda: 1000.0))
+        self.assertEqual(len((home / 'cron/usage_audit.jsonl').read_text().splitlines()), 1)
+
+    def test_stale_work_run_is_not_claimed(self):
+        runs = self.root / 'run'; runs.mkdir()
+        (runs / 'job-a.json').write_text(json.dumps({'at': 0.0, 'model': 'x'}))
+        self.assertIsNone(delivery.record_work_run(self.root, {'id': 'job-a', 'execution_id': 'e1'}, runs=runs, now=lambda: 5000.0))
 
     def test_unknown_profile_is_refused(self):
         with self.assertRaises(ValueError):
