@@ -20,9 +20,16 @@ struct LAANativeTabIcons: UIViewControllerRepresentable {
             applyIcons()
         }
 
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applyIcons()
+        }
+
         func applyIcons() {
-            guard let bar = tabBarController?.tabBar, let items = bar.items,
-                  items.count == LAATab.destinations.count else { return }
+            // SwiftUI's hosted background controller is not necessarily parented under
+            // the tab controller. Fall back to the native bar in this window only.
+            guard let items = Self.items(in: tabBarController?.tabBar)
+                    ?? viewIfLoaded?.window.flatMap(Self.findItems(in:)) else { return }
             for (tab, item) in zip(LAATab.destinations, items) {
                 let artwork = Self.artwork[tab]
                 let identifier = "laa.tab.\(tab.rawValue)"
@@ -32,6 +39,19 @@ struct LAANativeTabIcons: UIViewControllerRepresentable {
                 if item.image !== artwork?.regular { item.image = artwork?.regular }
                 if item.selectedImage !== artwork?.selected { item.selectedImage = artwork?.selected }
             }
+        }
+
+        private static func items(in bar: UITabBar?) -> [UITabBarItem]? {
+            guard let items = bar?.items, items.count == LAATab.destinations.count else { return nil }
+            return items
+        }
+
+        private static func findItems(in view: UIView) -> [UITabBarItem]? {
+            if let bar = view as? UITabBar, let items = items(in: bar) { return items }
+            for subview in view.subviews.reversed() {
+                if let items = findItems(in: subview) { return items }
+            }
+            return nil
         }
 
         private static let artwork: [LAATab: (regular: UIImage, selected: UIImage)] = Dictionary(

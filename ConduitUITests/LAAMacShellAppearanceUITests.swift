@@ -25,18 +25,19 @@ final class LAAMacShellAppearanceUITests: XCTestCase {
         let prefix = dark ? "dark" : "light"
         let today = app.staticTexts["laa.today.title"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
+        let shellShot = app.screenshot()
+        attach(shellShot, as: "shell-\(prefix)")
+        let mainBefore = try paperSample(shellShot)
+        let brightness = (mainBefore >> 16 & 255) + (mainBefore >> 8 & 255) + (mainBefore & 255)
+        XCTAssertEqual(brightness < 384, dark, "The actual canvas follows the requested system appearance")
         #if !targetEnvironment(macCatalyst)
         let tabs = app.tabBars.firstMatch
         for (id, label) in [("chats", "Chat"), ("work", "Work"), ("today", "Today"), ("brain", "Doc"), ("studio", "Studio")] {
             let tab = tabs.buttons["laa.tab.\(id)"]
-            XCTAssertTrue(tab.waitForExistence(timeout: 10))
+            XCTAssertTrue(tab.waitForExistence(timeout: 5), tabs.debugDescription)
             XCTAssertTrue(tab.label.hasPrefix(label), "The icon-only tab keeps an English accessibility label (and any badge)")
         }
         #endif
-        let mainBefore = try paperSample(app.screenshot())
-        let brightness = (mainBefore >> 16 & 255) + (mainBefore >> 8 & 255) + (mainBefore & 255)
-        XCTAssertEqual(brightness < 384, dark, "The actual canvas follows the requested system appearance")
-        attach(app.screenshot(), as: "shell-\(prefix)")
 
         openAppearance(app)
         let laa = app.buttons["settings.theme.laa"]
