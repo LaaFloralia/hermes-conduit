@@ -347,8 +347,11 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
             if let icon = tab.icon {
                 LAAIconImage(icon, size: LAATabBarToken.icon, selected: selected)
             } else if let image = selected ? tab.selectedImage : tab.image {
-                image.renderingMode(.template).resizable().scaledToFit()
+                // Drawn as a mask: an Image here (SF Symbol or UIImage) keeps its own spoken
+                // description ("Plain Text Document") beside the tab's name even when hidden.
+                Rectangle().fill(.foreground)
                     .frame(width: LAATabBarToken.icon, height: LAATabBarToken.icon)
+                    .mask { image.renderingMode(.template).resizable().scaledToFit() }
                     .accessibilityHidden(true)
             }
         }
