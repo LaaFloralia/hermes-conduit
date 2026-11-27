@@ -13119,7 +13119,7 @@ final class AppState: ObservableObject {
     /// carry `{member_id, profile, handle, display_name}`: identity is the
     /// profile name, the handle is the resolvable room tag (the mention tag,
     /// falling back to the profile handle) — the gateway re-validates the
-    /// frozen 2–6 roster and refuses duplicated or reserved handles, and the
+    /// frozen roster and refuses duplicated or reserved handles, and the
     /// client refuses first when two picks would claim one tag.
     /// `roomID` is the CLIENT-minted identity and create idempotency key:
     /// the CALLER owns its lifetime (the create sheet holds one per logical
