@@ -340,7 +340,7 @@ struct LAADecisionImageViewer: View {
             }
             .buttonStyle(.plain)
             .padding(LAASpacing.x4)
-            .accessibilityLabel(Text(verbatim: LAACopy.close))
+            .accessibilityLabel(Text(verbatim: "Close"))
             .accessibilityIdentifier("work.decision.viewer.close")
             .keyboardShortcut(.cancelAction)
         }
