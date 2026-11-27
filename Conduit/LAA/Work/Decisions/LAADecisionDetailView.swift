@@ -304,11 +304,13 @@ struct LAADecisionDetailView: View {
                 .accessibilityHidden(onlyLinks)
                 .allowsHitTesting(!onlyLinks)
                 if let detail = option.detail, !detail.isEmpty {
-                    Text(LAADecisionLinks.attributed(detail)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    // Under the links layer the copy only keeps the place and
+                    // carries no link: a Button exposes the links inside its
+                    // label even when hidden, so it would be found twice.
+                    Text(layer == .underLinks ? AttributedString(detail) : LAADecisionLinks.attributed(detail))
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .opacity(layer == .underLinks ? 0 : 1)
-                        // The links layer above carries the only copy VoiceOver and UI tests see.
-                        .accessibilityHidden(layer == .underLinks)
                         .allowsHitTesting(onlyLinks)
                 }
             }
