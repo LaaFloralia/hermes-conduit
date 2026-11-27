@@ -11,6 +11,7 @@ struct LAAWorkHub: View {
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
     @StateObject private var usageState = LAAUsageState()
     @StateObject private var decisions = LAADecisionBoard()
+    @StateObject private var findings = LAAFindingBoard()
     @StateObject private var campaigns = LAACampaignBoard()
     @State private var section: Section = .projects
     @State private var showPairing = false
@@ -140,7 +141,7 @@ struct LAAWorkHub: View {
             }
         }
         .task(id: "\(bridge.revision)-\(scenePhase == .active)") {
-            if decisionDevice != bridge.deviceID { decisions.reset(); campaigns.reset(); decisionDevice = bridge.deviceID }
+            if decisionDevice != bridge.deviceID { decisions.reset(); findings.reset(); campaigns.reset(); decisionDevice = bridge.deviceID }
             if let cached = LAAWorkSessionCache.read([LAADecision].self, store: drafts, device: bridge.deviceID, target: "decisions") {
                 decisions.restoreIfNeeded(cached)
             }
@@ -188,7 +189,7 @@ struct LAAWorkHub: View {
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1; await decisions.load(bridge) }
             }
-        case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
+        case .decisions: LAABoardView(decisions: decisions, findings: findings, drafts: drafts)
         case .campaigns: LAACampaignBoardView(board: campaigns)
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
         }

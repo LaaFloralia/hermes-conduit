@@ -15,10 +15,14 @@ struct LAADecisionImageKey: Hashable {
 
     /// The route, or nil when either id is not one the Bridge issues: no
     /// record text is ever joined into a path unchecked.
+    /// A finding's id (`fnd_`, D-18) takes the findings route with the same shape.
     var path: String? {
-        guard decisionID.range(of: #"^dec_[0-9a-f]{16}$"#, options: .regularExpression) != nil,
-              LAADecision.Image.validID(imageID) else { return nil }
-        return "/v1/decisions/\(decisionID)/images/\(imageID)" + (size == .thumb ? "?size=thumb" : "")
+        guard LAADecision.Image.validID(imageID) else { return nil }
+        let collection: String
+        if decisionID.range(of: #"^dec_[0-9a-f]{16}$"#, options: .regularExpression) != nil { collection = "decisions" }
+        else if LAAFinding.validID(decisionID) { collection = "findings" }
+        else { return nil }
+        return "/v1/\(collection)/\(decisionID)/images/\(imageID)" + (size == .thumb ? "?size=thumb" : "")
     }
 
     fileprivate var name: String { "\(decisionID)-\(imageID).\(size.rawValue)" }
@@ -118,8 +122,8 @@ final class LAADecisionImageStore {
     /// 410 is retention; 404 with the route's own code is an unknown picture.
     /// A 404 without it is an older Bridge with no image route: unavailable.
     nonisolated static func isRemoved(_ error: LAABridgeHTTPError) -> Bool {
-        error.status == 410 || error.code == "decision_image_expired"
-            || (error.status == 404 && error.code == "decision_image_not_found")
+        error.status == 410 || error.code == "decision_image_expired" || error.code == "finding_image_expired"
+            || (error.status == 404 && (error.code == "decision_image_not_found" || error.code == "finding_image_not_found"))
     }
 
     /// Decodes and stores one payload. Nil when the bytes are not a picture.
