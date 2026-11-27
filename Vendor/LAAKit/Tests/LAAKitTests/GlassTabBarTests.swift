@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import LAAKit
 
@@ -33,6 +34,20 @@ struct GlassTabBarTests {
             #expect(LAAGlassTabBarLayout.contentClearance(safeBottom: safeBottom) + safeBottom == barTop + 8)
         }
         #expect(LAAGlassTabBarLayout.contentClearance(safeBottom: 0) == 76)
+    }
+
+    /// The right capsule is LAA's profile picture, never the app icon (D-21): the deprecated icon entry points
+    /// are accepted but draw the profile (the initial when the app passes none).
+    @available(*, deprecated)
+    @Test func identityShowsProfileNotAppIcon() {
+        let plain = LAAAppIdentity.main(name: "Hortensia")
+        #expect(plain.profile == nil)
+        #expect(plain.name == "Hortensia")
+        let legacy = LAAAppIdentity.main(name: "Primula", icon: Image(systemName: "app"))
+        #expect(legacy.profile == nil)
+        let made = LAAAppIdentity(name: "Console", version: "1", icon: Image(systemName: "app"))
+        #expect(made.profile == nil)
+        #expect(LAAAppIdentity.ownerName == "LAA")
     }
 
     @Test func atMostFiveTabs() {

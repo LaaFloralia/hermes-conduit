@@ -181,10 +181,11 @@ struct LAAAppSettingsCard: View {
 }
 
 extension LAAAppIdentity {
-    /// Hortensia's name, version and its icon artwork (the bundle's Icon Composer icon is not readable as an
-    /// image, so the asset catalog carries the same art as `LAAAppIconArt`).
-    static var hortensia: LAAAppIdentity {
-        .main(name: "Hortensia", icon: Image("LAAAppIconArt"))
+    /// Hortensia's name and version with LAA's profile picture: the owner's picture the Mac's Bridge holds
+    /// (`LAAOwnerAvatarStore`, the same face every conversation shows), or LAA's initial before one is set.
+    /// Never the app icon (D-21, 2026-11-27).
+    @MainActor static func hortensia(_ owner: LAAOwnerAvatarStore = .shared) -> LAAAppIdentity {
+        .main(name: "Hortensia", profile: owner.image.map { Image(uiImage: $0) })
     }
 }
 #endif

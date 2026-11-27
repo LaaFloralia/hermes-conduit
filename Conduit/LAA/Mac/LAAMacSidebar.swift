@@ -13,6 +13,7 @@ struct LAAMacSidebar: View {
     @Binding var section: LAAMacSection
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject private var ownerAvatar = LAAOwnerAvatarStore.shared
     let onRequestSettings: () -> Void
 
     @State private var hovered: LAAMacSection?
@@ -114,9 +115,9 @@ struct LAAMacSidebar: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("laa.mac.connection")
-            // The app icon opens the same settings card as the iPhone's bar (its last row opens the
+            // LAA's profile picture opens the same settings card as the iPhone's bar (its last row opens the
             // Settings window; ⌘, still does too).
-            LAASidebarAppEntry(app: .hortensia) {
+            LAASidebarAppEntry(app: .hortensia(ownerAvatar)) {
                 LAAAppSettingsCard(openSettings: onRequestSettings, showsMac: false)
             }
             .help(LAACopy.settings)

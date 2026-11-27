@@ -6,7 +6,7 @@ import AppKit
 #endif
 
 // The LAA bottom bar (DESIGN.md「ナビ・タブ」, tokens `tabBar.iphone`): two Liquid Glass capsules in one
-// `GlassEffectContainer` — icon-only tabs on the left, the app's own icon on the right. Tapping the icon morphs
+// `GlassEffectContainer` — icon-only tabs on the left, LAA's profile picture on the right. Tapping it morphs
 // the bar: the tab capsule shrinks to the current tab's icon and the icon's circle grows into the settings card
 // (header, the settings the owner changes most as direct controls, one entry to the full settings). Tapping
 // outside, the shrunk tab or VoiceOver's escape collapses it. No business logic: state and actions come in.
@@ -33,27 +33,42 @@ public struct LAAGlassTab<ID: Hashable>: Identifiable {
     }
 }
 
-/// The app shown in the right capsule and the card header.
+/// What the right capsule and the card header show: LAA's profile picture (the owner's current one, passed in
+/// by the app; the kit bundles none) beside the app's name and version. Without a picture the capsule draws LAA's
+/// initial. The capsule never shows the app's own icon (D-21, 2026-11-27: "アプリアイコンではなくLAAのプロフィール").
 public struct LAAAppIdentity {
     public let name: String
     public let version: String
-    public let icon: Image
+    /// LAA's profile picture; nil draws the initial.
+    public let profile: Image?
 
-    public init(name: String, version: String, icon: Image) {
-        self.name = name; self.version = version; self.icon = icon
+    public init(name: String, version: String, profile: Image?) {
+        self.name = name; self.version = version; self.profile = profile
     }
 
-    /// Name and version from the main bundle; `icon` defaults to the bundle's primary app icon when it can be
-    /// read (pass an explicit image when the app icon is an Icon Composer file the bundle does not expose).
-    public static func main(name: String? = nil, icon: Image? = nil) -> LAAAppIdentity {
+    @available(*, deprecated, renamed: "init(name:version:profile:)",
+               message: "The bar shows LAA's profile picture, not the app icon (D-21); the icon is ignored.")
+    public init(name: String, version: String, icon: Image) {
+        self.init(name: name, version: version, profile: nil)
+    }
+
+    /// Name and version from the main bundle, with LAA's profile picture when the app has one.
+    public static func main(name: String? = nil, profile: Image? = nil) -> LAAAppIdentity {
         let info = Bundle.main.infoDictionary ?? [:]
         let display = name ?? (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String) ?? ""
         let short = info["CFBundleShortVersionString"] as? String ?? ""
         let build = info["CFBundleVersion"] as? String ?? ""
         let version = build.isEmpty || build == short ? short : "\(short) (\(build))"
-        return LAAAppIdentity(name: display, version: version, icon: icon ?? bundleIcon() ?? Image(systemName: "app"))
+        return LAAAppIdentity(name: display, version: version, profile: profile)
     }
 
+    @available(*, deprecated, renamed: "main(name:profile:)",
+               message: "The bar shows LAA's profile picture, not the app icon (D-21); the icon is ignored.")
+    public static func main(name: String? = nil, icon: Image?) -> LAAAppIdentity {
+        main(name: name, profile: nil)
+    }
+
+    /// The bundle's primary app icon, for hosts that still need it elsewhere (not used by the bar).
     public static func bundleIcon() -> Image? {
         #if canImport(UIKit)
         let info = Bundle.main.infoDictionary ?? [:]
@@ -71,6 +86,10 @@ public struct LAAAppIdentity {
         return nil
         #endif
     }
+
+    /// The owner's name and initial (the same identity Hortensia's conversations show).
+    public static let ownerName = "LAA"
+    static let ownerInitial = "L"
 }
 
 /// Bar geometry from the tokens, for hosts that inset their content (`laaTabBarClearance`).
@@ -183,7 +202,7 @@ struct LAAGlassTabBarOverlay<ID: Hashable, Card: View>: View {
     }
 }
 
-/// The bar itself (collapsed: tabs + app icon; expanded: current tab + settings card). Usually placed through
+/// The bar itself (collapsed: tabs + LAA's profile picture; expanded: current tab + settings card). Usually placed through
 /// `laaGlassTabBar(...)`; use directly only in previews and snapshots.
 public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
     let tabs: [LAAGlassTab<ID>]
@@ -289,8 +308,7 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         } label: {
             ZStack {
                 if selected {
-                    RoundedRectangle(cornerRadius: LAATabBarToken.selectionRadius, style: .continuous)
-                        .fill(palette.selection)
+                    selectionMark
                         .modifier(Matched(id: "selection", space: space, enabled: !reduceMotion))
                 }
                 tabIcon(tab, selected: selected)
@@ -307,6 +325,19 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         .accessibilityShowsLargeContentViewer {
             tabIcon(tab, selected: selected)
             Text(tab.title)
+        }
+    }
+
+    /// The selected tab's mark is a lens of tinted Liquid Glass inside the bar, like the system tab bar's: what
+    /// passes under it refracts through it and it answers a press. Until kit 0.2.6 it was an opaque `selection`
+    /// fill, which read as a flat sticker on the glass and made the whole bar look opaque next to the system bar
+    /// it replaced (D-21 A1, 2026-11-27). Reduce Transparency keeps the opaque fill.
+    @ViewBuilder private var selectionMark: some View {
+        let shape = RoundedRectangle(cornerRadius: LAATabBarToken.selectionRadius, style: .continuous)
+        if reduceTransparency {
+            shape.fill(palette.selection)
+        } else {
+            shape.fill(.clear).laaGlass(in: shape, interactive: true, tinted: true)
         }
     }
 
@@ -347,16 +378,12 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         .buttonStyle(.plain)
         .modifier(MorphGlass(id: "app", space: space, shape: Circle(), interactive: true,
                              reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
-        .accessibilityLabel(Text(app.name.isEmpty ? "Settings" : "\(app.name), Settings"))
+        .accessibilityLabel(Text("Settings"))
         .accessibilityIdentifier("laa.tabbar.app")
     }
 
     private func appIcon(size: Double) -> some View {
-        app.icon
-            .resizable()
-            .scaledToFill()
-            .frame(width: size, height: size)
-            .clipShape(Circle())
+        LAAProfileImage(profile: app.profile, size: size)
             .modifier(Matched(id: "appIcon", space: space, enabled: !reduceMotion))
             .accessibilityHidden(true)
     }
@@ -512,5 +539,28 @@ struct Matched: ViewModifier {
 
     func body(content: Content) -> some View {
         if enabled { content.matchedGeometryEffect(id: id, in: space) } else { content }
+    }
+}
+
+/// LAA's profile picture cut to a circle, or LAA's initial on the `wash` circle when the app has no picture.
+struct LAAProfileImage: View {
+    let profile: Image?
+    let size: Double
+    @Environment(\.laaPalette) private var palette
+
+    var body: some View {
+        Group {
+            if let profile {
+                profile.resizable().scaledToFill()
+            } else {
+                Text(verbatim: LAAAppIdentity.ownerInitial)
+                    .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
+                    .foregroundStyle(palette.text)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(palette.wash)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
     }
 }

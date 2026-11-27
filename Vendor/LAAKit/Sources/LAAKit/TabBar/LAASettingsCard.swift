@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Rows for the settings card that the app icon opens (tokens `tabBar.iphone.card`). The card is glass; these
+// Rows for the settings card that LAA's profile picture opens (tokens `tabBar.iphone.card`). The card is glass; these
 // rows sit on it directly — never glass themselves (no nesting), separated by 1 pt `rule` lines. Rows are the
 // settings the owner changes most, as direct controls, then one `LAASettingsCardEntry` to the full settings.
 
@@ -216,7 +216,7 @@ struct LAACardRowPressStyle: ButtonStyle {
     }
 }
 
-/// Mac and iPad sidebar: the app icon and name at the foot of the sidebar; it opens the same card as a popover.
+/// Mac and iPad sidebar: LAA's profile picture and the app name at the foot of the sidebar; it opens the same card as a popover.
 public struct LAASidebarAppEntry<Card: View>: View {
     let app: LAAAppIdentity
     let card: () -> Card
@@ -231,9 +231,7 @@ public struct LAASidebarAppEntry<Card: View>: View {
     public var body: some View {
         Button { open.toggle() } label: {
             HStack(spacing: LAASpace.s8) {
-                app.icon.resizable().scaledToFill()
-                    .frame(width: LAAIconSize.tab, height: LAAIconSize.tab)
-                    .clipShape(Circle())
+                LAAProfileImage(profile: app.profile, size: LAAIconSize.tab)
                     .accessibilityHidden(true)
                 Text(app.name)
                     .font(.system(size: LAAPlatform.current.canvas.small, weight: .medium))
@@ -245,14 +243,12 @@ public struct LAASidebarAppEntry<Card: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(app.name.isEmpty ? "Settings" : "\(app.name), Settings"))
+        .accessibilityLabel(Text("Settings"))
         .accessibilityIdentifier("laa.sidebar.app")
         .popover(isPresented: $open, arrowEdge: .trailing) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: LAASpace.s12) {
-                    app.icon.resizable().scaledToFill()
-                        .frame(width: LAATabBarToken.Card.headerIcon, height: LAATabBarToken.Card.headerIcon)
-                        .clipShape(Circle())
+                    LAAProfileImage(profile: app.profile, size: LAATabBarToken.Card.headerIcon)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(app.name).laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
