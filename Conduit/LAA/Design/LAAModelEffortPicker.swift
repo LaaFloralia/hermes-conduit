@@ -52,7 +52,7 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
     var modelHint: String = "モデルを変更"
     var effortHint: String = "推論の強さを変更"
     /// Shown for a value not known yet in place of 不明: 確認中… while it is
-    /// being read, 取得できません when it can't be (D-25). Nil keeps 不明.
+    /// being read, 未確認 when it can't be (D-25). Nil keeps 不明.
     var placeholder: String? = nil
     var harnessMenu: () -> HarnessMenu
     var modelMenu: () -> ModelMenu
@@ -227,7 +227,7 @@ struct LAAModelCapsule: View {
 
     static let unknown = "不明"
     static let checking = "確認中…"
-    static let unavailable = "取得できません"
+    static let unavailable = "未確認"
 
     static func text(model: String?, provider: String?, name: String?, current: Bool,
                      placeholder: String? = nil) -> String {

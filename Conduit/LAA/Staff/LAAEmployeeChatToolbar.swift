@@ -201,7 +201,7 @@ enum LAAConnectionWait {
         if needsSignIn || failure == .loginRequired || failure == .authenticationRejected { return signIn }
         if let failedStep {
             if failedStep.hasPrefix("Ticket") || failedStep.hasPrefix("Password sign-in and ticket") {
-                return "接続の許可を取得できません"
+                return "接続の許可を受け取れません"
             }
             if failedStep.hasPrefix("Socket") { return "Macとの通信を開けません" }
             if failedStep.hasPrefix("Chat list") || failedStep.hasPrefix("Cron runs") { return "会話の一覧を読めません" }
@@ -212,7 +212,7 @@ enum LAAConnectionWait {
         case .hostNotFound, .unreachable, .connectionRefused: return "Macに届きません"
         case .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant:
             return "安全な接続を確立できません"
-        case .sessionTicketFailure: return "接続の許可を取得できません"
+        case .sessionTicketFailure: return "接続の許可を受け取れません"
         case .dashboardUnavailable, .unexpectedServerResponse: return "Macの会話サービスが応答しません"
         default: return slowMac
         }

@@ -77,7 +77,7 @@ struct LAAEmployeeChatOpeningView: View {
     }
     private var connectingWords: String { LAAConnectionWait.text(phase) }
     /// The capsules before the live chat: the last confirmed model and
-    /// effort (最終確認), else 確認中… while it opens and 取得できません with
+    /// effort (最終確認), else 確認中… while it opens and 未確認 with
     /// the reason once it stalled or failed; never a bare 不明 (D-25).
     private var runtimeDisplay: LAAChatRuntimeDisplay.Value {
         let last = preview.workspace.flatMap { LAAChatRuntimeCache.last(dashboardID: $0.dashboardID, profile: profile) }

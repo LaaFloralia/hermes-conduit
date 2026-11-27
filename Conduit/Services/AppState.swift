@@ -1395,6 +1395,11 @@ final class AppState: ObservableObject {
                 // Running again without a send: the same wait under the grace, else a new one.
                 LAAStaffThinking.shared.resumeWait(profile: conversationIdentityProfile)
             }
+            // An idle employee chat past the display cap sheds its oldest
+            // turns, after the transition's own updates settle.
+            if turnState == .idle, heldTranscriptRowCap != nil {
+                Task { @MainActor [weak self] in self?.trimLiveTranscriptHeadIfNeeded() }
+            }
             #endif
             // Its reply sends no push while the chat is on screen.
             updateChatOnScreen()
@@ -21520,6 +21525,14 @@ final class AppState: ObservableObject {
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
                 hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false
             )
+            // Append-only: detached earlier history still sits right above
+            // the live rows, so it and the coverage reaching past it stay.
+            if let priorOwned, !priorOwned.detachedEarlier.isEmpty {
+                persistedTranscriptWindow?.detachedEarlier = priorOwned.detachedEarlier
+                persistedTranscriptWindow?.nextOffset = max(page.rawReturned, priorOwned.nextOffset)
+                persistedTranscriptWindow?.canLoadEarlier = priorOwned.canLoadEarlier
+                    || page.mayHaveOlderRows(fetchedRowCount: page.rawReturned)
+            }
         }
     }
 
@@ -27636,6 +27649,9 @@ final class AppState: ObservableObject {
         // Mid-turn ordering rule: the outgoing bubble must not land below a
         // still-live reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
+        // A send returns to the live conversation: earlier history read
+        // above it goes, and backfill restarts from the live rows.
+        clearDetachedEarlierHistory()
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -31369,10 +31385,29 @@ final class AppState: ObservableObject {
     /// re-pin on some later unrelated transcript change.
     @discardableResult
     func loadEarlierMessages() async -> Bool {
+        // Under the display cap a page can dedup to nothing (offset drift,
+        // a trimmed or detached head) while older rows remain: the same tap
+        // fetches on, a bounded number of pages, so it never does nothing.
+        let pageBound = heldTranscriptRowCap == nil ? 1 : Self.earlierPagesPerTap
+        for _ in 0..<pageBound {
+            switch await loadEarlierMessagesPage() {
+            case .published: return true
+            case .stopped: return false
+            case .dedupedNothing: continue
+            }
+        }
+        return false
+    }
+
+    static let earlierPagesPerTap = 5
+
+    private enum EarlierPageLanding { case published, dedupedNothing, stopped }
+
+    private func loadEarlierMessagesPage() async -> EarlierPageLanding {
         guard let window = persistedTranscriptWindow,
               window.canLoadEarlier,
               !window.isLoadingEarlier else {
-            return false
+            return .stopped
         }
         guard persistedTranscriptWindowOwnershipIsCurrent(window) else {
             // No user-facing error for an already-departed conversation —
@@ -31389,7 +31424,7 @@ final class AppState: ObservableObject {
                 windowProfile=\(window.profile, privacy: .public) \
                 activeProfile=\(self.activeProfile, privacy: .public)
                 """)
-            return false
+            return .stopped
         }
         // Older pages are persisted transcript history: continue against
         // the durable stored identity the hydration resolved (Desktop's
@@ -31420,7 +31455,7 @@ final class AppState: ObservableObject {
               current.profile == profile,
               current.nextOffset == offset,
               current.isLoadingEarlier else {
-            return false
+            return .stopped
         }
         guard persistedTranscriptWindowOwnershipIsCurrent(current) else {
             // The armed window survived untouched but the conversation
@@ -31429,8 +31464,9 @@ final class AppState: ObservableObject {
             // single-flight flag so the affordance can re-arm later — a
             // replaced window never reaches this branch.
             current.isLoadingEarlier = false
+            current.detachedEarlier = []
             persistedTranscriptWindow = current
-            return false
+            return .stopped
         }
         current.isLoadingEarlier = false
         defer { persistedTranscriptWindow = current }
@@ -31443,7 +31479,7 @@ final class AppState: ObservableObject {
                 // the already-hydrated conversation.
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned a malformed payload; retiring the affordance")
                 current.canLoadEarlier = false
-                return false
+                return .stopped
             }
             // Response ownership: the page must still describe THIS
             // conversation. The SAME centralized identity rule decides —
@@ -31464,7 +31500,7 @@ final class AppState: ObservableObject {
                ) {
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned foreign session \(returnedId, privacy: .private(mask: .hash)); discarding and retiring the affordance")
                 current.canLoadEarlier = false
-                return false
+                return .stopped
             }
             let fetchedRowCount = rawRows.count
             let page = PersistedTranscriptPagination.parse(response, rawRowCount: fetchedRowCount)
@@ -31476,7 +31512,7 @@ final class AppState: ObservableObject {
             guard let page, page.honorsTailContract else {
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) lost the tail contract; retiring the affordance")
                 current.canLoadEarlier = false
-                return false
+                return .stopped
             }
             // Overlap dedup keys on the durable persisted row ID. A page
             // whose rows lack one would normalize to page-local positional
@@ -31485,7 +31521,7 @@ final class AppState: ObservableObject {
             guard PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else {
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned rows without durable IDs; retiring the affordance")
                 current.canLoadEarlier = false
-                return false
+                return .stopped
             }
             var didPrepend = false
             if fetchedRowCount > 0 {
@@ -31493,37 +31529,22 @@ final class AppState: ObservableObject {
                     rawRows.map(AnyCodable.from),
                     imageScope: Self.transcriptImageScope(in: response, sessionId: wireSessionId, profile: profile)
                 )
-                // A page boundary can split a tool call from its result row.
-                // Fold any trailing call cards back together with the
-                // matching held result cards by durable tool-call identity
-                // before prepending, so one logical tool run never renders
-                // as an orphan call card plus a duplicate standalone result.
-                let (olderPage, foldedFromHeld) = PersistedTranscriptWindow.reconcilingToolCallsAcrossBoundary(
-                    olderPage: normalizedPage,
-                    held: messages
-                )
-                let merged: [ChatMessage]?
-                if foldedFromHeld > 0 {
-                    let remainingHeld = messages.dropFirst(foldedFromHeld)
-                    if remainingHeld.isEmpty {
-                        // Every held row folded into the adjusted page (the
-                        // stale-response guard already proved this window is
-                        // current): the folded page itself is the whole
-                        // transcript. Never fall back to the unfolded page
-                        // here — that would resurrect the duplicate the fold
-                        // just removed.
-                        merged = olderPage.isEmpty ? nil : olderPage
-                    } else {
-                        merged = PersistedTranscriptWindow.prepending(olderPage, onto: Array(remainingHeld))
-                    }
-                } else {
-                    merged = nil
-                }
-                if let merged {
-                    messages = merged
-                    didPrepend = true
-                } else if let plain = PersistedTranscriptWindow.prepending(normalizedPage, onto: messages) {
-                    messages = plain
+                // A page boundary can split a tool call from its result row:
+                // the landing folds trailing call cards back together with
+                // the matching held result cards by durable tool-call
+                // identity before prepending, so one logical tool run never
+                // renders as an orphan call card plus a duplicate standalone
+                // result. Past the display cap the older rows detach from
+                // the live transcript and stay bounded
+                // (PersistedTranscriptWindow.landingOlderPage).
+                if let landed = PersistedTranscriptWindow.landingOlderPage(
+                    normalizedPage,
+                    live: messages,
+                    detached: current.detachedEarlier,
+                    cap: heldTranscriptRowCap
+                ) {
+                    if landed.live != messages { messages = landed.live }
+                    current.detachedEarlier = landed.detached
                     didPrepend = true
                 }
             }
@@ -31532,8 +31553,9 @@ final class AppState: ObservableObject {
                 // The reconcile graft relies on this explicit fact to keep
                 // preserving the prefix across repeated reconciles — the
                 // network coverage reset below erases the offset evidence
-                // after the first one.
-                current.hasBackfilledPrefix = true
+                // after the first one. Detached history is not part of the
+                // live transcript, so a reconcile never grafts onto it.
+                current.hasBackfilledPrefix = current.detachedEarlier.isEmpty
             }
             // A full page means older history may still exist; a short or
             // empty page marks the transcript fully backfilled and retires
@@ -31544,12 +31566,12 @@ final class AppState: ObservableObject {
             current.nextOffset = offset + fetchedRowCount
             current.canLoadEarlier = fetchedRowCount > 0
                 && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
-            return didPrepend
+            return didPrepend ? .published : (fetchedRowCount > 0 && current.canLoadEarlier ? .dedupedNothing : .stopped)
         case .unavailable:
             // The history source went away mid-conversation; there is no
             // older page to offer.
             current.canLoadEarlier = false
-            return false
+            return .stopped
         case .failed(let error):
             // Only a structurally gone history source retires the
             // affordance; transient trouble — rate limits, slow bounded
@@ -31558,7 +31580,7 @@ final class AppState: ObservableObject {
             // own.
             sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .private(mask: .hash)): \(LogRedaction.message(error), privacy: .public)")
             current.canLoadEarlier = !Self.historySourceIsUnavailable(error)
-            return false
+            return .stopped
         }
     }
 
@@ -31624,6 +31646,69 @@ final class AppState: ObservableObject {
     /// affordance and the `loadEarlierMessages` action, so the control can
     /// never render for a window the action would reject (the production
     /// no-op regression).
+    /// Most rows held for display in the active conversation, or nil for
+    /// no bound. LAA bounds employee chats (D-25): long histories read
+    /// through "Load earlier messages" stay a fixed size.
+    var heldTranscriptRowCap: Int? {
+        #if LAA_BUILD
+        #if DEBUG
+        if let heldTranscriptRowCapForTesting { return heldTranscriptRowCapForTesting }
+        #endif
+        guard let attachment = laaEmployeeAttachment, attachment.runtimeID == activeSessionId else { return nil }
+        return PersistedTranscriptPagination.maxHeldRows
+        #else
+        return nil
+        #endif
+    }
+
+    #if DEBUG
+    var heldTranscriptRowCapForTesting: Int?
+    #endif
+
+    /// "Back to latest" from detached earlier history: drops it and lets
+    /// backfill start again from the live rows.
+    func jumpToLatestFromDetachedHistory() {
+        clearDetachedEarlierHistory()
+    }
+
+    /// Drops detached earlier history. Network coverage falls back to what
+    /// the live rows cover,
+    /// older rows stay reachable, and a fetch in flight for the detached
+    /// head is discarded by the stale-response guard.
+    private func clearDetachedEarlierHistory() {
+        guard var window = persistedTranscriptWindow, !window.detachedEarlier.isEmpty else { return }
+        window.detachedEarlier = []
+        window.nextOffset = min(window.nextOffset, liveTranscriptPersistedCoverage)
+        window.canLoadEarlier = true
+        window.isLoadingEarlier = false
+        persistedTranscriptWindow = window
+    }
+
+    /// How many newest persisted rows the live transcript surely covers:
+    /// rows with a persisted row id. Live-only rows (a reply still under
+    /// its stream id, a local notice) are left out, so the count can only
+    /// fall short — a short count re-reads rows dedup drops, a long one
+    /// would skip rows.
+    private var liveTranscriptPersistedCoverage: Int {
+        messages.reduce(0) { $0 + (Int($1.id) == nil ? 0 : 1) }
+    }
+
+    /// Live growth past the display cap: once the turn is idle, the oldest
+    /// whole turns leave the live transcript and stay reachable through
+    /// backfill. Never while detached history shows or a backfill runs.
+    func trimLiveTranscriptHeadIfNeeded() {
+        guard let cap = heldTranscriptRowCap, turnState == .idle, messages.count > cap,
+              var window = persistedTranscriptWindow, window.detachedEarlier.isEmpty,
+              !window.isLoadingEarlier, persistedTranscriptWindowOwnershipIsCurrent(window) else { return }
+        let split = PersistedTranscriptWindow.safeSplitIndex(messages, keepingLast: cap)
+        guard split > 0 else { return }
+        messages = Array(messages[split...])
+        window.nextOffset = min(window.nextOffset, liveTranscriptPersistedCoverage)
+        window.canLoadEarlier = true
+        window.hasBackfilledPrefix = false
+        persistedTranscriptWindow = window
+    }
+
     var canLoadEarlierMessagesForActiveConversation: Bool {
         guard let window = persistedTranscriptWindow,
               window.canLoadEarlier,

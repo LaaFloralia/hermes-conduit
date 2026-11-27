@@ -129,7 +129,7 @@ enum LAAChatRuntimeCache {
 /// What the model and effort capsules show (D-25): Hermes' live report as
 /// soon as there is one; until then the last confirmed values (最終確認);
 /// with neither, 確認中… while the chat is still being reached and
-/// 取得できません, with its reason in the menu, once it can't be. A report
+/// 未確認, with its reason in the menu, once it can't be. A report
 /// of none stays 不明.
 enum LAAChatRuntimeDisplay {
     struct Value: Equatable {

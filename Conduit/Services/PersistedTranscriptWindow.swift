@@ -9,6 +9,15 @@ enum PersistedTranscriptPagination {
     /// Older rows stay available through explicit backfill.
     static let pageSize = 40
 
+    /// Most transcript rows held for display at once: the live transcript
+    /// plus any detached earlier history. Older rows beyond it stay on the
+    /// server and come back through backfill.
+    static let maxHeldRows = 200
+
+    /// Live rows kept when backfill first passes `maxHeldRows` and the
+    /// loaded history detaches from the live transcript.
+    static let liveTailKeep = 80
+
     /// Query for one tail-anchored page. The backend measures `offset` back
     /// from the NEWEST persisted row and still returns the selected page in
     /// chronological order. `include_compacted=true` keeps compaction-
@@ -112,6 +121,13 @@ struct PersistedTranscriptWindowState: Equatable {
     /// backfill prepends; kept by a reconcile that grafts onto the prefix;
     /// cleared when a refreshed tail is authoritative (no safe anchor).
     var hasBackfilledPrefix = false
+    /// Earlier history shown above the live transcript once backfill passed
+    /// `maxHeldRows`: chronological, older than every live row (its newest
+    /// rows are evicted first, so a gap can sit between it and the live
+    /// rows), and never part of `messages`, so the offline copy, sends, streaming
+    /// and reconcile only ever see the live suffix. Bounded by evicting its
+    /// newest rows; cleared with the window, on send and on jump to latest.
+    var detachedEarlier: [ChatMessage] = []
 
     /// Every session identity the accepted hydration/resume transaction
     /// vouched for together: the requested ID, the persisted stored ID, and
@@ -325,5 +341,118 @@ enum PersistedTranscriptWindow {
             }
             return false
         }
+    }
+
+    // MARK: - Bounded display window
+
+    /// Prepends an older page onto `held`: folds a tool call/result pair the
+    /// page boundary split, then deduplicates by durable row identity. The
+    /// same algebra the live transcript's backfill uses, so a page lands the
+    /// same way on the live transcript and on detached history. Returns the
+    /// new rows and how many of their leading rows came from the page, or
+    /// nil when nothing would change.
+    static func mergingOlderPage(
+        _ page: [ChatMessage],
+        onto held: [ChatMessage]
+    ) -> (rows: [ChatMessage], pageCount: Int)? {
+        guard !held.isEmpty, !page.isEmpty else { return nil }
+        let (olderPage, folded) = reconcilingToolCallsAcrossBoundary(olderPage: page, held: held)
+        if folded > 0 {
+            let remaining = Array(held.dropFirst(folded))
+            if remaining.isEmpty {
+                // Every held row folded into the page: the folded page is
+                // the whole transcript, never the unfolded duplicate.
+                if !olderPage.isEmpty { return (olderPage, olderPage.count) }
+            } else if let merged = prepending(olderPage, onto: remaining) {
+                return (merged, merged.count - remaining.count)
+            }
+        }
+        guard let plain = prepending(page, onto: held) else { return nil }
+        return (plain, plain.count - held.count)
+    }
+
+    /// Where `rows` may be cut so the part from the returned index on keeps
+    /// at most `keepingLast` rows — or, when no such cut is safe, the
+    /// smallest safe overshoot. A cut lands only at the start of a turn (a
+    /// user row that is not a steer), never between a tool call and its
+    /// result. Returns 0 when nothing needs cutting or no cut is safe.
+    static func safeSplitIndex(_ rows: [ChatMessage], keepingLast keep: Int) -> Int {
+        guard rows.count > max(0, keep) else { return 0 }
+        let target = rows.count - max(0, keep)
+        for index in target..<rows.count where isSafeSplit(rows, at: index) {
+            return index
+        }
+        var index = target - 1
+        while index > 0 {
+            if isSafeSplit(rows, at: index) { return index }
+            index -= 1
+        }
+        return 0
+    }
+
+    /// A cut before `rows[index]` starts a turn and leaves every tool run
+    /// whole on one side.
+    static func isSafeSplit(_ rows: [ChatMessage], at index: Int) -> Bool {
+        guard index > 0, index < rows.count,
+              rows[index].role == .user, !rows[index].isSteer else { return false }
+        var before: Set<String> = []
+        for row in rows[..<index] where row.role == .tool {
+            if let id = row.tool?.id, !id.isEmpty { before.insert(id) }
+        }
+        guard !before.isEmpty else { return true }
+        return !rows[index...].contains { row in
+            row.role == .tool && row.tool?.id.map(before.contains) == true
+        }
+    }
+
+    /// Bounds detached history by dropping its newest rows until it and
+    /// `liveCount` live rows fit in `cap`. The first `protecting` rows (the
+    /// page just fetched) always stay, and a cut prefers a turn start.
+    static func evictingNewest(
+        _ detached: [ChatMessage],
+        protecting: Int,
+        liveCount: Int,
+        cap: Int
+    ) -> [ChatMessage] {
+        let protected = min(max(0, protecting), detached.count)
+        let allowed = max(protected, cap - liveCount)
+        guard detached.count > allowed else { return detached }
+        var cut = allowed
+        while cut > protected, !isSafeSplit(detached, at: cut) {
+            cut -= 1
+        }
+        return Array(detached[..<cut])
+    }
+
+    /// Lands one older page on the held transcript under the display cap.
+    /// Below the cap it prepends onto the live rows as before. The first
+    /// page that would pass the cap detaches: the live rows keep their last
+    /// `liveTailKeep` rows from a safe cut, and the older rows move to
+    /// detached history. While detached, pages prepend onto the detached
+    /// rows (rows the live transcript holds never re-enter above them) and
+    /// its newest rows are evicted, never the page just fetched. Nil means
+    /// nothing changed.
+    static func landingOlderPage(
+        _ page: [ChatMessage],
+        live: [ChatMessage],
+        detached: [ChatMessage],
+        cap: Int?,
+        liveTailKeep: Int = PersistedTranscriptPagination.liveTailKeep
+    ) -> (live: [ChatMessage], detached: [ChatMessage])? {
+        guard let cap, !detached.isEmpty else {
+            guard let merged = mergingOlderPage(page, onto: live) else { return nil }
+            guard let cap, merged.rows.count > cap else { return (merged.rows, []) }
+            let split = safeSplitIndex(merged.rows, keepingLast: liveTailKeep)
+            guard split > 0 else { return (merged.rows, []) }
+            let earlier = Array(merged.rows[..<split])
+            return (
+                Array(merged.rows[split...]),
+                evictingNewest(earlier, protecting: merged.pageCount, liveCount: merged.rows.count - split, cap: cap)
+            )
+        }
+        let liveIDs = Set(live.map(\.id))
+        let older = Array(page.prefix { !liveIDs.contains($0.id) })
+        guard let merged = mergingOlderPage(older, onto: detached) else { return nil }
+        return (live, evictingNewest(merged.rows, protecting: merged.pageCount, liveCount: live.count, cap: cap))
     }
 }
