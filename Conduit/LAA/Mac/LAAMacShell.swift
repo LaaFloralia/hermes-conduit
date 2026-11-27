@@ -183,7 +183,7 @@ struct LAAMacShell: View {
         case .chats:
             LAAMacChatsSection(conversationShown: $chatConversationShown)
         case .work:
-            NavigationStack { LAAWorkHub(onRequestSettings: onRequestSettings) }
+            NavigationStack { LAAWorkHub(onRequestSettings: onRequestSettings).laaMacClearBar() }
                 .laaCompactColumn()
         case .today:
             NavigationStack {
@@ -192,6 +192,7 @@ struct LAAMacShell: View {
                              initialEventID: workLinkRequest.calendarEvent?.id,
                              initialCalendarID: workLinkRequest.calendarEvent?.calendarID)
                     .id(workLinkRequest.generation)
+                    .laaMacClearBar()
             }
             .laaCompactColumn()
         case .brain:
@@ -204,16 +205,17 @@ struct LAAMacShell: View {
                 LAAStudioHomeView()
                     .background(LAAColor.background.ignoresSafeArea())
                     .navigationBarTitleDisplayMode(.inline)
+                    .laaMacClearBar()
             }
             .laaCompactColumn()
         case .drive:
-            NavigationStack { LAAAssetsView(onRequestSettings: onRequestSettings) }
+            NavigationStack { LAAAssetsView(onRequestSettings: onRequestSettings).laaMacClearBar() }
                 .laaCompactColumn()
         case .usage:
             // Usage centres its own card grid; a readable width here would
             // narrow it back to two columns.
             NavigationStack {
-                LAAUsageView(state: usageState)
+                LAAUsageView(state: usageState).laaMacClearBar()
             }
             .laaCompactColumn()
         }
@@ -221,6 +223,15 @@ struct LAAMacShell: View {
 }
 
 private extension View {
+    /// A Mac column's navigation bar draws no plane of its own: on Catalyst
+    /// its default background is a pale band with a ruled edge across the
+    /// top of the column (32–72 pt, FINDINGS 14), which the design does not
+    /// draw. Scrolled content still gets the soft scroll-edge effect below.
+    /// Applied inside each NavigationStack, where the bar reads it.
+    func laaMacClearBar() -> some View {
+        toolbarBackground(.hidden, for: .navigationBar)
+    }
+
     /// The reused iPhone screens keep the compact size class they were laid
     /// out for, inside a column that can be any width.
     func laaCompactColumn() -> some View {
