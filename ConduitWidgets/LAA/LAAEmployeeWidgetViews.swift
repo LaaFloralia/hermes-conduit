@@ -393,7 +393,7 @@ struct LAAEmployeeWidgetView: View {
 }
 
 /// The medium widget's Usage column: six single-line readings in the owner's
-/// order (Codex 7d, Claude 5h / 7d / Fable, Google 5h / 7d), each a label,
+/// order (Codex 7d, Claude 5h / 7d / Mythos, Google 5h / 7d), each a mark, a label,
 /// a value in tabular digits, a reset time on the weekly rows and a 4pt bar.
 /// Room runs short in this order: the reset time shortens, then goes, and
 /// only then does larger text give up rows (five-hour readings first).
@@ -468,33 +468,40 @@ struct LAAWidgetUsageColumn: View {
         let meter = entry.usage?.meters.first { $0.id == row.id }
         let value = Self.shown(meter, at: renderedAt)
         let reset = row.showsReset ? value?.resetsAt : nil
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-                Text(verbatim: named ? row.name : "")
-                    .font(.system(size: labelSize, weight: .medium)).foregroundStyle(LAAColor.text)
-                    .lineLimit(1).frame(width: providerWidth, alignment: .leading)
-                Text(verbatim: row.period.abbreviation)
-                    .font(.system(size: labelSize)).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 2)
-                reading(value, reset: reset.flatMap { date in
-                    switch form {
-                    case .full: LAAUsageResetText.full(date, now: renderedAt)
-                    case .short: LAAUsageResetText.short(date, now: renderedAt)
-                    case .hidden: nil
-                    }
-                })
+        let resetText: String? = reset.flatMap { date in
+            switch form {
+            case .full: LAAUsageResetText.full(date, now: renderedAt)
+            case .short: LAAUsageResetText.short(date, now: renderedAt)
+            case .hidden: nil
             }
-            // A line never gives up height: squeezing it would shrink the
-            // text and let ViewThatFits accept a list that does not fit.
-            .fixedSize(horizontal: false, vertical: true)
-            LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false, renderingMode: renderingMode)
-                .padding(.leading, providerWidth + LAASpacing.x1)
+        }
+        return HStack(spacing: LAASpacing.x1) {
+            LAAUsageProviderMark(provider: row.provider)
+            VStack(alignment: .leading, spacing: 2) {
+                readingLine(row, named: named, value: value, reset: resetText)
+                LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false, renderingMode: renderingMode)
+                    .padding(.leading, providerWidth + LAASpacing.x1)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: row.label))
         .accessibilityValue(Text(verbatim: accessibilityValue(value, reset: reset)))
         .accessibilityIdentifier("laa.widget.usage.\(row.id)")
+    }
+
+    private func readingLine(_ row: Row, named: Bool, value: WidgetUsageMeter?, reset: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
+            Text(verbatim: named ? row.name : "")
+                .font(.system(size: labelSize, weight: .medium)).foregroundStyle(LAAColor.text)
+                .lineLimit(1).frame(width: providerWidth, alignment: .leading)
+            Text(verbatim: row.period.abbreviation)
+                .font(.system(size: labelSize)).foregroundStyle(LAAColor.secondaryText)
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 2)
+            reading(value, reset: reset)
+        }
+        // Keep the row's intrinsic text height for ViewThatFits.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func reading(_ value: WidgetUsageMeter?, reset: String?) -> some View {
