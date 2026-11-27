@@ -1,0 +1,169 @@
+{
+  "schema": "laa.app-manual.v1",
+  "appId": "hortensia",
+  "displayName": "Hortensia",
+  "summary": "AI社員との相談、Workの進行、今日の予定、Doc・Studio・Driveを1つで扱うLAAの窓口。",
+  "platforms": [
+    "ios",
+    "macos"
+  ],
+  "consoleUrl": "/apps/hortensia",
+  "captureCommand": "scripts/manual-capture.sh",
+  "screenSource": {
+    "path": "Conduit/LAA/Mac/LAAMacSection.swift",
+    "pattern": "(?m)^    case ([a-z]+)$"
+  },
+  "uiPaths": [
+    "Conduit/LAA",
+    "Vendor/LAAKit",
+    "scripts/laa/mac-screens.sh",
+    "scripts/laa/lab"
+  ],
+  "screens": [
+    {
+      "id": "chats",
+      "title": "Chat（AI社員との会話）",
+      "platform": "macos",
+      "screenshot": "chats-light.png",
+      "screenshotDark": "chats-dark.png",
+      "purpose": "Monetや専門社員へ相談し、長い作業をWorkへ任せる画面。",
+      "steps": [
+        "左の一覧から社員か会話を選ぶ",
+        "下の入力欄に書いて送る",
+        "入力欄下の切替でモデルや実行基盤を選ぶ",
+        "Macでは⌘1でChatへ戻る"
+      ],
+      "tips": [
+        "長い作業は自動でWorkへ移り、完了時に1回だけ報告が届く"
+      ],
+      "consoleRef": "area:chat"
+    },
+    {
+      "id": "chats-narrow",
+      "title": "Chat（iPhone幅の1列表示）",
+      "platform": "ios",
+      "screenshot": "chats-narrow-light.png",
+      "screenshotDark": "chats-narrow-dark.png",
+      "purpose": "iPhoneと同じ1列の配置で、会話を開いて読み書きする画面。",
+      "steps": [
+        "会話一覧から1件を開く",
+        "戻る操作で一覧へ戻る",
+        "下のタブバーでほかの画面へ移る"
+      ],
+      "tips": [
+        "会話や通話を開いている間、タブバーは隠れる"
+      ],
+      "consoleRef": "area:chat"
+    },
+    {
+      "id": "work",
+      "title": "Work（Session・Project・Task）",
+      "platform": "macos",
+      "screenshot": "work-light.png",
+      "screenshotDark": "work-dark.png",
+      "purpose": "Session・Project・Taskの進み具合を確かめ、追加の指示や判断を返す画面。",
+      "steps": [
+        "上の切替でSessions・Projects・Tasksを選ぶ",
+        "一覧の行を開き、詳細と経過を読む",
+        "T12・S4などの短い番号で探す",
+        "詳細下の入力欄から追加の指示を送る",
+        "Macでは一覧の横に複数のSessionを並べて開く"
+      ],
+      "tips": [
+        "子のSessionは親の下に畳まれ、子の判断待ちは親の行に出る",
+        "実行中か判断待ちを含むSessionはアーカイブできない"
+      ],
+      "consoleRef": "area:session"
+    },
+    {
+      "id": "today",
+      "title": "Today（今日の予定）",
+      "platform": "macos",
+      "screenshot": "today-light.png",
+      "screenshotDark": "today-dark.png",
+      "purpose": "Google Calendarの予定を一覧・週・月で確かめ、追加や編集をする画面。",
+      "steps": [
+        "上の切替で一覧・週・月を選ぶ",
+        "予定を選び、右の列で詳細を読む",
+        "詳細から予定を編集する"
+      ],
+      "tips": [
+        "予定が出ない時は、設定でGoogleの接続状態を確かめる"
+      ],
+      "consoleRef": "store:calendar"
+    },
+    {
+      "id": "brain",
+      "title": "Doc（BrainとHQの文書）",
+      "platform": "macos",
+      "screenshot": "brain-light.png",
+      "screenshotDark": "brain-dark.png",
+      "purpose": "BrainとHQの文書をフォルダから探して読み、書き直す画面。",
+      "steps": [
+        "左の一覧でフォルダを開き、パンくずで上へ戻る",
+        "文書を選び、右の列で本文を読む",
+        "本文のリンクも右の列で開く",
+        "よく使う文書はピン留めする"
+      ],
+      "tips": [
+        "保存が衝突すると別の写しが残る。復旧は補助メニューから行う",
+        "権限のない端末には、Mac側で許可する手順が出る"
+      ],
+      "consoleRef": "store:brain"
+    },
+    {
+      "id": "studio",
+      "title": "Studio（制作の依頼と確認）",
+      "platform": "macos",
+      "screenshot": "studio-light.png",
+      "screenshotDark": "studio-dark.png",
+      "purpose": "Studioへ画像や動画の制作を依頼し、進行と作品を確かめる画面。",
+      "steps": [
+        "Worksの入力欄に種類と内容を書き、写真やDriveの参照を添えて送る",
+        "進行中・確認待ち・作品の一覧で状態を見る",
+        "作品を開き、案を横にめくって比べる",
+        "直したい点はその場で修正を依頼する"
+      ],
+      "tips": [
+        "制作がふさがっている間も、依頼は受付順に保たれる"
+      ],
+      "consoleRef": "app:astrantia"
+    },
+    {
+      "id": "drive",
+      "title": "Drive（Google Driveの資料）",
+      "platform": "macos",
+      "screenshot": "drive-light.png",
+      "screenshotDark": "drive-dark.png",
+      "purpose": "Google Driveのフォルダと資料を開き、プレビューや再生、保存をする画面。",
+      "steps": [
+        "フォルダを開き、パンくずで戻る",
+        "ファイルを選び、右の列でプレビューと情報を見る",
+        "動画や音声はその場で再生する",
+        "アップロード・共有・オフライン保存はファイルのメニューから行う"
+      ],
+      "tips": [
+        "更新中は前回の一覧が出たまま、読み込み後に入れ替わる"
+      ],
+      "consoleRef": "store:drive"
+    },
+    {
+      "id": "usage",
+      "title": "Usage（AIの利用枠と容量）",
+      "platform": "macos",
+      "screenshot": "usage-light.png",
+      "screenshotDark": "usage-dark.png",
+      "purpose": "Codex・Claude・Googleなどの利用枠と、Mac・Googleの容量を確かめる画面。",
+      "steps": [
+        "AIのカードで5時間・7日の残りとリセット時刻を見る",
+        "StorageでMac mini・MacBookのSSDとGoogleの容量を見る",
+        "「今すぐ更新」で最新の値を読み直す"
+      ],
+      "tips": [
+        "一度も取れていない値は「未取得」と出る",
+        "残りが少ない枠はバーの色が変わる"
+      ],
+      "consoleRef": "app:hortensia"
+    }
+  ]
+}
