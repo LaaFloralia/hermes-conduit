@@ -16,11 +16,11 @@ struct LAAUsageProviderMark: View {
         }
     }
 
-    private var neutralSymbol: String {
+    private var neutralSymbol: String? {
         switch provider {
         case "google-ai-pro": "g.circle"
         case "muse": "waveform"
-        default: "circle.dashed"
+        default: nil
         }
     }
 
@@ -28,17 +28,13 @@ struct LAAUsageProviderMark: View {
         let size = LAAComponentToken.ProviderCard.headerIcon
         Group {
             if let asset = Self.asset(for: provider) {
-                let image = Image(asset).renderingMode(.original).resizable()
-                #if LAA_WIDGET_EXTENSION
-                if #available(iOS 18.0, *) {
-                    image.widgetAccentedRenderingMode(.fullColor).aspectRatio(contentMode: .fit)
+                if provider == "deepseek" {
+                    markImage(Image(asset).renderingMode(.template))
+                        .foregroundStyle(LAAColorValues.deepSeekBrand)
                 } else {
-                    image.scaledToFit()
+                    markImage(Image(asset).renderingMode(.original))
                 }
-                #else
-                image.scaledToFit()
-                #endif
-            } else {
+            } else if let neutralSymbol {
                 Image(systemName: neutralSymbol)
                     .font(.system(size: size))
                     .foregroundStyle(LAAColor.secondaryText)
@@ -46,6 +42,18 @@ struct LAAUsageProviderMark: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private func markImage(_ image: Image) -> some View {
+        #if LAA_WIDGET_EXTENSION
+        if #available(iOS 18.0, *) {
+            image.resizable().widgetAccentedRenderingMode(.fullColor).aspectRatio(contentMode: .fit)
+        } else {
+            image.resizable().scaledToFit()
+        }
+        #else
+        image.resizable().scaledToFit()
+        #endif
     }
 }
 #endif

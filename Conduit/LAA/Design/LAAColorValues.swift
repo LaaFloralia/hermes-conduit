@@ -18,6 +18,9 @@ enum LAAColorValues {
     static let linkDark = 0x75C3C3
     static let attentionDark = 0xD49AB6
 
+    /// DeepSeek's issued whale color, shared by the model mark and Usage.
+    static let deepSeekBrand = color(0x4D6BFE)
+
     static func color(_ rgb: Int) -> Color {
         Color(red: Double((rgb >> 16) & 0xFF) / 255,
               green: Double((rgb >> 8) & 0xFF) / 255,

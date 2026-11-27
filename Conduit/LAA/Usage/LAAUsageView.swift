@@ -447,7 +447,7 @@ struct LAAUsageView: View {
     }
 
     @ViewBuilder private func readingHeading(_ name: String, link: URL?, provider: String?) -> some View {
-        if let provider {
+        if let provider, LAAUsageProviderMark.asset(for: provider) != nil {
             HStack(spacing: LAASpace.s8) {
                 LAAUsageProviderMark(provider: provider)
                 readingName(name, link: link)

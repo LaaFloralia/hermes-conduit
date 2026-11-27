@@ -127,11 +127,11 @@ struct LAAModelMark: View {
         Image("LAADeepSeekMark")
             .renderingMode(.template)
             .resizable().scaledToFit()
-            .foregroundStyle(LAAModelInk.deepSeek)
+            .foregroundStyle(LAAColorValues.deepSeekBrand)
             .frame(width: size * 0.7, height: size * 0.7)
             .frame(width: size, height: size)
             .background(LAAModelInk.deepSeekDisc, in: Circle())
-            .overlay { Circle().strokeBorder(LAAModelInk.deepSeek.opacity(0.16), lineWidth: 0.5) }
+            .overlay { Circle().strokeBorder(LAAColorValues.deepSeekBrand.opacity(0.16), lineWidth: 0.5) }
     }
 
     private var grok: some View {
@@ -161,8 +161,6 @@ enum LAAModelInk {
     static let terra = Color(red: 0.36, green: 0.78, blue: 0.62)
     static let luna = Color(red: 0.86, green: 0.88, blue: 0.95)
     static let astra = Color(red: 0.62, green: 0.70, blue: 1.0)
-    /// DeepSeek's own blue, as its header draws it.
-    static let deepSeek = Color(red: 0x4D / 255, green: 0x6B / 255, blue: 0xFE / 255)
     static let deepSeekDisc = Color(red: 0.97, green: 0.975, blue: 1.0)
     static let gemini = Color(red: 0.36, green: 0.52, blue: 0.97)
     static let geminiDisc = Color(red: 0.92, green: 0.94, blue: 1.0)
