@@ -321,19 +321,16 @@ struct LAAEmployeeWidgetView: View {
 
     private var accessoryLabel: String { hasCall ? LAACopy.widgetCall : LAACopy.widgetChat }
 
-    /// Lock Screen: the employee peeks in from the bottom left of the OS
-    /// background, beside "LAA", the name and the one action.
+    /// Lock Screen: the employee peeks in from the bottom left, with no
+    /// plate behind it, beside the name and the one action.
     private var rectangular: some View {
         GeometryReader { frame in
             let scale = frame.size.height / 76
             ZStack(alignment: .topLeading) {
-                AccessoryWidgetBackground()
+                // Owner 2026-11-28 (J28): no square plate and no "LAA" label;
+                // keep the peeking employee, the name and Call/Chat.
                 peekingHero(height: 76 * scale, centreX: 30 * scale, eyeLine: 58 * scale)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: LAACopy.widgetBrand)
-                        .font(.custom("Georgia", size: 12, relativeTo: .caption))
-                        .tracking(12 * 0.11)
-                        .foregroundStyle(LAAColor.secondaryText)
                     Text(verbatim: entry.employee.name)
                         .font(.custom("Georgia", size: 20, relativeTo: .title3))
                         .foregroundStyle(LAAColor.text)
@@ -349,8 +346,7 @@ struct LAAEmployeeWidgetView: View {
                 .lineLimit(1)
                 .padding(.leading, 74 * scale)
                 .padding(.trailing, LAASpacing.x2)
-                .padding(.top, 8 * scale)
-                .frame(width: frame.size.width, alignment: .leading)
+                .frame(width: frame.size.width, height: frame.size.height, alignment: .leading)
             }
             .clipShape(ContainerRelativeShape())
         }
