@@ -1,5 +1,18 @@
 import Foundation
 
+extension ChatMessage {
+    /// Hermes' `display_kind` for a notice the runtime put in the chat.
+    static let internalNotificationDisplayKind = "internal_notification"
+
+    /// A cron job's report shown in the chat: a system card, never the
+    /// owner's words, drawn folded with the reports beside it.
+    var isCronReport: Bool {
+        role == .system
+            && displayKind == Self.internalNotificationDisplayKind
+            && MessageNormalizer.isCronReportNote(content)
+    }
+}
+
 /// Bounded persisted-history hydration for the active conversation, mirroring
 /// Hermes Desktop's transcript window: `session.resume` stays compact and the
 /// persisted transcript arrives as tail-anchored pages of
@@ -27,9 +40,17 @@ enum PersistedTranscriptPagination {
     /// (#652: 16 MB for one chat), writing an `[image]` stand-in instead;
     /// a picture is fetched on its own when its bubble shows. A Hermes
     /// without the flag ignores it.
-    static func tailQuery(offset: Int) -> String {
-        "?limit=\(pageSize)&offset=\(offset)&order=latest&include_compacted=true&inline_images=false"
+    static func tailQuery(offset: Int, limit: Int = PersistedTranscriptPagination.pageSize) -> String {
+        "?limit=\(limit)&offset=\(offset)&order=latest&include_compacted=true&inline_images=false"
     }
+
+    /// Extra pages an open reads, past the first, to reach the last
+    /// exchange between the owner and the employee when the newest page
+    /// holds only cron reports and tool rows (D-25: Monet's chat opened to
+    /// cards alone). Each holds `ownerTurnWalkPageSize` rows, so an open
+    /// reads at most `pageSize + 3 * 120 = 400` rows.
+    static let ownerTurnWalkPages = 3
+    static let ownerTurnWalkPageSize = 120
 
     /// Legacy one-shot request: no paging parameters. Older Hermes builds
     /// answer it with the complete transcript, exactly as pre-pagination
@@ -47,6 +68,9 @@ enum PersistedTranscriptPagination {
         /// source of truth. The echoed `returned` is retained for parity
         /// with the server's view but never trusted over the row array.
         let rawReturned: Int
+        /// Set when a page walked past the first came back short or empty:
+        /// the beginning of the conversation is held, whatever the total.
+        var reachedOldest: Bool = false
 
         /// True only when the backend honored the tail-anchored contract by
         /// echoing the `order=latest` paging mode. Older dashboard builds
@@ -61,7 +85,7 @@ enum PersistedTranscriptPagination {
         /// only costs bounded extra no-op taps before a short or empty
         /// page retires the affordance.
         func mayHaveOlderRows(fetchedRowCount: Int) -> Bool {
-            honorsTailContract && fetchedRowCount >= (limit ?? PersistedTranscriptPagination.pageSize)
+            !reachedOldest && honorsTailContract && fetchedRowCount >= (limit ?? PersistedTranscriptPagination.pageSize)
         }
     }
 
@@ -371,14 +395,128 @@ enum PersistedTranscriptWindow {
         return (plain, plain.count - held.count)
     }
 
+    // MARK: - Owner exchange and cron reports
+
+    /// Whether `messages` hold one exchange between the owner and the
+    /// employee: a row the owner wrote and a reply with text or files.
+    /// Steers, cron reports, compaction summaries, tool rows and Hermes'
+    /// projected notices are not either side. The open walks older pages
+    /// until this holds, so a chat whose newest page is all cron reports
+    /// and tool rows still opens to its last real exchange.
+    static func containsOwnerExchange(_ messages: [ChatMessage]) -> Bool {
+        var owner = false
+        var reply = false
+        for message in messages {
+            if !owner, isOwnerRow(message) { owner = true }
+            if !reply, isReplyRow(message) { reply = true }
+            if owner && reply { return true }
+        }
+        return false
+    }
+
+    private static func isOwnerRow(_ message: ChatMessage) -> Bool {
+        guard message.role == .user, !message.isSteer, message.displayKind == nil else { return false }
+        if !(message.attachments ?? []).isEmpty { return true }
+        let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !text.isEmpty
+            && !text.hasPrefix("[CONTEXT COMPACTION")
+            && !text.hasPrefix("[CONTEXT SUMMARY]")
+            && !MessageNormalizer.isCronReportNote(text)
+    }
+
+    private static func isReplyRow(_ message: ChatMessage) -> Bool {
+        guard message.role == .assistant || message.role == .partial, message.displayKind == nil else { return false }
+        return !(message.attachments ?? []).isEmpty
+            || !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// What makes two cron report rows the same delivery: compaction
+    /// re-inserts each note with the same time and text under a new
+    /// display order, so Hermes returns both copies.
+    static func cronReportKey(_ message: ChatMessage) -> String {
+        message.timestamp + "\u{1F}" + message.content
+    }
+
+    /// The keys of the cron reports in `rows`.
+    static func cronReportKeys(_ rows: [ChatMessage]) -> Set<String> {
+        Set(rows.lazy.filter(\.isCronReport).map(cronReportKey))
+    }
+
+    /// `rows` with each repeated cron report shown once: the newest copy
+    /// stays (the server's own rule), and a report whose key is in
+    /// `heldKeys` (already on screen, newer) is dropped. Other rows are
+    /// never touched, even with identical text. Read-side only: raw row
+    /// counts, offsets and durable ids are left as fetched.
+    static func droppingDuplicateCronReports(
+        _ rows: [ChatMessage],
+        heldKeys: Set<String> = []
+    ) -> [ChatMessage] {
+        guard rows.contains(where: \.isCronReport) else { return rows }
+        var seen = heldKeys
+        var kept: [ChatMessage] = []
+        kept.reserveCapacity(rows.count)
+        for row in rows.reversed() {
+            if row.isCronReport, !seen.insert(cronReportKey(row)).inserted { continue }
+            kept.append(row)
+        }
+        return kept.reversed()
+    }
+
+    // MARK: - Display cap weight
+
+    /// Rows that count toward the display cap: cron reports draw as one
+    /// folded row, so a run of them never pushes the conversation out.
+    static func capCount(_ rows: some Collection<ChatMessage>) -> Int {
+        rows.reduce(0) { $0 + ($1.isCronReport ? 0 : 1) }
+    }
+
+    /// Rows measured against `cap`: the cap weight, or the plain count
+    /// once rows reach twice the cap, so a chat of nothing but cron
+    /// reports is still bounded.
+    static func heldWeight(_ rows: some Collection<ChatMessage>, cap: Int) -> Int {
+        rows.count > 2 * max(0, cap) ? rows.count : capCount(rows)
+    }
+
+    /// The first index of the longest suffix of `rows` whose cap weight
+    /// is at most `keep`.
+    static func suffixStart(_ rows: [ChatMessage], keepingWeight keep: Int) -> Int {
+        var weight = 0
+        var index = rows.count
+        while index > 0 {
+            let next = weight + (rows[index - 1].isCronReport ? 0 : 1)
+            if next > keep { break }
+            weight = next
+            index -= 1
+        }
+        return index
+    }
+
+    /// The end of the longest prefix of `rows` whose cap weight is at most
+    /// `weight`.
+    static func prefixEnd(_ rows: [ChatMessage], weight limit: Int) -> Int {
+        var weight = 0
+        var index = 0
+        while index < rows.count {
+            let next = weight + (rows[index].isCronReport ? 0 : 1)
+            if next > limit { break }
+            weight = next
+            index += 1
+        }
+        return index
+    }
+
     /// Where `rows` may be cut so the part from the returned index on keeps
     /// at most `keepingLast` rows — or, when no such cut is safe, the
     /// smallest safe overshoot. A cut lands only at the start of a turn (a
     /// user row that is not a steer), never between a tool call and its
     /// result. Returns 0 when nothing needs cutting or no cut is safe.
-    static func safeSplitIndex(_ rows: [ChatMessage], keepingLast keep: Int) -> Int {
-        guard rows.count > max(0, keep) else { return 0 }
-        let target = rows.count - max(0, keep)
+    /// Cron reports weigh nothing while `rows` stay under twice `cap`
+    /// (by default `keepingLast`); past it every row counts.
+    static func safeSplitIndex(_ rows: [ChatMessage], keepingLast keep: Int, cap: Int? = nil) -> Int {
+        let keep = max(0, keep)
+        let weighted = rows.count <= 2 * max(0, cap ?? keep)
+        guard (weighted ? capCount(rows) : rows.count) > keep else { return 0 }
+        let target = weighted ? suffixStart(rows, keepingWeight: keep) : rows.count - keep
         for index in target..<rows.count where isSafeSplit(rows, at: index) {
             return index
         }
@@ -406,8 +544,10 @@ enum PersistedTranscriptWindow {
     }
 
     /// Bounds detached history by dropping its newest rows until it and
-    /// `liveCount` live rows fit in `cap`. The first `protecting` rows (the
-    /// page just fetched) always stay, and a cut prefers a turn start.
+    /// `liveCount` live rows (by cap weight) fit in `cap`. The first
+    /// `protecting` rows (the page just fetched) always stay, and a cut
+    /// prefers a turn start. Cron reports weigh nothing while the detached
+    /// rows stay under twice the cap.
     static func evictingNewest(
         _ detached: [ChatMessage],
         protecting: Int,
@@ -415,9 +555,16 @@ enum PersistedTranscriptWindow {
         cap: Int
     ) -> [ChatMessage] {
         let protected = min(max(0, protecting), detached.count)
-        let allowed = max(protected, cap - liveCount)
-        guard detached.count > allowed else { return detached }
-        var cut = allowed
+        var cut: Int
+        if detached.count <= 2 * max(0, cap) {
+            let allowed = max(capCount(detached[..<protected]), cap - liveCount)
+            guard capCount(detached) > allowed else { return detached }
+            cut = max(protected, prefixEnd(detached, weight: allowed))
+        } else {
+            let allowed = max(protected, cap - liveCount)
+            guard detached.count > allowed else { return detached }
+            cut = allowed
+        }
         while cut > protected, !isSafeSplit(detached, at: cut) {
             cut -= 1
         }
@@ -430,7 +577,8 @@ enum PersistedTranscriptWindow {
     /// `liveTailKeep` rows from a safe cut, and the older rows move to
     /// detached history. While detached, pages prepend onto the detached
     /// rows (rows the live transcript holds never re-enter above them) and
-    /// its newest rows are evicted, never the page just fetched. Nil means
+    /// its newest rows are evicted, never the page just fetched. Cron
+    /// reports do not count toward the cap (`heldWeight`). Nil means
     /// nothing changed.
     static func landingOlderPage(
         _ page: [ChatMessage],
@@ -441,18 +589,18 @@ enum PersistedTranscriptWindow {
     ) -> (live: [ChatMessage], detached: [ChatMessage])? {
         guard let cap, !detached.isEmpty else {
             guard let merged = mergingOlderPage(page, onto: live) else { return nil }
-            guard let cap, merged.rows.count > cap else { return (merged.rows, []) }
-            let split = safeSplitIndex(merged.rows, keepingLast: liveTailKeep)
+            guard let cap, heldWeight(merged.rows, cap: cap) > cap else { return (merged.rows, []) }
+            let split = safeSplitIndex(merged.rows, keepingLast: liveTailKeep, cap: cap)
             guard split > 0 else { return (merged.rows, []) }
             let earlier = Array(merged.rows[..<split])
             return (
                 Array(merged.rows[split...]),
-                evictingNewest(earlier, protecting: merged.pageCount, liveCount: merged.rows.count - split, cap: cap)
+                evictingNewest(earlier, protecting: merged.pageCount, liveCount: capCount(merged.rows[split...]), cap: cap)
             )
         }
         let liveIDs = Set(live.map(\.id))
         let older = Array(page.prefix { !liveIDs.contains($0.id) })
         guard let merged = mergingOlderPage(older, onto: detached) else { return nil }
-        return (live, evictingNewest(merged.rows, protecting: merged.pageCount, liveCount: live.count, cap: cap))
+        return (live, evictingNewest(merged.rows, protecting: merged.pageCount, liveCount: capCount(live), cap: cap))
     }
 }

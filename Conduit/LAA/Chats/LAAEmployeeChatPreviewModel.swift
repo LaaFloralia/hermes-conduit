@@ -145,7 +145,7 @@ final class LAAEmployeeChatPreview: ObservableObject {
         // A copy read ahead shows in this same frame; the read below still
         // replaces it with the newest one on disk.
         if let warm = Self.warmed[workspace],
-           preferredSessionID == nil || warm.composerSessionID == preferredSessionID {
+           Self.acceptsWarmCopy(warm, preferredSessionID: preferredSessionID) {
             presentation = warm
             metrics?.mark(.cachedTranscript)
             if let interval {
@@ -211,6 +211,16 @@ final class LAAEmployeeChatPreview: ObservableObject {
         presentation = nil
         recoversAfterTransportLoss = false
         failure = nil
+    }
+
+    /// Whether a copy read ahead may show for `preferredSessionID`: it is
+    /// that chat's copy, or the chat has no copy of its own, so the read
+    /// below falls back to the last chat (`load`) the same way. Rejecting
+    /// it there left the opening frame empty until the read finished.
+    nonisolated static func acceptsWarmCopy(_ warm: OfflineChatPresentation, preferredSessionID: String?) -> Bool {
+        guard let preferredSessionID else { return true }
+        return warm.composerSessionID == preferredSessionID
+            || warm.snapshot.transcript(for: preferredSessionID) == nil
     }
 
     nonisolated static func load(workspace: WidgetWorkspaceID, directory: URL,

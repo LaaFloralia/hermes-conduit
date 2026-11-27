@@ -579,7 +579,8 @@ struct ChatView: View {
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
                         step: target.step,
-                        stepsAbove: target.stepsAbove
+                        stepsAbove: target.stepsAbove,
+                        notice: target.notice
                     )
                         .equatable()
 #if LAA_BUILD
@@ -1372,18 +1373,42 @@ struct MessageBubble: View, Equatable {
     /// On a reply, the run of steps above it when it has thinking (the
     /// reply's Show thinking). Nil outside the chat transcript.
     var stepsAbove: ChatStepGroup? = nil
+    /// A cron report's place in a folded run of reports. Nil outside the
+    /// chat transcript and for a report on its own.
+    var notice: ChatNoticePlacement? = nil
 
     nonisolated static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message && lhs.gatewayResolver === rhs.gatewayResolver && lhs.step == rhs.step
-            && lhs.stepsAbove == rhs.stepsAbove
+            && lhs.stepsAbove == rhs.stepsAbove && lhs.notice == rhs.notice
     }
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @Environment(\.openURL) private var openURL
+#if LAA_BUILD
+    @Environment(\.chatRowDisclosure) private var disclosure
+#endif
 
     var body: some View {
+#if LAA_BUILD
+        if let notice, let disclosure, message.role == .system {
+            LAAChatCronReportRun(
+                message: message,
+                notice: notice,
+                gatewayResolver: gatewayResolver,
+                disclosure: disclosure,
+                toggles: disclosure.groupToggles
+            )
+        } else {
+            bubble
+        }
+#else
+        bubble
+#endif
+    }
+
+    @ViewBuilder private var bubble: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:
@@ -3043,6 +3068,9 @@ struct SystemBubble: View {
     }
 
     var body: some View {
+        // A cron report shows its routine's name and its report, never the
+        // internal header line the note starts with.
+        let report = MessageNormalizer.cronReport(message.content)
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isRuntimeNotice ? "info.circle" : "terminal")
                 .font(.footnote.weight(.medium))
@@ -3051,16 +3079,22 @@ struct SystemBubble: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(isRuntimeNotice ? AppLocalization.string("System") : AppLocalization.string("Command"))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.conduitAccent)
-                        .textCase(.uppercase)
-                        .tracking(0.5)
+                    if let report {
+                        Text(verbatim: report.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.conduitAccent)
+                    } else {
+                        Text(isRuntimeNotice ? AppLocalization.string("System") : AppLocalization.string("Command"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.conduitAccent)
+                            .textCase(.uppercase)
+                            .tracking(0.5)
+                    }
                     Spacer(minLength: 8)
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
-                noteText(message.content)
+                noteText(message.content, report: report)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
@@ -3081,12 +3115,14 @@ struct SystemBubble: View {
     /// A cron job's report shows its whole-line `@image:`, `@file:` and
     /// `MEDIA:` references as a reply shows its media: pictures in place,
     /// opened full screen on a tap, and other files as their cards.
-    @ViewBuilder private func noteText(_ content: String) -> some View {
-        if let gatewayResolver, MessageNormalizer.isCronReportNote(content) {
+    @ViewBuilder private func noteText(_ content: String, report: (title: String, body: String)?) -> some View {
+        if let report, let gatewayResolver {
             MarkdownText(
-                source: MessageNormalizer.cronReportMarkdown(content),
+                source: report.body,
                 gatewayMediaDataURL: { path in await gatewayResolver.dataURL(for: path) }
             )
+        } else if let report {
+            MarkdownText(source: report.body)
         } else {
             MarkdownText(source: content)
         }
