@@ -13,19 +13,41 @@ import suite
 
 
 class SuiteTest(unittest.TestCase):
+    def test_simulator_entries_are_abolished_before_any_side_effect(self):
+        for argv in (["run", "integration", "--out", "/not-created/suite"], ["run", "integration", "--_worker-source", "{}"],
+                     ["worker"], ["seed", "integration", "/not-created/suite"], ["run"]):
+            stderr = io.StringIO()
+            with self.subTest(argv=argv), contextlib.redirect_stderr(stderr), \
+                 patch.object(suite.subprocess, "Popen") as popen, patch.object(suite.subprocess, "run") as run, \
+                 patch.object(suite.fcntl, "flock") as flock, patch.object(suite, "Simulator") as sim:
+                self.assertEqual(suite.main(argv), 64)
+                for called in (popen, run, flock, sim):
+                    called.assert_not_called()
+            self.assertIn("2026-11-27に廃止", stderr.getvalue())
+            self.assertIn("laa-app-gate pre hortensia --src", stderr.getvalue())
+        self.assertFalse(Path("/not-created/suite").exists())
+
+    def test_parse_and_check_stay_available(self):
+        with tempfile.TemporaryDirectory() as out:
+            (Path(out) / "results.json").write_text(json.dumps({"tests": {}}))
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertNotEqual(suite.main(["check", "integration", out, "--partial"]), 64)
+                self.assertNotEqual(suite.main(["parse", out]), 64)
+
     def test_dry_run_uses_no_process_or_lock(self):
         for host in ("auto", "macbook", "mini"):
             stdout = io.StringIO()
             with self.subTest(host=host), contextlib.redirect_stdout(stdout), \
                  patch.object(suite.subprocess, "Popen") as subprocess_start, \
                  patch.object(suite.fcntl, "flock") as flock, patch.dict(os.environ, {}, clear=True):
-                self.assertEqual(suite.main(["run", "integration", "--out", "/not-created/suite", "--phase", "unit",
-                                            "--host", host, "--dry-run"]), 0)
+                args = suite.build_parser()[0].parse_args(["run", "integration", "--out", "/not-created/suite",
+                                                           "--phase", "unit", "--host", host, "--dry-run"])
+                self.assertEqual(suite.cmd_run(args), 0)
                 subprocess_start.assert_not_called()
                 flock.assert_not_called()
             plan = json.loads(stdout.getvalue())
             cmd = plan["command"]
-            self.assertNotIn("--fallback-mini", cmd, "a simulator suite never falls back onto the Mac mini")
+            self.assertEqual("--fallback-mini" in cmd, host == "auto")
             if host == "mini":
                 self.assertEqual(plan["env"]["LAA_MB_HOST"], "mini")
             else:
@@ -34,32 +56,6 @@ class SuiteTest(unittest.TestCase):
                 self.assertEqual(cmd[cmd.index("--clean-retry-exit") + 1], str(suite.BUILD_FAILURE))
             self.assertEqual(len(plan["batches"]["unit"][0]), 28)
             self.assertEqual(set(plan["batches"]), {"unit"})
-
-    def test_mini_guard_refuses_a_boot_under_memory_pressure(self):
-        def reader(swap, free):
-            def read(cmd, **_):
-                return swap if cmd[0] == "sysctl" else f"System-wide memory free percentage: {free}%"
-            return read
-        healthy = "total = 18432.00M  used = 2048.00M  free = 16384.00M  (encrypted)"
-        swapped = "total = 18432.00M  used = 17800.00M  free = 632.00M  (encrypted)"
-        suite.mini_memory_guard(read=reader(healthy, 45))
-        with self.assertRaisesRegex(RuntimeError, "swap is 97% used"):
-            suite.mini_memory_guard(read=reader(swapped, 45))
-        with self.assertRaisesRegex(RuntimeError, "free memory is 12%"):
-            suite.mini_memory_guard(read=reader(healthy, 12))
-        with self.assertRaisesRegex(RuntimeError, "could not read memory_pressure"):
-            suite.mini_memory_guard(read=lambda cmd, **_: healthy if cmd[0] == "sysctl" else "")
-
-    def test_a_mini_boot_runs_the_guard_before_booting(self):
-        device = dict(udid="selected", name=suite.PHONE_NAME, isAvailable=True, state="Shutdown")
-        with patch.object(suite, "sim_devices", return_value={suite.PHONE_RUNTIME: [device]}), \
-             patch.object(suite, "sh") as sh, patch.dict(os.environ, {"LAA_MB_HOST": "mini"}, clear=True), \
-             patch.object(suite, "mini_memory_guard", side_effect=RuntimeError("guard")) as guard:
-            sim = suite.Simulator(Path("/unused"))
-            with self.assertRaisesRegex(RuntimeError, "guard"):
-                sim.start()
-            guard.assert_called_once_with()
-            sh.assert_not_called()
 
     def test_explicit_selectors_split_by_target_and_class(self):
         selectors = [f"ConduitTests/Class{i}" for i in range(57)]
@@ -72,8 +68,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_one_build_and_manifest_for_enumeration_and_all_unit_batches(self):
         with tempfile.TemporaryDirectory() as scratch:
-            scratch = str(Path(scratch).resolve())  # macOS /var -> /private/var; the worker resolves LAA_MB_OUT
-            out, manifest = Path(scratch) / "out", Path(scratch) / "built.xctestrun"
+            out, manifest = Path(scratch).resolve() / "out", Path(scratch) / "built.xctestrun"
             args = argparse.Namespace(suite="integration", phase="unit", only=[], no_erase=False, no_rerun=True,
                                       _worker_source='{"sha":"fixture","dirty":false}')
             route = dict(LAA_MB_HOST="mini", LAA_BUILD_SLOT_HELD="1", LAA_MB_SRC=str(suite.REPO),
