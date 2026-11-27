@@ -33,7 +33,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             chatResumeLifecycleOperations: .live,
             groupChatOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
-            composerDraftStore: store
+            composerDraftStore: store,
+            profileAppearanceStore: ProfileAppearanceStore(defaults: defaults, legacyAvatarDirectories: [])
         )
     }
 
@@ -138,6 +139,35 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(appState.activeSessionId, nil)
         XCTAssertTrue(appState.messages.isEmpty)
     }
+
+#if LAA_BUILD
+    func testOpeningExistingChairedRoomBindsSilentlyFromAuthoritativeState() async throws {
+        let listed = room(name: "All hands")
+        let saved = try XCTUnwrap(GroupDecoders.room(AnyCodable.from([
+            "room_id": listed.roomID, "name": listed.name, "chair": "chair-seat",
+            "members": [["member_id": "chair-seat", "profile": "laa-monet"]],
+        ])))
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([listed], nil) },
+            state: { _, _ in (saved, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(listed)
+        XCTAssertEqual(appState.activeRoomSurface?.room.chair, "chair-seat")
+        XCTAssertEqual(appState.chairedVoice.core.roomID, listed.roomID)
+        XCTAssertEqual(appState.chairedVoice.core.phase, .silent)
+        XCTAssertNil(appState.liveChairedGeneration)
+        appState.closeGroupRoom()
+        XCTAssertNil(appState.chairedVoice.core.roomID)
+    }
+#endif
 
     func testUnsupportedGatewayHidesGroupChatAndRefusesRoomOpen() async {
         let room = self.room()

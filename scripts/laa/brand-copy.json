@@ -191,6 +191,22 @@
     "zh-Hans": "Mac 上未允许访问 Google Drive。",
     "zh-Hant": "Mac 上未允許存取 Google Drive。"
   },
+  "imported_task": {
+    "en": "Imported",
+    "de": "Importiert",
+    "es": "Importada",
+    "fr": "Importée",
+    "id": "Diimpor",
+    "it": "Importata",
+    "ja": "取込み",
+    "ko": "가져옴",
+    "pl": "Zaimportowane",
+    "pt-BR": "Importada",
+    "ru": "Импортировано",
+    "tr": "İçe aktarıldı",
+    "zh-Hans": "已导入",
+    "zh-Hant": "已匯入"
+  },
   "interface_ja": {
     "Cancel": "Cancel",
     "Done": "Done",

@@ -354,7 +354,7 @@ enum LAALinearTaskCompletion {
             if [400, 403, 404, 412, 422, 428].contains(error.status) {
                 _ = drafts.finishSubmission(item.id, restoring: false)
                 if error.status == 412 {
-                    return .failed("Linearで更新されています。読み直してから完了してください。")
+                    return .failed("ほかの場所で更新されています。読み直してから完了してください。")
                 }
                 return .failed("完了が受け付けられませんでした。接続を確認してください。")
             }

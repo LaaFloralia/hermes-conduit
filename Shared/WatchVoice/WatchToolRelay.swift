@@ -266,7 +266,7 @@ enum WatchToolAnswer {
     }
 
     /// A Watch call can't open a chat: what an "Open chat:" delegation hears.
-    static let delegatedCantOpen = "[This call can't open a chat on the phone. Tell the user to open it in Conduit on their iPhone, or delegate \"Read chat:\" with its number to talk about it here.]"
+    static let delegatedCantOpen = LAAProductBrand.display("[This call can't open a chat on the phone. Tell the user to open it in Conduit on their iPhone, or delegate \"Read chat:\" with its number to talk about it here.]")
 
     /// The answer as the iPhone's broker would send it to the Watch.
     static func outgoing(id: String, name: String, result: [String: String]) -> WatchVoiceWire.DirectOutgoing {

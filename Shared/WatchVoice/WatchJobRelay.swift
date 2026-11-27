@@ -91,7 +91,7 @@ enum WatchJobAnswer {
     }
 
     /// A grant from a plugin before 0.10 runs jobs but can't change one.
-    static let followUpsNeedNewerPlugin = "the Conduit plugin on the user's Hermes host is too old to change a running job from the Watch; updating it fixes that"
+    static let followUpsNeedNewerPlugin = LAAProductBrand.display("the Conduit plugin on the user's Hermes host is too old to change a running job from the Watch; updating it fixes that")
 
     static let unknownJob: [String: String] = ["error": "Unknown job_id. Call list_jobs for the jobs' ids."]
 

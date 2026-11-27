@@ -4543,8 +4543,8 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/GroupChatModelsTests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`, `Conduit/LAA/Backgrounds/LAABackgroundUITestFixture.swift`
 
 **Rulings**
-- Only Monet and seated employees are offered. Send chair/policy and privacy only when negotiated; a private creation request must not downgrade to public. Changing the requested privacy starts a new create identity.
-- Display Monet's marked conclusion with a heading. Only turns explicitly marked as staff for that same discussion fold under the conclusion; pending and old-host turns keep their ordinary rows. No Voice behavior changes.
+- Only Monet and the six seated employees are offered. All seven can be selected when the host advertises `room_chair`. Send Monet's `member_id` and the one-round/ten-message policy when negotiated. A requested chair or private room must not silently downgrade; changing the requested privacy starts a new create identity.
+- Enter the agenda in the room composer. Monet's server-marked agenda and conclusion have headings. Only turns explicitly marked as staff for that same discussion fold under the conclusion; pending and old-host turns keep their ordinary rows.
 
 **Open gaps**
 - Activation of the staged Hermes/notifier patches and the Bridge conclusion adapter is an integration decision, not an app-side push.
@@ -4563,8 +4563,8 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAChairedVoicePlaybackTests.swift`, `ConduitTests/LAAChairedVoiceBindingTests.swift`, `ConduitTests/LAAChairedVoiceEffectExecutorTests.swift`, `ConduitTests/LAAChairedVoiceSurfaceTests.swift`, `ConduitTests/LAAMeetingVoiceTests.swift`, `ConduitTests/VoiceAudioSessionCoordinatorTests.swift`, `bridge/test/voice-lease.test.mjs`
 
 **Rulings**
-- A Monet-chaired `壁打ち Voice` room enters silently. Talk claims a 12-second, device-bound CAS lease (3-second renewal, conservative local expiry); another endpoint reads silently. Only explicit Talk captures; silence after speech leaves an editable iPhone draft, and releasing Space stops Mac capture. Muting flushes, Talk interrupts immediately, and End, leaving, backgrounding, staff/native call takeover, or lease loss stop local audio. End releases first and then submits the owner's minutes request to the existing room.
-- Only new `message.member` lines referenced by `turn.settled` for the locally submitted discussion are spoken, once and serially through the roster's Hermes profiles. The complete written transcript and minutes are still the room's own log. The Bridge holds neither audio nor meeting text.
+- A room with a local Monet chair opens with the `壁打ち Voice` controls and enters silently, regardless of its title. Legacy Voice rooms keep their old name-based detection. Talk claims a 12-second, device-bound CAS lease (3-second renewal, conservative local expiry); another endpoint reads silently. Only explicit Talk captures; silence after speech leaves an editable iPhone draft, and releasing Space stops Mac capture. Muting flushes, Talk interrupts immediately, and End, leaving, backgrounding, staff/native call takeover, or lease loss stop local audio. End releases first and then submits the owner's minutes request to the existing room.
+- Only new `message.member` lines referenced by `turn.settled` for the locally submitted discussion are spoken, once and serially through the roster's Hermes profiles. The app matches the gateway's stored user-event ID, not the client retry key, and names the current speaker. The complete written transcript and minutes are still the room's own log. The Bridge holds neither audio nor meeting text.
 - `playbackWired` gates the real controls; the simulator-only fixture can exercise the path before enabling it. The Catalyst standalone room read-aloud button is hidden; upstream chat is unchanged.
 
 **Open gaps**

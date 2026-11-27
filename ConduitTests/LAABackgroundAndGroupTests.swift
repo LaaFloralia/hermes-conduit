@@ -218,8 +218,10 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         XCTAssertEqual(value.blur, 0)
     }
 
-    func testMemberSelectionIsLimitedToAvailableEmployeesAndTwoToSix() {
-        var selection = LAAGroupSelection(available: Set(LAAWidgetEmployee.allCases.map(\.profile)))
+    func testMemberSelectionAcceptsAllSevenCompanySeatsAndCapsTheRoster() {
+        let companySeats = Set(["monet", "cto", "cfo", "cos", "cio", "argus", "cso"].map { "laa-\($0)" })
+        XCTAssertEqual(Set(LAAGroupCandidates.all.map { "laa-\($0.rawValue)" }), companySeats)
+        var selection = LAAGroupSelection(available: companySeats.union(["overflow"]))
         selection.toggle("not-an-employee")
         XCTAssertTrue(selection.selected.isEmpty)
         selection.toggle("laa-monet")
@@ -229,8 +231,10 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         XCTAssertFalse(selection.canCreate(name: "  "))
         selection.toggle("laa-monet")
         XCTAssertFalse(selection.selected.contains("laa-monet"))
-        for employee in LAAWidgetEmployee.allCases where !selection.selected.contains(employee.profile) { selection.toggle(employee.profile) }
-        XCTAssertEqual(selection.selected.count, 6)
+        for seat in companySeats.subtracting(selection.selected) { selection.toggle(seat) }
+        XCTAssertTrue(selection.canCreate(name: "All hands"))
+        selection.toggle("overflow")
+        XCTAssertEqual(selection.selected, companySeats)
     }
 
     func testEditedCreateInputsMintANewIdButRetryKeepsIt() {

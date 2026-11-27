@@ -57,7 +57,8 @@ final class GroupChatRoomReadTests: XCTestCase {
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: .live,
             groupChatOperations: operations,
-            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            profileAppearanceStore: ProfileAppearanceStore(defaults: defaults, legacyAvatarDirectories: [])
         )
     }
 

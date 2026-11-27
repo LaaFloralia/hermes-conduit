@@ -368,13 +368,14 @@ struct GroupChatView: View {
                                 continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false)
 #if LAA_BUILD
         if event.isMemberMessage, let chair = surface?.room.chair, chair == event.actor.id,
-           event.payload["meeting_phase"]?.stringValue == "conclusion" {
+           let phase = event.payload["meeting_phase"]?.stringValue,
+           phase == "agenda" || phase == "conclusion" {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Text(verbatim: LAACopy.groupConclusion)
+                Text(verbatim: phase == "agenda" ? LAACopy.groupAgenda : LAACopy.groupConclusion)
                     .laaTextStyle(.section)
                     .foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("room.meeting.conclusion")
+                    .accessibilityIdentifier("room.meeting.\(phase)")
                 GroupEventRow(event: event, members: members)
             }
         } else { row }
@@ -1741,6 +1742,31 @@ struct MentionSuggestionList: View {
 
 // MARK: - Create sheet
 
+#if LAA_BUILD
+/// The bot roster and quick actions use the same picker as LAA Chat and Groups.
+struct GroupCreateSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    var preselected: Set<String> = []
+
+    var body: some View {
+        NavigationStack {
+            LAAGroupCreateView(roster: appState.botRoster, capabilities: appState.groupCapabilities,
+                               preselected: preselected) { name, bots, roomID, confidential in
+                let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID,
+                                                             confidential: confidential)
+                if created { dismiss() }
+                return created
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(LAAChatLabels.text("Cancel")) { dismiss() }
+                }
+            }
+        }
+    }
+}
+#else
 /// New Group Chat: one name field plus a 2–6 bot picker restricted to the
 /// current gateway's roster (cross-gateway rooms are a later parity slice).
 struct GroupCreateSheet: View {
@@ -1884,6 +1910,7 @@ struct GroupCreateSheet: View {
         }
     }
 }
+#endif
 
 // MARK: - Desktop-synced group chats
 

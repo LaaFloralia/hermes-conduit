@@ -54,7 +54,7 @@ struct LAAPersonalInboxView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x3) {
                 Toggle(isOn: $includeArchived) { Text(verbatim: "アーカイブを含む") }
-                Text(verbatim: nativeInbox ? "Linearの受信箱です。取得や表示だけでは既読にしません。" : "LAAアプリ独自の受信箱です。Linearの既読とは同期しません。取得や表示だけでは既読にしません。")
+                Text(verbatim: nativeInbox ? "タスクの受信箱です。取得や表示だけでは既読にしません。" : "LAAアプリ独自の受信箱です。タスク側の既読とは同期しません。取得や表示だけでは既読にしません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(LAAColor.attention)
@@ -145,7 +145,7 @@ struct LAAPersonalInboxView: View {
             nativeInbox = page.inboxMode != "laa"
         } catch is CancellationError {
         } catch LAAPersonalInboxSnapshot.Failure.viewerChanged {
-            if generation == currentGeneration { snapshot = nil; operationCheckOK = false; error = "Linearの本人が変わりました。Tasksを更新してください。" }
+            if generation == currentGeneration { snapshot = nil; operationCheckOK = false; error = "タスクのアカウントが変わりました。Tasksを更新してください。" }
         } catch let failure as LAABridgeError {
             if generation == currentGeneration && !Task.isCancelled { error = failure.japaneseText }
         } catch {
