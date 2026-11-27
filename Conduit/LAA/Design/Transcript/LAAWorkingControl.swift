@@ -425,7 +425,8 @@ struct LAAWorkingPill: View {
                     .foregroundStyle(LAAColor.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .layoutPriority(1)
+                // Same priority as the name: on a narrow row both shorten,
+                // so neither the name nor the model shrinks to a letter.
             }
         }
         .frame(height: LAAWorkingLayout.rowHeight(typeSize))
