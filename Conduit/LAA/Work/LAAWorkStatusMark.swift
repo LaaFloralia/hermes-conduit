@@ -27,8 +27,8 @@ enum LAAWorkStatus: Equatable {
     var label: String {
         switch self {
         case .running: String("Running")
-        case .decision: String("Awaiting Decision")
-        case .error: String("Error")
+        case .decision: String("Decision")
+        case .error: String("Failed")
         case .done: String("Done")
         case .waiting: String("Waiting")
         case .stopped: String("Stopped")

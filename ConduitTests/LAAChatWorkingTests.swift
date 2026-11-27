@@ -12,8 +12,8 @@ final class LAAChatWorkingTests: XCTestCase {
     private let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
     private func agent(_ id: String, _ status: DelegateAgentActivity.Status, gateway: Bool = true,
-                       updated: Date? = nil) -> DelegateAgentActivity {
-        DelegateAgentActivity(id: id, goal: "Read \(id)\nmore", model: "claude-opus-5-5", status: status,
+                       updated: Date? = nil, goal: String? = nil) -> DelegateAgentActivity {
+        DelegateAgentActivity(id: id, goal: goal ?? "Read \(id)\nmore", model: "claude-opus-5-5", status: status,
                               taskCount: 1, taskIndex: 0, currentTool: status == .running ? "read_file" : nil,
                               summary: status == .failed ? "Timed out reading the folder." : nil, stream: [],
                               hasGatewayID: gateway, sessionId: gateway ? "s1" : "", updatedAt: updated ?? start)
@@ -38,6 +38,7 @@ final class LAAChatWorkingTests: XCTestCase {
                                             since: start)
         XCTAssertEqual(three.map(\.state), [.running, .waiting, .failed])
         XCTAssertEqual(three[0].title, "Read a", "The goal's first line")
+        XCTAssertEqual(LAAChatWorking.child(agent("untitled", .running, goal: "")).title, "Agent")
         XCTAssertEqual(three[0].meta, "Opus 5.5")
         XCTAssertEqual(three[2].preview, "Timed out reading the folder.")
         XCTAssertFalse(LAAChatWorking.child(agent("x", .running, gateway: false)).resolvable,
@@ -97,8 +98,28 @@ final class LAAChatWorkingTests: XCTestCase {
         XCTAssertEqual(placements.map(\.afterMessageID), ["m1", "m2"])
         let rows = children.map { LAAWorkChildren.child($0, options: nil) }
         XCTAssertEqual(rows.map(\.state), [.running, .attention, .failed])
-        XCTAssertEqual(rows[1].word, "Awaiting Decision")
+        XCTAssertEqual(rows.map(\.word), ["Running", "Decision", "Failed"])
         XCTAssertEqual(rows[0].meta, "Opus 5.5 · High")
+    }
+
+    func testWorkChildLabelsMatchTheWorkingControlVocabulary() throws {
+        let cases: [(String, LAAWorkingChild.State, String)] = [
+            ("running", .running, "Running"),
+            ("awaiting_decision", .attention, "Decision"),
+            ("stop_unconfirmed", .attention, "Decision"),
+            ("created", .waiting, "Waiting"),
+            ("awaiting_review", .waiting, "Waiting"),
+            ("idle", .waiting, "Waiting"),
+            ("error", .failed, "Failed"),
+            ("closed", .done, "Done"),
+            ("stopped", .done, "Done"),
+        ]
+        for (phase, state, word) in cases {
+            let child = LAAWorkChildren.child(try session(phase, created: "2026-11-25T01:00:10Z", phase: phase), options: nil)
+            XCTAssertEqual(child.state, state, phase)
+            XCTAssertEqual(child.word, word, phase)
+        }
+        XCTAssertEqual(LAAWorkPresentation.compacting, "Compacting")
     }
 
     // MARK: Drawn

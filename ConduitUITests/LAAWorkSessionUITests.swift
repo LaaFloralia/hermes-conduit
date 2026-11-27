@@ -298,7 +298,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         open(decisionID, app)
         let composer = field(app)
         XCTAssertTrue(wait(composer, hittable: true))
-        XCTAssertTrue(headerContaining("Awaiting Decision", app).exists)
+        XCTAssertTrue(headerContaining("Decision", app).exists)
 
         composer.tap()
         composer.typeText("queued follow-up")
@@ -308,7 +308,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         let queued = app.descendants(matching: .any)["work.session.echo"].firstMatch
         XCTAssertTrue(queued.waitForExistence(timeout: 10))
         XCTAssertTrue(queued.label.contains("順番待ち"), "A pending decision queues a follow-up without answering it")
-        XCTAssertTrue(headerContaining("Awaiting Decision", app).exists)
+        XCTAssertTrue(headerContaining("Decision", app).exists)
     }
 
     /// A picture that arrives while the owner is reading older turns must not

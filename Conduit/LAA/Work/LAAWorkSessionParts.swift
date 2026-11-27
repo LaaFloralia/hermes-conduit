@@ -5,7 +5,7 @@ import UIKit
 // MARK: - Progress while the turn runs
 
 /// The one line at the end of a running session (owner, 2026-11-12): what the
-/// provider is doing in a word, in place of the tool traffic: "Compacting..."
+/// provider is doing in a word, in place of the tool traffic: "Compacting"
 /// or "thinking...". The words are English, as the owner chose. Fixed
 /// height, so the transcript above never jumps when it changes; Reduce
 /// Motion keeps the orb still.
@@ -16,7 +16,7 @@ struct LAAWorkProgressLine: View {
 
     var body: some View {
         // The shared thinking row (LAAThoughtLine), as in Chat.
-        LAAThoughtLine(text: compacting ? "Compacting..." : "thinking...")
+        LAAThoughtLine(text: compacting ? LAAWorkPresentation.compacting : "thinking...")
             .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
             .accessibilityIdentifier(compacting ? "work.session.progress.compacting" : "work.session.progress.thinking")
     }

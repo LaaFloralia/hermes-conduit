@@ -461,16 +461,15 @@ struct LAAWorkTask: Decodable, Identifiable, Hashable {
 enum LAAWorkPresentation {
     static func japanese(_ text: String) -> String { text }
 
+    static let compacting = "Compacting"
+
     static func phase(_ raw: String) -> String {
         switch raw {
-        case "created": return "Starting"
         case "running": return "Running"
-        case "awaiting_decision": return "Awaiting Decision"
-        case "awaiting_review": return "Awaiting Review"
-        case "stopped": return "Stopped"
-        case "stop_unconfirmed": return "Stop Unconfirmed"
-        case "closed": return "Closed"
-        case "error": return "Error"
+        case "awaiting_decision", "stop_unconfirmed": return "Decision"
+        case "created", "awaiting_review", "idle": return "Waiting"
+        case "error": return "Failed"
+        case "closed", "stopped": return "Done"
         default: return raw
         }
     }
