@@ -29,7 +29,6 @@ struct LAADecisionDetailView: View {
     @FocusState private var noteFocused: Bool
     @State private var viewer: LAADecisionImageViewer.Request?
     @State private var browser: LAADecisionBrowserPage?
-    @Environment(\.openURL) private var systemOpenURL
 
     init(item: LAADecision, board: LAADecisionBoard, drafts: ComposerDraftStore,
          onAnswered: ((LAADecision) -> Void)? = nil,
@@ -256,11 +255,40 @@ struct LAADecisionDetailView: View {
     private func optionRow(index: Int, option: LAADecision.Option) -> some View {
         let selected = choice == .option(index)
         let picture = item.kind == .board ? item.image(forOption: index) : nil
-        let links = option.detail.map(LAADecisionLinks.urls(in:)) ?? []
+        let linked = !(option.detail.map(LAADecisionLinks.urls(in:)) ?? []).isEmpty
         return Button { choice = .option(index) } label: {
-            HStack(alignment: .center, spacing: LAASpacing.x3) {
-                mark(selected)
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            optionContent(option, selected: selected, picture: picture, layer: linked ? .underLinks : .whole)
+                .background(selected ? LAAColor.selectionFill : Color.clear,
+                            in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+                .contentShape(RoundedRectangle(cornerRadius: LAASpacing.x2))
+        }
+        .buttonStyle(LAADecisionPressStyle())
+        .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label
+                                 + (option.detail.map { "、\($0)" } ?? "")))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("work.decision.option.\(index)")
+        // A Button takes every tap inside its label, links included (r7:
+        // tapping the address chose the option). The detail with links is
+        // drawn again above the row at the same place, outside the Button.
+        .overlay(alignment: .topLeading) {
+            if linked { optionContent(option, selected: selected, picture: picture, layer: .links) }
+        }
+        .overlay(alignment: .trailing) {
+            if let picture { optionThumb(picture, index: index, option: option) }
+        }
+    }
+
+    private enum OptionLayer { case whole, underLinks, links }
+
+    /// One option's row content. `.underLinks` keeps the detail's place but
+    /// leaves it to `.links`, which shows only that detail, with its links.
+    private func optionContent(_ option: LAADecision.Option, selected: Bool, picture: LAADecision.Image?,
+                               layer: OptionLayer) -> some View {
+        let onlyLinks = layer == .links
+        return HStack(alignment: .center, spacing: LAASpacing.x3) {
+            mark(selected).opacity(onlyLinks ? 0 : 1).allowsHitTesting(!onlyLinks)
+            VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                Group {
                     if option.recommended {
                         Text(verbatim: LAADecisionCopy.recommended)
                             .laaTextStyle(.section).fontWeight(.semibold)
@@ -271,42 +299,28 @@ struct LAADecisionDetailView: View {
                         .laaTextStyle(.body).fontWeight(.semibold)
                         .foregroundStyle(LAAColor.text)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let detail = option.detail, !detail.isEmpty {
-                        Text(LAADecisionLinks.attributed(detail)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
-                Spacer(minLength: 0)
-                // Room for the picture laid over the row's end; the row
-                // itself still spans the full width.
-                if picture != nil { Color.clear.frame(width: Self.optionThumb, height: 1) }
+                .opacity(onlyLinks ? 0 : 1)
+                .accessibilityHidden(onlyLinks)
+                .allowsHitTesting(!onlyLinks)
+                if let detail = option.detail, !detail.isEmpty {
+                    Text(LAADecisionLinks.attributed(detail)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(layer == .underLinks ? 0 : 1)
+                        .allowsHitTesting(onlyLinks)
+                }
             }
-            .padding(.horizontal, LAASpacing.x3)
-            .padding(.vertical, LAASpacing.x3)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(selected ? LAAColor.selectionFill : Color.clear,
-                        in: RoundedRectangle(cornerRadius: LAASpacing.x2))
-            .contentShape(RoundedRectangle(cornerRadius: LAASpacing.x2))
-        }
-        .buttonStyle(LAADecisionPressStyle())
-        .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label
-                                 + (option.detail.map { "、\($0)" } ?? "")))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("work.decision.option.\(index)")
-        .accessibilityActions {
-            ForEach(links, id: \.self) { url in
-                Button {
-                    #if targetEnvironment(macCatalyst)
-                    systemOpenURL(url)
-                    #else
-                    _ = LAADecisionLinkOpener.open(url, page: $browser)
-                    #endif
-                } label: { Text(verbatim: LAADecisionLinks.actionName(url)) }
+            Spacer(minLength: 0)
+            // Room for the picture laid over the row's end, at its full
+            // height, so rows never let two pictures overlap. The row
+            // itself still spans the full width.
+            if picture != nil {
+                Color.clear.frame(width: Self.optionThumb, height: Self.optionThumb).allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .trailing) {
-            if let picture { optionThumb(picture, index: index, option: option) }
-        }
+        .padding(.horizontal, LAASpacing.x3)
+        .padding(.vertical, LAASpacing.x3)
+        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
     }
 
     /// A sibling over the row, not inside it: a tap here opens the viewer and

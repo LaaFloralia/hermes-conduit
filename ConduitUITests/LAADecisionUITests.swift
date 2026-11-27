@@ -383,11 +383,14 @@ final class LAADecisionUITests: XCTestCase {
         XCTAssertTrue(thumbA.exists)
         XCTAssertEqual(thumbA.label, "A案 名前だけの画像")
         XCTAssertTrue(app.buttons["work.decision.option.1.image"].exists)
-        // C's picture was removed by retention: a quiet line, no error banner.
-        let removed = app.descendants(matching: .any)["work.decision.image.removed"].firstMatch
-        for _ in 0..<3 where !(removed.exists && removed.isHittable) { app.swipeUp() }
-        XCTAssertTrue(removed.waitForExistence(timeout: 10))
-        XCTAssertTrue(removed.label.contains("画像は削除されました"), removed.label)
+        // C's picture was removed by retention: a quiet line in its frame,
+        // no error banner. The frame is one button, so the line is its text.
+        let thumbC = app.buttons["work.decision.option.2.image"]
+        for _ in 0..<3 where !(thumbC.exists && thumbC.isHittable) { app.swipeUp() }
+        XCTAssertTrue(thumbC.staticTexts["画像は削除されました"].waitForExistence(timeout: 10), thumbC.debugDescription)
+        // Each option's row is at least as tall as its picture: no overlap.
+        let thumbB = app.buttons["work.decision.option.1.image"]
+        XCTAssertLessThanOrEqual(thumbB.frame.maxY, thumbC.frame.minY + 0.5, "\(thumbB.frame) \(thumbC.frame)")
         XCTAssertFalse(app.staticTexts["work.decision.failure"].exists)
         screenshot("decision-media-options", app)
 
@@ -453,10 +456,10 @@ final class LAADecisionUITests: XCTestCase {
         let optionB = app.buttons["work.decision.option.1"]
         XCTAssertTrue(optionB.waitForExistence(timeout: 10))
         for _ in 0..<3 where !optionB.isHittable { app.swipeUp() }
-        // The detail is the row's last line: tap inside its text.
-        let frame = optionB.frame
-        optionB.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: 80, dy: frame.height - 22)).tap()
+        // r7: inside the row's Button the address chose the option instead.
+        let link = app.links["https://example.com/laa-decision-fixture/b"]
+        XCTAssertTrue(link.waitForExistence(timeout: 10), app.debugDescription)
+        link.tap()
         XCTAssertTrue(app.descendants(matching: .any)["work.decision.browser"].firstMatch.waitForExistence(timeout: 15),
                       app.debugDescription)
         screenshot("decision-media-option-link", app)
