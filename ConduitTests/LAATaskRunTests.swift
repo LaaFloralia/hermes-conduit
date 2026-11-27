@@ -226,7 +226,7 @@ final class LAATaskRunTests: XCTestCase {
         let key = LAAWorkDrafts.key(deviceID: "test", target: "linear-owner-operation")
         let edit = LAALinearTaskMutation(method: "PATCH", id: task().id,
                                          body: Data(#"{"title":"編集中"}"#.utf8), version: "2026-11-09T00:00:00Z")
-        _ = try XCTUnwrap(LAAWorkDrafts.reserve(drafts, key: key, text: "Linearタスクの変更",
+        _ = try XCTUnwrap(LAAWorkDrafts.reserve(drafts, key: key, text: "タスクの変更",
                                                 body: try JSONEncoder().encode(edit),
                                                 idempotency: LAABridgeIdempotencyKey()))
         let outcome = await LAALinearTaskCompletion.complete(task(), bridge: bridge, drafts: drafts, key: key)
@@ -237,7 +237,7 @@ final class LAATaskRunTests: XCTestCase {
     func testRunningAndChangedTasksAreRefusedWithTheirOwnWords() async throws {
         for (status, code, message) in [(409, "session_running", "実施中のため完了できません。"),
                                         (403, "insufficient_scope", "この端末からはAI社員のタスクを完了できません。iPhoneから完了してください。"),
-                                        (412, "precondition_failed", "Linearで更新されています。読み直してから完了してください。")] {
+                                        (412, "precondition_failed", "ほかの場所で更新されています。読み直してから完了してください。")] {
             let server = try LoopbackHTTPServer.start { _ in
                 .json(status: status, body: #"{"error":{"code":"\#(code)","message":"no","retryable":false}}"#)
             }
@@ -276,7 +276,7 @@ final class LAATaskRunTests: XCTestCase {
         }
         XCTAssertEqual(seen, rows.map(\.id))
         XCTAssertEqual(result.completed, [rows[0].id, rows[2].id])
-        XCTAssertEqual(result.failed[refused], "Linearで更新されています。読み直してから完了してください。")
+        XCTAssertEqual(result.failed[refused], "ほかの場所で更新されています。読み直してから完了してください。")
         XCTAssertNil(result.unknown)
         XCTAssertNil(LAAWorkDrafts.pending(drafts, key: key))
         XCTAssertEqual(server.receivedRequests.count, 3)

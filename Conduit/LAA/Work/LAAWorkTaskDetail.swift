@@ -22,7 +22,7 @@ struct LAAWorkTaskDetailView: View {
                         Button(LAACopy.WorkTab.retry) { Task { await load() } }
                     } else if let task {
                         Text(verbatim: task.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                        Text(verbatim: "Linearのタスク · 閲覧のみ").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "タスク · 閲覧のみ").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
                             Text(verbatim: "状態: \(task.status?.name ?? "未確認")")
                             Text(verbatim: "担当: \(task.owner?.name ?? "未設定")")
@@ -34,7 +34,7 @@ struct LAAWorkTaskDetailView: View {
                             MarkdownText(source: description, foregroundStyle: LAAColor.text).workCard()
                         }
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
-                            Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
+                            Link(LAACopy.WorkTab.openTask, destination: url).buttonStyle(.bordered)
                         }
                     } else {
                         LAALoadingDots()

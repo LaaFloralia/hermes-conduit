@@ -30,7 +30,7 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
         .init(id: "error", title: "Error", detail: "会話がエラーで止まった時", canTurnOff: true),
         .init(id: "report", title: "Monetの報告", detail: "依頼ごとに1回、Monetが確かめた完了の報告", canTurnOff: true, needsMacSupport: true),
         .init(id: "finished", title: "手番の終了", detail: "エージェントの手番が終わった時", canTurnOff: true),
-        .init(id: "task", title: "タスク", detail: "Linearの通知", canTurnOff: true),
+        .init(id: "task", title: "タスク", detail: "タスクの通知", canTurnOff: true),
         .init(id: "calendar", title: "予定", detail: "予定のリマインダー", canTurnOff: true),
     ]
 

@@ -3746,7 +3746,7 @@ final class HermesClient: ObservableObject {
     /// field; the gateway's validator accepts ^[A-Za-z0-9][A-Za-z0-9._:-]*$
     /// up to 128 chars — a UUID fits). `members` carries this client's
     /// proposed roster rows (`member_id`/`profile`/`handle`/`display_name`
-    /// for local bots); the gateway re-validates the frozen 2–6 roster and
+    /// for local bots); the gateway re-validates the frozen roster and
     /// refuses ambiguous, duplicated, or reserved handles.
     nonisolated static func groupsCreateParameters(roomID: String, name: String, members: [[String: Any]],
                                        capabilities: GroupCapabilities?, confidential: Bool) -> [String: Any] {
@@ -3770,7 +3770,8 @@ final class HermesClient: ObservableObject {
                                                  capabilities: capabilities, confidential: confidential)
         let result = try await rpc("groups.create", params: params, scoped: false)
         guard let room = GroupDecoders.room(result.objectValue?["room"]),
-              !confidential || room.confidential == true else {
+              !confidential || room.confidential == true,
+              (params["chair"] as? String).map({ room.chair == $0 }) ?? true else {
             throw HermesError.invalidResponse
         }
         return room

@@ -40,7 +40,7 @@ struct LAAPersonalPendingOfflineView: View {
                 }
             } label: { Text(verbatim: "端末から破棄") }
             Button(LAACopy.WorkTab.cancel, role: .cancel) { }
-        } message: { Text(verbatim: "Linearで状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
+        } message: { Text(verbatim: "タスクの状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
     }
 }
 
@@ -161,7 +161,7 @@ struct LAAPersonalPendingView: View {
                 }
             } header: { Text(verbatim: "別の端末・別の本人") }
             Section() {
-                Text(verbatim: "対象をLinearで確認した後、適用済みか未適用かを選べます。判断できない場合は保留してください。")
+                Text(verbatim: "対象のタスクを確認した後、適用済みか未適用かを選べます。判断できない場合は保留してください。")
                     .laaTextStyle(.secondary)
                 if loaded && operations.isEmpty { Text(verbatim: "未解決の記録はありません。") }
                 ForEach(operations) { operation in
@@ -196,18 +196,18 @@ struct LAAPersonalPendingView: View {
                 }
             } label: { Text(verbatim: "端末から破棄") }
             Button(LAACopy.WorkTab.cancel, role: .cancel) { }
-        } message: { Text(verbatim: "Linearで状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
+        } message: { Text(verbatim: "タスクの状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
         .confirmationDialog(Text(verbatim: "元の要求の確認結果を選んでください"), isPresented: $showOriginalConfirmation, titleVisibility: .visible) {
             Button() { if let item = originalToResolve { Task { await resolveOriginal(item, as: "applied") } } } label: { Text(verbatim: "反映済み") }
             Button() { if let item = originalToResolve { Task { await resolveOriginal(item, as: "not_applied") } } } label: { Text(verbatim: "未反映") }
             Button(LAACopy.WorkTab.cancel, role: .cancel) { }
-        } message: { Text(verbatim: "Linearの対象を確認した結果を記録します。判断できない場合は保留してください。") }
+        } message: { Text(verbatim: "対象のタスクを確認した結果を記録します。判断できない場合は保留してください。") }
         .confirmationDialog(Text(verbatim: "確認した結果を選んでください"), isPresented: $showConfirmation, titleVisibility: .visible) {
             Button() { if let selected { Task { await resolve(selected, as: "applied") } } } label: { Text(verbatim: "反映済み") }
             Button() { if let selected { Task { await resolve(selected, as: "not_applied") } } } label: { Text(verbatim: "未反映") }
             Button(LAACopy.WorkTab.cancel, role: .cancel) { }
         } message: {
-            Text(verbatim: "Linearの対象を確認した結果を記録します。未適用と確認できた場合だけ下書きに戻してください。")
+            Text(verbatim: "対象のタスクを確認した結果を記録します。未適用と確認できた場合だけ下書きに戻してください。")
         }
     }
 
@@ -278,7 +278,7 @@ struct LAAPersonalPendingView: View {
                 if !abandonIfUnsent { await checkOriginal(item, abandonIfUnsent: true) }
                 else { error = "未送信の要求を確定できません。再確認してください。" }
             case .wait:
-                error = "結果は未確認です。対象をLinearで確認して照合してください。自動送信しません。"
+                error = "結果は未確認です。対象のタスクを確認して照合してください。自動送信しません。"
             case .compare, .invalid: throw LAABridgeError.invalidResponse
             }
         } catch let failure as LAABridgeHTTPError {
@@ -376,7 +376,7 @@ struct LAAPersonalPendingView: View {
                 return
             } else if failure.code == "operation_not_found" {
                 if !LAAWorkDrafts.canRepeat(item) {
-                    error = "Macに記録がなく、再送期限も過ぎています。Linearを確認し、必要なら送信待ちで破棄してください。"
+                    error = "Macに記録がなく、再送期限も過ぎています。タスクを確認し、必要なら送信待ちで破棄してください。"
                 } else {
                     error = inboxTarget(item) != nil
                         ? "Macに記録がありません。未送信なら下書きに戻してください。"

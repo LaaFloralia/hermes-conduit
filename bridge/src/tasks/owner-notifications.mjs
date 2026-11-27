@@ -21,7 +21,7 @@ export function createOwnerTaskNotificationPoller({ source, notify = notifyOwner
           if (Date.parse(item.updatedAt) < startedAt) continue;
           const key = `linear:${item.id}:${item.updatedAt}`;
           if (seen.has(key)) continue;
-          const result = await notify({ kind: 'task', title: item.title || 'Linearの通知',
+          const result = await notify({ kind: 'task', title: item.title || 'タスクの通知',
             body: item.issue.title, deepLink: `laa://work/tasks/${encodeURIComponent(item.issue.id)}`, dedupeKey: key });
           if (result?.delivered === true || result?.reason === 'muted') { seen.add(key); if (result?.delivered) delivered++; }
         }

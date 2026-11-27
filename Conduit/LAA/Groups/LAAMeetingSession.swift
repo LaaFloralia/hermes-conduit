@@ -59,11 +59,13 @@ final class LAAMeetingSession: ObservableObject {
         }
     }
 
-    func registerRound(_ eventID: String) {
+    func registerRound(clientEventID: String) {
         guard turn.phase != .idle, !turn.ownerTalking else { return }
         closeTask?.cancel()
         closeTask = nil
-        roundID = eventID
+        // The log's discussion coordinates refer to the stored message.user,
+        // not to the retry ID sent in groups.send.
+        roundID = GroupRoomOutbox.serverEventID(forClientEventID: clientEventID)
         apply(.sendRegistered)
     }
 

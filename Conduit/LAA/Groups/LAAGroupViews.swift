@@ -4,17 +4,19 @@ import SwiftUI
 /// The hosted-room contract freezes membership on creation. This local
 /// selection is used only to create a room, never to pretend an edit worked.
 struct LAAGroupSelection {
+    static let maximumMembers = 7
+
     private(set) var selected: Set<String> = []
     let available: Set<String>
 
     mutating func toggle(_ profile: String) {
         guard available.contains(profile) else { return }
         if selected.contains(profile) { selected.remove(profile) }
-        else if selected.count < 6 { selected.insert(profile) }
+        else if selected.count < Self.maximumMembers { selected.insert(profile) }
     }
     func canCreate(name: String) -> Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (2...6).contains(selected.count) && selected.isSubset(of: available)
+            && (2...Self.maximumMembers).contains(selected.count) && selected.isSubset(of: available)
     }
 }
 
@@ -91,26 +93,35 @@ struct LAAGroupListView: View {
 @MainActor
 struct LAAGroupCreateView: View {
     let roster: [BotProfile]
-    var capabilities: GroupCapabilities? = nil
+    let capabilities: GroupCapabilities?
     let create: (String, [BotProfile], String, Bool) async -> Bool
     @State private var name = ""
     @State private var confidential = false
-    @State private var selected = Set<String>()
+    @State private var selected: Set<String>
     @State private var roomID = GroupCreateAttempt.mintRoomID()
     @State private var attempted: GroupCreateAttempt.Inputs?
     @State private var creating = false
     @State private var failed = false
+
+    init(roster: [BotProfile], capabilities: GroupCapabilities? = nil, preselected: Set<String> = [],
+         create: @escaping (String, [BotProfile], String, Bool) async -> Bool) {
+        self.roster = roster
+        self.capabilities = capabilities
+        self.create = create
+        _selected = State(initialValue: preselected)
+    }
 
     private var available: [BotProfile] {
         roster.filter { bot in LAAGroupCandidates.all.contains { "laa-\($0.rawValue)" == bot.name } && !bot.isHiddenByMeta }
     }
     private var selection: LAAGroupSelection {
         var selection = LAAGroupSelection(available: Set(available.map(\.name)))
-        for id in selected { selection.toggle(id) }
+        for bot in available where selected.contains(bot.name) { selection.toggle(bot.name) }
         return selection
     }
 
     var body: some View {
+        let current = selection
         List {
             Section(LAACopy.groupName) {
                 TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.create.name")
@@ -136,7 +147,7 @@ struct LAAGroupCreateView: View {
                                 Text(verbatim: LAAChatPerson.name(staff.name))
                                 Spacer()
                                 if !isAvailable { Text(verbatim: "接続先にいません").laaTextStyle(.note).foregroundStyle(.secondary) }
-                                else { Image(systemName: selected.contains(profile) ? "checkmark.circle.fill" : "circle") }
+                                else { Image(systemName: current.selected.contains(profile) ? "checkmark.circle.fill" : "circle") }
                             }
                         }
                         .disabled(!isAvailable || creating)
@@ -145,6 +156,11 @@ struct LAAGroupCreateView: View {
                 } header: {
                     Text(verbatim: section.title)
                 }
+            }
+            if current.selected.contains("laa-monet"), capabilities?.supportsRoomChair == true {
+                Text(verbatim: LAACopy.groupMonetChair).laaTextStyle(.note).foregroundStyle(.secondary)
+            } else if current.selected.count == LAAGroupSelection.maximumMembers {
+                Text(verbatim: LAACopy.groupAllHandsUnavailable).laaTextStyle(.note).foregroundStyle(.secondary)
             }
             if failed { Text(verbatim: "作成できませんでした。接続先と選択した社員を確認して再試行してください。")
                 .foregroundStyle(.red) }
@@ -155,10 +171,10 @@ struct LAAGroupCreateView: View {
                 Button(LAACopy.groupCreate) {
                     guard !creating else { return }
                     let inputs = GroupCreateAttempt.Inputs(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                            members: selected, confidential: confidential)
+                                                            members: current.selected, confidential: confidential)
                     roomID = GroupCreateAttempt.roomID(for: inputs, current: roomID, attempted: attempted)
                     attempted = inputs
-                    let bots = available.filter { selected.contains($0.name) }
+                    let bots = available.filter { current.selected.contains($0.name) }
                     creating = true
                     Task {
                         let ok = await create(inputs.name, bots, roomID, inputs.confidential)
@@ -166,7 +182,8 @@ struct LAAGroupCreateView: View {
                         creating = false
                     }
                 }
-                .disabled(creating || !selection.canCreate(name: name))
+                .disabled(creating || !current.canCreate(name: name)
+                          || (current.selected.count == LAAGroupSelection.maximumMembers && capabilities?.supportsRoomChair != true))
                 .accessibilityIdentifier("groups.create.submit")
             }
         }

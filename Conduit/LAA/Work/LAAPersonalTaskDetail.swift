@@ -68,10 +68,10 @@ struct LAAPersonalTaskDetailView: View {
                         }
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
                             Link(destination: url) {
-                                Label { Text(verbatim: "Linear") } icon: { Image(systemName: "arrow.up.right.square") }
+                                Label { Text(verbatim: LAACopy.WorkTab.openTask) } icon: { Image(systemName: "arrow.up.right.square") }
                             }
                             .buttonStyle(.laaText)
-                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.openLinear))
+                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.openTask))
                         }
                     } else if error == nil { LAALoadingDots() }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
