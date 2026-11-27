@@ -236,7 +236,7 @@ private struct LAAStudioAllWorksView: View {
                         HStack {
                             Button("Previous") { page = works.index - 1 }.disabled(works.index == 0)
                             Spacer()
-                            Text("\(works.index + 1) / \(works.pageCount)").monospacedDigit()
+                            Text(verbatim: "\(works.index + 1) / \(works.pageCount)").monospacedDigit()
                             Spacer()
                             Button("Next") { page = works.index + 1 }.disabled(works.index + 1 == works.pageCount)
                         }
