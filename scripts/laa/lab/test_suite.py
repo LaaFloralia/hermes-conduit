@@ -13,14 +13,36 @@ import suite
 
 
 class SuiteTest(unittest.TestCase):
+    def test_simulator_entries_are_abolished_before_any_side_effect(self):
+        for argv in (["run", "integration", "--out", "/not-created/suite"], ["run", "integration", "--_worker-source", "{}"],
+                     ["worker"], ["seed", "integration", "/not-created/suite"], ["run"]):
+            stderr = io.StringIO()
+            with self.subTest(argv=argv), contextlib.redirect_stderr(stderr), \
+                 patch.object(suite.subprocess, "Popen") as popen, patch.object(suite.subprocess, "run") as run, \
+                 patch.object(suite.fcntl, "flock") as flock, patch.object(suite, "Simulator") as sim:
+                self.assertEqual(suite.main(argv), 64)
+                for called in (popen, run, flock, sim):
+                    called.assert_not_called()
+            self.assertIn("2026-11-27に廃止", stderr.getvalue())
+            self.assertIn("laa-app-gate pre hortensia --src", stderr.getvalue())
+        self.assertFalse(Path("/not-created/suite").exists())
+
+    def test_parse_and_check_stay_available(self):
+        with tempfile.TemporaryDirectory() as out:
+            (Path(out) / "results.json").write_text(json.dumps({"tests": {}}))
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertNotEqual(suite.main(["check", "integration", out, "--partial"]), 64)
+                self.assertNotEqual(suite.main(["parse", out]), 64)
+
     def test_dry_run_uses_no_process_or_lock(self):
         for host in ("auto", "macbook", "mini"):
             stdout = io.StringIO()
             with self.subTest(host=host), contextlib.redirect_stdout(stdout), \
                  patch.object(suite.subprocess, "Popen") as subprocess_start, \
                  patch.object(suite.fcntl, "flock") as flock, patch.dict(os.environ, {}, clear=True):
-                self.assertEqual(suite.main(["run", "integration", "--out", "/not-created/suite", "--phase", "unit",
-                                            "--host", host, "--dry-run"]), 0)
+                args = suite.build_parser()[0].parse_args(["run", "integration", "--out", "/not-created/suite",
+                                                           "--phase", "unit", "--host", host, "--dry-run"])
+                self.assertEqual(suite.cmd_run(args), 0)
                 subprocess_start.assert_not_called()
                 flock.assert_not_called()
             plan = json.loads(stdout.getvalue())
@@ -46,7 +68,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_one_build_and_manifest_for_enumeration_and_all_unit_batches(self):
         with tempfile.TemporaryDirectory() as scratch:
-            out, manifest = Path(scratch) / "out", Path(scratch) / "built.xctestrun"
+            out, manifest = Path(scratch).resolve() / "out", Path(scratch) / "built.xctestrun"
             args = argparse.Namespace(suite="integration", phase="unit", only=[], no_erase=False, no_rerun=True,
                                       _worker_source='{"sha":"fixture","dirty":false}')
             route = dict(LAA_MB_HOST="mini", LAA_BUILD_SLOT_HELD="1", LAA_MB_SRC=str(suite.REPO),

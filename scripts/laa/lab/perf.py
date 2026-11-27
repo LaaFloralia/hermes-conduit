@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run or compare quiet LAA iPhone performance probes with synthetic inputs."""
+"""Run or compare quiet LAA iPhone performance probes with synthetic inputs.
+
+Simulator `run` was abolished on 2026-11-27 (owner decision) and exits 64;
+`compare` of existing reports remains.
+"""
 import argparse
 from contextlib import contextmanager
 from collections import Counter
@@ -490,7 +494,15 @@ def run_locked(args):
     return 0
 
 
+ABOLISHED_EXIT = 64
+ABOLISHED = ("シミュレーター性能計測は2026-11-27に廃止されました（社長決定）。"
+             "代わりに laa-app-gate pre hortensia --src <作業ツリー> を使ってください。")
+
+
 def main():
+    if sys.argv[1:2] == ["run"]:
+        print(ABOLISHED, file=sys.stderr)
+        return ABOLISHED_EXIT
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")

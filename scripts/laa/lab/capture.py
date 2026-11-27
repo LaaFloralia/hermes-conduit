@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Capture Hortensia from synthetic fixtures; see capture-screens.json for coverage."""
+"""Capture Hortensia from synthetic fixtures; see capture-screens.json for coverage.
+
+iPhone Simulator capture was abolished on 2026-11-27 (owner decision): any
+--platform with iphone exits 64. Mac real-window capture and `diff` remain.
+"""
 import argparse
 from contextlib import ExitStack, contextmanager
 import datetime as dt
@@ -486,7 +490,7 @@ def capture(args):
     screens = validate_screens(json.loads((LAB / 'capture-screens.json').read_text()))
     wanted = selection(args.screens, {row['id']: row for row in screens}, '--screens')
     screens = [row for row in screens if row['id'] in wanted]
-    platforms = selection(args.platform, ('iphone', 'mac'), '--platform')
+    platforms = selection(args.platform or 'mac', ('iphone', 'mac'), '--platform')
     variants = selection(args.variants, VARIANTS, '--variants') if args.variants is not None else None
     expected = matrix(screens, platforms, variants)
     if any(not any(cell[0] == p for cell in expected) for p in platforms):
@@ -586,11 +590,16 @@ def coregraphics_ratios(pairs):
     return json.loads(r.stdout)
 
 
+ABOLISHED_EXIT = 64
+ABOLISHED = ('iPhoneシミュレーター撮影は2026-11-27に廃止されました（社長決定）。Mac実窓は --platform mac、'
+             '実機画面確認は laa-phone（laa-app-gate post hortensia）を使ってください。')
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ['_handset']:
-        handset(json.loads(Path(argv[1]).read_text()))
-        return 0
+        print(ABOLISHED, file=sys.stderr)
+        return ABOLISHED_EXIT
     if argv[:1] == ['diff']:
         parser = argparse.ArgumentParser(prog='capture.py diff', description='List changed, added and missing capture cells')
         parser.add_argument('before', type=Path)
@@ -600,11 +609,15 @@ def main(argv=None):
         return 0
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', required=True)
-    parser.add_argument('--platform', help='iphone,mac (default: both)')
+    parser.add_argument('--platform', default='mac', help='mac (default: %(default)s; iphone abolished 2026-11-27)')
     parser.add_argument('--variants', help=','.join(VARIANTS))
     parser.add_argument('--screens', help='comma-separated IDs in capture-screens.json')
     parser.add_argument('--keep-build', action='store_true', help='retain local DerivedData for an iterative run')
-    return capture(parser.parse_args(argv))
+    args = parser.parse_args(argv)
+    if 'iphone' in args.platform:
+        print(ABOLISHED, file=sys.stderr)
+        return ABOLISHED_EXIT
+    return capture(args)
 
 
 def interrupted(signum, _frame):
