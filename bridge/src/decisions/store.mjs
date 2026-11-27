@@ -15,11 +15,12 @@ export function text(value, field, max, { optional = false } = {}) {
 }
 export const requestKey = (value) => text(value, 'requestId', 200);
 
-// Owner-only kinds (2026-11-28 owner: 「ブランドの好み以外ばいいです」): the brand
-// preference (final choice of a name or look) and the owner's own physical
-// operation or authentication. Every other kind, even when filed as
-// 【必ず社長：お金】 etc., is answered by Monet with its recommended option.
-const OWNER_ONLY_KIND = /ブランド|好み|見た目|物理|本人の?操作|本人の?認証|^本人$|brand|preference|aesthetic|look|logo|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)/iu;
+// Owner-only kinds (2026-11-28 owner: 「やっぱり判断ボードは基本Monetがデザイン案含めて全て回答して」,
+// HQ AGENTS f8efd7ca): only the owner's own physical operation and the owner's
+// own authentication. Brand, preference, look, name and logo choices are
+// Monet's like every other kind, even when filed as 【必ず社長：ブランドの好み】.
+// Mirrored by `OWNER_KIND` in hq/harness/orchestrate.py; keep both in step.
+const OWNER_ONLY_KIND = /物理|本人の?操作|本人の?認証|^本人$|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)/iu;
 export const ownerOnlyKind = (kind) => OWNER_ONLY_KIND.test(String(kind).normalize('NFKC').replace(/[\s・、,／/]/gu, ''));
 export function decisionCategory(impact) {
   const kind = typeof impact === 'string' && /^【必ず社長：([^【】\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+)】/u.exec(impact)?.[1].trim();
@@ -30,9 +31,14 @@ export function decisionCategory(impact) {
 const legacyCategory = (impact) => { const c = decisionCategory(impact); return c.ownerKind ? { ...c, category: 'owner' } : c; };
 
 const withCategory = (r) => Object.assign(r, decisionCategory(r.impact));
+// Monet's reason: one line, or two for a design choice (D-47: 「理由を2行で残す」).
 function proxyReason(value) {
-  if (typeof value !== 'string' || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) throw badRequest('decision_invalid', 'reason must be one line');
-  return text(value, 'reason', 200);
+  if (typeof value !== 'string') throw badRequest('decision_invalid', 'reason must be text');
+  const lines = value.split('\n');
+  if (lines.length > 2 || lines.some((l) => /[\p{Cc}\p{Zl}\p{Zp}]/u.test(l))) throw badRequest('decision_invalid', 'reason must be one or two lines');
+  const clean = lines.map((l) => text(l, 'reason', 200, { optional: lines.length > 1 })).filter(Boolean);
+  if (!clean.length || [...clean.join('\n')].length > 200) throw badRequest('decision_invalid', 'reason exceeds its limit or is empty');
+  return clean.join('\n');
 }
 
 const ANSWER_NOTE_LIMIT = 8000;
@@ -201,7 +207,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     },
     add(body, imageInputs = []) {
       if (decisionCategory(body?.impact).category === 'unmarked') throw new BridgeError(428, 'decision_category_required',
-        '影響の先頭に【必ず社長：種類】または【任せられる】を付けてください。社長だけが答えるのはブランドの好み・本人の操作／本人認証で、ほかはMonetが回答します。');
+        '影響の先頭に【必ず社長：種類】または【任せられる】を付けてください。社長だけが答えるのは本人の物理操作・本人認証で、デザイン案を含むほかはMonetが回答します。');
       const value = withCategory(input(body));
       const staged = access(() => images.stage(imageInputs, optionOrder(body.options)));
       try {

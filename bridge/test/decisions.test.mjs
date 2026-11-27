@@ -18,7 +18,7 @@ import { createRefService } from '../src/refs/service.mjs';
 const cli = fileURLToPath(new URL('../bin/laa-bridge', import.meta.url));
 const request = (extra = {}) => ({ title: '公開日を決める', summary: '公開準備が完了しました。日付を選んでください。',
   options: [{ label: '明日', detail: null, recommended: false }, { label: '来週', detail: '確認時間を確保', recommended: true }],
-  impact: '【必ず社長：ブランドの好み】', requestId: 'decision-1', source: { paseoAgentId: 'agent-1', name: 'HP｜公開' }, ...extra,
+  impact: '【必ず社長：本人認証】', requestId: 'decision-1', source: { paseoAgentId: 'agent-1', name: 'HP｜公開' }, ...extra,
   // One conversation re-asking the same title replaces its open item; distinct asks get distinct titles.
   ...(extra.title === undefined && extra.requestId && extra.requestId !== 'decision-1' ? { title: `公開日を決める ${extra.requestId}`.slice(0, 60) } : {}) });
 function fixture(t, options = {}) {
@@ -58,7 +58,7 @@ test('store: field limits, invalid options/deadlines and free answers are reject
   for (const extra of [ { title: 'x'.repeat(61) }, { summary: 'x'.repeat(601) }, { options: [] },
     { options: [{ label: 'x'.repeat(81) }, { label: 'y' }] }, { options: [{ label: 'x', detail: 'a'.repeat(201) }, { label: 'y' }] },
     { options: [{ label: 'x', recommended: true }, { label: 'y', recommended: true }] }, { allowOther: 'yes' },
-    { deadline: 'tomorrow' }, { deadline: '2026-02-30T00:00:00Z' }, { impact: `【必ず社長：ブランドの好み】${'x'.repeat(201)}` }, { requestId: '\n' }, { source: { name: 'x'.repeat(201) } } ]) {
+    { deadline: 'tomorrow' }, { deadline: '2026-02-30T00:00:00Z' }, { impact: `【必ず社長：本人認証】${'x'.repeat(201)}` }, { requestId: '\n' }, { source: { name: 'x'.repeat(201) } } ]) {
     assert.throws(() => f.service.add(request(extra)), code('decision_invalid'));
   }
   const r = f.service.add(request({ allowOther: false })).decision;
@@ -74,7 +74,7 @@ test('strict impact prefix, legacy categories and owner-only pushes', async (t) 
   }
   assert.equal(existsSync(f.store.file), false);
   const owner = f.service.add(request()).decision;
-  assert.equal(owner.category, 'owner'); assert.equal(owner.ownerKind, 'ブランドの好み');
+  assert.equal(owner.category, 'owner'); assert.equal(owner.ownerKind, '本人認証');
   const delegable = f.service.add(request({ requestId: 'delegable', impact: '【任せられる】運用' })).decision;
   assert.equal(delegable.category, 'delegable'); assert.equal(delegable.ownerKind, null);
   const disk = JSON.parse(readFileSync(f.store.file, 'utf8'));
@@ -86,7 +86,7 @@ test('strict impact prefix, legacy categories and owner-only pushes', async (t) 
   assert.equal(items.find((item) => item.id === legacy.id).category, 'unmarked');
   assert.deepEqual(f.notifications.map((n) => n.meta.id), [owner.id]);
   await assert.rejects(f.service.answerAsMonet({ id: owner.id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
-  await assert.rejects(f.service.answerAsMonet({ id: delegable.id, body: { optionIndex: 0 }, reason: '二\n行' }), code('decision_invalid'));
+  await assert.rejects(f.service.answerAsMonet({ id: delegable.id, body: { optionIndex: 0 }, reason: '三\n行\nの理由' }), code('decision_invalid'));
   assert.equal((await f.service.answerAsMonet({ id: legacy.id, body: { optionIndex: 0 }, reason: '任せられる件と確認' })).decision.answer.answeredBy, 'monet');
 });
 
@@ -197,7 +197,8 @@ test('Monet delivery, idempotent replay, owner HTTP overturn, and answer-time st
   assert.deepEqual(f.service.stats(), { answeredByMonet: 1, overturnedByOwner: 1, ownerOnlyOpen: 1, monetOpen: 0, ownerAnswered: 1 });
   const since = new Date(f.now()).toISOString();
   assert.deepEqual(f.service.stats(since), { answeredByMonet: 0, overturnedByOwner: 1, ownerOnlyOpen: 1, monetOpen: 0, ownerAnswered: 1 });
-  assert.deepEqual(f.service.monetLog(), [{ subject: r.title, chosenOption: '来週', reason: '確認時間を確保', time: proxy.decision.answer.answeredAt }]);
+  assert.deepEqual(f.service.monetLog(), [{ id: r.id, subject: r.title, chosenOption: '来週', reason: '確認時間を確保', time: proxy.decision.answer.answeredAt,
+    overturned: true, ownerOption: '明日', ownerAnsweredAt: f.store.get(r.id).answer.answeredAt }]);
   assert.deepEqual(f.service.monetLog(since), []);
   assert.throws(() => f.service.stats('2026-02-30T00:00:00Z'), code('decision_invalid'));
 });
@@ -480,7 +481,7 @@ test('HTTP integration: CLI file + native questions, existing reply tickets, fai
   const token = await h.token();
   await h.request('/v1/sessions', { token });
   await h.refs.observeSource('session');
-  const added = runCli(h.stateDir, ['add', '--title', '公開日', '--summary', '公開日を選んでください', '--option', '明日', '--option', '来週', '--agent', 'board-agent', '--request-id', 'http-cli', '--impact', '【必ず社長：ブランドの好み】', '--json']);
+  const added = runCli(h.stateDir, ['add', '--title', '公開日', '--summary', '公開日を選んでください', '--option', '明日', '--option', '来週', '--agent', 'board-agent', '--request-id', 'http-cli', '--impact', '【必ず社長：本人認証】', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const r = JSON.parse(added.stdout).decision;
   assert.equal(r.source.name, '公開の会話');
@@ -530,7 +531,7 @@ test('real CLI: category enforcement, option/note proxy, replay, stats and repor
   assert.notEqual(rejected.status, 0);
   assert.equal(JSON.parse(rejected.stdout).error.code, 'decision_category_required');
   const add = (...flags) => JSON.parse(runCli(f.dir, [...base, ...flags]).stdout).decision;
-  const owner = add('--impact', '【必ず社長：ブランドの好み】');
+  const owner = add('--impact', '【必ず社長：本人認証】');
   const delegated = add('--impact', '【任せられる】', '--request-id', 'delegable');
   const note = add('--impact', '【任せられる】', '--request-id', 'note');
   const answer = (id, ...choice) => runCli(f.dir, ['answer', id, ...choice, '--by', 'monet', '--reason', '判断根拠', '--json']);
@@ -552,7 +553,7 @@ test('real CLI: category enforcement, option/note proxy, replay, stats and repor
 
 test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input/store exit codes', (t) => {
   const f = fixture(t);
-  const args = ['add', '--title', '判断', '--summary', '説明', '--option', '案A::詳細', '--option', '案B', '--recommended', '2', '--no-other', '--request-id', 'cli', '--impact', '【必ず社長：ブランドの好み】', '--json'];
+  const args = ['add', '--title', '判断', '--summary', '説明', '--option', '案A::詳細', '--option', '案B', '--recommended', '2', '--no-other', '--request-id', 'cli', '--impact', '【必ず社長：本人認証】', '--json'];
   const added = runCli(f.dir, args); assert.equal(added.status, 0, added.stderr);
   const r = JSON.parse(added.stdout).decision;
   assert.equal(r.options[0].label, '案B'); assert.equal(r.allowOther, false);
@@ -577,7 +578,7 @@ test('real CLI: add/status/list/withdraw, replay, usage/not-found/conflict/input
 
 test('real CLI: shows the J number the server assigned and accepts it for status, without writing refs.json', (t) => {
   const f = fixture(t);
-  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'cli-ref', '--impact', '【必ず社長：ブランドの好み】', '--json']);
+  const added = runCli(f.dir, ['add', '--title', '番号', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'cli-ref', '--impact', '【必ず社長：本人認証】', '--json']);
   assert.equal(added.status, 0, added.stderr);
   const id = JSON.parse(added.stdout).decision.id;
   assert.equal(JSON.parse(added.stdout).decision.ref, null);
@@ -593,7 +594,7 @@ test('real CLI: shows the J number the server assigned and accepts it for status
 
 test('real concurrent CLI writers keep one record for one idempotency key', async (t) => {
   const f = fixture(t);
-  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'race', '--impact', '【必ず社長：ブランドの好み】', '--json'];
+  const args = ['decide', 'add', '--title', '判断', '--summary', '説明', '--option', '案A', '--option', '案B', '--request-id', 'race', '--impact', '【必ず社長：本人認証】', '--json'];
   const run = () => new Promise((resolve, reject) => {
     const child = spawn(cli, args, { env: { ...process.env, PASEO_AGENT_ID: '', LAA_BRIDGE_STATE_DIR: f.dir }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = ''; child.stdout.on('data', (b) => { out += b; }); child.stderr.on('data', (b) => { err += b; });
@@ -860,31 +861,45 @@ test('add: a short Paseo id resolves to the one full id it names', (t) => {
   assert.equal(f.service.add(request({ requestId: 's3', source: { paseoAgentId: 'e2222222' } })).decision.source.paseoAgentId, 'e2222222');
 });
 
-test('2026-11-28: only brand preference and the owner\'s own operation stay owner-only; legacy owner records become Monet\'s', async (t) => {
+test('D-47: only the owner\'s own physical operation and authentication stay owner-only; brand and design choices are Monet\'s', async (t) => {
   const f = fixture(t);
-  for (const kind of ['ブランドの好み', 'ブランド', '好み', '本人の操作', '本人操作', '本人の物理操作', '本人認証', '本人の認証', 'お金・ブランドの好み', '本人 の 操作', 'Brand', 'brand preference', 'BRAND', 'ｂｒａｎｄ', 'Physical operation', 'authentication', 'Final logo']) {
+  for (const kind of ['本人の操作', '本人操作', '本人の物理操作', '物理操作', '本人認証', '本人の認証', '本人', '本人 の 操作', 'Physical operation', 'authentication', 'Passkey', 'biometric', "owner's operation"]) {
     assert.equal(decisionCategory(`【必ず社長：${kind}】`).category, 'owner', kind);
   }
-  for (const kind of ['お金', '停止', '削除', '公開範囲', '社外への公開', '本人の判断', '契約', '選択']) {
+  for (const kind of ['お金', '停止', '削除', '公開範囲', '社外への公開', '本人の判断', '契約', '選択', 'ブランドの好み', 'ブランド', '好み', '見た目', 'デザイン案', '名前', 'ロゴ', 'Brand', 'brand preference', 'BRAND', 'ｂｒａｎｄ', 'Final logo', 'look', 'aesthetic']) {
     assert.deepEqual(decisionCategory(`【必ず社長：${kind}】`), { category: 'delegable', ownerKind: kind }, kind);
   }
   const money = f.service.add(request({ requestId: 'money', impact: '【必ず社長：お金】$1' })).decision;
   const brand = f.service.add(request({ requestId: 'brand', impact: '【必ず社長：ブランドの好み】' })).decision;
   const physical = f.service.add(request({ requestId: 'physical', impact: '【必ず社長：本人の操作】' })).decision;
-  assert.equal(money.category, 'delegable'); assert.equal(money.ownerKind, 'お金');
+  const auth = f.service.add(request({ requestId: 'auth', impact: '【必ず社長：本人認証】' })).decision;
+  assert.equal(money.category, 'delegable'); assert.equal(brand.category, 'delegable'); assert.equal(brand.ownerKind, 'ブランドの好み');
   await f.service.list();
-  assert.deepEqual(f.notifications.map((n) => n.meta.id).sort(), [brand.id, physical.id].sort());
+  assert.deepEqual(f.notifications.map((n) => n.meta.id).sort(), [physical.id, auth.id].sort());
   assert.equal((await f.service.answerAsMonet({ id: money.id, body: { optionIndex: 0 }, reason: '社長指示04:25・追加購入なし' })).decision.answer.answeredBy, 'monet');
-  for (const id of [brand.id, physical.id]) await assert.rejects(f.service.answerAsMonet({ id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
-  assert.equal(f.service.stats().answeredByMonet, 1); assert.equal(f.service.stats().ownerOnlyOpen, 2);
-  // A record written before the change stored 【必ず社長：お金】 as owner: it still reads, and Monet may answer it.
+  const design = (await f.service.answerAsMonet({ id: brand.id, body: { optionIndex: 1 }, reason: '紙色と細い罫の基準に合う。\n案Aは色数が多く本文が埋もれる。' })).decision;
+  assert.equal(design.answer.answeredBy, 'monet'); assert.equal(design.answer.reason, '紙色と細い罫の基準に合う。\n案Aは色数が多く本文が埋もれる。');
+  for (const reason of ['a\nb\nc', 'a\rb', 'x'.repeat(201), '\n']) await assert.rejects(f.service.answerAsMonet({ id: money.id, body: { optionIndex: 0 }, reason }), { code: 'decision_invalid' }, JSON.stringify(reason));
+  for (const id of [physical.id, auth.id]) await assert.rejects(f.service.answerAsMonet({ id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
+  assert.equal(f.service.stats().answeredByMonet, 2); assert.equal(f.service.stats().ownerOnlyOpen, 2);
+  // Records written before D-47 stored 【必ず社長：ブランドの好み】 (and before 11-28 every kind) as owner:
+  // they still read, the same file is valid for the new Bridge, and Monet may answer them.
   const disk = JSON.parse(readFileSync(f.store.file, 'utf8'));
-  const legacy = { ...disk.records.find((r) => r.id === brand.id), id: 'dec_00000000000000aa', requestId: 'legacy-money', title: '古い支払い', impact: '【必ず社長：お金】', category: 'owner', ownerKind: 'お金' };
-  disk.records.push(legacy);
+  const base = disk.records.find((r) => r.id === physical.id);
+  const legacy = [{ ...base, id: 'dec_00000000000000aa', requestId: 'legacy-money', title: '古い支払い', impact: '【必ず社長：お金】', category: 'owner', ownerKind: 'お金' },
+    { ...base, id: 'dec_00000000000000ab', requestId: 'legacy-brand', title: '古いロゴ', impact: '【必ず社長：ブランドの好み】', category: 'owner', ownerKind: 'ブランドの好み' }];
+  disk.records.push(...legacy);
   writeFileSync(f.store.file, JSON.stringify(disk));
-  assert.equal(f.store.get(legacy.id).category, 'delegable');
-  assert.equal((await f.service.answerAsMonet({ id: legacy.id, body: { optionIndex: 1 }, reason: '推奨案' })).decision.answer.answeredBy, 'monet');
-  assert.equal(JSON.parse(readFileSync(f.store.file, 'utf8')).records.find((r) => r.id === legacy.id).category, 'delegable');
+  for (const r of legacy) {
+    assert.equal(f.store.get(r.id).category, 'delegable');
+    assert.equal((await f.service.answerAsMonet({ id: r.id, body: { optionIndex: 1 }, reason: '推奨案' })).decision.answer.answeredBy, 'monet');
+    assert.equal(JSON.parse(readFileSync(f.store.file, 'utf8')).records.find((x) => x.id === r.id).category, 'delegable');
+  }
+  // The owner overturning Monet's design choice is listed for Monet's memory candidate.
+  await f.service.answer({ id: brand.id, deviceId: 'phone', body: { optionIndex: 0, requestId: 'overturn' } });
+  const row = f.service.monetLog().find((r) => r.id === brand.id);
+  assert.equal(row.overturned, true); assert.equal(row.chosenOption, brand.options[1].label); assert.equal(row.ownerOption, brand.options[0].label);
+  assert.equal(f.service.monetLog().find((r) => r.id === money.id).overturned, undefined);
 });
 
 test('2026-11-28: the same conversation re-asking the same title replaces its open item', (t) => {
