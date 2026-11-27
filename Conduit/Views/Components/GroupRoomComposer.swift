@@ -405,7 +405,7 @@ struct GroupRoomComposer: View {
     }
     private var messagePlaceholder: String {
 #if LAA_BUILD
-        LAACopy.chatMessage
+        surface?.room.policy != nil && surface?.room.chair != nil ? LAACopy.groupAgendaDraft : LAACopy.chatMessage
 #else
         AppLocalization.string("Message the room")
 #endif

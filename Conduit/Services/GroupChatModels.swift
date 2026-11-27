@@ -187,6 +187,18 @@ struct GroupRoom: Equatable, Identifiable {
 
     var id: String { roomID }
     var isDisbanded: Bool { disbandedAt != nil }
+
+    var supportsChairedVoice: Bool {
+        func isLocalMonet(_ member: GroupMember) -> Bool {
+            member.profile == "laa-monet" && (member.target?["kind"]?.stringValue ?? "local") == "local"
+        }
+        if let chair {
+            return members.contains { $0.memberID == chair && isLocalMonet($0) }
+        }
+        // Older gateways had named Voice rooms before publishing chair metadata.
+        return name.contains("壁打ち") && name.contains("Voice")
+            && members.contains { isLocalMonet($0) || $0.profile == "laa-monet-work" }
+    }
 }
 
 struct GroupMeetingPolicy: Equatable {

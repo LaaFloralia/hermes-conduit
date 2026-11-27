@@ -52,6 +52,17 @@ final class LAAMeetingVoiceTests: XCTestCase {
         XCTAssertEqual(LAAMeetingTurn.spokenExcerpt("Version 1.2. Done! Omitted."), "Version 1.2. Done!")
     }
 
+    @MainActor
+    func testRegisteredRoundUsesServerDiscussionID() {
+        let meeting = LAAMeetingSession()
+        meeting.apply(.join)
+        meeting.registerRound(clientEventID: "hello")
+        XCTAssertEqual(meeting.roundID, "user:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
+        XCTAssertEqual(meeting.turn.phase, .waiting)
+        meeting.apply(.leave)
+        XCTAssertNil(meeting.roundID)
+    }
+
     func testVADRequiresSustainedSpeechThenAQuietTail() {
         var vad = LAAMeetingVAD()
         XCTAssertFalse(vad.observe(level: 0, at: .zero))
