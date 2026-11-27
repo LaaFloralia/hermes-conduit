@@ -27,3 +27,7 @@ The menus' model rows carry the maker's mark (`LAAModelMark.officialMenuImage`) 
 | Cognition (SWE-2.1, SWE-2) | `LAADevinMark` (as above) | Devin's symbol stands for Cognition's own models. | As above. |
 | DeepSeek | `LAADeepSeekMark` (`deepseek-mark.svg`, SHA-256 `fc6b399b…dc6a70`) | The whale from deepseek.com's own header (owner, 2026-11-12), as a vector, in DeepSeek's blue. | DeepSeek publishes no brand kit or logo policy that LAA found (checked 2026-11-28: deepseek.com links no brand, press or logo page; `/brand` returns 404); referential use, unmodified shape, its own colour. |
 | Google (Gemini) | none (the harness Antigravity's mark stands for it) | Google's Gemini mark is not in the app. | No mark is drawn or imitated in menus. |
+
+## Mac (Catalyst) menus
+
+Mac Catalyst menus show no item images anywhere in the app, SF Symbols included (checked on Mac mini, 2026-11-28, build 2611280658). On the Mac the section headings, the maker marks on rows and the purple DSH Orchestrator disc do not appear inside the menu; the identity stays in the text (harness section names, the row's maker and Metered line) and in the capsule, which draws the harness mark. Accepted as a platform limit (conductor, 2026-11-28); iPhone menus draw the images.
