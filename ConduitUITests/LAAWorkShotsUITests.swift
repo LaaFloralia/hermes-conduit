@@ -103,7 +103,7 @@ final class LAAWorkShotsUITests: XCTestCase {
         app.buttons["work.tasks.grouping"].tap()
         app.buttons["work.tasks.grouping.genre"].tap(); settle(1)
 
-        // The range toggles: 自分が担当 lit, then off again.
+        // The range toggles: Assigned lit, then off again.
         app.buttons["work.tasks.filter.assigned"].tap(); settle(1)
         capture(app, "tasks-filter-assigned-\(theme)")
         app.buttons["work.tasks.filter.assigned"].tap(); settle(1)

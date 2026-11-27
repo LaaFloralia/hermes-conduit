@@ -141,6 +141,18 @@ private enum LAAPersonalPath {
     }
 }
 
+/// A section's add action: an icon in the section's heading line, not a
+/// button of its own above it.
+struct LAAPersonalAddAction {
+    let label: String
+    let identifier: String
+    var disabled = false
+    let action: () -> Void
+}
+
+/// One connection list (comments, subtasks, …) as ruled rows on the paper.
+/// An empty list draws nothing but its heading and add action; without an
+/// add action an empty list is left out.
 private struct LAAPersonalDetailSection<Item: Decodable & Identifiable, Row: View>: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @StateObject private var state = LAAPersonalConnection<Item>()
@@ -148,34 +160,76 @@ private struct LAAPersonalDetailSection<Item: Decodable & Identifiable, Row: Vie
     let path: String
     let viewerId: String
     let revision: Int
+    let add: LAAPersonalAddAction?
+    /// A second way to add (Attachments: a link or a file): the icon opens a menu.
+    let more: LAAPersonalAddAction?
     let row: (Item) -> Row
 
-    init(_ title: String, path: String, viewerId: String, revision: Int, @ViewBuilder row: @escaping (Item) -> Row) {
-        self.title = title; self.path = path; self.viewerId = viewerId; self.revision = revision; self.row = row
+    init(_ title: String, path: String, viewerId: String, revision: Int, add: LAAPersonalAddAction? = nil,
+         more: LAAPersonalAddAction? = nil, @ViewBuilder row: @escaping (Item) -> Row) {
+        self.title = title; self.path = path; self.viewerId = viewerId; self.revision = revision
+        self.add = add; self.more = more; self.row = row
     }
 
+    private var empty: Bool { state.items.isEmpty && state.error == nil }
+
     var body: some View {
+        Group {
+            if add == nil && empty && !state.loading {
+                Color.clear.frame(height: 0)
+            } else {
+                // The gap lives here, so a left-out section adds none.
+                content.workRuled().padding(.top, LAASpacing.x4)
+            }
+        }
+        .task(id: "\(bridge.revision)-\(revision)-\(path)-\(viewerId)") { await load(reset: true) }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: title).fontWeight(.semibold).accessibilityAddTraits(.isHeader)
+            HStack(spacing: LAASpacing.x2) {
+                Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: LAASpacing.x2)
+                if let add, let more {
+                    Menu {
+                        ForEach([add, more], id: \.identifier) { item in
+                            Button(action: item.action) { Text(verbatim: item.label) }
+                                .disabled(item.disabled)
+                                .accessibilityIdentifier(item.identifier)
+                        }
+                    } label: { plus }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(verbatim: "Add"))
+                } else if let add {
+                    Button(action: add.action) { plus }
+                        .buttonStyle(.plain)
+                        .disabled(add.disabled)
+                        .accessibilityLabel(Text(verbatim: add.label))
+                        .accessibilityIdentifier(add.identifier)
+                }
+            }
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
             if let error = state.error {
                 Text(verbatim: error).foregroundStyle(LAAColor.attention)
                 if !state.items.isEmpty { Text(verbatim: "前回取得した内容です。") }
                 Button(LAACopy.WorkTab.retry) { Task { await load(reset: true) } }
+                    .foregroundStyle(LAAColor.link)
             }
             if state.loading && state.items.isEmpty { LAALoadingDots() }
-            if state.loaded && state.items.isEmpty && state.error == nil && !state.loading {
-                Text(verbatim: "表示する項目はありません。 ").foregroundStyle(LAAColor.secondaryText)
-            }
             ForEach(state.items) { item in row(item) }
             if state.cursor != nil {
-                Text(verbatim: "続きがあります。").foregroundStyle(LAAColor.secondaryText)
                 Button(LAACopy.WorkTab.loadMore) { Task { await load(reset: false) } }.disabled(state.loading)
+                    .foregroundStyle(LAAColor.link)
             }
-            if let date = state.observedAt {
-                Text(verbatim: "取得: \(LAAWorkPresentation.date(date))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            }
-        }.workCard().task(id: "\(bridge.revision)-\(revision)-\(path)-\(viewerId)") { await load(reset: true) }
+        }
     }
+    private var plus: some View {
+        Image(systemName: "plus").foregroundStyle(LAAColor.link)
+            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+    }
+
     private func load(reset: Bool) async { await state.load(bridge: bridge, path: path, viewerId: viewerId, reset: reset) }
 }
 
@@ -192,26 +246,28 @@ struct LAAPersonalTaskConnections: View {
     private var path: String { LAAPersonalPath.task(task.id) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            Button() { reply = LAAPersonalCommentTarget(parentId: nil) } label: { Text(verbatim: "Add Comment") }.buttonStyle(.bordered)
-                .accessibilityIdentifier("work.task.new-comment")
-            LAAPersonalDetailSection("Comments", path: path + "/comments", viewerId: viewerId, revision: revision) { (comment: LAAPersonalComment) in
+        VStack(alignment: .leading, spacing: 0) {
+            LAAPersonalDetailSection("Comments", path: path + "/comments", viewerId: viewerId, revision: revision,
+                                     add: .init(label: "Add Comment", identifier: "work.task.new-comment") {
+                                         reply = LAAPersonalCommentTarget(parentId: nil)
+                                     }) { (comment: LAAPersonalComment) in
                 LAAPersonalCommentRow(comment: comment, taskPath: path, viewerId: viewerId, revision: revision) { parent in
                     reply = LAAPersonalCommentTarget(parentId: parent)
                 }
             }
-            Button() { showSubtask = true } label: { Text(verbatim: "Add Sub-issue") }.buttonStyle(.bordered).disabled(task.linearId == nil || task.team == nil)
-            LAAPersonalDetailSection("Subtasks", path: path + "/children", viewerId: viewerId, revision: revision) { (child: LAAPersonalTask) in
+            LAAPersonalDetailSection("Subtasks", path: path + "/children", viewerId: viewerId, revision: revision,
+                                     add: .init(label: "Add Subtask", identifier: "work.task.new-subtask",
+                                                disabled: task.linearId == nil || task.team == nil) { showSubtask = true }) { (child: LAAPersonalTask) in
                 NavigationLink(destination: LAAPersonalTaskDetailView(id: child.id, drafts: drafts)) {
                     Text(verbatim: "\(child.sourceId) · \(child.title)")
                 }
             }
-            Button() { itemMode = .relation } label: { Text(verbatim: "Add Relation") }.buttonStyle(.bordered)
-            relationSection("Relations", section: "relations")
+            relationSection("Relations", section: "relations",
+                            add: .init(label: "Add Relation", identifier: "work.task.new-relation") { itemMode = .relation })
             relationSection("Referenced By", section: "inverse-relations")
-            Button() { itemMode = .attachment } label: { Text(verbatim: "Add Link") }.buttonStyle(.bordered)
-            Button() { showUpload = true } label: { Text(verbatim: "Add File") }.buttonStyle(.bordered)
-            LAAPersonalDetailSection("Attachments", path: path + "/attachments", viewerId: viewerId, revision: revision) { (item: LAAPersonalAttachment) in
+            LAAPersonalDetailSection("Attachments", path: path + "/attachments", viewerId: viewerId, revision: revision,
+                                     add: .init(label: "Add Link", identifier: "work.task.new-link") { itemMode = .attachment },
+                                     more: .init(label: "Add File", identifier: "work.task.new-file") { showUpload = true }) { (item: LAAPersonalAttachment) in
                 VStack(alignment: .leading) {
                     if let url = URL(string: item.url), url.scheme?.lowercased() == "https",
                        url.host?.lowercased() != "uploads.linear.app", url.user == nil, url.password == nil {
@@ -227,8 +283,6 @@ struct LAAPersonalTaskConnections: View {
                     if let subtitle = item.subtitle { Text(verbatim: subtitle).laaTextStyle(.secondary) }
                 }
             }
-            Text(verbatim: "活動の一部は詳細を表示できない場合があります。")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             LAAPersonalDetailSection("Activity", path: path + "/history", viewerId: viewerId, revision: revision) { (item: LAAPersonalHistory) in
                 LAAPersonalHistoryRow(item: item)
             }
@@ -251,8 +305,8 @@ struct LAAPersonalTaskConnections: View {
         }
     }
 
-    private func relationSection(_ title: String, section: String) -> some View {
-        LAAPersonalDetailSection(title, path: path + "/" + section, viewerId: viewerId, revision: revision) { (relation: LAAPersonalRelation) in
+    private func relationSection(_ title: String, section: String, add: LAAPersonalAddAction? = nil) -> some View {
+        LAAPersonalDetailSection(title, path: path + "/" + section, viewerId: viewerId, revision: revision, add: add) { (relation: LAAPersonalRelation) in
             VStack(alignment: .leading) {
                 Text(verbatim: "\(relation.issue.identifier) → \(relation.relatedIssue.identifier) · \(relation.type)")
                     .laaTextStyle(.secondary)

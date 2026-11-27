@@ -28,7 +28,7 @@ struct LAATaskGenre: Hashable, Identifiable {
     /// teal night, and none outshouts the row text.
     static let app = LAATaskGenre(id: "app", title: "LAAアプリ", symbol: "apps.iphone",
                                   tint: tint(0x00585E, 0x75C3C3), aliases: ["LAAアプリ", "LAA アプリ", "AIアプリ"], rank: 0)
-    static let ai = LAATaskGenre(id: "ai", title: "AI・道具", symbol: "sparkles",
+    static let ai = LAATaskGenre(id: "ai", title: "AI・道具", symbol: "wrench.and.screwdriver",
                                  tint: tint(0x5A4B86, 0xB8ABE3), aliases: ["AI"], rank: 1)
     static let security = LAATaskGenre(id: "security", title: "セキュリティ", symbol: "lock.shield",
                                        tint: tint(0x6C244C, 0xD49AB6), aliases: ["セキュリティ"], rank: 2)
@@ -175,15 +175,17 @@ struct LAATaskGenre: Hashable, Identifiable {
 }
 
 /// The task list's own words: LAA text, never looked up in the catalog.
+/// Control labels are short English (owner rule: operations and section
+/// labels in English, one language per control).
 enum LAATaskBoardCopy {
-    static let genre = "ジャンル"
-    static let due = "Due Date"
+    static let genre = "Genre"
+    static let due = "Due"
     static let assignee = "Assignee"
     static let priority = "Priority"
     static let all = "All"
-    static let soon = "期限が近い"
-    static let attention = "要対応"
-    static let ai = "AIが担当"
+    static let soon = "Due soon"
+    static let attention = "Needs action"
+    static let ai = "Staff"
 }
 
 /// How the list's sections are cut. Kept on the device.
@@ -399,7 +401,7 @@ struct LAATaskBoard: Equatable {
             }
             for name in seen.sorted(by: { (rank($0), $0) < (rank($1), $1) }) {
                 let picked = rows.filter { $0.staffName == name }
-                sections.append(LAATaskSection(id: "assignee:\(name)", title: name, symbol: "sparkles",
+                sections.append(LAATaskSection(id: "assignee:\(name)", title: name, symbol: "person",
                                                tint: LAAColor.link, staff: picked.first?.staff, rows: picked))
             }
             return sections

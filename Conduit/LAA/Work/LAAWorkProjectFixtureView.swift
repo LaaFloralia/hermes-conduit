@@ -58,7 +58,6 @@ struct LAAWorkProjectFixtureView: View {
     private var phoneList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                LAAWorkPrimaryButton(title: "新しいプロジェクト", systemImage: "plus") {}
                 VStack(spacing: 0) {
                     ForEach(Self.projects) { project in
                         LAAWorkProjectRow(project: project, activity: Self.activity(project.id))
@@ -73,6 +72,11 @@ struct LAAWorkProjectFixtureView: View {
         }
         .background(LAAColor.background.ignoresSafeArea())
         .navigationTitle(Text(verbatim: "プロジェクト"))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {} label: { Image(systemName: "plus") }.accessibilityLabel(Text(verbatim: "New Project"))
+            }
+        }
         .accessibilityIdentifier("laa.work.project.fixture.list")
     }
 

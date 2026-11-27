@@ -3,7 +3,7 @@ import SwiftUI
 import LAAKit
 
 /// What a session row says about its last state, read at a glance:
-/// a filled teal check is done, a filled red mark is an error, a plum mark
+/// a filled teal check is done, a filled red mark is an error, a plum ▲
 /// waits for the owner, a pulsing teal dot is working, and a hollow ring has
 /// no result yet. Shape and colour both carry it, so neither is needed alone.
 enum LAAWorkStatus: Equatable {
@@ -57,12 +57,13 @@ enum LAAWorkStatus: Equatable {
         }
     }
 
-    fileprivate var filled: Bool { [.decision, .error, .done].contains(self) }
+    fileprivate var filled: Bool { [.error, .done].contains(self) }
 
     fileprivate var symbol: String? {
         switch self {
         case .running: nil
-        case .decision: "questionmark.circle.fill"
+        // ▲, the kit's mark for what waits for the owner (not a filled disc).
+        case .decision: "triangle.fill"
         case .error: "exclamationmark.circle.fill"
         case .done: "checkmark.circle.fill"
         // The turn's check, outlined: finished, and nothing running.

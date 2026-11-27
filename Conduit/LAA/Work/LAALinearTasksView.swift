@@ -326,7 +326,8 @@ struct LAALinearTasksView: View {
         List {
             Section {
                 controls
-                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: LAASpacing.x1, trailing: 4))
+                    .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.horizontal, bottom: LAASpacing.x1,
+                                              trailing: LAASpacing.horizontal))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -335,7 +336,8 @@ struct LAALinearTasksView: View {
                     messages
                     pendingNotice
                 }
-                .listRowBackground(LAAColor.surface)
+                .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.horizontal, bottom: 0, trailing: LAASpacing.horizontal))
+                .listRowBackground(Color.clear)
             }
             if loading && !loaded { LAALoadingDots().listRowBackground(Color.clear) }
             ForEach(board.sections) { section in
@@ -345,6 +347,9 @@ struct LAALinearTasksView: View {
                     }
                 } header: {
                     header(section)
+                        .padding(.horizontal, LAASpacing.horizontal)
+                        .listRowInsets(EdgeInsets())
+                        .background(LAAColor.background)
                 }
             }
             if loaded && board.sections.isEmpty && !loading && failure == nil {
@@ -358,8 +363,8 @@ struct LAALinearTasksView: View {
                 Text(verbatim: archivedFooter).frame(maxWidth: .infinity, alignment: .center)
             }
         }
-        .listStyle(.insetGrouped).textCase(nil)
-        .listSectionSpacing(.compact)
+        // Ruled rows on the paper, not a card per section (work-good).
+        .listStyle(.plain).textCase(nil)
         // The controls sit right under the hub's search, not a section gap below.
         .contentMargins(.top, LAASpacing.x1, for: .scrollContent)
         .environment(\.defaultMinListRowHeight, 44)
@@ -370,8 +375,9 @@ struct LAALinearTasksView: View {
     private func phoneRow(_ row: LAATaskRowModel) -> some View {
         let task = row.task
         return rowView(row)
-            .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.x4, bottom: 0, trailing: LAASpacing.x4))
-            .listRowBackground(picks.contains(row.id) ? LAAColor.selectionFill : LAAColor.surface)
+            .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.horizontal, bottom: 0, trailing: LAASpacing.horizontal))
+            .listRowBackground(picks.contains(row.id) ? LAAColor.selectionFill : Color.clear)
+            .listRowSeparatorTint(LAAColor.separator)
             // The separator starts under the number, not under the box.
             .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] + 34 }
             .contextMenu {

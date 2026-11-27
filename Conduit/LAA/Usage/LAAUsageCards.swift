@@ -82,11 +82,27 @@ struct LAAUsageProviderCard<Accessory: View, Extra: View>: View {
     @ViewBuilder var accessory: () -> Accessory
     @ViewBuilder var extra: () -> Extra
 
+    /// The provider's line icon (usage-good: terminal, asterisk, G).
+    static func symbol(_ provider: String) -> String {
+        switch provider {
+        case "codex": "terminal"
+        case "claude": "asterisk"
+        case "google-ai-pro": "g.circle"
+        case "muse": "waveform"
+        default: "circle.dashed"
+        }
+    }
+
     var body: some View {
         let tokens = LAAComponentToken.ProviderCard.self
         VStack(alignment: .leading, spacing: tokens.gap) {
             HStack(alignment: .center, spacing: LAASpace.s8) {
-                LAAModelMark(model: nil, provider: provider == "google-ai-pro" ? "gemini" : provider, size: tokens.headerIcon)
+                // A monochrome line icon, no disc or tile (usage-good).
+                Image(systemName: Self.symbol(provider))
+                    .font(.system(size: tokens.headerIcon))
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .frame(width: tokens.headerIcon, height: tokens.headerIcon)
+                    .accessibilityHidden(true)
                 Text(verbatim: name).laaFont(tokens.headerName, weight: .medium).foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: LAASpacing.x2)
@@ -127,6 +143,17 @@ struct LAAUsageWindowGrid: View {
     let now: Date
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    /// The provider's line icon (usage-good: terminal, asterisk, G).
+    static func symbol(_ provider: String) -> String {
+        switch provider {
+        case "codex": "terminal"
+        case "claude": "asterisk"
+        case "google-ai-pro": "g.circle"
+        case "muse": "waveform"
+        default: "circle.dashed"
+        }
+    }
+
     var body: some View {
         let tokens = LAAComponentToken.ProviderCard.self
         let columns = typeSize.isAccessibilitySize ? 1 : tokens.windowColumns
@@ -151,6 +178,17 @@ struct LAAUsageWindowGrid: View {
 struct LAAUsageWindowCell: View {
     let window: LAAUsageCardWindow
     let now: Date
+
+    /// The provider's line icon (usage-good: terminal, asterisk, G).
+    static func symbol(_ provider: String) -> String {
+        switch provider {
+        case "codex": "terminal"
+        case "claude": "asterisk"
+        case "google-ai-pro": "g.circle"
+        case "muse": "waveform"
+        default: "circle.dashed"
+        }
+    }
 
     var body: some View {
         let tokens = LAAComponentToken.ProviderCard.self

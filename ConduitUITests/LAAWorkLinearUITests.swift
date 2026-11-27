@@ -69,7 +69,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].waitForNonExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["保存結果を確認できませんでした。"].waitForNonExistence(timeout: 2))
         let row = taskRow(app, updatedTitle)
-        row.swipeLeft()
+        swipeRowLeft(app, row)
         app.buttons["Delete"].firstMatch.tap()
         let confirm = app.sheets.buttons["Delete"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
@@ -77,7 +77,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         if app.sheets.buttons["Cancel"].exists { app.sheets.buttons["Cancel"].tap() }
         else { app.otherElements["PopoverDismissRegion"].tap() }
         XCTAssertTrue(taskRow(app, updatedTitle).exists)
-        taskRow(app, updatedTitle).swipeLeft()
+        swipeRowLeft(app, taskRow(app, updatedTitle))
         app.buttons["Delete"].firstMatch.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(taskRow(app, updatedTitle).waitForNonExistence(timeout: 10))
@@ -86,7 +86,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         app.buttons["work.linear.archive"].tap()
         let archived = taskRow(app, updatedTitle)
         XCTAssertTrue(archived.waitForExistence(timeout: 10))
-        archived.swipeLeft()
+        swipeRowLeft(app, archived)
         app.buttons["Restore"].tap()
         XCTAssertTrue(archived.waitForNonExistence(timeout: 10))
         app.buttons["work.tasks.quick"].tap()
@@ -139,7 +139,7 @@ final class LAAWorkLinearUITests: XCTestCase {
             shot.name = "work-\(section)-\(appearance)"; shot.lifetime = .keepAlways; add(shot)
             if section == "tasks" {
                 let row = taskRow(app, "次の打ち合わせを確認する")
-                row.swipeLeft(); app.buttons["Delete"].firstMatch.tap()
+                swipeRowLeft(app, row); app.buttons["Delete"].firstMatch.tap()
                 XCTAssertTrue(app.sheets.buttons["Delete"].waitForExistence(timeout: 5))
                 attach("work-delete-confirm-\(appearance)")
                 app.sheets.buttons["Delete"].tap()
@@ -176,6 +176,19 @@ final class LAAWorkLinearUITests: XCTestCase {
         // Some OS versions drop the identifier when bridging to a native menu.
         let edit = identified.waitForExistence(timeout: 2) ? identified : app.buttons["Edit"].firstMatch
         XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
+    }
+    /// Rows sit ruled on the paper and run under the floating tab bar, so a
+    /// row near the bottom is dragged up first: a swipe over the tab bar
+    /// would reach the bar, not the row.
+    private func swipeRowLeft(_ app: XCUIApplication, _ row: XCUIElement) {
+        let list = app.descendants(matching: .any)["work.tasks.list"].firstMatch
+        var moves = 0
+        while row.exists, list.exists, row.frame.maxY > app.frame.maxY - 160, moves < 4 {
+            let from = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            from.press(forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
+            moves += 1
+        }
+        row.swipeLeft()
     }
     private func taskRow(_ app: XCUIApplication, _ title: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch

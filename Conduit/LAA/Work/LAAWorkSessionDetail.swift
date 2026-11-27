@@ -304,7 +304,9 @@ struct LAAWorkSessionDetail: View {
                     if conversationUnavailable {
                         Text(verbatim: "履歴の応答がありません。接続を確認し、もう一度お試しください。")
                             .foregroundStyle(LAAColor.attention)
-                    } else if messages.isEmpty {
+                    } else if messages.isEmpty && sentEchoes.isEmpty && !canStop(session) && !session.needsDecision {
+                        // Only a quiet, idle session is empty: while it thinks
+                        // or waits on a decision the line would contradict it.
                         Text(verbatim: "会話はまだありません。").foregroundStyle(LAAColor.secondaryText)
                     }
                     if canLoadOlder, !messages.isEmpty, !conversationUnavailable {

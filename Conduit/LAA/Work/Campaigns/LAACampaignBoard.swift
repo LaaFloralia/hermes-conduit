@@ -330,8 +330,9 @@ enum LAACampaignCopy {
 
     /// Every row says its category, what it gives, its deadline and when it
     /// was added (the owner, 2026-11-15); X posts retain their source mark.
-    static func meta(_ item: LAACampaign) -> String {
-        [category(item), item.kind == .x ? "X" : nil, item.organizer, item.service == item.organizer ? nil : item.service, item.benefit,
+    /// Under a category heading the category is not repeated (`category: false`).
+    static func meta(_ item: LAACampaign, category showsCategory: Bool = true) -> String {
+        [showsCategory ? category(item) : nil, item.kind == .x ? "X" : nil, item.organizer, item.service == item.organizer ? nil : item.service, item.benefit,
          item.deadline.map { "締切 \($0)" }, added(item), item.gbizid == true ? "GビズID要" : nil]
             .compactMap { $0 }.joined(separator: " · ")
     }
@@ -522,7 +523,8 @@ struct LAACampaignBoardView: View {
                     sectionTitle(group.title, urgent: group.urgent)
                         .padding(.top, group.id == groups.first?.id ? 0 : LAASpacing.x6)
                         .accessibilityIdentifier("work.campaigns.group.\(group.id)")
-                    ForEach(group.items) { row($0) }
+                    // Grouped by category, the heading already names it.
+                    ForEach(group.items) { row($0, showsCategory: order != .category) }
                 }
                 let decided = rows.filter { !$0.waiting && !$0.listed && !$0.applied }
                     .sorted { ($0.decidedAt ?? "") > ($1.decidedAt ?? "") }
@@ -588,7 +590,7 @@ struct LAACampaignBoardView: View {
                 .accessibilityValue(Text(verbatim: appliedOnly ? LAACampaignCopy.appliedFilter : ""))
                 .accessibilityIdentifier("work.campaigns.display")
             }
-            LAASearchField(placeholder: "応募・特典を検索", text: $query,
+            LAASearchField(placeholder: "Search", text: $query,
                            identifier: "work.campaigns.search", focus: $searching)
         }
     }
@@ -608,13 +610,18 @@ struct LAACampaignBoardView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    private func row(_ item: LAACampaign) -> some View {
+    private func row(_ item: LAACampaign, showsCategory: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: item.title)
-                .laaTextStyle(.body).fontWeight(.semibold)
-                .foregroundStyle(item.waiting || item.listed ? LAAColor.text : LAAColor.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            let meta = LAACampaignCopy.meta(item)
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                Text(verbatim: item.title)
+                    .laaTextStyle(.body).fontWeight(.semibold)
+                    .foregroundStyle(item.waiting || item.listed ? LAAColor.text : LAAColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                // One menu per waiting row, not a pair of buttons under each.
+                if item.waiting { choices(item) }
+            }
+            let meta = LAACampaignCopy.meta(item, category: showsCategory)
             if !meta.isEmpty {
                 Text(verbatim: meta).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
@@ -638,7 +645,7 @@ struct LAACampaignBoardView: View {
             .help(item.url)
             .accessibilityHint(Text(verbatim: URL(string: item.url)?.host() ?? item.url))
             .accessibilityIdentifier("work.campaign.open.\(item.id)")
-            if item.waiting { choices(item) } else if !item.listed { decided(item) }
+            if !item.waiting && !item.listed { decided(item) }
             if let failure = board.failures[item.id] {
                 Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .accessibilityIdentifier("work.campaign.failure.\(item.id)")
@@ -651,12 +658,23 @@ struct LAACampaignBoardView: View {
         .accessibilityIdentifier("work.campaign.\(item.id)")
     }
 
-    private func choices(_ item: LAACampaign) -> some View {
-        HStack(spacing: LAASpacing.x3) {
-            choiceButton(item, approve: true)
-            choiceButton(item, approve: false)
-            if board.sending == item.id { LAALoadingDots() }
-            Spacer(minLength: 0)
+    @ViewBuilder private func choices(_ item: LAACampaign) -> some View {
+        if board.sending == item.id {
+            LAALoadingDots()
+        } else {
+            Menu {
+                choiceButton(item, approve: true)
+                choiceButton(item, approve: false)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(LAAColor.link)
+                    .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(board.sending != nil)
+            .accessibilityLabel(Text(verbatim: "Decide"))
+            .accessibilityIdentifier("work.campaign.decide.\(item.id)")
         }
     }
 
@@ -691,12 +709,9 @@ struct LAACampaignBoardView: View {
 
     private func choiceButton(_ item: LAACampaign, approve: Bool) -> some View {
         Button { Task { await board.decide(item, approve: approve, bridge: bridge) } } label: {
-            Text(verbatim: approve ? LAACampaignCopy.approve(item.act) : LAACampaignCopy.decline)
-                .laaTextStyle(.secondary).fontWeight(.semibold)
-                .foregroundStyle(approve ? LAAColor.link : LAAColor.text)
-                .padding(.horizontal, LAASpacing.x2)
+            Label { Text(verbatim: approve ? LAACampaignCopy.approve(item.act) : LAACampaignCopy.decline) }
+            icon: { Image(systemName: approve ? "checkmark.circle" : "minus.circle") }
         }
-        .laaGlassButton()
         .disabled(board.sending != nil)
         .accessibilityIdentifier("work.campaign.\(approve ? "approve" : "decline").\(item.id)")
     }

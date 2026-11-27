@@ -698,23 +698,6 @@ enum LAAWorkPaging {
     }
 }
 
-struct LAAWorkPrimaryButton: View {
-    let title: String
-    let systemImage: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label { Text(verbatim: title).fontWeight(.semibold) } icon: { Image(systemName: systemImage) }
-                .laaTextStyle(.body)
-                .foregroundStyle(LAAColor.filledButtonText)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(LAAColor.filledButton, in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 struct LAAWorkFailure: View {
     let text: String
     let retry: () -> Void
