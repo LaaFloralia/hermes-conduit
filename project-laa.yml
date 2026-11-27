@@ -89,7 +89,7 @@ targets:
     # the LAA team; the Location Push extension is not among them.
     dependencies:REPLACE:
       - package: WebRTC
-      # LAA Kit (Vendor/LAAKit, pinned kit-v0.1.0 snapshot; Vendor/laa-kit.pin.json).
+      # LAA Kit (Vendor/LAAKit, pinned kit-v0.5.0 snapshot; Vendor/laa-kit.pin.json).
       - package: LAAKit
         product: LAAKit
       - package: LAAKit

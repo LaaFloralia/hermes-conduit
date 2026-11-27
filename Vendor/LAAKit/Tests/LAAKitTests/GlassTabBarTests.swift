@@ -3,7 +3,7 @@ import Testing
 @testable import LAAKit
 
 struct GlassTabBarTests {
-    /// Five tabs and the app icon fit the smallest iPhone width (375: SE, mini) without dropping below the
+    /// Five tabs and the owner control fit the smallest iPhone width (375: SE, mini) without dropping below the
     /// 44 pt hit area, and stop growing at the token maximum on the 440 pt Pro Max.
     @Test func widthBudget() {
         for width in [375.0, 390, 402, 414, 440] {
@@ -138,6 +138,39 @@ struct GlassTabBarTests {
         // A blank explicit name falls back to the store.
         let blank = LAAAppIdentity(name: "Console", version: "", profile: nil, ownerName: "  ", ownerStore: store)
         #expect(blank.displayedOwnerName() == "Monet")
+    }
+
+    @Test func customGlyphsUseTheirOwnRegularAndSelectedArtwork() {
+        let doc = Image("Brain")
+        let docSelected = Image("BrainFilled")
+        let chat = Image("Monet")
+        let chatSelected = Image("MonetFilled")
+        let tabs = [
+            LAAGlassTab("doc", title: "Doc", image: doc, selectedImage: docSelected),
+            LAAGlassTab("chat", title: "Chat", image: chat, selectedImage: chatSelected),
+        ]
+        #expect(tabs.allSatisfy { $0.icon == nil })
+        #expect(tabs.map { $0.artwork(selected: false) } == [doc, chat])
+        #expect(tabs.map { $0.artwork(selected: true) } == [docSelected, chatSelected])
+
+        let settings = LAAGlassTab("settings", title: "Settings", icon: .settings)
+        #expect(settings.icon == .settings)
+        #expect(settings.artwork(selected: false) == nil)
+        #expect(settings.artwork(selected: true) == nil)
+    }
+
+    @Test(arguments: [LAAPlatform.iphone, .mac])
+    func roundControlsFitTheirCenteredSlot(platform: LAAPlatform) {
+        let size = platform.iconControl
+        let hit = platform.controlHitArea
+        #expect(size.icon < size.visual)
+        #expect(size.visual <= hit)
+        #expect(hit <= LAATabBarToken.appCapsule)
+        #expect(hit <= LAATabBarToken.height)
+        for style in [platform.secondaryControl, platform.compactControl] {
+            #expect(style.height / style.label <= LAAControl.heightToLabelMax)
+            #expect(style.height <= hit)
+        }
     }
 
     @Test func atMostFiveTabs() {
