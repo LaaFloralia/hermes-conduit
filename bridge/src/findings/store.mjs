@@ -147,7 +147,7 @@ export function createFindingStore({ dir, now = () => Date.now() }) {
       try {
         return mutate((rows) => {
           let row = rows.find((r) => r.requestId === requestId);
-          if (row && (row.status !== 'open' || (!staged && !row.images.length && Object.entries(next).every(([k, v]) => row[k] === v)))) return row;
+          if (row && (row.status !== 'open' || (!staged && Object.entries(next).every(([k, v]) => row[k] === v)))) return row;
           const at = stamp();
           if (!row) {
             row = { id: `fnd_${randomBytes(8).toString('hex')}`, ref: null, requestId, source, status: 'open', result: null,
@@ -155,7 +155,8 @@ export function createFindingStore({ dir, now = () => Date.now() }) {
             rows.push(row);
           }
           staged?.publish(row.id);
-          Object.assign(row, next, { images: staged?.images ?? [], updatedAt: at });
+          // An update without pictures keeps the current set; only a new set replaces it.
+          Object.assign(row, next, { images: staged?.images ?? row.images ?? [], updatedAt: at });
           return row;
         });
       } finally { staged?.cleanup(); }

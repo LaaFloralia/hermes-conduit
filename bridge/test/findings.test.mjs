@@ -303,5 +303,5 @@ test('CLI copies images privately, safely replaces sets, and preserves the prior
   time.at = Date.now() + 2 * 3600_000;
   store.sweep();
   assert(!existsSync(file));
-  assert.deepEqual(run(addArgs()).finding.images, []);
+  assert.deepEqual(run(addArgs()).finding.images, next.images);
 });

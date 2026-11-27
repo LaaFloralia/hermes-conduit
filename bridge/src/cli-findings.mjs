@@ -66,7 +66,10 @@ export async function findingsCommand(argv, flags, io = {}) {
       result = { finding };
     }
     if (flags.json) write(`${JSON.stringify({ ok: true, ...result })}\n`);
-    else if (sub === 'add') {
+    else if (sub === 'add' && result.finding.status !== 'open') {
+      const { ref, id: saved, status } = result.finding;
+      write(`この依頼の気づきは${status === 'dismissed' ? '見送り' : status === 'done' ? '対応済み' : 'Monetが対応中'}のため更新していません（${ref ? `${ref} · ` : ''}${saved}）。作業は続けてください。\n`);
+    } else if (sub === 'add') {
       const { ref, id: saved } = result.finding;
       write(`気づきへ登録しました（${ref ? `${ref} · ` : ''}${saved}）。作業は止めずに続けてください。${ref
         ? `完了報告の提案には${ref}とだけ書きます。` : 'F番号はBridgeの同期待ちです。'}\n`);
