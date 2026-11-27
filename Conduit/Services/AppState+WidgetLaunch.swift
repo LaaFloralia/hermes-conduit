@@ -149,7 +149,11 @@ extension AppState {
             #if LAA_BUILD
             let catalogSocket = link.action == .employeeChat && client?.isConnected == true ? client : nil
             #endif
+            #if LAA_BUILD
+            let loaded = await loadSessionsForWidgetLaunch(employeeChat: link.action == .employeeChat)
+            #else
             let loaded = await loadSessionsForWidgetLaunch()
+            #endif
             guard lease.isCurrent else { return .deferred }
             if widgetSettledCatalogOwner != workspace {
                 #if LAA_BUILD

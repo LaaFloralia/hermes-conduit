@@ -36,8 +36,14 @@ struct LAAEmployeeChatOpeningView: View {
     /// `savedKey`'s whole stored draft when the field took it up.
     @State private var boundDraft = ComposerDraft.empty
     @State private var connectingFired: LAAConnectionWait.Key?
+    @State private var connectingStalled: LAAConnectionWait.Key?
+    @State private var retries = 0
     private var name: String { LAAStaff(profile: profile)?.name ?? "AI社員" }
-    private var messages: [ChatMessage] { (preview.presentation?.displayedMessages ?? retainedMessages).filter(LAAChatVisibility.shows) }
+    /// Exactly the rows the transcript below draws: the avatar shows when
+    /// there are none, never a blank body (D-25).
+    private var messages: [ChatMessage] {
+        LAAEmployeeChatPreview.renderable(preview.presentation?.displayedMessages ?? retainedMessages)
+    }
     private var draftKey: ComposerDraftKey? {
         guard let workspace = preview.workspace else { return nil }
         return ComposerDraftKey(profile: profile,
@@ -52,15 +58,34 @@ struct LAAEmployeeChatOpeningView: View {
         guard let workspace = preview.workspace, workspace.profile == profile else { return false }
         return appState.laaIsEmployeeChatWaiting(for: workspace)
     }
-    /// The 0.5 s wait starts over for another dashboard or employee.
+    /// The 0.5 s and 10 s waits start over for another dashboard, employee
+    /// or Retry.
     private var connectingScope: String {
-        "\(preview.workspace?.dashboardID.uuidString ?? "")|\(profile)"
+        "\(preview.workspace?.dashboardID.uuidString ?? "")|\(profile)|\(retries)"
+    }
+    private var phase: LAAConnectionWait.Phase {
+        LAAConnectionWait.phase(isWaiting ? LAAConnectionWait.connecting : "", scope: connectingScope,
+                                fired: connectingFired, stalled: connectingStalled,
+                                reason: appState.laaConnectionStallReason)
+    }
+    private var isStalled: Bool {
+        if case .stalled = phase { return true }
+        return false
     }
     private var status: String {
         preview.failure == nil ? connectingWords : "Macに接続できません"
     }
-    private var connectingWords: String {
-        LAAConnectionWait.words(isWaiting ? LAAConnectionWait.connecting : "", scope: connectingScope, fired: connectingFired)
+    private var connectingWords: String { LAAConnectionWait.text(phase) }
+    /// The capsules before the live chat: the last confirmed model and
+    /// effort (最終確認), else 確認中… while it opens and 取得できません with
+    /// the reason once it stalled or failed; never a bare 不明 (D-25).
+    private var runtimeDisplay: LAAChatRuntimeDisplay.Value {
+        let last = preview.workspace.flatMap { LAAChatRuntimeCache.last(dashboardID: $0.dashboardID, profile: profile) }
+        let wait: LAAChatRuntimeDisplay.Wait = preview.failure != nil
+            ? .unavailable(preview.failure ?? LAAConnectionWait.slowMac)
+            : isStalled ? .unavailable(appState.laaConnectionStallReason) : .checking
+        return LAAChatRuntimeDisplay.resolve(live: LAAChatRuntime.Shown(model: nil, provider: nil, effort: nil),
+                                             lastConfirmed: last, wait: wait)
     }
     /// Only the field's own key may send, and only text: the target is the
     /// key's chat, and a quote or attachment the preview can't show stays put.
@@ -148,9 +173,14 @@ struct LAAEmployeeChatOpeningView: View {
             .background(LAAColor.background.ignoresSafeArea())
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: LAASpacing.x2) {
-                    if preview.failure != nil {
-                        Button { appState.laaRetryEmployeeChat() } label: {
-                            Label { Text(verbatim: "接続を再試行") } icon: { Image(systemName: "arrow.clockwise") }
+                    if preview.failure != nil || isStalled {
+                        // Keeps the copy on screen and any queued message,
+                        // which still goes once (D-15 begin()).
+                        Button {
+                            retries &+= 1
+                            appState.laaRetryEmployeeChat()
+                        } label: {
+                            Label { Text(verbatim: LAAConnectionWait.retry) } icon: { Image(systemName: "arrow.clockwise") }
                         }.accessibilityIdentifier("laa.chats.preview.retry")
                     }
                     previewComposer
@@ -158,10 +188,15 @@ struct LAAEmployeeChatOpeningView: View {
                         .laaComposerGlass(in: LAAComposerShape.field, interactive: false)
                         .accessibilityIdentifier("laa.chats.preview.composer")
                     HStack(spacing: LAASpacing.x2) {
-                        LAAModelEffortPickers(model: nil, provider: nil, effort: nil,
-                            identifier: "laa.chats.preview.runtime", modelHint: "接続後に変更できます", effortHint: "接続後に変更できます") {
+                        let runtime = runtimeDisplay
+                        LAAModelEffortPickers(model: runtime.model, provider: runtime.provider, effort: runtime.effort,
+                            current: runtime.current,
+                            identifier: "laa.chats.preview.runtime", modelHint: "接続後に変更できます", effortHint: "接続後に変更できます",
+                            placeholder: runtime.placeholder) {
+                            if let reason = runtime.reason { LAAMenuReason(text: reason) }
                             LAAMenuReason(text: "接続後にモデルを変更できます")
                         } effortMenu: {
+                            if let reason = runtime.reason { LAAMenuReason(text: reason) }
                             LAAMenuReason(text: "接続後に推論の強さを変更できます")
                         }
                         Spacer(minLength: 0)
@@ -181,12 +216,17 @@ struct LAAEmployeeChatOpeningView: View {
                 compositionChanged(true)
                 retainedMessages = preview.presentation?.displayedMessages ?? []
             }
-            .laaConnectionWait(isWaiting ? LAAConnectionWait.connecting : "", scope: connectingScope, fired: $connectingFired)
+            .laaConnectionWait(isWaiting ? LAAConnectionWait.connecting : "", scope: connectingScope, fired: $connectingFired,
+                               stalled: $connectingStalled)
             .onChange(of: appState.laaOpeningEmployeeChat) { _, _ in handoffIfReady() }
             .onChange(of: preview.presentation?.displayedMessages) { _, value in
                 if let value { retainedMessages = value }
             }
-            .task(id: draftKey) { bind(to: draftKey) }
+            .task(id: draftKey) {
+                bind(to: draftKey)
+                // Queueable from here: the field has its chat's key (D-25).
+                if draftKey != nil, preview.queueTargetSessionID != nil { preview.noteComposerEditable() }
+            }
             .onChange(of: draft) { _, value in
                 if let savedKey { saveDraft(to: savedKey) }
                 if value.isEmpty { bind(to: draftKey) }

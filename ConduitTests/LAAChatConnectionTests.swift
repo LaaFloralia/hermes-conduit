@@ -370,6 +370,74 @@ final class LAAChatConnectionTests: XCTestCase {
         XCTAssertEqual(fallbackOutcome, .handled)
     }
 
+    /// D-25: a Retry on a stalled open starts it over without dropping the
+    /// copy on screen or the queued message, which is sent exactly once
+    /// with its own turn id when the chat attaches.
+    func testRetryOnAStalledOpenKeepsTheQueuedMessageAndSendsItOnce() async throws {
+        let dashboard = SavedDashboard(id: UUID(), label: "Fixture", normalizedURL: "https://r1.invalid")
+        let profile = "laa-monet"
+        let workspace = WidgetWorkspaceID(dashboardID: dashboard.id, profile: profile)
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let defaults = makeScratchDefaults("LAAChatConnectionTests-stall-retry")
+        let cache = OfflineChatCacheStore(directory: directory.appendingPathComponent("cache"))
+        let draftStore = ComposerDraftStore(fileURL: directory.appendingPathComponent("drafts.json"))
+        let selected = employeeRow(profile: profile)
+        cache.record(dashboardID: dashboard.id, profile: profile, sessionID: stored, title: "Fixture",
+                     messages: [ChatMessage(id: "cached", role: .assistant, content: "Fixture", timestamp: "1")],
+                     sessions: [selected])
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: .init(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+                             offlineChatCache: cache, composerDraftStore: draftStore)
+        _ = state.handleScenePhase(.active)
+        state.deviceConditionsChanged(.init(pathSatisfied: true))
+        state.showLogin = false
+        state.setActiveProfileForTesting(profile)
+        let (client, socket) = try await connect(profile: profile, capabilities: ["client_turn_id": true])
+        defer { client.disconnect() }
+        state.client = client
+        state.connection = client.connection
+        state.isConnected = true
+        state.sessions = [selected]
+        state.profiles = [profile]
+        state.widgetSettledCatalogOwner = workspace
+        XCTAssertTrue(state.routeWidgetLaunchURL(link.url))
+        // The open stalls on its resume.
+        _ = try await request("session.resume", socket)
+        let key = ComposerDraftKey(profile: profile, sessionID: stored, dashboardID: dashboard.id)
+        try await wait { state.laaEmployeeChatPreview.presentation?.composerSessionID == self.stored }
+        XCTAssertTrue(draftStore.save(.init(text: "fixture turn", attachments: [], replyReference: nil), for: key))
+        XCTAssertTrue(state.laaQueueEmployeeOpeningSend("fixture turn", draftKey: key))
+        let id = try XCTUnwrap(state.laaEmployeeChatPreview.queuedSend?.id)
+
+        state.laaRetryEmployeeChat()
+        XCTAssertEqual(state.laaOpeningEmployeeChat, profile, "the opening screen stays")
+        XCTAssertNotNil(state.laaEmployeeChatPreview.presentation, "with its copy")
+        XCTAssertEqual(state.laaEmployeeChatPreview.queuedSend?.id, id, "and its queued message")
+        XCTAssertNotNil(state.widgetLaunchCoordinator.pendingLink, "the open started over")
+        XCTAssertFalse(socket.methods.contains("prompt.submit"))
+
+        // The restarted open may ask again or reuse the held resume: answer
+        // every resume asked for.
+        for _ in 0..<250 where socket.requests.filter({ $0["method"] as? String == "session.resume" }).count < 2 {
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        for resume in socket.requests.filter({ $0["method"] as? String == "session.resume" }).reversed() {
+            try socket.reply(resume, ["session_id": session, "stored_session_id": stored, "running": false])
+        }
+        let prompt = try await request("prompt.submit", socket)
+        let params = try XCTUnwrap(prompt["params"] as? [String: Any])
+        XCTAssertEqual(params["client_turn_id"] as? String, id.uuidString)
+        XCTAssertEqual(params["text"] as? String, "fixture turn")
+        try socket.reply(prompt, ["status": "streaming"])
+        state.settlePendingComposerSend()
+        try await wait { state.deliveringPendingComposerSendIDs.isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(socket.methods.filter { $0 == "prompt.submit" }.count, 1, "sent exactly once")
+    }
+
     func testEmployeeOfflinePreflightQueuesAfterFailureAndAutoSendsOnce() async throws {
         try await assertEmployeeOfflinePreflight(autoRecover: true)
     }

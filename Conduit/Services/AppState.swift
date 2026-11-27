@@ -656,6 +656,15 @@ final class AppState: ObservableObject {
     var hidesBriefReconnect: Bool {
         isReturningQuietly && isRecoveringConnection
     }
+#if LAA_BUILD
+    /// The automatic reconnects gave up (three attempts) with the network
+    /// up: nothing more happens until a Retry, so the chat's heading says
+    /// why at once instead of going quiet (D-25).
+    var laaReconnectGaveUp: Bool {
+        networkPathUsable && !isConnected && !isConnecting && connection != nil
+            && turnState == .reconnecting && reconnectAttempts > 2
+    }
+#endif
     /// The device has a usable network path (the app's one path monitor).
     @Published private(set) var networkPathUsable = true
     @Published var profiles: [String] = []
@@ -2251,7 +2260,45 @@ final class AppState: ObservableObject {
 #if LAA_BUILD
     /// The model and effort Hermes reported for each chat's running agent,
     /// for the composer's chip; never the profile's configured values.
-    @Published private(set) var laaChatRuntime = LAAChatRuntime()
+    @Published private(set) var laaChatRuntime = LAAChatRuntime() {
+        didSet { laaRememberConfirmedRuntime() }
+    }
+    /// What Hermes reported for the chat on screen is kept per dashboard
+    /// and employee, for the next open's 最終確認 (D-25).
+    private func laaRememberConfirmedRuntime() {
+        guard let dashboardID = activeDashboardID, let sessionID = activeSessionId,
+              LAAStaff(profile: activeProfile) != nil else { return }
+        let shown = laaChatRuntime.shown(for: [sessionID])
+        LAAChatRuntimeCache.record(shown, dashboardID: dashboardID, profile: activeProfile)
+        if shown.modelReported || shown.effortReported { laaEmployeeChatPreview.noteModelInfo() }
+    }
+
+    /// Reads the staff's saved copies ahead, off the main actor, so the
+    /// first tap on an employee shows their transcript at once (D-25).
+    func laaPrewarmEmployeeTranscripts() {
+        guard let dashboardID = activeDashboardID else { return }
+        LAAEmployeeChatPreview.prewarm(dashboardID: dashboardID, directory: offlineChatCache.laaPreviewDirectory) {
+            [weak self] profile in
+            guard let self else { return nil }
+            return self.chatResumeWidgetReference(for: profile).map(Self.widgetReference(from:)).flatMap {
+                $0.kind == .dashboard && $0.scopeProfile == profile && !$0.isUnverified ? $0.sessionID : nil
+            }
+        }
+    }
+
+    /// The employee-open metrics' wiring: network class, and the finished
+    /// open's one-line summary into the connection timeline (Gateway
+    /// Diagnostics), numbers only.
+    private func laaConfigureEmployeeOpenMetrics() {
+        laaEmployeeChatPreview.networkClass = { [weak self] in
+            let conditions = self?.deviceConditions() ?? DeviceConditionsMonitor.shared.current
+            if !conditions.pathSatisfied { return .offline }
+            return conditions.expensivePath ? .cellular : .wifi
+        }
+        laaEmployeeChatPreview.onMetricsFinished = { [weak self] metrics in
+            self?.noteConnectionStep(metrics.summary)
+        }
+    }
 #if DEBUG
     /// UI tests stand in for Hermes' model calls (LAABackgroundUITestFixture).
     var laaChatModelOperationsForTesting: LAAChatModelOperations?
@@ -7117,6 +7164,10 @@ final class AppState: ObservableObject {
             }
         // After init's own defaults reads, so they don't queue behind it.
         sessionPresentationCache.prewarm()
+        #if LAA_BUILD
+        laaConfigureEmployeeOpenMetrics()
+        laaPrewarmEmployeeTranscripts()
+        #endif
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {
@@ -19639,6 +19690,9 @@ final class AppState: ObservableObject {
     }
 
     private func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
+        #if LAA_BUILD
+        if error == nil { laaEmployeeChatPreview.noteConnectionStep(label) }
+        #endif
         connectionTimeline?.record(label, since: startedAt, error: error)
         persistConnectionTimeline()
         HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
@@ -19847,6 +19901,12 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
+            #if LAA_BUILD
+            if didReturnFromBackground {
+                laaEmployeeChatPreview.nextScenario = .resume
+                laaPrewarmEmployeeTranscripts()
+            }
+            #endif
             if showLogin, signInWaitsForForeground {
                 // The freshness arming belongs to the session that was torn
                 // down; the retry's connect syncs from scratch.
@@ -21498,12 +21558,40 @@ final class AppState: ObservableObject {
 
     /// A failed read stays out of the composer; the widget owns its error.
     @discardableResult
-    func loadSessionsForWidgetLaunch() async -> Bool {
+    func loadSessionsForWidgetLaunch(employeeChat: Bool = false) async -> Bool {
+        #if LAA_BUILD
+        guard employeeChat else {
+            return await loadSessions(
+                forceRefresh: false,
+                requiredViewportTransitionGeneration: nil,
+                reportsFailure: false
+            )
+        }
+        // An employee chat needs the newest live page only. Cron runs (about
+        // 320 KB for Monet), archived calls and older pages are not on the
+        // way to the chat: the list keeps the rows it already shows, and one
+        // background read fills them in afterwards (D-25).
+        let client = client
+        let profile = activeProfile
+        let dashboardID = activeDashboardID
+        let loaded = await loadSessions(
+            forceRefresh: false,
+            requiredViewportTransitionGeneration: nil,
+            reportsFailure: false,
+            deferringOlderPages: true,
+            skippingAuxiliaryCatalogs: true
+        )
+        if loaded, let client {
+            loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
+        }
+        return loaded
+        #else
         await loadSessions(
             forceRefresh: false,
             requiredViewportTransitionGeneration: nil,
             reportsFailure: false
         )
+        #endif
     }
 
     @discardableResult
@@ -21511,7 +21599,9 @@ final class AppState: ObservableObject {
         forceRefresh: Bool,
         requiredViewportTransitionGeneration: UInt64?,
         reportsFailure: Bool = true,
-        yieldsToNewerReads: Bool = false
+        yieldsToNewerReads: Bool = false,
+        deferringOlderPages: Bool = false,
+        skippingAuxiliaryCatalogs: Bool = false
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -21531,7 +21621,9 @@ final class AppState: ObservableObject {
                 loadedSessions = try await profileCatalog(
                     using: activeClient,
                     forceRefresh: forceRefresh,
-                    yieldsToNewerReads: yieldsToNewerReads
+                    deferringOlderPages: deferringOlderPages,
+                    yieldsToNewerReads: yieldsToNewerReads,
+                    skippingAuxiliaryCatalogs: skippingAuxiliaryCatalogs
                 ).sessions
             } else {
                 return false
@@ -21556,7 +21648,7 @@ final class AppState: ObservableObject {
             cronSessions = listedCron
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()
-            savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
+            savedChatListReplacedByLiveList(newestPageOnly: deferringOlderPages, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
@@ -25368,6 +25460,8 @@ final class AppState: ObservableObject {
     func laaEmployeeChatLaunchEnded(_ link: WidgetLaunchLink, outcome: WidgetLaunchOutcome?) {
         guard link.action == .employeeChat, let workspace = link.workspace,
               laaEmployeeChatPreview.workspace == workspace else { return }
+        // A Retry replacing this open keeps its screen (laaRetryEmployeeChat).
+        if outcome == nil, laaRestartingEmployeeChat == workspace { return }
         let transportLoss = laaEmployeeTransportLoss?.workspace == workspace && laaEmployeeTransportLoss?.lease.isCurrent == true
         defer { laaEmployeeTransportLoss = nil }
         if case .handled = outcome, activeDashboardID == workspace.dashboardID, activeProfile == workspace.profile,
@@ -25473,8 +25567,20 @@ final class AppState: ObservableObject {
     func laaRetryEmployeeChat() {
         guard let workspace = laaEmployeeChatPreview.workspace,
               let link = WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil) else { return }
+        if let pending = widgetLaunchCoordinator.pendingLink, pending.action == .employeeChat,
+           pending.workspace == workspace {
+            // A stalled open (D-25) starts over. The coordinator ignores the
+            // same link while it is in flight, so end it first, keeping the
+            // copy on screen and the reserved message, which still goes once.
+            laaRestartingEmployeeChat = workspace
+            widgetLaunchCoordinator.supersede()
+            laaRestartingEmployeeChat = nil
+        }
         _ = routeWidgetLaunchURL(link.url)
     }
+
+    /// Set only while a Retry ends the stalled open it replaces.
+    private var laaRestartingEmployeeChat: WidgetWorkspaceID?
 
     func laaDismissEmployeeChatPreview() {
         if widgetLaunchCoordinator.pendingLink?.action == .employeeChat {
@@ -30655,7 +30761,8 @@ final class AppState: ObservableObject {
         using client: HermesClient,
         forceRefresh: Bool = false,
         deferringOlderPages: Bool = false,
-        yieldsToNewerReads: Bool = false
+        yieldsToNewerReads: Bool = false,
+        skippingAuxiliaryCatalogs: Bool = false
     ) async throws -> ProfileCatalogLoad {
         catalogReadSequence &+= 1
         let readSequence = catalogReadSequence
@@ -30688,7 +30795,9 @@ final class AppState: ObservableObject {
                         forKey: cronKey,
                         forceRefresh: forceRefresh
                     ) && sessionCatalogCache.cachedSessions(forKey: cronKey) != nil
-                    async let cronFetch: [SessionSummary]? = reusesCachedCron
+                    // A fast employee open leaves cron to the read after it
+                    // and keeps the cached or listed runs meanwhile.
+                    async let cronFetch: [SessionSummary]? = reusesCachedCron || skippingAuxiliaryCatalogs
                         ? nil
                         : timedCronCatalogFetch(profile: profile, using: dashboardTicketBridge)
                     let liveStartedAt = Date()
@@ -30700,7 +30809,8 @@ final class AppState: ObservableObject {
                                 fullHistoryDue: shouldLoadHistory,
                                 deferringOlderPages: deferringOlderPages
                             ),
-                            using: dashboardTicketBridge
+                            using: dashboardTicketBridge,
+                            readsArchivedCalls: !skippingAuxiliaryCatalogs
                         )
                     } catch {
                         noteConnectionStep("Chat list", since: liveStartedAt, error: error)
@@ -31551,13 +31661,17 @@ final class AppState: ObservableObject {
     private func dashboardSessions(
         profile: String,
         maximumPages: Int,
-        using bridge: DashboardTicketBridge
+        using bridge: DashboardTicketBridge,
+        readsArchivedCalls: Bool = true
     ) async throws -> DashboardSessionCatalog {
         var sessions: [SessionSummary] = []
         var isAuthoritative = false
         // Sent alongside the live list: the plugin archives a standalone
-        // call when it ends, which Conduit still lists with its calls.
-        async let archivedCalls = archivedVoiceCallSessions(profile: profile, maximumPages: maximumPages, using: bridge)
+        // call when it ends, which Conduit still lists with its calls. A
+        // fast employee open keeps the listed calls instead (nil below).
+        async let archivedCalls = readsArchivedCalls
+            ? archivedVoiceCallSessions(profile: profile, maximumPages: maximumPages, using: bridge)
+            : nil
 
         for page in 0..<maximumPages {
             let offset = page * 200
@@ -32059,7 +32173,17 @@ final class AppState: ObservableObject {
                 }
                 return false
             }
-            if ownsChat {
+            // A switch cancelled after it adopted the target (a widget lease
+            // that expired mid-connect) is no connection failure: say
+            // nothing, and reconnect outside the cancelled task, whose mint
+            // would only throw CancellationError again (D-25).
+            #if LAA_BUILD
+            let wasCancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+                || Task.isCancelled
+            #else
+            let wasCancelled = false
+            #endif
+            if ownsChat, !wasCancelled {
                 errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: error))")
             }
             clearPendingDecisionRestorationGuard()
@@ -32091,7 +32215,11 @@ final class AppState: ObservableObject {
             isConnected = false
             turnState = .reconnecting
             if ownsChat { finishChatViewportTransition(generation: transitionGeneration) }
-            await reconnect()
+            if wasCancelled {
+                Task { @MainActor [weak self] in await self?.reconnect() }
+            } else {
+                await reconnect()
+            }
             return false
         }
     }
