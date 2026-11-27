@@ -37,6 +37,8 @@ final class LAAWorkingControlCaptureUITests: XCTestCase {
         XCTAssertLessThanOrEqual(pill.frame.maxY, field.frame.minY, "\(label): the capsule overlaps the composer")
         let window = app.windows.firstMatch.frame
         XCTAssertTrue(window.contains(pill.frame), "\(label): the capsule leaves the screen \(pill.frame)")
+        XCTAssertGreaterThanOrEqual(pill.frame.minX, window.minX + 12, "\(label): the capsule touches the left edge")
+        XCTAssertLessThanOrEqual(pill.frame.maxX, window.maxX - 12, "\(label): the capsule touches the right edge")
         let elapsed = element(app, "chat.working.elapsed")
         XCTAssertTrue(elapsed.exists, label)
         XCTAssertTrue(pill.frame.contains(elapsed.frame), "\(label): the time is cut \(elapsed.frame) in \(pill.frame)")

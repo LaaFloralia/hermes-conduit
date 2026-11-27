@@ -40,6 +40,9 @@ enum LAAWorkingControlMetrics {
     static var gapAboveComposer: CGFloat { 8 * scale }
     static let mergeSpacing: CGFloat = 12
     static var rowGap: CGFloat { 12 * scale }
+    /// The floating row never comes nearer the screen's edge than this
+    /// (`spacing` 16): Chat's composer spans the full width.
+    static var edgeInset: CGFloat { 16 * scale }
     /// Between the items of one line (orb, word, time, count).
     static var itemGap: CGFloat { 8 * scale }
     /// Between two agent rows, and under the last one.
@@ -285,6 +288,7 @@ struct LAAWorkingCluster<Composer: View>: View {
                             .transition(transition)
                     }
                 }
+                .padding(.horizontal, LAAWorkingControlMetrics.edgeInset)
                 .frame(maxWidth: .infinity)
                 // The row's bottom sits 8 above the composer whatever its height.
                 .alignmentGuide(.top) { $0[.bottom] + LAAWorkingControlMetrics.gapAboveComposer }
