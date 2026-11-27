@@ -80,42 +80,55 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
     private var effortText: String { LAAEffortCapsule.text(effort: effort, current: current, placeholder: placeholder) }
 
     var body: some View {
-        LAAWrapRow {
-            if let harness {
-                Menu { harnessMenu() } label: { LAAHarnessCapsule(harness: harness, current: current) }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .fixedSize()
-                    .accessibilityLabel(Text(verbatim: "実行基盤"))
-                    .accessibilityValue(Text(verbatim: harness.name))
-                    .accessibilityHint(Text(verbatim: harnessHint))
-                    .accessibilityIdentifier(identifier + ".harness")
-            }
-            Menu { modelMenu() } label: {
-                LAAModelCapsule(model: model, provider: provider, name: name, current: current,
-                                attention: attention, changing: changingModel,
-                                showsFace: !(harness?.sharesMark(model: model, provider: provider) ?? false),
-                                placeholder: placeholder)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: "モデル"))
-            .accessibilityValue(Text(verbatim: modelText + (modelValueSuffix ?? "")))
-            .accessibilityHint(Text(verbatim: modelHint))
-            .accessibilityIdentifier(identifier + ".model")
-
-            Menu { effortMenu() } label: {
-                LAAEffortCapsule(effort: effort, current: current, changing: changingEffort,
-                                 tone: LAAModelRank.of(model).tone, placeholder: placeholder)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize()
-            .accessibilityLabel(Text(verbatim: "推論"))
-            .accessibilityValue(Text(verbatim: effortText))
-            .accessibilityHint(Text(verbatim: effortHint))
-            .accessibilityIdentifier(identifier + ".effort")
+        #if targetEnvironment(macCatalyst)
+        // A narrow Mac column (a 900 pt window) keeps the capsules on one
+        // line: the harness first gives up its name for its mark (as on the
+        // phone), and only then does the row wrap.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: LAASpacing.x2) { capsules(namedHarness: true) }
+            HStack(spacing: LAASpacing.x2) { capsules(namedHarness: false) }
+            LAAWrapRow { capsules(namedHarness: false) }
         }
+        #else
+        LAAWrapRow { capsules(namedHarness: LAAHarnessCapsule.showsName) }
+        #endif
+    }
+
+    @ViewBuilder private func capsules(namedHarness: Bool) -> some View {
+        if let harness {
+            Menu { harnessMenu() } label: { LAAHarnessCapsule(harness: harness, current: current, named: namedHarness) }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .fixedSize()
+                .accessibilityLabel(Text(verbatim: "実行基盤"))
+                .accessibilityValue(Text(verbatim: harness.name))
+                .accessibilityHint(Text(verbatim: harnessHint))
+                .accessibilityIdentifier(identifier + ".harness")
+        }
+        Menu { modelMenu() } label: {
+            LAAModelCapsule(model: model, provider: provider, name: name, current: current,
+                            attention: attention, changing: changingModel,
+                            showsFace: !(harness?.sharesMark(model: model, provider: provider) ?? false),
+                            placeholder: placeholder)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "モデル"))
+        .accessibilityValue(Text(verbatim: modelText + (modelValueSuffix ?? "")))
+        .accessibilityHint(Text(verbatim: modelHint))
+        .accessibilityIdentifier(identifier + ".model")
+
+        Menu { effortMenu() } label: {
+            LAAEffortCapsule(effort: effort, current: current, changing: changingEffort,
+                             tone: LAAModelRank.of(model).tone, placeholder: placeholder)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .fixedSize()
+        .accessibilityLabel(Text(verbatim: "推論"))
+        .accessibilityValue(Text(verbatim: effortText))
+        .accessibilityHint(Text(verbatim: effortHint))
+        .accessibilityIdentifier(identifier + ".effort")
     }
 }
 
@@ -143,6 +156,8 @@ extension LAAModelEffortPickers where HarnessMenu == EmptyView {
 struct LAAHarnessCapsule: View {
     let harness: LAAHarness
     var current = true
+    /// The Mac shows the name when the row has room (LAAModelEffortPickers).
+    var named: Bool = LAAHarnessCapsule.showsName
 
     #if targetEnvironment(macCatalyst)
     static let showsName = true
@@ -151,7 +166,7 @@ struct LAAHarnessCapsule: View {
     #endif
 
     var body: some View {
-        if Self.showsName { named } else { round }
+        if named { namedFace } else { round }
     }
 
     /// The phone: the mark alone in a round glass button the size of the
@@ -167,7 +182,7 @@ struct LAAHarnessCapsule: View {
     }
 
     /// The Mac: the mark, the harness's name and the menu's chevron.
-    private var named: some View {
+    private var namedFace: some View {
         HStack(spacing: 6) {
             LAAHarnessMark(harness: harness, size: 18)
             Text(verbatim: harness.name)

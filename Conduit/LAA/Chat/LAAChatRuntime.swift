@@ -511,7 +511,8 @@ import Combine
 /// capsules, and Send (or Stop) at the end. When the capsules, with their
 /// whole names, leave no room on one line (owner, 2026-11-14: every model
 /// name in full, nothing cut), they take a line of their own above + and
-/// Send, wrapping there if they must. Three children, in that order.
+/// Send, wrapping there if they must. On the Mac a narrow column first lets
+/// the harness show only its mark to keep one line. Three children, in that order.
 struct LAAComposerControlsRow: Layout {
     var spacing: CGFloat = LAASpacing.x2
 
@@ -543,6 +544,22 @@ struct LAAComposerControlsRow: Layout {
                 CGRect(x: width - trail.width, y: (height - trail.height) / 2, width: trail.width, height: trail.height),
             ], size: CGSize(width: width, height: height))
         }
+        #if targetEnvironment(macCatalyst)
+        // A narrow Mac column: the capsules may still keep one line between
+        // + and Send once the harness shows only its mark (LAAModelEffortPickers).
+        if let available {
+            let room = available - lead.width - trail.width - 3 * spacing
+            let fitted = subviews[1].sizeThatFits(ProposedViewSize(width: max(0, room), height: nil))
+            if room > 0, fitted.width <= room + 0.5, fitted.height <= ideal.height + 0.5 {
+                let height = max(lead.height, fitted.height, trail.height)
+                return Arrangement(frames: [
+                    CGRect(x: 0, y: (height - lead.height) / 2, width: lead.width, height: lead.height),
+                    CGRect(x: lead.width + spacing, y: (height - fitted.height) / 2, width: fitted.width, height: fitted.height),
+                    CGRect(x: available - trail.width, y: (height - trail.height) / 2, width: trail.width, height: trail.height),
+                ], size: CGSize(width: available, height: height))
+            }
+        }
+        #endif
         let width = available ?? ideal.width
         let middle = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
         let actions = max(lead.height, trail.height)
