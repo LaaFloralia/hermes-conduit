@@ -30,9 +30,9 @@ enum LAAWorkStatus: Equatable {
         case .decision: String("Awaiting Decision")
         case .error: String("Error")
         case .done: String("Done")
-        case .waiting: String("待機")
+        case .waiting: String("Waiting")
         case .stopped: String("Stopped")
-        case .pending: String("結果なし")
+        case .pending: String("No Result")
         }
     }
 

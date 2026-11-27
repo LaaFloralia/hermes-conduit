@@ -235,7 +235,7 @@ struct LAAChatsContent: View {
                     Button { callPerson(monet) } label: {
                         LAACompactGlassIcon(icon: .call)
                     }.buttonStyle(.plain).fixedSize()
-                        .disabled(!monet.available).accessibilityLabel(String("Monetに電話"))
+                        .disabled(!monet.available).accessibilityLabel(String("Call Monet"))
                         .accessibilityIdentifier("laa.chats.monet.call")
                 }
             }

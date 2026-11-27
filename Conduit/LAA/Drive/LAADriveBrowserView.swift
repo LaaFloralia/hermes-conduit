@@ -234,7 +234,7 @@ struct LAADriveBrowserView: View {
                     .accessibilityIdentifier("laa.drive.browser.search")
                 if !search.isEmpty {
                     Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .accessibilityLabel("検索を消す")
+                        .accessibilityLabel(Text(verbatim: LAACopy.searchClear))
                         .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                 }
             }

@@ -462,7 +462,7 @@ struct LAABrainView: View {
             Text("SyncTrainで同期しているBrainフォルダを選んでください。")
             Button("フォルダを選ぶ") { chooseFolder = true }
                 .laaGlassButton(prominent: true).accessibilityIdentifier("laa.brain.chooseFolder")
-            Button("Mac接続で開く") { showMacSource = true }.laaTextStyle(.secondary)
+            Button(String("Open via Mac")) { showMacSource = true }.laaTextStyle(.secondary)
                 .accessibilityIdentifier("laa.brain.openMac")
         }.foregroundStyle(LAAColor.text)
     }

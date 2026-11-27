@@ -29,7 +29,7 @@ struct LAAHabitEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(selection: $kind) { Text(verbatim: "Habit").tag("do"); Text(verbatim: "禁止習慣").tag("avoid") } label: { Text(verbatim: "Type") }.disabled(habit != nil).accessibilityIdentifier("laa.habits.kind")
+                    Picker(selection: $kind) { Text(verbatim: "Habit").tag("do"); Text(verbatim: "Avoidance").tag("avoid") } label: { Text(verbatim: "Type") }.disabled(habit != nil).accessibilityIdentifier("laa.habits.kind")
                     LabeledContent {
                         // An empty prompt gives the field no width on Mac, where it then cannot be clicked.
                         TextField(text: $title, prompt: Text(verbatim: "Required")) { Text(verbatim: "Name") }

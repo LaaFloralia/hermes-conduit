@@ -328,7 +328,8 @@ private struct LAAWorkPaneHeader: View {
             Button { showingInitialInstruction = true } label: { identity }
                 .buttonStyle(.plain)
                 .disabled(session == nil)
-                .accessibilityLabel(Text(verbatim: (session?.name ?? "") + "、名前と最初の指示を表示"))
+                .accessibilityLabel(Text(verbatim: session?.name ?? ""))
+                .accessibilityHint(Text(verbatim: "Show First Prompt"))
                 .accessibilityIdentifier("work.pane.initialInstruction")
                 .frame(maxWidth: .infinity, alignment: .leading)
             if canSplitRight || canSplitDown || many || sessionID != nil { controls }

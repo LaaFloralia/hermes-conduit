@@ -65,9 +65,9 @@ struct LAAStudioReviewView: View {
                     }
                     Picker(selection: verdict) {
                         Text(verbatim: "No Verdict").tag("")
-                        Text(verbatim: "採用").tag("adopt")
+                        Text(verbatim: "Adopt").tag("adopt")
                         Text(verbatim: "Revise").tag("revise")
-                        Text(verbatim: "不採用").tag("reject")
+                        Text(verbatim: "Reject").tag("reject")
                     } label: { Text(verbatim: "Verdict") }.pickerStyle(.segmented).disabled(state.pending != nil || sending || storageError)
                     Text(verbatim: "Comment").laaTextStyle(.section).fontWeight(.semibold)
                     TextEditor(text: $state.comment)
@@ -87,7 +87,7 @@ struct LAAStudioReviewView: View {
                             Text(verbatim: "保存状態を確認").frame(minHeight: LAASpacing.minimumTouchTarget)
                         }.disabled(sending || storageError)
                         Button { Task { await submit(retry: true) } } label: {
-                            Text(verbatim: "同じ講評を再送").frame(minHeight: LAASpacing.minimumTouchTarget)
+                            Text(verbatim: "Resend Review").frame(minHeight: LAASpacing.minimumTouchTarget)
                         }.disabled(sending || storageError).accessibilityIdentifier("laa.studio.review.retry")
                         if canEditAgain {
                             Button {
@@ -142,9 +142,9 @@ struct LAAStudioReviewView: View {
     }
     static func label(_ value: String?) -> String {
         switch value {
-        case "adopt": return "採用"
+        case "adopt": return "Adopted"
         case "revise": return "Revise"
-        case "reject": return "不採用"
+        case "reject": return "Rejected"
         default: return "Comment"
         }
     }

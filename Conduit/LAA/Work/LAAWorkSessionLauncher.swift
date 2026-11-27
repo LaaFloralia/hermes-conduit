@@ -171,7 +171,7 @@ struct LAAWorkSessionLauncher: View {
                 .background(LAAColor.subtleSurface, in: Capsule())
             }
             .accessibilityLabel(Text(verbatim: "Project"))
-            .accessibilityValue(Text(verbatim: chosenProject?.name ?? "未選択"))
+            .accessibilityValue(Text(verbatim: chosenProject?.name ?? "None"))
             .accessibilityIdentifier("work.launch.project")
             if chosenProject == nil {
                 Text(verbatim: "セッションはプロジェクトの中に作ります。プロジェクトを選んでください。")

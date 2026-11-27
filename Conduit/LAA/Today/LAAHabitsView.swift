@@ -51,7 +51,7 @@ struct LAAHabitsView: View {
                     let items = week.items.filter { $0.kind == kind }
                     if !items.isEmpty {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            LAASectionHeader(kind == "do" ? "Habit" : "禁止習慣")
+                            LAASectionHeader(kind == "do" ? "Habit" : "Avoidance")
                             LAAListSurface {
                                 ForEach(items) { item in
                                     if item.id != items.first?.id { LAAListDivider() }

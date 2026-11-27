@@ -273,7 +273,7 @@ private struct LAAStudioGallery: View {
             .accessibilityIdentifier("laa.studio.gallery")
             if let index = items.firstIndex(where: { $0.id == selection }) {
                 HStack {
-                    Text(verbatim: items[index].name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(verbatim: items[index].name).laaTextStyle(.secondary).fontWeight(.semibold).lineLimit(1)
                     Spacer()
                     if items.count > 1 {
                         HStack(spacing: 6) {

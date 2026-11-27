@@ -393,7 +393,7 @@ struct LAAWorkPaneBadge: View {
 
     var body: some View {
         Text(verbatim: "\(value.number)")
-            .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+            .laaTextStyle(.section).monospacedDigit()
             .foregroundStyle(value.focused ? LAAColor.filledButtonText : LAAColor.secondaryText)
             .frame(minWidth: 20, minHeight: 20)
             .background(value.focused ? LAAColor.filledButton : LAAColor.subtleSurface, in: Circle())

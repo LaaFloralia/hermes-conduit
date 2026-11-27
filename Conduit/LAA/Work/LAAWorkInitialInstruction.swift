@@ -98,7 +98,7 @@ struct LAAWorkInitialInstruction: View {
             }
             .background(LAAColor.background)
             .foregroundStyle(LAAColor.text)
-            .navigationTitle(Text(verbatim: "名前と最初の指示"))
+            .navigationTitle(Text(verbatim: "First Prompt"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) {
                 LAACloseButton { dismiss() }.accessibilityIdentifier("work.initialInstruction.done")
