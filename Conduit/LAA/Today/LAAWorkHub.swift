@@ -56,21 +56,21 @@ struct LAAWorkHub: View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             LAAScreenHeader(title: "Work", identifier: "laa.work.title")
                 .padding(.horizontal, LAASpacing.horizontal)
-            // The switcher and the search are one glass group, so the screen
-            // shows three at most: top bar, this group, the tab bar.
-            LAAGlassCluster {
-                VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    LAAWorkSectionSelector(selection: Binding(get: { section }, set: select),
-                                           decisions: decisions.count, campaigns: campaigns.count)
-                    if bridge.status == .paired && !laaDesktop && section.searchable {
-                        LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search", focus: $searchFocused)
-                            .id(section)
-                    }
-                }
-            }
-            .padding(.horizontal, LAASpacing.horizontal)
+            LAAWorkSectionSelector(selection: Binding(get: { section }, set: select),
+                                   decisions: decisions.count, campaigns: campaigns.count)
+                .padding(.horizontal, LAASpacing.horizontal)
             if bridge.status != .paired { connectionState }
-            else { sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else {
+                if !laaDesktop && section.searchable {
+                    // On the paper, not glass: with the top bar, the switcher
+                    // and the tab bar the screen keeps three glass groups.
+                    LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search",
+                                   focus: $searchFocused, glass: false)
+                        .padding(.horizontal, LAASpacing.horizontal)
+                        .id(section)
+                }
+                sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .padding(.top, LAASpacing.x2)
         .laaTheme(themeID)
