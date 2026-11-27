@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 struct LAAStudioCreateView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -204,7 +205,7 @@ struct LAAStudioCreateView: View {
                 .padding(.horizontal, LAASpacing.x4).frame(minHeight: 44)
                 .laaComposerGlass(in: Capsule())
                 .accessibilityIdentifier("laa.studio.composer.field")
-            HStack(alignment: .top, spacing: LAASpacing.x3) {
+            HStack(alignment: .center, spacing: LAASpacing.x3) {
                 Button {
                     if draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         draft.prompt = "修正の相談をお願いします。"
@@ -212,12 +213,11 @@ struct LAAStudioCreateView: View {
                     promptFocused = false
                     Task { await submit() }
                 } label: {
-                    Text(verbatim: "直しを頼む").font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                        .laaComposerGlass(in: Capsule())
-                }.buttonStyle(.plain).disabled(editingBlocked || draft.prompt.utf16.count > 10000)
+                    Text(verbatim: "Revise")
+                }.buttonStyle(.laaSecondary).disabled(editingBlocked || draft.prompt.utf16.count > 10000)
                     .accessibilityIdentifier("laa.studio.composer.send")
                 adoption
+                Spacer(minLength: 0)
             }
             inlineFeedback
         }

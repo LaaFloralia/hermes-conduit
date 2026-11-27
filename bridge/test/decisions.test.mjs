@@ -351,7 +351,8 @@ test('HTTP: full 8,000-char quick note and 1,500-char free answer survive store,
   const f = fixture(t);
   const h = await startBridge({ decisions: { service: f.service } });
   t.after(() => h.close());
-  const token = await h.token();
+  const writer = await h.token(['sessions:write']);
+  const reader = await h.token(['sessions:read']);
   for (const [name, optionIndex, quick, size] of [['option', 0, true, 8000], ['free', null, false, 1500]]) {
     const { id } = f.service.add(request({ requestId: name })).decision;
     const path = `/v1/decisions/${id}`;
@@ -359,19 +360,22 @@ test('HTTP: full 8,000-char quick note and 1,500-char free answer survive store,
     const note = `${prefix}${'返'.repeat(size - [...prefix].length - 1)}。`;
     assert.equal([...note].length, size);
     const body = { requestId: `answer-${name}`, optionIndex, note, quick };
-    const tooLong = await h.request(`${path}/answer`, { method: 'POST', token, key: `${name}-over`, body: { ...body, note: '字'.repeat(8001) } });
+    const tooLong = await h.request(`${path}/answer`, { method: 'POST', token: writer, key: `${name}-over`, body: { ...body, note: '字'.repeat(8001) } });
     assert.equal(tooLong.status, 400);
     assert.equal(tooLong.body.error.code, 'decision_note_too_long');
     assert.match(tooLong.body.error.message, /8000文字以内/);
     assert.equal(f.store.get(id).status, 'open');
-    const accepted = await h.request(`${path}/answer`, { method: 'POST', token, key: name, body });
+    const accepted = await h.request(`${path}/answer`, { method: 'POST', token: writer, key: name, body });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.data.decision.delivery.state, 'delivered');
-    const reload = await h.request(path, { token });
-    assert.equal(reload.body.data.answer[optionIndex === null ? 'label' : 'note'], note);
+    const reload = await h.request(path, { token: reader });
+    assert.equal(reload.status, 200);
+    const saved = reload.body.data.answer[optionIndex === null ? 'label' : 'note'];
+    assert.equal([...saved].length, size);
+    assert.deepEqual(Buffer.from(saved, 'utf8'), Buffer.from(note, 'utf8'));
     assert.ok(f.sent.at(-1).text.includes(`${optionIndex === null ? '選択: ' : '補足: '}${note}\n`));
     const count = f.sent.length;
-    assert.equal((await h.request(`${path}/answer`, { method: 'POST', token, key: `${name}-retry`, body })).status, 200);
+    assert.equal((await h.request(`${path}/answer`, { method: 'POST', token: writer, key: `${name}-retry`, body })).status, 200);
     assert.equal(f.sent.length, count);
   }
   assert.ok(f.notifications.every(n => !n.body.includes('二段目を保持')));

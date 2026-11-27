@@ -2,6 +2,8 @@
 // Entry point used by launchd: reads the environment, opens the state store and
 // serves the loopback listener until SIGTERM.
 
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   HOST,
   IDEMPOTENCY_RETENTION_MS,
@@ -44,7 +46,10 @@ try {
     store,
     version: VERSION,
     testEndpoints: testEndpointsEnabled(),
-    routeOptions: { sessions: { live: true }, voice: { worker: voiceWorker } },
+    routeOptions: {
+      sessions: { live: true }, voice: { worker: voiceWorker },
+      supervisorFile: isLane ? null : join(homedir(), '.local', 'state', 'laa-orchestrate', 'supervisor-status.json'),
+    },
   });
   const address = await bridge.listen({ port, host: HOST });
   if (startWorkReports) {

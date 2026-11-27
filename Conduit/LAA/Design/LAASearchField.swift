@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// The one search field in LAA. Chat, Doc, Studio and Work all draw this same
@@ -13,6 +14,11 @@ struct LAASearchField: View {
     /// The screen's own focus, so the Mac's ⌘F can put the cursor here.
     /// Screens without a menu item pass nothing.
     var focus: FocusState<Bool>.Binding? = nil
+    /// Glass by default. A screen that already shows three glass groups
+    /// (Work: top bar, switcher, tab bar) sets the field on the paper: an
+    /// opaque `surface` with a 1pt rule, radius 12 (opaque controls are not
+    /// capsules).
+    var glass = true
 
     var body: some View {
         HStack(spacing: LAASpacing.x3) {
@@ -39,7 +45,7 @@ struct LAASearchField: View {
         .padding(.leading, 18)
         .padding(.trailing, LAASpacing.x1)
         .frame(minHeight: LAASpacing.minimumTouchTarget)
-        .laaGlass(in: Capsule())
+        .modifier(LAASearchFieldFace(glass: glass))
     }
 
     @ViewBuilder private var field: some View {
@@ -70,6 +76,19 @@ struct LAASearchField: View {
     private func leaveField() {
         guard let focus else { return }
         focus.wrappedValue = false
+    }
+}
+
+private struct LAASearchFieldFace: ViewModifier {
+    let glass: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if glass {
+            content.laaGlass(in: Capsule())
+        } else {
+            let shape = RoundedRectangle(cornerRadius: LAAKit.LAARadius.button, style: .continuous)
+            content.background(LAAColor.surface, in: shape)
+                .overlay(shape.stroke(LAAColor.separator, lineWidth: 1))
+        }
     }
 }
 

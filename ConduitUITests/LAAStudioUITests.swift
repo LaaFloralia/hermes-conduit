@@ -127,7 +127,7 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(adopt.waitForExistence(timeout: 10)); adopt.tap()
         XCTAssertTrue(app.staticTexts["採用を確認できません。もう一度押して確認してください"].waitForExistence(timeout: 20))
         adopt.tap()
-        XCTAssertTrue(app.buttons["採用済み"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Adopted"].waitForExistence(timeout: 20))
         XCTAssertEqual(try helper("review-count"), "1")
         let revise = composer(app)
         XCTAssertTrue(revise.exists)

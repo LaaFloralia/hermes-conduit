@@ -3377,32 +3377,72 @@ struct ChatCodeBlock: View {
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                if !highlightedInLAA {
+        // LAA: no header row (it left an empty line above the code); Copy is
+        // an icon beside the first line, named for VoiceOver.
+        let layout = highlightedInLAA
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: 0))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+        layout {
+            if highlightedInLAA {
+                codeScroll
+                copyButton
+                    .padding(.top, MarkdownRichMetrics.codeVerticalInset)
+                    .padding(.trailing, MarkdownRichMetrics.codeVerticalInset)
+            } else {
+                HStack {
                     Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)
                         .font(.caption2.monospaced().weight(.semibold))
                         .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
+                    Spacer()
+                    copyButton
                 }
-                Spacer()
-                Button {
-                    UIPasteboard.general.string = source
-                    Haptics.light()
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
-                } label: {
-                    if highlightedInLAA {
-                        Text(verbatim: copyTitle).font(.system(size: 12, weight: .semibold))
-                    } else {
-                        Label(copyTitle, systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
-                    }
-                }
-                .foregroundStyle(codeLink)
-                .accessibilityIdentifier("chat.code.copy")
+                .padding(.horizontal, MarkdownRichMetrics.inset)
+                .padding(.vertical, MarkdownRichMetrics.codeVerticalInset)
+                .background(codeHeaderFill)
+                codeScroll
             }
-            .padding(.horizontal, MarkdownRichMetrics.inset)
-            .padding(.vertical, MarkdownRichMetrics.codeVerticalInset)
-            .background(highlightedInLAA ? Color.clear : codeHeaderFill)
+        }
+        .background(
+            codeFill,
+            in: RoundedRectangle(cornerRadius: codeRadius, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: codeBorderRadius, style: .continuous)
+                .strokeBorder(codeBorder, lineWidth: 1)
+        }
+    }
+
+    private var copyButton: some View {
+        Button {
+            UIPasteboard.general.string = source
+            Haptics.light()
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
+        } label: {
+            if highlightedInLAA {
+                laaCopyIcon
+            } else {
+                Label(copyTitle, systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+            }
+        }
+        .foregroundStyle(codeLink)
+        .accessibilityIdentifier("chat.code.copy")
+    }
+
+    /// LAA's Copy: an icon, named for VoiceOver (no katakana label).
+    @ViewBuilder private var laaCopyIcon: some View {
+#if LAA_BUILD
+        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+            .font(.footnote)
+            .frame(width: LAASpacing.x8, height: LAASpacing.x8)
+            .contentShape(Rectangle())
+            .accessibilityLabel(Text(verbatim: copyTitle))
+#else
+        EmptyView()
+#endif
+    }
+
+    private var codeScroll: some View {
             ScrollView(.horizontal, showsIndicators: false) {
                 Group {
                     if usesAccentSurface {
@@ -3430,15 +3470,6 @@ struct ChatCodeBlock: View {
                 }
                 .padding(MarkdownRichMetrics.inset)
             }
-        }
-        .background(
-            codeFill,
-            in: RoundedRectangle(cornerRadius: codeRadius, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: codeBorderRadius, style: .continuous)
-                .strokeBorder(codeBorder, lineWidth: 1)
-        }
     }
 }
 

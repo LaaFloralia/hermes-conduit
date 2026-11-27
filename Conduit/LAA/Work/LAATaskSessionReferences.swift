@@ -19,27 +19,37 @@ struct LAATaskSessionsSection: View {
     @State private var loaded = false
     @State private var failure = false
 
+    /// Only sessions the task's text names, or a failure to read them; with
+    /// none the section is left out rather than saying so.
     var body: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "作業エージェント").fontWeight(.semibold)
-            ForEach(sessions) { session in
-                if let url = URL(string: "laa://work/sessions/" + (session.delegateSessionId ?? session.id)) {
-                    Link(destination: url) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(verbatim: session.name)
-                            Text(verbatim: "推定 · " + LAAWorkPresentation.phase(session.phase))
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+        Group {
+            if sessions.isEmpty && !failure {
+                Color.clear.frame(height: 0)
+            } else {
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: "Sessions").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(sessions) { session in
+                        if let url = URL(string: "laa://work/sessions/" + (session.delegateSessionId ?? session.id)) {
+                            Link(destination: url) {
+                                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                    Text(verbatim: session.name)
+                                    Text(verbatim: "推定 · " + LAAWorkPresentation.phase(session.phase))
+                                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                }
+                            }
                         }
                     }
-                }
+                    if sessions.isEmpty {
+                        Text(verbatim: "参照先の会話が応答しません。Macとの接続を確認してください。")
+                            .foregroundStyle(LAAColor.secondaryText)
+                    } else {
+                        Text(verbatim: "説明・コメントの会話名またはIDから推定しています。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                }.workRuled()
             }
-            if sessions.isEmpty {
-                Text(verbatim: failure ? "参照先の会話が応答しません。Macとの接続を確認してください。" : loaded ? "参照された会話は見つかりません。" : "…")
-                    .foregroundStyle(LAAColor.secondaryText)
-            }
-            if !sessions.isEmpty { Text(verbatim: "説明・コメントの会話名またはIDから推定しています。")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-        }.workCard()
+        }
         .task(id: task.updatedAt) { await load() }
     }
 

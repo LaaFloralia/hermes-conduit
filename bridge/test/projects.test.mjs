@@ -757,4 +757,12 @@ test('project session counts keep running, awaiting the owner and waiting apart 
   assert.deepEqual(body.sessionCounts, { active: 7, archived: 1, running: 2, awaitingDecision: 1, waiting: 3 });
   assert.deepEqual(body.sessions.map(x => x.status).sort(),
     ['awaiting_decision', 'completed', 'running', 'running', 'waiting', 'waiting', 'waiting']);
+
+  // Idle follow-up sessions and a pending decision still count as active rows,
+  // but cannot become a running badge. An archived running row is excluded.
+  for (const row of body.sessions.filter(x => x.status === 'running' && !x.archivedAt)) {
+    sessions.update(row.id, record => { record.phase = 'awaiting_review'; return []; });
+  }
+  const waitingOnly = (await api.request(`/v1/projects/${p.id}`, { token })).body.data;
+  assert.deepEqual(waitingOnly.sessionCounts, { active: 7, archived: 1, running: 0, awaitingDecision: 1, waiting: 5 });
 });
