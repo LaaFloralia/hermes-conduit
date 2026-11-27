@@ -270,9 +270,9 @@ test('create requires an Idempotency-Key and known workspace, parent and profile
   assert.equal(noKey.status, 400);
   assert.equal(noKey.body.error.code, 'idempotency_key_required');
 
-  const missingProfile = await createSession(ctx, { profile: undefined }, 'k-2');
-  assert.equal(missingProfile.status, 400);
-  assert.equal(missingProfile.body.error.code, 'payload_invalid');
+  const badProfile = await createSession(ctx, { profile: 'not a profile' }, 'k-2');
+  assert.equal(badProfile.status, 400);
+  assert.equal(badProfile.body.error.code, 'payload_invalid');
 
   const unknownWorkspace = await createSession(ctx, { workspaceId: 'ws_0000000000000000' }, 'k-3');
   assert.equal(unknownWorkspace.status, 404);

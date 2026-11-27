@@ -87,6 +87,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
   }
   const daemon = sessionOptions.daemon ?? (sessionOptions.live ? daemonAdapter({ now }) : null);
   const sessionChoices = sessionOptions.options ?? sessionOptionsReader({ file: sessionOptions.modelsFile ?? resolveModelsFile(),
+    requirePicker: sessionOptions.live === true,
     availability: sessionOptions.availability ?? (sessionOptions.live ? sharedProviderAvailability() : null) });
   let sessionService;
   const decisionsOptions = options.decisions ?? {};
