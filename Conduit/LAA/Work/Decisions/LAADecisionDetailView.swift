@@ -307,6 +307,8 @@ struct LAADecisionDetailView: View {
                     Text(LAADecisionLinks.attributed(detail)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .opacity(layer == .underLinks ? 0 : 1)
+                        // The links layer above carries the only copy VoiceOver and UI tests see.
+                        .accessibilityHidden(layer == .underLinks)
                         .allowsHitTesting(onlyLinks)
                 }
             }
