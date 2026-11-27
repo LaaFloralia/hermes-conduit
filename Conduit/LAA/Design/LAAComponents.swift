@@ -89,12 +89,16 @@ struct LAASegmentedControl<Value: Hashable>: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .accessibilityIdentifier(identifier(value))
+                .accessibilityShowsLargeContentViewer { Text(verbatim: title(value)) }
             }
         }
         .padding(.horizontal, 3)
         .background {
             Capsule().fill(.clear).frame(height: 36).laaGlass(in: Capsule())
         }
+        // The track is one line: past this size the names no longer fit and
+        // each one shrank on its own. Touch and hold shows a name large.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 

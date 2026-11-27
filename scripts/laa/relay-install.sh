@@ -10,9 +10,8 @@
 #   scripts/laa/relay-install.sh uninstall  stop and remove (the rollback)
 #
 # The relay is bound to 127.0.0.1:9120 and published on the tailnet only, at
-# https://mac-mini.tailc9b8e7.ts.net:9443, which is the CONDUIT_DEFAULT_RELAY_URL
-# in project-laa.yml. Both the phone and this Mac must be on the tailnet, as
-# Hermes already requires.
+# the privately configured LAA_RELAY_PUBLIC_URL, also embedded at release.
+# Both the phone and this Mac must be on the tailnet.
 #
 # One relay serves one app bundle: APNS_TOPIC is com.laa-inc.laa. A Hermes
 # profile pairs with exactly one relay, so the LAA app is paired by a profile
@@ -29,7 +28,7 @@ install_dir="${LAA_RELAY_HOME:-$HOME/.local/share/laa-conduit-relay-laa}"
 source_dir="${LAA_RELAY_SOURCE:-$HOME/.hermes/plugins/conduit_push/relay}"
 port="${LAA_RELAY_PORT:-9120}"
 https_port="${LAA_RELAY_HTTPS_PORT:-9443}"
-public_url="${LAA_RELAY_PUBLIC_URL:-https://mac-mini.tailc9b8e7.ts.net:9443}"
+public_url="${LAA_RELAY_PUBLIC_URL:-}"
 runner="$repo/scripts/laa/relay-run.sh"
 tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 
@@ -41,6 +40,7 @@ health() {
 
 case "$action" in
   install)
+    [ -n "$public_url" ] || fail 'set LAA_RELAY_PUBLIC_URL in the private install environment'
     command -v node >/dev/null || fail "node is missing (the relay needs 22 or newer)"
     [ -d "$source_dir/src" ] || fail "no relay source at $source_dir (is the conduit_push plugin installed?)"
     [ -x "$runner" ] || fail "$runner is not executable"
@@ -96,7 +96,7 @@ PLIST
     # The tailnet address, one hop in front of the loopback port.
     "$tailscale" serve --bg --https="$https_port" "http://127.0.0.1:$port" >/dev/null \
       || fail "tailscale serve --https=$https_port failed"
-    echo "Published at $public_url (tailnet only)."
+    echo 'Published on the tailnet only.'
 
     for _ in $(seq 1 20); do
       health >/dev/null && break

@@ -7,6 +7,7 @@ fail the check; source/UI review still covers fixed Swift and server content.
 """
 import argparse
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -186,12 +187,22 @@ def check_bundle(bundle):
     return issues
 
 
+def check_release_endpoints(info, env):
+    for name, key in (("LAA_BRIDGE_URL", "LAABridgeURL"), ("LAA_RELAY_PUBLIC_URL", "ConduitDefaultRelayURL")):
+        expected = env.get(name, "").strip()
+        if not expected or info.get(key) != expected:
+            raise CheckError(f"archive is missing the configured {name}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("app", type=Path)
+    parser.add_argument("--require-endpoints", action="store_true")
     args = parser.parse_args()
     try:
         issues = check_bundle(args.app)
+        if args.require_endpoints:
+            check_release_endpoints(bundle_info(args.app), os.environ)
     except (CheckError, OSError) as error:
         print(f"LAA branding check failed: {error}", file=sys.stderr)
         return 1

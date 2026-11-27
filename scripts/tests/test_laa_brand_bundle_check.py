@@ -185,7 +185,14 @@ class LAABrandCheckTests(unittest.TestCase):
         script = (ROOT / "scripts/laa/testflight.sh").read_text()
         self.assertLess(script.index('xcodebuild archive'), script.index('check-brand-bundle.py'))
         self.assertLess(script.index('check-brand-bundle.py'), script.index('xcodebuild -exportArchive'))
-        self.assertIn('|| fail "LAA branding inspection failed', script)
+        check_line = next(line for line in script.splitlines() if 'check-brand-bundle.py' in line)
+        self.assertIn('--require-endpoints', check_line)
+        self.assertIn('|| fail "LAA bundle inspection failed', script)
+
+    def test_mac_distribution_checks_endpoints_before_export(self):
+        script = (ROOT / "scripts/laa/mac-release.sh").read_text()
+        self.assertIn('[ "$archive_only" -eq 1 ] || check_args+=(--require-endpoints)', script)
+        self.assertLess(script.index('check-brand-bundle.py'), script.index('xcodebuild -exportArchive'))
 
     def test_brand_phases_wait_for_the_processed_info_plist(self):
         for spec, names in (("project-laa.yml", ("app", "watch", "watch widget", "notification", "widget", "share")),

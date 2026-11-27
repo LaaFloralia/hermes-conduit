@@ -14,7 +14,7 @@
 #   LAA_RELAY_HOME        the installed app and its data
 #                         (default ~/.local/share/laa-conduit-relay-laa)
 #   LAA_RELAY_PORT        default 9120
-#   LAA_RELAY_PUBLIC_URL  default https://mac-mini.tailc9b8e7.ts.net:9443
+#   LAA_RELAY_PUBLIC_URL  required; set by the installer in the LaunchAgent
 #   LAA_RELAY_TEAM_ID     default PAW258GB42
 #   LAA_RELAY_TOPIC       default com.laa-inc.laa
 #   LAA_RELAY_WATCH_TOPIC default com.laa-inc.laa.watchkitapp
@@ -36,6 +36,7 @@ if [ "${LAA_RELAY_ENV_READY:-}" != 1 ]; then
     env LAA_RELAY_ENV_READY=1 "$0" "$@"
 fi
 
+[ -n "${LAA_RELAY_PUBLIC_URL:-}" ] || { echo 'relay: LAA_RELAY_PUBLIC_URL is unset' >&2; exit 1; }
 [ -n "${APNS_KEY:-}" ] || { echo "relay: APNS_KEY is empty" >&2; exit 1; }
 [ -n "${APNS_KEY_ID:-}" ] || { echo "relay: APNS_KEY_ID is empty" >&2; exit 1; }
 [ -f "$install_dir/app/src/server.mjs" ] || {
@@ -54,7 +55,7 @@ cd "$install_dir/app"
 
 export HOST="${LAA_RELAY_HOST:-127.0.0.1}"
 export PORT="${LAA_RELAY_PORT:-9120}"
-export PUBLIC_URL="${LAA_RELAY_PUBLIC_URL:-https://mac-mini.tailc9b8e7.ts.net:9443}"
+export PUBLIC_URL="$LAA_RELAY_PUBLIC_URL"
 export DATA_PATH="$install_dir/data/relay.json"
 export APNS_KEY_PATH="$key_path"
 export APNS_KEY_ID

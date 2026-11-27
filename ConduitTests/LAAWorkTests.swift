@@ -337,7 +337,7 @@ final class LAAWorkTests: XCTestCase {
     func testCalendarDeepLinkRoundTripPreservesGoogleIdentifierCharacters() throws {
         let route = LAAWorkLinkRequest()
         let values = [
-            ("invite_123@google.com", "floralia@laa-inc.com"),
+            ("invite_123@google.com", "owner@example.test"),
             ("holiday_123", "ja.japanese#holiday@group.v.calendar.google.com"),
             ("event+with_under_score@google.com", "team+calendar_123@group.calendar.google.com")
         ]

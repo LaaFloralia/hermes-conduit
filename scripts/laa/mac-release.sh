@@ -4,7 +4,8 @@
 # --archive-only creates an unsigned archive for build verification only.
 # Catalyst tests: xcodebuild test -scheme Conduit -destination 'platform=macOS,variant=Mac Catalyst'
 # The template supplies ASC_KEY, ASC_KEY_ID, ASC_ISSUER_ID and the Developer ID
-# PKCS#12 as LAA_DEVID_P12_B64 with LAA_DEVID_P12_PASSWORD.
+# PKCS#12 as LAA_DEVID_P12_B64 with LAA_DEVID_P12_PASSWORD, plus the private
+# LAA_BRIDGE_URL and LAA_RELAY_PUBLIC_URL embedded into the app.
 set -euo pipefail
 set +x
 cd "$(dirname "$0")/../.."
@@ -15,6 +16,10 @@ if [ "${1:-}" = --archive-only ] && [ "$#" -eq 1 ]; then
 elif [ "$#" -ne 0 ]; then
     printf 'usage: %s [--archive-only]\n' "$0" >&2
     exit 2
+fi
+if [ "$archive_only" -eq 0 ]; then
+    : "${LAA_BRIDGE_URL:?LAA_BRIDGE_URL must be set in the private release environment}"
+    : "${LAA_RELAY_PUBLIC_URL:?LAA_RELAY_PUBLIC_URL must be set in the private release environment}"
 fi
 # Generation and archiving share Conduit.xcodeproj with the iPhone release.
 if [ "${LAA_MAC_RELEASE_IN_SLOT:-}" != 1 ]; then
@@ -191,7 +196,10 @@ archive_complete=1
 app="$archive/Products/Applications/Conduit.app"
 [ -d "$app" ] || app="$archive/Products/Applications/LAA.app"
 [ -d "$app" ] || fail 'archive did not produce LAA.app or Conduit.app'
-python3 "$repo/scripts/laa/check-brand-bundle.py" "$app" || fail 'LAA branding inspection failed'
+check_args=()
+[ "$archive_only" -eq 1 ] || check_args+=(--require-endpoints)
+python3 "$repo/scripts/laa/check-brand-bundle.py" "$app" ${check_args[@]+"${check_args[@]}"} \
+    || fail 'LAA bundle inspection failed'
 date_bundles=()
 while IFS= read -r bundle; do date_bundles+=("$bundle"); done \
     < <(find "$app" -type d \( -name '*.app' -o -name '*.appex' \))

@@ -20,6 +20,11 @@ struct GroupChatView: View {
     /// actions.
     @Environment(\.v2ComposerRests) private var isV2
     @State private var showingDisbandConfirmation = false
+#if LAA_BUILD
+    /// How far the room's title (faces and name) hangs below the bar's
+    /// 44 pt row; the transcript starts below it.
+    @State private var titleHang: CGFloat = 0
+#endif
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Following the latest event, or browsing history (GroupRoomFollow).
     /// The flag decides scrolling; the published copy draws the button.
@@ -60,7 +65,12 @@ struct GroupChatView: View {
             if isV2 {
 #if LAA_BUILD
                 VStack(spacing: 0) {
+                    // The transcript starts, and is cut, below the title that
+                    // hangs under the bar, as a chat's is below its heading:
+                    // scrolled beneath it, large lines ("今日") showed through.
                     transcript
+                        .padding(.top, titleHang)
+                        .clipped()
                     bottomBar
                 }
 #else
@@ -474,7 +484,8 @@ struct GroupChatView: View {
     private var roomTitle: some View {
 #if LAA_BUILD
         GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
-            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu)
+            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu,
+            onHang: { titleHang = $0 })
 #else
         GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
             picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) })
@@ -612,6 +623,8 @@ struct GroupRoomTitle: View {
 
 #if LAA_BUILD
     var information: AnyView? = nil
+    /// How far the title reaches below the bar's row, for the transcript.
+    var onHang: ((CGFloat) -> Void)? = nil
     @State private var showingInformation = false
 #endif
     var body: some View {
@@ -625,7 +638,13 @@ struct GroupRoomTitle: View {
                 }.padding(.horizontal, 12).padding(.vertical, 5)
                     .conduitGlassControl(cornerRadius: 20, tint: LAAColor.link.opacity(0.06), interactive: false)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onHang?(max(0, $0 - 44)) }
         }.buttonStyle(.plain).frame(height: 44, alignment: .top)
+            // The title hangs below the bar by a fixed depth, so it does not
+            // grow with the text: larger, it covered the transcript's first
+            // line ("今日"). Touch and hold shows the name large.
+            .dynamicTypeSize(...DynamicTypeSize.large)
+            .accessibilityShowsLargeContentViewer { Text(verbatim: name) }
             .accessibilityLabel(String("\(name)、会話の情報"))
             .accessibilityIdentifier("room.header")
             .sheet(isPresented: $showingInformation) {

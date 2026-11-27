@@ -5,7 +5,7 @@ import { BridgeError } from '../src/errors.mjs';
 
 const sink = () => { const s = { text: '', write: (t) => { s.text += t; } }; return s; };
 const event = { id: 'e1', calendarId: 'c1', title: '打合せ', start: '2026-11-27T10:00:00+09:00', end: '2026-11-27T11:00:00+09:00', allDay: false,
-  location: null, meetingLink: null, attendees: [{ email: 'owner@laa-inc.com' }, { email: 'x@client.example' }] };
+  location: null, meetingLink: null, attendees: [{ email: 'owner@example.test' }, { email: 'x@client.example' }] };
 const service = (fail) => ({
   calendars: async () => ({ items: [{ id: 'c1', title: 'A', selected: true }, { id: 'c2', title: 'B', selected: false }] }),
   list: async (args) => { if (fail) throw new BridgeError(503, 'calendar_not_configured', 'x'); service.args = args; return { items: [event], skippedCount: 0, source: 'google' }; },
@@ -22,7 +22,8 @@ test('events reads selected calendars only and hides attendee addresses', async 
   assert.equal(await calendarCommand(['events'], { json: true, days: '1', from: '2026-11-27' }, { service: s, out, err: sink() }), 0);
   const body = JSON.parse(out.text);
   assert.deepEqual(args.calendarIds, ['c1']);
-  assert.deepEqual(body.items[0].attendeeDomains, ['laa-inc.com', 'client.example']);
+  assert.deepEqual(body.items[0].attendeeDomains, ['example.test', 'client.example']);
+  assert.ok(!out.text.includes('owner@example.test'));
   assert.ok(!out.text.includes('x@client.example'));
 });
 

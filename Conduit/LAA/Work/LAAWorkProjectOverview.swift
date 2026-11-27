@@ -23,15 +23,26 @@ struct LAAWorkProjectMeter: View {
 struct LAAWorkProjectRow: View {
     let project: LAAWorkProject
     var activity: LAAWorkProjectActivity = .idle
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                LAAWorkRefLabel(ref: project.ref)
-                Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
-                    .foregroundStyle(LAAColor.text).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: LAASpacing.x2)
-                activityMark
+            if typeSize.isAccessibilitySize {
+                // The number and the mark share the first line and the name
+                // takes the next in full: beside them it shrank to "P1 •••".
+                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                    LAAWorkRefLabel(ref: project.ref)
+                    Spacer(minLength: LAASpacing.x2)
+                    activityMark
+                }
+                name.lineLimit(3)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+                    LAAWorkRefLabel(ref: project.ref)
+                    name.lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: LAASpacing.x2)
+                    activityMark
+                }
             }
             progressLine
             if let note = project.progressNote {
@@ -44,6 +55,11 @@ struct LAAWorkProjectRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: accessibilityText))
+    }
+
+    private var name: some View {
+        Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold)
+            .foregroundStyle(LAAColor.text)
     }
 
     @ViewBuilder private var activityMark: some View {
@@ -487,6 +503,8 @@ struct LAAWorkProjectPage: View {
                                 action: (String, String, String, () -> Void)?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
             Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                // One word: shrink a little before breaking it ("Requirement / s").
+                .lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)
                 .accessibilityAddTraits(.isHeader)
             if let count {
                 Text(verbatim: "\(count)").laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.secondaryText)

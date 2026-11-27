@@ -210,6 +210,8 @@ struct LAATodayView: View {
                             // Two tabular digits must fit a seventh of the width, even at AX5.
                             // Other Today text and the full date accessibility label still scale.
                             .minimumScaleFactor(LAACanvas.iphone.label / dayNumberSize)
+                            // A gap on both sides, so two days never read as one number.
+                            .padding(.horizontal, LAASpace.hair)
                             .foregroundStyle(inMonth ? LAAColor.text : LAAColor.secondaryText)
                         Circle().fill(count > 0 ? LAAColor.link : .clear)
                             .frame(width: LAASpace.hair, height: LAASpace.hair)
