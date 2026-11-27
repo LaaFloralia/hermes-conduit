@@ -57,7 +57,7 @@ extension LAACopy {
         static let saveMine = "Save Changes"
         static let compare = "Compare Versions"
         static let save = "Save"
-        static let openLinear = "Open in Linear"
+        static let openTask = "Open"
         static let projectName = "Project Name"
 
         // Keep Work list headings and actions consistent with its menus.

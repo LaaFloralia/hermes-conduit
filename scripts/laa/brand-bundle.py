@@ -36,6 +36,8 @@ STATIC_COPY_KEYS = {
     "The Bridge connection changed. Reopen the file.": "drive_reconnected",
     "The Mac has not allowed the Bridge to read Google Drive.": "drive_permission",
     "Monthly": "monthly",
+    # Tasks never name their source (D-35): the owner reads Task, not Linear.
+    "Imported from Linear": "imported_task",
     "Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server.": "qwen",
     "Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.": "fast_model",
     "GPT-Live calls will use your Hermes server's OpenAI API key, which OpenAI bills per minute of call time, separately from any ChatGPT plan. Your Hermes server has to allow it too (voice.gpt_live.conduit_api_billing in the profile's config).": "billing",

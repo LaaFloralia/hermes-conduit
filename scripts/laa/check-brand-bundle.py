@@ -21,7 +21,8 @@ REQUIRED = {APP_ID, APP_ID + ".widgets", APP_ID + ".ShareExtension",
             APP_ID + ".watchkitapp.widgets"}
 MAC_REQUIRED = {APP_ID, APP_ID + ".NotificationService"}
 INTENTS = {APP_ID, APP_ID + ".watchkitapp", APP_ID + ".watchkitapp.widgets"}
-BRAND = re.compile(r"Conduit|Hermes|Paseo|パセオ", re.I)
+# Task copy never names its source either (D-35): Linear stays behind the Bridge.
+BRAND = re.compile(r"Conduit|Hermes|Paseo|パセオ|(?<![A-Za-z])Linear(?![A-Za-z])", re.I)
 NOTICE_NAME = "LAAOpenSourceNotices.txt"
 NOTICE_SOURCE = Path(__file__).resolve().parents[2] / "assets/laa" / NOTICE_NAME
 

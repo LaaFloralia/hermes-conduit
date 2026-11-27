@@ -100,7 +100,7 @@ enum LocationHostClient {
         // proxy's or portal's page, or nothing) stored nothing: counting it
         // as sent would drop the location.
         guard let object else {
-            throw LocationHostError.http(status: http.statusCode, detail: "The answer wasn't from the Conduit plugin.")
+            throw LocationHostError.http(status: http.statusCode, detail: LAAProductBrand.display("The answer wasn't from the Conduit plugin."))
         }
         return object
     }

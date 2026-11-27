@@ -115,7 +115,7 @@ def compose(job, content, profile, db, *, for_failure, now, fix):
     if count == 1:
         return content, 'failure', signature, None
     if count == 2:
-        where = f"Linear {fix_ref}" if fix_ref else 'Linearへの登録に失敗、実行記録に残しています'
+        where = f"タスク {fix_ref}" if fix_ref else 'タスクへの登録に失敗、実行記録に残しています'
         first = next((line for line in str(content).splitlines() if line.strip() and line.strip() != '[CRON_FAILURE]'), '')
         return (f"同じ障害が2回続いたため、修理に回しました（{where}）。直るまでこの件は報告せず、直ったらお知らせします。\n\n{first}",
                 'fix_opened', signature, fix_ref)

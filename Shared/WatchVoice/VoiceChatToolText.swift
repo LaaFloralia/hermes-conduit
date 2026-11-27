@@ -150,7 +150,7 @@ enum VoiceChatToolText {
     static let delegatedNoMatches = "[No chats match that. Tell the user, and offer to try other words.]"
 
     static func delegatedSearchFailed(_ reason: String) -> String {
-        "[Conduit couldn't search the chats: \(reason) Tell the user in a few words.]"
+        LAAProductBrand.display("[Conduit couldn't search the chats: ") + reason + " Tell the user in a few words.]"
     }
 
     static func delegatedRead(chat: String) -> String {
@@ -164,6 +164,6 @@ enum VoiceChatToolText {
     static let delegatedUnknownChat = "[That isn't one of the chats found. Delegate \"Find chat:\" with a few words from the topic first.]"
 
     static func delegatedReadFailed(_ reason: String) -> String {
-        "[Conduit couldn't read the chat: \(reason) Tell the user in a few words.]"
+        LAAProductBrand.display("[Conduit couldn't read the chat: ") + reason + " Tell the user in a few words.]"
     }
 }
