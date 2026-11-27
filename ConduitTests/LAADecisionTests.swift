@@ -125,6 +125,107 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertFalse(decoded.items[1].answeredByMonet)
     }
 
+    // MARK: 回答済み (settled answers of the last 24 hours)
+
+    private let settledNow = ISO8601DateFormatter().date(from: "2026-11-28T12:00:00Z")!
+
+    private func answeredItem(_ id: String, at stamp: String?, by: String? = nil, reason: String? = nil,
+                              delivery: String = "delivered", waiting: Bool? = nil, overturned: Bool = false,
+                              category: String = "owner") -> LAADecision {
+        var answer = LAADecision.Answer(optionIndex: 0, label: "案\(id)", note: nil, answeredAt: stamp)
+        answer.answeredBy = by; answer.reason = reason
+        var state = LAADecision.Delivery(state: delivery, attempts: 1, deliveredAt: nil, error: nil)
+        state.waiting = waiting
+        return LAADecision(id: id, status: "answered", title: "判断\(id)", summary: "",
+                           options: [.init(label: "案\(id)", recommended: true)],
+                           answer: answer, delivery: state, category: category, overturned: overturned)
+    }
+
+    func testSettledAnswersOfTheLastDayGoUnderAnsweredAndTheRestStay() {
+        let monet = answeredItem("dec_monet", at: "2026-11-28T11:00:00Z", by: "monet", reason: "安全な範囲", category: "delegable")
+        let owner = answeredItem("dec_owner", at: "2026-11-28T09:00:00Z", by: "owner")
+        let legacy = answeredItem("dec_legacy", at: "2026-11-28T10:00:00Z")
+        let old = answeredItem("dec_old", at: "2026-11-27T11:59:00Z", by: "owner")
+        let undated = answeredItem("dec_undated", at: nil, by: "owner")
+        let failed = answeredItem("dec_failed", at: "2026-11-28T11:30:00Z", delivery: "failed")
+        let waiting = answeredItem("dec_waiting", at: "2026-11-28T11:40:00Z", delivery: "pending", waiting: true)
+        let open = LAADecision(id: "dec_open", title: "未回答", summary: "", options: [.init(label: "A", recommended: true)],
+                               category: "owner")
+        let board = LAADecisionBoard()
+        board.setForTesting([old, owner, failed, monet, open, undated, waiting, legacy], now: settledNow)
+        // Newest answer first; 24 hours and older, or without a time, are not shown.
+        XCTAssertEqual(board.settled.map(\.id), ["dec_monet", "dec_legacy", "dec_owner"])
+        // A failed or still-pending delivery keeps its place on the board.
+        XCTAssertEqual(Set(board.items.map(\.id)), ["dec_failed", "dec_waiting", "dec_open"])
+        XCTAssertEqual(board.count, 2, "the open question and the failed delivery need the owner")
+        // A settled record past the window is still known, so a stale card cannot answer it again.
+        XCTAssertEqual(board.records["dec_old"]?.answer?.label, "案dec_old")
+        XCTAssertTrue(owner.answered(now: settledNow))
+        XCTAssertFalse(owner.answered(now: settledNow.addingTimeInterval(LAADecisionSettled.window)))
+        // A read that crossed this device's overturn does not put Monet's answer back.
+        let crossed = LAADecisionBoard.split([monet], answeredHere: [monet.id], now: settledNow)
+        XCTAssertTrue(crossed.settled.isEmpty)
+        XCTAssertTrue(crossed.board.isEmpty)
+    }
+
+    func testMonetAndOwnerAnswersReadDifferentlyUnderAnswered() {
+        let monet = answeredItem("dec_monet", at: "2026-11-28T11:00:00Z", by: "monet", reason: "安全な範囲", category: "delegable")
+        let owner = answeredItem("dec_owner", at: "2026-11-28T09:00:00Z", by: "owner")
+        let changed = answeredItem("dec_changed", at: "2026-11-28T10:00:00Z", by: "owner", overturned: true,
+                                   category: "delegable")
+        XCTAssertEqual(LAADecisionSettled.mark(monet), "Monetの回答")
+        XCTAssertNil(LAADecisionSettled.mark(owner))
+        XCTAssertEqual(LAADecisionSettled.mark(changed), "社長が変更")
+        XCTAssertEqual(String(LAADecisionBoardView.settledLine(monet, answer: monet.answer!).characters), "Monetの回答 · 案dec_monet")
+        XCTAssertEqual(String(LAADecisionBoardView.settledLine(owner, answer: owner.answer!).characters), "案dec_owner")
+        XCTAssertEqual(String(LAADecisionBoardView.settledLine(changed, answer: changed.answer!).characters), "社長が変更 · 案dec_changed")
+        XCTAssertTrue(LAADecisionCopy.accessibilityLabel(monet).contains("Monetの回答、回答 案dec_monet、安全な範囲"))
+        // Monet's answer can be overturned from its detail; the owner's own opens read-only.
+        XCTAssertTrue(monet.canOverturn)
+        XCTAssertFalse(owner.canOverturn)
+        XCTAssertFalse(changed.canOverturn)
+        XCTAssertTrue(owner.answeredByOwner)
+        XCTAssertFalse(LAADecisionBoardView.needsAttention(monet))
+        XCTAssertFalse(LAADecisionBoardView.needsAttention(owner))
+        // Choosing again over Monet records an overturn locally too.
+        let overturn = LAADecisionDetailView.answered(monet, optionIndex: 0, label: "案B", note: nil)
+        XCTAssertTrue(overturn.overturned)
+        XCTAssertEqual(overturn.monetAnswer?.label, "案dec_monet")
+        XCTAssertEqual(LAADecisionSettled.mark(overturn), "社長が変更")
+    }
+
+    func testAnsweredStartsClosedAndMergesThisDevicesAnswers() {
+        XCTAssertFalse(LAADecisionSettled.expandedByDefault)
+        let fromBridge = answeredItem("dec_a", at: "2026-11-28T08:00:00Z", by: "owner")
+        let justSent = answeredItem("dec_b", at: "2026-11-28T11:59:00Z")
+        let sameAsBridge = answeredItem("dec_a", at: "2026-11-28T08:00:00Z")
+        let linkedOld = answeredItem("dec_link", at: "2026-11-20T08:00:00Z", by: "owner")
+        let stillOnBoard = answeredItem("dec_c", at: "2026-11-28T11:00:00Z")
+        let rows = LAADecisionSettled.rows(board: [fromBridge], local: [justSent, sameAsBridge, linkedOld, stillOnBoard],
+                                           linkedOnly: ["dec_link"], onBoard: ["dec_c"], now: settledNow)
+        // One 回答済み area: no duplicates, nothing still on the board, a link's record kept while opened.
+        XCTAssertEqual(rows.map(\.id), ["dec_b", "dec_a", "dec_link"])
+        XCTAssertTrue(LAADecisionSettled.rows(board: [], local: [linkedOld], linkedOnly: [], onBoard: [],
+                                              now: settledNow).isEmpty)
+    }
+
+    func testAnsweredFieldsDecodeAndOlderPayloadsStillRead() throws {
+        let decoded = try page(#"{"items":[{"kind":"board","id":"dec_a","title":"方法","status":"answered","category":"delegable","answer":{"optionIndex":1,"label":"案二","note":null,"answeredAt":"2026-11-28T11:00:00Z","answeredBy":"owner"},"overturned":true,"monetAnswer":{"optionIndex":0,"label":"案一","answeredAt":"2026-11-28T10:00:00Z","answeredBy":"monet","reason":"安全"},"delivery":{"state":"delivered"}},{"kind":"board","id":"dec_b","title":"古い","status":"answered","answer":{"optionIndex":0,"label":"A"},"overturned":"yes"}]}"#)
+        let current = decoded.items[0]
+        XCTAssertEqual(current.answer?.answeredAt, "2026-11-28T11:00:00Z")
+        XCTAssertTrue(current.overturned)
+        XCTAssertEqual(current.monetAnswer?.label, "案一")
+        XCTAssertTrue(current.isSettled)
+        XCTAssertTrue(current.answered(now: settledNow))
+        let older = decoded.items[1]
+        XCTAssertNil(older.answer?.answeredAt)
+        XCTAssertFalse(older.overturned)
+        XCTAssertNil(older.monetAnswer)
+        XCTAssertFalse(older.answered(now: settledNow), "no time, so not under 回答済み")
+        let roundTrip = try JSONDecoder().decode(LAADecision.self, from: JSONEncoder().encode(current))
+        XCTAssertEqual(roundTrip, current)
+    }
+
     func testReportLinkResolvesProjectWithoutTreatingItAsADecisionOrSession() throws {
         let request = LAAWorkLinkRequest()
         XCTAssertTrue(request.open(try XCTUnwrap(URL(string: "laa://work/projects/prj_0123456789ab"))))
