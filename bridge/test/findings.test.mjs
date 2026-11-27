@@ -101,7 +101,7 @@ test('requestId updates only open content and validates one-line text and Unicod
   assert.equal(readFileSync(path, 'utf8'), '{ broken');
 });
 
-test('transitions and retention: pickup once, done/dismissed purge at seven days, stale stays open', (t) => {
+test('transitions and retention: pickup once, done/dismissed purge at seven days', (t) => {
   const { store, service, time, dir } = fixture(t);
   const open = store.add(input);
   const done = store.add({ ...input, requestId: 'done' });
@@ -119,7 +119,7 @@ test('transitions and retention: pickup once, done/dismissed purge at seven days
   store.dismiss(dismissed.id);
   assert.throws(() => store.dismiss(done.id), { code: 'finding_state' });
   assert.throws(() => store.delegate(dismissed.id), { code: 'finding_state' });
-  assert.deepEqual(service.stats(), { open: 1, delegated: 0, done: 1, dismissed: 1, stale: 0 });
+  assert.deepEqual(service.stats(), { open: 1, delegated: 0, done: 1, dismissed: 1, staleDismissed: 0 });
   assert.deepEqual(service.list().items.map((r) => r.id).sort(), [open.id, done.id].sort());
   time.at += 7 * DAY - 1;
   assert.equal(service.list({ status: 'done' }).items[0].result, '検証済み');
@@ -128,13 +128,40 @@ test('transitions and retention: pickup once, done/dismissed purge at seven days
   assert.deepEqual(service.list({ status: 'done' }).items, []);
   assert.deepEqual(disk(dir).map((r) => r.id), [open.id]);
   assert(!existsSync(doneImg.folder) && !existsSync(dismissedImg.folder));
-  time.at = start + 30 * DAY;
-  assert.equal(service.list().items[0].stale, true);
-  assert.deepEqual(service.stats(), { open: 1, delegated: 0, done: 0, dismissed: 0, stale: 1 });
-  store.add(input);
-  assert.equal(service.list().items[0].stale, true);
-  store.add({ ...input, title: '検証手順を更新' });
-  assert.equal(service.list().items[0].stale, false);
+});
+
+test('retention auto-dismisses only open findings unchanged for 30 days, releases F, then purges images and count', (t) => {
+  const { store, time, dir, now } = fixture(t);
+  const refs = registryAt(dir, now);
+  const service = createFindingService({ store, refFor: refs.refFor, observe: refs.observeComplete });
+  const open = store.add(input);
+  const refreshed = store.add({ ...input, requestId: 'refreshed' });
+  const delegated = store.add({ ...input, requestId: 'delegated' });
+  store.delegate(delegated.id);
+  service.reconcile();
+  assert.match(refs.refFor('finding', open.id), /^F\d+$/);
+  time.at += 29 * DAY;
+  assert.equal(store.add(input).updatedAt, open.updatedAt);
+  store.add({ ...input, requestId: 'refreshed', title: '検証手順を更新' });
+  const image = seedImage(dir, open.id);
+  time.at = start + 30 * DAY - 1;
+  assert.equal(service.get(open.id).status, 'open');
+  time.at++;
+  store.sweep();
+  assert.deepEqual(service.list().items.map(({ id }) => id).sort(), [refreshed.id, delegated.id].sort());
+  const dismissedAt = new Date(now()).toISOString();
+  assert.deepEqual(service.get(open.id, { local: true }), { ...open, images: [{ id: image.id, width: image.width, height: image.height }],
+    ref: null, sourceRef: null, status: 'dismissed', dismissedBy: 'stale', result: '30日動きがないため取り下げ',
+    dismissedAt, updatedAt: dismissedAt });
+  assert.equal(refs.refFor('finding', open.id), null);
+  assert.deepEqual(service.stats(), { open: 1, delegated: 1, done: 0, dismissed: 1, staleDismissed: 1 });
+  time.at += 7 * DAY - 1;
+  assert(existsSync(image.folder));
+  assert.equal(service.stats().staleDismissed, 1);
+  time.at++;
+  assert.equal(service.stats().staleDismissed, 0);
+  assert(!disk(dir).some(({ id }) => id === open.id));
+  assert(!existsSync(image.folder));
 });
 
 test('CLI writes local state, infers source name, reads server F numbers, and uses contract output and exit codes', (t) => {
@@ -166,7 +193,7 @@ test('CLI writes local state, infers source name, reads server F numbers, and us
   assert.equal(run(['done', ref, '--result', '確認済み']).finding.result, '確認済み');
   assert.equal(run(['dismiss', unknown.finding.id]).finding.status, 'dismissed');
   assert.equal(run(['list']).items.length, 1);
-  assert.deepEqual(run(['stats']), { ok: true, open: 0, delegated: 0, done: 1, dismissed: 1, stale: 0 });
+  assert.deepEqual(run(['stats']), { ok: true, open: 0, delegated: 0, done: 1, dismissed: 1, staleDismissed: 0 });
   assert.equal(run(['show', 'F99999'], 3).error.code, 'finding_not_found');
   assert.equal(readFileSync(join(dir, 'refs.json'), 'utf8'), refsBefore);
   assert.match(run(['list'], 1, { json: false, overrides: { LAA_BRIDGE_STATE_DIR: join(root, '..', 'must-not-open') } }), /^$/);

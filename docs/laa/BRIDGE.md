@@ -144,7 +144,7 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 
 `laa-bridge finding add` で範囲外の発見を `findings.json` に登録する。会話を止めず、通知を送らない。同じ `--request-id` は未着手の内容を更新する。完了報告の提案には登録された `F` 番号だけを書く。社長本人の対応が必要なら、社長担当のLinear Taskにする。
 
-`GET /v1/findings` と詳細・画像は `sessions:read`、`POST /v1/findings/<id>/delegate|dismiss` は `sessions:write`。任せた件は統括が引き取り、検証後に結果を記録する。見送りはすぐ一覧から消え、完了は7日間表示する。いずれも7日後に画像ごと消し、未着手の30日経過は削除せず印を付ける。
+`GET /v1/findings` と詳細・画像は `sessions:read`、`POST /v1/findings/<id>/delegate|dismiss` は `sessions:write`。任せた件は統括が引き取り、検証後に結果を記録する。見送りはすぐ一覧から消え、完了は7日間表示する。未着手のまま30日間更新がなければ自動で見送り、`finding stats` の `staleDismissed` に数える。見送り・完了から7日後に画像ごと消す。
 
 ### Projects and requirements
 

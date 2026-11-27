@@ -44,6 +44,7 @@ const planKey = (id) => text(id, 'plan id', 200);
 const terminalAt = (row) => row.status === 'done' ? row.doneAt : row.status === 'dismissed' ? row.dismissedAt : null;
 const expired = (row, now) => now - Date.parse(terminalAt(row)) >= 7 * DAY;
 const stale = (row, now) => row.status === 'open' && now - Date.parse(row.updatedAt) >= 30 * DAY;
+const STALE_RESULT = '30日動きがないため取り下げ';
 const time = (v) => typeof v === 'string' && Number.isFinite(Date.parse(v));
 const stateConflict = () => conflict('finding_state', 'この状態では操作できません。');
 const missing = () => new BridgeError(404, 'finding_not_found', '気づきが見つかりません。');
@@ -60,7 +61,9 @@ function checked(doc) {
       || !time(row.createdAt) || !time(row.updatedAt)
       || (['delegated', 'done'].includes(row.status) ? !time(row.delegatedAt) : row.delegatedAt !== null)
       || (row.status === 'dismissed' ? !time(row.dismissedAt) : row.dismissedAt !== null)
-      || (row.status === 'done' ? !time(row.doneAt) || resultText(row.result) !== row.result : row.doneAt !== null || row.result !== null)
+      || (row.dismissedBy !== undefined && (row.status !== 'dismissed' || row.dismissedBy !== 'stale'))
+      || (row.status === 'done' ? !time(row.doneAt) || resultText(row.result) !== row.result
+        : row.doneAt !== null || row.result !== (row.dismissedBy === 'stale' ? STALE_RESULT : null))
       || (row.pickup !== null && (!row.delegatedAt || !time(row.pickup?.at) || planKey(row.pickup?.plan) !== row.pickup.plan))) {
       throw new Error('invalid finding record');
     }
@@ -86,6 +89,11 @@ export function createFindingStore({ dir, now = () => Date.now() }) {
       return file.mutate((doc) => {
         const rows = access(() => checked(doc));
         const at = now();
+        for (const row of rows) {
+          if (!stale(row, at)) continue;
+          const dismissedAt = new Date(at).toISOString();
+          Object.assign(row, { status: 'dismissed', dismissedBy: 'stale', result: STALE_RESULT, dismissedAt, updatedAt: dismissedAt });
+        }
         if (rows.some((row) => expired(row, at))) {
           images.prune(rows, at);
           doc.records = rows.filter((row) => !expired(row, at));
@@ -110,8 +118,8 @@ export function createFindingStore({ dir, now = () => Date.now() }) {
     });
   }
   function all() {
-    const rows = read();
-    if (!rows.some((row) => expired(row, now()))) return rows;
+    const rows = read(), at = now();
+    if (!rows.some((row) => expired(row, at) || stale(row, at))) return rows;
     return mutate((retained) => retained);
   }
   function stage(imageInputs) {
@@ -123,8 +131,10 @@ export function createFindingStore({ dir, now = () => Date.now() }) {
   }
   return {
     all,
-    isStale: (row) => stale(row, now()),
-    sweep: () => { if (existsSync(join(dir, imageDirectory))) mutate((rows) => { images.prune(rows, now()); }); },
+    sweep() {
+      if (existsSync(join(dir, imageDirectory))) mutate((rows) => { images.prune(rows, now()); });
+      else all();
+    },
     image: (id, imgId, size) => images.read(read().find((row) => row.id === id), imgId, size, now()),
     add(body, imageInputs = []) {
       const requestId = requestKey(body.requestId), next = fields(body), source = sourceFields(body.source);

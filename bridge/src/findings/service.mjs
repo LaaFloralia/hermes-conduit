@@ -18,7 +18,7 @@ export function createFindingService({ store, sessionStore = null, refFor = null
     return { ...visible,
       ref: row.status === 'dismissed' ? null : refFor?.('finding', row.id) ?? null,
       sourceRef: row.source.sessionId ? refFor?.('session', row.source.sessionId) ?? null : null,
-      stale: store.isStale(row), ...(local ? { requestId } : {}),
+      ...(local ? { requestId } : {}),
     };
   }
   function result(row, local) {
@@ -54,7 +54,7 @@ export function createFindingService({ store, sessionStore = null, refFor = null
     image: (id, imgId, size) => store.image(id, imgId, size),
     stats() {
       const rows = store.all();
-      return { ...countsFor(rows, [...LIST_STATUS, 'dismissed']), stale: rows.filter(store.isStale).length };
+      return { ...countsFor(rows, [...LIST_STATUS, 'dismissed']), staleDismissed: rows.filter((row) => row.dismissedBy === 'stale').length };
     },
   };
 }
