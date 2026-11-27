@@ -243,6 +243,7 @@ test('lane matches only its own stamp and every removed outbound route refuses',
   assert.equal(status, 0);
   const { data: auth } = await (await call('/v1/devices/enroll', { method: 'POST', body: JSON.stringify({ code: JSON.parse(pairing).code, name: 'test-runner' }) })).json();
   const headers = { authorization: `Bearer ${auth.token}` };
+  assert.deepEqual((await (await call('/v1/status', { headers })).json()).data.supervisor, { status: 'missing' });
   createDecisionStore({ dir: state(root) }).add(seed);
   assert.equal((await (await call('/v1/decisions', { headers })).json()).data.items.length, 1);
   const sink = readFileSync(join(root, 'sink/notify.jsonl'), 'utf8').trim();

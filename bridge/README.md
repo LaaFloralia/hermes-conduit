@@ -203,6 +203,7 @@ and no pending decision for the project.
 | method / path | 認証 | 応答 |
 |---|---|---|
 | `GET /v1/health` | 不要 | `{version, uptimeSeconds}` のみ |
+| `GET /v1/status` | Bearer + `usage:read` | Bridge version and uptime plus a read-only `supervisor` summary: `ok`/`stalled`/`stale`/`missing`, timestamps and safe counters. No text, model IDs or action payloads from the supervisor file. |
 | `POST /v1/devices/enroll` | ペアリングコード | `{deviceId, token, scopes, createdAt}`（201） |
 | `GET /v1/me` | Bearer | `{deviceId, name, scopes, platform, createdAt}` |
 | `POST /v1/voice/transcribe` | Bearer + `voice:transcribe` | `{pcm16,sampleRate:16000,language?:ja}` → `{text,model}`。PCM16LE mono base64、25秒まで |
