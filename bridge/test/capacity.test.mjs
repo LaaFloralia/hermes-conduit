@@ -46,11 +46,23 @@ test('failures, malformed and future samples do not become numbers; old samples 
   time = at - 1; assert.equal(byId(s.read()).get('capacity.mac-mini.memory').value, null);
 });
 
-test('Google account and quota must match; requests share inflight and do not wait', async t => {
-  const connection = { request: async () => ({}), json: async () => ({ user: { emailAddress: 'other@example.com' }, storageQuota: { limit: '100', usage: '1' } }) };
-  await assert.rejects(readGoogleCapacity({ connection }));
-  connection.json = async () => ({ user: { emailAddress: 'floralia@laa-inc.com' }, storageQuota: { limit: '100', usage: '60', usageInDrive: '15' } });
-  assert.deepEqual(await readGoogleCapacity({ connection }), { totalBytes: 100, usedBytes: 60, availableBytes: 40, driveUsageBytes: 15 });
+test('Google capacity requires a configured account and accepts only its quota', async () => {
+  const expectedEmail = '  OWNER@example.test  ';
+  let requests = 0;
+  const connection = { request: async () => { requests++; return {}; } };
+  await assert.rejects(readGoogleCapacity({ connection, expectedEmail: '  ' }), /account not configured/);
+  assert.equal(requests, 0);
+  for (const emailAddress of ['other@example.test', null, 123]) {
+    connection.json = async () => ({ user: { emailAddress }, storageQuota: { limit: '100', usage: '1' } });
+    await assert.rejects(readGoogleCapacity({ connection, expectedEmail }), /account mismatch/);
+  }
+  connection.json = async () => ({ user: { emailAddress: 'owner@example.test' }, storageQuota: { limit: '100', usage: '60', usageInDrive: '15' } });
+  assert.deepEqual(await readGoogleCapacity({ connection, expectedEmail }), { totalBytes: 100, usedBytes: 60, availableBytes: 40, driveUsageBytes: 15 });
+  connection.json = async () => ({ user: { emailAddress: 'owner@example.test' }, storageQuota: {} });
+  await assert.rejects(readGoogleCapacity({ connection, expectedEmail }), /invalid quota/);
+});
+
+test('capacity requests share inflight and do not wait', async t => {
   let resolve, calls = 0;
   const s = create({ google: () => { calls++; return new Promise(r => { resolve = r; }); } }); t.after(s.close);
   assert.equal(calls, 0);

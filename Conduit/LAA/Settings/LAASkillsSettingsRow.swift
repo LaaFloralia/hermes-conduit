@@ -9,7 +9,7 @@ struct LAASkillsSettingsRow: View {
             // the title lines up with theirs.
             HStack(spacing: LAASpacing.x3) {
                 Image(systemName: "puzzlepiece.extension").foregroundStyle(LAAColor.link)
-                    .frame(width: LAASpacing.x6).accessibilityHidden(true)
+                    .frame(minWidth: LAASpacing.x6).accessibilityHidden(true)
                 Text(verbatim: "スキル")
             }
         }

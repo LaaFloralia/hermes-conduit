@@ -20,6 +20,15 @@ starts with the UTC time (`YYMMDDHHMM`) and advances past the last number reserv
 on this Mac. Confirm the latest App Store Connect number and master before
 releasing; `MARKETING_VERSION` comes from `project.yml`.
 
+The private release environment supplies `LAA_BRIDGE_URL` (a Tailscale HTTPS
+origin) and `LAA_RELAY_PUBLIC_URL` (the relay's HTTPS URL). Set both in the
+existing iOS (`asc.env.tpl`) and Mac (`mac-release.env.tpl`) release templates;
+only the generated app Info.plist receives them. Release scripts check that the
+archive has both values before export. Local builds can omit them; the Bridge
+pairing address is then blank, and the managed LAA spec will not use the
+upstream shared relay. Direct builds can still set `CONDUIT_DEFAULT_RELAY_URL`
+when no private relay override is supplied.
+
 The script prints the external run directory and retains the archive there.
 It releases the shared build slot after upload, before waiting for Apple.
 
@@ -40,7 +49,7 @@ It releases the shared build slot after upload, before waiting for Apple.
 | Launcher App Group | `group.com.laa-inc.laa.launcher` |
 | Signing | automatic, App Store Connect API key, `-allowProvisioningUpdates` |
 | Icon | `AppIcon-LAA` (Icon Composer `.icon` for iOS 26+, the appiconset in Assets.xcassets below it) |
-| Relay | `https://mac-mini.tailc9b8e7.ts.net:9443` (scripts/laa/relay-install.sh) |
+| Relay | Release environment `LAA_RELAY_PUBLIC_URL` (`scripts/laa/relay-install.sh`) |
 
 Entitlements live in `scripts/laa/entitlements/`, not beside the App Store
 app's, so the two builds never sign each other's capabilities.
@@ -133,7 +142,7 @@ the LAA app can't use upstream's shared `push.milim.dev`, which pushes to
 `com.milim.relay`. This Mac runs a relay of its own:
 
 ```sh
-scripts/laa/relay-install.sh            # install, start, publish on the tailnet
+scripts/laa/relay-install.sh            # install with LAA_RELAY_PUBLIC_URL set privately
 scripts/laa/relay-install.sh status     # launch agent, health, tailnet address
 scripts/laa/relay-install.sh uninstall  # the rollback
 ```
@@ -148,9 +157,9 @@ scripts/laa/relay-install.sh uninstall  # the rollback
   `~/.config/laa/tmp-secrets` for the relay's lifetime only, and removes it
   when the relay exits.
 - It listens on `127.0.0.1:9120`, and `tailscale serve --https=9443` publishes
-  it on the tailnet as `https://mac-mini.tailc9b8e7.ts.net:9443` — the
-  `CONDUIT_DEFAULT_RELAY_URL` in `project-laa.yml`. Phone and Mac must both be
-  on the tailnet, as Hermes already requires.
+  it on the tailnet at the private `LAA_RELAY_PUBLIC_URL` supplied at install
+  and stored in the LaunchAgent. Give the release environment the same URL.
+  Phone and Mac must both be on the tailnet, as Hermes already requires.
 - Check it end to end without a phone: `curl -fsS
   http://127.0.0.1:9120/healthz` → `{"ok":true}`.
 
@@ -164,7 +173,7 @@ phone or relay. To pair a profile manually instead, claim a code in the LAA app
 and run on the Mac:
 
 ```sh
-hermes -p <profile> conduit-push pair --relay-url https://mac-mini.tailc9b8e7.ts.net:9443 <code>
+hermes -p <profile> conduit-push pair --relay-url "$LAA_RELAY_PUBLIC_URL" <code>
 hermes -p <profile> conduit-push test
 ```
 

@@ -7,6 +7,13 @@ final class LAABridgeRecoveryTests: XCTestCase {
     private let saved = LAABridgeCredentials(baseURL: URL(string: "https://mac.test.ts.net:8445")!,
                                              deviceID: "fixture-device", token: "fixture-token")
 
+    func testPairingDefaultComesFromTheBundleOnlyWhenConfigured() {
+        let url = "https://bridge.fixture.ts.net:8445"
+        XCTAssertEqual(LAABridgeEndpoint.bundledAddress(info: ["LAABridgeURL": url]), url)
+        XCTAssertEqual(LAABridgeEndpoint.bundledAddress(info: [:]), "")
+        XCTAssertEqual(LAABridgeEndpoint.bundledAddress(info: ["LAABridgeURL": 42]), "")
+    }
+
     func testLockedKeychainCanRecoverTheExistingDeviceWithoutReenrollment() {
         var reads = 0
         let bridge = LAABridgeSession(readCredentials: {

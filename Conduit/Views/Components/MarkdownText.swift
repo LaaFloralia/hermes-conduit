@@ -1507,7 +1507,10 @@ private struct MarkdownList: View {
                         Text(ordered ? "\(start + index)." : "•")
                             .font(.system(size: markerFont.pointSize, weight: markerWeight, design: chatTextSize.style.fontDesign))
                             .foregroundStyle(markerColor)
-                            .frame(width: ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize), alignment: .trailing)
+                            // The marker follows Dynamic Type; its column grows with it
+                            // rather than cutting "1." to "…".
+                            .lineLimit(1).fixedSize()
+                            .frame(minWidth: ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize), alignment: .trailing)
                             .frame(minHeight: markerFont.lineHeight)
                     }
                     InlineMarkdown(
@@ -3388,6 +3391,7 @@ struct ChatCodeBlock: View {
                 copyButton
                     .padding(.top, MarkdownRichMetrics.codeVerticalInset)
                     .padding(.trailing, MarkdownRichMetrics.codeVerticalInset)
+                    .padding(.leading, MarkdownRichMetrics.codeVerticalInset)
             } else {
                 HStack {
                     Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)
@@ -3434,7 +3438,9 @@ struct ChatCodeBlock: View {
 #if LAA_BUILD
         Image(systemName: copied ? "checkmark" : "doc.on.doc")
             .font(.footnote)
-            .frame(width: LAASpacing.x8, height: LAASpacing.x8)
+            // At least 32 pt; a larger glyph widens its column rather than
+            // covering the code beside it.
+            .frame(minWidth: LAASpacing.x8, minHeight: LAASpacing.x8)
             .contentShape(Rectangle())
             .accessibilityLabel(Text(verbatim: copyTitle))
 #else

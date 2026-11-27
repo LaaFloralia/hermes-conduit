@@ -216,8 +216,9 @@ struct LAAChatsContent: View {
                         avatar(profile: monet.profile, name: monet.name, size: Self.personAvatarSize)
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             HStack(spacing: 6) {
-                                Text(verbatim: "Monet").font(LAAType.title("Monet", size: 17, relativeTo: .body))
-                                LAARoleBadge(role: "Secretary")
+                                LAAChatsNameLine(role: "Secretary") {
+                                    Text(verbatim: "Monet").font(LAAType.title("Monet", size: 17, relativeTo: .body))
+                                }
                                 if let unread = snapshot.unreadByProfile[monet.profile], unread > 0 {
                                     if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                                 }
@@ -361,12 +362,10 @@ struct LAAChatsContent: View {
         HStack(spacing: LAASpacing.x3) {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                HStack(spacing: 6) {
+                LAAChatsNameLine(role: LAAChatPerson.role(profile: person.profile, existingRole: person.role)) {
                     Text(verbatim: LAAChatPerson.name(person.name)).font(LAAType.chatListName(person.name, japaneseSize: japaneseNameSize))
-                        .lineLimit(1).truncationMode(.middle)
+                        .truncationMode(.middle)
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                        .layoutPriority(1)
-                    if let role = LAAChatPerson.role(profile: person.profile, existingRole: person.role) { LAARoleBadge(role: role) }
                 }
                 if let preview = person.lastMessage, !preview.isEmpty {
                     Text(verbatim: preview).font(.system(size: 13)).lineLimit(1).foregroundStyle(LAAColor.secondaryText)
@@ -568,6 +567,26 @@ private enum LAAChatsRowTarget {
 
 /// Mac only: a row's selected and hovered fill. `active` is false on the
 /// phone, where the list draws neither, so the row is untouched there.
+/// A name and its role on one line. The role shows whole or not at all: a
+/// role squeezed by a long name or large text was cut mid-glyph with no
+/// ellipsis, and a name never breaks inside a word ("Mone / t").
+private struct LAAChatsNameLine<Name: View>: View {
+    let role: String?
+    @ViewBuilder let name: Name
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            if let role {
+                HStack(spacing: 6) {
+                    name.lineLimit(1).fixedSize()
+                    LAARoleBadge(role: role).fixedSize()
+                }
+            }
+            name.lineLimit(1)
+        }
+    }
+}
+
 private struct LAAChatsRowChrome: ViewModifier {
     let active: Bool
     let selected: Bool
