@@ -93,7 +93,7 @@ struct TurnMetrics: Codable, Sendable {
 actor ChatTurnMetricsStore {
     static let shared = ChatTurnMetricsStore()
     static let filename = "chat-turn-metrics.jsonl"
-    private static let log = Logger(subsystem: "com.laa.conduit", category: "ChatTurnMetrics")
+    private static let log = Logger(subsystem: "com.laa.hortensia", category: "ChatTurnMetrics")
     private static let maxBytes = 512 * 1024
     private var lastAttempt: TimeInterval?
     private let directory: URL?
