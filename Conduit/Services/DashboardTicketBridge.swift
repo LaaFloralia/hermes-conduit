@@ -616,6 +616,8 @@ final class DashboardCookieMirrorObserver: NSObject, WKHTTPCookieStoreObserver {
     }
 
     func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        // Requests sent without the page read the store again next time.
+        bridge?.forgetWebKitCookies()
         // A refresh can touch several cookies at once: mirror once, after
         // the burst.
         pending?.cancel()
@@ -734,7 +736,34 @@ final class DashboardTicketBridge: NSObject {
     var webViewCanRun: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
-    var backgroundIssuedCookies: [HTTPCookie] = []
+    var backgroundIssuedCookies: [HTTPCookie] = [] {
+        didSet { forgetWebKitCookies() }
+    }
+    /// WebKit's cookies as last read for a request sent without the page.
+    /// Reading the store is an IPC round trip of up to two seconds on every
+    /// request, so it is kept until the store changes (the mirror observer),
+    /// the page reloads or the bridge goes (D-25). Only kept while the
+    /// observer watches the store; `cookieReadGeneration` drops a read that
+    /// a change overtook.
+    var keptWebKitCookies: [HTTPCookie]?
+    var cookieReadGeneration = 0
+    var keepsWebKitCookies: Bool { cookieMirrorObserver != nil && !isInvalidated }
+    func forgetWebKitCookies() {
+        keptWebKitCookies = nil
+        cookieReadGeneration &+= 1
+    }
+    /// Foreground cookie-mode reads and the ticket go out natively first,
+    /// with the page's cookies, instead of waiting for the hidden page to
+    /// load and run them (D-25: up to three 3 s readiness windows and a
+    /// 12 s script deadline per ticket). Having no cookies, or a sign-in
+    /// answer, still goes to the page, which keeps its reload recovery.
+    /// Writes other than the ticket stay on the page. Test seam: the page
+    /// path's own tests turn it off.
+    #if LAA_BUILD
+    var prefersNativeTransport = true
+    #else
+    var prefersNativeTransport = false
+    #endif
     /// Sends a request without the page in place of URLSession. Test seam.
     var loadWithoutPageForTesting: (@MainActor (URLRequest) async throws -> (Data, URLResponse))?
     /// Observes the hidden page's load lifecycle for AppState's connection
@@ -885,6 +914,7 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
+        forgetWebKitCookies()
         requestAuthorizer.invalidate()
         if let cookieMirrorObserver {
             cookieMirrorObserver.cancel()
@@ -908,6 +938,7 @@ final class DashboardTicketBridge: NSObject {
         }
         reloadCount += 1
         isReady = false
+        forgetWebKitCookies()
         // Supersede the old navigation immediately: its late failure
         // callbacks must not fail the fresh state during the window before
         // the new load starts.
@@ -986,6 +1017,21 @@ final class DashboardTicketBridge: NSObject {
                 throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
             }
             return ticket
+        }
+        if prefersNativeTransport, !didLandOnLogin {
+            // No cookies (.notReady) or a 401 (.signInRequired) is not proof
+            // of anything yet: the page's loop below settles both, with its
+            // reload. Anything else is the ticket request's own answer.
+            do {
+                let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
+                guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
+                    throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+                }
+                return ticket
+            } catch DashboardTicketBridgeError.notReady {
+            } catch DashboardTicketBridgeError.signInRequired {
+            }
+            guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         }
         // Retry twice on the two recoverable failures, then let the final
         // attempt's error propagate to the caller unchanged:
@@ -1086,6 +1132,22 @@ final class DashboardTicketBridge: NSObject {
                 timeoutMilliseconds: timeoutMilliseconds,
                 maxResponseBytes: maxResponseBytes
             )
+        }
+        // A ready page's reads go out natively too (`prefersNativeTransport`);
+        // only no cookies or a sign-in answer hands the read to the page.
+        if prefersNativeTransport, method.uppercased() == "GET", !didLandOnLogin {
+            do {
+                return try await requestJSONWithoutPage(
+                    path: path,
+                    method: method,
+                    body: body,
+                    timeoutMilliseconds: timeoutMilliseconds,
+                    maxResponseBytes: maxResponseBytes
+                )
+            } catch DashboardTicketBridgeError.notReady {
+            } catch DashboardTicketBridgeError.signInRequired {
+            }
+            guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         }
         for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed && !didLandOnLogin {
             try await Task.sleep(for: readinessPollInterval)

@@ -1,6 +1,5 @@
 #if LAA_BUILD
 import SwiftUI
-import LAAKit
 
 /// The model and its effort as two Liquid Glass capsules side by side, each
 /// opening its own menu: the model's face, name and chevron; then the
@@ -27,7 +26,7 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
     /// The harness the conversation runs on, shown ahead of the model as its
     /// own capsule and menu (LAAHarnessCapsule); nil leaves it out.
     var harness: LAAHarness? = nil
-    var harnessHint: String = "Change Harness"
+    var harnessHint: String = "実行基盤を変更"
     /// The wire id ("claude-fable-5-2") or a display name ("Fable 5.2").
     let model: String?
     /// The provider id ("claude", "codex", "dsh"); sets the face's family.
@@ -50,16 +49,20 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
     let identifier: String
     /// Added to the model's spoken value ("、依頼 Fable 5.2").
     var modelValueSuffix: String? = nil
-    var modelHint: String = "Change Model"
-    var effortHint: String = "Change Effort"
+    var modelHint: String = "モデルを変更"
+    var effortHint: String = "推論の強さを変更"
+    /// Shown for a value not known yet in place of 不明: 確認中… while it is
+    /// being read, 未確認 when it can't be (D-25). Nil keeps 不明.
+    var placeholder: String? = nil
     var harnessMenu: () -> HarnessMenu
     var modelMenu: () -> ModelMenu
     var effortMenu: () -> EffortMenu
 
-    init(harness: LAAHarness?, harnessHint: String = "Change Harness",
+    init(harness: LAAHarness?, harnessHint: String = "実行基盤を変更",
          model: String?, provider: String?, effort: String?, name: String? = nil, current: Bool = true,
          attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false, identifier: String,
-         modelValueSuffix: String? = nil, modelHint: String = "Change Model", effortHint: String = "Change Effort",
+         modelValueSuffix: String? = nil, modelHint: String = "モデルを変更", effortHint: String = "推論の強さを変更",
+         placeholder: String? = nil,
          @ViewBuilder harnessMenu: @escaping () -> HarnessMenu,
          @ViewBuilder modelMenu: @escaping () -> ModelMenu,
          @ViewBuilder effortMenu: @escaping () -> EffortMenu) {
@@ -67,18 +70,14 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
         self.model = model; self.provider = provider; self.effort = effort; self.name = name; self.current = current
         self.attention = attention; self.changingModel = changingModel; self.changingEffort = changingEffort
         self.identifier = identifier; self.modelValueSuffix = modelValueSuffix
-        self.modelHint = modelHint; self.effortHint = effortHint
+        self.modelHint = modelHint; self.effortHint = effortHint; self.placeholder = placeholder
         self.harnessMenu = harnessMenu; self.modelMenu = modelMenu; self.effortMenu = effortMenu
     }
 
     private var modelText: String {
-        LAAModelCapsule.text(model: model, provider: provider, name: name, current: current,
-                             missing: LAAModelCapsule.unknownSpokenValue)
+        LAAModelCapsule.text(model: model, provider: provider, name: name, current: current, placeholder: placeholder)
     }
-    private var effortText: String {
-        guard let shown = LAAEffort.name(effort) else { return LAAModelCapsule.unknownSpokenValue }
-        return current ? shown : "Last Verified: " + shown
-    }
+    private var effortText: String { LAAEffortCapsule.text(effort: effort, current: current, placeholder: placeholder) }
 
     var body: some View {
         LAAWrapRow {
@@ -87,7 +86,7 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
                     .menuStyle(.button)
                     .buttonStyle(.plain)
                     .fixedSize()
-                    .accessibilityLabel(Text(verbatim: "Harness"))
+                    .accessibilityLabel(Text(verbatim: "実行基盤"))
                     .accessibilityValue(Text(verbatim: harness.name))
                     .accessibilityHint(Text(verbatim: harnessHint))
                     .accessibilityIdentifier(identifier + ".harness")
@@ -95,23 +94,24 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
             Menu { modelMenu() } label: {
                 LAAModelCapsule(model: model, provider: provider, name: name, current: current,
                                 attention: attention, changing: changingModel,
-                                showsFace: !(harness?.sharesMark(model: model, provider: provider) ?? false))
+                                showsFace: !(harness?.sharesMark(model: model, provider: provider) ?? false),
+                                placeholder: placeholder)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: "Model"))
+            .accessibilityLabel(Text(verbatim: "モデル"))
             .accessibilityValue(Text(verbatim: modelText + (modelValueSuffix ?? "")))
             .accessibilityHint(Text(verbatim: modelHint))
             .accessibilityIdentifier(identifier + ".model")
 
             Menu { effortMenu() } label: {
                 LAAEffortCapsule(effort: effort, current: current, changing: changingEffort,
-                                 tone: LAAModelRank.of(model).tone)
+                                 tone: LAAModelRank.of(model).tone, placeholder: placeholder)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .fixedSize()
-            .accessibilityLabel(Text(verbatim: "Effort"))
+            .accessibilityLabel(Text(verbatim: "推論"))
             .accessibilityValue(Text(verbatim: effortText))
             .accessibilityHint(Text(verbatim: effortHint))
             .accessibilityIdentifier(identifier + ".effort")
@@ -123,13 +123,14 @@ extension LAAModelEffortPickers where HarnessMenu == EmptyView {
     /// The pair without a harness capsule (the task form, a project's default).
     init(model: String?, provider: String?, effort: String?, name: String? = nil, current: Bool = true,
          attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false, identifier: String,
-         modelValueSuffix: String? = nil, modelHint: String = "Change Model", effortHint: String = "Change Effort",
+         modelValueSuffix: String? = nil, modelHint: String = "モデルを変更", effortHint: String = "推論の強さを変更",
+         placeholder: String? = nil,
          @ViewBuilder modelMenu: @escaping () -> ModelMenu,
          @ViewBuilder effortMenu: @escaping () -> EffortMenu) {
         self.init(harness: nil, model: model, provider: provider, effort: effort, name: name, current: current,
                   attention: attention, changingModel: changingModel, changingEffort: changingEffort,
                   identifier: identifier, modelValueSuffix: modelValueSuffix, modelHint: modelHint,
-                  effortHint: effortHint, harnessMenu: { EmptyView() }, modelMenu: modelMenu, effortMenu: effortMenu)
+                  effortHint: effortHint, placeholder: placeholder, harnessMenu: { EmptyView() }, modelMenu: modelMenu, effortMenu: effortMenu)
     }
 }
 
@@ -221,19 +222,27 @@ struct LAAModelCapsule: View {
     /// Off when the harness capsule beside it already shows the same maker's
     /// mark (Claude Code running Claude, Codex running GPT): one mark, not two.
     var showsFace = true
+    /// In place of 不明 (LAAModelEffortPickers.placeholder).
+    var placeholder: String? = nil
 
-    static let unknownSpokenValue = "Unknown"
+    static let unknown = "不明"
+    static let checking = "確認中…"
+    static let unavailable = "未確認"
 
     static func text(model: String?, provider: String?, name: String?, current: Bool,
-                     missing: String = LAAShape.unknown) -> String {
-        guard let shown = name.map(fullName) ?? displayName(model: model, provider: provider) else { return missing }
-        return current ? shown : "Last Verified: " + shown
+                     placeholder: String? = nil) -> String {
+        guard let known = name.map(fullName) ?? displayName(model: model, provider: provider) else {
+            // A placeholder is not a confirmed value: no 最終確認 before it.
+            if let placeholder { return placeholder }
+            return current ? unknown : "最終確認 " + unknown
+        }
+        return current ? known : "最終確認 " + known
     }
 
     @State private var start: Date?
 
     private var rank: LAAModelRank { current ? LAAModelRank.of(model) : .none }
-    private var shown: String { Self.text(model: model, provider: provider, name: name, current: current) }
+    private var shown: String { Self.text(model: model, provider: provider, name: name, current: current, placeholder: placeholder) }
 
     var body: some View {
         content(motion: .live(start))
@@ -271,7 +280,7 @@ struct LAAModelCapsule: View {
         // itself (never at the phone's width) wraps it at a space, never "…".
         HStack(spacing: 6) {
             if showsFace { LAAModelMark(model: model, provider: provider, size: 22) }
-            if changing { Text(verbatim: "Changing").laaTextStyle(.note).foregroundStyle(LAAColor.text).fixedSize() }
+            if changing { Text(verbatim: "変更中").font(.caption).foregroundStyle(LAAColor.text).fixedSize() }
             if attention {
                 // ▲ is the house mark for "check this".
                 Image(systemName: "triangle.fill")
@@ -280,8 +289,7 @@ struct LAAModelCapsule: View {
                     .accessibilityHidden(true)
             }
             Text(verbatim: shown)
-                .foregroundStyle(shown == LAAShape.unknown ? LAAColor.secondaryText : LAAColor.text)
-                .accessibilityHidden(shown == LAAShape.unknown)
+                .foregroundStyle(LAAColor.text)
                 .fontWeight(.semibold)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -355,7 +363,7 @@ struct LAAModelCapsule: View {
     }
 }
 
-/// The effort capsule: its name, or a hollow mark, and the chevron, with no meter
+/// The effort capsule: its name, or 「不明」, and the chevron, with no meter
 /// beside it (owner, 2026-11-14). XHigh and above hold marble veins inside
 /// the glass; after a requested change they spread across it once
 /// (LAAMarbleLook).
@@ -365,7 +373,17 @@ struct LAAEffortCapsule: View {
     var changing = false
     /// The model's colour and strength, so the pair wears one look (LAASelectionStyle).
     var tone: LAAVeinTone = .stone
+    /// In place of 不明 (LAAModelEffortPickers.placeholder).
+    var placeholder: String? = nil
     @State private var start: Date?
+
+    static func text(effort: String?, current: Bool, placeholder: String? = nil) -> String {
+        guard let shown = LAAEffort.name(effort) else {
+            if let placeholder { return placeholder }
+            return current ? LAAModelCapsule.unknown : "最終確認 " + LAAModelCapsule.unknown
+        }
+        return current ? shown : "最終確認 " + shown
+    }
 
     private var known: String? { effort.flatMap { LAAEffort.name($0) == nil ? nil : $0 } }
     // Ultra Code is a ranked finish without adding a sixth general effort.
@@ -388,13 +406,11 @@ struct LAAEffortCapsule: View {
 
     private func content(motion: LAAGlassMotion) -> some View {
         HStack(spacing: 6) {
-            if changing { Text(verbatim: "Changing").laaTextStyle(.note) }
+            if changing { Text(verbatim: "変更中").font(.caption) }
             if let known {
                 LAAEffortLabel(effort: known, current: current)
             } else {
-                Text(verbatim: LAAShape.unknown)
-                    .foregroundStyle(LAAColor.secondaryText)
-                    .accessibilityHidden(true)
+                Text(verbatim: placeholder ?? LAAModelCapsule.unknown).foregroundStyle(LAAColor.secondaryText)
             }
             LAAPickerMetrics.chevronView()
         }

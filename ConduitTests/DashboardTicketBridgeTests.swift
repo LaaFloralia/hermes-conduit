@@ -57,6 +57,7 @@ final class DashboardTicketBridgeTests: XCTestCase {
             readinessPollAttempts: 2,
             readinessPollInterval: .milliseconds(10)
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
         bridge.simulateLandingForTesting(.loadFailure)
 
         do {
@@ -86,6 +87,7 @@ final class DashboardTicketBridgeTests: XCTestCase {
             readinessPollAttempts: 2,
             readinessPollInterval: .milliseconds(10)
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
         bridge.simulateLandingForTesting(.loginPage)
 
         do {
@@ -113,6 +115,7 @@ final class DashboardTicketBridgeTests: XCTestCase {
             readinessPollAttempts: 2,
             readinessPollInterval: .milliseconds(10)
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
 
         bridge.webViewWebContentProcessDidTerminate(bridge.webView)
         XCTAssertTrue(bridge.isLoadFailed, "Termination must make the bridge reloadable")
@@ -191,6 +194,7 @@ final class DashboardTicketBridgeTests: XCTestCase {
             readinessPollInterval: .milliseconds(10),
             requestDeadlineGraceMilliseconds: 50
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
 
         // Let the initial /api/status load settle (fail or hang) before
         // modeling the overnight state: the bridge believes it is ready,
@@ -247,6 +251,7 @@ final class DashboardTicketBridgeTests: XCTestCase {
             readinessPollAttempts: 30,
             readinessPollInterval: .milliseconds(100)
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
         bridge.simulateLandingForTesting(.loginPage)
 
         let started = Date()
@@ -319,6 +324,7 @@ extension DashboardTicketBridgeTests {
             readinessPollAttempts: 0,
             readinessPollInterval: .milliseconds(1)
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
         bridge.webViewCanRun = { true }
         // Let the initial load settle first, as in
         // testExpiredRequestDeadlineMarksWebViewStalled, so its failure
@@ -356,6 +362,7 @@ extension DashboardTicketBridgeTests {
             readinessPollAttempts: 0,
             readinessPollInterval: .milliseconds(1)
         )
+        bridge.prefersNativeTransport = false  // exercises the page path itself
         bridge.webViewCanRun = { true }
         for _ in 0..<80 where !bridge.isLoadFailed {
             try? await Task.sleep(for: .milliseconds(25))
@@ -636,4 +643,160 @@ extension DashboardTicketBridgeTests {
         XCTAssertEqual(result["session_id"] as? String, "s")
         XCTAssertEqual(held.sent.first?.method, "GET")
     }
+}
+
+// MARK: - D-25: the native transport in the foreground
+
+@MainActor
+extension DashboardTicketBridgeTests {
+    /// A cookie bridge with a held native transport and a fast readiness
+    /// poll, for the native-first paths.
+    private func nativeBridge(answer: @escaping (URLRequest) -> (Int, Any)?,
+                              pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests())
+        -> (DashboardTicketBridge, () -> [URLRequest]) {
+        let base = "https://native-\(UUID().uuidString.lowercased()).invalid"
+        let bridge = DashboardTicketBridge(baseURL: base, pendingRequests: pendingRequests,
+                                           readinessPollAttempts: 2, readinessPollInterval: .milliseconds(10))
+        bridge.prefersNativeTransport = true
+        bridge.webViewCanRun = { true }
+        if let host = URL(string: base)?.host,
+           let cookie = HTTPCookie(properties: [.name: "session", .value: "fixture", .domain: host, .path: "/"]) {
+            bridge.backgroundIssuedCookies = [cookie]
+        }
+        var sent: [URLRequest] = []
+        bridge.loadWithoutPageForTesting = { request in
+            sent.append(request)
+            let (status, json) = answer(request) ?? (200, [String: Any]())
+            let data = try JSONSerialization.data(withJSONObject: json, options: [.fragmentsAllowed])
+            return (data, HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        }
+        return (bridge, { sent })
+    }
+
+    func testAForegroundTicketGoesNativeWithoutWaitingForThePage() async throws {
+        let (bridge, sent) = nativeBridge { _ in (200, ["ticket": "native-ticket"] as Any) }
+        defer { bridge.invalidate() }
+        let started = ContinuousClock.now
+        let ticket = try await bridge.mintTicket()
+        XCTAssertEqual(ticket, "native-ticket")
+        XCTAssertLessThan(started.duration(to: .now), .seconds(3), "no readiness window or page script")
+        XCTAssertEqual(sent().map(\.httpMethod), ["POST"])
+        XCTAssertEqual(sent().first?.url?.path, "/api/auth/ws-ticket")
+        XCTAssertNotNil(sent().first?.value(forHTTPHeaderField: "Origin"), "a write carries Origin, as the page's fetch")
+        XCTAssertEqual(bridge.reloadCount, 0)
+    }
+
+    func testANativeSignInAnswerIsNotProofAndGoesToThePage() async throws {
+        let (bridge, sent) = nativeBridge { _ in (401, ["detail": "Not authenticated"] as Any) }
+        defer { bridge.invalidate() }
+        bridge.simulateLandingForTesting(.loadFailure)
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("an unreachable page cannot mint")
+        } catch DashboardTicketBridgeError.notReady {
+            // The page's loop settled it, with its reloads: not a sign-out.
+        }
+        XCTAssertEqual(sent().count, 1, "one native try, then the page")
+        XCTAssertEqual(bridge.reloadCount, 2)
+    }
+
+    func testNoCookiesGoToThePageRatherThanSigningOut() async throws {
+        let bridge = DashboardTicketBridge(baseURL: "https://no-cookies-\(UUID().uuidString.lowercased()).invalid",
+                                           readinessPollAttempts: 2, readinessPollInterval: .milliseconds(10))
+        bridge.prefersNativeTransport = true
+        bridge.webViewCanRun = { true }
+        var sent = 0
+        bridge.loadWithoutPageForTesting = { _ in sent += 1; throw URLError(.notConnectedToInternet) }
+        defer { bridge.invalidate() }
+        bridge.simulateLandingForTesting(.loadFailure)
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("no cookies and no page cannot mint")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected: never .signInRequired
+        }
+        XCTAssertEqual(sent, 0, "nothing goes out without a cookie")
+        XCTAssertEqual(bridge.reloadCount, 2)
+    }
+
+    func testAReadyPagesReadsGoNativeAndItsWritesStayOnThePage() async throws {
+        let requests = DashboardTicketBridgePendingRequests()
+        let (bridge, sent) = nativeBridge(answer: { _ in (200, ["sessions": [Any]()] as Any) }, pendingRequests: requests)
+        defer { bridge.invalidate() }
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        bridge.simulateLandingForTesting(.ready)
+        let read = try await bridge.requestJSON(path: "/api/sessions")
+        XCTAssertNotNil(read["sessions"])
+        XCTAssertEqual(sent().map(\.httpMethod), ["GET"])
+
+        let write = Task { try await bridge.requestJSON(path: "/api/sessions/s", method: "DELETE") }
+        for _ in 0..<1_000 where requests.count < 1 { await Task.yield() }
+        XCTAssertEqual(requests.count, 1, "the write waits on the page, which keeps its answer across a switch")
+        XCTAssertEqual(sent().count, 1)
+        try XCTUnwrap(requests.removeValue(for: 1)).resume(returning: [:])
+        _ = try? await write.value
+    }
+
+    func testWebKitCookiesAreKeptUntilTheStoreOrPageChanges() async throws {
+        let bridge = DashboardTicketBridge(baseURL: "https://kept-\(UUID().uuidString.lowercased()).invalid",
+                                           dashboardID: UUID())
+        defer { bridge.invalidate() }
+        // Let the first page load settle, so its own cookie writes are done.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertTrue(bridge.keepsWebKitCookies, "a cookie bridge with a mirror observer keeps its read")
+        _ = await bridge.cookiesForRequestsWithoutPage()
+        XCTAssertNotNil(bridge.keptWebKitCookies, "the next request skips WebKit's store")
+        let generation = bridge.cookieReadGeneration
+
+        bridge.backgroundIssuedCookies = []
+        XCTAssertNil(bridge.keptWebKitCookies, "a cookie issued without the page reads the store again")
+        XCTAssertNotEqual(bridge.cookieReadGeneration, generation)
+
+        _ = await bridge.cookiesForRequestsWithoutPage()
+        XCTAssertNotNil(bridge.keptWebKitCookies)
+        bridge.reload()
+        XCTAssertNil(bridge.keptWebKitCookies, "a reload reads the store again")
+
+        _ = await bridge.cookiesForRequestsWithoutPage()
+        bridge.invalidate()
+        XCTAssertNil(bridge.keptWebKitCookies)
+        XCTAssertFalse(bridge.keepsWebKitCookies)
+    }
+
+    func testAChunkedBackgroundResponseStillMeetsItsDeadline() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StallingURLProtocolStub.self]
+        let session = URLSession(configuration: configuration)
+        let request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/stalls")))
+        let started = ContinuousClock.now
+        do {
+            _ = try await DashboardTicketBridge.load(request, deadline: .milliseconds(200), maxResponseBytes: 1_024, session: session)
+            XCTFail("a response that never comes times out")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .timedOut)
+        }
+        XCTAssertLessThan(started.duration(to: .now), .seconds(5))
+
+        // A body exactly at the limit is whole, not oversized.
+        let exact = Data(repeating: 0x20, count: 1_024)
+        DashboardDownloadURLProtocolStub.response = (200, exact, [:])
+        let stub = URLSessionConfiguration.ephemeral
+        stub.protocolClasses = [DashboardDownloadURLProtocolStub.self]
+        let fits = try await DashboardTicketBridge.load(request, deadline: .seconds(10), maxResponseBytes: 1_024,
+                                                        session: URLSession(configuration: stub))
+        XCTAssertFalse(fits.oversized)
+        XCTAssertEqual(fits.data.count, 1_024)
+    }
+}
+
+/// Accepts a request and never answers it.
+private final class StallingURLProtocolStub: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {}
+    override func stopLoading() {}
 }

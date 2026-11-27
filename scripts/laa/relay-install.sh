@@ -79,7 +79,7 @@ case "$action" in
     <key>KeepAlive</key>
     <true/>
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Interactive</string>
     <key>StandardOutPath</key>
     <string>$install_dir/relay.log</string>
     <key>StandardErrorPath</key>

@@ -201,22 +201,10 @@ extension DashboardTicketBridge {
         #endif
         return try await withThrowingTaskGroup(of: (data: Data, response: URLResponse, oversized: Bool).self) { group in
             group.addTask {
-                let (bytes, response) = try await session.bytes(for: request)
-                if let length = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init),
-                   length > maxResponseBytes {
-                    bytes.task.cancel()
-                    return (Data(), response, true)
-                }
-                var data = Data()
-                for try await byte in bytes {
-                    guard data.count < maxResponseBytes else {
-                        // The rest isn't wanted: stop the download.
-                        bytes.task.cancel()
-                        return (data, response, true)
-                    }
-                    data.append(byte)
-                }
-                return (data, response, false)
+                // Chunk by chunk as URLSession delivers them, not byte by
+                // byte (1.1 MB of Monet's catalog and history was a million
+                // appends on the main path; D-25).
+                try await DashboardBoundedLoad(maxResponseBytes: maxResponseBytes).run(request, session: session)
             }
             group.addTask {
                 try await Task.sleep(for: deadline)
@@ -244,8 +232,18 @@ extension DashboardTicketBridge {
     /// issued to requests sent without the page.
     func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
         var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
-        if let webKit = await webKitCookies(timeout: .seconds(2)) {
-            cookies += webKit
+        if keepsWebKitCookies, let kept = keptWebKitCookies {
+            cookies += kept
+        } else {
+            let generation = cookieReadGeneration
+            if let webKit = await webKitCookies(timeout: .seconds(2)) {
+                cookies += webKit
+                // Kept only if nothing changed the store meanwhile; a read
+                // that timed out is never kept.
+                if keepsWebKitCookies, generation == cookieReadGeneration {
+                    keptWebKitCookies = webKit
+                }
+            }
         }
         cookies += DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []
         cookies += backgroundIssuedCookies
@@ -295,6 +293,105 @@ extension DashboardTicketBridge {
                 try? await Task.sleep(for: timeout)
                 once.resume(nil)
             }
+        }
+    }
+}
+
+/// One response read in URLSession's own chunks, stopped as soon as it
+/// passes `maxResponseBytes` (or announces a length past it, before any of
+/// the body is held). Redirects stay with the session's delegate: this task
+/// delegate implements only the data callbacks.
+final class DashboardBoundedLoad: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    typealias Result = (data: Data, response: URLResponse, oversized: Bool)
+    private let limit: Int
+    private let lock = NSLock()
+    private var data = Data()
+    private var response: URLResponse?
+    private var continuation: CheckedContinuation<Result, Error>?
+    private var outcome: Swift.Result<Result, Error>?
+    private var task: URLSessionDataTask?
+
+    init(maxResponseBytes: Int) {
+        limit = max(0, maxResponseBytes)
+    }
+
+    func run(_ request: URLRequest, session: URLSession) async throws -> Result {
+        let task = session.dataTask(with: request)
+        task.delegate = self
+        lock.withLock { self.task = task }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let settled: Swift.Result<Result, Error>? = lock.withLock {
+                    if outcome == nil { self.continuation = continuation }
+                    return outcome
+                }
+                if let settled {
+                    continuation.resume(with: settled)
+                    return
+                }
+                if Task.isCancelled {
+                    task.cancel()
+                } else {
+                    task.resume()
+                }
+            }
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func finish(_ result: Swift.Result<Result, Error>) {
+        let waiting: CheckedContinuation<Result, Error>? = lock.withLock {
+            guard outcome == nil else { return nil }
+            outcome = result
+            defer { continuation = nil }
+            return continuation
+        }
+        waiting?.resume(with: result)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let length = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init),
+           length > limit {
+            finish(.success((Data(), response, true)))
+            completionHandler(.cancel)
+            return
+        }
+        lock.withLock { self.response = response }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive chunk: Data) {
+        let over: Result? = lock.withLock {
+            guard outcome == nil, let response else { return nil }
+            let room = limit - data.count
+            guard chunk.count > room else {
+                data.append(chunk)
+                return nil
+            }
+            // The rest isn't wanted: keep up to the limit and stop the download.
+            data.append(chunk.prefix(max(0, room)))
+            return (data, response, true)
+        }
+        if let over {
+            finish(.success(over))
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error {
+            finish(.failure(error))
+            return
+        }
+        let result: Result? = lock.withLock { response.map { (data, $0, false) } }
+        if let result {
+            finish(.success(result))
+        } else if let response = task.response {
+            finish(.success((Data(), response, false)))
+        } else {
+            finish(.failure(URLError(.badServerResponse)))
         }
     }
 }

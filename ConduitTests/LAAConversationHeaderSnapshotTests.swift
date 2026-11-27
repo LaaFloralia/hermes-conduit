@@ -6,6 +6,16 @@ import XCTest
 
 @MainActor
 final class LAAConversationHeaderSnapshotTests: XCTestCase {
+    func testConnectingLabelRequiresTheCurrentWaitToHaveElapsed() {
+        let waiting = LAAConnectionWait.connecting
+        let fired = LAAConnectionWait.Key(scope: "first", target: waiting)
+        XCTAssertEqual(LAAConnectionWait.delay, .milliseconds(500))
+        XCTAssertEqual(LAAConnectionWait.words(waiting, scope: "first", fired: nil), "")
+        XCTAssertEqual(LAAConnectionWait.words(waiting, scope: "first", fired: fired), waiting)
+        XCTAssertEqual(LAAConnectionWait.words("", scope: "first", fired: fired), "")
+        XCTAssertEqual(LAAConnectionWait.words(waiting, scope: "second", fired: fired), "")
+    }
+
     func testNarrowNamesAndDynamicTypeLightAndDark() throws {
         for width: CGFloat in [375, 440] {
             for size in [DynamicTypeSize.large, .accessibility3] {

@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 extension LAACopy {
@@ -110,6 +111,40 @@ struct LAAChatDateSeparator: View {
             .laaPhotoSupportingText()
             .frame(maxWidth: .infinity)
             .accessibilityIdentifier("chat.date.separator")
+    }
+}
+
+/// Where earlier history read through "Load earlier messages" ends once
+/// it detached from the live conversation (D-25): the rows below are the
+/// live chat, and the one action, named for where it goes, returns to
+/// its end.
+struct LAAChatDetachedHistoryDivider: View {
+    let jump: () -> Void
+    var body: some View {
+        HStack(spacing: LAASpace.s12) {
+            rule
+            Button(action: jump) {
+                Text(verbatim: "最新")
+                    .laaTextStyle(.secondary)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(LAAColor.link)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("chat.detachedHistory.latest")
+            rule
+        }
+        .laaPhotoSupportingText()
+        .padding(.vertical, LAASpace.s8)
+        .laaChatColumn(.center)
+    }
+
+    private var rule: some View {
+        Rectangle()
+            .fill(LAAColor.separator)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
     }
 }
 

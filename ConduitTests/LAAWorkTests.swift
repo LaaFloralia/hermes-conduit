@@ -757,7 +757,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAModelCapsule.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
                        "DeepSeek V4.1 Flash")
         XCTAssertNil(LAAModelCapsule.displayName(model: nil, provider: "claude"))
-        XCTAssertEqual(LAAModelCapsule.unknownSpokenValue, "Unknown")
+        XCTAssertEqual(LAAModelCapsule.unknown, "不明")
     }
 
     func testClaudeAPIHasItsOwnModelGroupAndProfile() throws {

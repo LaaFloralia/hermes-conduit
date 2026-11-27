@@ -507,8 +507,11 @@ final class OfflineChatCacheStore {
         sessions: [SessionSummary],
         now: Date = Date()
     ) {
-        let rows = messages.compactMap(OfflineCachedMessage.init)
-            .suffix(Self.maxMessagesPerTranscript)
+        #if LAA_BUILD
+        let rows = Self.trimmedRows(messages.compactMap(OfflineCachedMessage.init))
+        #else
+        let rows = Array(messages.compactMap(OfflineCachedMessage.init).suffix(Self.maxMessagesPerTranscript))
+        #endif
         guard !rows.isEmpty else { return }
         var snapshot = load(dashboardID: dashboardID, profile: profile)
             ?? OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: [])
@@ -543,6 +546,41 @@ final class OfflineChatCacheStore {
         snapshot.lastSessionID = sessionID
         guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
         removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
+    }
+
+    /// The newest turns always kept, however many tool rows follow them.
+    static let minConversationTurns = 20
+
+    /// The newest `maxMessagesPerTranscript` rows, but never fewer than
+    /// `minConversationTurns` of the conversation's own words (user and
+    /// assistant rows with text) when the input has them: a tool-heavy tail
+    /// (a Monet run) otherwise saved 120 tool and system rows and the copy
+    /// opened blank (D-25). Older tool and system rows give way first, and
+    /// the order of what is kept is unchanged.
+    static func trimmedRows(_ rows: [OfflineCachedMessage]) -> [OfflineCachedMessage] {
+        let limit = maxMessagesPerTranscript
+        guard rows.count > limit else { return rows }
+        func isTurn(_ row: OfflineCachedMessage) -> Bool {
+            (row.role == .user || row.role == .assistant)
+                && !row.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let tailStart = rows.count - limit
+        let tailTurns = rows[tailStart...].filter(isTurn).count
+        guard tailTurns < minConversationTurns else { return Array(rows[tailStart...]) }
+        var keep = Set(tailStart..<rows.count)
+        var needed = minConversationTurns - tailTurns
+        var index = tailStart - 1
+        while needed > 0, index > -1 {
+            if isTurn(rows[index]) { keep.insert(index); needed -= 1 }
+            index -= 1
+        }
+        // Back to the cap: the oldest rows that are not turns go first.
+        var excess = keep.count - limit
+        for candidate in keep.sorted() where excess > 0 && !isTurn(rows[candidate]) {
+            keep.remove(candidate)
+            excess -= 1
+        }
+        return keep.sorted().suffix(limit).map { rows[$0] }
     }
 
     /// A deleted conversation leaves the scope: its saved rows under any of
