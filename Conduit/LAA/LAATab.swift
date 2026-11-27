@@ -39,7 +39,16 @@ enum LAATab: String, CaseIterable, Identifiable {
     /// icons (SF Symbol `doc.text`, builds up to 2611260645), by the owner's choice (D-21, 2026-11-27:
     /// 「下部のタブバーのアイコンはDocのみもとにもどして」). The other tabs use the kit icons.
     var barArtwork: (regular: Image, selected: Image)? {
-        self == .brain ? (Image(systemName: "doc.text"), Image(systemName: "doc.text.fill")) : nil
+        self == .brain ? (Self.symbol("doc.text"), Self.symbol("doc.text.fill")) : nil
+    }
+
+    /// An SF Symbol without its spoken description: `Image(systemName:)` adds
+    /// "Plain Text Document" beside the tab's own name for VoiceOver and UI tests.
+    private static func symbol(_ name: String) -> Image {
+        #if canImport(UIKit)
+        if let image = UIImage(systemName: name) { return Image(uiImage: image) }
+        #endif
+        return Image(systemName: name)
     }
 
     var icon: LAAIcon {

@@ -317,9 +317,6 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
             }
             .frame(width: widths.item, height: LAATabBarToken.height - 2 * LAATabBarToken.inset)
             .contentShape(Rectangle())
-            // One silent leaf: an SF Symbol image (`image:` tabs) otherwise surfaces its own
-            // description ("Plain Text Document") beside the tab's name.
-            .accessibilityElement(children: .ignore)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(tab.title))
