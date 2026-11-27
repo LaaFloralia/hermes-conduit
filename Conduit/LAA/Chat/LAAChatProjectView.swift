@@ -75,6 +75,8 @@ struct LAAChatProjectDetail: View {
     }
 
     private func modelPicker(for project: LAAChatProject) -> some View {
+        // The Hermes Projects contract allows one effort per route: the
+        // effort shows as a value only (D-33 effortFixed).
         LAAModelEffortPickers(model: project.model.rawValue, provider: project.model.provider, effort: project.model.effort,
                               name: project.model.name, identifier: "laa.chatProject") {
             ForEach(LAAChatProject.Model.choices, id: \.self) { model in
@@ -87,9 +89,6 @@ struct LAAChatProjectDetail: View {
                 }
                 .disabled(project.model == model)
             }
-        } effortMenu: {
-            // The Hermes Projects contract allows one effort per route.
-            LAAEffortMenu.Row(effort: project.model.effort, selected: true) {}.disabled(true)
         }
     }
 
