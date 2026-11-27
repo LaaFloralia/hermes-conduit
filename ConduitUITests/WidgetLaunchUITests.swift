@@ -223,6 +223,7 @@ final class WidgetLaunchUITests: XCTestCase {
     func testInputTextSizeIsIndependentAndPersists() throws {
         let app = launchApp(coldURL: resumeURL, persistentDraftID: UUID())
         func openChatSettings() {
+            #if LAA_BUILD
             // Hortensia opens Settings from the glass tab bar's app card.
             let entry = app.laaSettingsEntry
             app.returnToV2Tabs(revealing: entry)
@@ -235,6 +236,7 @@ final class WidgetLaunchUITests: XCTestCase {
                 chat.tap()
                 return
             }
+            #endif
             let settings = app.buttons.matching(NSPredicate(
                 format: "identifier == %@ OR label == %@ OR label == %@", "gearshape", "Settings", "設定"
             )).firstMatch

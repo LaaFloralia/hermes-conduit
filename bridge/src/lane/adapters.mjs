@@ -1,10 +1,11 @@
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { badRequest } from '../errors.mjs';
 import { createPhoneUse } from '../phone-use/service.mjs';
 import { daemonAdapter } from '../sessions/daemon.mjs';
 import { readConversation } from '../sessions/history.mjs';
+import { sessionOptionsReader } from '../sessions/options.mjs';
 import { laneMissing, lanePath } from './guard.mjs';
 
 // Refusals stand in for whole subsystems whose factories may themselves start
@@ -49,6 +50,12 @@ export function laneAdapters(lane, store, now) {
   const notify = async ({ kind }) => { notifyRecord({ kind }); return { status: 'sent' }; };
   const connect = () => connectLaneWork(lane);
   const daemon = lane.work ? daemonAdapter({ connect, now }) : null;
+  const modelsFile = join(lane.home, 'hq/harness/models.json');
+  // Optional in-lane catalog data for HTTP contract tests. The execution
+  // adapter below still accepts only Lab Echo, no matter what the fixture lists.
+  const options = existsSync(modelsFile)
+    ? () => sessionOptionsReader({ file: lanePath(lane.root, modelsFile, 'model picker'), requirePicker: true })()
+    : () => ({ profiles: [LANE_PROFILE], switchProfiles: [], defaultProfile: LANE_PROFILE.id, defaultMode: 'bypass' });
   async function callWork(operation, fn) {
     const client = await connect();
     try {
@@ -74,7 +81,7 @@ export function laneAdapters(lane, store, now) {
   return {
     sessions: {
       adapter, daemon, notify, homeCwd: lane.home,
-      options: () => ({ profiles: [LANE_PROFILE], switchProfiles: [], defaultProfile: LANE_PROFILE.id, defaultMode: 'bypass' }),
+      options,
       history: async (id) => {
         const result = await readConversation(id, connect);
         // Work messages may name real host files. Never open them to resolve

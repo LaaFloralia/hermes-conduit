@@ -62,7 +62,10 @@ struct LAAWorkHub: View {
             if bridge.status != .paired { connectionState }
             else {
                 if !laaDesktop && section.searchable {
-                    LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search", focus: $searchFocused)
+                    // On the paper, not glass: with the top bar, the switcher
+                    // and the tab bar the screen keeps three glass groups.
+                    LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search",
+                                   focus: $searchFocused, glass: false)
                         .padding(.horizontal, LAASpacing.horizontal)
                         .id(section)
                 }
@@ -91,7 +94,14 @@ struct LAAWorkHub: View {
             LAASettingsToolbar(action: onRequestSettings)
             // Separate item: a grouped toolbar control can collapse into a
             // menu on Catalyst, where the session stays open in its pane.
-            if section == .sessions {
+            if section == .projects && !laaDesktop {
+                // New sits top right as an icon; the list starts under the search.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { createID += 1 } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("New Project").accessibilityIdentifier("work.projects.new")
+                        .disabled(bridge.status != .paired)
+                }
+            } else if section == .sessions {
                 ToolbarItem(placement: .topBarTrailing) {
                     if laaDesktop {
                         Button { createID += 1 } label: { Label("New", systemImage: "plus") }
@@ -165,7 +175,8 @@ struct LAAWorkHub: View {
             if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID, linkedProject: $linkedProject) }
             else {
                 ScrollView {
-                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject)
+                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject,
+                                           createID: createID, onCreateConsumed: { createID = 0 })
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1 }
             }

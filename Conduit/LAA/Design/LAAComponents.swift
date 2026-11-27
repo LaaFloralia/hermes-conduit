@@ -265,6 +265,7 @@ struct LAAToolbarIconButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: label)).accessibilityIdentifier(identifier).macTooltip(label)
+        .laaHiddenBehindSettingsCard()
     }
 
     private static func phosphor(for name: String) -> LAAIcon? {

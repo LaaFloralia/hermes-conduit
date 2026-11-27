@@ -97,15 +97,21 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     return { status: 200, data: decorate(sessions.view(result.session)) };
   }
 
-  // Beside the profiles a new session can start with: the efforts Paseo can
-  // apply to each model of the same providers, for a running session's menu.
-  // A provider Paseo cannot list is left out, and the app falls back on the
-  // profiles.
   async function options({ req } = {}) {
     const url = new URL(req?.url ?? '/', 'http://127.0.0.1');
     const data = sessionOptions();
-    // Launch choices are local HQ data; provider discovery is only needed by
-    // the running-session effort menu and must not delay a new-session sheet.
+    if (data.models) {
+      // Old clients also read this field for running Sessions and Chat. Never
+      // reintroduce a hidden tier or effort through provider discovery.
+      const byRoute = new Map();
+      for (const { provider, model, efforts, defaultEffort, surfaces } of data.models) {
+        if (!surfaces.includes('session')) continue;
+        const key = JSON.stringify([provider, model]);
+        if (!byRoute.has(key)) byRoute.set(key, { provider, model, efforts, defaultEffort });
+      }
+      return { status: 200, data: { ...data, efforts: [...byRoute.values()] } };
+    }
+    // Older, explicitly supplied option sources retain their original shape.
     if (url.searchParams.get('catalogOnly') === 'true') {
       return { status: 200, data: { ...data, efforts: [] } };
     }

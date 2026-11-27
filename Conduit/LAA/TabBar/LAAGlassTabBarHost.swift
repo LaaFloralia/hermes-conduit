@@ -31,6 +31,22 @@ private struct LAATabBarHider: ViewModifier {
     }
 }
 
+extension EnvironmentValues {
+    /// True while the app icon's settings card is open over this screen (iPhone shell).
+    @Entry var laaBehindSettingsCard = false
+}
+
+private struct LAAHiddenBehindSettingsCard: ViewModifier {
+    @Environment(\.laaBehindSettingsCard) private var behind
+    func body(content: Content) -> some View { content.accessibilityHidden(behind) }
+}
+
+extension View {
+    /// Navigation-bar actions live in UIKit, outside the card's modal scope: each one leaves the accessibility
+    /// tree while the card is open (Studio > Drive's layout button stayed reachable, 2026-11-27).
+    func laaHiddenBehindSettingsCard() -> some View { modifier(LAAHiddenBehindSettingsCard()) }
+}
+
 extension View {
     /// Hides the bottom bar while this screen is shown (the LAA build's replacement for
     /// `.toolbar(.hidden, for: .tabBar)`, which it still sets for the system bar's state).

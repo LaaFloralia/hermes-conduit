@@ -7,8 +7,8 @@ extension LAACopy {
     static let chatAttach = "添付"
     static let chatSend = "送信"
     static let chatExpandEditor = "入力欄を拡大"
-    static let chatCopy = "コピー"
-    static let chatCopied = "コピーしました"
+    static let chatCopy = "Copy"
+    static let chatCopied = "Copied"
     static let chatCode = "コード"
     static let chatStop = "応答を中断"
     static let chatSteer = "メッセージで指示"
@@ -78,7 +78,10 @@ enum LAAChatDay {
 }
 
 enum LAALinkDecoration {
-    /// Decorations stay out of copied text; member mentions are not external links.
+    /// A link reads as the kit's link: accent with a 1pt underline (as
+    /// LAAFileLink), no trailing chevron (rule 21). Member mentions are not
+    /// external links and stay plain. Nothing is inserted, so copied text is
+    /// the text as written.
     static func addingIndicators(to text: NSAttributedString) -> NSAttributedString {
         guard text.length > 0 else { return text }
         var ranges: [NSRange] = []
@@ -89,12 +92,8 @@ enum LAALinkDecoration {
         }
         guard !ranges.isEmpty else { return text }
         let result = NSMutableAttributedString(attributedString: text)
-        for range in ranges.reversed() {
-            result.addAttribute(.underlineStyle, value: 0, range: range)
-            var attributes = text.attributes(at: NSMaxRange(range) - 1, effectiveRange: nil)
-            attributes[MarkdownProseRun.copiesAs] = ""
-            attributes[.underlineStyle] = 0
-            result.insert(NSAttributedString(string: " ›", attributes: attributes), at: NSMaxRange(range))
+        for range in ranges {
+            result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         }
         return result
     }

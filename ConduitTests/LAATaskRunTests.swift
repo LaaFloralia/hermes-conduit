@@ -75,7 +75,7 @@ final class LAATaskRunTests: XCTestCase {
         ownerRun.run = LAATaskRun(creator: "owner", assignee: .init(kind: "owner", staff: nil, name: nil),
                                  profile: nil, profileLabel: nil, state: nil, sessionId: nil, sessionRef: nil,
                                  decisionRef: nil, report: nil, error: nil)
-        XCTAssertEqual(LAALinearTaskFilter.toggles.map(\.title), ["自分が作成", "自分が担当"])
+        XCTAssertEqual(LAALinearTaskFilter.toggles.map(\.title), ["Created", "Assigned"])
         XCTAssertTrue(LAALinearTaskFilter.related.matches(created))
         XCTAssertTrue(LAALinearTaskFilter.created.matches(created))
         XCTAssertFalse(LAALinearTaskFilter.assigned.matches(created))

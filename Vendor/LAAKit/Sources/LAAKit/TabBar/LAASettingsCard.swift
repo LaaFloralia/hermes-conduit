@@ -116,6 +116,23 @@ public struct LAASettingsCardEntry: View {
             action()
         }
         .accessibilityIdentifier("laa.tabbar.settings")
+        .modifier(LAACardPinned())
+    }
+}
+
+@available(iOS 18, macOS 15, watchOS 11, *)
+extension ContainerValues {
+    /// Set by `LAASettingsCardEntry`: the glass card keeps it below its scrolling rows.
+    @Entry var laaCardPinned = false
+}
+
+private struct LAACardPinned: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18, macOS 15, watchOS 11, *) {
+            content.containerValue(\.laaCardPinned, true)
+        } else {
+            content
+        }
     }
 }
 

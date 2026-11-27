@@ -75,9 +75,14 @@ public struct LAAAppIdentity {
 
 /// Bar geometry from the tokens, for hosts that inset their content (`laaTabBarClearance`).
 public enum LAAGlassTabBarLayout {
-    /// The bar's height above the bottom safe area, plus one 8 pt step: the clearance scroll content needs.
-    public static var contentClearance: Double {
-        LAATabBarToken.height + LAATabBarToken.bottomFromSafeArea + LAASpace.s8
+    /// The bar's height above the bottom safe area, plus one 8 pt step, on a screen with a home indicator.
+    /// Prefer `contentClearance(safeBottom:)` or `laaTabBarClearance(_:)`: without one the bar sits higher.
+    public static var contentClearance: Double { contentClearance(safeBottom: 34) }
+
+    /// The clearance scroll content needs above the bottom safe area: on a screen without a home indicator
+    /// (iPhone SE) the bar keeps `bottomMin` from the edge, 24 pt higher than its home-indicator offset.
+    public static func contentClearance(safeBottom: Double) -> Double {
+        LAATabBarToken.height + bottomPadding(safeBottom: safeBottom) - safeBottom + LAASpace.s8
     }
 
     static func bottomPadding(safeBottom: Double) -> Double {
@@ -118,11 +123,23 @@ public extension View {
     /// Reserves the bar's height at the bottom of scrolling content so the last row clears the glass while the
     /// content still flows under it.
     func laaTabBarClearance(_ visible: Bool = true) -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: visible ? LAAGlassTabBarLayout.contentClearance : 0)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-        }
+        modifier(LAATabBarClearance(visible: visible))
+    }
+}
+
+private struct LAATabBarClearance: ViewModifier {
+    let visible: Bool
+    @State private var safeBottom: Double = 34
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: visible ? LAAGlassTabBarLayout.contentClearance(safeBottom: safeBottom) : 0)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+            // Read outside the inset, so the inset never feeds back into the value it is sized from.
+            .onGeometryChange(for: Double.self) { $0.safeAreaInsets.bottom } action: { safeBottom = $0 }
     }
 }
 
@@ -183,6 +200,8 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
     @LAAReduceTransparency private var reduceTransparency
     @Environment(\.laaPalette) private var palette
     @AccessibilityFocusState private var headerFocused: Bool
+    /// Height of the rows pinned below the scroll (the Settings entry), measured.
+    @State private var pinnedHeight: Double = 0
 
     public init(tabs: [LAAGlassTab<ID>], selection: Binding<ID>, isExpanded: Binding<Bool>, app: LAAAppIdentity,
                 available: Double, maxCardHeight: Double = 520, onReselect: ((ID) -> Void)? = nil,
@@ -365,11 +384,9 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         let shape = RoundedRectangle(cornerRadius: LAATabBarToken.Card.radius, style: .continuous)
         return VStack(alignment: .leading, spacing: 0) {
             header
-            LAACardScroll(maxHeight: maxCardHeight - LAATabBarToken.Card.headerIcon - 3 * LAATabBarToken.Card.padding) {
-                VStack(alignment: .leading, spacing: 0) { card() }
-                    .environment(\.laaCloseSettingsCard, { isExpanded = false })
-            }
+            cardRows
         }
+        .environment(\.laaCloseSettingsCard, { isExpanded = false })
         .padding(LAATabBarToken.Card.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(MorphGlass(id: "app", space: space, shape: shape, interactive: false,
@@ -377,6 +394,30 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         .accessibilityElement(children: .contain)
         .accessibilityAction(.escape) { isExpanded = false }
         .accessibilityIdentifier("laa.tabbar.card")
+    }
+
+    private var rowsHeight: Double {
+        maxCardHeight - LAATabBarToken.Card.headerIcon - 3 * LAATabBarToken.Card.padding
+    }
+
+    /// The rows scroll when they do not fit; the Settings entry (`LAASettingsCardEntry`) stays below the
+    /// scroll, so it is always on screen at large text sizes (it was pushed under the fold at AX3, 2026-11-27).
+    @ViewBuilder private var cardRows: some View {
+        if #available(iOS 18, macOS 15, watchOS 11, *) {
+            Group(subviews: card()) { subviews in
+                let rows = subviews.filter { !$0.containerValues.laaCardPinned }
+                let pinned = subviews.filter { $0.containerValues.laaCardPinned }
+                LAACardScroll(maxHeight: rowsHeight - pinnedHeight) {
+                    VStack(alignment: .leading, spacing: 0) { ForEach(rows) { $0 } }
+                }
+                VStack(alignment: .leading, spacing: 0) { ForEach(pinned) { $0 } }
+                    .onGeometryChange(for: Double.self) { $0.size.height.rounded() } action: { pinnedHeight = $0 }
+            }
+        } else {
+            LAACardScroll(maxHeight: rowsHeight) {
+                VStack(alignment: .leading, spacing: 0) { card() }
+            }
+        }
     }
 
     private var header: some View {

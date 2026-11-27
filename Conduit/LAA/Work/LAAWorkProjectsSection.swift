@@ -11,10 +11,16 @@ struct LAAWorkProjectsSection: View {
     /// The Work hub's search on the phone.
     var query = ""
     @Binding var linkedProject: String?
+    /// Bumped by the top bar's New button (the hub's `+`), which opens the
+    /// project editor here. Zero means no request.
+    var createID = 0
+    var onCreateConsumed: () -> Void = {}
 
-    init(drafts: ComposerDraftStore, refreshID: Int, query: String = "", linkedProject: Binding<String?> = .constant(nil)) {
+    init(drafts: ComposerDraftStore, refreshID: Int, query: String = "", linkedProject: Binding<String?> = .constant(nil),
+         createID: Int = 0, onCreateConsumed: @escaping () -> Void = {}) {
         self.drafts = drafts; self.refreshID = refreshID; self.query = query
         _linkedProject = linkedProject
+        self.createID = createID; self.onCreateConsumed = onCreateConsumed
     }
 
     @State private var projects: [LAAWorkProject] = []
@@ -34,8 +40,6 @@ struct LAAWorkProjectsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            LAAWorkPrimaryButton(title: "新しいプロジェクト", systemImage: "plus") { showNew = true }
-                .accessibilityIdentifier("work.projects.new")
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && projects.isEmpty { LAALoadingDots() }
             if visibleProjects.isEmpty && (hasLoaded || !loading) && failure == nil {
@@ -83,6 +87,10 @@ struct LAAWorkProjectsSection: View {
         .navigationDestination(item: $opened) { project in
             LAAWorkProjectHome(project: project, drafts: drafts)
                 .onAppear { LAAWorkSessionProjects.noteOpened(project.id) }
+        }
+        // The New action lives in the top bar, not as a filled button above the list.
+        .onChange(of: createID, initial: true) { _, value in
+            guard value > 0 else { return }; showNew = true; onCreateConsumed()
         }
         .sheet(isPresented: $showNew, onDismiss: { editorID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)

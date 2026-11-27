@@ -30,24 +30,39 @@ struct LAAChatProject: Identifiable, Codable, Equatable, Sendable {
         let id: UUID
         let role: Role
         let text: String
+        let model: Model?
 
-        init(id: UUID = UUID(), role: Role, text: String) {
+        init(id: UUID = UUID(), role: Role, text: String, model: Model? = nil) {
             self.id = id
             self.role = role
             self.text = text
+            self.model = model
         }
     }
 
     enum Kind: String, Codable, Sendable { case general, pokemon }
+    static let pokemonID = UUID(uuidString: "0198828b-238f-7294-a0a6-5b65830e1602")!
+    private static let pokemonHydrogenConversationID = UUID(uuidString: "0198828b-238f-7294-a0a6-5b65830e1603")!
     let id: UUID
     var name: String
     var context: String
-    let model: Model
+    fileprivate(set) var model: Model
     let kind: Kind
     var history: [Message]
     /// Reserved before any network submission; a relaunch can distinguish it
     /// from a completed question and must not silently send it again.
     var pending: Message?
+    /// Pin each built-in Pokémon turn before sending so a default change cannot redirect its replay.
+    fileprivate var pendingModelOverride: Model?
+    fileprivate var pendingConversationIDOverride: UUID?
+    var pendingModel: Model { pendingModelOverride ?? model }
+    var pendingConversationID: UUID { pendingConversationIDOverride ?? conversationID(for: pendingModel) }
+
+    // The gateway pins a hidden conversation UUID to its first route. Keep the
+    // local project ID and history, but never attempt to repin the old UUID.
+    func conversationID(for model: Model) -> UUID {
+        id == Self.pokemonID && model == .hydrogen ? Self.pokemonHydrogenConversationID : id
+    }
 
     init(id: UUID = UUID(), name: String, context: String, model: Model, kind: Kind = .general,
          history: [Message] = [], pending: Message? = nil) {
@@ -60,7 +75,9 @@ struct LAAChatProject: Identifiable, Codable, Equatable, Sendable {
         self.pending = pending
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, context, model, kind, history, pending }
+    private enum CodingKeys: String, CodingKey {
+        case id, name, context, model, kind, history, pending, pendingModelOverride, pendingConversationIDOverride
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(UUID.self, forKey: .id), name: try c.decode(String.self, forKey: .name),
@@ -69,6 +86,8 @@ struct LAAChatProject: Identifiable, Codable, Equatable, Sendable {
                   kind: try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .general,
                   history: try c.decodeIfPresent([Message].self, forKey: .history) ?? [],
                   pending: try c.decodeIfPresent(Message.self, forKey: .pending))
+        pendingModelOverride = try c.decodeIfPresent(Model.self, forKey: .pendingModelOverride)
+        pendingConversationIDOverride = try c.decodeIfPresent(UUID.self, forKey: .pendingConversationIDOverride)
     }
 }
 
@@ -79,12 +98,14 @@ final class LAAChatProjectStore {
         let projects: [LAAChatProject]
     }
     enum Failure: Error { case unreadable, missingProject, emptyName, unsupportedModel, pendingConflict }
-    static let pokemonID = UUID(uuidString: "0198828b-238f-7294-a0a6-5b65830e1602")!
+    static let pokemonID = LAAChatProject.pokemonID
+    // Pending-turn decoding and replay are independent of the default.
+    private static let pokemonDefaultModel: LAAChatProject.Model = .hydrogen
     static let seeds = [
         LAAChatProject(id: UUID(uuidString: "0198828b-238f-7294-a0a6-5b65830e1601")!,
                        name: LAACopy.ChatProjects.everyday, context: "", model: .hydrogen),
         LAAChatProject(id: pokemonID, name: LAACopy.ChatProjects.pokemon, context: LAACopy.ChatProjects.pokemonContext,
-                       model: .deepSeek, kind: .pokemon)
+                       model: pokemonDefaultModel, kind: .pokemon)
     ]
     static let shared = LAAChatProjectStore(fileURL: URL.applicationSupportDirectory
         .appending(path: "LAA/ChatProjects.json"))
@@ -100,7 +121,8 @@ final class LAAChatProjectStore {
             if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
                 let archive = try JSONDecoder().decode(Archive.self, from: Data(contentsOf: fileURL))
                 guard (archive.schema ?? 1) == 1 else { throw Failure.unreadable }
-                projects = archive.projects
+                // A typed archive rewrite on launch would discard fields this app doesn't know.
+                projects = archive.projects.map(Self.migrateLegacyPokemon)
             } else {
                 try commit(Self.seeds)
             }
@@ -133,10 +155,14 @@ final class LAAChatProjectStore {
         try change(id) {
             guard $0.pending == nil else { throw Failure.pendingConflict }
             $0.pending = question
+            if id == Self.pokemonID {
+                $0.pendingModelOverride = $0.model
+                $0.pendingConversationIDOverride = $0.conversationID(for: $0.model)
+            }
         }
     }
 
-    func release(_ id: UUID) throws { try change(id) { $0.pending = nil } }
+    func release(_ id: UUID) throws { try change(id, Self.clearPending) }
     func startTurn(in id: UUID) { inFlight.insert(id) }
     func endTurn(in id: UUID) { inFlight.remove(id) }
 
@@ -144,9 +170,31 @@ final class LAAChatProjectStore {
         try change(id) {
             guard !$0.history.contains(where: { $0.id == question.id }) else { return }
             guard localOnly ? $0.pending == nil : $0.pending?.id == question.id else { throw Failure.pendingConflict }
-            $0.history += [question, .init(role: .assistant, text: answer)]
-            $0.pending = nil
+            $0.history += [question, .init(role: .assistant, text: answer, model: $0.pendingModel)]
+            Self.clearPending(&$0)
         }
+    }
+
+    private static func clearPending(_ project: inout LAAChatProject) {
+        project.pending = nil
+        project.pendingModelOverride = nil
+        project.pendingConversationIDOverride = nil
+    }
+
+    private static func migrateLegacyPokemon(_ project: LAAChatProject) -> LAAChatProject {
+        guard project.id == pokemonID, project.model == .deepSeek,
+              pokemonDefaultModel == .hydrogen else { return project }
+        var next = project
+        next.history = project.history.map { message in
+            guard message.role == .assistant, message.model == nil else { return message }
+            return .init(id: message.id, role: message.role, text: message.text, model: project.model)
+        }
+        if project.pending != nil {
+            next.pendingModelOverride = project.pendingModel
+            next.pendingConversationIDOverride = project.pendingConversationID
+        }
+        next.model = pokemonDefaultModel
+        return next
     }
 
     private static func validName(_ input: String) throws -> String {
