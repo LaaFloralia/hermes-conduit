@@ -132,12 +132,22 @@ final class LAAFindingTests: XCTestCase {
         XCTAssertEqual(LAADecisionImageKey(decisionID: "dec_0123456789abcdef", imageID: "img_00000000000a", size: .full).path,
                        "/v1/decisions/dec_0123456789abcdef/images/img_00000000000a", "decisions unchanged")
         XCTAssertNil(LAADecisionImageKey(decisionID: "fnd_x/../y", imageID: "img_00000000000a", size: .thumb).path)
-        XCTAssertTrue(LAADecisionImageStore.isRemoved(httpError(404, "finding_image_not_found")))
+        XCTAssertTrue(LAADecisionImageStore.isRemoved(httpError(404, "decision_image_not_found")))
         XCTAssertTrue(LAAFinding.validID("fnd_0123456789abcdef"))
         XCTAssertFalse(LAAFinding.validID("fnd_0123"))
     }
 
-    func testActionErrors() {
+    func testFindingRefsParseAndSearch() {
+        XCTAssertEqual(LAAWorkRef.parse("F3"), "F3")
+        XCTAssertEqual(LAAWorkRef.parse("f003"), "F3")
+        XCTAssertEqual(LAAWorkRef.parse("Ｆ-３"), "F3")
+        XCTAssertNil(LAAWorkRef.parse("F0"))
+        XCTAssertTrue(LAAWorkRef.matches("f3", ref: "F3", text: ["DMARC"]))
+        XCTAssertFalse(LAAWorkRef.matches("F3", ref: "F31", text: ["DMARC"]))
+        XCTAssertEqual(LAAWorkRef.parse("J3"), "J3", "existing prefixes unchanged")
+    }
+
+        func testActionErrors() {
         XCTAssertEqual(LAAFindingCopy.actionError(httpError(409, "finding_state")),
                        "この気づきはすでに任せたか、見送られています。")
         XCTAssertEqual(LAAFindingCopy.actionError(httpError(404, nil)),

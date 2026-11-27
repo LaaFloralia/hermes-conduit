@@ -120,10 +120,11 @@ final class LAADecisionImageStore {
     }
 
     /// 410 is retention; 404 with the route's own code is an unknown picture.
+    /// Finding pictures (D-18) share the same codes.
     /// A 404 without it is an older Bridge with no image route: unavailable.
     nonisolated static func isRemoved(_ error: LAABridgeHTTPError) -> Bool {
-        error.status == 410 || error.code == "decision_image_expired" || error.code == "finding_image_expired"
-            || (error.status == 404 && (error.code == "decision_image_not_found" || error.code == "finding_image_not_found"))
+        error.status == 410 || error.code == "decision_image_expired"
+            || (error.status == 404 && error.code == "decision_image_not_found")
     }
 
     /// Decodes and stores one payload. Nil when the bytes are not a picture.
