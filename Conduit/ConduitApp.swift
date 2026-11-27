@@ -472,7 +472,12 @@ struct ConduitApp: App {
             }
             #endif
             #if LAA_BUILD && targetEnvironment(macCatalyst)
-            .frame(minWidth: LAAMacWindow.minimumWidth, minHeight: LAAMacWindow.minimumHeight)
+            // Height is left to the window: the scene's size restriction
+            // already holds the window at 779 UIKit points, and a content
+            // minimum of the same height is measured inside the title-bar
+            // safe area, so at 900×600 the content outgrew the window and
+            // the composers and the sidebar footer were cut at the bottom.
+            .frame(minWidth: LAAMacWindow.minimumWidth)
             .background(LAAColor.background.ignoresSafeArea())
             .background(LAAMacWindowConstraints())
             #endif
