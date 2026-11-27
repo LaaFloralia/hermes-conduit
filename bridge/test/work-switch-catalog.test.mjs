@@ -54,7 +54,7 @@ test('project defaults cannot select or silently inherit a legacy profile outsid
   const routes = createProjectRoutes({ projects: {}, choices });
   const create = routes.find((r) => r.method === 'POST' && r.path === '/v1/projects');
   assert.throws(() => create.handler({ rawBody: JSON.stringify({ name: 'same', defaultProfile: 'unlisted-high' }) }), { code: 'model_choice_invalid' });
-  const service = createSessionService({ choices, sessionStore: { file: join(tmpdir(), 'unused-session-state.json') },
+  const service = createSessionService({ choices, sessionStore: { file: join(tmpdir(), 'unused-session-state.json'), get: () => null },
     adapter: { create: () => assert.fail('must not launch a substitute') },
     findProject: () => ({ id: 'project', defaultProfile: 'unlisted-high' }) });
   t.after(() => service.close());

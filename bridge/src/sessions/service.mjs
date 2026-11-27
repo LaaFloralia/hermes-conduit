@@ -174,19 +174,11 @@ export function createSessionService({
     const project = projectId ? findProject(projectId) : null;
     if (projectId && !project) throw notFound('project not found');
     const projectPin = body.profile == null ? project?.defaultProfile : null;
-    let catalog, retained;
+    let catalog;
     const launchChoices = () => catalog ??= choices();
-    if (projectPin != null) {
-      const pin = parseProfile(projectPin);
-      const available = launchChoices();
-      if (!(available.switchProfiles ?? available.profiles).some((item) => item.id === pin)) {
-        retained = choices.retainedProfile?.(pin, { savedPin: true });
-        if (!retained) throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
-      }
-    }
     const existing = sessionStore.get(id);
-    // An unpinned retry keeps the profile already bound to its requestId.
-    const profile = parseProfile(body.profile ?? projectPin ?? existing?.profile ?? launchChoices().defaultProfile);
+    // A replay that did not specify a profile keeps its recorded choice, even when the project default changes.
+    const profile = parseProfile(body.profile ?? existing?.profile ?? projectPin ?? launchChoices().defaultProfile);
     const instructions = project && applyProjectInstructions ? resolveInstructions(project) : null;
     const files = project ? (resolveProjectFiles(project) ?? []) : [];
 
@@ -223,8 +215,20 @@ export function createSessionService({
     }
     if (project?.archivedAt) throw conflict('project_archived', 'choose an active project');
 
-    const offered = launchChoices().profiles.find((item) => item.id === profile) ?? retained ?? choices.retainedProfile?.(profile);
-    if (offered?.available === false) {
+    const options = launchChoices();
+    const matchesProfile = (item) => item.id === profile;
+    let offered;
+    if (projectPin === profile) {
+      offered = (options.switchProfiles ?? options.profiles).find(matchesProfile) ?? choices.retainedProfile?.(profile, { savedPin: true });
+      if (!offered) throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
+    } else {
+      offered = options.profiles.find(matchesProfile) ?? options.switchProfiles?.find(matchesProfile);
+      if (!offered && resumedFrom && requireSession(resumedFrom).profile === profile) {
+        offered = choices.retainedProfile?.(profile, { sameProfileResume: true });
+      }
+    }
+    if (!offered) throw badRequest('model_choice_invalid', 'choose a listed Session profile');
+    if (offered.available === false) {
       throw badRequest('model_choice_invalid', offered.usageNote ?? offered.unavailableReason ?? 'this provider cannot take a session now');
     }
 
