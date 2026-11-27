@@ -93,7 +93,7 @@ enum LAAHabitEventText {
         return parts.count == 3 ? "\(parts[1])/\(parts[2])" : "日付不明"
     }
     static func actor(_ event: LAAHabitEvents.Event) -> String {
-        event.actor == "owner" ? "社長" : (event.agent ?? "AI") + " · 理由: " + (event.reason ?? "No History")
+        event.actor == "owner" ? "社長" : (event.agent ?? "AI") + " · 理由: " + (event.reason ?? "記録なし")
     }
     static func content(_ event: LAAHabitEvents.Event) -> String {
         switch event.type {

@@ -32,6 +32,15 @@ final class LAALinearTaskTests: XCTestCase {
         let wednesday = try XCTUnwrap(LAADateText.calendarDate("2026-11-11", timeZone: tokyo))
         XCTAssertEqual(LAADateText.string(wednesday, .day, timeZone: tokyo), "11月11日（水）")
     }
+
+    /// The relative age reads as one Japanese phrase; the English sweep once left "1日Previous" (2611280000).
+    func testRelativeAgeIsOneJapanesePhrase() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(LAADateText.relative(now.addingTimeInterval(-30), now: now), "たった今")
+        XCTAssertEqual(LAADateText.relative(now.addingTimeInterval(-120), now: now), "2分前")
+        XCTAssertEqual(LAADateText.relative(now.addingTimeInterval(-86_400), now: now), "1日前")
+        XCTAssertEqual(LAADateText.relative(now.addingTimeInterval(7_200), now: now), "2時間後")
+    }
     func testMutationArchivePreservesExactBodyAndVersion() throws {
         let id = UUID().uuidString.lowercased()
         let body = Data(#"{"title":"入力","dueDate":null}"#.utf8)
