@@ -33,7 +33,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             chatResumeLifecycleOperations: .live,
             groupChatOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
-            composerDraftStore: store
+            composerDraftStore: store,
+            profileAppearanceStore: ProfileAppearanceStore(defaults: defaults, legacyAvatarDirectories: [])
         )
     }
 
