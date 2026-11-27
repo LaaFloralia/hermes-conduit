@@ -82,8 +82,12 @@ final class ConnectionSetupUITests: XCTestCase {
         // Repair and Settings tests dismiss it here and never stalled.
         dismissKeyboard(app)
         tapVisible(app.buttons["setup.next"], in: app)
-        XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5))
-        tapVisible(app.buttons["setup.test.run"], in: app)
+        let runTest = app.buttons["setup.test.run"]
+        XCTAssertTrue(runTest.waitForExistence(timeout: 5))
+        // Passwords can present its sheet after XCTest reports the underlying
+        // test button as hittable. Decline it before tapping the button.
+        dismissSavePasswordPrompt(app, timeout: 5)
+        tapVisible(runTest, in: app)
         XCTAssertTrue(app.staticTexts["setup.test.ready"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["http://192.168.1.28:9119"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Entered"].exists)
@@ -174,12 +178,12 @@ final class ConnectionSetupUITests: XCTestCase {
     /// iOS 27 offers to save a typed password to the Passwords app once the
     /// credentials step goes away, and its sheet covers the next screen.
     /// A tap while the sheet is still sliding in is swallowed.
-    private func dismissSavePasswordPrompt(_ app: XCUIApplication) {
+    private func dismissSavePasswordPrompt(_ app: XCUIApplication, timeout: TimeInterval = 2) {
         let notNow = app.buttons["Not Now"]
-        guard notNow.waitForExistence(timeout: 2) else { return }
+        guard notNow.waitForExistence(timeout: timeout) else { return }
         waitUntilSettled(notNow)
         notNow.tap()
-        _ = notNow.waitForNonExistence(timeout: 3)
+        XCTAssertTrue(notNow.waitForNonExistence(timeout: 3), "Save Password still covers Connection Setup")
     }
 
     /// Tap the keyboard toolbar's Done control when present, so a Continue
