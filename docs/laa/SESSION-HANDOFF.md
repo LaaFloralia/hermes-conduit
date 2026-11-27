@@ -103,7 +103,7 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 
 - `xcode-select` はCommandLineToolsを指している。xcrun・xcodebuildには `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` を付ける。
 - App Storeの自動更新でXcodeが変わることがある。27.2では `xcodebuild -runFirstLaunch`（`laa-admin` 経由）とMetal Toolchainの追加が必要だった。
-- push relay（launchd `com.laa.conduit-relay-laa`）は本体チェックアウトの `scripts/laa/relay-run.sh` から動く。worktreeから入れない。
+- push relay（launchd `com.laa.hortensia-relay`）は本体チェックアウトの `scripts/laa/relay-run.sh` から動く。worktreeから入れない。
 - Bridgeの `brain:write`（既存ノートの上書き）は無効を維持する。iPhoneのSyncTrainとLAAは「このiPhone内/LAA」のBrain・HQへ結び付け済み（HQ台帳96101d7）。オフライン編集・移動・.trash・競合検出・保存履歴はこの端末内の経路で、Bridgeの上書きとは区別する。[BRAIN-WRITE §10](BRAIN-WRITE.md#10-iphoneローカルのノート管理と下書き2026-11-02) を参照する。
 - Mac CatalystのTextEditorでは、AXの値だけの書換えがSwiftUIの保存内容へ反映されなかった。通常入力の選択範囲を確認して保存し、Linearから本文を読戻す。送信成功だけで入力の一致を確定しない。
 - 秘密は親だけが1Password Agents経由で扱い、workerへ渡さない。workerにBrainを読ませない。
