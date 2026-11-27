@@ -129,6 +129,24 @@ final class LAAGlassTabBarUITests: XCTestCase {
         XCTAssertTrue(setup.isHittable)
     }
 
+    /// At accessibility text sizes the card's rows scroll; the Settings entry stays below them, on screen.
+    func testSettingsEntryStaysReachableAtLargeText() {
+        for size in ["UICTContentSizeCategoryAccessibilityXL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            let app = launch(["-LAA_UI_TEST_CHATS", "-UIPreferredContentSizeCategoryName", size])
+            let icon = app.laaSettingsEntry
+            XCTAssertTrue(icon.waitForExistence(timeout: 10), size)
+            icon.tap()
+            let card = app.descendants(matching: .any)["laa.tabbar.card"]
+            XCTAssertTrue(card.waitForExistence(timeout: 10), size)
+            let entry = app.buttons["laa.tabbar.settings"]
+            XCTAssertTrue(entry.waitForExistence(timeout: 10), size)
+            attachScreen(app, named: "card-\(size)")
+            XCTAssertTrue(entry.isHittable, "Settings is under the fold at \(size)\n\(card.debugDescription)")
+            XCTAssertTrue(card.frame.contains(CGPoint(x: entry.frame.midX, y: entry.frame.maxY - 1)), size)
+            app.terminate()
+        }
+    }
+
     func testCloseButtonCollapsesWithoutChangingSelection() {
         let app = launch(tab: "work")
         assertCollapsed(app, selected: "Work")
