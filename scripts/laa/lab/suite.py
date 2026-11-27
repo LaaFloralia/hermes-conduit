@@ -185,6 +185,32 @@ def sim_devices():
     return json.loads(raw)["devices"]
 
 
+MINI_SWAP_LIMIT = 0.85  # refuse to boot a simulator on the Mac mini above this swap use
+MINI_FREE_FLOOR = 20    # ... or below this system-wide free memory percentage
+
+
+def mini_memory_guard(read=subprocess.check_output):
+    """Refuse an explicit --host mini simulator boot that would starve Hermes.
+
+    The Mac mini serves the owner's chats (Hermes, gateway, relay, Bridge). A
+    booted simulator took swap to 96% there and stalled every employee chat
+    (D-25), so a mini run only boots while swap and free memory leave room.
+    """
+    swap = read(["sysctl", "-n", "vm.swapusage"], text=True, env=env(), timeout=10)
+    fields = dict(re.findall(r"(total|used)\s*=\s*([0-9.]+)M", swap))
+    total, used = float(fields.get("total", 0)), float(fields.get("used", 0))
+    pressure = read(["memory_pressure", "-Q"], text=True, env=env(), timeout=30)
+    free = re.search(r"free percentage:\s*([0-9]+)%", pressure)
+    if free is None:
+        raise RuntimeError("Mac mini memory guard could not read memory_pressure; not booting a simulator")
+    if total > 0 and used / total > MINI_SWAP_LIMIT:
+        raise RuntimeError(f"Mac mini swap is {used / total:.0%} used (limit {MINI_SWAP_LIMIT:.0%}); "
+                           "not booting a simulator next to the chat services. Use --host macbook.")
+    if int(free.group(1)) < MINI_FREE_FLOOR:
+        raise RuntimeError(f"Mac mini free memory is {free.group(1)}% (floor {MINI_FREE_FLOOR}%); "
+                           "not booting a simulator next to the chat services. Use --host macbook.")
+
+
 class Simulator:
     def __init__(self, out):
         matches = [d["udid"] for d in sim_devices().get(PHONE_RUNTIME, [])
@@ -207,6 +233,8 @@ class Simulator:
             if not erase and current == "Booted":
                 return
             self.stop()
+        if os.environ.get("LAA_MB_HOST") == "mini":
+            mini_memory_guard()
         if erase:
             self.call("erase", self.udid)
         self.call("boot", self.udid)
@@ -351,8 +379,6 @@ def route(args, suite, out, source):
     cmd = [os.environ.get("LAA_MACBOOK_BUILD", "laa-macbook-build"), "dispatch", "--src", str(REPO),
            "--name", label, "--cache-key", "hermes-conduit", "--scheme", SCHEME,
            "--clean-retry-exit", str(BUILD_FAILURE), "--out", str(out), "--cmd", shlex.join(worker)]
-    if args.host == "auto":
-        cmd.append("--fallback-mini")
     if (packages / "workspace-state.json").is_file():
         cmd += ["--packages", str(packages)]
     for pattern in (".deriveddata*", "/build", "node_modules", "/.lab-suite.lock", ".env", ".env.*", ".netrc",
@@ -630,7 +656,7 @@ def main(argv=None):
     run.add_argument("suite", choices=suites())
     run.add_argument("--out", help="fresh result directory for this run")
     run.add_argument("--phase", default="all", choices=["all", "build", "unit", "ui"])
-    run.add_argument("--host", default="auto", choices=["auto", "macbook", "mini"], help="auto prefers MacBook and can fall back to mini")
+    run.add_argument("--host", default="auto", choices=["auto", "macbook", "mini"], help="auto and macbook run on the MacBook only (exit 2 when it is unavailable); mini is an explicit opt-in guarded by memory pressure")
     run.add_argument("--dry-run", action="store_true", help="print routing and batch plan without using a host or writing files")
     run.add_argument("--only", nargs="*", default=[])
     run.add_argument("--no-erase", action="store_true", help="keep the simulator's data (quick reruns while narrowing down; not for a gate)")

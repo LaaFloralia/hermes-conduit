@@ -25,7 +25,7 @@ class SuiteTest(unittest.TestCase):
                 flock.assert_not_called()
             plan = json.loads(stdout.getvalue())
             cmd = plan["command"]
-            self.assertEqual("--fallback-mini" in cmd, host == "auto")
+            self.assertNotIn("--fallback-mini", cmd, "a simulator suite never falls back onto the Mac mini")
             if host == "mini":
                 self.assertEqual(plan["env"]["LAA_MB_HOST"], "mini")
             else:
@@ -34,6 +34,32 @@ class SuiteTest(unittest.TestCase):
                 self.assertEqual(cmd[cmd.index("--clean-retry-exit") + 1], str(suite.BUILD_FAILURE))
             self.assertEqual(len(plan["batches"]["unit"][0]), 28)
             self.assertEqual(set(plan["batches"]), {"unit"})
+
+    def test_mini_guard_refuses_a_boot_under_memory_pressure(self):
+        def reader(swap, free):
+            def read(cmd, **_):
+                return swap if cmd[0] == "sysctl" else f"System-wide memory free percentage: {free}%"
+            return read
+        healthy = "total = 18432.00M  used = 2048.00M  free = 16384.00M  (encrypted)"
+        swapped = "total = 18432.00M  used = 17800.00M  free = 632.00M  (encrypted)"
+        suite.mini_memory_guard(read=reader(healthy, 45))
+        with self.assertRaisesRegex(RuntimeError, "swap is 97% used"):
+            suite.mini_memory_guard(read=reader(swapped, 45))
+        with self.assertRaisesRegex(RuntimeError, "free memory is 12%"):
+            suite.mini_memory_guard(read=reader(healthy, 12))
+        with self.assertRaisesRegex(RuntimeError, "could not read memory_pressure"):
+            suite.mini_memory_guard(read=lambda cmd, **_: healthy if cmd[0] == "sysctl" else "")
+
+    def test_a_mini_boot_runs_the_guard_before_booting(self):
+        device = dict(udid="selected", name=suite.PHONE_NAME, isAvailable=True, state="Shutdown")
+        with patch.object(suite, "sim_devices", return_value={suite.PHONE_RUNTIME: [device]}), \
+             patch.object(suite, "sh") as sh, patch.dict(os.environ, {"LAA_MB_HOST": "mini"}, clear=True), \
+             patch.object(suite, "mini_memory_guard", side_effect=RuntimeError("guard")) as guard:
+            sim = suite.Simulator(Path("/unused"))
+            with self.assertRaisesRegex(RuntimeError, "guard"):
+                sim.start()
+            guard.assert_called_once_with()
+            sh.assert_not_called()
 
     def test_explicit_selectors_split_by_target_and_class(self):
         selectors = [f"ConduitTests/Class{i}" for i in range(57)]
@@ -46,6 +72,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_one_build_and_manifest_for_enumeration_and_all_unit_batches(self):
         with tempfile.TemporaryDirectory() as scratch:
+            scratch = str(Path(scratch).resolve())  # macOS /var -> /private/var; the worker resolves LAA_MB_OUT
             out, manifest = Path(scratch) / "out", Path(scratch) / "built.xctestrun"
             args = argparse.Namespace(suite="integration", phase="unit", only=[], no_erase=False, no_rerun=True,
                                       _worker_source='{"sha":"fixture","dirty":false}')

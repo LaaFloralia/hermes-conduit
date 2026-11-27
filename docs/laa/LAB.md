@@ -85,6 +85,7 @@ python3 scripts/laa/lab/suite.py run smoke --out <結果フォルダ> && python3
 python3 scripts/laa/lab/suite.py run upstream --out <結果フォルダ> && python3 scripts/laa/lab/suite.py check upstream <結果フォルダ>
 ```
 
+- 実行先は既定の `--host auto`（`macbook` と同じ）でMacBookだけ。MacBookで始められない時は終了コード2で止まり、Mac miniへは落とさない。Mac miniはチャットの常駐（Hermes・gateway・relay・Bridge）を持ち、シミュレーターがswap 96%まで埋めて社員チャットを止めた（2026-11-27、D-25）。`--host mini` は明示時だけで、起動前にswap使用率85%超か空きメモリ20%未満なら起動を拒否する。
 - 一部だけ流す時は `--phase build|unit|ui` と `--only <Target>/<Class>[/<test>]`、照合は `check … --partial`（走らせた範囲だけを見る。統合の根拠にはしない）。
 - 既定版とLAA版は生成されるプロジェクトが違うため、同じチェックアウトで交互に流さない。ランナーはチェックアウトごとに排他を取り、2本目は待つ。既定版は別のworktreeで流す。
 - ランナーは `LAA_UI_TEST_REAL_BRIDGE`・`LAA_REAL_BRIDGE_TEST` を環境から外す。試験の各段（単体、UIの各バッチ）は共有ビルド枠の中で `LAA 16 Pro Max` を消去し、言語と地域を英語（米国）にして読み戻してから始める。シミュレーターはほかの会話と共有で、枠の合間に残った保存済み接続が初回ログイン画面を飛ばした（2026-11-24）。`--no-erase` は絞り込みの再実行用で、統合の根拠にしない。
